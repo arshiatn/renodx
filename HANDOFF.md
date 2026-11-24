@@ -804,6 +804,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own buil ... | ?
 - p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + ... | ?
 - ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; ... | ?
+- PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else S ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14576,6 +14577,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         Writer exception (coord): p4i_ may edit on fca_pk4 half_rows_adversarial.inc (SiteMask), exit_drain.inc / other
         .inc narrowing copies of ec::written (-> SiteMask), and ONLY animation_rows.inc part 19 (:2047-2053, :2217) + its
         copy lines outside part 23; p3i_ told to stay off them. Merge order: fca_pk3_s1 first, fca_pk4 on top.
+        rv2_ PK2 RE-CHECK (rv2_pk2_recheck.md + _handback.md; scripts testbin/scratch/rv2_/c3*.py): BLOCKER + 10 MUST
+        closed; GO for implementation in Rev 1's order. C3 claim REPRODUCED to the digit (fa2_'s F3 per-item cost falls);
+        own estimate at 4 balanced chunks -3.1 W3 / ~-1.0 D1, confidence medium-low (one 9-frame window); 0 conflicts in
+        333,591 ebo call lines. Critic ranking: C3 rank 12 -> ~5-6. PK3 numbers unchanged. Coord calls: N-C1 arm YES (ATN
+        Q-B), draw count stays OUT of frame_trace.hpp (header shared by 8+ games). NITs N1-N7 folded at the implementer's
+        step 0 (no new revision). t4i_ got the parser notes.
+        - [ ] PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else Sonnet xHigh) - waits for PK1
+        stage 1 + PK3 S1 merged; bench starts need ATN's Q-F rule for RENODX_TW_THREAD_PARTS.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
