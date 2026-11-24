@@ -1,0 +1,123 @@
+# F7: the 64-bit Attila loader's present path (tests.cpp as attila64.exe) under ReShade (dxgi.dll) with the add-on and
+# zz_capture.addon64 (capture.cpp), one folder per case under testbin\attila64_present\run. -Gpu: the hardware device
+# (only inside a GPU window: testbin\attila64_present\f7_gpu.sh); without it WARP, which ReShade skips (it leaves
+# Microsoft Basic Render Driver devices alone), so a real run needs -Gpu. Each case: the exe's own result (image-freed
+# asserts, captures against the swap chain proxy's reference), then ReShade.log (load order, the add-on's lines, unloads
+# without warnings). -Addon: the add-on under test (default: this tree's build\Release). -Cases: names from the table
+# below (default: all but C6). The C2 control (atn-mods before the bring-up) sits in testbin\attila64_present\c2, the
+# step-4 build (A2a without A2b, C5's control) in testbin\attila64_present\step4. -BuildOnly: the exe and zz_capture,
+# no case; -NoBuild: the cases with the binaries built before.
+param([string]$Addon = '', [string[]]$Cases = @(), [switch]$Gpu, [switch]$NoBuild, [switch]$BuildOnly)
+$ErrorActionPreference = 'Stop'
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
+$testRoot = Join-Path $repoRoot 'test\tw_attila64_present'
+$tools = Join-Path $env:USERPROFILE '.claude\projects\D--Dev-renodx\tools\tw'
+$stage = Join-Path $tools 'testbin\attila64_present'
+$binDir = Join-Path $stage 'bin'
+$reshade = Join-Path $tools 'testbin\reshade_suites\reshade680_amd64\ReShade64.dll'
+if ($Addon -eq '') { $Addon = Join-Path $repoRoot 'build\Release\renodx-twattila.addon64' }
+$addons = @{ current = $Addon; c2 = (Join-Path $stage 'c2\renodx-twattila.addon64'); step4 = (Join-Path $stage 'step4\renodx-twattila.addon64'); none = '' }
+
+if (-not $NoBuild) {
+  $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
+  & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Null
+  New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+  Push-Location -LiteralPath $binDir
+  & rc.exe /nologo /fo attila64.res "$testRoot\attila64.rc"
+  if ($LASTEXITCODE -ne 0) { throw 'attila64.rc failed' }
+  $clang = 'C:\Program Files\LLVM\bin\clang-cl.exe'
+  & $clang --target=x86_64-pc-windows-msvc /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32_LEAN_AND_MEAN /I $repoRoot "$testRoot\tests.cpp" /Fe:attila64.exe /link attila64.res d3d11.lib d3d12.lib dxgi.lib d3dcompiler.lib user32.lib gdi32.lib
+  if ($LASTEXITCODE -ne 0) { throw 'attila64.exe compile failed' }
+  & $clang --target=x86_64-pc-windows-msvc /nologo /std:c++20 /EHsc /O2 /MT /LD /DNOMINMAX /DWIN32_LEAN_AND_MEAN /I $repoRoot /I "$repoRoot\external\reshade" "$testRoot\capture.cpp" /Fe:zz_capture.addon64 /link
+  if ($LASTEXITCODE -ne 0) { throw 'zz_capture.addon64 compile failed' }
+  Pop-Location
+}
+if ($BuildOnly) { 'built'; return }
+
+# Lines every add-on run has; the forbidden ones never.
+$identity = '[Total War] 64-bit Attila: attila64.exe, loader 1.3.20.0'
+$mapped = '[Total War] 64-bit Attila: game code mapped, build id a64b000102030405060708090a0b0c0d0e0f1011, 1 code ranges'
+$upgraded = @("the game's picture upgraded (1280x720)", "the game's picture upgraded (1600x900)")
+$forbidden = @('has no upgrade', 'leaves it alone', 'not readable at the first present', 'was not unregistered')
+$encodings = @{ hdr10 = 0; scrgb = 1; sdr = 2 }
+$outputNames = @{ 0 = 'Output: HDR10'; 1 = 'Output: scRGB'; 2 = 'Output: SDR' }
+$table = [ordered]@{}
+foreach ($encoding in 'hdr10', 'scrgb', 'sdr') {
+  foreach ($form in '1320', 'fixed') {
+    $overlay = if ($form -eq '1320') { "the loader's 8-bit overlay converted (buffer)" } else { "the loader's 8-bit overlay converted (picture)" }
+    $table["${encoding}_$form"] = @{ addon = 'current'; args = "d3d11 $form upgraded"; encoding = $encodings[$encoding]; lines = @($identity, $mapped) + $upgraded + @($overlay) }
+  }
+}
+$table['C1_1320'] = @{ addon = 'none'; args = 'd3d11 1320 plain'; encoding = 0; lines = @() }
+$table['C1_fixed'] = @{ addon = 'none'; args = 'd3d11 fixed plain'; encoding = 0; lines = @() }
+$table['C2_hdr10_1320'] = @{ addon = 'c2'; args = 'd3d11 1320 broken'; encoding = 0; lines = @() }
+$table['C2_scrgb_1320'] = @{ addon = 'c2'; args = 'd3d11 1320 broken'; encoding = 1; lines = @() }
+$table['C2_hdr10_fixed'] = @{ addon = 'c2'; args = 'd3d11 fixed broken'; encoding = 0; lines = @() }
+$table['C3_scrgb_pitch8'] = @{ addon = 'current'; args = 'd3d11 1320 upgraded pitch8'; encoding = 1; lines = @($identity) + $upgraded; forbid = @("8-bit overlay converted") }
+$table['C4_d3d12_plain'] = @{ addon = 'none'; args = 'd3d12'; encoding = 0; lines = @() }
+$table['C4_d3d12'] = @{ addon = 'current'; args = 'd3d12'; encoding = 0; lines = @($identity, '[Total War] 64-bit Attila: a d3d12 device: the add-on leaves it alone'); compare = 'C4_d3d12_plain'; allow = @('leaves it alone') }
+$table['C5_hdr10'] = @{ addon = 'current'; args = 'd3d11 fixed upgraded'; encoding = 0; lines = @("the loader's 8-bit overlay converted (picture)") }
+$table['C5_scrgb'] = @{ addon = 'current'; args = 'd3d11 fixed upgraded'; encoding = 1; lines = @("the loader's 8-bit overlay converted (picture)") }
+$table['C5_control_hdr10'] = @{ addon = 'step4'; args = 'd3d11 fixed no_overlay'; encoding = 0; lines = @() }
+$table['C5_control_scrgb'] = @{ addon = 'step4'; args = 'd3d11 fixed no_overlay'; encoding = 1; lines = @() }
+$table['C6_opengl_plain'] = @{ addon = 'none'; args = 'opengl'; encoding = 0; lines = @(); gpu = $true }
+$table['C6_opengl'] = @{ addon = 'current'; args = 'opengl'; encoding = 0; lines = @(); compare = 'C6_opengl_plain'; allow = @('leaves it alone'); gpu = $true }
+$Cases = @($Cases | ForEach-Object { $_ -split "," } | Where-Object { $_ })
+if ($Cases.Count -eq 0) { $Cases = @($table.Keys | Where-Object { -not $table[$_].gpu }) }
+
+$failed = @()
+foreach ($name in $Cases) {
+  $case = $table[$name]
+  if ($null -eq $case) { throw "no case $name" }
+  $dir = Join-Path $stage "run\$name"
+  if (Test-Path -LiteralPath $dir) { Get-ChildItem -LiteralPath $dir -File | Remove-Item -Force }
+  New-Item -ItemType Directory -Force -Path $dir | Out-Null
+  Copy-Item -LiteralPath (Join-Path $binDir 'attila64.exe') -Destination $dir
+  Copy-Item -LiteralPath (Join-Path $binDir 'zz_capture.addon64') -Destination $dir
+  Copy-Item -LiteralPath $reshade -Destination (Join-Path $dir 'dxgi.dll')
+  $addonPath = $addons[$case.addon]
+  if ($addonPath -ne '') { Copy-Item -LiteralPath $addonPath -Destination (Join-Path $dir 'renodx-twattila.addon64') }
+  # A fresh ini: no LoadFromDllMain key, the tutorial done (no splash), the add-on's output rows explicit.
+  @(
+    '[ADDON]', 'DisabledAddons=', '[GENERAL]', 'EffectSearchPaths=', 'TextureSearchPaths=', 'PresetPath=.\ReShadePreset.ini',
+    '[OVERLAY]', 'TutorialProgress=4', '[renodx]', "SwapChainEncoding=$($case.encoding)",
+    '[renodx-preset1]', 'tonemapper=3', 'peak_white_nits=1000', 'diffuse_white_nits=203', 'graphics_white_nits=203', 'gamma_correction=1'
+  ) | Set-Content -LiteralPath (Join-Path $dir 'ReShade.ini') -Encoding ascii
+  $env:RENODX_CAPTURE_EVERY = '1'
+  $exeArgs = $case.args + $(if ($Gpu) { ' gpu' } else { '' })
+  $process = Start-Process -FilePath (Join-Path $dir 'attila64.exe') -ArgumentList $exeArgs -WorkingDirectory $dir -PassThru -NoNewWindow `
+    -RedirectStandardOutput (Join-Path $dir 'stdout.txt')
+  $null = $process.Handle  # keeps the exit code readable after the exit
+  if (-not $process.WaitForExit(240000)) { $process.Kill(); $failed += "${name}: timed out"; continue }
+  $process.WaitForExit()
+  $problems = @()
+  if ($process.ExitCode -ne 0) { $problems += "exit $($process.ExitCode)" }
+  $log = if (Test-Path -LiteralPath (Join-Path $dir 'ReShade.log')) { Get-Content -LiteralPath (Join-Path $dir 'ReShade.log') -Raw } else { '' }
+  # zz_capture's present callback must run after RenoDX's: it loaded after it (registration order = load order).
+  $renodxAt = $log.LastIndexOf("renodx-twattila.addon64' ...")
+  $captureAt = $log.LastIndexOf("zz_capture.addon64' ...")
+  if ($captureAt -lt 0) { $problems += 'zz_capture not loaded' }
+  if ($case.addon -ne 'none' -and ($renodxAt -lt 0 -or $renodxAt -gt $captureAt)) { $problems += 'zz_capture did not load after RenoDX' }
+  if ($case.args.StartsWith('d3d11') -and $case.addon -ne 'none' -and $case.addon -ne 'c2' -and -not $log.Contains($outputNames[$case.encoding])) {
+    $problems += "no '$($outputNames[$case.encoding])' line (Windows HDR off?)"
+  }
+  foreach ($line in $case.lines) { if (-not $log.Contains($line)) { $problems += "ReShade.log lacks '$line'" } }
+  $forbid = @($forbidden | Where-Object { $case.allow -notcontains $_ }) + @($case.forbid | Where-Object { $_ })
+  if ($case.addon -ne 'c2') { foreach ($line in $forbid) { if ($log.Contains($line)) { $problems += "ReShade.log has '$line'" } } }
+  elseif ($log.Contains('was not unregistered')) { $problems += "ReShade.log has 'was not unregistered'" }
+  if ($case.compare) {
+    $other = Join-Path $stage "run\$($case.compare)"
+    $mine = @(Get-ChildItem -LiteralPath $dir -Filter 'capture_*.raw' | Sort-Object Name)
+    if ($mine.Count -eq 0) { $problems += 'no captures' }
+    foreach ($file in $mine) {
+      $theirs = Join-Path $other $file.Name
+      if (-not (Test-Path -LiteralPath $theirs)) { $problems += "$($file.Name) missing in $($case.compare) (run it first)"; continue }
+      if ((Get-FileHash -LiteralPath $file.FullName).Hash -ne (Get-FileHash -LiteralPath $theirs).Hash) { $problems += "$($file.Name) differs from $($case.compare)" }
+    }
+  }
+  $summary = Get-Content -LiteralPath (Join-Path $dir 'stdout.txt')
+  if ($problems.Count -eq 0) { "PASS: $name" } else { "FAIL: ${name}: $($problems -join '; ')"; $failed += $name }
+  $summary | Where-Object { $_ -match 'FAIL|present (2|5|7|10) |freed' } | ForEach-Object { "  $_" }
+}
+if ($failed.Count -ne 0) { throw "F7 failed: $($failed -join ', ')" }
+'PASS: F7'
