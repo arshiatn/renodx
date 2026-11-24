@@ -804,7 +804,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK5 S0 microbench (pk5_ q2): coord runs it in a quiet CPU window (no ATN questio ... | ?
 - FRIDAY 11-27: PK5 implementer (Fable Medium) S0+ incl. S7, after PK4's steps and ... | ?
 - rv3_ review of Rev 3 (sent; '## Review of Rev 3'); fixes wait for Friday. | ?
-- ATN: env RENODX_TW_ANIMATION_CARRY (PK3 test / bench switch) OK? + pe_xref.py (o ... | ?
 - t4i_ after rv3_ GO: render_mt\ebo\gates.json + a LATCH gate 'an item changed bet ... | ?
 - Friday pk5_ fold-in: PK5 tail code writes only mapped rows (never instance +0x60 ... | ?
 - PK7 heapfix package: pk3_ 15.13 note (only ATN sends). | ?
@@ -14896,8 +14895,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         wall. No new row; new env RENODX_TW_ANIMATION_CARRY=0. Two more idle-PC step comparisons (S7a / S7b, ~10 min each,
         same animation_timing.ps1 rule). Not done: callers of +0x16b1400 (needs pe_xref.py -> ATN).
         - [ ] rv3_ review of Rev 3 (sent; '## Review of Rev 3'); fixes wait for Friday.
-        - [ ] ATN: env RENODX_TW_ANIMATION_CARRY (PK3 test / bench switch) OK? + pe_xref.py (offline, read-only) on
-        empire.retail.dll for caller lists OK? (rule today: dis_at.py only).
+        - [x] ATN OK 11-24 ('Yes, both'): env RENODX_TW_ANIMATION_CARRY (PK3 test / bench switch; ebo_run arms only) +
+        tools\tw\pe_xref.py (offline, read-only, gtp_lowprio) on empire.retail.dll next to dis_at.py (memory
+        reference_tw_tools). rv3_ told it may list the callers of +0x16b1400.
         - [ ] t4i_ after rv3_ GO: render_mt\ebo\gates.json + a LATCH gate 'an item changed between two fills of one update' +
         an applied-env gate on the 'carry (on|off)' line (pk3_ 15.10).
         - [ ] Friday pk5_ fold-in: PK5 tail code writes only mapped rows (never instance +0x60 / +0x70 or list entries).
