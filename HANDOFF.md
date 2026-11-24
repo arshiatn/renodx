@@ -740,6 +740,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g20 follow-ups: MI5 view_share.hpp:541 second texture read unscaled (older); MI7 ... | ?
 - mem_ (b) widened by rvi_: ONE shared predicate (combine gate, post multiply, rt_ ... | ?
 - WH3 89AF6FF5 CS bind: NOT as g20_ asked (WH3 binds a 1x1 t_ssao there in all 94 ... | ?
+- g19_ F1 follow-up: after ho_g20 merges (twwarhammer/addon.cpp), so the WH1 / WH2 ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13758,6 +13759,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         fcx_ restarted) -> fcx_ told. -> ebr_ r7 glance sent.
         COORD: the driver waits (14-20 ms/f vs < 3.0) go to the FCA 'D3D11 submit + driver waits' analyst; lowcore = FCA item
         1 (fci_). Release v170 waits for the FCA verify bench anyway -> no ATN decision needed now (told ATN).
+        mrg_ ROUND C DONE (handbacks/mrg_wave2_rC_handback.md): origin atn-mods 7890b4dde = ho_g19 e0440497f, ho_g03
+        87a5b287e, ho_g09 02ef57a2b + ho_g07 f1924d506 (4db4c0146), ho_g21 61fe86fe5 (known comment conflict, g21's line),
+        ho_g02 d27c29ed4, ho_g10 1ec3681d8, ho_g23 cd16da81c (7890b4dde). Every build exit 0 (hashes scratch/mrg_/hashes_*.txt,
+        unstamped, not installed); tw_native_context, tw_expeditions_unit, tw_tales_unit, tw_ue_sss_gi, tw_warhammer_shaders
+        (832), tw_psychov35, tw_gpu_completion PASS. RC render_mt / engine_code / exit-drain untouched. ~20 s of three builds
+        at once (old slot2\ folder) -> only slotN.lock since. MA1 still holds (G07 67d421be3 not in).
+        COORD: mrg_ round D sent (merge + build in mrg_b1, push only when green): 5.6 ho_g04 -> 5.9c ho_g08 (Ryse / D1 / D2
+        builds = rva_'s gate) -> ho_g19_ryse (+ Ryse build) -> 5.8a ho_g14. rvk_ (Opus xHigh, read only) review of ho_g22
+        (src/utils writer-token helper + device_proxy stop on removal + RC diff) sent (reviews/rvk_g22_review.md).
+        - [ ] g19_ F1 follow-up: after ho_g20 merges (twwarhammer/addon.cpp), so the WH1 / WH2 line lands once.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
