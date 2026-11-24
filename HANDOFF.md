@@ -14109,6 +14109,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         'not analysed' line); manifest 587002983851. -> rvg_ re-check r3 (sent).
         - [ ] G24 boxes from r3: Divinity 1 / 2 + R.U.S.E. trace-folder review (format checks first); D3D9 facts path design
         for R.U.S.E.; Divinity 2 console-only rows N/A/dead via a reviewed list.
+        gbf_ GATE SCRIPT R3 (handbacks/gbf_gate_script_r3_handback.md): B1 11 headers + Test-IncludeClosure from
+        dlaa_bridge.hpp (-DryRun catches gaps), order trees -> -M -> 5 helpers -> harness; M1 same() again vs second; M2
+        0xC0000000 mask; M3 CL / LINK / CPATH scrub; S1-S3 + N1-N8 (Stop-Ours on Ctrl+C: this run's cmd tree + its own
+        build-folder processes only); 889 lines, parser 0, NOT run. -> rvh_ re-check (sent) -> GO -> -DryRun -> run.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
