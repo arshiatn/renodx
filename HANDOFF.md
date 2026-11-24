@@ -14743,6 +14743,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         talesofarise_dlss/frame_trace.hpp (Tales unchanged), twin: logging for the bones families, the GPU-scene mv need;
         tests + a run sheet for ATN; no game run. Dumper change (src/utils/shader_dump.hpp) waits for ATN's OK.
         -> rvg_ review -> coord merges -> trace runs when ATN says the PC is free (he starts the game or gives a rule).
+        PK4 S1 MERGED into atn-mods bd1fc7478 (fca_pk4 cb3fa43b1: d62898f0b SHOULD-1 literals -> SiteMask + NITs 1-4,
+        PROBES constexpr + every probed site < 32; merge of 474f63c6f clean). On the merge commit: tw_engine_code -Quick
+        Attila (23zi) / Rome II / Thrones PASS, -Probe PASS, -DrawRecording PASS (testbin/scratch/p4i_/m1_*.txt); .addon32
+        not rebuilt (assert + whitespace only; S3 builds them). atn-mods since 474f63c6f = draw-loop test fix only.
+        p4i_ (Fable Medium) continues S2 (part 31) + S3 -> 'p4i_ s2-s3' -> rv4_ code review.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
