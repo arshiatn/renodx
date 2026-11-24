@@ -14573,6 +14573,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Then PK5 S0 (tests.cpp after p4i_), then PK5 S2+ on PK4 S1.
         - [ ] ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; Q4b mode-on response to the
         +0x1832CB0 clear (advice: wait on the task, then trip); G1 go + RENODX_TW_SORT_CHECK rule.
+        Writer exception (coord): p4i_ may edit on fca_pk4 half_rows_adversarial.inc (SiteMask), exit_drain.inc / other
+        .inc narrowing copies of ec::written (-> SiteMask), and ONLY animation_rows.inc part 19 (:2047-2053, :2217) + its
+        copy lines outside part 23; p3i_ told to stay off them. Merge order: fca_pk3_s1 first, fca_pk4 on top.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
