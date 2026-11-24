@@ -807,7 +807,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ after rv3_ GO: render_mt\ebo\gates.json + a LATCH gate 'an item changed bet ... | ?
 - Friday pk5_ fold-in: PK5 tail code writes only mapped rows (never instance +0x60 ... | ?
 - PK7 heapfix package: pk3_ 15.13 note (only ATN sends). | ?
-- rvs_ m1 light re-check on the merged tree (sent; item 1 + hash.ps1 in a fresh wo ... | ?
 - s1a_ FOUND (note in s1a_m1_handback.md): with the row ON, m1's apply can write N ... | ?
 - Coord GPU window: s1a_ item t (5090, gpu_job.lock): powershell -NoProfile -Execu ... | ?
 - rvg_ trc review (sent; reviews/rvg_trc_tracer_review.md): code, shared-code buil ... | ?
@@ -14920,7 +14919,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         atn-mods 3338f9289 (pushed). Attila: 8 light_bounce_<pass>_sh wrappers, picked by __has_include of Attila's embed;
         row shown '(Experimental)', default off, Beta 0; S1 / N1-N4 / N6 done. Builds 16 x64 + 3 x86 OK; tw_bounce_sh item 1
         (WARP) PASS; hash.ps1 203 / 203 .cso identical.
-        - [ ] rvs_ m1 light re-check on the merged tree (sent; item 1 + hash.ps1 in a fresh worktree).
+        - [x] rvs_ M1 RE-CHECK (plan_1117/rvs_m1_recheck_handback.md; ~21 min): M1 / S1 / N1-N4 / N6 closed; merged tree
+        builds 16 x64 + 3 x86, item 1 PASS (row off 0 texels, row on 5432 CONTROL), hash 203 / 203. NaN guard > 1e-12f is
+        enough; no other row-on division at risk. NITs R1 (re-create _sh passes only on row change), R2 (creation failure
+        sticks after row off), R3 (S4 ports: guard block.count > 0) -> s1a_ (sent, with 'V1 items 1-6 after the guard').
+        Install 3338f9289 only with the row off (byte-identical); look install waits for s1a_ d. rvs_ re-checks s1a_ d in
+        worktree rvs_m1 (links external\* + build\downloads: delete links alone first).
         - [ ] s1a_ FOUND (note in s1a_m1_handback.md): with the row ON, m1's apply can write NaN (all window taps ~90 deg
         off -> facing^8 weights ~1e-38 underflow -> normalize() NaN -> black / white dots). Fix in the 's1a_ d' commit:
         light_bounce_apply.hlsli guards sh.weight > 1e-12f (row-on code only; row off stays byte-identical). DON'T install
