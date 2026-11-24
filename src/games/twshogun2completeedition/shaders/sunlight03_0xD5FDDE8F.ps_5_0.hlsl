@@ -2,7 +2,7 @@
 // standard_lighting_model_directional_light (lighting.hlsl): on foliage (IS_FOLIAGE: grass, leaves, flowers) the
 // sun's specular makes white specks that flicker with DLSS's jitter facing the sun (ATN debug13; 0 removes them,
 // v18). RenoDX: on IS_FOLIAGE pixels the sun's specular x Foliage Sun Glints (1: the game's).
-// Render scale (DLSS addon): the map overlay (roads, borders, rivers; 4800x2700, drawn at its full size for the whole
+// Render scale: the map overlay (roads, borders, rivers; 4800x2700, drawn at its full size for the whole
 // view) was read at its projected position x the viewport over the screen, the render size's part of it: below 100%
 // roads moved with the camera and sat in the wrong place (ATN debug22). Read at the projected position (the viewport
 // factor divided out; at full size the game's).

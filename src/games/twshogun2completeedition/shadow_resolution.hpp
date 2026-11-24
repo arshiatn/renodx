@@ -58,7 +58,7 @@ inline void Install() {
   } else {
     internal::status = "the game's shadow map code was not found";
   }
-  renodx::utils::log::i("[Shogun 2 DLSS] Shadow map resolution: ", internal::status);
+  renodx::utils::log::i("[Shogun 2] Shadow map resolution: ", internal::status);
 }
 
 // The highest Shadows setting's shadow map size (0: the game's 4096) from the next time the game creates it.

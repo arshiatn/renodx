@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -30,6 +31,7 @@
 #include "../twattila/frame_generation.hpp"
 #include "../twattila/frame_trace.hpp"
 #include "../twattila/reflex.hpp"
+#include "../twattila/texture_lod_bias.hpp"
 
 // DLAA (Graphics (Experimental) > Anti-Aliasing, off by default; tools\tw\romeremastered\plan_1114.md item 3) through
 // the TW helper's bridge. The game has no TAA, jitter or motion vectors. ATN's 2026-11-14 traces (level A): every scene
@@ -120,6 +122,10 @@ struct State {
   std::vector<std::string> said;  // each status line once
 };
 static State state;
+// The texture LOD bias's main view (twattila/texture_lod_bias.hpp): the tone mapper's size (width << 32 | height) while
+// DLSS / FSR / XeSS draw in Feral's upscaler's place below 100% Resolution Scale, else 0; OnBindViewports' answer.
+static std::atomic<uint64_t> lod_bias_view = 0;
+static std::atomic_bool main_view = false;
 
 // Below 100% Resolution Scale: Feral's upscaler drew the frame before, its target larger than `width` x `height` (the
 // tone mapper's). state.mutex held.
@@ -291,8 +297,10 @@ inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data,
 
 // The next frame's jitter: Halton (2, 3) over 8 frames, centred, only after a frame DLAA ran (a frame without it would
 // shake).
-inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*,
+inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*,
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  float bias = 0.f;
+  uint64_t view = 0;
   const auto halton = [](uint32_t index, uint32_t base) {
     float result = 0.f;
     float fraction = 1.f / static_cast<float>(base);
@@ -307,12 +315,32 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain*, co
     state.jitter = ((sliders.method != 0.f && state.evaluated_frame == state.frame)
                         ? std::array<float, 2>{halton(phase, 2) - 0.5f, halton(phase, 3) - 0.5f}
                         : std::array<float, 2>{});
+    // The texture LOD bias for the next frames while DLSS / FSR / XeSS drew this frame in Feral's upscaler's place:
+    // log2 of the render / output width, minus 1 (sharper) or 2.
+    const int choice = twattila::feature_settings::AaSettings(sliders).texture_lod_bias;
+    if (choice != 0 && state.upscaled_frame == state.frame && state.upscaler[0] > state.display[0] && state.display[0] != 0) {
+      bias = std::log2(static_cast<float>(state.display[0]) / static_cast<float>(state.upscaler[0])) - static_cast<float>(choice - 1);
+      view = (static_cast<uint64_t>(state.display[0]) << 32u) | state.display[1];
+    }
     ++state.frame;
   }
+  lod_bias_view.store(view, std::memory_order_relaxed);
+  twattila::texture_lod_bias::SetTracking(queue, bias != 0.f);
+  twattila::texture_lod_bias::SetBias(bias);
   // Turned off (and no rays): the helper's DLAA and the shared textures let go (made again when turned on).
   if (sliders.method == 0.f && !rays && twattila::dlaa_bridge::bridge.width != 0) {
     twattila::dlaa_bridge::Release(true);
   }
+}
+
+// The main view: its first viewport at the origin, the tone mapper's size (the scene's passes; not the shadow maps, the
+// smaller post passes or the UI at the output's size). Registered before texture_lod_bias::OnBindViewports.
+inline void OnBindViewports(reshade::api::command_list*, uint32_t first, uint32_t count, const reshade::api::viewport* viewports) {
+  const uint64_t view = lod_bias_view.load(std::memory_order_relaxed);
+  main_view.store(view != 0 && first == 0 && count != 0 && viewports[0].x == 0.f && viewports[0].y == 0.f
+                      && viewports[0].width == static_cast<float>(view >> 32u)
+                      && viewports[0].height == static_cast<float>(view & 0xFFFFFFFFu),
+                  std::memory_order_relaxed);
 }
 
 inline void OnDestroyDevice(reshade::api::device* device) {
@@ -692,6 +720,13 @@ inline void Install() {
   reshade::register_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateBufferRegion);
   reshade::register_event<reshade::addon_event::present>(internal::OnPresent);
   reshade::register_event<reshade::addon_event::destroy_device>(internal::OnDestroyDevice);
+  twattila::texture_lod_bias::SetMainView([] { return internal::main_view.load(std::memory_order_relaxed); });
+  reshade::register_event<reshade::addon_event::bind_viewports>(internal::OnBindViewports);
+  reshade::register_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
+  reshade::register_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
+  reshade::register_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
+  reshade::register_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
+  reshade::register_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
 }
 
 inline void Uninstall() {
@@ -700,6 +735,13 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::update_buffer_region>(internal::OnUpdateBufferRegion);
   reshade::unregister_event<reshade::addon_event::present>(internal::OnPresent);
   reshade::unregister_event<reshade::addon_event::destroy_device>(internal::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::bind_viewports>(internal::OnBindViewports);
+  reshade::unregister_event<reshade::addon_event::bind_viewports>(twattila::texture_lod_bias::OnBindViewports);
+  reshade::unregister_event<reshade::addon_event::init_sampler>(twattila::texture_lod_bias::OnInitSampler);
+  reshade::unregister_event<reshade::addon_event::destroy_device>(twattila::texture_lod_bias::OnDestroyDevice);
+  reshade::unregister_event<reshade::addon_event::destroy_sampler>(twattila::texture_lod_bias::OnDestroySampler);
+  reshade::unregister_event<reshade::addon_event::push_descriptors>(twattila::texture_lod_bias::OnPushDescriptors);
+  twattila::texture_lod_bias::Shutdown();
 }
 
 }  // namespace twromeremastered::dlaa

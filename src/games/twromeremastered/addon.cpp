@@ -85,6 +85,15 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, Hable on the luminance).
 constexpr float HUE_CLIP_DEFAULT = 80.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h ROME_V35_*: Hable's toe and colour).
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", ROME_V35_CONTRAST},
+    {"v35_shadows", ROME_V35_SHADOWS},
+    {"v35_saturation", ROME_V35_SATURATION},
+    {"v35_highlight_contrast", ROME_V35_HIGHLIGHT_CONTRAST},
+    {"v35_exposure", ROME_V35_EXPOSURE},
+};
+
 // Extra sliders: both HDR modes.
 bool IsHDRMode() {
   return shader_injection.hdr >= 1.f && current_settings_mode == 1;
@@ -143,7 +152,7 @@ void ApplyResetPreset() {
       {"vignette", 1.f},
       {"distortion", 1.f},
       {"auto_exposure_highlight_protection", 0.f},
-      {"auto_exposure_highlight_headroom_stops", 2.f},
+      {"auto_exposure_highlight_headroom_stops", 1.f},
       // {"chromaticaberration", 1.f},
       // {"sharpening", 1.f},
       // {"some_indicators", 1.f},
@@ -154,6 +163,7 @@ void ApplyResetPreset() {
       // {"sky_deband", 2.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 void ApplyPsychoRecommended() {
@@ -1419,7 +1429,7 @@ void BuildRuntimeData() {
     new renodx::utils::settings::Setting{
         .key = "auto_exposure_highlight_headroom_stops",
         .binding = &shader_injection.auto_exposure_highlight_headroom_stops,
-        .default_value = 2.f,
+        .default_value = 1.f,
         .label = "Modded Auto Exposure: Sensitivity",
         .section = "Extra",
         .tooltip = "How far above the picture's average brightness a bright area still counts, in stops.\n"
@@ -1711,7 +1721,15 @@ void BuildRuntimeData() {
     //     },
     // },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 bool configured = false;
@@ -2048,6 +2066,7 @@ void ConfigureAddon() {
                                              .texts = &PAGE_TEXTS,
                                              .aa_methods = AA_METHODS,
                                              .has_scale_rows = false,
+                                             .lod_bias_at_game_scale = true,
                                              .has_foliage_light = false,
                                              .rays_preset_as_attila = true,
                                              .has_path_ambient = false,
@@ -2055,6 +2074,8 @@ void ConfigureAddon() {
                                              .rays_multiply_maps = true,
                                              .has_gtvbao = false,
                                              .has_gi = false,
+                                             .has_fog_shadows = false,
+                                             .fog_shadows_defaulted_on = true,
                                              .every_row = false});
   const std::vector<std::string> page_sections = twattila::graphics_page::Sections();
   for (auto* setting : settings) {

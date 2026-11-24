@@ -52,7 +52,7 @@ inline void Install() {
   } else {
     internal::status = "the game's terrain code was not found";
   }
-  renodx::utils::log::i("[Shogun 2 DLSS] Terrain detail: ", internal::status);
+  renodx::utils::log::i("[Shogun 2] Terrain detail: ", internal::status);
 }
 
 // Present: finest everywhere, or the game's distance levels (its own values back; detach too).

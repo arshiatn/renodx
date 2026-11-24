@@ -103,6 +103,14 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
 constexpr float HUE_CLIP_DEFAULT = 70.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): the film curve's darker shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", SHOGUN_V35_CONTRAST},
+    {"v35_shadows", SHOGUN_V35_SHADOWS},
+    {"v35_saturation", SHOGUN_V35_SATURATION},
+    {"v35_highlight_contrast", SHOGUN_V35_HIGHLIGHT_CONTRAST},
+};
+
 bool IsHdrOutput() {
   return shader_injection.swap_chain_encoding != 2.f;
 }
@@ -156,10 +164,12 @@ void ApplyResetPreset() {
       {"some_indicators", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
-// The recommended presets (ATN's settings; 2026-11-12: Musa's PsychoV35 at its defaults): HDR (PsychoV35), no lens
-// flares, faint foliage glints, faint haze, brighter VFX and videos. PsychoV31's sliders as before, for that mode.
+// The recommended presets (ATN's settings; 2026-11-12: PsychoV35, since the V35 fit at the game's response): HDR
+// (PsychoV35), no lens flares, faint foliage glints, faint haze, brighter VFX and videos. PsychoV31's sliders as before,
+// for that mode.
 void ApplyRecommendedPreset() {
   ApplyResetPreset();
   renodx::utils::settings::UpdateSettings({
@@ -167,7 +177,7 @@ void ApplyRecommendedPreset() {
       {"highlight_saturation", 0.75f},
       {"lens_flare", 0.f},
       {"foliage_glints", 0.15f},
-      {"video_autohdr", 0.25f},
+      {"video_autohdr", 0.2f},
       {"heat_haze", 0.1f},
       {"vfx_glow", 5.f},
       {"vfx_big_fire", 1.f},
@@ -193,10 +203,11 @@ renodx::utils::settings::Settings settings;
 // The DLSS rows (Graphics 1 of 2's Anti-Aliasing and Upscaling; ReShade.ini keys as the DLSS add-on saved them until it
 // became part of this one): the game's DLSS (game_dlss.hpp: its render scale, preset and jitter, render_scale.hpp) and the
 // helper's upscaler and frame generation (upscaling.hpp, twattila/frame_generation.hpp), NVIDIA Reflex (twattila/reflex.hpp).
+constexpr float CUSTOM_RENDER_SCALE_DEFAULT = 50.f;  // percent
 struct AaSliders {
   float method = 0.f;  // HelperUpscaler: 0 the game's DLSS, 5 + twattila::dlaa_bridge::UPSCALER_* (Attila's anti-aliasing values)
   float dlss_mode = 0.f;  // RenderScale: RENDER_SCALES, then Custom
-  float render_scale = 50.f;  // RenderScaleCustom: Custom, in percent
+  float render_scale = CUSTOM_RENDER_SCALE_DEFAULT;  // RenderScaleCustom: Custom, in percent
   float preset = NVSDK_NGX_DLSS_Hint_Render_Preset_K;  // Preset: the NGX value, PRESETS'
   float ray_reconstruction = 0.f;  // AntiAliasingRayReconstruction: off, NVIDIA's preset, D, E, F
   float frame_generation = 0.f;    // HelperFrameGeneration: off, 2x-6x, Dynamic
@@ -326,11 +337,11 @@ struct RaySliders {
   float water_soft = 0.f;
   float specular_occlusion = 0.f;
   float light_bounce = 0.f;  // the Global Illumination's light from rays (Shogun's: off or on; PathTracing: paths)
-  float light_bounce_rays = 4.f;
-  float light_bounce_range = 10.f;
-  float light_bounce_resolution = 1.f;  // full, half, quarter
+  float light_bounce_rays = 1.f;
+  float light_bounce_range = 50.f;
+  float light_bounce_resolution = 0.f;  // full, half, quarter
   float path_tracing = 0.f;
-  float path_bounces = 2.f;
+  float path_bounces = 1.f;
   float sharc = 0.f;
   float reuse_lean = 1.f;
   float reuse_near = 1.f;
@@ -617,13 +628,13 @@ const Values GRAPHICS_RESET = {
 const Values AO_DEFAULTS = {
     {"AmbientOcclusion", 1.f}, {"AmbientOcclusionStrength", 1.f}, {"AmbientOcclusionRadius", 12.5f}, {"AmbientOcclusionThickness", 0.1f},
     {"AmbientOcclusionQuality", 2.f}, {"AmbientOcclusionDirections", 0.f}, {"AmbientOcclusionResolution", 0.f},
-    {"AmbientOcclusionAutoThickness", 0.f}, {"AmbientOcclusionExactDepth", 0.f}, {"ssao_temporal", 0.f}, {"ssao_edge_fix", 0.f},
+    {"AmbientOcclusionAutoThickness", 1.f}, {"AmbientOcclusionExactDepth", 0.f}, {"ssao_temporal", 0.f}, {"ssao_edge_fix", 0.f},
     {"ssao_denoise", 0.f},
 };
 const Values GI_DEFAULTS = {
     {"LightBounceStrength", 0.f}, {"LightBounceRadius", 20.f}, {"LightBounceResolution", 2.f}, {"LightBounceQuality", 3.f},
     {"LightBounceDirections", 0.f}, {"LightBounceTemporal", 1.f}, {"LightBounceDenoise", 1.f}, {"LightBounceMultiBounce", 0.f},
-    {"LightBounceCheckerboard", 1.f}, {"LightBounceBackFace", 0.f}, {"LightBounceAutoThickness", 0.f},
+    {"LightBounceCheckerboard", 1.f}, {"LightBounceBackFace", 0.f}, {"LightBounceAutoThickness", 1.f},
 };
 const std::string RAYS_SECTION = "Ray Tracing (Experimental, restart after turning on)";
 constexpr uint32_t RAYS_TINT = 0x6BE0D8;
@@ -671,10 +682,10 @@ const Values RAYS_RESET = {
     {"RayTracedWaterReflections", 0.f},
     {"RayTracedWaterSteady", 0.f},
     {"RayTracedWaterSoft", 0.f},
-    {"RayTracedLightBounceRays", 4.f},
-    {"RayTracedLightBounceRange", 10.f},
-    {"RayTracedLightBounceResolution", 1.f},
-    {"PathTracingBounces", 2.f},
+    {"RayTracedLightBounceRays", 1.f},
+    {"RayTracedLightBounceRange", 50.f},
+    {"RayTracedLightBounceResolution", 0.f},
+    {"PathTracingBounces", 1.f},
     {"RayTracedSharc", 0.f},
     {"RayTracedReuseLean", 1.f},
     {"RayTracedReuseNear", 1.f},
@@ -1155,16 +1166,16 @@ void BuildRuntimeData() {
           .label = "Recommended (SDR-like Contrast/Saturation)",
           .section = "Presets",
           .group = "preset-line-1",
-          .tooltip = "Recommended, with contrast and saturation closer to the game's SDR.\n"
-                     "Keeps Peak, Paper White, UI and output.",
+          .tooltip = "Recommended, with PsychoV31's contrast and saturation closer to the game's SDR (PsychoV35 already\n"
+                     "matches it) and highlights that compress sooner. Keeps Peak, Paper White, UI and output.",
           .on_change = []() {
             ApplyRecommendedPreset();
+            // PsychoV35's contrast stays the fitted one (V35_GAME_RESPONSE): 1.3 here would sit below the game's toe.
             renodx::utils::settings::UpdateSettings({
                 {"highlights", 1.00f},
                 {"cone_response_exponent", 1.3f},
                 {"highlight_saturation", 1.00f},
                 {"roll_off", 2.00f},
-                {"v35_contrast", 1.3f},
                 {"v35_roll_off", 2.00f},
             });
           },
@@ -1474,7 +1485,15 @@ void BuildRuntimeData() {
       // test_assign("Set as Big Fires", twshogun2::vfx_effects::Kind::BIG_FIRE),
       // test_assign("Set as Campfires", twshogun2::vfx_effects::Kind::CAMPFIRE),
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 
   // Graphics 1 of 2 and 2 of 2: the DLSS add-on's overlay until it became part of this add-on (its rows, keys, defaults
   // and presets as they were; Settings Mode's pages: ConfigureAddon).
@@ -1561,7 +1580,7 @@ void BuildRuntimeData() {
           .key = "RenderScaleCustom",
           .binding = &aa_sliders.render_scale,
           .value_type = SettingValueType::INTEGER,
-          .default_value = 50.f,
+          .default_value = CUSTOM_RENDER_SCALE_DEFAULT,
           .label = "Custom render scale",
           .section = aa_section,
           .min = 1.f,
@@ -1575,12 +1594,41 @@ void BuildRuntimeData() {
           .section = aa_section,
           .tooltip = "Applied when you let go. DLSS may refuse scales below 33%.",
           .on_draw = [] {
-            static int percent = 50;
+            static int percent = static_cast<int>(CUSTOM_RENDER_SCALE_DEFAULT);
             static bool dragging = false;
             if (!dragging) percent = static_cast<int>(aa_sliders.render_scale);
             ImGui::SliderInt("Custom render scale", &percent, 1, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
             dragging = ImGui::IsItemActive();
-            if (!ImGui::IsItemDeactivatedAfterEdit()) return false;
+            const bool released = ImGui::IsItemDeactivatedAfterEdit();
+            // The reset icon the other sliders have, in their style (renodx::utils::settings draws it only for its own
+            // slider types): small font, round, grey at the default.
+            ImGui::SameLine();
+            const bool at_default = aa_sliders.render_scale == CUSTOM_RENDER_SCALE_DEFAULT;
+            ImGui::BeginDisabled(at_default);
+            if (at_default) {
+              ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(ImColor::HSV(0, 0, 0.6f)));
+              ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(ImColor::HSV(0, 0, 0.7f)));
+              ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(ImColor::HSV(0, 0, 0.8f)));
+            }
+            const float previous_font_size = ImGui::GetFontSize();
+            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.75f);
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, ImGui::GetFontSize() * 2);
+            ImVec2 cursor = ImGui::GetCursorPos();
+            cursor.y += (previous_font_size - ImGui::GetFontSize()) * 0.5f;
+            ImGui::SetCursorPos(cursor);
+            ImGui::PushID("##ResetRenderScaleCustom");
+            const bool reset = ImGui::Button(renodx::utils::icons::View(renodx::utils::icons::UNDO));
+            ImGui::PopID();
+            if (at_default) {
+              ImGui::PopStyleColor(3);
+            }
+            ImGui::PopStyleVar();
+            ImGui::PopFont();
+            ImGui::EndDisabled();
+            if (reset) {
+              percent = static_cast<int>(CUSTOM_RENDER_SCALE_DEFAULT);
+            }
+            if (!released && !reset) return false;
             renodx::utils::settings::UpdateSettings({{"RenderScaleCustom", static_cast<float>(percent)}});
             return true;
           },
@@ -1977,7 +2025,7 @@ void BuildRuntimeData() {
              "Directions searched around each pixel. More: less noise, heavier.", {"1", "2", "4", "8"}, ao_on),
       choice("AmbientOcclusionResolution", &shader_injection.ssao_resolution, 0.f, "Resolution", ao_section,
              "Lower: faster, softer; thin things (grass, spears) get less shading.", {"Full", "Half"}, ao_on),
-      choice("AmbientOcclusionAutoThickness", &shader_injection.ssao_auto_thickness, 0.f, "Auto Thickness (Experimental)", ao_section,
+      choice("AmbientOcclusionAutoThickness", &shader_injection.ssao_auto_thickness, 1.f, "Auto Thickness", ao_section,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",
              off_on, ao_on),
@@ -2043,7 +2091,7 @@ void BuildRuntimeData() {
              off_on, [] { return shader_injection.light_bounce_strength > 0.f && shader_injection.light_bounce_temporal != 0.f; }),
       choice("LightBounceBackFace", &shader_injection.light_bounce_backface, 0.f, "Back-Face Rejection (Experimental)", gi_section,
              "Ignores light from surfaces seen from behind. Heavier; not always better.", off_on, gi_on),
-      choice("LightBounceAutoThickness", &shader_injection.light_bounce_auto_thickness, 0.f, "Auto Thickness (Experimental)", gi_section,
+      choice("LightBounceAutoThickness", &shader_injection.light_bounce_auto_thickness, 1.f, "Auto Thickness", gi_section,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",
              off_on, gi_on),
@@ -2243,17 +2291,17 @@ void BuildRuntimeData() {
       ray_toggle("RayTracedLightBounce", &rt_sliders.light_bounce, "Ray-traced Global Illumination",
                  "The Global Illumination's light found with rays: no guessing behind what you see, light from farther.\n"
                  "Needs the Global Illumination on."),
-      ray_count("RayTracedLightBounceRays", &rt_sliders.light_bounce_rays, 4.f, 16.f, "Ray-traced GI rays", "Rays per texel: less noise, heavier.",
+      ray_count("RayTracedLightBounceRays", &rt_sliders.light_bounce_rays, 1.f, 16.f, "Ray-traced GI rays", "Rays per texel: less noise, heavier.",
                 bounce),
-      ray_amount("RayTracedLightBounceRange", &rt_sliders.light_bounce_range, 10.f, "Ray-traced GI range", 1.f, 50.f, "%.0f m",
+      ray_amount("RayTracedLightBounceRange", &rt_sliders.light_bounce_range, 50.f, "Ray-traced GI range", 1.f, 50.f, "%.0f m",
                  "How far its rays look for light.", bounce),
-      ray_choice("RayTracedLightBounceResolution", &rt_sliders.light_bounce_resolution, 1.f, "Ray-traced GI resolution", {"Full", "Half", "Quarter"},
+      ray_choice("RayTracedLightBounceResolution", &rt_sliders.light_bounce_resolution, 0.f, "Ray-traced GI resolution", {"Full", "Half", "Quarter"},
                  "Its own resolution (the Global Illumination's Resolution and Checkerboard no longer apply to it).\n"
                  "Full: sharpest, about 4x Half's cost.",
                  bounce),
       ray_toggle("PathTracing", &rt_sliders.path_tracing, "Path tracing",
                  "The Global Illumination's and the reflections' rays go on bouncing: lit by what the screen never saw. Heavy.", paths_enabled),
-      ray_count("PathTracingBounces", &rt_sliders.path_bounces, 2.f, 2.f, "Path tracing bounces",
+      ray_count("PathTracingBounces", &rt_sliders.path_bounces, 1.f, 2.f, "Path tracing bounces",
                 "Bounces past the first where the camera sees nothing. 1: faster, a little darker.", paths),
       ray_choice("RayTracedSharc", &rt_sliders.sharc, 0.f, "SHaRC radiance cache (Experimental)", off_on,
                  "NVIDIA's SHaRC for the light of what the screen does not show (more bounces off-screen, paths end sooner).", paths),
@@ -2511,7 +2559,7 @@ constexpr auto OnSunDraw = []<typename Context>(Context& command) -> renodx::uti
   const auto& shader = command.template GetCallbackData<SunShader>();
   const auto index = static_cast<size_t>(&shader - SUN_SHADERS.data());
   if (sun_seen[index].load(std::memory_order_relaxed) || sun_seen[index].exchange(true)) return {};
-  renodx::utils::log::i(std::format("[Shogun 2 DLSS] First run: sun light draw {:08X} {}", shader.hash, shader.name));
+  renodx::utils::log::i(std::format("[Shogun 2] First run: sun light draw {:08X} {}", shader.hash, shader.name));
   return {};
 };
 
@@ -2751,6 +2799,9 @@ void ConfigureAddon() {
     reshade::set_config_value(nullptr, global.c_str(), "SettingsRevision", 1);
     if (copied != 0) renodx::utils::log::i(std::format("[Shogun 2] Settings: {} of the DLSS add-on's ([Shogun 2 DLSS]) copied into the presets.", copied));
   }
+  // Rows saved at an old default cleared once (SettingsRevision 2): Auto Thickness on by default (ATN 2026-11-22) and
+  // Texture LOD bias on all textures (on since 2026-11-16, decision 11).
+  twattila::graphics_page::ClearSavedRows(2, {"AmbientOcclusionAutoThickness", "LightBounceAutoThickness", "AntiAliasingTextureLodBiasTrilinear"});
 
   configured = true;
 }
@@ -2855,7 +2906,7 @@ bool AttachAddon() {
           size != evaluated_size) {
         evaluated_size = size;
         const auto display = twshogun2::game_dlss::DisplaySize();
-        renodx::utils::log::i(std::format("[Shogun 2 DLSS] Evaluating {}x{} -> {}x{}, jitter ({:.4f}, {:.4f})", size[0], size[1], display[0],
+        renodx::utils::log::i(std::format("[Shogun 2] Evaluating {}x{} -> {}x{}, jitter ({:.4f}, {:.4f})", size[0], size[1], display[0],
                                           display[1], eval->InJitterOffsetX, eval->InJitterOffsetY));
       }
       twshogun2::render_scale::EndScaling();
@@ -2885,7 +2936,7 @@ bool AttachAddon() {
       return twshogun2::upscaling::Evaluate(request, ray_tracing_installed && twshogun2::ray_tracing::GuidesWritten());
     });
     renodx::utils::log::i(std::format(
-        "[Shogun 2 DLSS] Options: render scale {} ({}% custom), preset {}, texture LOD bias {}, jitter {}, object motion {}, "
+        "[Shogun 2] Options: render scale {} ({}% custom), preset {}, texture LOD bias {}, jitter {}, object motion {}, "
         "upscaler {} RR {}, frame generation {} method {} Reflex {} limit {}, particle resolution {}, shadow map {}, grass {} model {} "
         "unit {} / {} / {} terrain {}",
         aa_sliders.dlss_mode, aa_sliders.render_scale, aa_sliders.preset, aa_sliders.texture_lod_bias, aa_sliders.jitter, aa_sliders.object_motion,

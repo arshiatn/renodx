@@ -1,6 +1,6 @@
 // autoexposurecs.hlsl cs_compute_tone_mapper_brightness: the auto exposure (luma along crosses at focus points,
 // adapted over time), written from the game's source.
-// Render scale (DLSS addon): it reads the 3D image (the DLSS input), drawn into the top-left render scale part of this
+// Render scale: it reads the 3D image (the DLSS input), drawn into the top-left render scale part of this
 // full-size texture (SI.render_scale_x / y, captured from the 3D passes' viewports), but placed its points and crosses
 // over the whole texture: they are placed in the rendered part (at full size the same as the game's).
 // Modded Auto Exposure (Experimental, Attila's rows): the game meters the mean luma along its crosses, so the sun, fires and

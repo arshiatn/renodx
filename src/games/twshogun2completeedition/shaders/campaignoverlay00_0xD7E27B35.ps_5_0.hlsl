@@ -1,9 +1,9 @@
 // mtbcampaignterrainoverlay.hlsl ps50_main (the campaign map's terrain overlay: region colours from a lookup and a palette
 // at each pixel's map position), written from the game's D7E27B35 disassembly (3Dmigoto dropped its four lookups' texel
-// offsets). Render scale (DLSS addon): it took the pixel's NDC over the whole target (SV_Position x
+// offsets). Render scale: it took the pixel's NDC over the whole target (SV_Position x
 // g_inv_screen_size_minus_one, the display size) while the map draws into the top-left render part (the 2026-11-14 campaign
 // trace at 33%: viewport 1280 x 720 on a 3840 x 2160 target), so the overlay's map positions came from the wrong NDC. The NDC
-// is taken over the viewport (g_viewport_dimensions, which the DLSS addon sets to the render size) when that is smaller; the
+// is taken over the viewport (g_viewport_dimensions, which the add-on sets to the render size) when that is smaller; the
 // depth texel is the game's (its uv is right for the top-left part). At full size the game's, bit for bit.
 cbuffer camera_VS_PS : register(b0)
 {

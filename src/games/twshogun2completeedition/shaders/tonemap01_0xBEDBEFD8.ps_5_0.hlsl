@@ -1,11 +1,11 @@
 // hdr_to_screen.hlsl ps30_main_high / _sm40 with ENABLE_DISTORTION (with or without depth of field): the scene read
 // through the distortion offsets (heat haze), then the radial blur and its exposure. HDR: x Heat Haze.
-// Render scale (DLSS addon): the scene here is DLSS's full-size output, but the distortion texture was drawn with the
+// Render scale: the scene here is DLSS's full-size output, but the distortion texture was drawn with the
 // 3D passes into their top-left render scale part: it is read there (SI.render_scale_x / y). tonemap.hlsli.
 // v26: below 100% its texels cover blocks of display pixels; the game's point sampler gave each block one offset (ATN
 // debug17: a mosaic over fires). v28: it is drawn with DLSS's jitter but read over DLSS's steady image, so the haze
 // moved by up to 1.5 display pixels every frame at 33% (ATN: it moves left and right): read where this pixel's scene
-// point was drawn (the jitter from the DLSS addon), with a cubic B-spline (smooth at any scale). At 100% the game's.
+// point was drawn (the jitter from the add-on), with a cubic B-spline (smooth at any scale). At 100% the game's.
 #include "./tonemap.hlsli"
 
 SamplerState distortion_sampler_s : register(s2);
