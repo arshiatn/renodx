@@ -723,7 +723,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Game exit race: a second drain at +0xD5D74 or the call at +0xC9AAF (engine_code, ... | ?
 - g19_ F1 follow-up after ho_g19 merges: graphics_page.hpp:237-239 comment (8 game ... | ?
 - Census line (G24 or one script): do Attila 18FF7787 / 82C6EE8B and Thrones 5247E ... | ?
-- gtp_ stage25b -> gpr_ + gtw_ re-check -> ATN sees the change -> golive + run_tes ... | ?
 - gate hook round 26: R25-2..R25-6, realpath / link hardening, HARNESS narrowing, ... | ?
 - rvm_ review of mem_fix -> mem_ fixes -> rvm_ re-check -> confirm run (ATN's go) ... | ?
 - fci_ / fxr_ designs -> feed the FCA ranked list (workers + pool analyst reads fc ... | ?
@@ -13645,7 +13644,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         .fog_shadows_defaulted_on = true (Thrones g01_ / WH3 after the freeze as before) -> rvb_ glance.
         - [ ] Census line (G24 or one script): do Attila 18FF7787 / 82C6EE8B and Thrones 5247E655 / 03E56410 (gather 4.1
         water, not on the forward-reader list) ever load? If yes, add them to the forward-reader list (rvf_ note).
-        - [ ] gtp_ stage25b -> gpr_ + gtw_ re-check -> ATN sees the change -> golive + run_tests.py copy.
+        - [x] gtp_ stage25b -> gpr_ + gtw_ re-check -> ATN sees the change -> golive + run_tests.py copy. DONE 11-24.
         - [ ] gate hook round 26: R25-2..R25-6, realpath / link hardening, HARNESS narrowing, xcopy /E, r''m / & $r, [422].
         - [ ] rvm_ review of mem_fix -> mem_ fixes -> rvm_ re-check -> confirm run (ATN's go) before the FCA analyst wave.
         - [ ] fci_ / fxr_ designs -> feed the FCA ranked list (workers + pool analyst reads fci_).
@@ -13686,6 +13685,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         review). Skill row helper-fg-stability.md:43 waits for ho_g14.
         - [ ] rvh_ G23 code review 1 -> g23_ fixes -> re-check; then gbf_'s ho_gbf_g23 review (rvh_).
         - [ ] G23 H9 GPU tests T2-T4 in the GPU window (ATN's go).
+        GATE HOOK STAGE25b LIVE (ATN in chat 11-24 ~13:xx to coord's 'make stage25b live and copy its tests file?':
+        'Sure go ahead'): live stage24 a6b12f1ebeef + gates.tsv + mode.txt + INSTALL_FOR_ATN.md + tests/run_tests.py
+        (058247c54c09) backed up to testbin/scratch/gtp_/gtp_bak30; gtp_stage25b/gate_hook.py copied -> live sha256
+        3ed0213acbd6 (168773 B, LF); tests/run_tests.py -> 71ff6eec9694; mode.txt 'shadow'; smoke (git status, pre) exit 0,
+        no deny. Round 26 next (R25-2..6, HARNESS narrowing to testbin / heapfix, realpath / links, xcopy /E, r''m, & $r,
+        [422]).
+        ATN asked: mem_fix failed review - Opus or Sonnet? Fable 5.2 High once? COORD: mem_ = Opus 5.5 (implementer),
+        rvm_ = Opus xHigh found the trigger bug with the exact fix -> Fable not needed now; offered for r2 if it fails again.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
