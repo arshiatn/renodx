@@ -823,7 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer. | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j ... | ?
-- a64abr_ (Opus xHigh) reviews a64_ab.ps1 (ATN-file safety, hard-linked ELF writes ... | ?
+- a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
 - Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab ... | ?
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
@@ -15307,9 +15307,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         ELF hard-linked to run_1320's, exe sha re-checked), no CPU Set Setter rule there -> -Affinity64 0xFFFF
         (CCD0 = V-cache), quit at front s 200, picture s 195, TESTS.md pass rule in summary.txt. All dry runs as
         intended. Rule line for the Sol build smoke WAITS for the s3fr_ review (a fix round changes the sha).
-        - [ ] a64abr_ (Opus xHigh) reviews a64_ab.ps1 (ATN-file safety, hard-linked ELF writes, process handling,
-        inline clock shift vs test_auto.c, slow share, STAGE B rule, picture diff, failure handling) ->
-        study_1124/a64ab_review.md -> a64ab_ fixes.
+        - [x] a64abr_ DONE (hand-back attila64/study_1124/a64abr_review_handback.md; study_1124/a64ab_review.md): FIX
+        FIRST, 2 M / 9 S / 11 N; SAFE (ATN's files read + hash-restored, only own game / PresentMon killed, PostMessage
+        only, no wildcard / recursive deletes, hard-linked ELF opened read-only + self-update off, sha check stops a
+        wrong exe); inline shift 174.8 s exact (steps 1948..3748 = base's s 20..200); opening 1748 + own 2061 in every
+        old start. M1 no arm-ran-as-named check (ignored prefs line = plausible wrong numbers; '0 / 0' printed as
+        beside 0) -> INVALID rows + live stop; M2 means / spread / medians ignore validity. S: STAGE B rule trips on the
+        quit line; CPU Set Setter not checked; picture scale; inline budget 1500 s; PresentMon 30 s wait (a default
+        'PresentMon' ETW session is running now: left alone, may be ATN's). Base today: 7.2 steps / s, 96 % slow lines.
+        - [ ] a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only if close (3x earlier A/A
+        spread or 10 %), stageB removed from rounds, real CPU sets at s 30 + CPU Set Setter running check, pictures
+        201 / 202 + 376 / 377, inline budget 1500 s, own PresentMon session name, rules md) -> then window 1.
         - [ ] Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64abr_'s review is fixed;
         no game of ATN's running, fresh backups.
         - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
