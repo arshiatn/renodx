@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <d3d11_4.h>
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <wrl/client.h>
@@ -91,6 +92,39 @@ int wmain(int argc, wchar_t** argv) {
   WaitForGpuBeforeRelease(fence.Get(), event, 3, 30, "live");
   CHECK(unproven_calls == 1 && unproven_owner == "live");
 
+  // A D3D11.4 fence (the helper's DLSS: its waits before NGX frees a feature, G23 2b): completion after a queued Signal,
+  // and a value queued behind a Wait on a gate (another device's shared fence, as the game's) only once the gate opens.
+  ComPtr<ID3D11Device> device11;
+  ComPtr<ID3D11DeviceContext> context11;
+  CHECK(SUCCEEDED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION,
+                                    device11.GetAddressOf(), nullptr, context11.GetAddressOf())));
+  ComPtr<ID3D11Device5> device11_5;
+  ComPtr<ID3D11DeviceContext4> context11_4;
+  CHECK(SUCCEEDED(device11.As(&device11_5)) && SUCCEEDED(context11.As(&context11_4)));
+  ComPtr<ID3D11Fence> marker;
+  CHECK(SUCCEEDED(device11_5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&marker))));
+  CHECK(SUCCEEDED(context11_4->Signal(marker.Get(), 1)));
+  context11->Flush();
+  CHECK(WaitForGpu(marker.Get(), event, 1, 5000));
+  ComPtr<ID3D12Fence> gate;
+  CHECK(SUCCEEDED(device->CreateFence(0, D3D12_FENCE_FLAG_SHARED, IID_PPV_ARGS(&gate))));
+  HANDLE gate_handle = nullptr;
+  CHECK(SUCCEEDED(device->CreateSharedHandle(gate.Get(), nullptr, GENERIC_ALL, nullptr, &gate_handle)));
+  ComPtr<ID3D11Fence> gate11;
+  const HRESULT gate_opened = device11_5->OpenSharedFence(gate_handle, IID_PPV_ARGS(&gate11));
+  CloseHandle(gate_handle);
+  CHECK(SUCCEEDED(gate_opened));
+  CHECK(SUCCEEDED(context11_4->Wait(gate11.Get(), 1)));
+  CHECK(SUCCEEDED(context11_4->Signal(marker.Get(), 2)));
+  context11->Flush();
+  CHECK(!WaitForGpu(marker.Get(), event, 2, 50));
+  CHECK(marker->GetCompletedValue() == 1);
+  CHECK(SUCCEEDED(gate->Signal(1)));
+  CHECK(WaitForGpu(marker.Get(), event, 2, 5000));
+  // The release wait over the same fence: done, so the helper's handler is not called.
+  WaitForGpuBeforeRelease(marker.Get(), event, 2, 30, "DLSS");
+  CHECK(unproven_calls == 1 && unproven_owner == "live");
+
   // A removed device (a GPU reset: its fence reads all ones) leaves nothing to wait for: every wait returns at once, also
   // for values never signalled, and the handler stays out of it, so the owner can make a new device.
   control.completed = UINT64_MAX;
@@ -141,5 +175,6 @@ int wmain(int argc, wchar_t** argv) {
   CHECK(std::strcmp(line, "stopped: the test's owner at 0, waited for 1\n") == 0);
   CloseHandle(event);
   std::puts("PASS: WARP completion, timeout, stale wake, failed registration, missing/invalid event, no fence, release wait "
-            "without and with a handler, removed device (control, late, real WARP removal), logged terminal child exit");
+            "without and with a handler, D3D11.4 fence (signal, value behind a gate's wait), removed device (control, late, "
+            "real WARP removal), logged terminal child exit");
 }
