@@ -13599,6 +13599,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         a6b12f1ebeef, shadow). gpr_ + gtw_ re-checks of stage25 sent. Then ATN in chat: (a) golive stage25 (bak30 + copy +
         sha + smoke), (b) copy gtp_stage25\tests\run_tests.py into TW\gates\tests (protected folder, only with ATN's OK).
         Still open (both hooks): r''m / & $r command-name tricks, R23-3 [422] corner.
+        g19_ DUMPS DONE (handoff_plan/handbacks/g19_dumps_fix_handback.md): ho_g19 13 dumps exit 0, only diff = torch rows
+        visible under More Options in every GI state (Attila / WH3 / Thrones; greyed unless PT GI on; N2 as intended); traced
+        GI defaults unchanged. ho_g19_ryse BUG found + fixed: Reset set Rays / Range / Bounces 0 (static-init order) -> new tip
+        4df4c1737 RaysReset() at first use; g19ryfix2 = g19ry. -> rvb_ re-check sent (both branches). Then mrg_ merges 5.2.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
