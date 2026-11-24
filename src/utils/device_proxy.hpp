@@ -1485,6 +1485,22 @@ static void OnPresent(
     reshade::log::message(reshade::log::level::warning, "utils::device_proxy::OnPresent(GetDeviceProxy returned null)");
     return;
   }
+  // A removed proxy device is fatal to the proxy: one error line, then the proxy stops for good as at a failed shared
+  // intermediate (teardown at the next present; the host presents natively). Asked after a failed swap chain call only:
+  // the failure alone does not prove a removal.
+  const auto stop_if_proxy_removed = [new_device](const char* call, HRESULT call_hr) {
+    const HRESULT removed_reason = new_device->GetDeviceRemovedReason();
+    if (removed_reason == S_OK) return false;
+    std::stringstream s;
+    s << "utils::device_proxy::OnPresent(proxy device removed at " << call << ": hr=0x";
+    s << std::hex << static_cast<uint32_t>(call_hr) << ", removed reason=0x" << static_cast<uint32_t>(removed_reason) << std::dec;
+    s << "; the proxy stops, the host presents natively)";
+    reshade::log::message(reshade::log::level::error, s.str().c_str());
+    device_proxy_creation_failed = true;
+    SetProxyEnabled(false);
+    SetProxyRemovePending(true);
+    return true;
+  };
   if (proxy_device_needs_resize.exchange(false)) {
     if (proxy_swap_chain == nullptr) {
       proxy_device_needs_resize.store(true);
@@ -1525,6 +1541,7 @@ static void OnPresent(
     const HRESULT resize_hr =
         proxy_swap_chain->ResizeBuffers(sc_desc.BufferCount, width, height, sc_desc.Format, sc_desc.Flags);
     if (FAILED(resize_hr)) {
+      if (stop_if_proxy_removed("ResizeBuffers", resize_hr)) return;
       std::stringstream s;
       s << "utils::device_proxy::OnPresent(ResizeBuffers failed: hr=0x";
       s << std::hex << static_cast<uint32_t>(resize_hr) << std::dec;
@@ -1732,6 +1749,7 @@ static void OnPresent(
       && present_flags != 0u) {
     const HRESULT test_hr = proxy_swap_chain->Present(0, DXGI_PRESENT_TEST);
     if (FAILED(test_hr)) {
+      if (stop_if_proxy_removed("Present TEST", test_hr)) return;
       const uint32_t streak = proxy_invalid_call_streak.fetch_add(1) + 1;
       if (streak == 1u || streak == 4u) {
         std::stringstream s;
@@ -1759,6 +1777,7 @@ static void OnPresent(
 
   const HRESULT present_hr = proxy_swap_chain->Present(0, present_flags);
   if (FAILED(present_hr)) {
+    if (stop_if_proxy_removed("Present", present_hr)) return;
     if (present_hr == DXGI_ERROR_INVALID_CALL) {
       const uint32_t streak = proxy_invalid_call_streak.fetch_add(1) + 1;
       if (streak >= 2u) {

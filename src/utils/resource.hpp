@@ -402,7 +402,8 @@ static cross_addon::Shared<SharedData> shared;
 // without taking the lock. Every write goes through UpdateResourceViewInfo / UpsertResourceViewInfo (static_checks.py
 // "views"); the pointer forms turn the filter off for the process (a write through the pointer can come at any time), and
 // so does an attached module without the protocol (an add-on built before it): CheckViewFilterWriters.
-// Own uuid, frozen: any change to these fields or to the protocol takes a new uuid; modules of the two protocols then miss
+// Own uuid, frozen: any change to these fields, to the protocol or to cross_addon::internal::HandleIndex (the bits'
+// index; goldens in test/tw_view_filter) takes a new uuid; modules of the two protocols then miss
 // each other's tokens and the filter stays off. Native-width words: one plain load on x86 and x64.
 constexpr size_t VIEW_FILTER_MAX_MODULES = 8u;
 constexpr uint32_t VIEW_FILTER_INDEX_BITS = 14u;  // 16,384 bits: 2 KB
@@ -420,8 +421,6 @@ struct __declspec(uuid("b3adce9f-5cf3-4779-bf4d-ebbab4a046da")) ViewFilterData {
 };
 
 static cross_addon::Shared<ViewFilterData> view_filter;
-// resource::shared's control block: the modules attached to the view map (CheckViewFilterWriters).
-static const cross_addon::internal::ControlBlock<SharedData>* view_filter_writers = nullptr;
 // Set (release) after this module's walk while the filter is on; GetResourceViewClone loads it (acquire).
 static std::atomic_bool view_filter_reading = false;
 // RENODX_RESOURCE_MEMO_CHECK=1: every filter answer is compared with the locked lookup (GetResourceViewClone).
@@ -432,9 +431,8 @@ constexpr uint32_t VIEW_FILTER_SELF_CHECK_FRAMES = 256u;
 static std::atomic_uint32_t view_filter_phase = 0u;
 
 inline uint32_t ViewFilterIndex(uint64_t handle) {
-  // Fibonacci hashing of the 16-byte-aligned handle (as M1's simulation: 0.00 % false positives at 14 bits).
-  const auto folded = static_cast<uint32_t>((handle >> 4u) ^ (handle >> 36u));
-  return (folded * 0x9E3779B1u) >> (32u - VIEW_FILTER_INDEX_BITS);
+  // M1's simulation: 0.00 % false positives at 14 bits.
+  return cross_addon::internal::HandleIndex(handle, VIEW_FILTER_INDEX_BITS);
 }
 
 // The writer side, inside the exclusive lock of the write that left `info` so.
@@ -1807,25 +1805,11 @@ inline bool AreCopyFormatsCompatible(
 // after it, before any view exists) and at every present (a late add-on: unchecked for at most one frame).
 static void CheckViewFilterWriters() {
   auto* filter = view_filter.data;
-  if (filter == nullptr || view_filter_writers == nullptr || (filter->control.load() & VIEW_FILTER_OFF) != 0u) return;
-  cross_addon::internal::ModuleToken missing = nullptr;
-  {
-    const std::shared_lock lock(filter->mutex);
-    const auto modules = std::span(filter->modules.data(), filter->module_count);
-    // Records are never freed: the walk is memory-safe while modules attach.
-    for (const auto* module = view_filter_writers->modules; module != nullptr && missing == nullptr; module = module->next) {
-      if (module->active && std::ranges::find(modules, module->token) == modules.end()) {
-        missing = module->token;
-      }
-    }
+  const auto* writers = shared.Control();
+  if (filter == nullptr || writers == nullptr || (filter->control.load() & VIEW_FILTER_OFF) != 0u) return;
+  if (const auto file = cross_addon::internal::FindModuleWithoutProtocolToken(filter, *writers); file.has_value()) {
+    TurnOffViewFilter("a module writes the view map without its protocol: " + *file);
   }
-  if (missing == nullptr) return;
-  std::array<char, MAX_PATH> file = {'?'};
-  if (HMODULE module = nullptr; ::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                                       static_cast<const char*>(missing), &module)) {
-    ::GetModuleFileNameA(module, file.data(), static_cast<DWORD>(file.size()));
-  }
-  TurnOffViewFilter(std::string("a module writes the view map without its protocol: ") + file.data());
 }
 
 static void OnViewFilterInitDevice(reshade::api::device* device) {
@@ -1849,22 +1833,8 @@ static void Use(DWORD fdw_reason) {
       // The view filter's token before the module's view-map record turns active: a module whose record is active always
       // has its token (CheckViewFilterWriters never sees it half attached). A full table leaves it out: off for all.
       view_filter.RegisterModule();
-      if (auto* filter = view_filter.data; filter != nullptr) {
-        const auto token = cross_addon::internal::GetModuleToken();
-        bool table_full = false;
-        {
-          const std::unique_lock lock(filter->mutex);
-          const auto modules = std::span(filter->modules.data(), filter->module_count);
-          if (std::ranges::find(modules, token) == modules.end()) {
-            table_full = (filter->module_count == VIEW_FILTER_MAX_MODULES);
-            if (!table_full) {
-              filter->modules[filter->module_count++] = token;
-            }
-          }
-        }
-        if (table_full) {
-          TurnOffViewFilter("all module slots taken");
-        }
+      if (auto* filter = view_filter.data; filter != nullptr && !cross_addon::internal::AddProtocolToken(filter)) {
+        TurnOffViewFilter("all module slots taken");
       }
       const bool registered = shared.RegisterModule([](SharedData& data) {
         data.use_resource_replace = data.use_resource_replace || use_resource_replace;
@@ -1884,12 +1854,7 @@ static void Use(DWORD fdw_reason) {
 
       auto* filter = view_filter.data;
       if (!registered || filter == nullptr || shared.data == nullptr) break;
-      // '0', '1' or 0 (unset).
-      const auto environment_switch = [](const char* name) {
-        std::array<char, 2> value = {};
-        return (::GetEnvironmentVariableA(name, value.data(), static_cast<DWORD>(value.size())) == 1u) ? value[0] : '\0';
-      };
-      const char memo = environment_switch("RENODX_RESOURCE_MEMO");
+      const char memo = cross_addon::internal::ProtocolSwitch("RENODX_RESOURCE_MEMO");
       if (memo == '0') {
         // The A/B base: said as information (check_logs.py fails a run on the filter's warnings).
         TurnOffViewFilter("RENODX_RESOURCE_MEMO=0");
@@ -1905,29 +1870,16 @@ static void Use(DWORD fdw_reason) {
       shared.data->resource_view_infos.for_each([](const std::pair<const uint64_t, ResourceViewInfo>& pair) {
         MarkViewFilter(pair.first, pair.second);
       });
-      if (view_filter_writers == nullptr) {
-        // The slot's view closes again; the control block stays for the process.
-        auto slot = platform::OpenProcessSharedSlot<cross_addon::internal::ControlBlock<SharedData>>(__uuidof(SharedData), [](auto*&) {});
-        if (slot.value != nullptr) {
-          view_filter_writers = *slot.value;
-        }
-        if (slot.view != nullptr) {
-          ::UnmapViewOfFile(slot.view);
-        }
-        if (slot.handle != nullptr) {
-          ::CloseHandle(slot.handle);
-        }
-      }
       reshade::register_event<reshade::addon_event::init_device>(OnViewFilterInitDevice);
       reshade::register_event<reshade::addon_event::present>(OnViewFilterPresent);
       CheckViewFilterWriters();
-      if (view_filter_writers == nullptr || (filter->control.load() & VIEW_FILTER_OFF) != 0u) {
+      if ((filter->control.load() & VIEW_FILTER_OFF) != 0u) {
         reshade::log::message(reshade::log::level::warning,
                               "utils::resource view filter off at attach (a pointer-form access, a module without its protocol "
                               "or all module slots taken, logged before): every view lookup takes the lock.");
         break;
       }
-      view_filter_check.store(environment_switch("RENODX_RESOURCE_MEMO_CHECK") == '1', std::memory_order_relaxed);
+      view_filter_check.store(cross_addon::internal::ProtocolSwitch("RENODX_RESOURCE_MEMO_CHECK") == '1', std::memory_order_relaxed);
       view_filter_reading.store(true, std::memory_order_release);
       reshade::log::message(reshade::log::level::info, view_filter_check.load(std::memory_order_relaxed)
                                                            ? "utils::resource view filter on, every answer checked (RENODX_RESOURCE_MEMO_CHECK=1)."
@@ -1953,12 +1905,7 @@ static void Use(DWORD fdw_reason) {
       // and control stay: the module's later writes (after its detach) still follow the protocol, the block outlives every
       // module.
       if (auto* filter = view_filter.data; filter != nullptr) {
-        const std::unique_lock lock(filter->mutex);
-        const auto modules = std::span(filter->modules.data(), filter->module_count);
-        if (const auto mine = std::ranges::find(modules, cross_addon::internal::GetModuleToken()); mine != modules.end()) {
-          *mine = modules.back();
-          --filter->module_count;
-        }
+        cross_addon::internal::RemoveProtocolToken(filter);
       }
       view_filter.UnregisterModule();
       break;

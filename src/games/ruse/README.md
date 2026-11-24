@@ -5,6 +5,9 @@ FP16 clone of its 8-bit back buffer and presents it through a DX11 HDR swap chai
 HDR setting on: that path renders the 10-bit scene with bloom that the final post (`0x232EB5DF` and its permutations)
 tone maps. The game has no tone mapper of its own; its 8-bit back buffer clips at 1.
 
+If a GPU reset removes the proxy's DX11 device, the proxy stays off for the rest of the session: one error line in
+ReShade.log, and the game presents through its own D3D9 swap chain in SDR. Restart the game for HDR.
+
 ## Rendering modes
 
 | Mode | Behaviour |

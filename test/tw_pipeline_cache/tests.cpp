@@ -129,15 +129,11 @@ static size_t Control() { return pipe::internal::bind_cache.data->control.load()
 static bool CacheOff() { return (Control() & pipe::BIND_CACHE_OFF) != 0u; }
 static bool CacheOn() { return (Control() & (pipe::BIND_CACHE_USE | pipe::BIND_CACHE_OFF)) == pipe::BIND_CACHE_USE; }
 
-// OnBindPipeline's table index (its Fibonacci hash).
-static uint32_t CacheIndex(uint64_t handle) {
-  const auto folded = static_cast<uint32_t>((handle >> 4u) ^ (handle >> 36u));
-  return (folded * 0x9E3779B1u) >> (32u - pipe::BIND_CACHE_INDEX_BITS);
-}
-
-// Presents until `handle`'s index is outside this frame's self-check phase (a hit is then answered by the cache alone).
+// Presents until `handle`'s index (OnBindPipeline's table index) is outside this frame's self-check phase (a hit is then
+// answered by the cache alone).
 static void LeaveSelfCheckPhase(uint64_t handle) {
-  while (((CacheIndex(handle) ^ pipe::internal::bind_cache.data->self_check_phase.load()) % pipe::BIND_CACHE_SELF_CHECK_FRAMES) == 0u) {
+  const uint32_t index = renodx::utils::cross_addon::internal::HandleIndex(handle, pipe::BIND_CACHE_INDEX_BITS);
+  while (((index ^ pipe::internal::bind_cache.data->self_check_phase.load()) % pipe::BIND_CACHE_SELF_CHECK_FRAMES) == 0u) {
     Present();
   }
 }

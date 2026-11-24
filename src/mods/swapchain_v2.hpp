@@ -100,6 +100,8 @@ struct __declspec(uuid("d8712fa7-66e5-45e2-9e07-80fe6354f507")) DeviceData {
 // Variables
 
 static bool attached = false;
+// device_proxy attached by Use: its detach follows this, not UseProxyRequested (a removed proxy device turns it off).
+static bool device_proxy_attached = false;
 static std::vector<utils::resource::ResourceUpgradeInfo> resource_upgrade_infos = {};
 
 // Legacy name
@@ -1269,6 +1271,7 @@ static void Use(DWORD fdw_reason, T* new_injections = nullptr) {
     if (utils::device_proxy::UseProxyRequested()) {
       renodx::utils::device_proxy::Use(fdw_reason);
       renodx::utils::device_upgrade::Use(fdw_reason);
+      device_proxy_attached = true;
     }
     if (swapchain_proxy_revert_state) {
       renodx::utils::state::use_snapshot = true;
@@ -1345,8 +1348,9 @@ static void Use(DWORD fdw_reason, T* new_injections = nullptr) {
     if (use_resource_cloning) {
       // renodx::utils::descriptor::Use(fdw_reason);
     }
-    if (utils::device_proxy::UseProxyRequested()) {
+    if (device_proxy_attached) {
       renodx::utils::device_proxy::Use(fdw_reason);
+      device_proxy_attached = false;
     }
     renodx::utils::resource::upgrade::Use(fdw_reason);
     if (swapchain_proxy_revert_state) {
