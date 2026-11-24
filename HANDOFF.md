@@ -817,7 +817,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
-- ATN: 32-bit battle clock (read the tick from the 32-bit process or hook the same ... | ?
+- a64p_ (Opus xHigh, planning only: no builds / game runs / downloads, never copie ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15127,8 +15127,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         A32 needs none (no intro) -> coord set A32 to no keys (posted Space did nothing on 32-bit: frames after a press
         20.9 ms vs 23.9 ms later). Engine fact: both builds run the battle step beside the drawing
         (BATTLE_ENV::post_model_update_synchronise decides; Sol counts steps there).
-        - [ ] ATN: 32-bit battle clock (read the tick from the 32-bit process or hook the same function; empire.retail.dll
-        offline + name map) for a real 32 vs 64 sim number, or go straight to the 64-bit port plan (64-bit baseline above).
+        - [x] ATN (11-24, after the A/B): 'the 32-bit doesn't matter' -> no 32-bit battle clock; start the FULL 64-bit port
+        plan. Models: planner Opus 5.5 xHigh, implementers Opus 5.5 High, reviewers Opus 5.5 xHigh. ATN's question: can our
+        CPU work (heapfix-side patches + our 32-bit CPU items re-done by name + new 64-bit items) get battle s 20..200
+        below 249 s (64-bit + PerfFix 64)? Coord view: the battle step (sim) is the limit, not drawing -> gains must come
+        from the step itself; Phase 0 = WPR with the ELF symbols on the 64-bit step tells how much.
+        - [ ] a64p_ (Opus xHigh, planning only: no builds / game runs / downloads, never copies PerfFix code) writes
+        round_notes\attila64\port_plan.md (+ port_plan_work\progress.md): verdicts, delivery architecture (64-bit add-on +
+        helper, our engine patches as own plugin vs add-on, perffix64 / Sol updates), workstreams A-G, the 249 s estimate,
+        decisions for ATN, first wave -> save hand-back -> coord review -> ATN decides -> first wave.
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
         --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
         removed). New for us: GPU Trace shader profiler (hot lines / stalls / SASS), Graphics Debugger capture + replay
