@@ -14648,6 +14648,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         Coloured), MUST-2 -BlockSkipGpu takes gpu_job.lock, MUST-3 merge atn-mods in + tw_romer_dlaa PASS; SHOULD-1..6.
         -> sse_ r2 (sent; test / run-list only; README line given to coord, added at merge). Then GPU window, merge if
         the default pass shows no slowdown beyond noise.
+        pk4_ REV 1.1 DONE = PK4 DESIGN FINAL (pk4_design.md 949 lines; pk4_rev11_handback.md): clear guard 66 bytes with
+        rv4_'s exact bytes (no S3 re-check needed); game bytes re-read and match; parts 31-33 extended (output size 0
+        after a late clear); G3a = 14 no-heapfix starts (10 only if A/A noise allows); main = present thread stated.
+        t4i_ told. Next: PK4 S2+ after p4i_'s S1 (model per the Fable trial result).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
