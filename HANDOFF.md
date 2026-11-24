@@ -754,6 +754,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Rome II Specular Occlusion: the commit that later hooks it (traced reflections) ... | ?
 - static_checks comptr: 5 findings in twattila/water_reflections.hpp :117 :187 :18 ... | ?
 - g24_ boxes: pair: claims need constant-logging traces; Expeditions tracer 'view ... | ?
+- ATN QUESTION (asked 11-24 ~12:50): census sources - add the already-extracted pa ... | ?
+- g03_ build NOT done: its slot step (a Bash loop mkdir build_slots/slot1..4 + own ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13939,7 +13941,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         22 / 22, tw_view_filter 18 / 18, tw_device_proxy_removal 3 / 3, static_checks views / pipelines / tonemap 0.
         - [ ] static_checks comptr: 5 findings in twattila/water_reflections.hpp :117 :187 :188 :228 :229 (from ho_g03,
         TextureOf(..., &ComPtr)) -> g03_ (sent 'g03_ comptr'). Add static_checks to every merge's suite list.
-        BUILD SLOT TRIAL FAILED ~13:50 (sampler testbin/scratch/coord/slot_trial_1124.csv): free RAM 4.05 GB / commit 38 GB
+        BUILD SLOT TRIAL FAILED ~12:45 (sampler testbin/scratch/coord/slot_trial_1124.csv): free RAM 4.05 GB / commit 38 GB
         with only 2-3 builds (single add-on compiles peak 9-11 GB). Rule now: max 4 slots, -j 4, take a slot only with free
         RAM >= 12 GB (build_slots/README.txt); builders told; memory feedback_workflow_serial.md updated; reported to ATN.
         g24_ STEP0 R2 (handbacks/g24_step0_r2_handback.md): ho_g24 3dcbef68b, selftest 40 / 40, census 13 games at facts-6
@@ -13954,6 +13956,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         g23_ HARNESS SWITCHES (handbacks/g23_harness_switches_handback.md): HARNESS_SWITCH_DLSS / HARNESS_END_WITH_DLSS (45) /
         HARNESS_END_KEEP_HELPER in tools/tw/rt_harness/tw_rt_harness.cpp (backup .before_h9), off = old code; pre-existing
         build break since 835c9866e fixed (-DWIN32=1, includes, NAME export). Next: one source for both bridges (:3709).
+        g23_ HARNESS BRIDGE (handbacks/g23_harness_bridge_handback.md): tw_rt_harness.cpp builds from ONE source against
+        both bridges (__has_include + if constexpr requires); main + merged-tree builds exit 0, 0 new warnings; build
+        commands in testbin/scratch/g23_/h9_t3_t4.txt 'Implemented'.
+        gbf_ GATE SCRIPT (handbacks/gbf_gate_script_handback.md): tools/tw/gbf/gbf_gpu_gates.ps1 (795 lines, parser 0) +
+        gbf_gates_check.py; S4a + jobs 1-7 + G23 T3 / T4a / T4b, pass bars + 'not covered' list in summary.txt; NOT run.
+        -> gbf_ r2 (sent): fill $G23HarnessArgs with g23_'s merged-tree command, slots 1-4 + free RAM >= 12 GB; then
+        rvh_ review -> first run in a GPU window (ATN's rule lines 34-35).
+        rvg_ G24 STEP0 RE-CHECK R2 NOT GO (reviews/rvg_g24_step0_recheck_r2_handback.md; review line 818): MUST r2-M1 = UE
+        4.22+ GPU Scene PrimitiveId (ATTRIBUTE13) makes 70 Expeditions static VS 'skinned'; 3 deviations accepted; Q1 mesh-uv
+        vertex-id widening YES, Q2 small-cb screen-space NO; S1 CAMERA tripwire, S2 per-engine screen_space, S3 tracer;
+        3 NITs. -> g24_ step0 r3 (sent) -> rvg_ re-check.
+        - [ ] ATN QUESTION (asked 11-24 ~12:50): census sources - add the already-extracted pack shaders (blood packs, Rome
+        Remastered .fxo, Ryse ShaderCache.pak set) or keep the 02:3x dump-only census and list them as holes? One manifest
+        change either way; the freeze doesn't wait on it.
+        g03_ COMPTR (handbacks/g03_comptr_handback.md): all 5 water_reflections sites harmless (fresh locals; TextureOf only
+        As()-writes); fix = texture->Reset() first in TextureOf, ho_g03_comptr c715c6a9c (not pushed), static_checks comptr 0.
+        - [ ] g03_ build NOT done: its slot step (a Bash loop mkdir build_slots/slot1..4 + owner.txt) was DENIED by the
+        auto-mode classifier; g03_ stopped, no retry. Reported to ATN; waits for ATN's go.
+        shd_ R.U.S.E. dump still running (pid 34420 since 12:35); shd_ resumed to wait, check, publish, hand back.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
