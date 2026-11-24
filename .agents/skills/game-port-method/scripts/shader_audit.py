@@ -17,6 +17,10 @@ usage:
   python -I -B shader_audit.py --selftest <fixture folder> --tools <tools root> [--tree <repo>]
 Exit: 0 complete; 1 problems; 2 census short or broken; 3 a rule control failed or is missing; 4 complete except gap
 boxes still pending (--final: a failure).
+
+Frozen core (this file and audit_rules/games.py): no change may loosen a check or alter an existing claim. Implementing a
+claim that fails closed today, or adding a matrix line, is a core extension: it goes through the coordinator and the
+same reviewer, brings at least one must-fail fixture case, and the hand-back carries the new hashes.
 """
 import argparse
 import concurrent.futures
@@ -37,7 +41,7 @@ import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RULES_DIR = os.path.join(HERE, 'audit_rules')
-EXTRACTOR = 'g24-facts-5'  # bump when the extracted facts change: the cache key holds it
+EXTRACTOR = 'g24-facts-6'  # bump when the extracted facts change: the cache key holds it
 NAME = re.compile(r'^0x([0-9A-Fa-f]{8})\.([a-z]+)_(\w+)\.cso$')
 STAGES = ('vs', 'ps', 'cs', 'gs', 'hs', 'ds', 'lib')
 IN_TRACE = re.compile(r'\b(vs|ps|cs|gs|hs|ds) ([0-9A-Fa-f]{8})\b')
@@ -55,6 +59,7 @@ MATRIX = {
     ('mv', 'CAMERA', ''): {'facts': 'static-chain', 'rule': 'rule', 'pair': 'static-rows'},
     ('mv', 'GAP', ''): {'trace': 'drawn', 'rule': 'rule', 'facts': 'bones|vtf'},
     ('mv', 'N/A', 'depth-only'): {'trace': 'depth-only', 'rule': 'rule'},
+    ('mv', 'N/A', 'position-only'): {'trace': 'no-velocity', 'rule': 'rule'},
     ('mv', 'N/A', 'shadow-only'): {'trace': 'shadow-only', 'rule': 'rule'},
     ('mv', 'N/A', 'post'): {'trace': 'fullscreen', 'rule': 'rule'},
     ('mv', 'N/A', 'ui'): {'trace': 'after-ui', 'rule': 'rule'},
@@ -67,7 +72,7 @@ MATRIX = {
     ('scale', 'BUG', ''): {'trace': 'drawn', 'rule': 'rule', 'out': 'tool'},
     ('scale', 'ACCEPTED', ''): {'decision': 'atn', 'trace': 'drawn', 'out': 'tool', 'rule': 'rule'},
     ('scale', 'N/A', 'no-screen-read'): {'facts': 'roots-world', 'rule': 'rule', 'out': 'tool'},
-    ('scale', 'N/A', 'mesh-uv-only'): {'facts': 'roots-world', 'rule': 'rule', 'out': 'tool'},
+    ('scale', 'N/A', 'mesh-uv-only'): {'trace': 'mesh-uv', 'facts': 'roots-world', 'rule': 'rule', 'out': 'tool'},
     ('rt', 'CAPTURED', ''): {'table': 'capture', 'rule': 'rule', 'trace': 'host-state'},
     ('rt', 'CAPTURED', 'experimental'): {'table': 'capture-gated'},
     ('rt', 'SKIPPED', 'opacity-never'): {'table': 'capture'},
@@ -76,17 +81,19 @@ MATRIX = {
     ('rt', 'MISSING', ''): {'out': 'tool', 'trace': 'drawn', 'rule': 'rule'},
     ('rt', 'N/A', 'keyed-elsewhere'): {'table': 'key'},
     ('rt', 'N/A', 'no-rt'): {'manifest': 'no-rt'},
-    ('rt', 'N/A', 'post'): {'rule': 'rule'},
-    ('rt', 'N/A', 'ui'): {'rule': 'rule'},
 }
 for _reason in ('water', 'decal', 'proxy', 'sky', 'particle', 'transparent', 'editor', 'debug', 'ui3d'):
     MATRIX[('rt', 'SKIPPED', _reason)] = {'rule': 'rule', 'src': 'code', 'facts': 'proxy'}
-for _axis in AXES:  # RT never applies to a CS (manifest axes), so no-geometry needs no CS exception there (N1)
+for _axis in AXES:  # no-geometry is a VS fact (S0-M1): a PS / CS row never shows it
     for _reason, _accepted in _NA_COMMON.items():
         MATRIX[(_axis, 'N/A', _reason)] = _accepted
 NEVER_PRIMARY = {'note', 'box', 'override'}
+# Trace claims the checker evaluates; any other trace claim fails closed (S0-S2 lists the lines left without a route).
+TRACE_CLAIMS = {'drawn', 'depth-only', 'writes-velocity', 'no-velocity', 'fixed-target', 'mesh-uv'}
+CROSS_CHECKED = ('depth-only', 'writes-velocity', 'no-velocity')  # a rule cell with one of these fails where traces disagree
 # Verdicts the tripwires guard, and the fact kinds they read (R3): missing or partial facts fail these cells.
 GUARDED = {('mv', 'CAMERA', ''): {'signature', 'dataflow', 'view'},
+           ('mv', 'N/A', 'position-only'): {'signature'},
            ('scale', 'N/A', 'no-screen-read'): {'signature', 'dataflow', 'view'},
            ('scale', 'N/A', 'mesh-uv-only'): {'signature', 'dataflow', 'view'}} | \
           {(axis, 'N/A', 'no-geometry'): {'signature', 'dataflow'} for axis in AXES}
@@ -95,7 +102,7 @@ KINDS = {
     'signature': ('stage', 'model', 'inputs', 'outputs', 'input_semantics', 'output_semantics', 'position_only', 'family'),
     'resources': ('constant_buffers', 'resources', 'uavs'),
     'dataflow': ('position_sources', 'position_input', 'bone_like', 'indexed_position', 'vtf', 'sv_position_used',
-                 'reads', 'output_sources', 'no_geometry'),
+                 'reads', 'output_sources', 'screen_space', 'no_geometry', 'discards'),
     'view': ('view_slot', 'view_rows_in_position', 'previous_rows_in_outputs', 'projected_output', 'static_chain',
              'read_roots', 'roots_world', 'roots_pixel', 'roots_view'),
 }
@@ -458,18 +465,25 @@ def extract(asm):
             else [register]
         for name in names:
             output_sources[name] = sorted(set(output_sources.get(name, [])) | set(labels))
+    # S0-S5: a pixel shader that can change a caster's shape: it discards or writes a coverage mask
+    discards = any(token in ('discard_nz', 'discard_z') for token, _ in instructions) or 'oMask' in writes or \
+        any(row[0] == 'SV_COVERAGE' for row in outputs)
     return {'model': model, 'stage': stage, 'inputs': inputs, 'outputs': outputs, 'patch': patch,
             'constant_buffers': constant_buffers, 'resources': resources, 'uavs': uavs,
-            'output_sources': output_sources, 'reads': reads, 'used': sorted(used), 'unknown': sorted(unknown)}
+            'output_sources': output_sources, 'reads': reads, 'used': sorted(used), 'unknown': sorted(unknown),
+            'discards': discards}
 
 
-def family_of(base):
-    """The checker's family of a shader (UE has no names in its bytecode): stage + its signature's layout."""
-    if 'error' in base:
-        return 'unparsed'
-    key = '|'.join(f'{r[0]}{r[1]}:{r[5]}' for r in base['inputs']) + '>' + '|'.join(f'{r[0]}{r[1]}' for r in base['outputs'])
-    if base['stage'] == 'cs':  # no signature: its resource layout instead (else every compute shader is one family)
+def family_of(base, position_only):
+    """The checker's family of a shader (UE has no names in its bytecode; S0-M6): a VS / HS / DS / GS by its input
+    layout (the vertex factory) and whether it is position-only; a PS by its input semantic names (no indices: not every
+    material's interpolant set) and its output layout (the pass's targets); a CS by its resource layout."""
+    if base['stage'] == 'cs':
         key = '|'.join(f'{k}:{v}' for k, v in sorted(base['resources'].items()) + sorted(base['uavs'].items()))
+    elif base['stage'] == 'ps':
+        key = '|'.join(sorted({r[0] for r in base['inputs']})) + '>' + '|'.join(f'{r[0]}{r[1]}' for r in base['outputs'])
+    else:
+        key = '|'.join(f'{r[0]}{r[1]}:{r[5]}' for r in base['inputs']) + ('>position-only' if position_only else '')
     return f'{base["stage"]}-{zlib.crc32(key.encode()):08x}'
 
 
@@ -477,13 +491,13 @@ def derive(base, engine):
     """All facts of a shader from its cached base facts and the engine's knowledge; returns (facts, kinds present)."""
     if base is None or 'error' in base:
         return {}, frozenset()
+    output_semantics = [f'{r[0]}{r[1]}' for r in base['outputs']]
+    position_only = output_semantics == ['SV_POSITION0']
     facts = {'stage': base['stage'], 'model': base['model'], 'inputs': base['inputs'], 'outputs': base['outputs'],
-             'input_semantics': [f'{r[0]}{r[1]}' for r in base['inputs']],
-             'output_semantics': [f'{r[0]}{r[1]}' for r in base['outputs']],
-             'family': family_of(base),
+             'input_semantics': [f'{r[0]}{r[1]}' for r in base['inputs']], 'output_semantics': output_semantics,
+             'position_only': position_only, 'family': family_of(base, position_only),
              'constant_buffers': {int(k): v for k, v in base['constant_buffers'].items()},
              'resources': base['resources'], 'uavs': base['uavs']}
-    facts['position_only'] = facts['output_semantics'] == ['SV_POSITION0']
     kinds = {'signature', 'resources'}
     if base['unknown']:
         facts['unknown'] = base['unknown']
@@ -492,7 +506,14 @@ def derive(base, engine):
     texture_kinds = {k for k, v in base['resources'].items() if v not in ('buffer', 'structured', 'raw')}
     facts['position_sources'] = sorted(position)
     facts['position_input'] = any(r.startswith('in:') for r in position)
-    facts['no_geometry'] = not facts['position_input']
+    # S0-S4 (narrow): a VS whose clip position is made from its vertex inputs, vertex / instance id and literals only:
+    # no constant (no camera, no light matrix, no object transform), no buffer or texture read (no vertex pulling).
+    # A DS / GS position from its inputs is the earlier stage's geometry, so only a VS is screen-space.
+    facts['screen_space'] = base['stage'] == 'vs' and 'SV_POSITION0' in output_semantics and all(
+        r.startswith(('in:', 'idx:in:', 'idx:sv:vertexid', 'idx:sv:instanceid')) or r in ('sv:vertexid', 'sv:instanceid', 'icb')
+        for r in position)
+    facts['no_geometry'] = facts['screen_space']  # S0-M1: only a stage with an SV_Position output draws geometry
+    facts['discards'] = base['discards']
     facts['bone_like'] = any(r[4:] in uint_inputs for r in position if r.startswith('idx:'))
     facts['indexed_position'] = any(r.startswith('idx:') for r in position) or any(r.endswith('[dyn]') for r in position)
     facts['vtf'] = any(r.startswith('tex:') and r[4:] in texture_kinds for r in position)
@@ -529,9 +550,9 @@ def derive(base, engine):
         any(f'cb{slot}[{r}]' in others for r in view['projection'])
     # Static in world space given its per-draw constants: vertex inputs, one per-draw buffer (more than one non-View
     # buffer can be a material's or a parameter collection's offset: world position offset, wind) and only the View's
-    # projection and translation rows.
+    # projection and translation rows. The View must project it (S0-M2: a screen quad has no View slot).
     per_draw = {r.split('[')[0] for r in position if r.startswith('cb') and not r.startswith(f'cb{slot}[')}
-    facts['static_chain'] = bool(position) and facts['position_input'] and not facts['bone_like'] and \
+    facts['static_chain'] = slot is not None and facts['position_input'] and not facts['bone_like'] and \
         not facts['indexed_position'] and not facts['vtf'] and not facts['view_rows_in_position'] and \
         len(per_draw) <= 1 and \
         not any(r.startswith(('tex:', 'buf:', 'tgsm:', 'uav:', 'icb', 'unknown', 'sv:', 'proj')) for r in position)
@@ -628,7 +649,7 @@ class Context:
         self.pack = load(self.pack_path, 'audit_pack') if self.pack_path else None
         self.rules = getattr(self.pack, 'RULES', {}) if self.pack else {}
         self.roots = {'tools': args.tools, 'bin': args.bin or os.path.join(args.tree, 'bin'), 'repo': args.tree}
-        self.files, self.problems, self.notes = {}, [], []
+        self.files, self.problems, self.notes, self.excluded = {}, [], [], {}
         self.cache_dir = os.path.join(args.tools, 'audit', 'cache', args.game)
 
     def path(self, spec):
@@ -698,6 +719,9 @@ def census(ctx, header, final=False):
                 continue
             if match.group(2) != entry['stage']:  # the dumper's name lost the stage (Rome Remastered's .xx_5_0)
                 ctx.notes.append(f'{key[0]}: named {match.group(2)}, its bytecode is a {entry["stage"]}')
+            if key in ctx.game['not_game']:  # an injected DLL's shader in the dump, not the game's
+                ctx.excluded[key] = ctx.game['not_game'][key]
+                continue
             unique.add(key)
             if key in found:
                 if found[key]['sha'] != entry['sha']:  # n-r3-2: the same (hash, stage) with other bytes
@@ -709,11 +733,17 @@ def census(ctx, header, final=False):
             ctx.problems.append(f'census source {path}: {len(unique)} unique (hash, stage), floor {floor}')
             broken = True
     json.dump(fresh, open(cache_path, 'w', encoding='utf-8'))
-    traces = []
+    traces, listing = [], []
     for folder in ctx.game['trace_folders']:
         for root, _, names in os.walk(ctx.path(folder)):
-            traces += [os.path.normcase(os.path.abspath(os.path.join(root, n))) for n in sorted(names)
-                       if 'frame_trace' in n and n.endswith('.txt')]
+            for name in sorted(n for n in names if 'frame_trace' in n and n.endswith('.txt')):
+                path = os.path.join(root, name)
+                traces.append(os.path.normcase(os.path.abspath(path)))
+                listing.append(f'{folder}/{os.path.relpath(path, ctx.path(folder))} {os.path.getsize(path)}'.replace('\\', '/'))
+    ctx.trace_digest = hashlib.sha256('\n'.join(sorted(listing)).encode()).hexdigest()[:12]  # S0-M4: pins the folders
+    if len(traces) < ctx.game['trace_files']:
+        ctx.problems.append(f'traces: {len(traces)} trace files in the manifest folders, floor {ctx.game["trace_files"]}')
+        broken = True
     traced = set()
     for trace in traces:
         for stage, value in IN_TRACE.findall(ctx.text(trace) or ''):
@@ -826,7 +856,9 @@ def write_ledger(path, header_lines, rows):
 
 
 def applies(ctx, axis, key, fact, kinds):
-    """Whether an axis applies to a stage (S4): the manifest's stages, plus a VS with a projected output for scale."""
+    """Whether an axis applies to a stage (S4): the manifest's stages, plus a VS with a projected output for scale, a PS
+    a trace shows writing velocity for mv, and with the manifest's rt_ps a PS that can change a caster's shape (S0-S5:
+    discard, coverage or depth output; missing facts count as can)."""
     stage = key[1]
     if stage in ctx.game['axes'][axis]:
         return True
@@ -834,6 +866,8 @@ def applies(ctx, axis, key, fact, kinds):
         return 'view' in kinds and fact.get('projected_output')
     if axis == 'mv' and stage == 'ps':
         return key in ctx.velocity_ps
+    if axis == 'rt' and stage == 'ps' and ctx.game['rt_ps']:
+        return 'dataflow' not in kinds or fact['discards'] or any(s.startswith('SV_DEPTH') for s in fact['output_semantics'])
     return False
 
 
@@ -873,46 +907,94 @@ def table_verdicts(ctx, value):
 
 
 # ------------------------------------------------------------------------------------------------ evidence (M2, R1, R3)
-def trace_lines(ctx, value):
-    """{trace: its lines that draw / dispatch the hash}, over the manifest's traces (indexed once per run)."""
+def trace_lines(ctx, value, stage):
+    """{trace: its lines that draw / dispatch the (hash, stage)}, over the manifest's traces (indexed once per run)."""
     if not hasattr(ctx, 'trace_index'):
         ctx.trace_index = collections.defaultdict(lambda: collections.defaultdict(list))
         for path in ctx.traces:
             for text in (ctx.text(path) or '').splitlines():
-                for hit in {v.upper() for _, v in IN_TRACE.findall(text)}:
+                for hit in {(v.upper(), s) for s, v in IN_TRACE.findall(text)}:
                     ctx.trace_index[hit][path].append(text)
-    return ctx.trace_index.get(value, {})
+    return ctx.trace_index.get((value, stage), {})
 
 
-def trace_claim(ctx, claim, value, token):
-    """A trace claim over every line of the hash in EVERY trace of the manifest's folders (R1)."""
-    lines = trace_lines(ctx, value)
+def velocity_target(ctx, text, slot=r'\d+'):
+    """A trace line binds one of the engine's velocity formats (in render target slot 'slot')."""
+    return any(re.search(rf'\brt{slot} 0x[0-9a-f]+ \d+x\d+ {f}\b', text) for f in ctx.engine['velocity_formats'])
+
+
+def mesh_uv(ctx, interpolants, text):
+    """Why one trace line that draws a pixel shader reading by 'interpolants' does not show mesh-uv-only, or '' (S0-S3):
+    its VS must be View-projected (a mesh, not a screen quad) and make each of them from vertex inputs and non-View
+    constant rows only."""
+    vs = next((v.upper() for s, v in IN_TRACE.findall(text) if s == 'vs'), None)
+    fact, kinds, _ = ctx.facts.get((vs, 'vs'), ({}, frozenset(), None))
+    if not {'dataflow', 'view'} <= kinds or fact['view_slot'] is None:
+        return f'its VS {vs} has no View-projected position in the facts'
+    slot = fact['view_slot']
+    for interpolant in interpolants:
+        sources = fact['output_sources'].get(interpolant)
+        if sources is None:
+            return f'its VS {vs} writes no {interpolant}'
+        bad = [r for r in sources if not (r.startswith('in:') or re.fullmatch(r'cb(\d+)\[\d+\]', r) and
+                                          not r.startswith(f'cb{slot}['))]
+        if bad:
+            return f'its VS {vs} makes {interpolant} from {bad[:3]} (View rows, system values, projection, dynamic or ' \
+                   'dependent reads)'
+    return ''
+
+
+def trace_claim(ctx, claim, value, stage, token):
+    """A trace claim over every line of the (hash, stage) in EVERY trace of the manifest's folders (R1)."""
+    lines = trace_lines(ctx, value, stage)
     every = [t for group in lines.values() for t in group]
     if claim == 'host-state':
         claim = ctx.game['host_state'] or 'none'
-    if claim == 'drawn':
-        return '' if every else f'{token}: {value} is in no manifest trace'
+    if claim not in TRACE_CLAIMS:
+        return f'{token}: the trace claim "{claim}" needs engine markers the checker does not read yet (fails closed)'
+    if not every:
+        return f'{token}: {value} {stage} is in no manifest trace'
     if claim == 'depth-only':
         bad = [t for t in every if re.search(r'\brt\d+ 0x', t) or not re.search(r'\bds 0x', t)]
         return f'{token}: {len(bad)} of {len(every)} lines of {value} in the manifest\'s traces draw colour or no depth' if bad else ''
-    if claim == 'writes-velocity':
-        formats = ctx.engine['velocity_formats']
-        bad = [t for t in every if not any(re.search(rf'\brt0 0x[0-9a-f]+ \d+x\d+ {f}\b', t) for f in formats)]
-        return f'{token}: {len(bad)} of {len(every)} lines of {value} write no velocity target ({", ".join(formats) or "none"})' \
-            if bad or not every else ''
-    if claim == 'fixed-target':
-        sizes = {}
+    if claim in ('writes-velocity', 'no-velocity'):
+        if not ctx.engine['velocity_formats']:  # S0-M5: never passes for an engine without known velocity formats
+            return f'{token}: the manifest knows no velocity format of this engine: {claim} fails closed'
+        if claim == 'writes-velocity':
+            bad = [t for t in every if not velocity_target(ctx, t, '0')]
+            return f'{token}: {len(bad)} of {len(every)} lines of {value} write no velocity target' if bad else ''
+        bad = [t for t in every if velocity_target(ctx, t)]
+        return f'{token}: {len(bad)} of {len(every)} lines of {value} bind a velocity target' if bad else ''
+    if claim == 'fixed-target':  # S0-M3: unreadable scales never count, every line needs its target size
+        sizes, skipped, unparsed = {}, 0, 0
         for path, group in lines.items():
+            if ctx.scale[path] is None:
+                skipped += 1
+                continue
             for text in group:
                 target = re.search(r'\b(?:u0|rt0) 0x[0-9a-f]+ (\d+x\d+)', text)
-                sizes.setdefault(ctx.scale[path], set()).add(target.group(1) if target else '?')
+                unparsed += target is None
+                if target:
+                    sizes.setdefault(ctx.scale[path], set()).add(target.group(1))
+        skipped = f' ({skipped} traces with an unreadable render scale skipped)' if skipped else ''
+        if unparsed:
+            return f'{token}: {unparsed} lines of {value} have no rt0 / u0 target size{skipped}'
         if len(sizes) < 2:
-            return f'{token}: fixed-target needs the hash in traces at two render scales (has {sorted(sizes, key=str)})'
+            return f'{token}: fixed-target needs the hash in traces at two render scales (has {sorted(sizes)}){skipped}'
         if len({size for group in sizes.values() for size in group}) != 1:
-            return f'{token}: target size follows the scale: ' + \
-                ', '.join(f'{s}: {sorted(v)}' for s, v in sorted(sizes.items(), key=str))
+            return f'{token}: target size follows the scale: ' + ', '.join(f'{s}: {sorted(v)}' for s, v in sorted(sizes.items()))
         return ''
-    return f'{token}: the trace claim "{claim}" needs engine markers the step-0 checker does not read yet (fails closed)'
+    if claim == 'mesh-uv':
+        fact, kinds, _ = ctx.facts.get((value, stage), ({}, frozenset(), None))
+        if stage != 'ps' or not {'dataflow', 'view'} <= kinds:
+            return f'{token}: mesh-uv needs a pixel shader with dataflow and View facts'
+        roots = [r for r in fact['read_roots'] if not set(r[2]) <= {'world', 'input'}]
+        if fact['sv_position_used'] or roots:
+            return f'{token}: {value} uses SV_Position or reads by screen, size or dependent roots {roots[:3]}'
+        interpolants = sorted({r[3:] for _, _, address in fact['reads'] for r in address if r.startswith('in:')})
+        bad = [why for why in (mesh_uv(ctx, interpolants, t) for t in every) if why]
+        return f'{token}: {len(bad)} of {len(every)} lines of {value}: {bad[0]}' if bad else ''
+    return '' if claim == 'drawn' else f'{token}: no check for the trace claim {claim}'
 
 
 def check_token(ctx, row, axis, cell, token, cited, said, fact, kinds):
@@ -953,9 +1035,10 @@ def check_token(ctx, row, axis, cell, token, cited, said, fact, kinds):
         if trace_id not in cited:
             return f'{token}: trace id not in the header'
         own = (ctx.text(cited[trace_id]) or '').splitlines()
-        if not line.isdigit() or not (0 < int(line) <= len(own)) or value not in own[int(line) - 1].upper():
-            return f'{token}: {value} not on that line'
-        return trace_claim(ctx, claim, value, token)
+        if not line.isdigit() or not (0 < int(line) <= len(own)) or \
+                (row['stage'], value) not in {(s, v.upper()) for s, v in IN_TRACE.findall(own[int(line) - 1])}:
+            return f'{token}: {value} not on that line as a {row["stage"]}'
+        return trace_claim(ctx, claim, value, row['stage'], token)
     if kind == 'rule':
         rule = ctx.rules.get(rest)
         if rule is None:
@@ -1070,9 +1153,9 @@ def check_cell(ctx, row, axis, cited, key):
     if not primary:
         problems.append(f'{subject}: {cell} without primary evidence that resolves')
     claim = MATRIX[(axis, verdict, reason)].get('trace')
-    if claim in ('depth-only', 'writes-velocity') and any(t.startswith('rule:') for t in primary) and \
-            trace_lines(ctx, row['hash']):  # a rule never outvotes the traces (step 0: light volumes are position-only)
-        why = trace_claim(ctx, claim, row['hash'], 'the traces')
+    if claim in CROSS_CHECKED and any(t.startswith('rule:') for t in primary) and \
+            trace_lines(ctx, row['hash'], row['stage']):  # a rule never outvotes the traces
+        why = trace_claim(ctx, claim, row['hash'], row['stage'], 'the traces')
         if why:
             problems.append(f'{subject}: {cell} by a rule, but {why}')
     missing = GUARDED.get((axis, verdict, reason), set()) - kinds
@@ -1120,25 +1203,33 @@ def tripwires(axis, verdict, reason, fact, kinds, primary):
         risky = [r for r in fact.get('read_roots', []) if set(r[2]) & {'proj', 'size', 'input'}]
         if risky:
             out.append(f'SCALED by a rule with projected, texture-size or interpolant reads {risky[:3]}')
-    if verdict == 'N/A' and reason == 'no-geometry' and fact.get('position_input'):
-        out.append('no-geometry on a shader whose position comes from a vertex input')
+    if verdict == 'N/A' and reason == 'no-geometry' and fact:
+        if fact['stage'] not in ('vs', 'ds', 'gs'):
+            out.append(f'no-geometry on a {fact["stage"]}: only a stage with an SV_Position output draws geometry')
+        elif not fact.get('screen_space'):
+            out.append('no-geometry on a shader whose position reads constants, buffers or textures, or comes from '
+                       'an earlier stage')
+    if axis == 'mv' and verdict == 'N/A' and reason == 'position-only' and fact and not fact['position_only']:
+        out.append('N/A/position-only on a VS whose outputs are not SV_Position only')
     return out
 
 
-def controls(ctx, rows, keys):
-    """At least one positive and one negative hand-row control per rule (M3, R3)."""
-    problems, by_hash = [], {r['hash']: r for r in rows}
+def controls(ctx, rows, found):
+    """At least one positive and one negative hand-row control per rule (M3, R3); a positive one is level A (S0-S7)."""
+    problems, by_key = [], {(r['hash'], r['stage']): r for r in rows}
     for name, rule in ctx.rules.items():
         own = rule.get('controls', {}).get(ctx.args.game, {'positive': [], 'negative': []})
         if not own['positive'] or not own['negative']:
             problems.append(f'rule {name}: needs at least one positive and one negative control for {ctx.args.game} '
                             f'(has {len(own["positive"])} / {len(own["negative"])}) (R3)')
         for value, want in [(v, True) for v in own['positive']] + [(v, False) for v in own['negative']]:
-            row = by_hash.get(value)
-            if row is None or row['stage'] not in rule['stages']:
+            row = next((by_key[(value, s)] for s in rule['stages'] if (value, s) in by_key), None)  # n-s0-2
+            if row is None:
                 problems.append(f'rule {name}: control {value} has no {"/".join(rule["stages"])} row')
                 continue
             key = (row['hash'], row['stage'])
+            if want and 'A' not in found.get(key, {'tiers': ()})['tiers']:
+                problems.append(f'rule {name}: positive control {value} is not level A (in no manifest trace)')
             fact, kinds, _ = ctx.facts.get(key, ({}, frozenset(), None))
             state = fires(ctx, rule, row, fact, kinds)
             same = split_cell(row[rule['axis']])[0::2] == (rule['verdict'], rule['reason'])
@@ -1183,8 +1274,8 @@ def apply_rules(ctx, rows):
                 continue
             name, rule = firing[0]
             claim = MATRIX[(axis, rule['verdict'], rule['reason'].partition(':')[0])].get('trace')
-            if claim in ('depth-only', 'writes-velocity') and trace_lines(ctx, row['hash']) and \
-                    trace_claim(ctx, claim, row['hash'], 'the traces'):
+            if claim in CROSS_CHECKED and trace_lines(ctx, row['hash'], row['stage']) and \
+                    trace_claim(ctx, claim, row['hash'], row['stage'], 'the traces'):
                 conflicts.append(f'{row["hash"]} {row["stage"]} {axis}: {name} fires, the traces disagree ({claim}): left open')
                 continue
             row[axis] = rule['verdict'] + (('/' + rule['reason']) if rule['reason'] else '')
@@ -1203,6 +1294,38 @@ def apply_rules(ctx, rows):
                 if tag not in known:
                     out.write(f'{tag}\t{ctx.args.game}\t{len(hashes)} rows: {",".join(hashes[:12])}\tcoordinator\n')
     return filled, conflicts
+
+
+# ------------------------------------------------------------------------------------------------ summary
+def census_holes(ctx):
+    """What 'complete' does not cover, printed in every summary (n-s0-4, S0-S6, S0-S2)."""
+    tables = {'motion': ctx.game['motion_tables'], 'motion-gated': ctx.game['motion_tables'], 'key': ctx.game['key_tables'],
+              'capture': ctx.game['capture_tables'], 'capture-gated': ctx.game['capture_tables']}
+
+    def works(axis, kind, claim):
+        if kind == 'trace':
+            claim = (ctx.game['host_state'] or 'none') if claim == 'host-state' else claim
+            return bool(ctx.game['trace_folders']) and claim in TRACE_CLAIMS and \
+                (claim not in ('writes-velocity', 'no-velocity') or bool(ctx.engine['velocity_formats']))
+        if kind == 'facts':
+            return any(c == 'dead' and ctx.game['dead'] or c in FACT_CLAIMS and
+                       ('view' not in FACT_CLAIMS[c][1] or ctx.engine['view'] is not None) for c in claim.split('|'))
+        return {'table': bool(tables.get(claim)), 'src': bool(ctx.game['src_files'].get(axis)), 'ours': bool(ctx.game['ours']),
+                'manifest': ctx.game['no_rt'], 'decision': True, 'out': bool(ctx.game['tools']),
+                'test': bool(ctx.game['tools'])}.get(kind, False)  # twin / pair / facts:proxy: not read yet
+
+    stuck = [f'{axis} {verdict}' + (f'/{reason}' if reason else '') for (axis, verdict, reason), accepted in MATRIX.items()
+             if not any(works(axis, kind, claim) for kind, claim in accepted.items() if kind != 'rule')]
+    out = [f'holes: {"; ".join(ctx.game["holes"]) or "none"}']
+    if ctx.excluded:
+        out.append(f'not game: {len(ctx.excluded)} (hash, stage) excluded ({", ".join(sorted(set(ctx.excluded.values())))})')
+    if ctx.engine['view'] is not None:
+        blind = sum(1 for (_, stage), (_, kinds, _) in ctx.facts.items() if stage == 'vs' and 'dataflow' in kinds
+                    and 'view' not in kinds)
+        out.append(f'VS with dataflow but no View identified: {blind} (scale "-" without a verdict: their own matrices, '
+                   'shadow and capture passes)')
+    out.append(f'lines without a working non-rule kind: {", ".join(stuck) or "none"}')
+    return out
 
 
 # ------------------------------------------------------------------------------------------------ main
@@ -1239,8 +1362,7 @@ def main(argv=None):
     ctx.traces = traces
     ctx.scale = {path: trace_scale(ctx, path) for path in traces}
     ctx.velocity_ps = {(v.upper(), 'ps') for path in traces for line in (ctx.text(path) or '').splitlines()
-                       if any(re.search(rf'\brt0 0x[0-9a-f]+ \d+x\d+ {f}\b', line) for f in ctx.engine['velocity_formats'])
-                       for v in re.findall(r'\bps ([0-9A-Fa-f]{8})\b', line) if v != '00000000'}
+                       if velocity_target(ctx, line, '0') for v in re.findall(r'\bps ([0-9A-Fa-f]{8})\b', line) if v != '00000000'}
     ctx.replaced = {}
     for path in ctx.repo_files(ctx.game['ours']):
         match = re.search(r'0x([0-9A-Fa-f]{8})', os.path.basename(path))
@@ -1249,7 +1371,8 @@ def main(argv=None):
     tiers = collections.Counter('A' if 'A' in v['tiers'] else 'R' if 'R' in v['tiers'] else 'S' for v in found.values())
     census_line = f'census {len(found)} ({", ".join(f"{k} {v}" for k, v in sorted(tiers.items()))})'
     if broken:
-        print(f'shader_audit {args.game}: {census_line}, exit 2')
+        print(f'shader_audit {args.game}: {census_line}, exit 2; checker {digest(__file__)} manifest '
+              f'{digest(ctx.manifest_path)} traces {ctx.trace_digest} ({len(traces)} files)')
         print('\n'.join(f'  PROBLEM\t{p}' for p in ctx.problems))
         return 2
     keys = set(found) if args.census_only or args.seed else {(r['hash'], r['stage']) for r in rows} | set()
@@ -1331,10 +1454,12 @@ def main(argv=None):
         code, part = (1 if code in (0, 4) else code), 'PART (--only / --family) '  # N2, n1
     print(f'shader_audit {args.game}: {part}{census_line}, rows {len(rows)}, settled {sum(settled.values())}, open cells '
           f'{sum(open_cells.values())}, pending boxes {pending}, PROBLEMS {len(problems)}, exit {code}; checker '
-          f'{digest(__file__)} manifest {digest(ctx.manifest_path)} pack {ctx.game["pack"]}={pack_now}')
+          f'{digest(__file__)} manifest {digest(ctx.manifest_path)} pack {ctx.game["pack"]}={pack_now} traces {ctx.trace_digest}')
     scales = collections.Counter(ctx.scale.values())
     print(f'  traces: {len(traces)} in the manifest folders (scale read from each: '
-          + ', '.join(f'{s} x{n}' for s, n in sorted(scales.items(), key=str)) + f'); cited ids: {", ".join(cited) or "none"}')
+          + ', '.join(f'{s} x{n}' for s, n in sorted(scales.items(), key=str)) + '; None never counts as a scale); cited ids: '
+          + (', '.join(cited) or 'none'))
+    print('\n'.join('  ' + line for line in census_holes(ctx)))
     for stratum, count in sorted(settled.items()):
         print('  settled\t' + '\t'.join(stratum) + f'\t{count}')
     for (axis, family), count in sorted(open_cells.items(), key=lambda item: -item[1])[:40]:
@@ -1421,9 +1546,11 @@ def census_report(ctx, found, census_line, args):
             ctx.problems.append(f'View control {value}: the add-on reads View slot {slot}, the facts say {got}')
     code = 1 if ctx.problems else 0
     print(f'shader_audit {args.game}: {census_line}, stages {", ".join(f"{s} {n}" for s, n in sorted(stages.items()))}, '
-          f'PROBLEMS {len(ctx.problems)}, exit {code}; checker {digest(__file__)} manifest {digest(ctx.manifest_path)}')
+          f'PROBLEMS {len(ctx.problems)}, exit {code}; checker {digest(__file__)} manifest {digest(ctx.manifest_path)} '
+          f'traces {ctx.trace_digest}')
     print('  facts: ' + ', '.join(f'{k} {kinds[k]}' for k in KINDS) + f' of {len(found)}'
-          + (f'; not extracted: {dict(errors)}' if errors else '') + f'; holes: {"; ".join(ctx.game["holes"]) or "none"}')
+          + (f'; not extracted: {dict(errors)}' if errors else ''))
+    print('\n'.join('  ' + line for line in census_holes(ctx)))
     if views:
         print(f'  View controls: {len(views)} of the add-on\'s View slots checked against the facts')
     if ctx.notes:
