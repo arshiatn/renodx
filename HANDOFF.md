@@ -721,6 +721,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Heapfix author package (after render_mt is fully done): add the one-line pin Get ... | ?
 - Bench gap: per start read WER Event 1000 / CrashDumps\Attila.exe.<pid>.dmp in th ... | ?
 - Game exit race: a second drain at +0xD5D74 or the call at +0xC9AAF (engine_code, ... | ?
+- g19_ F1 follow-up after ho_g19 merges: graphics_page.hpp:237-239 comment (8 game ... | ?
+- Census line (G24 or one script): do Attila 18FF7787 / 82C6EE8B and Thrones 5247E ... | ?
+- gtp_ stage25b -> gpr_ + gtw_ re-check -> ATN sees the change -> golive + run_tes ... | ?
+- gate hook round 26: R25-2..R25-6, realpath / link hardening, HARNESS narrowing, ... | ?
+- rvm_ review of mem_fix -> mem_ fixes -> rvm_ re-check -> confirm run (ATN's go) ... | ?
+- fci_ / fxr_ designs -> feed the FCA ranked list (workers + pool analyst reads fc ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13606,6 +13612,37 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN IN CHAT 2026-11-24 ~11:4x: "Go ahead" to both stage25 items ((a) golive stage25 in shadow, (b) copy
         gtp_stage25\tests\run_tests.py into TW\gates\tests). Coord does both itself AFTER gpr_ + gtw_ say GO on stage25
         (if they need changes, the changed stage goes back to ATN first). ATN is around ~1.5 h, may answer late.
+        ATN IN CHAT 11-24 ~12:0x: (1) read / design work from ALL plans may run in parallel now; max 4 builds, never two
+        writers on one file (coord: same-file parallel writes would cost more, not less). (2) Avoid in-game tests unless
+        nothing offline / in code can prove it; when an Attila game run is due, run it BEFORE a big agent wave (paused
+        agents cost tokens). Memory feedback_no_game_tests.md updated.
+        rvb_ RE-CHECK 1 GO (reviews/rvb_g19_recheck1_handback.md): ho_g19 GO; ho_g19_ryse GO but merges AFTER ho_g08 (which
+        goes after ho_g21 + Ryse / D1 / D2 builds). MA1 unchanged (no player build between ho_g19 and G09 5152bfd4a + G07
+        67d421be3). F1 MINOR: decision 11 covers 8 games (Rome II / WH1 / WH2 also defaulted Fog Shadows + Spec Occl 1).
+        g10_ DONE (handbacks/g10_update_handback.md): ho_g10 08a5213a4 + 9869adf51, WARP PASS. rvf_ RE-CHECK GO
+        (reviews/rvf_g10_recheck_handback.md): 5.5 = ho_g21 cc349d79b -> ho_g02 91f97b2ca -> ho_g10; the 10 extra ps_4_1
+        patches in Attila / Thrones are expected (no game-visible change).
+        COORD 12:0x: mrg_ round C sent: 5.2a ho_g19 -> 5.3a ho_g03 -> 5.4 ho_g09 + ho_g07 f1924d506 -> 5.5 (g21, g02, g10),
+        gated builds + tests after each, stop on any surprise.
+        mem_ FIX DONE (handbacks/mem_fix_handback.md): mem_fix 98bda82a9 (rt_core ForgetScene at a loading screen in front,
+        atlas slices back, cut_out_textures emptied, OnDestroyDevice too; E1-E4 address-space lines x86), builds + tests PASS.
+        -> rvm_ (Opus xHigh, read only) review sent. Confirm run (game) after the review, ATN's go, BEFORE the FCA wave.
+        DESIGNS STARTED (read only, Opus xHigh): fci_ = FCA item 1 per-user worker counts + automatic L1
+        (render_mt/fca/designs/fci_item1_workers_L1.md); fxr_ = game exit race second drain, offline proof first
+        (render_mt/fca/designs/fxr_exit_race_drain.md). g24_ STEP 0 GO (census from ATN's dumps). g23_ IMPLEMENTATION GO
+        (2a + 2b first; helper files stay with gbf_; ngx_backend after ho_g09, AA / graphics_page / feature_settings after
+        ho_g19).
+        gpr_ STAGE25 NOT GO (plan_1117/gpr_r25_recheck_handback.md): R25-1 regression (any-files names lost stage24's
+        protection glob; 7 rows). gtw_ was GO. -> gtp_ stage25b = R25-1 fix + 7 test rows only; then gpr_ + gtw_ short
+        re-check; the CHANGED stage goes to ATN before golive. Live stays stage24 (shadow).
+        - [ ] g19_ F1 follow-up after ho_g19 merges: graphics_page.hpp:237-239 comment (8 games) + Rome II / WH1 / WH2
+        .fog_shadows_defaulted_on = true (Thrones g01_ / WH3 after the freeze as before) -> rvb_ glance.
+        - [ ] Census line (G24 or one script): do Attila 18FF7787 / 82C6EE8B and Thrones 5247E655 / 03E56410 (gather 4.1
+        water, not on the forward-reader list) ever load? If yes, add them to the forward-reader list (rvf_ note).
+        - [ ] gtp_ stage25b -> gpr_ + gtw_ re-check -> ATN sees the change -> golive + run_tests.py copy.
+        - [ ] gate hook round 26: R25-2..R25-6, realpath / link hardening, HARNESS narrowing, xcopy /E, r''m / & $r, [422].
+        - [ ] rvm_ review of mem_fix -> mem_ fixes -> rvm_ re-check -> confirm run (ATN's go) before the FCA analyst wave.
+        - [ ] fci_ / fxr_ designs -> feed the FCA ranked list (workers + pool analyst reads fci_).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
