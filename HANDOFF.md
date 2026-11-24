@@ -752,6 +752,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Stale comment twattila/rt_scene.hpp:633 names SkipGameSsao (G18 owner). WH1 :227 ... | ?
 - g14r_ r3 tool follow-up (report_check.py) still open. | ?
 - Rome II Specular Occlusion: the commit that later hooks it (traced reflections) ... | ?
+- static_checks comptr: 5 findings in twattila/water_reflections.hpp :117 :187 :18 ... | ?
+- g24_ boxes: pair: claims need constant-logging traces; Expeditions tracer 'view ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13933,6 +13935,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         (testbin/scratch/g23_/h9_t3_t4.txt); g23_ adds HARNESS_SWITCH_DLSS + HARNESS_END_WITH_DLSS to tools/tw/rt_harness/
         tw_rt_harness.cpp (only writer; off by default) -> gbf_ wires T3 / T4 into gbf_gpu_gates.ps1.
         mem_ r3: Attila's opt-in flag = ONE line in twattila/addon.cpp after :2622 (coord OK; fi1_'s hunks elsewhere).
+        mrg_ G22 MERGED 5b00fc9e7 (handbacks/mrg_g22_handback.md): 36 / 36 builds green (hashes_g22.txt), tw_pipeline_cache
+        22 / 22, tw_view_filter 18 / 18, tw_device_proxy_removal 3 / 3, static_checks views / pipelines / tonemap 0.
+        - [ ] static_checks comptr: 5 findings in twattila/water_reflections.hpp :117 :187 :188 :228 :229 (from ho_g03,
+        TextureOf(..., &ComPtr)) -> g03_ (sent 'g03_ comptr'). Add static_checks to every merge's suite list.
+        BUILD SLOT TRIAL FAILED ~13:50 (sampler testbin/scratch/coord/slot_trial_1124.csv): free RAM 4.05 GB / commit 38 GB
+        with only 2-3 builds (single add-on compiles peak 9-11 GB). Rule now: max 4 slots, -j 4, take a slot only with free
+        RAM >= 12 GB (build_slots/README.txt); builders told; memory feedback_workflow_serial.md updated; reported to ATN.
+        g24_ STEP0 R2 (handbacks/g24_step0_r2_handback.md): ho_g24 3dcbef68b, selftest 40 / 40, census 13 games at facts-6
+        incl. missing shaders in tools/audit/missing/<game> + not_game dxgi.dll; 3 deviations + 2 open widenings -> rvg_
+        light re-check sent.
+        - [ ] g24_ boxes: pair: claims need constant-logging traces; Expeditions tracer 'view WxH buffer WxH' + a second
+        render-scale trace; an Expeditions level-A static-chain CAMERA positive needs traced static meshes.
+        ATN 11-24: Toru's upsampler + SH expected to make a big difference -> shg_ Rev 1 main item: GT-VBAO + GT-VBGI at
+        Half / Quarter / Eighth with SVGF-style upsample + SH, FLIP vs full res + PT, Experimental rows for ATN.
+        ATN 11-24: screen-space shadows at 3/4 / 1/2 / 1/4 res? -> sbr_ (Opus xHigh, read only) free papers / code + options
+        (plan_1117/sbr_sss_lowres_design.md).
+        g23_ HARNESS SWITCHES (handbacks/g23_harness_switches_handback.md): HARNESS_SWITCH_DLSS / HARNESS_END_WITH_DLSS (45) /
+        HARNESS_END_KEEP_HELPER in tools/tw/rt_harness/tw_rt_harness.cpp (backup .before_h9), off = old code; pre-existing
+        build break since 835c9866e fixed (-DWIN32=1, includes, NAME export). Next: one source for both bridges (:3709).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
