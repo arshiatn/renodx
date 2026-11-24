@@ -196,7 +196,9 @@ GAMES['romeremastered'] |= {
 # file more than there are (S0-M4); fixture_more and fixture_view add a trace whose line breaks a mesh-uv claim (S0-S3,
 # open question 1); fixture_423 is Unreal 4.23 with an Expeditions GPU Scene VS and two compiled synthetic ones (r2-M1);
 # fixture_ws gives the fixture an engine whose screen-space form is not reviewed (r2-S2); fixture_ng makes a traced key
-# not the game's (n-r2-1).
+# not the game's (n-r2-1). Step 1: fixture_screen adds 7 Tales screen / UI shaders and two frame-end traces for the
+# fullscreen / after-ui / after-upscale claims; _geo adds a trace whose final target a mesh writes first, _gs a geometry
+# shader in the census, _ws an engine without a View layout.
 FIXTURE = 'tools:audit/fixture/'
 GAMES['fixture'] = GAMES['tales'] | {
     'pack': 'fixture',
@@ -218,3 +220,11 @@ GAMES['fixture_423'] = GAMES['fixture'] | {
 GAMES['fixture_ws'] = GAMES['fixture'] | {'engine': 'warscape'}
 GAMES['fixture_ng'] = GAMES['fixture'] | {'not_game': {('5F4BCA38', 'vs'): 'a traced shader marked not the game\'s'},
                                           'trace_floor': 9}
+GAMES['fixture_screen'] = GAMES['fixture'] | {
+    'sources': GAMES['fixture']['sources'] + [('R', 'tools', 'audit/fixture/cso_screen', '*.cso', 7)],
+    'trace_folders': [FIXTURE + 'traces_screen'], 'trace_floor': 12, 'trace_files': 2}
+GAMES['fixture_screen_geo'] = GAMES['fixture_screen'] | {
+    'trace_folders': [FIXTURE + 'traces_screen', FIXTURE + 'traces_screen_geo'], 'trace_files': 3}
+GAMES['fixture_screen_gs'] = GAMES['fixture_screen'] | {
+    'sources': GAMES['fixture_screen']['sources'] + [('R', 'tools', 'audit/fixture/cso_gs', '*.cso', 1)]}
+GAMES['fixture_screen_ws'] = GAMES['fixture_screen'] | {'engine': 'warscape'}

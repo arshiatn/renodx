@@ -81,6 +81,9 @@ MATRIX = {
     ('rt', 'MISSING', ''): {'out': 'tool', 'trace': 'drawn', 'rule': 'rule'},
     ('rt', 'N/A', 'keyed-elsewhere'): {'table': 'key'},
     ('rt', 'N/A', 'no-rt'): {'manifest': 'no-rt'},
+    # step 1: the screen-pass half of S0-S4 for the VS the facts can't call no-geometry (DrawRectangle, Slate), by trace
+    ('rt', 'N/A', 'post'): {'trace': 'fullscreen', 'rule': 'rule'},
+    ('rt', 'N/A', 'ui'): {'trace': 'after-ui', 'rule': 'rule'},
 }
 for _reason in ('water', 'decal', 'proxy', 'sky', 'particle', 'transparent', 'editor', 'debug', 'ui3d'):
     MATRIX[('rt', 'SKIPPED', _reason)] = {'rule': 'rule', 'src': 'code', 'facts': 'proxy'}
@@ -89,14 +92,20 @@ for _axis in AXES:  # no-geometry is a VS fact (S0-M1): a PS / CS row never show
         MATRIX[(_axis, 'N/A', _reason)] = _accepted
 NEVER_PRIMARY = {'note', 'box', 'override'}
 # Trace claims the checker evaluates; any other trace claim fails closed (S0-S2 lists the lines left without a route).
-TRACE_CLAIMS = {'drawn', 'depth-only', 'writes-velocity', 'no-velocity', 'fixed-target', 'mesh-uv'}
-CROSS_CHECKED = ('depth-only', 'writes-velocity', 'no-velocity')  # a rule cell with one of these fails where traces disagree
+TRACE_CLAIMS = {'drawn', 'depth-only', 'writes-velocity', 'no-velocity', 'fixed-target', 'mesh-uv', 'fullscreen', 'after-ui',
+                'after-upscale'}
+# a rule cell with one of these fails where traces disagree
+CROSS_CHECKED = ('depth-only', 'writes-velocity', 'no-velocity', 'fullscreen', 'after-ui', 'after-upscale')
+SCREEN_COUNTS = (3, 4, 6)  # fullscreen: one or two triangles in all (a trace's count is vertices or indices x instances)
+DRAW_LINE = re.compile(r'^(?:draw|indexed) (\d+) vs ([0-9A-Fa-f]{8})\b')
+WRITTEN = re.compile(r'\b(?:rt\d+|u\d+) (0x[0-9a-f]+) (\d+x\d+)')
 # Verdicts the tripwires guard, and the fact kinds they read (R3): missing or partial facts fail these cells.
 GUARDED = {('mv', 'CAMERA', ''): {'signature', 'dataflow', 'view'},
            ('mv', 'N/A', 'position-only'): {'signature'},
            ('scale', 'N/A', 'no-screen-read'): {'signature', 'dataflow', 'view'},
            ('scale', 'N/A', 'mesh-uv-only'): {'signature', 'dataflow', 'view'}} | \
-          {(axis, 'N/A', 'no-geometry'): {'signature', 'dataflow'} for axis in AXES}
+          {(axis, 'N/A', 'no-geometry'): {'signature', 'dataflow'} for axis in AXES} | \
+          {(axis, 'N/A', reason): {'signature', 'dataflow'} for axis in ('mv', 'rt') for reason in ('post', 'ui')}
 # The fact kinds and the keys each one holds (n-r3-1: a rule sees only the keys of the kinds it declares).
 KINDS = {
     'signature': ('stage', 'model', 'inputs', 'outputs', 'input_semantics', 'output_semantics', 'position_only', 'family'),
@@ -670,7 +679,7 @@ class Context:
         self.pack = load(self.pack_path, 'audit_pack') if self.pack_path else None
         self.rules = getattr(self.pack, 'RULES', {}) if self.pack else {}
         self.roots = {'tools': args.tools, 'bin': args.bin or os.path.join(args.tree, 'bin'), 'repo': args.tree}
-        self.files, self.problems, self.notes, self.excluded = {}, [], [], {}
+        self.files, self.problems, self.notes, self.excluded, self.marks = {}, [], [], {}, {}
         self.cache_dir = os.path.join(args.tools, 'audit', 'cache', args.game)
 
     def path(self, spec):
@@ -778,6 +787,7 @@ def census(ctx, header, final=False):
     if len(traced) < ctx.game['trace_floor']:
         ctx.problems.append(f'traces: {len(traced)} unique (hash, stage), floor {ctx.game["trace_floor"]}')
         broken = True
+    ctx.stages = {key[1] for key in found}  # fullscreen: the traces log no GS / HS / DS (step 1)
     return found, traces, broken
 
 
@@ -975,6 +985,51 @@ def mesh_uv(ctx, interpolants, text):
     return ''
 
 
+def written(text):
+    """[(address, WxH)] a draw, dispatch or copy line writes (rt* / u*, a copy's destination); a clear marks no pass."""
+    if text.startswith('copy '):
+        return re.findall(r'-> (0x[0-9a-f]+) (\d+x\d+)', text)
+    return WRITTEN.findall(text) if text.startswith(('draw ', 'indexed ', 'dispatch ')) else []
+
+
+def frame_marks(ctx, path):
+    """A trace's marks, read from its own lines (the traces log no engine markers; step 1): the output size (the widest
+    colour target); the line of the composite, the first write of the final target (rt0 of the trace's last draw), None
+    unless that target is output-size and a fullscreen draw, a dispatch or a copy writes it first; the first line that
+    writes an output-size target (the upscale below 100 %); the view size (the first view line, as trace_scale) and its
+    downsampled chain (halved up to 7 times, rounded either way: bloom, AO, exposure); and each line's first index
+    (identical lines count from the earliest)."""
+    if path not in ctx.marks:
+        lines = (ctx.text(path) or '').splitlines()
+        sizes = [(int(w), int(h)) for text in lines for w, h in re.findall(r'\brt\d+ 0x[0-9a-f]+ (\d+)x(\d+)', text)]
+        output = '%dx%d' % max(sizes) if sizes else None
+        last = next((t for t in reversed(lines) if t.startswith(('draw ', 'indexed ')) and re.search(r'\brt0 0x', t)), '')
+        final = re.search(r'\brt0 (0x[0-9a-f]+) (\d+x\d+)', last)
+        first = next((i for i, t in enumerate(lines) if final and final.group(1) in (a for a, _ in written(t))), None)
+        draw = DRAW_LINE.match(lines[first]) if first is not None else None
+        screen = draw and int(draw.group(1)) in SCREEN_COUNTS or first is not None and lines[first].startswith(('dispatch ', 'copy '))
+        view = re.search(r'\bview (\d+)x(\d+)', ctx.text(path) or '')
+        width, height = (int(view.group(1)), int(view.group(2))) if view else (0, 0)
+        ctx.marks[path] = {'output': output, 'composite': first if screen and final.group(2) == output else None,
+                           'upscale': next((i for i, t in enumerate(lines) if any(s == output for _, s in written(t))), None),
+                           'chain': {f'{w}x{h}' for k in range(8) for w in (width >> k, -(-width >> k))
+                                     for h in (height >> k, -(-height >> k))} if view else set(),
+                           'index': {text: i for i, text in reversed(list(enumerate(lines)))}}
+    return ctx.marks[path]
+
+
+def view_free(ctx, vs):
+    """Why a VS's clip position may come from the View, or '' (fullscreen, after-ui; step 1): it needs dataflow facts
+    and an engine View layout, and no constant buffer of the View's size (min_rows) may feed the position. A View read
+    shorter than min_rows reads neither PreViewTranslation, which every Unreal mesh VS reads, nor the size rows."""
+    fact, kinds, _ = ctx.facts.get((vs, 'vs'), ({}, frozenset(), None))
+    if 'dataflow' not in kinds or ctx.engine['view'] is None:
+        return f'its VS {vs} has no dataflow facts, or the engine no View layout'
+    big = sorted({f'cb{hit.group(1)}' for hit in (re.match(r'(?:idx:)?cb(\d+)\[', r) for r in fact['position_sources'])
+                  if hit and fact['constant_buffers'].get(int(hit.group(1)), 0) >= ctx.engine['view']['min_rows']})
+    return f'its VS {vs} reads the View-sized {", ".join(big)} in its position' if big else ''
+
+
 def trace_claim(ctx, claim, value, stage, token):
     """A trace claim over every line of the (hash, stage) in EVERY trace of the manifest's folders (R1)."""
     lines = trace_lines(ctx, value, stage)
@@ -1025,6 +1080,44 @@ def trace_claim(ctx, claim, value, stage, token):
         interpolants = sorted({r[3:] for _, _, address in fact['reads'] for r in address if r.startswith('in:')})
         bad = [why for why in (mesh_uv(ctx, interpolants, t) for t in every) if why]
         return f'{token}: {len(bad)} of {len(every)} lines of {value}: {bad[0]}' if bad else ''
+    if claim == 'fullscreen' and ctx.stages & {'gs', 'hs', 'ds'}:
+        return f'{token}: the census has {"/".join(sorted(ctx.stages & {"gs", "hs", "ds"}))} shaders, which the traces do ' \
+               'not log (one or two triangles could become geometry): fullscreen fails closed'
+    if claim in ('fullscreen', 'after-ui', 'after-upscale'):  # step 1: from the frame's own lines (frame_marks)
+        fact, kinds, _ = ctx.facts.get((value, stage), ({}, frozenset(), None))
+        bad, below = [], 0
+        for path, group in lines.items():
+            marks = frame_marks(ctx, path)
+            for text in group:
+                draw, at = DRAW_LINE.match(text), marks['index'][text]
+                if claim == 'fullscreen':  # every line one or two triangles by a VS the View can't project
+                    bad.append('not a draw with a logged count' if not draw else
+                               f'draws {draw.group(1)} vertices or indices' if int(draw.group(1)) not in SCREEN_COUNTS
+                               else view_free(ctx, draw.group(2).upper()))
+                elif claim == 'after-ui':  # every line after the composite, by a VS the View can't project
+                    bad.append('its trace\'s final target is not output-size or not first written by a fullscreen draw, '
+                               'a dispatch or a copy' if marks['composite'] is None else
+                               'not after the final target\'s first write (the composite)' if at <= marks['composite']
+                               else 'not a draw with a logged count' if not draw else view_free(ctx, draw.group(2).upper()))
+                else:  # after-upscale: output-size targets only; below 100 % after the upscale, reading no render size
+                    targets = sorted({size for _, size in written(text)})
+                    if targets != [marks['output']]:
+                        bad.append(f'writes {targets}, not only the output size {marks["output"]}')
+                    elif ctx.scale[path] is not None and ctx.scale[path] < 1:
+                        below += 1
+                        bound = dict(re.findall(r'\b(t\d+) 0x[0-9a-f]+ (\d+x\d+)', text))
+                        if marks['upscale'] is None or at <= marks['upscale']:
+                            bad.append('not after its trace\'s first output-size write (the upscale)')
+                        elif stage in ('ps', 'cs') and 'resources' not in kinds:
+                            bad.append(f'{value} has no resource facts')
+                        elif stage in ('ps', 'cs') and any(bound.get(s) in marks['chain'] for s in fact['resources']):
+                            read = sorted(s for s in fact['resources'] if bound.get(s) in marks['chain'])
+                            bad.append(f'reads {", ".join(read)} at the view size or its downsampled chain')
+        bad = [why for why in bad if why]
+        if bad:
+            return f'{token}: {len(bad)} of {len(every)} lines of {value}: {bad[0]}'
+        return f'{token}: {value} is in no trace below 100 % (after-upscale is proven there)' \
+            if claim == 'after-upscale' and not below else ''
     return '' if claim == 'drawn' else f'{token}: no check for the trace claim {claim}'
 
 
@@ -1246,6 +1339,8 @@ def tripwires(axis, verdict, reason, fact, kinds, primary):
             out.append('no-geometry in an engine whose screen-space form is not reviewed (manifest screen_space)')
     if axis == 'mv' and verdict == 'N/A' and reason == 'position-only' and fact and not fact['position_only']:
         out.append('N/A/position-only on a VS whose outputs are not SV_Position only')
+    if verdict == 'N/A' and reason in ('post', 'ui') and fact.get('stage') == 'vs' and fact.get('view_slot') is not None:
+        out.append(f'N/A/{reason} on a VS the View projects (a mesh, not a screen pass or UI)')
     return out
 
 
@@ -1341,7 +1436,10 @@ def census_holes(ctx):
         if kind == 'trace':
             claim = (ctx.game['host_state'] or 'none') if claim == 'host-state' else claim
             return bool(ctx.game['trace_folders']) and claim in TRACE_CLAIMS and \
-                (claim not in ('writes-velocity', 'no-velocity') or bool(ctx.engine['velocity_formats']))
+                (claim not in ('writes-velocity', 'no-velocity') or bool(ctx.engine['velocity_formats'])) and \
+                (claim not in ('fullscreen', 'after-ui') or ctx.engine['view'] is not None) and \
+                (claim != 'fullscreen' or not ctx.stages & {'gs', 'hs', 'ds'}) and \
+                (claim != 'after-upscale' or any(s is not None and s < 1 for s in ctx.scale.values()))
         if kind == 'facts':
             return any(c == 'dead' and ctx.game['dead'] or c in FACT_CLAIMS and
                        ('view' not in FACT_CLAIMS[c][1] or ctx.engine['view'] is not None) and
