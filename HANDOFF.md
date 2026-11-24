@@ -795,6 +795,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Q41 (ATN 17:0x: 'why can't it use more rays to clean up lower DLSS scalings?'): ... | ?
 - pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ ... | ?
 - rv4_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2' in rv4_pk4_review ... | ?
+- Coord: real gbf gates (gbf_gpu_gates.ps1, no switch) in the first quiet GPU wind ... | ?
+- rvg_ 13.9 light re-check (sent; '## Re-check of 13.9' in rvg_g24_design_review.m ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14809,6 +14811,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         few as possible -> memory feedback_no_game_tests: Attila = ONE -Data session (rings starts + PK4 check incl. sea1 +
         PK5 sampler + mem_fix confirm checks; t4i_ told) + the verify bench; Expeditions = ONE dump + trace session (trc_
         told). Pending ATN: 14 vs 10 G3a starts.
+        gbf_ HELPERPATHS FIXED (handoff_plan/handbacks/gbf_helperpaths_handback.md; backup gbf_gpu_gates.pre_helperpaths.ps1,
+        byte copy): the g23 rev's include closure is checked against the g23 tree ($G23TreePaths), pre / post / gbf stay on
+        $HelperPaths. Coord -DryRun 17:09 (20261124_170940_24636): exit 0, 0 PROBLEM, 08e953b68 = 48 sources '(the g23 tree)';
+        estimate ~20 min. Real gates NOT started: 4 / 4 build slots busy, CPU 65-100 %, free RAM 8.7 GB -> wait for a quiet
+        GPU window (no agent paused).
+        - [ ] Coord: real gbf gates (gbf_gpu_gates.ps1, no switch) in the first quiet GPU window; job 1 also answers Q41.
+        g24_ 13.9 DONE (handoff_plan/handbacks/g24_139_handback.md; ho_g24 8366ad95e pushed, audit git 2fed755 local; one
+        stamp g24-facts-7): every 13.9 item closed by refusal; selftest 111 / 111, 43 mutations caught. Reopened: Expeditions
+        308 (C4 24, MUST-A 243 CS, MUST-D 36 PS, SHOULD-2 5), Tales 1. Tales seed 832 cells. Ledgers: Expeditions settled 1314,
+        exit 3 (svpos control has no level-A positive until the tracer writes the view line, F4); Tales settled 1361, exit 1.
+        Shadow rule dry check: Expeditions 792 open mv cells would fill, NOT applied. Not done: NIT-1, closure tool, the
+        dumpers' census_stages.txt (dump run).
+        - [ ] rvg_ 13.9 light re-check (sent; '## Re-check of 13.9' in rvg_g24_design_review.md) + GO / NOT GO for applying
+        the shadow rule to Expeditions. Coord's view sent: keep the svpos control (no games scope); C4 stays fail-closed
+        until the dump run.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
