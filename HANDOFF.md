@@ -712,9 +712,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU gates S4a + jobs 1-8 on ho_gbf 88ae3aa7d (after the final bench, one window) ... | ?
 - F5 motion into NRD (add-on work, gbr_): own box, after the GPU gates. | ?
 - Lean ReSTIR Reuse skips the ContactShade fix (gbr_ N5 note): if job 1 shows Lean ... | ?
-- ATN: OK to golive the gate hook round 24 (bak29 backup, then stage24 a6b12f1ebee ... | ?
 - gate hook round 25: the F24 web + price timing row is near its limit (0.055 vs 0 ... | ?
 - Tales census source = a dump-on-create run in the next Tales data run (G24 45 up ... | ?
+- t4i_ fixes ebr_'s FINAL MUSTs + SHOULDs -> run_all -> ebr_ delta re-review (befo ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13353,7 +13353,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         gtp_ 01:37 (plan_1117/gtp_r24_suite_handback.md): mirror suite from bash 1467/1468 (only F24 web + price 0.055 s vs
         0.05; bak28 gave 0.0525 last night; not a stage24 regression). gtp_ did NOT golive: changing the live PreToolUse
         safety hook needs ATN in chat. Live stays bak28 aa2306475bdb (shadow). COORD: asked ATN.
-        - [ ] ATN: OK to golive the gate hook round 24 (bak29 backup, then stage24 a6b12f1ebeef over the live file; stays
+        - [x] ATN: OK to golive the gate hook round 24 (bak29 backup, then stage24 a6b12f1ebeef over the live file; stays
         shadow = logs only)? On his yes, gtp_ does it with ATN's words quoted.
         - [ ] gate hook round 25: the F24 web + price timing row is near its limit (0.055 vs 0.05 s): loosen or speed up.
         ATN 2026-11-24 01:4x: (1) the 4 -Final rules ADDED (settings.local.json:30-33, coord checked). (2) The 2-writer gaming
@@ -13369,6 +13369,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         0); drop AnimationRowsWorkers' Check label (RENODX_TW_ANIMATION_CHECK stays); new test\tw_render_mt_defaults.
         Waits for exd_'s NITs merge.
         - [ ] Tales census source = a dump-on-create run in the next Tales data run (G24 45 updated; no pak reading).
+        GATE HOOK ROUND 24 LIVE 02:0x: ATN in chat (to coord's 'OK to update the gate hook to round 24 (still logs only)?'):
+        'Yes'. gtp_ would not act on a relayed yes (right), so coord did it: live backed up to testbin/scratch/gtp_/gtp_bak29
+        (gate_hook.py aa2306475bdb + gates.tsv + mode.txt + INSTALL_FOR_ATN.md), stage24 gate_hook.py copied over
+        TW/gates/gate_hook.py, live sha256 a6b12f1ebeef (164961 bytes), smoke call (git status) exit 0 no deny, mode.txt
+        'shadow'. gates/tests/run_tests.py still the old one (stage24's differs; tests only, not the hook).
+        ATN 01:5x: Tales + Expeditions: ATN dumped EVERY shader at startup and decompiled them to HLSL (cmd_Decompiler at
+        D:\Dev\renodx\bin\cmd_Decompiler-1.3.16; sometimes broken -> verify against the .cso). Dumps are 'here or next to
+        their exe files' (coord found only tales_frame_trace_shaders (393) beside Tales' exe and src/games/talesofarise 183
+        hlsl / expeditionsrome 101 hlsl; ask ATN for the folder when G24 starts). G24 45: Tales census from ATN's startup
+        dumps, not pak reading, not frame tracing.
+        ebr_ FINAL REVIEW NOT GO 02:0x (render_mt/reports/ebr_t4i_final_review.md + _handback.md): MUST 1 WPR FP twin unused +
+        no final.json vs manifest sha check; 2 no follow-up after a clean main run (locks released); 3 follow-ups share
+        state/leg2 + colliding ids; 4 eval pools a clean stall re-run with the flagged run + all_go true with re-runs due;
+        5 a guard close goes through the batch's continuation / L_mem logic. SHOULD 1-7, NIT 7. Coord decisions sent to
+        t4i_: MUST 1 (a) wire the twin + sha cross-check; MUST 5 record only; S1 LATCH / gate kill = PROBLEM, no kill; S2
+        stall re-run = whole round, WPR re-run alone + NOTE; S3 yes; S4 flagged = 'ATN decides' (exit 1); S5 no memory
+        match = fail; S6 combine melee pairs, main sign; S7 ONE crash budget for the whole final.
+        - [ ] t4i_ fixes ebr_'s FINAL MUSTs + SHOULDs -> run_all -> ebr_ delta re-review (before the RC dry run).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
