@@ -1,5 +1,49 @@
 # Total War: PHARAOH DYNASTIES (RenoDX HDR, ATN)
 
+### Open items round (2026-11-22; built only, not run in game)
+
+- Fixed: **in-game SSAO 1 and 2 (the game's line-sweep AO) no longer multiply into Path-Traced AO** (ATN: ours
+  replaces the game's), nor past the traced part under Ray-Traced AO: while ours stands in, its blur's output is
+  cleared open in its place, as SSAO 3's chain (`twattila/ao_readers.hpp` ClearInsteadOfLineSweepBlur).
+- Fixed: **the game's SSAO no longer runs under Ray-Traced AO or Path-Traced AO** (ATN: ours replaces the game's): its
+  four passes (downsample, generate, two blurs) are left out and their target cleared open. Its readers are the sun draws
+  and the building pools, which both read the rays' AO (`twattila/ao_readers.hpp`, Troy's way); under the paths the open
+  AO is what Attila's white AO pass gives (the paths are the occlusion).
+- Fixed: **Dead Unit Detail's patch of Pharaoh.exe goes in the safe way**, through Detours as the add-on's other code
+  hooks: the game's threads are stopped while its 6 bytes change (before, a soldier update running there at that moment
+  could crash). The same stub and slider as before.
+- Fixed: two unit motion shaders (db1e / f8ff) add the game's exact -pi in their atan2 (the decompile's was one bit off).
+- Fixed: **the battle fog below 100 % render scale** (DLSS, FSR, XeSS): its shadow-range filter (99164788 / 0CB1C821)
+  spreads its 5x5 taps over the view's pixels (at 33 % they reached a third as far), and its sun scan (DB53BDDC) fades
+  the sun at the screen edges from the view's uv, not the texture's (the sun's fog light faded in the view's left and
+  top). At 100 % both are the game's (WARP, `test/tw_pharaoh_fog`).
+- Changed: Smooth Banner Shadows is on by default (since 2026-11-17), no longer Experimental; the old lines below say so.
+- Changed (ATN): **Shadow Casters Out of View on by default** (no longer Experimental), in RT/PT too: with ray-traced sun
+  shadows, trees, buildings and units behind the camera keep their shadows. A saved Off is cleared once (ATN): every
+  player starts with it on.
+- Changed (ATN): **PsychoV35's defaults follow the game's SDR picture**: Contrast 1.10, Shadows 1.39, Saturation
+  0.97, Highlight Contrast 0.87 (were Musa's own 1; fitted on WARP, `test/tw_troy_pharaoh_v35`). Below 15 nits its
+  grey is within 7 % of the game's (was up to 25 % brighter), its highlights within 7 % of Musa's own at
+  1000 / 203 nits. In the defaults and Reset; saved values stay until a preset.
+- Written, not on yet: Ray-Traced Water Reflections deciding one pass earlier (with the last frame's light) to also
+  leave out the game's height pyramid (4 more passes). Off until its offline tests pass; nothing changes in game.
+- Changed (ATN): **the game's baked far shadow map is replaced by the rays too** with ray-traced sun shadows (before,
+  it multiplied with them beyond the per-frame maps' range): one sun shadow method, far terrain and buildings
+  shadowed by the rays alone.
+- In game: a battle with RT/PT, the camera turned: shadows from behind the camera stay. Ray-Traced AO in a battle
+  with a building pool: corners and the pool as before, a little faster; RT/PT with
+  Path-Traced AO: no darker double shade in corners.
+- In game: in-game SSAO 1 and 2, each with Ray-Traced AO and with Path-Traced AO: no darker double shade in corners.
+  A building pool under Path-Traced AO against Ray-Traced AO: under the paths the pool reads the open AO (no game
+  AO and no rays' AO there), so it may look flatter than under the rays.
+- In game: Dead Unit Detail 0 and 2 in a battle with corpses: fewer / more bodies stay, no crash at the change.
+- In game: the battle fog at DLSS Performance (33 %) against 100 %: the same shadow bands in the fog, the sun's fog
+  light no longer fading at the view's left and top.
+- In game: Water Reflections: Time Each Pass as before (the early decision is off), ReShade.log's hooks line says
+  "heights_part1 ... not hooked".
+- In game: far terrain and buildings past ~200 m with RT/PT: shadowed by the rays alone (the baked far map is gone):
+  shadows the rays miss out there are gone too.
+
 ### Shared round 2 (2026-11-17; built only, not run in game)
 
 - New: **Exact Depth Samples (Experimental, off)**, under GT-VBAO's More Options: each sample takes the depth at its own
@@ -240,8 +284,8 @@ Rows other TW add-ons have, brought over where Pharaoh's own shaders were read. 
 - **New (Experimental, off): Smoke Shadows (no rays)**, Strength and Softness (Attila's smoke map): the smoke's lit particles
   dim the sun from a map seen from the sun, on any GPU; off while the rays' sun shadows are on (they have their own Smoke
   Shadows). It reads the same particle stream the ray-traced Smoke Shadows fill.
-- **New (Experimental, off; on in RT/PT as in every game): Smooth Banner Shadows**: the cloth and flags (always thin in the
-  rays) no longer shadow themselves.
+- **New (then Experimental, off; on by default since 2026-11-17, as in every game): Smooth Banner Shadows**: the cloth and
+  flags (always thin in the rays) no longer shadow themselves.
 - **New (with Far Tree Shadows): the campaign's far tree billboards cast** (CE5AA8D1, turned to the sun as the battle's far
   trees; Troy's capture at Pharaoh's card size). WARP (Troy's billboard test on Pharaoh's bytes): a level camera with the sun
   behind gives the game's own card, 4.3e-05 m apart, under the shroud too; 30 degrees off, 72 m (the control).
@@ -265,7 +309,7 @@ Test lines (the maintainer):
 3. Depth of Field 0 / 1 / 2, in-game Depth of Field on, a battle close-up: no blur / the game's / fuller.
 4. Smoke Shadows (Experimental) on, rays off, a burning siege: the smoke shadows the ground, softer with Softness.
 5. Texture LOD Bias on All Textures at DLSS Performance: ground and walls sharper, no shimmer added.
-6. Smooth Banner Shadows on, the siege: cloth and flags without self-shadow speckles.
+6. Smooth Banner Shadows (on by default), the siege: cloth and flags without self-shadow speckles.
 7. Campaign, Far Tree Shadows on: far forests cast; none from under the shroud; no billboards vanish.
 8. Campaign, Shadow Casters Out of View on, camera low over forests: trees just outside the view cast into it.
 9. Hue Clip 70 against 80 at a fire: the closer one to the SDR fire's hue.
