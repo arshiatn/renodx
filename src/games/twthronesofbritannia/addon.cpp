@@ -1335,7 +1335,7 @@ bool graphics_hooks_installed = false;
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
 // pass (whose replacement is the game's code only).
 constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
-    {.shader_hash = 0xBD389EF1, .bitmask = __ao_bitmask, .bitmask_fast = __ao_bitmask_fast, .upsample = __ao_upsample, .resolve = __ao_resolve,
+    {.shader_hash = 0xBD389EF1, .bitmask = __ao_bitmask, .upsample = __ao_upsample, .resolve = __ao_resolve,
      .denoise = __ao_denoise, .blurs = {0xB4026AF2, 0x6203C824}},  // ssao00, its blur_x and blur_y
 }};
 
@@ -1765,8 +1765,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   shader_injection.rt_ambient_alone = twattila::rt_scene::AmbientReplaced() ? 1.f : 0.f;
   shader_injection.ssao_frame =
       twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f && shader_injection.rt_ambient_alone == 0.f,
-                                shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f,
-                                shader_injection.ssao_fast != 0.f);
+                                shader_injection.ssao_temporal != 0.f, shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::THRONES, render_lists_row != 0.f, false, false, false, false, false,

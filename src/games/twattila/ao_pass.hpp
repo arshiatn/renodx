@@ -49,7 +49,6 @@ using Microsoft::WRL::ComPtr;
 struct AmbientOcclusionDraw {
   uint32_t shader_hash = 0u;
   std::span<const uint8_t> bitmask;
-  std::span<const uint8_t> bitmask_fast;  // Faster GT-VBAO in its place (none: not offered)
   std::span<const uint8_t> upsample;  // into the game's target from the addon's (none: no Half resolution)
   std::span<const uint8_t> resolve;   // Temporal Smoothing (none: not offered)
   std::span<const uint8_t> denoise;   // the Denoiser (none: not offered)
@@ -97,7 +96,6 @@ struct Runtime {
   bool temporal = false;
   float scale = 1.f;  // the game's size over the ambient occlusion's
   bool denoise = false;
-  bool fast = false;  // Faster GT-VBAO (Experimental)
   uint64_t frame = 0;
   uint64_t drawn_frame = UINT64_MAX;
   // The addon's shader settings (Install).
@@ -180,8 +178,7 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
       }
       return own->shader;
     };
-    const ComPtr<ID3D11PixelShader> bitmask =
-        own_shader(((runtime.fast && !draw.bitmask_fast.empty()) ? draw.bitmask_fast : draw.bitmask));
+    const ComPtr<ID3D11PixelShader> bitmask = own_shader(draw.bitmask);
     const bool own_targets = runtime.scale > 1.f || runtime.temporal || runtime.denoise;
     const ComPtr<ID3D11PixelShader> upsample = (own_targets ? own_shader(draw.upsample) : nullptr);
     const ComPtr<ID3D11PixelShader> resolve = (runtime.temporal ? own_shader(draw.resolve) : nullptr);
@@ -358,16 +355,14 @@ inline float ResolutionScale(float resolution) {
 }
 
 // Every present: the visibility bitmask ambient occlusion on or off, its Temporal Smoothing, its resolution (`scale`: the
-// game's size over its own, 1 full) and Denoiser (the shaders read them from the settings too), `fast`: Faster GT-VBAO
-// (the draws' bitmask_fast, where they have it); returns the noise's frame for the shader (0-63; 0 without Temporal
-// Smoothing: the noise stands still).
-inline float Update(bool bitmask, bool temporal, float scale, bool denoise, bool fast = false) {
+// game's size over its own, 1 full) and Denoiser (the shaders read them from the settings too); returns the noise's frame
+// for the shader (0-63; 0 without Temporal Smoothing: the noise stands still).
+inline float Update(bool bitmask, bool temporal, float scale, bool denoise) {
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.bitmask = bitmask;
   internal::runtime.temporal = bitmask && temporal;
   internal::runtime.scale = std::max(scale, 1.f);
   internal::runtime.denoise = bitmask && denoise;
-  internal::runtime.fast = fast;
   // Off: its memory and its depth levels' back (made again with its next pass).
   if (!bitmask && internal::runtime.objects.device) {
     internal::runtime.objects = {};

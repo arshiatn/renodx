@@ -1211,9 +1211,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     for (const auto* key : {"ssao_quality", "ssao_directions", "ssao_auto_thickness"}) {
       page.Take({.match = key, .section = section, .shown = more_gtvbao});
     }
-    for (const auto* key : {"ssao_exact_depth", "ssao_fast"}) {
-      page.Take({.match = key, .section = section, .shown = more_gtvbao, .only_some_games = true});
-    }
+    page.Take({.match = "ssao_exact_depth", .section = section, .shown = more_gtvbao, .only_some_games = true});
     for (const auto* key : {"ssao_temporal", "ssao_edge_fix", "ssao_denoise"}) {
       page.Take({.match = key, .section = section, .shown = more_gtvbao});
     }
