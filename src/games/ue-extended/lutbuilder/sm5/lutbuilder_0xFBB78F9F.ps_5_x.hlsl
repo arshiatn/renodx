@@ -380,7 +380,7 @@ void main(
     r3.z = r3.w ? r3.z : 0;
     r2.w = r2.w * r3.x + r3.z;
     r3.x = cmp(r1.w < -r1.w);
-    r3.x = r3.x ? -3.141593 : 0;
+    r3.x = r3.x ? -3.14159274 : 0;
     r2.w = r3.x + r2.w;
     r3.x = min(r1.w, r0.w);
     r0.w = max(r1.w, r0.w);
@@ -632,7 +632,7 @@ void main(
         r7.z = r7.w ? r7.z : 0;
         r5.w = r5.w * r7.x + r7.z;
         r7.x = cmp(r4.w < -r4.w);
-        r7.x = r7.x ? -3.141593 : 0;
+        r7.x = r7.x ? -3.14159274 : 0;
         r5.w = r7.x + r5.w;
         r7.x = min(r4.w, r3.w);
         r3.w = max(r4.w, r3.w);
@@ -1087,7 +1087,7 @@ void main(
           r7.z = r7.w ? r7.z : 0;
           r5.w = r5.w * r7.x + r7.z;
           r7.x = cmp(r4.w < -r4.w);
-          r7.x = r7.x ? -3.141593 : 0;
+          r7.x = r7.x ? -3.14159274 : 0;
           r5.w = r7.x + r5.w;
           r7.x = min(r4.w, r3.w);
           r3.w = max(r4.w, r3.w);

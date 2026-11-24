@@ -168,7 +168,7 @@ float ao_strength = 1.f;
 float ao_thickness = 0.1f;
 float ao_directions = 1.f;
 float ao_quality = 1.f;
-float ao_auto_thickness = 0.f;
+float ao_auto_thickness = 1.f;
 float ao_exact_depth = 0.f;
 uint32_t ao_frame = 0;
 talesofarise::dlss::constants::ViewMipBias applied_mip_bias;  // the one the constant mirror writes
@@ -182,7 +182,7 @@ twattila::rt_scene::Sliders rt_sliders;
 twattila::feature_settings::SssSliders screen_space_shadows_rows;
 talesofarise::ue_light_bounce::Rows gi_rows;
 // Under our GI, Bandai's GI add keeps its share through the open sky (shared.h TOA_GAME_GI_SHARE, SI.gtvbgi 2).
-float game_gi_open_sky_row = 0.f;
+float game_gi_open_sky_row = 1.f;
 float live_scale_row = 1.f;
 float camera_jitter_row = 1.f;
 float replace_taa_row = 1.f;
@@ -1819,7 +1819,7 @@ constexpr auto OnDepthPrepass = []<DrawCommand Command>(Command&) -> renodx::uti
 };
 
 // Bend's screen-space shadows (ue_screen_space_shadows.hpp) from the sun shadow mask's scene depth (t0), sun (its b0,
-// ue_sss_setup.cs_5_0.hlsl) and View (b1), at t41 for the HDR part's sunshadow00, which multiplies 1 - them into the sun's
+// host_sss_setup.cs_5_0.hlsl) and View (b1), at t41 for the HDR part's sunshadow00, which multiplies 1 - them into the sun's
 // shadowing; unbound after it with the rays' (t40).
 constexpr UINT SCREEN_SPACE_SHADOWS_SLOT = 41;
 
@@ -3035,6 +3035,7 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                             .rays_replace_ao = false,
                                             .rays_multiply_maps = true,
                                             .rays_tested = false,
+                                            .has_fog_shadows = false,
                                             .every_row = false});
   // What the in-process ray tracing has no part of (the helper's: Rays a Pixel, its filters and caches, micromaps, its
   // debug tools): hidden, kept (graphics_page's presets name them).
@@ -3119,8 +3120,8 @@ inline void AppendPage(std::vector<renodx::utils::settings::Setting*>* settings)
                                                 .key = "GlobalIlluminationGameOpenSky",
                                                 .binding = &game_gi_open_sky_row,
                                                 .value_type = SettingValueType::BOOLEAN,
-                                                .default_value = 0.f,
-                                                .label = "Game's GI Under the Open Sky (Experimental)",
+                                                .default_value = 1.f,
+                                                .label = "Game's GI Under the Open Sky",
                                                 .tooltip = "Keeps the game's own Global Illumination where the sky is open (open ground, cliffs);\n"
                                                            "ours lights what nearby surfaces cover. Off: ours alone, darker in open areas.",
                                             });

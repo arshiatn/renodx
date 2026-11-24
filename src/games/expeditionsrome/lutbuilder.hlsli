@@ -97,7 +97,7 @@ float3 FilmWorkingAP1(float3 ap1)
   r3.z = r3.w ? r3.z : 0;
   r2.w = r2.w * r3.x + r3.z;
   r3.x = cmp(r1.w < -r1.w);
-  r3.x = r3.x ? -3.141593 : 0;
+  r3.x = r3.x ? -3.14159274 : 0;
   r2.w = r3.x + r2.w;
   r3.x = min(r1.w, r0.w);
   r0.w = max(r1.w, r0.w);

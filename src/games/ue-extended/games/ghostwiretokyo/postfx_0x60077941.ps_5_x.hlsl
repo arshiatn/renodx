@@ -160,7 +160,7 @@ void main(
   r2.y = r2.z ? r2.y : 0;
   r1.w = r1.w * r2.x + r2.y;
   r2.x = cmp(r0.y < -r0.y);
-  r2.x = r2.x ? -3.141593 : 0;
+  r2.x = r2.x ? -3.14159274 : 0;
   r1.w = r2.x + r1.w;
   r2.x = min(r0.x, r0.y);
   r0.x = max(r0.x, r0.y);

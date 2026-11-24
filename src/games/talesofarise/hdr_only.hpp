@@ -123,8 +123,8 @@ inline std::vector<renodx::utils::settings::Setting*> AmbientOcclusionRows(const
           .key = "ssao_auto_thickness",
           .binding = b.auto_thickness,
           .value_type = SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Auto Thickness (Experimental)",
+          .default_value = 1.f,
+          .label = "Auto Thickness",
           .section = "Ambient Occlusion",
           .tooltip = "Guesses each object's thickness from its width, Thickness as the least:\n"
                      "poles and branches stay thin, walls and hills block fully.",
