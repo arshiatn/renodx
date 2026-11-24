@@ -13576,6 +13576,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         POST-BENCH WAVE started 10:4x (ATN: every plan resumes): mrg_ (Opus High, abd2fa78968410a8b) = resume_point step 5.1
         (ho_g18 merge + clean rebuild) + a READY / BLOCKED plan for 5.2-5.9 (max 2 builds while fcx_ runs); gtp_ resumed =
         gated_build.ps1.proposed apply, gate hook round 25 (F24 timing; golive only on ATN's OK in chat), run_tests.py.
+        mrg_ ROUND 1 (handoff_plan/handbacks/mrg_wave2_r1_handback.md): 5.1 DONE ho_g18 merged = 8fac89f16 (pushed; no conflict;
+        RC lines untouched); clean rebuild chunk1 x86 (Attila / Rome II / Thrones) + chunk2 amd64 (6) exit 0 in worktree
+        .claude/worktrees/mrg_b1 (8 junctions: remove links first); tw_native_context PASS x86 + amd64. Plan 5.2-5.9: every
+        branch merges clean vs atn-mods; one mechanical chain conflict (ho_g21 after ho_g09: ue_screen_space_shadows.hpp:24-28,
+        take g21's 'twattila/bend_sss_gpu.hlsli'). BLOCKED: 5.2 (g19_ dumps + rvb_ re-check), 5.3b (g20_ builds / tests / host
+        edits / review), 5.5 + 5.9a (G10 update), 5.6 (5.2 + 5.5), 5.7 (every-add-on builds + a review + RC diff), 5.8 (g14r_
+        re-check), 5.9b (MI2 / MI3 runs + rvd_), 5.9d ho_gbf now 88ae3aa7d (GPU jobs 1-8 + S4a). READY after 5.2: 5.3a, 5.4
+        (+ f1924d506), 5.9c after 5.5. Order: 5.2, 5.3a, 5.4, G10 -> 5.5 + ho_g10, 5.6, 5.9c, 5.8, 5.7, 5.3b / 5.9b, 5.9d.
+        Merges touching Attila's add-on: 5.2, 5.3b, 5.5, 5.7 (the verify bench after the CPU waves covers them).
+        RESUMED 11:0x: g19_ (dumps -> rvb_), g10_ (rvf_ condition: names, 832 re-measure, CLAMP, testbin staging), g14r_
+        (258575eaa), mem_ (F4-F6 on branch mem_fix, TOP), g20_ (host edits, builds, 3 tests). BUILD SLOTS: 2 while fcx_ runs
+        (testbin/scratch/build_slots/slotN.lock), 4 after. fcx_: whole-ETL dump = 8.5 x ETL -> zstd after parse; U10rerun
+        added as job 7; t4i_ dumps nothing, runs C-9 on fcx_'s pickles.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
