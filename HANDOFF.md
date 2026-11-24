@@ -540,7 +540,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - merge order: ho_g21 first, together with g02_'s list commit; then ho_g10's expec ... | ?
 - H2 A/B run after ATN adds a rule for it (or runs it himself). | ?
 - g13_'s land list: parity_check.py lands together with parity\skips.tsv (after rv ... | ?
-- report_check.py: accept the marker "(pass timer, A/A +-N %)" for non-helper GPU ... | ?
 - trace requests from the groups (in-game batch): D1 beach / Black Cove + torch sc ... | ?
 - RELEASE GATE: wave 1 (ho_g08, ho_g09 + G07's light-bounce rename, ho_g07 to 67d4 ... | ?
 - merge notes: G09 93c4627c1 = G21 57ae8ed10 (same patch-id, applies once); ho_g19 ... | ?
@@ -12027,7 +12026,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         REVIEWS STARTED 21:00: rvd_ (g04_ + g01_ + g05_), rve_ (g03_ + g06_ + g13_), rvc_ (g15_ + g16_ + g17_). Queued: rvf_
         (g02_ + g09_ + g10_ + wave 2 as they finish). Earlier parts saved: handbacks/g03_part, g06_part, g13_part.
         - [ ] g13_'s land list: parity_check.py lands together with parity\skips.tsv (after rve_).
-        - [ ] report_check.py: accept the marker "(pass timer, A/A +-N %)" for non-helper GPU lines (coord decision).
+        - [x] report_check.py: accept the marker "(pass timer, A/A +-N %)" for non-helper GPU lines (coord decision).
+        DONE coord 11-24: PASS_TIMER regex (± / +- / +/-) exempts GPU units only (quality lines still need [Q-]);
+        test_pass_timer_marker; test_report_check 10 OK, test_gpu_gate (GATE_QUICK) 30 OK. g14r_ re-check 2 GO
+        (handoff_plan/reviews/g14r_recheck2_handback.md): r1-r3 fixed, merge ho_g14 after ho_g21; r4 waits SKILLS UPDATE 5.
         - [ ] trace requests from the groups (in-game batch): D1 beach / Black Cove + torch scene (g06_), Pharaoh campaign
         (g03_), Troy far-map constants (g03_), Water Reflections Design A data run (g03_); g06_'s D1 render scale + character
         motion vector designs (after rve_).
