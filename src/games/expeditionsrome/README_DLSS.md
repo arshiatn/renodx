@@ -11,6 +11,14 @@ Performance and Custom upscaling**, not frame generation or a finished release. 
 game's actual 1–100% Screen Percentage; native 100% uses DLAA. Temporal
 Upscaling must be on below 100%. The Temporal Upscaling-off path is not enabled.
 
+### Open items G24 tracer (2026-11-24; built only, not run in game)
+
+- Fixed: **Trace One Frame** reads UE 4.23's View rows (ViewSizeAndInvSize c126, BufferSizeAndInvSize c127; it read
+  Tales' 4.21 rows c122 / c123), so Expeditions' traces print `view WxH buffer WxH` again. Tales unchanged.
+- New: each traced draw's mesh (`| mesh ...` after the vertex buffers) for the shader audit's twin matching: its
+  arguments, the index / vertex / VS constant buffers and VS resources by address, and GPU Scene's primitive ids
+  (ATTRIBUTE13, read back; `ids ?` without the DevKit, which keeps the input layouts). Test: `tests/frame_trace.cpp`.
+
 ### Open items G09 (2026-11-22; built only, not run in game)
 
 - New: a WARP test (`tests/sun_light_texel.cpp`) runs the game's sun light shader (0xC38C91CD) and proves the sun light
@@ -955,7 +963,7 @@ the game's binding comes back after it (contact_shadows.hpp). Only draws with th
 ps b1 (UE 4.23 draws only directional lights as a rectangle; the other passes with it bind the View there). Works at
 DLSS below 100% (the march is in the render's own pixels). In game at 10%: shadows behind feet on the planks, under
 a bag and in the grass; Off unchanged. The one-frame trace (`renodx_trace_now` next to the exe) also saves each traced
-shader's bytecode to `tales_frame_trace_shaders` (when the DevKit keeps it).
+shader's bytecode to `expeditions_frame_trace_shaders` (when the DevKit keeps it).
 
 v25: frame generation's frame rate limit, resize fix (frame_generation.hpp, shared with Tales, Ryse, Shogun 2):
 - **Frame rate limit** (frame generation settings, 0-240 fps; ReShade.ini FrameGenerationFrameLimit): NVIDIA Reflex's
