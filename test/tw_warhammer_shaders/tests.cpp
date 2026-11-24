@@ -153,16 +153,17 @@
 //    AO 0.5 and 1 with the march's light (confidence 1), and with the cubes' light alone (confidence 0) the environment x t46,
 //    no AO. CONTROLS: without t46 the game's AO changes it; the resolve as it was (the cubes' light x AO x t46) changes with
 //    the AO.
-// 29. Rays Replace Shadow Maps on the sun draws that read the sun's atlas (each addon.cpp's ATLAS_SUN_SHADERS, the game's
-//    bytes patched as the runtime: screen_space_shadows' Patch, then PatchAmbient with the row's ambient sites), drawn as part
-//    8 draws (FORWARD_CONSTANTS: cascade 0; the scene the first fill, sun, glint and height where the atlas's value reaches
-//    the game's output; the MSAA builds need it there, with their G-buffer unbound only Warhammer II's do, and under the
-//    game's MSAA no upscaler and so no rays run). Warhammer (its 6 gather 5.0 builds, the ones the screen-space shadows'
-//    patch multiplies by t49; OnSunReplaceMaps: t1 a 1 x 1 R32 of 1, the far plane): t49 0 bit-identical to the game's
-//    bytes over a lit atlas (4 x 4 of 1); t49 1 to the game's over a shadowing atlas (0: every comparison and read
-//    failing): the rays' shadow alone. Warhammer II (twattila/sun_replace_maps.hpp: an ALWAYS point comparison sampler at
-//    s1): t49 0 bit-identical to the game's bytes with every comparison lit (ALWAYS); t49 1 to the game's with every one
-//    failing (NEVER); t49 0.5 to its patch over an empty atlas (FLT_MAX, the game's sampler): Replace = the multiply over a
+// 29. Rays Replace Shadow Maps on the sun draws that read the sun's atlas (each addon.cpp's lists, the game's bytes patched
+//    as the runtime: screen_space_shadows' Patch, then PatchAmbient with the row's ambient sites), drawn as part 8 draws
+//    (FORWARD_CONSTANTS: cascade 0; the scene the first fill, sun, glint and height where the atlas's value reaches the
+//    game's output; the MSAA builds need it there, with their G-buffer unbound only Warhammer II's do, and under the game's
+//    MSAA no upscaler and so no rays run). The far-plane route (atlas_far_plane.hpp: t1 a 1 x 1 R32 of 1, the far plane):
+//    Warhammer's ATLAS_GATHER_SUN_SHADERS (6 gather 5.0 builds, the game's comparison sampler) and both games'
+//    ATLAS_SAMPLED_SUN_SHADERS (12 software / hardware pcf + 6 gather 4.1 builds each, our point CLAMP sampler at s1): t49 0
+//    bit-identical to the game's bytes over a lit atlas (4 x 4 of 1); t49 1 to the game's over a shadowing atlas (0: every
+//    comparison and read failing): the rays' shadow alone. Warhammer II's ATLAS_SUN_SHADERS (twattila/sun_replace_maps.hpp:
+//    an ALWAYS point comparison sampler at s1): t49 0 bit-identical to the game's bytes with every comparison lit (ALWAYS);
+//    t49 1 to the game's with every one failing (NEVER); t49 0.5 to its patch over an empty atlas (FLT_MAX, the game's sampler): Replace = the multiply over a
 //    map that shades nothing. CONTROL (both): today's multiply with the game's shadowing atlas under t49 0 differs from the
 //    lit reference (the map's shadow is what Replace takes away).
 // 30. Warhammer's one occlusion a reflection (shaders/ssr00_0x6B80E35B, part 2's resolve; the sun draws' AO at t45 / s5, as
@@ -178,6 +179,16 @@
 //    part 15's ambient cube light) and the resolve replacement (part 27's) give the same bits with t_ssao's other channels 0
 //    and 1, so the rays' combine in its place (part 15: red the traced visibility) leaves the game's passes unread.
 //    CONTROLS: their output follows the red.
+// 32. Path-Traced Reflection Occlusion's strength (cb13's reflection_occlusion; the resolves of parts 30 and 28): at 1 both
+//    resolves bit-identical to their build before the row (t46, t45 / the game's AO, the rays, water: the SO row's own); at 0
+//    with t46 bound Warhammer's cubes' light the game's AO alone (K x f(a)), Warhammer II's output bit-identical to t46
+//    unbound; at 0.5 Warhammer's cubes' light K x (0.5 f(a) + 0.5 t46), its water K x (0.5 + 0.5 t46), its march's light
+//    still alone; Warhammer II's output the mean of 0 and 1 (it is linear in the strength). CONTROLS: 0.5 differs from 1.
+// 33. Ray Reconstruction's specular albedo with its Fresnel (twwarhammer2/aa_rr_guides, as Attila's: twattila/rr_specular.hlsli
+//    at this view): RunGuides' camera (b0: inverse view-projection identity, the camera at z 3, texel (1, 1) of 4 x 4), 6
+//    normals x gloss 0.3 / 0.8 x specular colour 0.04 / 0.3 against RrSpecularAlbedo itself at the worked-out NdotV (a
+//    reference compute shader including the same file); water (flags 64) its bare specular colour; diffuse albedo, normals
+//    and roughness bit-identical to the guides before. CONTROL: the Fresnel's specular differs from the bare colour.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11shader.h>
@@ -192,6 +203,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <map>
 #include <format>
 #include <fstream>
 #include <functional>
@@ -238,11 +250,44 @@ static std::string ReadText(const std::string& path) {
   return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
 
+// Includes relative to the file that includes them (D3DCompile's standard handler takes nested ones relative to the source's
+// folder: shaders/'s "../shared.h" then could not find shared.h's "../../shaders/renodx.hlsl").
+class IncluderRelative final : public ID3DInclude {
+ public:
+  explicit IncluderRelative(const std::string& name) : root_(std::filesystem::path(name).parent_path()) {}
+
+  HRESULT STDMETHODCALLTYPE Open(D3D_INCLUDE_TYPE, LPCSTR file, LPCVOID parent, LPCVOID* data, UINT* bytes) override {
+    const auto folder = folders_.find(parent);
+    const auto full = ((folder != folders_.end()) ? folder->second : root_) / file;
+    std::ifstream stream(full, std::ios::binary);
+    if (!stream) return E_FAIL;
+    auto* text = new std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+    folders_[text->data()] = full.parent_path();
+    texts_[text->data()] = text;
+    *data = text->data();
+    *bytes = static_cast<UINT>(text->size());
+    return S_OK;
+  }
+
+  HRESULT STDMETHODCALLTYPE Close(LPCVOID data) override {
+    delete texts_[data];
+    texts_.erase(data);
+    folders_.erase(data);
+    return S_OK;
+  }
+
+ private:
+  std::filesystem::path root_;
+  std::map<LPCVOID, std::filesystem::path> folders_;
+  std::map<LPCVOID, std::string*> texts_;
+};
+
 static ComPtr<ID3DBlob> CompileText(const std::string& source, const std::string& name, const char* entry, const char* target,
                                     const D3D_SHADER_MACRO* macros = nullptr) {
   ComPtr<ID3DBlob> code;
   ComPtr<ID3DBlob> errors;
-  if (FAILED(D3DCompile(source.data(), source.size(), name.c_str(), macros, D3D_COMPILE_STANDARD_FILE_INCLUDE, entry, target,
+  IncluderRelative includes(name);
+  if (FAILED(D3DCompile(source.data(), source.size(), name.c_str(), macros, &includes, entry, target,
                         D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, code.GetAddressOf(), errors.GetAddressOf()))) {
     std::printf("compile failed (%s): %s\n", name.c_str(), errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
     std::exit(2);
@@ -706,7 +751,13 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
   int ours_differ = 0;
   int all_shaders = 0;
   int defaults_differ = 0;
-  for (const char* game : {"twattila", "twpharaohdynasties", "twrome2", "twthronesofbritannia", "twtroy", "twwarhammer2", "twwarhammer3", "twwarhammer"}) {
+  // Patch's own change (ho_g21 f7fb7a901 + cc349d79b): the Shader Model 4.1, gather 4.1 and pcf sun builds (no comparison)
+  // patched too: Warhammer II's 18 rows (12 pcf + 6 gather 4.1) and these PS with Patch's defaults differ from before.
+  constexpr std::array<std::pair<const char*, int>, 8> GAMES = {{{"twattila", 5}, {"twpharaohdynasties", 0}, {"twrome2", 0}, {"twthronesofbritannia", 5},
+                                                                 {"twtroy", 0}, {"twwarhammer2", 546}, {"twwarhammer3", 0}, {"twwarhammer", 276}}};
+  int wh2_differ = 0;
+  int defaults_off = 0;
+  for (const auto& [game, expected_defaults_differ] : GAMES) {
     const std::string game_dump = std::string(dump).replace(at, pack.size(), std::string("dump_shader_") + game + "_pack");
     int rows = 0;
     int patched = 0;
@@ -728,6 +779,7 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
     // Patch with its defaults on every PS in its dump, forward and not.
     int shaders = 0;
     int defaults_patched = 0;
+    int game_defaults_differ = 0;
     for (const auto& entry : std::filesystem::directory_iterator(game_dump)) {
       if (entry.path().filename().string().find(".ps_") == std::string::npos) continue;
       std::ifstream file(entry.path(), std::ios::binary);
@@ -736,12 +788,18 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
       for (const bool forward : {false, true}) {
         const auto now = ambient_patch::Patch(code, forward, 1);
         defaults_patched += now.empty() ? 0 : 1;
-        defaults_differ += (now != ambient_patch_before::Patch(code, forward, 1)) ? 1 : 0;
+        const bool changed = now != ambient_patch_before::Patch(code, forward, 1);
+        game_defaults_differ += changed ? 1 : 0;
+        // The few outside Warhammer I / II by name.
+        if (changed && expected_defaults_differ < 50) std::printf("    %s %s%s differs\n", game, entry.path().filename().string().c_str(), forward ? " (forward)" : "");
       }
     }
     all_shaders += shaders;
-    std::printf("  %s: %d rows in its dump, %d patched, %d differ from before; Patch's defaults on its %d PS: %d patched\n", game, rows, patched,
-                differ, shaders, defaults_patched);
+    defaults_differ += game_defaults_differ;
+    defaults_off += (game_defaults_differ == expected_defaults_differ) ? 0 : 1;
+    std::printf("  %s: %d rows in its dump, %d patched, %d differ from before; Patch's defaults on its %d PS: %d patched, %d differ (expected %d)\n", game,
+                rows, patched, differ, shaders, defaults_patched, game_defaults_differ, expected_defaults_differ);
+    if (std::string(game) == "twwarhammer2") wh2_differ = differ;
     if (std::string(game) == "twwarhammer") {
       ours_differ = differ;
     } else {
@@ -750,9 +808,11 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
       other_differ += differ;
     }
   }
-  CHECK(other_rows > 100 && other_differ == 0, "the other games: %d rows, %d differ", other_rows, other_differ);
+  CHECK(other_rows > 100 && other_differ == wh2_differ && wh2_differ == 18, "the other games: %d rows, %d differ (Warhammer II's 18 sun builds: %d)",
+        other_rows, other_differ, wh2_differ);
   CHECK(ours_differ == 31, "CONTROL Warhammer's: %d of 31 differ", ours_differ);
-  CHECK(all_shaders > 10000 && defaults_differ == 0, "Patch's defaults: %d of %d PS (x2) differ", defaults_differ, all_shaders);
+  CHECK(all_shaders > 10000 && defaults_differ == 832 && defaults_off == 0, "Patch's defaults: %d of %d PS (x2) differ (832 expected), %d games off their count",
+        defaults_differ, all_shaders, defaults_off);
   int declared = 0;
   for (const uint32_t hash : {0x0BF2DB7Fu, 0xBCB9B1D6u}) {
     const auto code = GameBytes(dump, hash);
@@ -780,7 +840,18 @@ struct ResolveRun {
   float confidence = 1.f;     // the march's hit texture's x (1: confidence 1; 0.4 and below: 0)
   float occlusion = -1.f;     // t46, Ray-Traced Specular Occlusion (< 0: unbound)
   float ao = -1.f;            // t45, the sun draws' AO, with a linear sampler at s5 (< 0: unbound)
+  float reflection_occlusion = 1.f;  // cb13's (Path-Traced Reflection Occlusion's strength; 1: t46 whole)
 };
+
+// The add-on's settings buffer (b13) with only Path-Traced Reflection Occlusion's strength set.
+template <typename Injection>
+static ComPtr<ID3D11Buffer> ReflectionOcclusionSettings(float strength) {
+  Injection injection = {};
+  injection.reflection_game_ao = 1.f - strength;
+  std::vector<uint8_t> bytes((sizeof(Injection) + 15) & ~size_t{15});
+  std::memcpy(bytes.data(), &injection, sizeof(Injection));
+  return Constants(bytes.data(), static_cast<UINT>(bytes.size()));
+}
 
 static std::vector<Float4> RunResolve(ID3D11ComputeShader* shader, const ResolveRun& run) {
   constexpr UINT VIEW = 64;
@@ -836,6 +907,7 @@ static std::vector<Float4> RunResolve(ID3D11ComputeShader* shader, const Resolve
   const std::array<float, 4> render_scale = {1.f, 1.f, run.share, run.share};
   const std::array<ID3D11Buffer*, 2> buffers = {Constants(environment.data(), 256).Detach(), Constants(camera.data(), 39 * 16).Detach()};
   const auto scale = Constants(render_scale.data(), 16);
+  const auto settings = ReflectionOcclusionSettings<ShaderInjectData>(run.reflection_occlusion);
   const D3D11_SAMPLER_DESC point = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
                                     .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .MaxLOD = D3D11_FLOAT32_MAX};
   D3D11_SAMPLER_DESC linear = point;
@@ -848,6 +920,7 @@ static std::vector<Float4> RunResolve(ID3D11ComputeShader* shader, const Resolve
   context->CSSetShader(shader, nullptr, 0);
   context->CSSetConstantBuffers(0, 2, buffers.data());
   if (run.share > 0.f) context->CSSetConstantBuffers(12, 1, scale.GetAddressOf());
+  context->CSSetConstantBuffers(13, 1, settings.GetAddressOf());
   context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
   const auto rays = View(size, size, std::vector<Float4>(static_cast<size_t>(size) * size, Float4{0.3f, 0.2f, 0.1f, 0.8f}));
   if (run.rays) context->CSSetShaderResources(47, 1, rays.GetAddressOf());
@@ -1335,6 +1408,7 @@ struct ForwardScene {
   UINT atlas_size = 4;                                       // the shadow map's width and height (1: Warhammer's far-plane stand-in)
   int comparison_slot = -1;                                  // a point comparison sampler with `comparison` there (< 0: none)
   D3D11_COMPARISON_FUNC comparison = D3D11_COMPARISON_ALWAYS;
+  int clamp_slot = -1;  // atlas_far_plane.hpp's point CLAMP sampler (no comparison) there (< 0: none)
 };
 
 // A forward pixel shader's bytes drawn over 4 x 4 pixels: its inputs from a vertex shader made from its input signature
@@ -1473,14 +1547,16 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.occlusion, scene.occlusion, scene.occlusion, scene.occlusion})));
     context->PSSetShaderResources(49, 1, views.back().GetAddressOf());
   }
-  if (scene.comparison_slot >= 0) {
-    // As twattila/sun_replace_maps.hpp makes it (point: each comparison exactly 0 or 1).
-    const D3D11_SAMPLER_DESC sampler = {.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
-                                        .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
-                                        .ComparisonFunc = scene.comparison, .MaxLOD = D3D11_FLOAT32_MAX};
+  // As twattila/sun_replace_maps.hpp (point: each comparison exactly 0 or 1) and atlas_far_plane.hpp make them.
+  for (const auto& [slot, compare] : {std::pair{scene.comparison_slot, true}, std::pair{scene.clamp_slot, false}}) {
+    if (slot < 0) continue;
+    const D3D11_SAMPLER_DESC sampler = {.Filter = compare ? D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT : D3D11_FILTER_MIN_MAG_MIP_POINT,
+                                        .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                        .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .ComparisonFunc = compare ? scene.comparison : D3D11_COMPARISON_NEVER,
+                                        .MaxLOD = D3D11_FLOAT32_MAX};
     samplers.emplace_back();
     device->CreateSamplerState(&sampler, samplers.back().GetAddressOf());
-    context->PSSetSamplers(static_cast<UINT>(scene.comparison_slot), 1, samplers.back().GetAddressOf());
+    context->PSSetSamplers(static_cast<UINT>(slot), 1, samplers.back().GetAddressOf());
   }
   if (scene.caustics >= 0.f) {
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.caustics, scene.caustics, scene.caustics, scene.caustics})));
@@ -1576,13 +1652,24 @@ static void TestForwardShadows(const std::string& dump) {
               patched, identical, failing_same, controls);
 }
 
+// RunGuides' camera at b0 (anti_aliasing.hpp GuidesCamera): inverse view-projection identity, the camera at z 3, the 4 x 4's
+// inverse size. Texel (1, 1)'s ray meets z 0.5 at (-0.25, 0.25).
+constexpr std::array<float, 3> GUIDES_CAMERA_POSITION = {0.f, 0.f, 3.f};
+constexpr std::array<float, 3> GUIDES_TEXEL_ON_RAY = {-0.25f, 0.25f, 0.5f};
+
 // The guides' four outputs (diffuse albedo, specular albedo, normal, roughness) for one G-buffer texel, as
-// anti_aliasing.hpp binds them: t0-t2 channels 1-3, u0-u3 (unorm 16-bit, float, unorm 16-bit) of 4 x 4.
+// anti_aliasing.hpp binds them: t0-t2 channels 1-3, u0-u3 (unorm 16-bit, float, unorm 16-bit) of 4 x 4, b0 the camera.
 static std::array<Float4, 4> RunGuides(ID3D11ComputeShader* shader, const SunScene& scene) {
   const std::array<ComPtr<ID3D11ShaderResourceView>, 3> channels = {
       View(4, 4, std::vector<Float4>(16, Float4{scene.normal[0], scene.normal[1], scene.gloss, 0.f})),
       View(4, 4, std::vector<Float4>(16, Float4{scene.albedo, scene.albedo, scene.albedo, 0.f})),
-      View(4, 4, std::vector<Float4>(16, Float4{scene.specular, scene.specular, scene.specular, 0.f}))};
+      View(4, 4, std::vector<Float4>(16, Float4{scene.specular, scene.specular, scene.specular, scene.flags / 255.f}))};
+  std::array<float, 24> guides_camera = {};
+  for (size_t row = 0; row < 4; ++row) guides_camera[(row * 4) + row] = 1.f;
+  std::copy(GUIDES_CAMERA_POSITION.begin(), GUIDES_CAMERA_POSITION.end(), guides_camera.begin() + 16);
+  guides_camera[20] = 0.25f;  // the inverse render size
+  guides_camera[21] = 0.25f;
+  const auto camera_buffer = Constants(guides_camera.data(), sizeof(guides_camera));
   constexpr std::array<DXGI_FORMAT, 4> FORMATS = {DXGI_FORMAT_R16G16B16A16_UNORM, DXGI_FORMAT_R16G16B16A16_UNORM, DXGI_FORMAT_R32G32B32A32_FLOAT,
                                                   DXGI_FORMAT_R16_UNORM};
   std::array<ComPtr<ID3D11Texture2D>, 4> targets;
@@ -1596,6 +1683,7 @@ static std::array<Float4, 4> RunGuides(ID3D11ComputeShader* shader, const SunSce
   std::array<ID3D11ShaderResourceView*, 3> views = {channels[0].Get(), channels[1].Get(), channels[2].Get()};
   std::array<ID3D11UnorderedAccessView*, 4> unordered = {uavs[0].Get(), uavs[1].Get(), uavs[2].Get(), uavs[3].Get()};
   context->CSSetShader(shader, nullptr, 0);
+  context->CSSetConstantBuffers(0, 1, camera_buffer.GetAddressOf());
   context->CSSetShaderResources(0, 3, views.data());
   context->CSSetUnorderedAccessViews(0, 4, unordered.data(), nullptr);
   context->Dispatch(1, 1, 1);
@@ -1954,7 +2042,8 @@ static void TestWaterPass(const std::string& games, const std::string& dump) {
                        && std::lround(constants[3] * 255.f) == 64)
                           ? 0
                           : 1;
-    const auto water = RunGuides(guides.Get(), {.albedo = colour[0], .normal = {normal[0], normal[1]}, .gloss = normal[2], .specular = constants[0]});
+    const auto water = RunGuides(guides.Get(), {.albedo = colour[0], .normal = {normal[0], normal[1]}, .gloss = normal[2], .specular = constants[0],
+                                                .flags = std::round(constants[3] * 255.f)});
     const float length = std::sqrt((water[2][0] * water[2][0]) + (water[2][1] * water[2][1]) + (water[2][2] * water[2][2]));
     // Roughness and specular albedo in 16-bit unorm targets (a step 1.5e-5: 4e-4 of 0.04).
     guide_misses += (Near(water[3][0], 0.05f, 1e-3f) && Near(water[1][0], 0.04f, 1e-3f) && water[0][0] == 0.f && Near(length, 1.f, 1e-4f)) ? 0 : 1;
@@ -3626,13 +3715,15 @@ struct Wh2ResolveRun {
   float occlusion = -1.f;   // t46 (the rays' specular occlusion; below 0: unbound)
   float confidence = 1.f;   // t7's x (the march's hit; 0.4 or below: no confidence)
   float ao_others = -1.f;   // t1's green, blue and alpha (below 0: `ao`)
+  float flags = 1.f / 255.f;  // t5's alpha: the material's flags (1 SSR, 64 water)
+  float reflection_occlusion = 1.f;  // cb13's (Path-Traced Reflection Occlusion's strength; 1: t46 whole)
 };
 
 static std::vector<Float4> RunWh2Resolve(ID3D11ComputeShader* shader, const Wh2ResolveRun& run) {
   constexpr UINT SIZE = 64;
   constexpr UINT MIPS = 7;
   std::vector<Float4> normal(SIZE * SIZE, Float4{0.5f, 0.3125f, 0.5f, 0.f});
-  std::vector<Float4> specular(SIZE * SIZE, Float4{0.5f, 0.5f, 0.5f, 1.f / 255.f});
+  std::vector<Float4> specular(SIZE * SIZE, Float4{0.5f, 0.5f, 0.5f, run.flags});
   std::vector<Float4> depth(SIZE * SIZE, Float4{0.1f, 0.f, 0.f, 0.f});
   // The march's hits and the lit scene with their mip chains (as the game's downscale leaves them).
   const auto mipped = [&](const std::function<Float4(UINT, UINT, UINT)>& texel) {
@@ -3723,8 +3814,10 @@ static std::vector<Float4> RunWh2Resolve(ID3D11ComputeShader* shader, const Wh2R
   device->CreateSamplerState(&point, point_sampler.GetAddressOf());
   device->CreateSamplerState(&linear, linear_sampler.GetAddressOf());
   const std::array<ID3D11SamplerState*, 5> samplers = {linear_sampler.Get(), point_sampler.Get(), point_sampler.Get(), point_sampler.Get(), linear_sampler.Get()};
+  const auto settings = ReflectionOcclusionSettings<wh2::ShaderInjectData>(run.reflection_occlusion);
   context->CSSetShader(shader, nullptr, 0);
   context->CSSetConstantBuffers(0, static_cast<UINT>(buffers.size()), buffers.data());
+  context->CSSetConstantBuffers(13, 1, settings.GetAddressOf());
   context->CSSetShaderResources(0, static_cast<UINT>(views.size()), views.data());
   const auto rays = View(SIZE, SIZE, std::vector<Float4>(static_cast<size_t>(SIZE) * SIZE, Float4{0.3f, 0.2f, 0.1f, 0.8f}));
   if (run.rays) context->CSSetShaderResources(47, 1, rays.GetAddressOf());
@@ -3838,12 +3931,15 @@ static void TestWh2ReflectionSkip(const std::string& games) {
               rays_differ, pixels, rays_used, shadow_read, game_differ);
 }
 
-// Part 29: each game's ATLAS_SUN_SHADERS (its addon.cpp), patched as the runtime patches its LIGHT_BOUNCE_DRAWS rows.
-static void TestReplaceMaps(const std::string& games, const std::string& dump, const char* game, int sampler_slot) {
+// Part 29: a list of a game's addon.cpp, patched as the runtime patches its LIGHT_BOUNCE_DRAWS rows. sampler_slot >= 0:
+// Warhammer II's ALWAYS comparison sampler there (sun_replace_maps.hpp); else the far plane at t1 (atlas_far_plane.hpp),
+// with the game's sampler or (own_sampler) our point CLAMP sampler at s1.
+static void TestReplaceMaps(const std::string& games, const std::string& dump, const char* game, const char* list_name, int sampler_slot,
+                            bool own_sampler) {
   const std::string text = ReadText(games + "/" + game + "/addon.cpp");
   std::smatch listed;
   std::vector<uint32_t> hashes;
-  if (std::regex_search(text, listed, std::regex(R"(ATLAS_SUN_SHADERS = \{([^}]*)\})"))) {
+  if (std::regex_search(text, listed, std::regex(std::string(list_name) + R"( = \{([^}]*)\})"))) {
     const std::string list = listed[1].str();
     const std::regex hash(R"(0x([0-9A-F]{8}))");
     for (auto found = std::sregex_iterator(list.begin(), list.end(), hash); found != std::sregex_iterator(); ++found) {
@@ -3916,6 +4012,7 @@ static void TestReplaceMaps(const std::string& games, const std::string& dump, c
       replace.comparison_slot = sampler_slot;
     } else {
       replace.atlas_size = 1;
+      if (own_sampler) replace.clamp_slot = 1;
     }
     ForwardScene rays_lit = replace;
     rays_lit.occlusion = 0.f;
@@ -3949,12 +4046,12 @@ static void TestReplaceMaps(const std::string& games, const std::string& dump, c
   const int listed_count = static_cast<int>(hashes.size());
   CHECK(listed_count > 0 && patched == listed_count && single_missed == 0 && lit_same == reached && shadowed_same == reached
             && (!warhammer2 || empty_same == reached) && controls == reached,
-        "%s Rays Replace Shadow Maps: %d listed, %d patched, %d reached (%d MSAA), lit %d, shadowed %d, empty %d, controls %d", game, listed_count, patched,
-        reached, multisampled, lit_same, shadowed_same, empty_same, controls);
-  std::printf("%s Rays Replace Shadow Maps: %d listed, %d patched, %d drawn with the atlas reaching the output (%d MSAA, G-buffer unbound here); t49 0 "
+        "%s %s Rays Replace Shadow Maps: %d listed, %d patched, %d reached (%d MSAA), lit %d, shadowed %d, empty %d, controls %d", game, list_name,
+        listed_count, patched, reached, multisampled, lit_same, shadowed_same, empty_same, controls);
+  std::printf("%s %s Rays Replace Shadow Maps: %d listed, %d patched, %d drawn with the atlas reaching the output (%d MSAA, G-buffer unbound here); t49 0 "
               "bit-identical to the game's lit atlas %d, t49 1 to the game's every comparison failing %d%s; CONTROL the rays multiplying the game's "
               "shadowing atlas differ %d\n",
-              game, listed_count, patched, reached, multisampled, lit_same, shadowed_same,
+              game, list_name, listed_count, patched, reached, multisampled, lit_same, shadowed_same,
               warhammer2 ? std::format(", t49 0.5 = over an empty atlas {}", empty_same).c_str() : "", controls);
 }
 
@@ -4088,6 +4185,210 @@ static void TestWh2AmbientReaders(const std::string& games, const std::string& d
               rows, red_only, follows, resolve_differ, pixels, resolve_follows);
 }
 
+// Part 32.
+static void TestReflectionOcclusionStrength(const std::string& games) {
+  constexpr float WATER = 64.f / 255.f;
+  constexpr float GLOSS = 0.5f;  // RunResolve's channel 1 z
+  const auto factor = [](float ao) { return 1.f + ((1.f - GLOSS) * (ao - 1.f)); };
+  const auto bit_same = [](const std::vector<Float4>& a, const std::vector<Float4>& b) {
+    int same = 0;
+    for (size_t at = 0; at < a.size(); ++at) same += (std::memcmp(a[at].data(), b[at].data(), 12) == 0) ? 1 : 0;
+    return same;
+  };
+  // Warhammer: the resolve before the row (t46 straight on the cubes' light).
+  const std::string path = games + "/twwarhammer/shaders/ssr00_0x6B80E35B.cs_5_0.hlsl";
+  const std::string source = ReadText(path);
+  const auto ours = ComputeShader(source, path);
+  const auto before = ComputeShader(Without(source, "if (!rt_reflected) r5.xyz = rt_traced_occluded;",
+                                            "if (!rt_reflected) r5.xyz = RtOccludedEnvironment(rt_texel, r5.xyz);"),
+                                    path + " (before the row)");
+  const std::array<ResolveRun, 7> runs = {{
+      {},
+      {.occlusion = 0.5f},
+      {.occlusion = 0.5f, .ao = 0.5f},
+      {.confidence = 0.f, .occlusion = 0.5f, .ao = 0.5f},
+      {.flags = WATER, .confidence = 0.f, .occlusion = 0.5f},
+      {.rays = true, .ao = 0.5f},
+      {.rays = true, .occlusion = 0.5f, .ao = 0.25f},
+  }};
+  int whole_same = 0;
+  for (const auto& run : runs) whole_same += bit_same(RunResolve(ours.Get(), run), RunResolve(before.Get(), run));
+  const auto cubes = RunResolve(ours.Get(), {.flags = WATER, .confidence = 0.f});
+  const auto game = RunResolve(ours.Get(), {});
+  const auto cubes_off = RunResolve(ours.Get(), {.confidence = 0.f, .occlusion = 0.5f, .ao = 0.5f, .reflection_occlusion = 0.f});
+  const auto cubes_half = RunResolve(ours.Get(), {.confidence = 0.f, .occlusion = 0.5f, .ao = 0.5f, .reflection_occlusion = 0.5f});
+  const auto cubes_whole = RunResolve(ours.Get(), {.confidence = 0.f, .occlusion = 0.5f, .ao = 0.5f});
+  const auto water_half = RunResolve(ours.Get(), {.flags = WATER, .confidence = 0.f, .occlusion = 0.5f, .reflection_occlusion = 0.5f});
+  const auto march_half = RunResolve(ours.Get(), {.occlusion = 0.5f, .ao = 0.5f, .reflection_occlusion = 0.5f});
+  int off_game_ao = 0;
+  int half_mixed = 0;
+  int water_mixed = 0;
+  int march_alone = 0;
+  int control = 0;
+  for (size_t at = 0; at < game.size(); ++at) {
+    bool off = true;
+    bool half = true;
+    bool water = true;
+    bool march = true;
+    bool differs = false;
+    for (size_t channel = 0; channel < 3; ++channel) {
+      const float k = cubes[at][channel];
+      const float sun = k * factor(0.5f);  // what the sun draws added (the final reflection = it + the output)
+      off = off && Near(cubes_off[at][channel] + sun, sun, 1e-4f);
+      half = half && Near(cubes_half[at][channel] + sun, k * ((0.5f * factor(0.5f)) + (0.5f * 0.5f)), 1e-4f);
+      water = water && Near(water_half[at][channel], k * 0.75f, 1e-4f);
+      march = march && Near(march_half[at][channel] + sun, game[at][channel] + k, 1e-4f);
+      differs = differs || !Near(cubes_half[at][channel], cubes_whole[at][channel], 1e-3f);
+    }
+    off_game_ao += off ? 1 : 0;
+    half_mixed += half ? 1 : 0;
+    water_mixed += water ? 1 : 0;
+    march_alone += march ? 1 : 0;
+    control += differs ? 1 : 0;
+  }
+  const int pixels = static_cast<int>(game.size());
+  const int whole_texels = pixels * static_cast<int>(runs.size());
+  CHECK(whole_same == whole_texels && off_game_ao == pixels && half_mixed == pixels && water_mixed == pixels && march_alone == pixels && control == pixels,
+        "WH1 reflection occlusion strength: 1 = before %d of %d, 0 the game's AO %d, 0.5 mixed %d, water %d, march %d of %d, CONTROL %d", whole_same,
+        whole_texels, off_game_ao, half_mixed, water_mixed, march_alone, pixels, control);
+  std::printf("WH1 Path-Traced Reflection Occlusion: strength 1 bit-identical to the resolve before the row in %d of %d texels (%zu runs: t46, t45, the "
+              "rays, water); with t46 0.5 and AO 0.5 the cubes' light at 0 the game's AO alone %d of %d, at 0.5 K x (0.5 f(a) + 0.25) %d, water at 0.5 "
+              "K x 0.75 %d, the march's light still alone %d; CONTROL 0.5 differs from 1 in %d\n",
+              whole_same, whole_texels, runs.size(), off_game_ao, pixels, half_mixed, water_mixed, march_alone, control);
+
+  // Warhammer II: the resolve before the row.
+  const std::string wh2_path = games + "/twwarhammer2/shaders/ssr00_0x7E1CDD0A.cs_5_0.hlsl";
+  const std::string wh2_source = ReadText(wh2_path);
+  const auto wh2_ours = ComputeShader(wh2_source, wh2_path);
+  const auto wh2_before = ComputeShader(
+      Without(Without(Without(wh2_source, "if (!rt_reflected) r0.yzw = rt_traced_occluded;",
+                              "if (!rt_reflected) r0.yzw = RtOccludedEnvironment(rt_texel, rt_occlusion ? rt_unoccluded : r0.yzw);"),
+                      "if (rt_occlusion && !rt_reflected) r0.x = rt_march_occlusion;", ""),
+              "if (!rt_reflected) r1.xyz = rt_water_occluded;", "if (!rt_reflected) r1.xyz = RtOccludedEnvironment(rt_texel, r1.xyz);"),
+      wh2_path + " (before the row)");
+  const std::array<Wh2ResolveRun, 8> wh2_runs = {{
+      {},
+      {.ao = 0.5f},
+      {.ao = 0.5f, .occlusion = 0.5f},
+      {.ao = 0.5f, .occlusion = 0.5f, .confidence = 0.f},
+      {.rays = true, .ao = 0.5f, .occlusion = 0.5f},
+      {.flags = WATER},
+      {.occlusion = 0.5f, .flags = WATER},
+      {.rays = true, .occlusion = 0.5f, .flags = WATER},
+  }};
+  int wh2_whole_same = 0;
+  for (const auto& run : wh2_runs) wh2_whole_same += bit_same(RunWh2Resolve(wh2_ours.Get(), run), RunWh2Resolve(wh2_before.Get(), run));
+  // Strength 0 under t46 = t46 unbound; 0.5 = the mean of 0 and 1 (march and cubes, water).
+  int wh2_off_same = 0;
+  int wh2_linear = 0;
+  int wh2_control = 0;
+  int wh2_texels = 0;
+  for (Wh2ResolveRun run : {Wh2ResolveRun{.ao = 0.5f, .occlusion = 0.25f}, Wh2ResolveRun{.ao = 0.5f, .occlusion = 0.25f, .confidence = 0.f},
+                            Wh2ResolveRun{.occlusion = 0.25f, .flags = WATER}}) {
+    const auto whole = RunWh2Resolve(wh2_ours.Get(), run);
+    run.reflection_occlusion = 0.5f;
+    const auto half = RunWh2Resolve(wh2_ours.Get(), run);
+    run.reflection_occlusion = 0.f;
+    const auto off = RunWh2Resolve(wh2_ours.Get(), run);
+    run.occlusion = -1.f;
+    run.reflection_occlusion = 1.f;
+    wh2_off_same += bit_same(off, RunWh2Resolve(wh2_ours.Get(), run));
+    for (size_t at = 0; at < whole.size(); ++at) {
+      bool linear = true;
+      bool differs = false;
+      for (size_t channel = 0; channel < 3; ++channel) {
+        const float mean = 0.5f * (off[at][channel] + whole[at][channel]);
+        linear = linear && std::fabs(half[at][channel] - mean) <= (1e-5f * (std::fabs(off[at][channel]) + std::fabs(whole[at][channel]))) + 1e-7f;
+        differs = differs || !Near(half[at][channel], whole[at][channel], 1e-3f);
+      }
+      wh2_linear += linear ? 1 : 0;
+      wh2_control += differs ? 1 : 0;
+    }
+    wh2_texels += static_cast<int>(whole.size());
+  }
+  const int wh2_whole_texels = static_cast<int>(wh2_runs.size()) * 64 * 64;
+  CHECK(wh2_whole_same == wh2_whole_texels && wh2_off_same == wh2_texels && wh2_linear == wh2_texels && wh2_control > wh2_texels / 2,
+        "WH2 reflection occlusion strength: 1 = before %d of %d, 0 = t46 unbound %d, 0.5 the mean %d of %d, CONTROL %d", wh2_whole_same, wh2_whole_texels,
+        wh2_off_same, wh2_linear, wh2_texels, wh2_control);
+  std::printf("WH2 Path-Traced Reflection Occlusion: strength 1 bit-identical to the resolve before the row in %d of %d texels (%zu runs: t46, the game's "
+              "AO, the rays, water); with t46 0.25 (march, cubes, water) 0 bit-identical to t46 unbound %d of %d, 0.5 the mean of 0 and 1 %d; CONTROL 0.5 "
+              "differs from 1 in %d\n",
+              wh2_whole_same, wh2_whole_texels, wh2_runs.size(), wh2_off_same, wh2_texels, wh2_linear, wh2_control);
+}
+
+// Part 33.
+static void TestGuideFresnel(const std::string& games) {
+  const std::string path = games + "/twwarhammer2/aa_rr_guides.cs_5_0.hlsl";
+  const std::string source = ReadText(path);
+  const auto guides = ComputeShader(source, path);
+  const auto before = ComputeShader(Without(source, "water ? specular : RrSpecularAlbedo(specular, linear_roughness, n_dot_v)", "specular"),
+                                    path + " (bare specular colour)");
+  // RrSpecularAlbedo itself (the file the guides include) at a given F0, roughness and NdotV.
+  const auto reference = ComputeShader("#include \"rr_specular.hlsli\"\n"
+                                       "cbuffer inputs : register(b0) { float4 g_inputs; };\n"
+                                       "RWTexture2D<float4> result : register(u0);\n"
+                                       "[numthreads(1, 1, 1)] void main() { result[uint2(0, 0)] = float4(RrSpecularAlbedo(g_inputs.xxx, g_inputs.y, g_inputs.z), 0.f); }\n",
+                                       games + "/twattila/rr_specular_reference.hlsl");
+  const auto run_reference = [&](float f0, float linear_roughness, float n_dot_v) {
+    const std::array<float, 4> inputs = {f0, linear_roughness, n_dot_v, 0.f};
+    const auto buffer = Constants(inputs.data(), sizeof(inputs));
+    const auto output = Texture(1, 1, nullptr, D3D11_BIND_UNORDERED_ACCESS);
+    ComPtr<ID3D11UnorderedAccessView> uav;
+    device->CreateUnorderedAccessView(output.Get(), nullptr, uav.GetAddressOf());
+    context->CSSetShader(reference.Get(), nullptr, 0);
+    context->CSSetConstantBuffers(0, 1, buffer.GetAddressOf());
+    context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
+    context->Dispatch(1, 1, 1);
+    context->ClearState();
+    return Read(output.Get())[0][0];
+  };
+  const std::array<float, 3> to_camera_unnormalized = {GUIDES_CAMERA_POSITION[0] - GUIDES_TEXEL_ON_RAY[0], GUIDES_CAMERA_POSITION[1] - GUIDES_TEXEL_ON_RAY[1],
+                                                       GUIDES_CAMERA_POSITION[2] - GUIDES_TEXEL_ON_RAY[2]};
+  const float to_camera_length = std::sqrt((to_camera_unnormalized[0] * to_camera_unnormalized[0]) + (to_camera_unnormalized[1] * to_camera_unnormalized[1])
+                                           + (to_camera_unnormalized[2] * to_camera_unnormalized[2]));
+  const std::array<std::array<float, 2>, 6> normals = {{{0.62f, 0.55f}, {0.71f, 0.6f}, {0.83f, 0.53f}, {0.58f, 0.7f}, {0.9f, 0.66f}, {0.66f, 0.72f}}};
+  int cases = 0;
+  int fresnel_misses = 0;
+  int water_misses = 0;
+  int others_same = 0;
+  int differs = 0;
+  float largest = 0.f;
+  for (const auto& normal : normals) {
+    for (const float gloss : {0.3f, 0.8f}) {
+      for (const float specular : {0.04f, 0.3f}) {
+        ++cases;
+        const SunScene scene = {.albedo = 0.5f, .normal = normal, .gloss = gloss, .specular = specular};
+        const auto ours = RunGuides(guides.Get(), scene);
+        const auto bare = RunGuides(before.Get(), scene);
+        const float theta = (normal[0] * 3.14159265f) - 1.57079633f;
+        const float phi = (normal[1] * 6.2831853f) - 3.14159265f;
+        const std::array<float, 3> world = {std::cos(phi) * std::cos(theta), std::sin(theta), std::sin(phi) * std::cos(theta)};
+        const float n_dot_v = ((world[0] * to_camera_unnormalized[0]) + (world[1] * to_camera_unnormalized[1]) + (world[2] * to_camera_unnormalized[2]))
+                              / to_camera_length;
+        const float expected = run_reference(specular, 1.f - gloss, n_dot_v);
+        const float miss = std::fabs(ours[1][0] - expected);
+        largest = std::max(largest, miss);
+        fresnel_misses += (miss > 1e-4f) ? 1 : 0;
+        differs += (std::fabs(ours[1][0] - specular) > 1e-3f) ? 1 : 0;
+        others_same += (std::memcmp(ours[0].data(), bare[0].data(), 16) == 0 && std::memcmp(ours[2].data(), bare[2].data(), 16) == 0
+                        && std::memcmp(ours[3].data(), bare[3].data(), 16) == 0)
+                           ? 1
+                           : 0;
+        SunScene water_scene = scene;
+        water_scene.flags = 64.f;
+        water_misses += (std::fabs(RunGuides(guides.Get(), water_scene)[1][0] - specular) > 1e-4f) ? 1 : 0;
+      }
+    }
+  }
+  CHECK(fresnel_misses == 0 && water_misses == 0 && others_same == cases && differs > cases / 2,
+        "RR specular Fresnel: %d misses of %d (largest %.3g), water %d, others the same %d, CONTROL %d differ", fresnel_misses, cases, largest, water_misses,
+        others_same, differs);
+  std::printf("RR guides' specular albedo with its Fresnel (WH1 / WH2): %d of %d cases within 1e-4 of RrSpecularAlbedo at the worked-out NdotV "
+              "(largest %.3g); water its bare colour %d misses; diffuse albedo, normals, roughness bit-identical to before %d; CONTROL differs from "
+              "the bare colour %d\n",
+              cases - fresnel_misses, cases, largest, water_misses, others_same, differs);
+}
+
 int main(int argc, char** argv) {
   if (argc < 4) {
     std::printf("tests <repo root> <the game's shader dump folder> <Warhammer II's shader dump folder>\n");
@@ -4131,10 +4432,14 @@ int main(int argc, char** argv) {
   TestBitmaskSkips(argv[1], argv[2]);
   TestWh2ReflectionSkip(games);
   TestWh2OneOcclusion(games);
-  TestReplaceMaps(games, argv[2], "twwarhammer", -1);
-  TestReplaceMaps(games, argv[3], "twwarhammer2", 1);
+  TestReplaceMaps(games, argv[2], "twwarhammer", "ATLAS_GATHER_SUN_SHADERS", -1, false);
+  TestReplaceMaps(games, argv[2], "twwarhammer", "ATLAS_SAMPLED_SUN_SHADERS", -1, true);
+  TestReplaceMaps(games, argv[3], "twwarhammer2", "ATLAS_SUN_SHADERS", 1, false);
+  TestReplaceMaps(games, argv[3], "twwarhammer2", "ATLAS_SAMPLED_SUN_SHADERS", -1, true);
   TestResolveOneOcclusion(games);
   TestWh2AmbientReaders(games, argv[3]);
+  TestReflectionOcclusionStrength(games);
+  TestGuideFresnel(games);
   std::printf(failures == 0 ? "PASS\n" : "FAILED: %d\n", failures);
   return failures == 0 ? 0 : 1;
 }

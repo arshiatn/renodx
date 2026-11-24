@@ -39,6 +39,8 @@ bool g_overflow_rejected = false;
 bool g_overflow_mapping_seen = false;
 bool g_overflow_mapping_absent = false;
 bool g_overflow_destroyed = false;
+bool g_static_samplers_seen = false;
+bool g_static_samplers_readable = true;
 bool g_descriptor_ranges_seen = false;
 bool g_descriptor_ranges_owned = false;
 bool g_vulkan_descriptor_conflict_nonfatal = false;
@@ -73,6 +75,8 @@ void WriteResultIfReady() {
                                 && g_near_limit_mapping_passed
                                 && g_overflow_rejected
                                 && g_overflow_mapping_absent
+                                && g_static_samplers_seen
+                                && g_static_samplers_readable
                                 && g_legacy_default_space_preserved;
   std::ofstream output(std::filesystem::path(result_path), std::ios::binary);
   std::free(result_path);
@@ -87,6 +91,8 @@ void WriteResultIfReady() {
   output << "overflow_mapping_seen=" << g_overflow_mapping_seen << '\n';
   output << "overflow_mapping_absent=" << g_overflow_mapping_absent << '\n';
   output << "overflow_destroyed=" << g_overflow_destroyed << '\n';
+  output << "static_samplers_seen=" << g_static_samplers_seen << '\n';
+  output << "static_samplers_readable=" << g_static_samplers_readable << '\n';
   output << "descriptor_ranges_seen=" << g_descriptor_ranges_seen << '\n';
   output << "descriptor_ranges_owned=" << g_descriptor_ranges_owned << '\n';
   output << "vulkan_descriptor_conflict_nonfatal=" << g_vulkan_descriptor_conflict_nonfatal << '\n';
@@ -236,11 +242,27 @@ bool OnInitPipelineLayout(
   bool overflow_marker_found = false;
   bool constants_found = false;
   bool descriptor_found = false;
+  bool static_samplers_found = false;
+  bool static_samplers_readable = true;
   uint32_t root_cost = 0u;
 
   for (uint32_t index = 0u; index < params.size(); ++index) {
     const auto& param = params[index];
     root_cost += GetD3D12RootCost(param);
+
+    if (param.type == reshade::api::pipeline_layout_param_type::descriptor_table_with_static_samplers
+        || param.type == reshade::api::pipeline_layout_param_type::push_descriptors_with_static_samplers) {
+      // The app's only sampler is static. ReShade 6.8 (API 20) put descriptor_range_with_flags::flags in front of
+      // static_samplers: x64 keeps the pointer's offset (flags fills padding), x86 moves it 4 bytes, so an x86
+      // add-on built on the 6.7.3 headers reads flags as the pointer and counts the sampler as a root parameter.
+      for (uint32_t range_index = 0u; range_index < param.descriptor_table_with_static_samplers.count; ++range_index) {
+        const auto& range = param.descriptor_table_with_static_samplers.ranges[range_index];
+        if (range.type != reshade::api::descriptor_type::sampler) continue;
+        static_samplers_found = true;
+        static_samplers_readable &= range.static_samplers != nullptr;
+      }
+      continue;
+    }
 
     if (param.type == reshade::api::pipeline_layout_param_type::push_constants) {
       near_limit_marker_found |= param.push_constants.dx_register_index == 1u
@@ -273,6 +295,11 @@ bool OnInitPipelineLayout(
                             && range.count == 1u;
       }
     }
+  }
+
+  if (near_limit_marker_found || overflow_marker_found) {
+    g_static_samplers_seen |= static_samplers_found;
+    g_static_samplers_readable &= static_samplers_found && static_samplers_readable;
   }
 
   if (near_limit_marker_found) {
