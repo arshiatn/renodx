@@ -2574,6 +2574,10 @@ bool AttachAddon() {
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
+  if (!exit_job_drain_on) {
+    renodx::utils::log::i("[Total War] Exit Job Drain: off (RENODX_TW_EXIT_DRAIN=0)");
+  }
+
   // The at-start tests (audio memory, read once as the game's audio starts): written as soon as the game has set its own
   // values, on a thread of their own (the addon may load before the game's code runs: SyncEarlyLoad). Up to a minute.
   SyncEarlyLoad();
