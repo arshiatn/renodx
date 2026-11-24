@@ -13975,6 +13975,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] g03_ build NOT done: its slot step (a Bash loop mkdir build_slots/slot1..4 + owner.txt) was DENIED by the
         auto-mode classifier; g03_ stopped, no retry. Reported to ATN; waits for ATN's go.
         shd_ R.U.S.E. dump still running (pid 34420 since 12:35); shd_ resumed to wait, check, publish, hand back.
+        gbf_ GATE SCRIPT R2 (handbacks/gbf_gate_script_r2_handback.md): $G23HarnessArgs filled (:94, merged tree via
+        -I {tree}/src/games) + -M bridge check STOPs if the main checkout's bridge is picked (:543-564); slots 1-4 + free
+        RAM >= 12288 MB (:427-447), GTP_JOB_MB 16384 on every build; 827 lines, parser 0, NOT run. -> rvh_ review sent
+        (reviews/rvh_gbf_gate_script_review.md) -> GO -> first run in a GPU window.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
