@@ -14499,8 +14499,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         depth-only size check + 'host-state' not in CROSS_CHECKED. -> rvg_ review 13.7 (sent; rvg_g24_137_review.md),
         g24_ step 4 scale (sent; no core edits until the review; 9,496 BUG-only cells stay with gsr_).
         - [ ] ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 in 20; 463 shadow-depth
-        settle N/A with (a)). Route A VTF static-heightmap exemption (offline core change) / Route B bones = twin:
-        logging + trace run (ATN's go). Which are GAP, which wait for A / B? List: testbin/scratch/g24_/fill6_gap_families.txt.
+        settle N/A only once a semantic shadow-depth rule passes, rvg_ MUST-2). rvg_: Route A NOT built (one frame can't
+        prove a texture static; reach ~380 cells) -> advice: VTF families = GAP box per family; bones = twin: logging +
+        trace run on ATN's go (primitive-id matching). Also the 901 rt shadow cells as one class (MISSING + out-of-view
+        box?). Which are GAP, which wait? List: testbin/scratch/g24_/fill6_gap_families.txt.
         pk3_ REV 1 DONE (pk3_design.md change table; pk3_rev1_handback.md): 6 MUST + 9 SHOULD answered. S3 alias control
         -> positive 23zg + new broken world (records over the instances' +0x60 words). Timing: AR_TIMING section without
         controls, new script test/tw_engine_code/animation_timing.ps1 (Release flags, CPUs 0-15, ABBA, A/A <= 3 %, equal =
@@ -14517,6 +14519,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         D Thrones T2 opt-in + U2 grass pass; E RT on in his target; F0 atn_harness_runs.ps1 still points at worktree
         rmt_s1 (old ring) - edit its two path lines or add a mode?; F1 rule line '-Pk1' (~8 runs, 15 min); F2 '-Pk1Focus'
         (2-3 runs, 8 min, takes the foreground); bench +4 starts.
+        rvg_ G24 13.7 REVIEW (handoff_plan/reviews/rvg_g24_137_review.md + handbacks/rvg_g24_137_handback.md): no BLOCKER;
+        stamp holds (+ 'ue4 784ab271d9e6'); ue-velocity-vs-b GO; ledgers re-run clean (Tales 527 / Expeditions 1,335
+        settled). MUSTs: 1 games key rules; 2 no ue-shadow-depth-vs-b until semantic (5 CAMERA conflicts); 3 host claim
+        by scene-depth ADDRESS not size (size passes CustomDepth 2B70A2A3 / 8CE5F452); 4 'host-state' into CROSS_CHECKED
+        before the first rt CAPTURED rule. -> g24_ core extension 13.8 after step 4 (sent), then restamp + rvg_ re-check.
+        Twin order: tracer twin: logging (ATN's go) -> core claim -> rule kind.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
