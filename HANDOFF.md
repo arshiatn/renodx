@@ -13791,6 +13791,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         Expeditions 2). Ledgers Tales / Expeditions seeded + rules applied. 5 questions for rvg_ (position-only != depth-only;
         circular CAMERA controls; family granularity; mesh-uv-only; Expeditions no view size). -> rvg_ step-0 review sent;
         g24_ census lookup for rvf_'s gather 4.1 water shaders (Attila 18FF7787 / 82C6EE8B, Thrones 5247E655 / 03E56410).
+        ATN IN CHAT 11-24: the TW dump folders (bin\cmd_Decompiler-1.3.16\dump_shader_tw<game>_pack) may have been made by
+        us from packs next to the exe -> check nothing is missing. -> g24_ 'dump completeness' (read only; game containers
+        read-only; missing ones extracted to testbin/scratch/g24_/missing_<game>, never into bin\; census re-run).
+        rvj_ FCI REVIEW NOT GO -> GO after 3 MUST (render_mt/fca/designs/rvj_fci_review.md + _handback.md; 3 / 11 / 8):
+        M1 budget = 0 if U < 8 else min(15, U/2-1) (1-2 workers lose; uint32 wrap); M2 L1 floor / on / off test-settable +
+        small_round_presents out of ResetScheduler; M3 no pre-registered 30000 fallback (rule 2 fails -> L1 Off, new A/B).
+        ATN Q1 -> notice (11-15 rule decides); Q2 -> no 6-CPU pair, 'L1 always' W3 start fixed in the plan. Implementer
+        Opus xHigh (no engine_code.hpp). -> fci_ r2 sent; then rvj_ short re-check.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
