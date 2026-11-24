@@ -798,7 +798,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Coord: real gbf gates (gbf_gpu_gates.ps1, no switch) in the first quiet GPU wind ... | ?
 - g24_ 13.10 (sent): MUST-F, apply_rules fail-closed, apply the shadow rule to Exp ... | ?
 - ATN OK 11-24: the ONE Attila -Data session runs BEFORE Friday when t4i_'s PK6 r2 ... | ?
-- rv5_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2'); fixes wait for ... | ?
+- FRIDAY 11-27: pk5_ folds A2-1..A2-6 + the 5 NITs into pk5_design.md (rv5_ light ... | ?
 - Data session (t4i_ -Data): log the arena's state words at first present + battle ... | ?
 - mem_ / address space: PK5 A2 adds +0.25 MB. | ?
 - PK5 S0 microbench (pk5_ q2): coord runs it in a quiet CPU window (no ATN questio ... | ?
@@ -14862,7 +14862,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         start), default off until G4 (-30 % getter + allocator + lock); F4 A3 arm no longer waits on the K sweep; F5
         sampler 60 s approved, captures RT off. Sums -1.0..-2.05 volley / -2.05..-4.95 late melee / -0.35..-0.65 D1.
         Rule slips: one heredoc scratch helper (rewritten with Write), one sed -i fix (grep-checked).
-        - [ ] rv5_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2'); fixes wait for Friday.
+        - [x] rv5_ REV 1.2 RE-CHECK = GO (render_mt/fca/designs/rv5_rev12_recheck_handback.md; 17:13-17:30): 0 MUST,
+        6 SHOULD + 5 NIT, all S7 (A2) text. S0 GO (idle PC); S1 none (PK4 S1 merged); S2 GO after S0 picks P33 / P40;
+        S3 GO after S0 + write-combine answer; S4 / S6 GO; S5 GO after the data run; S7 (a) T1 / T2 GO, (b) / (c) after
+        A2-1..6 are folded in. Own checks: 33 sites byte for byte, 15 -> 64 items per page, census (9 code refs, one vtable
+        slot), witness +0x2c, ranges 1760 bytes, no fibers; rule H clear (42 / 54 / 82 rows, heapfix_ranges.hpp unchanged).
+        SHOULDs: A2-1 lock check by reading the critical section's fields (no TryEnter); A2-2 VirtualQuery the region end
+        (proves the scan hit the stack top); A2-3 re-compare the 1760 bytes inside the pause; A2-4 accept N / E only if
+        the unpaused hint saw it at an earlier Update (+ T3 case); A2-5 gate on process affinity / provider thread count,
+        not '8 CPUs'; A2-6 refusal reason struct reserved before the pause, logged once after resume.
+        - [ ] FRIDAY 11-27: pk5_ folds A2-1..A2-6 + the 5 NITs into pk5_design.md (rv5_ light check), then the PK5
+        implementer. (was: rv5_ light re-check of Rev 1.2 (sent); fixes wait for Friday.)
         - [x] ATN OK 11-24 ('sure'): bench env vars RENODX_TW_DRAW_COPY / RENODX_TW_POSE_COPY / RENODX_TW_LIST_PREFETCH /
         RENODX_TW_ITEM_PAGES for the verify bench arms (set by ebo_run.ps1 arms only; t4i_ told).
         - [x] Told ATN 11-24: A2 is one-way per start (Uninstall leaves the bytes; off works from the next start).
