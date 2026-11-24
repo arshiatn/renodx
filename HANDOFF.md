@@ -714,6 +714,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gate hook round 25: the F24 web + price timing row is near its limit (0.055 vs 0 ... | ?
 - G24 census source = ATN's startup dumps in D:\Dev\renodx\bin\cmd_Decompiler-1.3. ... | ?
 - t4i_ fixes ebr_'s FINAL MUSTs + SHOULDs -> run_all -> ebr_ delta re-review (befo ... | ?
+- rcr_ review of rc_defaults -> rcd_ (a5513819749516fc5) fixes -> rcr_ re-check -> ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13402,6 +13403,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (FBB5A339...135B), amd64 compile exit 0. COORD MERGED f6c402ebe (pushed). exr_ NIT glance GO (optional: POOL_* could
         take the JOB_ prefix too; not done). rcd_ sent the tip f6c402ebe: codes the RC defaults on rc_defaults (keeps the 4
         C group rows ini-controllable for the ETL attribution).
+        rcd_ DONE 03:0x (render_mt/reports/rcd_rc_defaults_handback.md): rc_defaults 6033305c7 on f6c402ebe (worktree
+        .claude/worktrees/rc_defaults): `#define TWATTILA_DRAW_RECORDING 1` atop twattila/addon.cpp; defaults per eba_ §6
+        (stage 6 visible 'Threaded Draw Recording (Experimental)', groups 1 hidden + ini, AnimationRowsWorkers On, R1 / R2 /
+        L2 / Cached / Families hidden, L1 visible off, K4, spin 3); B3b Check label dropped (env RENODX_TW_ANIMATION_CHECK
+        stays); EXTRA: SettingsRevision 1 -> 2 clears 11 saved keys once (coord leans keep). New test\tw_render_mt_defaults.
+        Tests all PASS (engine_code -Quick / -DrawRecording, draw_recording x86, _loop, _sites, attila_builds 17/17,
+        static_checks 0); x86 a91b96e3...8ddf, amd64 8c62d933...6bb660. COORD: rcr_ (a4831db315eab18da, Opus xHigh) reviews.
+        - [ ] rcr_ review of rc_defaults -> rcd_ (a5513819749516fc5) fixes -> rcr_ re-check -> coord merges -> RC build
+        (x86 + amd64 + FP twin, stamps, manifest) -> end review (Opus xHigh + Sonnet High) -> final.json files -> -Final.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
