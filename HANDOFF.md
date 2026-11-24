@@ -821,6 +821,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - AFTER WINDOW 1: a64p0d_ fixes M1-M5 + Shoulds -> probe implementer (Opus High) f ... | ?
 - AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer. | ?
+- AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j ... | ?
 - a64abr_ (Opus xHigh) reviews a64_ab.ps1 (ATN-file safety, hard-linked ELF writes ... | ?
 - Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab ... | ?
@@ -15271,6 +15272,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         predicate; files addon.cpp / frame_trace.hpp / tests (F7 repro first); rule lines -Smoke -ReShade (+ -PerfFix,
         -Warp, -Package). Risks R2 / R4 / R7 (Sol's test pictures invalid with the add-on) / R9 / R12.
         - [ ] AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer.
+        - [x] a64pl_ PLUGIN DESIGN DONE (hand-back attila64/a64pl_design_handback.md; designs/plugin_design.md, PRIVATE):
+        load order Sol -> perffix64 -> probe -> renodx_attila64.dll -> ctors -> game_started; all writes once at init
+        (no thread pausing); identity = build-id note + api_version >= 1; each site checks bytes +-16 vs offline ELF
+        bytes, all-or-nothing rows with rollback, refuse on clash; api->hook for 5..11 bytes; no Sol / PerfFix / probe
+        site within 64 bytes of our 5. C2 bone flush pre-hook, C2 shadow skip; D15 = three 1-byte reader patches at init
+        ([Attila64Plugin] BattleStep, restart-only, default 0 until the bit-exact gate, then fastest); versioned POD
+        block + export. Wave 1: G1 generator -> P1 plugin folder -> A1 add-on side -> R1 review. E items have owner
+        checks (section 17).
+        - [ ] AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> designs/plugin_design_review.md)
+        + C8 census agent (read-only Opus xHigh, brief section 15 -> census/c8_rows.tsv + c8_notes.md).
         - [ ] gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j 3, blind to build_slots
         slot1-4 -> unify after window 1 (one slot set, >= 12 GB free for TW, -j 4; review). take_slot.sh now waits
         while quiet_run.lock exists (coord 11-24).
