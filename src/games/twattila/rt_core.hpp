@@ -23,6 +23,7 @@
 #include <future>
 #include <limits>
 #include <mutex>
+#include <ranges>
 #include <shared_mutex>
 #include <span>
 #include <string>
@@ -480,6 +481,11 @@ struct Host {
   // Whether the host calls FlushUnitCaptures before the game writes the bones its unit draws read again (Attila's PackAnimations
   // hook): Batched Unit Capture makes their corners later than the draw. Null: never batched.
   bool (*flushes_unit_captures)() = nullptr;
+  // A loading screen lets the scene go at once (its cluster sets and atlas slices with the game's index buffers and textures
+  // they hold, the cut-out textures), not RELEASE_FRAMES later inside the next load (the 32-bit games' address space). Each
+  // host after its own run (Attila; R.U.S.E. keeps its scene alive between its replays). A bench's RENODX_TW_SCENE_RELEASE=0
+  // takes it out.
+  bool scene_release = false;
 };
 
 namespace internal {
@@ -511,8 +517,13 @@ constexpr uint64_t RELEASE_FRAMES = 3600;
 constexpr uint64_t KEPT_TRIANGLES = 6u << 20;
 constexpr size_t KEPT_MESHES = 12288;
 constexpr uint32_t KEPT_FOREVER = 0xFFFFFF;  // rt_place's frames wrap there
-// Frames without the main view: a loading screen. The scene it left is forgotten (its buffers' addresses come back as other meshes).
+// Presents without a scene draw: a loading screen (Host::scene_release: in front, and SCENE_GONE_MS since the last scene draw
+// too: 30 presents are 0.1 s at 300 fps, a 2D panel's moment). The scene it left is forgotten (its buffers' addresses come
+// back as other meshes).
 constexpr uint64_t SCENE_GONE_FRAMES = 30;
+constexpr uint64_t SCENE_GONE_MS = 1000;
+// A loading screen's line at most this often (a host whose scene stays without a draw: not a line a second).
+constexpr uint64_t RELEASE_LINE_MS = 10000;
 // Smoke Shadows: the particles streamed out between traces at most (48 bytes each; a draw holds its whole list, nearly all
 // without opacity: 742 of a battle's 47884 had some, and at 65536 a list drawn first took the place of the catapults' smoke
 // for good, ATN's debug36; Smoke Shadow Quality Extreme twice these, Maximum four times: ATN's 2026-11-12 siege filled
@@ -828,10 +839,15 @@ struct Runtime {
   std::vector<std::array<uint32_t, 4>> uv_scales;
   std::array<float, 16> main_view_projection = {};  // from this frame's main-view captures, for the cascades' (they come later)
   uint64_t main_view_frame = 0;
-  // The last frame a scene draw reached Capture (main_view_frame only moves with a main-view capture: a known mesh's draw
-  // returns before it), and the presents in front since without one (Update: a loading screen at SCENE_GONE_FRAMES).
+  // The last frame a scene draw reached Capture or MarkDrawn (main_view_frame only moves with a main-view capture: a known
+  // mesh's draw returns before it) and its present's time, the presents in front since without one (Update's loading-screen
+  // test: counted to SCENE_GONE_FRAMES; past it once the scene is let go), the last loading screen's line, and (32-bit) the
+  // frame whose Update logs the address space after it (0: none).
   uint64_t scene_frame = 0;
-  uint32_t sceneless_presents = 0;
+  uint64_t scene_tick = 0;
+  uint64_t sceneless_presents = 0;
+  uint64_t release_line_tick = 0;
+  uint64_t address_space_release = 0;
   uint64_t cascade_camera_frame = 0;
   std::vector<uint32_t> slices;  // each capture's opacity mask's atlas slice (leaves)
   uint32_t captured_vertices = 0;
@@ -1139,8 +1155,9 @@ static std::atomic_bool batch_pending = false;
 // Update's loading-screen test: the game in front (a test's own answer in its place).
 static bool (*game_in_front)() = device_end::GameInFront;
 // The address space's chain: set by a present's Update, logged by OnPresentAddressSpace once that present's other
-// callbacks ran.
+// callbacks ran; whether that callback runs (the host registered it: the chain is armed only then).
 static std::atomic_bool address_space_after_present = false;
+static std::atomic_bool address_space_callback = false;
 // rt_scene::AmbientReplaced's answer (AmbientReplacedNow), stored under runtime.mutex by every writer of what it reads
 // (PublishAmbientReplaced): read without the lock (its lock, once a frame at present, was contended).
 static std::atomic_bool ambient_replaced = false;
@@ -4465,6 +4482,11 @@ inline void Update(const Settings& settings) {
     runtime.address_space_present = 0;
     renodx::utils::log::i("[Total War] Ray tracing: the next present: ", device_end::AddressSpace(), ".");
   }
+  if (runtime.address_space_release == runtime.frame) {
+    runtime.address_space_release = 0;
+    renodx::utils::log::i(std::format("[Total War] Ray tracing: {} presents after the loading screen's release: {}.", internal::SCENE_GONE_FRAMES,
+                                      device_end::AddressSpace()));
+  }
   internal::PublishAmbientReplaced();
   // Capture's depth-stencil view read again next frame: none of the game's held past its frame (a resize's old depth goes).
   runtime.depth_seen = {};
@@ -4481,7 +4503,10 @@ inline void Update(const Settings& settings) {
       const std::string address_space;
 #else
       const std::string address_space = "; " + device_end::AddressSpace();
-      runtime.address_space_capture = true;
+      // The chain where its last lines come (OnPresentAddressSpace registered), and not again while it runs.
+      if (internal::address_space_callback.load(std::memory_order_relaxed) && !runtime.address_space_trace && runtime.address_space_present == 0) {
+        runtime.address_space_capture = true;
+      }
 #endif
       if (tick >= runtime.traced_tick + internal::HELPER_IDLE_RELEASE_MS) {
         renodx::utils::log::i("[Total War] Ray tracing: the helper let its scene go after 10 s without rays, the scene is captured again",
@@ -4760,40 +4785,51 @@ inline void Update(const Settings& settings) {
   runtime.lights_drawn.clear();
   const bool keep_placed = internal::host.keep_placed && runtime.settings.casters_out_of_view && internal::host.placed_row != nullptr
                            && *internal::host.placed_row != 0.f;
-  // Presents since the last that drew the scene (0: this one did). Only those in front count towards a loading screen: out
-  // of front the game draws no scene either, and after a short alt-tab the helper still has the scene.
+  // Presents since the last that drew the scene (0: this one did). Only those in front count towards a loading screen (out of
+  // front the game draws no scene either, and after a short alt-tab the helper still has the scene), up to SCENE_GONE_FRAMES:
+  // no foreground asked after.
   const uint64_t sceneless = runtime.frame - runtime.scene_frame - 1;
-  bool loading_screen = false;
   if (sceneless == 0) {
     runtime.sceneless_presents = 0;
-  } else if (internal::Enabled() && internal::game_in_front()) {
-    loading_screen = ++runtime.sceneless_presents == internal::SCENE_GONE_FRAMES;
+    runtime.scene_tick = tick;
+  } else if (internal::host.scene_release && runtime.sceneless_presents < internal::SCENE_GONE_FRAMES && internal::Enabled()
+             && internal::game_in_front()) {
+    ++runtime.sceneless_presents;
   }
-  // WH3's (Host::keep_placed) kept meshes forgotten as well when the scene is gone out of front.
+  const bool loading_screen = runtime.sceneless_presents == internal::SCENE_GONE_FRAMES && tick >= runtime.scene_tick + internal::SCENE_GONE_MS;
+  // WH3's (Host::keep_placed, no scene_release) kept meshes forgotten when the scene is gone, in front or not.
   const bool kept_forgotten = keep_placed && internal::Enabled() && sceneless == internal::SCENE_GONE_FRAMES;
   // A loading screen: the scene it left is forgotten (its buffers' addresses come back as other meshes) and what it holds
   // let go now, not RELEASE_FRAMES later inside the next battle's load (the 32-bit games' address space then): its cluster
   // sets with the game's index buffers, its masks' atlas slices with the game's textures (its meshes captured again take
   // new slices), the cut-out textures.
   if (loading_screen) {
+    runtime.sceneless_presents = internal::SCENE_GONE_FRAMES + 1;  // once: counted again after a scene draw
     const size_t known_meshes = runtime.known.size();
     const size_t cluster_sets = runtime.cluster_meshes.size();
     const size_t atlas_slices = runtime.atlas_slices.size();
     const size_t cut_out_textures = runtime.cut_out_textures.size();
+    // No line with nothing to let go (the front end before the helper's first trace) and not more often than RELEASE_LINE_MS.
+    const bool line = known_meshes + cluster_sets + atlas_slices + cut_out_textures != 0 && tick >= runtime.release_line_tick + internal::RELEASE_LINE_MS;
 #if !defined(_WIN64)
-    const std::string address_space_before = device_end::AddressSpace();
+    const std::string address_space = line ? device_end::AddressSpace() : std::string();
 #endif
     internal::ForgetScene();
-    for (const auto& [texture, held] : runtime.atlas_slices) runtime.free_slices.push_back(held.second);
+    for (const auto& [texture, slice] : std::views::values(runtime.atlas_slices)) runtime.free_slices.push_back(slice);
     runtime.atlas_slices.clear();
     runtime.scene_gone = true;
-    std::string line = std::format("[Total War] Ray tracing: {} presents in front without the scene (a loading screen): let go {} known meshes, "
-                                   "{} cluster sets, {} atlas slices, {} cut-out textures",
-                                   internal::SCENE_GONE_FRAMES, known_meshes, cluster_sets, atlas_slices, cut_out_textures);
+    if (line) {
+      runtime.release_line_tick = tick;
+      std::string text = std::format("[Total War] Ray tracing: {} presents in front without the scene (a loading screen): let go {} known meshes, "
+                                     "{} cluster sets, {} atlas slices, {} cut-out textures",
+                                     internal::SCENE_GONE_FRAMES, known_meshes, cluster_sets, atlas_slices, cut_out_textures);
 #if !defined(_WIN64)
-    line += "; before: " + address_space_before + "; after: " + device_end::AddressSpace();
+      // What is let go is destroyed later (D3D11 at a flush, the heap keeps its segments): its address space again later.
+      text += "; before it: " + address_space;
+      runtime.address_space_release = runtime.frame + internal::SCENE_GONE_FRAMES;
 #endif
-    renodx::utils::log::i(line, ".");
+      renodx::utils::log::i(text, ".");
+    }
   } else if (kept_forgotten) {
     runtime.known.clear();
     runtime.short_keys.clear();
@@ -4831,8 +4867,8 @@ inline void Update(const Settings& settings) {
 // that callback, in the present of the frame whose trace it logged.
 inline void OnPresentAddressSpace(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
                                   uint32_t, const reshade::api::rect*) {
-  if (!internal::address_space_after_present.load(std::memory_order_relaxed)) return;
-  internal::address_space_after_present.store(false, std::memory_order_relaxed);
+  internal::address_space_callback.store(true, std::memory_order_relaxed);
+  if (!internal::address_space_after_present.exchange(false, std::memory_order_relaxed)) return;
   renodx::utils::log::i("[Total War] Ray tracing: that frame's present callbacks done: ", device_end::AddressSpace(), ".");
 }
 
@@ -5094,6 +5130,8 @@ inline bool MarkDrawn(uint64_t key) {
   const std::unique_lock lock(runtime.mutex);
   const auto known = runtime.known.find(key);
   if (known == runtime.known.end()) return false;
+  // The scene drawn (Update's loading-screen test): a replayed frame may mark every mesh without a capture.
+  runtime.scene_frame = runtime.frame;
   if (known->second.frame != runtime.frame) {
     known->second.frame = runtime.frame;
     if (runtime.drawn.size() < dlaa_bridge::RT_DRAWN) runtime.drawn.push_back(key);
@@ -5106,6 +5144,12 @@ inline bool MarkDrawn(uint64_t key) {
 inline void InstallScene(std::span<const SceneShader> shaders, const Host& host) {
   internal::scene_shaders = shaders;
   internal::host = host;
+  // A bench's A/B arm (read once here).
+  if (std::array<char, 2> value = {}; host.scene_release
+      && GetEnvironmentVariableA("RENODX_TW_SCENE_RELEASE", value.data(), static_cast<DWORD>(value.size())) == 1 && value[0] == '0') {
+    internal::host.scene_release = false;
+    renodx::utils::log::i("[Total War] Ray tracing: the loading screen's release off (RENODX_TW_SCENE_RELEASE=0).");
+  }
   // A cascade draw streaming out world positions (Host::cascade_world, SceneShader::cascade_world) is no clip-space capture, nor
   // is a geometry capture (SceneShader::capture_geometry_shader).
   internal::clip_captures = host.scene_draw != nullptr || std::ranges::any_of(shaders, [&host](const SceneShader& shader) {

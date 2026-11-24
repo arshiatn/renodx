@@ -2620,6 +2620,7 @@ bool AttachAddon() {
   // Batched Unit Capture's corners are made before each bone pack (graphics_hooks.hpp OnPackAnimations), where it is hooked.
   twattila::rt_scene::Host host = twattila::rt_scene::TW_HOST;
   host.flushes_unit_captures = twattila::graphics_hooks::PacksHooked;
+  host.scene_release = true;
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, host);
   twattila::rt_scene::InstallCutOuts(0xF79BFB14, UNIT_CUT_OUT_PIXEL_SHADERS);  // rigidcommon ps30_shadow_alpha_test
   for (const uint32_t shader_hash : CAMPAIGN_SHADERS) {

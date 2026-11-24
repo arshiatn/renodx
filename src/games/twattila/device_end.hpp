@@ -21,7 +21,8 @@
 
 // Why the game's D3D11 device or swap chain went away, for a report's ReShade.log: a hung device (the game's own GPU
 // work, the addon's within it), a reset (another device's work), no memory (the 32-bit games' address space) and the
-// game's own teardown (a display or mode change) look alike without it. Only at these two events, nothing per frame.
+// game's own teardown (a display or mode change) look alike without it. Its lines only at these two events, nothing per
+// frame; GameInFront (device_loss's lines, rt_core's loading-screen test) and AddressSpace serve the others too.
 namespace twattila::device_end {
 
 // The foreground window is one of this process's (a NULL foreground: not in front).

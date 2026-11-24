@@ -35,7 +35,8 @@
 //    keys; every capture's key its formula's; the keys and captures after every capture hashed (90d7df1b5's the same); no
 //    state check line; CONTROLS: a binding
 //    changed between two reads logs one, a held depth description changed logs one. Cost (printed): v166's reads for a
-//    static draw against now's.
+//    static draw against now's. Update's loading-screen test (Host::scene_release) from the draw paths: the static draw
+//    captured, or marked drawn (MarkDrawn), before each of 100 presents: kept; CONTROL no draw: let go at the 30th.
 // 6. Trace's light pick (rt_core.hpp, ALPK: each light scored once, the scores with their places partial_sorted, lights_last
 //    put in that order when the helper does not take the trace) against the old pick (29eeab5c's, copied below: partial_sort of the lights, both sides of every
 //    comparison scored): 1600 frames of 0..16384 lights (whole-metre places and few reaches and colours for equal scores,
@@ -1083,6 +1084,55 @@ int main() {
     std::printf("5 a static draw's reads: v166 %.1f ns, now %.1f ns (each identity read also skips part 2's QueryInterface + Release, "
                 "each capture GetDevice + Release)\n",
                 old_reads, new_reads);
+    // Update's loading-screen test from the draw paths (Host::scene_release, the foreground test answered here): the static
+    // draw known (Capture) or marked drawn (MarkDrawn: R.U.S.E.'s replay) before each present, each present a second after
+    // the scene's draw it knew of: kept 100 presents; CONTROL no draw: let go at the 30th.
+    core::internal::host.scene_release = true;
+    core::internal::game_in_front = [] { return true; };
+    core::Settings present_settings;
+    bool scene_gone = false;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      present_settings = runtime.settings;
+      scene_gone = runtime.scene_gone;
+      runtime.known[rigid_key] = {.frame = runtime.frame};
+      runtime.release_line_tick = 0;
+    }
+    const auto present_after = [&](auto&& draw) {
+      draw();
+      {
+        const std::unique_lock lock(runtime.mutex);
+        runtime.scene_tick = GetTickCount64() - core::internal::SCENE_GONE_MS;
+      }
+      core::Update(present_settings);
+    };
+    const auto rigid_kept = [&] {
+      const std::unique_lock lock(runtime.mutex);
+      return runtime.known.contains(rigid_key)
+             && std::ranges::none_of(log_lines, [](const std::string& line) { return line.find("(a loading screen)") != std::string::npos; });
+    };
+    bind(vertices.Get());
+    for (int present = 0; present < 100; ++present) present_after([&] { core::internal::Capture(command, rigid); });
+    const bool captured_kept = rigid_kept();
+    bool marked = true;
+    for (int present = 0; present < 100; ++present) present_after([&] { marked = core::MarkDrawn(rigid_key) && marked; });
+    const bool marked_kept = marked && rigid_kept();
+    for (int present = 0; present < 29; ++present) present_after([] {});
+    const bool undrawn_kept_29 = rigid_kept();
+    present_after([] {});
+    const bool undrawn_let_go = !rigid_kept()
+                                && std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("(a loading screen)") != std::string::npos; }) == 1;
+    {
+      const std::unique_lock lock(runtime.mutex);
+      runtime.scene_gone = scene_gone;
+      runtime.address_space_release = 0;
+    }
+    core::internal::game_in_front = twattila::device_end::GameInFront;
+    core::internal::host.scene_release = false;
+    std::printf("5 the loading-screen test from the draw paths, 100 presents each: the static draw captured, kept %d; marked drawn, kept %d; "
+                "CONTROL no draw: kept at 29 %d, let go at 30 %d\n",
+                captured_kept, marked_kept, undrawn_kept_29, undrawn_let_go);
+    CHECK(captured_kept && marked_kept && undrawn_kept_29 && undrawn_let_go);
     bridge.width = kept_size.first;
     bridge.height = kept_size.second;
     bridge.ray_tracing = false;
