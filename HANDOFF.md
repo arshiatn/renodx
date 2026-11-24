@@ -817,6 +817,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
+- Smoke -> Gate R -> A/B (after the cleanup, PC free, ~1.5 h) on ATN's go. | ?
+- cleanup_1124 result (79 / 154 worktrees at 19:23) -> freed GB per drive. | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15073,6 +15075,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         D 227.3 GB + copy_1122 ~47 GB, C 52.3 GB.
         - [ ] 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attila64.exe + shader hash census;
         DLSS / RT via the helper first; engine patches by name; Flag Wave MVs + MV coverage check; Sol's 3 items.
+        az2_ DONE: author package C:\Users\arshi\Downloads\AttilaCPUPerfFix_7.5_notes_2026-11-24.zip (59,656 B,
+        sha256 f7ebb80e...) coord-checked clean (no paths / private / Linux names); ATN sends it when he wants.
+        ATN ~19:2x: (1) A/B heapfix? Was: A32 = ATN's installed dinput8 (8e8fa96a = 7.0 + our sort prefetch), B64P =
+        PerfFix 7.5 64-bit (own build), C64 = none. Now: newest on both sides = plain PerfFix 7.5 32-bit staged at
+        testbin\attila64_1124\a32_dinput8\dinput8.dll (az2_'s b_base, sha256 af2adb9c...); a64ab_ asked to swap it
+        in per A32 start (backup + hash-checked restore, same command lines). ATN ADDED the 3 rule lines (-Smoke,
+        -GateR -A32Plain, -AB -A32Plain). (2) ORDER agreed: A/B -> 64-bit port PLAN (Opus xHigh: all our stuff on
+        64-bit) -> implementation; GPU plan (plan_1117) in parallel at LOW priority (helper / shader parts carry over).
+        (3) RAM: build_slots\README.txt now 12 GB free only for BIG builds (TW add-ons, ue-extended), >= 4 GB for
+        everything else (pagefile C:\pagefile.sys 28 GB; C: had 36 GB free at 19:23).
+        a64ab_ DONE 19:24 (hand-back attila64/study_1124/a64ab_a32_75_handback.md): A32 swap in + hash-checked restore
+        in finally (ATN's file -> <start>\a32_aside, ours -> a32_swapped_in), new top-level game folders moved to
+        <start>\new_game_folders, stop if <Attila>\attila64 exists; update.c read: 7.5 never self-updates here. Dry runs
+        clean: Gate R ~25 min, A/B 9 starts ~57 min. Check summary.txt's new 'A32 =' line on the first real run.
+        - [ ] Smoke -> Gate R -> A/B (after the cleanup, PC free, ~1.5 h) on ATN's go.
+        - [ ] cleanup_1124 result (79 / 154 worktrees at 19:23) -> freed GB per drive.
         DISK (ATN asked ~19:2x; C: 38 GB / D: 44 GB free): proposal sent, NOTHING deleted: (D) 153 old worktrees (< 11-23,
         clean, HEAD on origin) 136.7 GB (list: coord scratchpad wt_candidates.tsv); scratchpad_copy_1122 46.7 GB (fully in
         copy_1123: folders 45.0 GB + top files 1.70 GB, 0 differ); optional: agent-afb9a119f703260fd build 90.4 GB = 11-17
