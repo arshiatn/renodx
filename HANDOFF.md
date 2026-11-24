@@ -14230,6 +14230,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         ~-2.0..-2.6 ms is the speed set. Back faces via stored w; directional AO occlusion-only in our AO upsample, row Off /
         On / After Blur (default Off); Toru SVGF own item in twattila/svgf/ + LICENSE.txt + per-file notice; no ramp; S1a-S4
         ~55-80 h. -> rvs_ short re-check (plan_1117/rvs_shg_recheck.md) -> S1a.
+        fi1_ R2 DONE (render_mt/fca/designs/fi1_r2_handback.md; fca_item1 14be1b950..0b9ce965c pushed): 066f73efe ResetRule
+        (reason) logs every serial fallback once + BIG_TABLE text + braces; 0b9ce965c GameCpuCount per process group, '1
+        core', 3 two-group cases. tw_render_mt_defaults all match on both tips; 9 / 9 suites + gated builds exit 0. Hashes
+        addon32 2da29b64b597, addon64 be76ad6e06fc. NIT-2 = t4i_. -> rvj_ short re-check (rvj_fi1_recheck_r2.md) -> merge
+        with fca_exit_drain once fxi_ r2 (+ 30f WU-on) is GO.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
