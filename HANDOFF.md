@@ -13769,6 +13769,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         builds = rva_'s gate) -> ho_g19_ryse (+ Ryse build) -> 5.8a ho_g14. rvk_ (Opus xHigh, read only) review of ho_g22
         (src/utils writer-token helper + device_proxy stop on removal + RC diff) sent (reviews/rvk_g22_review.md).
         - [ ] g19_ F1 follow-up: after ho_g20 merges (twwarhammer/addon.cpp), so the WH1 / WH2 line lands once.
+        rvi_ G20 RE-CHECK 1 GO (reviews/rvi_g20_recheck1_handback.md; 0 / 0 / 0 / 3 new NIT): MA1 fixed (SSAO skip and
+        ambient removal agree frame by frame), MI1 / MI4 / MI6 / MI8 / N1-N4 fixed. -> mrg_ round D step 5: ho_g20
+        fe97927ec (conflict twwarhammer/addon.cpp:377-398 as rvi_ says), 8 builds + tw_ao_skip + tw_gtvbao_variants.
+        ebr_ R7 GLANCE GO (render_mt/reports/ebr_r7_glance_handback.md): final_eval_FINAL stands (NOT GO only on driver
+        waits); stop_recorded can't hide a real STOP; crash_causes.json = 6 Event 1000 one to one. SHOULD: eval crash loop
+        shows any counted crash RECORDED when WER is recorded -> t4i_ round 8 (+ ebo_check time limit, text NITs; FINAL kept,
+        proof copy final_eval_FINAL_r8.txt).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
