@@ -5,16 +5,20 @@
 
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <charconv>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <shared_mutex>
 #include <span>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
@@ -28,6 +32,17 @@
 #include "./shader_compiler_directx.hpp"
 
 namespace renodx::utils::shader::dump {
+
+// The stages dumped, with their names in the dump folder's stage record (DumpAllPending's dump_stages.txt: tools reading
+// a dump folder tell a census of every stage from one written before hull, domain and geometry shaders were dumped).
+static constexpr std::array<std::pair<reshade::api::pipeline_subobject_type, std::string_view>, 6> DUMPED_STAGES = {{
+    {reshade::api::pipeline_subobject_type::vertex_shader, "vs"},
+    {reshade::api::pipeline_subobject_type::hull_shader, "hs"},
+    {reshade::api::pipeline_subobject_type::domain_shader, "ds"},
+    {reshade::api::pipeline_subobject_type::geometry_shader, "gs"},
+    {reshade::api::pipeline_subobject_type::pixel_shader, "ps"},
+    {reshade::api::pipeline_subobject_type::compute_shader, "cs"},
+}};
 
 namespace internal {
 struct ShaderInfo {
@@ -163,15 +178,7 @@ static void OnInitPipeline(
 
   for (uint32_t i = 0; i < subobject_count; ++i) {
     const auto& subobject = subobjects[i];
-    switch (subobject.type) {
-      case reshade::api::pipeline_subobject_type::vertex_shader:
-      case reshade::api::pipeline_subobject_type::pixel_shader:
-      case reshade::api::pipeline_subobject_type::compute_shader:
-        break;
-      default:
-        continue;
-    }
-
+    if (std::ranges::none_of(DUMPED_STAGES, [&](const auto& stage) { return stage.first == subobject.type; })) continue;
     if (subobject.data == nullptr) continue;
     const reshade::api::shader_desc desc = *static_cast<const reshade::api::shader_desc*>(subobject.data);
     if (desc.code == nullptr || desc.code_size == 0) continue;
@@ -474,7 +481,12 @@ static void DumpAllPending() {
     ++dumped_count;
   });
 
-  if (dumped_count != 0u) data->pending_dump_count.fetch_sub(dumped_count);
+  if (dumped_count == 0u) return;
+  data->pending_dump_count.fetch_sub(dumped_count);
+  std::ofstream record(renodx::utils::path::GetOutputPath() / default_dump_folder / "dump_stages.txt", std::ios::trunc);
+  for (const auto& [type, name] : DUMPED_STAGES) {
+    record << name << (type == DUMPED_STAGES.back().first ? "\n" : " ");
+  }
 }
 
 static void Use(DWORD fdw_reason) {
