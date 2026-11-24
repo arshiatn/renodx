@@ -14069,6 +14069,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         blur (OnAmbientBlurDraw; row off = no draw), 10.2 Toru SVGF item (MIT), 10.3 low-res sets A-D + offline FLIP harness
         (normal maps, >= 1080p) + 'Low-Res Tests' buttons; 55-80 h. New risk: horizon ring (L1 / ZH3 bend wrong). S0 ran
         before rvs_'s review -> shg_ resumes with it (M2 memo-LSQ vs shift + rvs_'s S0 list) then Rev 1.
+        fa2_ FCA RENDER THREAD DONE (render_mt/fca/analysis/fa2_render_thread.md + fa2_handback.md; F1-F12, 16 ruled out):
+        render half starts after main's 2nd sort-chain wait (0x104b40) -> all savings on the critical path; scale window
+        ms/f x1.23 WAW3 / x1.14 F03 / x1.09 D1. F1 streamed C replay (main stops recording chunk 0 + join wait; -2.5..-3.6 W3
+        (-4.8 with F4) / -1.5..-2.0 D1; dis_at.py census offline); F2 replay op trimming (ColourB STATE blocks, ColourA
+        constant repeats; -0.8..-1.4 / -0.6..-1.1); F3 recording 1.5-2x direct per item; F4 gallop + bisect cut search,
+        ColourA split ~neutral (per-group A/B); F5 B3b allocate on main; F6 object_motion redraws + command_action dispatch;
+        F7 pool Join (fa5_); F8 = trap (FCU). Ruled out: deferred contexts, KeepRenderCoreFree, longer spin, more C workers.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
