@@ -199,7 +199,10 @@ class Nrd12 {
     std::memcpy(common.worldToViewMatrix, world_to_view.data(), sizeof(common.worldToViewMatrix));
     std::memcpy(common.viewToClipMatrixPrev, (first ? view_to_clip : last_view_to_clip_).data(), sizeof(common.viewToClipMatrixPrev));
     std::memcpy(common.worldToViewMatrixPrev, (first ? world_to_view : last_world_to_view_).data(), sizeof(common.worldToViewMatrixPrev));
-    const std::array<float, 2> jitter = {-x_shear * 0.5f, y_shear * 0.5f};
+    // NRD's jitter is in pixels of the rect ([-0.5, 0.5]; its SetCommonSettings refuses more): the shear is in clip units,
+    // two across the rect.
+    const std::array<float, 2> jitter = {std::clamp(-x_shear * 0.5f * static_cast<float>(width), -0.5f, 0.5f),
+                                         std::clamp(y_shear * 0.5f * static_cast<float>(height), -0.5f, 0.5f)};
     common.motionVectorScale[0] = 0.f;
     common.motionVectorScale[1] = 0.f;
     common.motionVectorScale[2] = 0.f;

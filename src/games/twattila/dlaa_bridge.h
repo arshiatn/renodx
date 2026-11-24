@@ -391,7 +391,8 @@ struct Shared {
   uint32_t rt_height = 0;
   uint32_t rt_capture_count = 0;
   uint32_t rt_drawn_count = 0;
-  uint32_t rt_padding = 0;
+  // The addon's (in v4's padding; older addons 0: off): FSR's RCAS, 0-1.
+  float fsr_sharpness = 0.f;
   RtCapture rt_captures[RT_CAPTURES] = {};
   uint64_t rt_drawn[RT_DRAWN] = {};
   // The helper's (v4): what the last trace found (a one-line status).
@@ -520,7 +521,9 @@ struct Shared {
   // evaluation with `rr_hit_distance_written` 1 (written this frame) gives it Ray Reconstruction.
   uint64_t rr_hit_distance = 0;
   uint32_t rr_hit_distance_written = 0;
-  uint32_t rr_v17_padding = 0;
+  // The addon's (in v17's padding; an older addon leaves it 0: AutoExposure): DLSS's exposure for presets J / K, 1 for a
+  // display-referred input.
+  float dlss_exposure = 0.f;
   // The addon's (v18): the local lights' radius in metres for soft shadows (with Ray Reconstruction each frame a ray to
   // a point of the light's disk; 0: hard), the rays a pixel toward the sun and each light (Ray Tracing at Output
   // Resolution below 100% render scale: the output pixels a render pixel stands for; 0 or 1: one).
@@ -555,7 +558,9 @@ struct Shared {
   // each request and each second without one; all ones: none to read). The addon's watcher follows the helper's GPU work
   // by these (dlaa_bridge.hpp): it has no device of its own in the game.
   uint32_t fence_generation = 0;
-  uint32_t fence_v30_padding = 0;
+  // The helper's (in v30's padding; older helpers leave it 0): 1 when DLSS could not start on this GPU (no nvngx_dlss.dll,
+  // NGX on a live GPU, the driver).
+  uint32_t dlss_refused = 0;
   uint64_t fence_completed = 0;
   // The addon's (v31): the local lights past the first RT_MAX_LIGHTS (rt_light_count up to RT_ALL_LIGHTS), and the lit
   // mask's first tile row (its set's: the textures' height; 0: no tiles, a bit a light as before v31).

@@ -357,7 +357,7 @@ inline bool EvaluateInputs(ID3D11DeviceContext* context, UINT width, UINT height
   // Ray Reconstruction (its guides written this frame): view = inverse projection x view-projection (the camera's
   // registers act on column vectors), given NVIDIA as row-vector matrices (their transposes). FSR and XeSS: the
   // projection alone (its z row and c7.y hold near, far and the field of view; the jitter is in its column 2).
-  twattila::dlaa_bridge::RayReconstruction reconstruction = {.preset = state.settings.ray_reconstruction_preset, .extra_written = rr_extra_written};
+  twattila::dlaa_bridge::RayReconstruction reconstruction = {.preset = state.settings.ray_reconstruction_preset};
   if (reconstruct || !nvidia_model) {
     for (size_t row = 0; row < 4; ++row) {
       for (size_t column = 0; column < 4; ++column) {
@@ -369,7 +369,8 @@ inline bool EvaluateInputs(ID3D11DeviceContext* context, UINT width, UINT height
     }
   }
   return twattila::dlaa_bridge::Evaluate(context, width, height, jitter[0], jitter[1], reset, state.settings.dlaa_preset,
-                                         reconstruct ? &reconstruction : nullptr, nvidia_model ? nullptr : &reconstruction.view_to_clip);
+                                         reconstruct ? &reconstruction : nullptr, nvidia_model ? nullptr : &reconstruction.view_to_clip,
+                                         {.extra_written = rr_extra_written});
 }
 
 // A size proven earlier in this run from now on (state.mutex held): no frame of the game's TAA for it.

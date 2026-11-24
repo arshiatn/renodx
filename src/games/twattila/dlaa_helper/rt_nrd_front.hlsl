@@ -6,7 +6,7 @@
 // NVIDIA's NRD's inputs (nrd_d3d12.hpp), after what each denoises was traced, on the trace's bindings. The view depth and
 // the normal (from the depth as the rays' start, or the G-buffer's where a request has it) always. NRD_FRONT_SUN (SIGMA;
 // rt_trace.cs_6_5.hlsl: each pixel's ray toward a point of the sun's disk, its lit share and blocker's distance): the
-// penumbra's world radius and the share that came through what blocked it (leaves, cloth, smoke, several rays' mean) as its
+// penumbra's world radius and the share that came through what blocked it (leaves, cloth, smoke; one ray under NRD) as its
 // translucency. NRD_FRONT_AMBIENT (REBLUR's occlusion): the rays' open share as the normalized hit distance (the range is
 // its 1). NRD_FRONT_BOUNCE (REBLUR on the Light Bounce, a texel each bounce_scale render pixels): its light and hit
 // distance. NRD_FRONT_REFLECT (REBLUR on the reflections): their light and hit distance packed in place.
@@ -39,6 +39,7 @@ cbuffer Bounce : register(b2) {
   uint bounce_padding;
 };
 #elif defined(NRD_FRONT_REFLECT)
+#include "./rt_camera.hlsli"  // path_flags (b3, the reflections' request's): ReflectAlpha
 Texture2D<float4> guide_normals : register(t12);  // world normals (x 0: none)
 Texture2D<float> guide_roughness : register(t14);
 RWTexture2D<float> view_z : register(u48);
@@ -76,7 +77,10 @@ void main(uint3 id : SV_DispatchThreadID) {
 #if defined(NRD_FRONT_REFLECT)
   const float3 guide = guide_normals[pixel].xyz;
   const float3 normal = (dot(guide, guide) > 0.5f) ? normalize(guide) : SurfaceNormal(pixel, position);
-  const float roughness = saturate(guide_roughness[pixel]);
+  // The traced lobe's linear roughness, sqrt(alpha) (0: a mirror's delta), not the G-buffer's: REBLUR took the default
+  // lobe's reflections for 2-3 times rougher, blurred sharp ones and kept them longer.
+  const float gbuffer_roughness = saturate(guide_roughness[pixel]);
+  const float roughness = (gbuffer_roughness < MIRROR_ROUGHNESS) ? 0.f : sqrt(ReflectAlpha(gbuffer_roughness));
   const float4 traced = signal[id.xy];
   signal[id.xy] = REBLUR_FrontEnd_PackRadianceAndNormHitDist(traced.rgb, REBLUR_FrontEnd_GetNormHitDist(traced.a, position.w, HIT_DISTANCE_PARAMETERS, roughness), true);
 #else
@@ -92,6 +96,8 @@ void main(uint3 id : SV_DispatchThreadID) {
 #elif defined(NRD_FRONT_BOUNCE)
   signal[id.xy] = REBLUR_FrontEnd_PackRadianceAndNormHitDist(bounce[id.xy].rgb, REBLUR_FrontEnd_GetNormHitDist(hit_distance[id.xy], position.w, HIT_DISTANCE_PARAMETERS, 1.f), true);
 #elif defined(NRD_FRONT_AMBIENT)
+  // On purpose (ATN 11-22): the open share, not NRD's mean of min(hit, range) / range, so every blocked ray counts as a
+  // contact: the AO NRD shows is the one the built-in denoisers show (NRD's own is lighter near far blockers).
   signal[id.xy] = ambient[id.xy];
 #endif
 }
