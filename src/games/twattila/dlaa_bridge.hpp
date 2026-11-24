@@ -17,6 +17,7 @@
 #include <cassert>
 #include <cfloat>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <exception>
 #include <format>
@@ -607,52 +608,74 @@ inline bool Start(ID3D11Device* device) {
           add(bridge.watchdog.recovery, bridge.watchdog.waited.load());
         }
         if (copy_count == 0) return;
-        STARTUPINFOW rescue_startup = {.cb = sizeof(STARTUPINFOW)};
         PROCESS_INFORMATION rescue = {};
-        std::string not_freed;
-        if (CreateProcessW(path.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr,
-                           &rescue_startup, &rescue)) {
-          // In the helper's job (kill on close): the game's end or a kill ends it too, even inside a driver call. Not in it (no
-          // job, an error): its wait on the game's handle still ends it, unless a driver call holds it.
-          if (bridge.job != nullptr && !AssignProcessToJobObject(bridge.job, rescue.hProcess)) {
+        const auto start_rescue = [&](LPPROC_THREAD_ATTRIBUTE_LIST attributes) {
+          STARTUPINFOEXW startup = {.StartupInfo = {.cb = static_cast<DWORD>((attributes != nullptr) ? sizeof(STARTUPINFOEXW) : sizeof(STARTUPINFOW))},
+                                    .lpAttributeList = attributes};
+          const DWORD flags = CREATE_NO_WINDOW | ((attributes != nullptr) ? EXTENDED_STARTUPINFO_PRESENT : 0u);
+          return CreateProcessW(path.c_str(), command.data(), nullptr, nullptr, FALSE, flags, nullptr, nullptr, &startup.StartupInfo, &rescue) != FALSE;
+        };
+        // Made inside the helper's job (kill on close): the game's end or a kill ends it too, even before its first
+        // instruction (a game gone while this thread is inside CreateProcessW) or inside a driver call. A job the list
+        // cannot take: made outside it, its wait on the game's handle still ends it, unless a driver call holds it.
+        bool started = false;
+        if (bridge.job != nullptr) {
+          // One attribute's list, here (no allocation before the rescue's start); the job's handle read at the creation.
+          alignas(std::max_align_t) std::array<std::byte, 128> attribute_storage = {};
+          auto* attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attribute_storage.data());
+          SIZE_T attribute_size = attribute_storage.size();
+          HANDLE rescue_job = bridge.job;
+          DWORD job_error = 0;
+          if (!InitializeProcThreadAttributeList(attributes, 1, 0, &attribute_size)) {
+            job_error = GetLastError();
+          } else {
+            started = UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST, &rescue_job, sizeof(rescue_job), nullptr, nullptr)
+                      && start_rescue(attributes);
+            if (!started) {
+              job_error = GetLastError();
+            }
+            DeleteProcThreadAttributeList(attributes);
+          }
+          if (!started) {
             try {
-              renodx::utils::log::w("[Total War] DLAA: the rescue is not in the helper's job (error ", GetLastError(), ").");
+              renodx::utils::log::w("[Total War] DLAA: the rescue is not in the helper's job (error ", job_error, ").");
             } catch (const std::exception&) {
               // No-op: out of memory costs this line, not the recovery.
             }
           }
-          if (ResumeThread(rescue.hThread) == static_cast<DWORD>(-1)) {
-            not_freed = std::format("the rescue did not resume (error {})", GetLastError());
+        }
+        if (!started) {
+          started = start_rescue(nullptr);
+        }
+        std::string not_freed;
+        if (started) {
+          const std::array<HANDLE, 2> stop_or_done = {bridge.watcher_stop, rescue.hProcess};
+          // A new D3D12 device after a GPU fault can take seconds. Past 15 s the rescue still waits for the game's GPU (no
+          // time limit: it ends when the GPU gets there, the game ends or this unload ends it).
+          DWORD rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000);
+          if (rescue_woken == WAIT_TIMEOUT) {
+            try {
+              renodx::utils::log::w("[Total War] DLAA: the helper stopped; its rescue still waits for the game's GPU (renodx-tw-dlaa64.log).");
+            } catch (const std::exception&) {
+              // No-op: out of memory costs this line, not the recovery.
+            }
+            rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, INFINITE);
+          }
+          switch (rescue_woken) {
+            case WAIT_OBJECT_0 + 1: {
+              DWORD result = STILL_ACTIVE;
+              if (!GetExitCodeProcess(rescue.hProcess, &result)) {
+                not_freed = std::format("the rescue's exit code not read (error {})", GetLastError());
+              } else if (result != HELPER_EXIT_DONE) {
+                not_freed = std::format("the rescue's exit code 0x{:08X}: {}; renodx-tw-dlaa64.log", result, HelperExitMeaning(result));
+              }
+              break;
+            }
+            case WAIT_OBJECT_0: not_freed = "the unload ended the rescue"; break;
+            default:            not_freed = std::format("the rescue's wait failed (error {})", GetLastError()); break;
+          }
+          if (rescue_woken != WAIT_OBJECT_0 + 1) {
             TerminateProcess(rescue.hProcess, HELPER_EXIT_ENDED_BY_ADDON);
-          } else {
-            const std::array<HANDLE, 2> stop_or_done = {bridge.watcher_stop, rescue.hProcess};
-            // A new D3D12 device after a GPU fault can take seconds. Past 15 s the rescue still waits for the game's GPU (no
-            // time limit: it ends when the GPU gets there, the game ends or this unload ends it).
-            DWORD rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000);
-            if (rescue_woken == WAIT_TIMEOUT) {
-              try {
-                renodx::utils::log::w("[Total War] DLAA: the helper stopped; its rescue still waits for the game's GPU (renodx-tw-dlaa64.log).");
-              } catch (const std::exception&) {
-                // No-op: out of memory costs this line, not the recovery.
-              }
-              rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, INFINITE);
-            }
-            switch (rescue_woken) {
-              case WAIT_OBJECT_0 + 1: {
-                DWORD result = STILL_ACTIVE;
-                if (!GetExitCodeProcess(rescue.hProcess, &result)) {
-                  not_freed = std::format("the rescue's exit code not read (error {})", GetLastError());
-                } else if (result != HELPER_EXIT_DONE) {
-                  not_freed = std::format("the rescue's exit code 0x{:08X}: {}; renodx-tw-dlaa64.log", result, HelperExitMeaning(result));
-                }
-                break;
-              }
-              case WAIT_OBJECT_0: not_freed = "the unload ended the rescue"; break;
-              default:            not_freed = std::format("the rescue's wait failed (error {})", GetLastError()); break;
-            }
-            if (rescue_woken != WAIT_OBJECT_0 + 1) {
-              TerminateProcess(rescue.hProcess, HELPER_EXIT_ENDED_BY_ADDON);
-            }
           }
           CloseHandle(rescue.hThread);
           CloseHandle(rescue.hProcess);

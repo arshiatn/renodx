@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cwchar>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -17,7 +18,7 @@ unsigned transfer_calls = 0;
 unsigned end_helper_at_transfer = 0;
 bool fail_assign = false;
 bool fail_resume = false;
-std::atomic<bool> fail_rescue_resume = false;  // the next resume (the watcher's thread's: the rescue's)
+std::atomic<bool> refuse_rescue_job_list = false;  // the rescue's next creation inside the helper's job refused
 bool fail_duplicate = false;
 bool fail_stop_event = false;
 bool helper_writes_during_transfer = false;
@@ -28,8 +29,10 @@ std::atomic<bool> fail_exit_read = false;
 std::atomic<unsigned> processes_created = 0;
 std::atomic<unsigned> warnings = 0;
 HANDLE child_witness = nullptr;
-// The rescue's (the watcher's thread assigns it to the helper's job): read by the test's thread.
+// The rescue's (the watcher's thread makes it): read by the test's thread; whether it was in the helper's job as
+// CreateProcessW returned (a job close then ends it even if it never ran).
 std::atomic<HANDLE> rescue_witness = nullptr;
+std::atomic<bool> rescue_made_in_job = false;
 BOOL WINAPI TestAssignProcessToJobObject(HANDLE job, HANDLE process);
 DWORD WINAPI TestResumeThread(HANDLE thread);
 BOOL WINAPI TestDuplicateHandle(HANDLE source_process, HANDLE source, HANDLE target_process, HANDLE* target,
@@ -67,6 +70,7 @@ std::mutex exit_line_mutex;
 std::string last_exit_line;
 std::string last_rescue_line;
 std::atomic<unsigned> still_waits_lines = 0;
+std::atomic<unsigned> outside_job_lines = 0;
 extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int level, const char* message) {
   const std::unique_lock lock(exit_line_mutex);
   if (std::strstr(message, "the helper ended (") != nullptr || std::strstr(message, "the helper did not end within 5 s") != nullptr) {
@@ -79,6 +83,9 @@ extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int level, const 
   }
   if (std::strstr(message, "its rescue still waits for the game's GPU") != nullptr) {
     ++still_waits_lines;
+  }
+  if (std::strstr(message, "the rescue is not in the helper's job (error 5)") != nullptr) {
+    ++outside_job_lines;
   }
   if (level <= 2) ++warnings;
 }
@@ -169,23 +176,14 @@ void* PatchSlot(void* object, size_t slot, void* hook) {
 }
 
 BOOL WINAPI TestAssignProcessToJobObject(HANDLE job, HANDLE process) {
-  // The helper's first, then its rescue's (in the same job, G23 2c).
-  if (child_witness != nullptr) {
-    HANDLE witness = nullptr;
-    Check(rescue_witness.load() == nullptr
-              && DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), &witness,
-                                 SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, 0),
-          "retain rescue witness");
-    rescue_witness.store(witness);
-    return AssignProcessToJobObject(job, process);
-  }
-  Check(DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), &child_witness, SYNCHRONIZE, FALSE, 0),
-        "retain child witness");
+  // The helper's only: its rescue is made inside the job (TestCreateProcessW).
+  Check(child_witness == nullptr && DuplicateHandle(GetCurrentProcess(), process, GetCurrentProcess(), &child_witness, SYNCHRONIZE, FALSE, 0),
+        "retain child witness, the only process assigned");
   return fail_assign ? FALSE : AssignProcessToJobObject(job, process);
 }
 
 DWORD WINAPI TestResumeThread(HANDLE thread) {
-  if (fail_resume || fail_rescue_resume.exchange(false)) {
+  if (fail_resume) {
     SetLastError(ERROR_ACCESS_DENIED);
     return static_cast<DWORD>(-1);
   }
@@ -225,9 +223,26 @@ HANDLE WINAPI TestCreateEventW(LPSECURITY_ATTRIBUTES attributes, BOOL manual, BO
 BOOL WINAPI TestCreateProcessW(LPCWSTR application, LPWSTR command, LPSECURITY_ATTRIBUTES process_attributes,
                               LPSECURITY_ATTRIBUTES thread_attributes, BOOL inherit, DWORD flags, LPVOID environment,
                               LPCWSTR directory, LPSTARTUPINFOW startup, LPPROCESS_INFORMATION information) {
+  const bool rescue = command != nullptr && std::wcsstr(command, L" rescue ") != nullptr;
+  if (rescue && (flags & EXTENDED_STARTUPINFO_PRESENT) != 0 && refuse_rescue_job_list.exchange(false)) {
+    SetLastError(ERROR_ACCESS_DENIED);
+    return FALSE;
+  }
   ++processes_created;
-  return CreateProcessW(application, command, process_attributes, thread_attributes, inherit, flags, environment, directory,
-                        startup, information);
+  const BOOL created = CreateProcessW(application, command, process_attributes, thread_attributes, inherit, flags, environment,
+                                      directory, startup, information);
+  if (created && rescue) {
+    HANDLE witness = nullptr;
+    BOOL in_job = FALSE;
+    Check(rescue_witness.load() == nullptr && (flags & CREATE_SUSPENDED) == 0
+              && DuplicateHandle(GetCurrentProcess(), information->hProcess, GetCurrentProcess(), &witness,
+                                 SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, 0)
+              && IsProcessInJob(information->hProcess, bridge_api::bridge.job, &in_job),
+          "retain rescue witness, not suspended");
+    rescue_made_in_job.store(in_job != FALSE);
+    rescue_witness.store(witness);
+  }
+  return created;
 }
 
 BOOL WINAPI TestGetExitCodeProcess(HANDLE process, LPDWORD code) {
@@ -879,13 +894,13 @@ int main(int argc, char** argv) {
       const char* name;
       DWORD gate_ms;             // 0: not opened while the rescue runs
       const wchar_t* remove_ms;  // the rescue's device removed
-      bool resume_fails = false;
+      bool job_list_refused = false;
     };
     for (const RescueCase& test : {RescueCase{"a GPU 6 s behind: freed", 6000, nullptr},
                                    RescueCase{"a GPU 40 s behind: one line at 15 s, then freed", 40000, nullptr},
                                    RescueCase{"a GPU that never gets there: the unload ends the rescue at once", 0, nullptr},
                                    RescueCase{"the rescue's device removed during its wait: it ends", 0, L"3000"},
-                                   RescueCase{"a rescue that does not resume: ended, said, no wait", 0, nullptr, true}}) {
+                                   RescueCase{"the job's list refused: made outside the job, said, the unload ends it", 0, nullptr, true}}) {
       StartReady(game, "start rescue wait test");
       Check(bridge_api::Prepare(device, 16, 16), "the set");
       Check(SUCCEEDED(game.context4->Wait(gate11.Get(), ++gate_value)), "the game's GPU held by the gate");
@@ -895,8 +910,9 @@ int main(int argc, char** argv) {
       }
       const unsigned still_waits_before = still_waits_lines.load();
       SetEnvironmentVariableW(L"RENODX_TW_TEST_RESCUE_REMOVE_MS", test.remove_ms);
+      const unsigned outside_job_before = outside_job_lines.load();
       processes_created = 0;
-      fail_rescue_resume = test.resume_fails;
+      refuse_rescue_job_list = test.job_list_refused;
       Check(RequestAs(game, bridge_api::EVALUATE, EXITS_AFTER_ANSWER), "answered, then the helper ends");
       const ComPtr<ID3D11Fence> set_fence = bridge.fence;
       const uint64_t waited = bridge.watchdog.waited.load();
@@ -905,20 +921,15 @@ int main(int argc, char** argv) {
       const ULONGLONG rescue_started = GetTickCount64();
       SetEnvironmentVariableW(L"RENODX_TW_TEST_RESCUE_REMOVE_MS", nullptr);
       Check(rescue_witness.load() != nullptr && processes_created.load() == 1, "one rescue");
-      // Its own handle in the helper's job (not this process's job: the test may run in one).
-      BOOL in_job = FALSE;
-      while (IsProcessInJob(rescue_witness.load(), bridge.job, &in_job) && !in_job && GetTickCount64() - rescue_started < 1000) Sleep(1);
-      // (One that did not resume may be gone already.)
-      Check(in_job || test.resume_fails, "the rescue is in the helper's job");
+      // In the helper's job as it was made (not this process's job: the test may run in one), unless the list was refused.
+      Check(rescue_made_in_job.load() != test.job_list_refused && !refuse_rescue_job_list
+                && outside_job_lines.load() - outside_job_before == (test.job_list_refused ? 1u : 0u),
+            "the rescue made in the helper's job (refused: outside it, one line)");
       if (test.gate_ms != 0) {
         Sleep(test.gate_ms);
         Check(WaitForSingleObject(rescue_witness.load(), 0) == WAIT_TIMEOUT, "the rescue still waits for the game's GPU");
         Check(SUCCEEDED(gate->Signal(gate_value)) && game.TailWithin(3000), "the game's GPU gets past the helper's wait");
         Check(WaitForSingleObject(rescue_witness.load(), 2000) == WAIT_OBJECT_0 && rescue_logged("was freed."), "freed, and said so");
-      } else if (test.resume_fails) {
-        Check(rescue_logged("(the rescue did not resume (error 5))") && WaitForSingleObject(rescue_witness.load(), 2000) == WAIT_OBJECT_0
-                  && GetTickCount64() - rescue_started < 2000 && !fail_rescue_resume,
-              "a rescue that did not resume is ended at once, and said so");
       } else if (test.remove_ms != nullptr) {
         Check(WaitForSingleObject(rescue_witness.load(), 4500) == WAIT_OBJECT_0 && GetTickCount64() - rescue_started >= 2500,
               "the rescue ends with its device's removal");
