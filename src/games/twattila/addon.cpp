@@ -7,6 +7,9 @@
 
 #define RENODX_MODS_SWAPCHAIN_VERSION 2
 #define DEBUG_LEVEL_0
+// Threaded Draw Recording, Parallel Instance Fill and Fill With Draw Recording (draw_recording.hpp, instance_fill.hpp) are
+// built into this add-on; the other TW add-ons share those headers without them.
+#define TWATTILA_DRAW_RECORDING 1
 
 #include <algorithm>
 #include <array>
@@ -1347,12 +1350,11 @@ float keep_render_core_row = 0.f;
 float effect_update_row = 0.f;
 float effect_spawns_row = 0.f;
 float particle_count_row = 0.f;
-// Worker Threads (Experimental): the threads, the render thread included, that worker_pool.hpp's users may use. The row is
-// compiled wherever a pool user is (the effect update, and the private draw recording build's users).
+// Worker Threads (Experimental): the threads, the render thread included, that worker_pool.hpp's users may use.
 float worker_threads_row = 4.f;
-// Animation Rows on Workers (Experimental, off): animation_rows.hpp, the game's animation texture fill on the worker pool. 0 Off, 1 On, 2
-// Check (the private build's row only; a bench's RENODX_TW_ANIMATION_CHECK, read with the env generation, makes On a Check too).
-float animation_rows_row = 0.f;
+// Animation Rows on Workers (Experimental, on): animation_rows.hpp, the game's animation texture fill on the worker pool. A
+// bench's RENODX_TW_ANIMATION_CHECK, read with the env generation, makes On a Check (never a player's).
+float animation_rows_row = 1.f;
 bool animation_check_env = false;
 // The env generation: the pool reads RENODX_TW_WORKER_LIMITS and RENODX_TW_POOL_SPIN_US again when it changes (test_hooks'
 // "env." set keys bump it after they set a variable).
@@ -1379,14 +1381,15 @@ float particle_prefetch_row = 0.f;
 // Faster Sweep Prefetch (Experimental, off): engine_code.hpp's pending list sweep site, a row of its own.
 float sweep_prefetch_row = 0.f;
 #if defined(TWATTILA_DRAW_RECORDING)
-// Threaded Draw Recording (private build, draw_recording.hpp): the stage, the four loop groups (bit g of
-// draw_recording::Settings::loops, in the order of draw_recording::Group) and the B dispatchers' families.
-float draw_recording_stage_row = 0.f;
-std::array<float, 4> draw_recording_group_rows = {};
+// Threaded Draw Recording (Experimental, Workers; draw_recording.hpp): the stage, the four loop groups (bit g of
+// draw_recording::Settings::loops, in the order of draw_recording::Group; all on) and the B dispatchers' families. The groups and
+// the families are hidden (ReShade.ini only), as are the two fill rows below (parked: slower in the end batch).
+float draw_recording_stage_row = 6.f;
+std::array<float, 4> draw_recording_group_rows = {1.f, 1.f, 1.f, 1.f};
 float draw_recording_families_row = 255.f;
-// Parallel Instance Fill (Experimental, off): instance_fill.hpp, the ring buffer fills of the draw passes on the worker pool.
+// Parallel Instance Fill (off, hidden): instance_fill.hpp, the ring buffer fills of the draw passes on the worker pool.
 float instance_fill_row = 0.f;
-// Fill With Draw Recording (Experimental, off): the fill's job stays open to the draw dispatcher's cut (instance_fill.hpp's stubs,
+// Fill With Draw Recording (off, hidden): the fill's job stays open to the draw dispatcher's cut (instance_fill.hpp's stubs,
 // draw_recording.hpp's fold).
 float fill_fold_row = 0.f;
 
@@ -1396,11 +1399,12 @@ renodx::utils::settings::Setting* DrawRecordingGroupRow(const char* key, const c
       .key = key,
       .binding = &draw_recording_group_rows[group],
       .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-      .default_value = 0.f,
+      .default_value = 1.f,
       .label = label,
       .section = "Graphics (Experimental)",
       .tooltip = tooltip,
       .labels = {"Off", "On"},
+      .is_visible = [] { return false; },
   };
 }
 #endif
@@ -1689,8 +1693,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   const twattila::animation_rows::Stage animation_stage =
       (animation_rows_row == 0.f ? twattila::animation_rows::Stage::OFF
-                                 : (animation_rows_row == 2.f || animation_check_env ? twattila::animation_rows::Stage::CHECK
-                                                                                     : twattila::animation_rows::Stage::ON));
+                                 : (animation_check_env ? twattila::animation_rows::Stage::CHECK : twattila::animation_rows::Stage::ON));
   pool_in_use |= (animation_stage != twattila::animation_rows::Stage::OFF);
   // Before the users' own Updates.
   twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use, .env_generation = env_generation});
@@ -2205,15 +2208,11 @@ void ConfigureAddon() {
           .key = "AnimationRowsWorkers",
           .binding = &animation_rows_row,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 0.f,
+          .default_value = 1.f,
           .label = "Animation Rows on Workers (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "Animation setup on several threads. Same picture.",
-#if defined(TWATTILA_DRAW_RECORDING)
-          .labels = {"Off", "On", "Check"},
-#else
           .labels = {"Off", "On"},
-#endif
       },
       new renodx::utils::settings::Setting{
           .key = "ParallelEffectUpdate",
@@ -2236,6 +2235,7 @@ void ConfigureAddon() {
                      "Needs Parallel Effect Update.",
           .labels = {"Off", "On"},
           .is_enabled = [] { return effect_update_row != 0.f; },
+          .is_visible = [] { return false; },
       },
       new renodx::utils::settings::Setting{
           .key = "CachedParticleCount",
@@ -2246,18 +2246,19 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "Counts visible particles once a frame instead of once per view. Same picture.",
           .labels = {"Off", "On"},
+          .is_visible = [] { return false; },
       },
 #if defined(TWATTILA_DRAW_RECORDING)
       new renodx::utils::settings::Setting{
           .key = "DrawRecordingStage",
           .binding = &draw_recording_stage_row,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 0.f,
-          .label = "Threaded Draw Recording (Private)",
+          .default_value = 6.f,
+          .label = "Threaded Draw Recording (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "The game's draw loops, recorded on worker threads and replayed on the render thread in order.\n"
-                     "Each stage does more of it; Off leaves the game's own loops alone.",
-          .labels = {"Off", "Direct", "Touch ahead", "Chunked", "Recorded", "One worker", "Workers"},
+          .tooltip = "The game's draw calls are prepared on worker threads: less CPU time on the render thread in big battles.\n"
+                     "Same picture. One Worker and Test 1-4 are slower steps, only for tracking down a problem.",
+          .labels = {"Off", "Test 1", "Test 2", "Test 3", "Test 4", "One Worker", "On"},
       },
       DrawRecordingGroupRow("DrawRecordingDepthA", "Draw Recording Depth A (Private)", 0, "The depth passes' item loop."),
       DrawRecordingGroupRow("DrawRecordingColourA", "Draw Recording Colour A (Private)", 1, "The colour passes' item loop."),
@@ -2273,6 +2274,7 @@ void ConfigureAddon() {
           .tooltip = "The per-mesh dispatchers that may record (bit f: dispatcher f). A clear bit runs its meshes directly.",
           .min = 0.f,
           .max = 255.f,
+          .is_visible = [] { return false; },
       },
       new renodx::utils::settings::Setting{
           .key = "ParallelInstanceFill",
@@ -2283,6 +2285,7 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           .tooltip = "Copies the instance data of each draw pass on the add-on's worker threads. Same picture.",
           .labels = {"Off", "On"},
+          .is_visible = [] { return false; },
       },
       new renodx::utils::settings::Setting{
           .key = "FillWithDrawRecording",
@@ -2294,6 +2297,7 @@ void ConfigureAddon() {
           .tooltip = "Copies a pass's instance data on the worker threads while the draws are recorded. Needs Parallel Instance Fill"
                      " and a Threaded Draw Recording stage that uses workers. Same picture.",
           .labels = {"Off", "On"},
+          .is_visible = [] { return false; },
       },
 #endif
       new renodx::utils::settings::Setting{
@@ -2561,16 +2565,13 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::grass_fade::OnDestroyDevice);
 
-  // Rows saved at an old default, cleared once. Before v149: NRD when Ray Reconstruction is off, the banners' light and colour on.
-  constexpr int SETTINGS_REVISION = 1;
-  if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
-    for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
-      for (const char* key : {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"}) {
-        reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
-      }
-    }
-    reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
-  }
+  // Rows saved at an old default (a preset saves every row, hidden ones too), each cleared once. 1 (before v149): NRD when
+  // Ray Reconstruction is off, the banners' light and colour on. 2 (the render_mt defaults): the rows whose default changed
+  // and the rows hidden now (a value saved earlier would stay on unseen).
+  twattila::graphics_page::ClearSavedRows(1, {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
+  twattila::graphics_page::ClearSavedRows(2, {"DrawRecordingStage", "DrawRecordingDepthA", "DrawRecordingColourA", "DrawRecordingDepthB",
+                                              "DrawRecordingColourB", "DrawRecordingFamilies", "AnimationRowsWorkers", "ParallelInstanceFill",
+                                              "FillWithDrawRecording", "ParallelEffectSpawns", "CachedParticleCount"});
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
