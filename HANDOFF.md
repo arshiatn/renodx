@@ -784,7 +784,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace wi ... | ?
 - B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk ... | ?
 - ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-dif ... | ?
-- s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 i ... | ?
+- rvs_ CODE REVIEW of S1a (sent; rvs_s1a_code_review.md): byte identity, beta 0, i ... | ?
 - PK5 S0 microbench (tests only) after the FCA merge + fxi_'s test follow-up (test ... | ?
 - g24_ fill (sent): 941 mechanical -> rt vs|-|-|- families -> mv 673 (111 GPU-scen ... | ?
 - gsr_ (Opus xHigh) scale route design (handoff_plan/gsr_scale_route_design.md): o ... | ?
@@ -14407,8 +14407,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         fallback + look-risk numbers, never blocks. S1 RT chain (NRD on: no beta) + apply-side contingency; S2 exact
         per-texel inputs + error / detail; S3 clamp transport [0, 4]; S4 After Blur gated on AmbientReplaced + red-only
         write mask (S1b); S5 page.Take last commit.
-        - [ ] s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 in its brief -> rvs_ code
-        review -> coord merge. GPU timing -> coord's GPU window.
+        - [x] s1a_ DONE (plan_1117/s1a_impl_handback.md): origin/sh_s1a (base 30bd19f9a) 4bb5b5c95 / fc95b48ab / 52ff4d4ba
+        / 3a241cfcc / f9f76ce33. Row off byte-identical (170 shaders / 16 add-ons + V1 item 1 on 19 builds; two fxc quirks
+        fixed). V1 WARP PASS items 1-3, 5, 6 guards. ITEM 4: no beta within 1 % -> beta 0 = LOOK-RISK for ATN (helper b 2
+        still > 1 % with the S1 contingency). ITEM 6 (real trace, printed): SH NOT closer to Full (scaled error Half 0.486
+        -> 0.499, Quarter 0.747 -> 0.773; Quarter shift -24.1 -> -28.3 %). LEFT: host define LIGHT_BOUNCE_DIRECTIONAL in
+        twattila/light_bounce.hlsli (outside 9.1; reaches 7 other games' passes) - until then the Attila row binds SH
+        targets but changes nothing; tw_screen_space_shadows x86 link '_NAME' claim (sse_ saw PASS on newer base).
+        GPU item t (T1) run line in the hand-back; G2 in-game A/B later.
+        - [ ] rvs_ CODE REVIEW of S1a (sent; rvs_s1a_code_review.md): byte identity, beta 0, item 6 go / stop for
+        S1b / B2 / B4, host-define route (Attila-only entry files / CMake define = ATN / hide row), deviations, link
+        claim, merge conflicts vs atn-mods -> coord merge or s1a_ fixes. GPU timing -> coord's GPU window.
         rv5_ PK5 REVIEW (render_mt/fca/designs/rv5_pk5_review.md + _handback.md; 0 / 7 MUST / 10 SHOULD / 7 NIT): heapfix
         clearance GO (CHECKED = 82, hf_check.py drops hex sizes); A1 census GO; A1.1 GO after MUST-1 (misaligned 16-B
         stores may not forward on Intel) + MUST-4; A1.2 optional; A2 NO-GO as written (MUST-2 heap safety) -> gated
