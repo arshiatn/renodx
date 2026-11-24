@@ -796,7 +796,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ ... | ?
 - FRIDAY 11-27: pk4_ (Fable) the 4 NITs in 7.2 / 7.3 / 4.7 (rv4_'s list) + the fli ... | ?
 - Coord: real gbf gates (gbf_gpu_gates.ps1, no switch) in the first quiet GPU wind ... | ?
-- g24_ 13.10 (sent): MUST-F, apply_rules fail-closed, apply the shadow rule to Exp ... | ?
+- rvg_ 13.10 light re-check: send AFTER 'rvg_ trc review' lands (one task at a tim ... | ?
+- S8 (TW audits) prerequisite: TW frame tracer writes a 'view WxH buffer WxH' line ... | ?
 - ATN OK 11-24: the ONE Attila -Data session runs BEFORE Friday when t4i_'s PK6 r2 ... | ?
 - FRIDAY 11-27: pk5_ folds A2-1..A2-6 + the 5 NITs into pk5_design.md (rv5_ light ... | ?
 - Data session (t4i_ -Data): log the arena's state words at first present + battle ... | ?
@@ -14851,8 +14852,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         refusals (else ue-svpos-ps-b refills the 5 SHOULD-2 PS). C4: the pak-carve tool writes census_stages.txt too; the
         record names producer + version. ATN's mv GAP block: ~463 of 1,627 cells become shadow-depth VS settled by rule.
         NIT-3: count traced TW SCALED cells SHOULD-2 fail-closes (for S8).
-        - [ ] g24_ 13.10 (sent): MUST-F, apply_rules fail-closed, apply the shadow rule to Expeditions + verify, the
-        census_stages.txt format (trc_ follows it), ATN's mv GAP block numbers, NIT-3 count -> rvg_ re-check.
+        - [x] g24_ 13.10 DONE (handoff_plan/handbacks/g24_1310_handback.md; ho_g24 006440607 pushed, audit git bd1989a;
+        one stamp, no EXTRACTOR bump; selftest 115 / 115, 50 mutations caught; ~33 min). MUST-F in (rule: token fails
+        while its controls fail; controls() checks rows itself); apply-rules fail-closed (skips failing-control rules,
+        writes only what check_cell passes). Expeditions: 792 mv cells filled by ue-shadow-depth-vs-b, nothing else
+        changed, the 5 SHOULD-2 PS stay open -> settled 2013 / open 16773 / PROBLEMS 16867, exit 3 (svpos control until
+        the tracer's view line). Tales unchanged 1361. census_stages.txt needs 'producer: <tool> <version>' (format in
+        design 13.10; g24_'s own missing\<game>\cso extracts need one too). mv GAP block: 587 of 1,627 settled -> 1,040
+        left (atn_questions_1124.md H1 updated by coord). NIT-3: no TW trace has a readable scale (TW tracer writes
+        'camera screen / viewport', not 'view') -> Attila 131 + Pharaoh 87 traced cells would fail-close under SHOULD-2
+        until the TW tracer writes a view line (S8 item).
+        - [ ] rvg_ 13.10 light re-check: send AFTER 'rvg_ trc review' lands (one task at a time).
+        - [ ] S8 (TW audits) prerequisite: TW frame tracer writes a 'view WxH buffer WxH' line (or a reviewed scale reading).
         (was: rvg_ 13.9 light re-check + GO / NOT GO for applying the shadow rule to Expeditions.)
         ATN 11-24 (Tue) ~17:2x CHANGE OF ORDER (supersedes 17:0x): the Fable-heavy CPU work runs on FRIDAY 11-27 (ATN's
         weekly reset). Until then: running agents finish their current job + Opus review loops -> coord recap of done / left
