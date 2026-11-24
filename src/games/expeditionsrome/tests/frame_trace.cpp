@@ -10,7 +10,11 @@
 //    view from UE 4.21's View rows (c122 / c123), none from 4.23's.
 // 2. Expeditions (4.23's rows, c126 / c127): the view from them, none from 4.21's.
 // 3. Expeditions' mesh identity: an indexed draw's, a draw's and an indirect draw's mesh part (arguments, then the index,
-//    vertex and VS constant buffers and the VS resources by address), the header's mesh paragraph (not in Tales').
+//    vertex and VS constant buffers and the VS resources by address, the GPU Scene ids), the header's mesh paragraph (not
+//    in Tales'). The ids: an input layout with ATTRIBUTE13 (r32_uint, per instance, slot 1) read at the bound offset +
+//    first instance x stride; ? past the buffer's end and for an indirect draw.
+// 4. The ids' other layouts: none without ATTRIBUTE13 or without a bound layout; ? for a layout never seen and for one
+//    made while no add-on kept subobjects (Expeditions without the DevKit).
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -281,12 +285,36 @@ int main() {
   traced = trace("trc_expeditions", view_423_only, draw_indexed);
   if (!traced.lines.empty()) ExpectLine(traced.lines[0], indexed_state, "expeditions: no view from c122 / c123");
 
+  // Input layouts (ReShade's CreateInputLayout: the elements and the VS's signature): positions at slot 0, with or
+  // without GPU Scene's ATTRIBUTE13 at slot 1.
+  const auto create_layout = [&](uint64_t handle, std::vector<input_element> elements) {
+    create_pipeline(handle, {{.type = pipeline_subobject_type::input_layout, .count = static_cast<uint32_t>(elements.size()), .data = elements.data()},
+                             {.type = pipeline_subobject_type::vertex_shader, .count = 1, .data = &vertex_desc}});
+  };
+  const input_element position_element = {.semantic = "POSITION", .format = format::r32g32b32_float};
+  const input_element id_element = {.semantic = "ATTRIBUTE", .semantic_index = 13, .format = format::r32_uint, .buffer_binding = 1,
+                                    .instance_step_rate = 1};
+  constexpr uint64_t IDS_LAYOUT = 0x5000;
+  constexpr uint64_t PLAIN_LAYOUT = 0x5040;
+  constexpr uint64_t UNSEEN_LAYOUT = 0x5080;
+  constexpr uint64_t UNKEPT_LAYOUT = 0x50C0;
+  create_layout(IDS_LAYOUT, {position_element, id_element});
+  create_layout(PLAIN_LAYOUT, {position_element});
+  renodx::utils::pipeline::internal::shared.data->cache_subobjects = false;
+  create_layout(UNKEPT_LAYOUT, {position_element, id_element});
+  renodx::utils::pipeline::internal::shared.data->cache_subobjects = true;
+
   // 3. Expeditions' mesh identity (as dlss_graphics.hpp's OnPresent passes it).
   const talesofarise::frame_trace::Options expeditions = {.view_size_row = 126, .mesh_identity = true};
   const std::string buffers = std::format(" vb0 {}+0 vb1 {}+4 cb2 {} vt3 {}", static_cast<const void*>(position_buffer.Get()),
                                           static_cast<const void*>(id_buffer.Get()), static_cast<const void*>(primitive_buffer.Get()),
                                           static_cast<const void*>(bone_buffer.Get()));
+  const std::string indexed_mesh = indexed_state
+                                   + std::format(" | mesh indices 36 first 3 base -1 instances 2 at 1 ib {}+6 f57",
+                                                 static_cast<const void*>(index_buffer.Get()))
+                                   + buffers;
   context->PSSetConstantBuffers(1, 1, view_423.GetAddressOf());
+  bind(pipeline_stage::input_assembler, IDS_LAYOUT);
   traced = trace("trc_expeditions", expeditions, [&] {
     draw_indexed();
     InvokeBool<api_event::draw>(cmd_list, 6u, 4u, 2u, 1u);
@@ -295,13 +323,20 @@ int main() {
   Expect(traced.lines.size() == 3, "expeditions mesh: three lines");
   Expect(traced.header.find("Mesh, after the vertex buffers") != std::string::npos, "expeditions mesh: the header's mesh paragraph");
   if (traced.lines.size() == 3) {
-    ExpectLine(traced.lines[0],
-               indexed_state
-                   + std::format(" | mesh indices 36 first 3 base -1 instances 2 at 1 ib {}+6 f57", static_cast<const void*>(index_buffer.Get()))
-                   + buffers + view_line,
-               "expeditions mesh: an indexed draw");
-    ExpectLine(traced.lines[1], line_state("draw 24") + " | mesh vertices 6 first 2 instances 4 at 1" + buffers, "expeditions mesh: a draw");
-    ExpectLine(traced.lines[2], line_state("draw indirect 0") + " | mesh ?" + buffers, "expeditions mesh: an indirect draw");
+    ExpectLine(traced.lines[0], indexed_mesh + " ids 11 13" + view_line, "expeditions mesh: an indexed draw, ids from instance 1");
+    ExpectLine(traced.lines[1], line_state("draw 24") + " | mesh vertices 6 first 2 instances 4 at 1" + buffers + " ids ?",
+               "expeditions mesh: a draw, its ids past the buffer's end");
+    ExpectLine(traced.lines[2], line_state("draw indirect 0") + " | mesh ?" + buffers + " ids ?", "expeditions mesh: an indirect draw");
+  }
+
+  // 4. The ids' other layouts.
+  for (const auto& [layout, ids_part, label] : {std::tuple{PLAIN_LAYOUT, "", "no ATTRIBUTE13: no ids"},
+                                           std::tuple{uint64_t{0}, "", "no layout bound: no ids"},
+                                           std::tuple{UNSEEN_LAYOUT, " ids ?", "a layout never seen: ids ?"},
+                                           std::tuple{UNKEPT_LAYOUT, " ids ?", "a layout whose elements no add-on kept: ids ?"}}) {
+    bind(pipeline_stage::input_assembler, layout);
+    traced = trace("trc_expeditions", expeditions, draw_indexed);
+    if (!traced.lines.empty()) ExpectLine(traced.lines[0], indexed_mesh + ids_part + view_line, label);
   }
 
   talesofarise::frame_trace::Stop();

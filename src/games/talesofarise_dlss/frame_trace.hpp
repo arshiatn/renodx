@@ -14,6 +14,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -29,6 +30,7 @@
 
 #include "../../utils/directx.hpp"
 #include "../twattila/dxbc.hpp"
+#include "../../utils/pipeline.hpp"
 #include "../../utils/resource.hpp"
 #include "../../utils/state.hpp"
 
@@ -55,6 +57,8 @@ namespace internal {
 using Microsoft::WRL::ComPtr;
 
 constexpr uint32_t MAX_LINES = 12000;
+// UE 4.22+'s GPU Scene primitive id stream: the vertex factories' ATTRIBUTE13.
+constexpr uint32_t PRIMITIVE_ID_ATTRIBUTE = 13;
 
 struct State {
   std::mutex mutex;
@@ -312,6 +316,61 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
       mesh += std::format(" vt{} {}", slot, static_cast<const void*>(resource.Get()));
       vertex_views[slot]->Release();
     }
+    // UE 4.22+'s GPU Scene: ATTRIBUTE13, a primitive id per instance, from a stream each pass fills and binds at its own
+    // offset, so only the ids (read back) name the primitives across passes. The input layout's elements are known only
+    // when an add-on keeps the game's pipeline subobjects (the DevKit); else " ids ?", as for a stream this can't read.
+    if (const auto input_layout = renodx::utils::state::GetBoundShaderPipeline(cmd_list, reshade::api::pipeline_stage::input_assembler);
+        input_layout.handle != 0u) {
+      bool layout_known = false;
+      std::optional<reshade::api::input_element> id_element;
+      renodx::utils::pipeline::GetPipelineInfo(input_layout, [&](const renodx::utils::pipeline::PipelineInfo& info) {
+        for (const auto& subobject : info.details.subobjects) {
+          if (subobject.type != reshade::api::pipeline_subobject_type::input_layout) continue;
+          layout_known = true;
+          for (auto element : std::span(static_cast<const reshade::api::input_element*>(subobject.data), subobject.count)) {
+            if (element.semantic_index != PRIMITIVE_ID_ATTRIBUTE || element.semantic == nullptr || std::string_view(element.semantic) != "ATTRIBUTE") continue;
+            element.semantic = nullptr;  // the pipeline's copy: valid only inside this lookup
+            id_element = element;
+          }
+        }
+      });
+      if (!layout_known) {
+        mesh += " ids ?";
+      } else if (id_element.has_value()) {
+        // UE's stream: 32-bit ids at step rate 1 from an explicit offset; instance i's at the bound offset + the element's
+        // + (first instance + i) x stride.
+        std::string ids;
+        const uint32_t slot = id_element->buffer_binding;
+        if (arguments.has_value() && arguments->instances != 0 && slot < vertex_buffers.size() && vertex_buffers[slot] != nullptr
+            && id_element->format == reshade::api::format::r32_uint && id_element->instance_step_rate == 1
+            && id_element->offset != D3D11_APPEND_ALIGNED_ELEMENT) {
+          D3D11_BUFFER_DESC desc = {};
+          vertex_buffers[slot]->GetDesc(&desc);
+          const UINT stride = strides[slot];
+          const uint64_t start = uint64_t{offsets[slot]} + id_element->offset + (uint64_t{arguments->first_instance} * stride);
+          const uint64_t end = start + (uint64_t{arguments->instances - 1} * stride) + sizeof(uint32_t);
+          ComPtr<ID3D11Device> device;
+          context->GetDevice(device.GetAddressOf());
+          const D3D11_BUFFER_DESC staging_desc = {.ByteWidth = static_cast<UINT>(end - start), .Usage = D3D11_USAGE_STAGING,
+                                                  .CPUAccessFlags = D3D11_CPU_ACCESS_READ};
+          ComPtr<ID3D11Buffer> staging;
+          if (end <= desc.ByteWidth && SUCCEEDED(device->CreateBuffer(&staging_desc, nullptr, staging.GetAddressOf()))) {
+            const D3D11_BOX box = {.left = static_cast<UINT>(start), .top = 0, .front = 0, .right = static_cast<UINT>(end), .bottom = 1,
+                                   .back = 1};
+            context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, vertex_buffers[slot], 0, &box);
+            if (D3D11_MAPPED_SUBRESOURCE mapped = {}; SUCCEEDED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+              for (uint32_t instance = 0; instance < arguments->instances; ++instance) {
+                uint32_t id = 0;
+                std::memcpy(&id, static_cast<const uint8_t*>(mapped.pData) + (uint64_t{instance} * stride), sizeof(id));
+                ids += std::format(" {}", id);
+              }
+              context->Unmap(staging.Get(), 0);
+            }
+          }
+        }
+        mesh += " ids" + (ids.empty() ? std::string(" ?") : ids);
+      }
+    }
   }
   for (auto* buffer : vertex_buffers) {
     if (buffer != nullptr) {
@@ -509,7 +568,8 @@ inline void OnPresent(std::string_view game, const Options& options = {}) {
         state.text +=
             "Mesh, after the vertex buffers: indices (or vertices), first index (or vertex), base vertex, instances at the\n"
             "first instance (?: an indirect draw's), then by address the index buffer (+offset, format), the vertex buffers\n"
-            "(+offset), the VS constant buffers (cb) and the VS shader resources (vt).\n";
+            "(+offset), the VS constant buffers (cb) and the VS shader resources (vt); ids: GPU Scene's primitive id of each\n"
+            "instance (ATTRIBUTE13, read back; ?: not readable, or the input layout unknown: the DevKit keeps the layouts).\n";
       }
       state.lines = 0;
       state.last_view.clear();
