@@ -13989,7 +13989,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         rule; still no pak opened at audit time) -> g24_ lands the source change in step0 r3; shd_'s R.U.S.E. / D1 / D2
         pack folders join when published.
         - [ ] g24_: add dump_shader_ruse_pack / dump_shader_divinity1_pack / dump_shader_divinity2_pack to the census after
-        shd_'s hand-back (coord sends counts).
+        shd_'s hand-back (coord SENT counts 11-24 ~13:3x).
         fa3_ FCA D3D11 + DRIVER DONE (render_mt/fca/analysis/fa3_d3d11_driver.md + fa3_handback.md; 10 items, 9 ruled out):
         the big W3 driver waits (F03 14.3 / F02 30.7 / WAW3 30.2 / U10 20.4 ms/f) are a 'no-rename trap': the bench's WPR
         start / stop tasks take focus -> SetFullscreenState(FALSE) + ~2 s no draws -> NVIDIA stops renaming DISCARD buffers;
@@ -14050,6 +14050,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] eval: trap-seconds line in the bench eval + WPR tasks that don't take focus (fa3_ (d) / fa7_ #2).
         - [ ] game runs proposed (ATN's go, after the ranked list): G1 W3 ALL vs ALL+FDW+FCU 8+ starts each to 180 s + D1
         2+2; G2 alt-tab mid-battle; G3 row bisect only if G1 needs it.
+        shd_ DUMPS DONE (handbacks/shd_dumps_handback.md): NEW bin\cmd_Decompiler-1.3.16 folders dump_shader_divinity1_pack
+        (3,184 + 4 runtime, DXBC, + game .shd sources), dump_shader_divinity2_pack (7,187 + 1 runtime; 2,141 console-tagged
+        kept; 6,444 PC live), dump_shader_ruse_pack (1,803 D3D9 from ZZ_Win.dat shadercachev02.shc; .hlsl via HlslDecompiler);
+        0 missing vs every add-on file, trace, log + DevKit hash; earlier censuses contained. Not dumped: media, D2 console /
+        Mac (no DXBC), D2 Classic, 4 D1 run-time hashes with no blob anywhere. -> g24_ census sources (sent).
+        rvs_ SHG REVIEW NOT GO (plan_1117/rvs_shg_review.md + rvs_shg_review_handback.md): 6 MUST (M1 -3.3 ms re-based to
+        ~-2.0..-2.6 + test vs Half 4 rays; M2 IrradZ shift != memo LSQ solve, S0 compares both; M3 back-facing fallback needs
+        per-tap normals; M4 Toru MIT plan item; M5 directional GT-VBAO in our AO upsample with G-buffer normal -> game's AO
+        target; M6 citations), 12 SHOULD, 10 NIT; slice maths, colour restore, REBLUR_DIFFUSE_SH in NRD 4.18 confirmed. ->
+        shg_ (sent): S0 additions now, then Rev 1 (+ ATN's main item: low-res GT-VBAO / GT-VBGI + SVGF upsample + SH) ->
+        rvs_ short re-check.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
