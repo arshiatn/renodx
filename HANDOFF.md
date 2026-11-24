@@ -14010,6 +14010,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         #1 on the volley (gains don't add). #5 game job wakes ~1,050-1,560 SetEvent / f (grain values via engine_tweaks,
         census + A/B). WARNINGS for all analysts / the critic: subtract WPR stack-walk overhead (4.7 F03 / 12.1 c9 / 3.8 D1
         ms/f on main); skip non-battle frames (WAW3 0-48, WAD1 0-85, F03_wpr 0-45, F04 0-128).
+        fa6_ FCA LOCKS / WAITS DONE (render_mt/fca/analysis/fa6_locks_waits.md + fa6_handback.md; items A-K, 16 ruled out):
+        main's lock / wait / spin total W3 c9 ~75.6 / F03 ~32.2 / D1 ~8.3 ms/f. #1 sort-chain job wait 15.1 / 11.8 / 4.3
+        (= fa1_ #1; chain holds no locks); #2 driver ring spin + waits 48.6 W3 (fa3_ trap; 13.7 of 18.4 spin under our
+        OnCommandAction FCU Map + 5x SetConstantBuffers); #3 SetEvent wakes 5.5 / 2.4 / 1.75 (EJOB = out; Faster Job Wake-Ups
+        was OFF in every final-bench start); #4 worker_pool Join spin -> wake chain + owner takes unstarted partitions ~0.7 W3
+        (fa5_ / fci_); #6 our shared_mutex on main-only paths <= 0.4; #7 game bump-allocator CS (malloc under lock, false
+        sharing) bigger blocks via engine_code. heapfix 0.000 on the critical path; helper wait 0.00. Use c9 / b1.1 / D1 86+,
+        'without ETW' figures for wakes.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
