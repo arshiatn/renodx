@@ -736,6 +736,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FCA: 8 Opus xHigh analysts -> Fable 5.2 xHigh completeness critic -> ranked list ... | ?
 - G-S2 (owner g23_): ngx_backend.hpp FENCE_TIMEOUT -> GPU_WAIT_TIMEOUT once gbf_'s ... | ?
 - G23 set (ea398af22 + H1-H8) GPU gate: helper build + H5 WARP + H9 T3 / T4 (ATN's ... | ?
+- Build-slot trial (after fcx_): slot1-6 locks, -j4, sample RAM / commit / paging ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13722,6 +13723,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         Sonnet xHigh (safety stops); everything else Opus xHigh first, Sonnet xHigh if that fails. g23_ found a missed
         bridge gate (dlaa_bridge.hpp:827 rr_extra zeroed for FSR without guides) -> gbf_ adds it to 'Bridge (all)' after
         checking every caller.
+        ATN IN CHAT 11-24: no fixed writer cap (different files; limit = reviews / merges). Build TRIAL OK'd: 6 slots at
+        -j4 once fcx_ ends; keep only if peak RAM < ~26 GB and no paging, else back to 4; tell ATN the result.
+        - [ ] Build-slot trial (after fcx_): slot1-6 locks, -j4, sample RAM / commit / paging during a 6-build window ->
+        keep 6 or back to 4 -> report to ATN.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
