@@ -57,12 +57,12 @@ inline void SetTints(std::initializer_list<std::string> base_sections, const std
 
 // Settings Mode's pages (ATN): HDR & Effects (0): tone mapping, grading, effects, output; Graphics 1 of 2: the ambient
 // occlusion, Global Illumination, screen-space shadows and anti-aliasing; Graphics 2 of 2 (`engine_sections`): the engine
-// graphics and their tests. About on every page. `mode`: the Settings Mode slider's value. A setting without its own
-// visibility shows on its page.
+// graphics and their tests. About and the mode rows (Settings Mode, Ryse's Simple / Advanced) on every page. `mode`: the
+// Settings Mode slider's value. A setting without its own visibility shows on its page.
 inline void AssignPages(std::vector<renodx::utils::settings::Setting*>* settings, const float* mode,
                         const std::vector<std::string>& engine_sections, const std::vector<std::string>& graphics_sections = {}) {
   for (auto* setting : *settings) {
-    if (setting->key == "SettingsMode" || setting->section == "About") continue;
+    if (setting->key == "SettingsMode" || setting->key == "SettingsAdvanced" || setting->section == "About") continue;
     int page = 0;
     if (std::ranges::find(engine_sections, setting->section) != engine_sections.end()) {
       page = 2;
