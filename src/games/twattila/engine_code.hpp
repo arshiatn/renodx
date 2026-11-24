@@ -1904,10 +1904,11 @@ struct CutRange {
 // makes the game's call. The pool is the job system singleton the accessor (found by its bytes) loads; it is read here, before the app's
 // destruction. Not the app's other E8 caller (+0x137414c, the creation's failure path).
 // Why +0xc9ac1 and not the earlier +0xd5d74 (the call of the root teardown +0xc9800, which destroys the subsystem list this call is in):
-// +0xc9800 has a second E8 caller (+0xc9ff3, its scalar deleting destructor) and is thiscall, so the earlier site would need a second
-// proof and a register-keeping stub; the dump of the fault puts it in the app's delete (the main thread was in its Sleep(100)), which is
-// after this call, and the pool is still alive here (its own destroy is a later subsystem of the same list). Soak pass rule: N exits
-// with the window closed with no exit fault, and a "drained" line in every one.
+// the earlier site would need a second proof of its own and a stub that keeps ecx (+0xc9800 is thiscall), and the evidence does not ask for it:
+// the faulting battle job (one-shot) was already in flight while +0xc9800's own teardown and the subsystems before this one were destroyed, and
+// it did not fault then; it faulted only after the app's delete had started (the dump has the main thread in its Sleep(100), after this call),
+// and the pool is still alive here (its own destroy is a later subsystem of the same list). Soak pass rule: N exits with the window closed
+// with no exit fault, and a "drained" line in every one.
 // A "gave up" line with "job workers still running" and no job running is possible but rare: the game's Wake stores state 2 after its
 // release, so a worker that wakes, finds nothing and sleeps again before that store keeps state 2 with no wake pending until its next
 // Wake; it costs the full 1000 ms. One such line alone is not a stuck job.
@@ -1924,12 +1925,12 @@ constexpr size_t POOL_WORKER_COUNT = 1;
 constexpr size_t POOL_WORKERS = 2;  // the array of the workers
 constexpr size_t POOL_QUEUE = 4;    // the head of the queued jobs
 constexpr size_t POOL_WORDS = POOL_QUEUE + 1;
-constexpr size_t WORKER_POOL = 1;
-constexpr size_t WORKER_STATE = 6;
-constexpr size_t WORKER_WAKES = 0x14;  // the pending wakes
-constexpr size_t WORKER_WORDS = WORKER_WAKES + 1;
-constexpr uint32_t WORKER_ASLEEP = 1;
-constexpr uint32_t WORKER_STOPPED = 3;
+constexpr size_t JOB_WORKER_POOL = 1;
+constexpr size_t JOB_WORKER_STATE = 6;
+constexpr size_t JOB_WORKER_WAKES = 0x14;  // the pending wakes
+constexpr size_t JOB_WORKER_WORDS = JOB_WORKER_WAKES + 1;
+constexpr uint32_t JOB_WORKER_ASLEEP = 1;
+constexpr uint32_t JOB_WORKER_STOPPED = 3;
 constexpr std::chrono::milliseconds EXIT_DRAIN_LIMIT{1000};
 static void (*exit_app_delete)() = nullptr;  // the game's function the site called
 static uintptr_t job_pool_global = 0;        // where the game keeps its job system pointer
@@ -1964,9 +1965,9 @@ static void ExitDrain() {
         as_expected = read(pool, pool_words.data(), sizeof(pool_words));
         queued = (pool_words[POOL_QUEUE] != 0);
         for (uint32_t index = 0; index < worker_count && as_expected; ++index) {
-          std::array<uint32_t, WORKER_WORDS> worker = {};
-          as_expected = read(workers[index], worker.data(), sizeof(worker)) && worker[WORKER_POOL] == pool;
-          if (as_expected && worker[WORKER_STATE] != WORKER_STOPPED && (worker[WORKER_STATE] != WORKER_ASLEEP || worker[WORKER_WAKES] != 0)) {
+          std::array<uint32_t, JOB_WORKER_WORDS> worker = {};
+          as_expected = read(workers[index], worker.data(), sizeof(worker)) && worker[JOB_WORKER_POOL] == pool;
+          if (as_expected && worker[JOB_WORKER_STATE] != JOB_WORKER_STOPPED && (worker[JOB_WORKER_STATE] != JOB_WORKER_ASLEEP || worker[JOB_WORKER_WAKES] != 0)) {
             busy |= uint64_t{1} << index;
           }
         }
@@ -1989,11 +1990,11 @@ static void ExitDrain() {
         std::string running;
         for (uint32_t index = 0; index < worker_count; ++index) {
           if ((busy >> index & 1) != 0) {
-            running += std::format("{}{}", running.empty() ? "" : ", ", index);
+            running += std::format("{}{}", (running.empty() ? "" : ", "), index);
           }
         }
-        renodx::utils::log::w("[Total War] Exit Job Drain: gave up after ", waited, " ms, job workers still running: ", running.empty() ? "none" : running, " (of ", worker_count, ")",
-                              queued ? ", jobs still queued." : ".");
+        renodx::utils::log::w("[Total War] Exit Job Drain: gave up after ", waited, " ms, job workers still running: ", (running.empty() ? "none" : running), " (of ", worker_count, ")",
+                              (queued ? ", jobs still queued." : "."));
       } else {
         renodx::utils::log::w("[Total War] Exit Job Drain: the job workers were not as expected at the game's end (pool 0x", std::format("{:X}", pool), "): not waited for.");
       }
