@@ -13898,6 +13898,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         traced method on. Owner: whoever lands Rome II traced reflections.
         g10_ RENDER_PASS x86 + amd64 PASS (handbacks/g10_render_pass_x86_handback.md; run_installed.ps1 render_pass_behavior,
         gpu_job.lock 12:17:46-12:18:13; pass/fail, no gate id). G10's last open check closed.
+        ATN 11-24 (leaving 4-8 h): 'Why shouldn't we start them now?' -> FCA ANALYST WAVE STARTED NOW (before mem_'s confirm
+        game run, which needs ATN anyway): fa1_ main, fa2_ render, fa3_ D3D11 + driver waits, fa4_ heap, fa5_ workers +
+        pool, fa6_ locks / waits, fa7_ GPU idle, fa8_ memory (Opus xHigh, read only; brief render_mt/fca/
+        fca_analyst_brief.md -> render_mt/fca/analysis/<prefix>*.md). Next: Fable 5.2 xHigh completeness critic (ONE TIME).
+        ATN ADDED the gbf_gpu_gates.ps1 run rules (settings.local.json :34-35, run + -DryRun). gbf_ writes the script
+        (no parameters besides -DryRun) -> rvh_ reviews -> only then the first run.
+        gbf_ GPU CHECKS BLOCKED (handbacks/gbf_gpu_checks_blocked_handback.md): h0_gpu_runs.ps1 / gpu_lab.ps1 can't drive
+        tw_rt_harness (S4a, jobs 1-7, G23 T3 / T4) -> the dedicated script above.
+        g23_ BUILDS ALL exit 0 at d28dccdd5 (x64 10 + helper + x86 3; 0 warnings on g23_ lines) + WH3 row 6a401bb04 + NITs
+        b43224e51; rvh_ delta GO (reviews/rvh_g23_delta_handback.md; D-N1 -> g23_ hides the WH3 row until the 2f-1 helper
+        rows land).
+        g22_ R2 9e1718410 (MA1 / MI2 / MI4 / MI5) -> rvk_ RE-CHECK GO -> mrg_ merges ho_g22 + builds ALL 36 on the merge
+        result + suites (sent). N7: tw_device_proxy_removal needs tearing support.
+        fxr_ R2 (render_mt/fca/designs/fxr_r2_handback.md): M1 / S1-S6 / N1-N9 applied, A limit 1000 ms constant -> rvl_
+        re-check sent.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
