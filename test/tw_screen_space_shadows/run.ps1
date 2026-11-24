@@ -58,7 +58,8 @@ if (($changed | Where-Object { $_ -notin $allowed }).Count -ne 0) { throw "Plain
 # compiled out (noskip_: BEND_SSS_TEST_NO_SKIP) db99b716b's bytes, every pass; this tree's test builds: each pixel's
 # writes summed with the skips (wnew_: BEND_SSS_TEST_WRITES, u7) and without (wref_), the skips counted (count_:
 # BEND_SSS_TEST_COUNTERS), Rev 0's sign-blind block test (signed_), margins -1e-3 (margin3_) and -0.25 (wmargin25_), every
-# block skipped (skipall_, wskipall_).
+# block skipped (skipall_, wskipall_), all with the block skip on every ray (BEND_SSS_TEST_SKIP_QUADS=0); the writes and
+# the counts with the shipped rule (wk_, countk_: from BlockSkipQuads, shorter rays Bend's loop).
 $e2Before = Join-Path $testBuild 'before_db99b716b'
 if (Test-Path -LiteralPath $e2Before) { Remove-Item -LiteralPath $e2Before -Recurse -Force -Confirm:$false }
 New-Item -ItemType Directory -Force -Path $e2Before | Out-Null
@@ -80,18 +81,21 @@ $attila = @('sss_bend', 'sss_bend_extended', 'sss_bend_extended_find')
 $counters = @('/D', 'BEND_SSS_TEST_COUNTERS')
 $noSkip = @('/D', 'BEND_SSS_TEST_NO_SKIP')
 $writes = @('/D', 'BEND_SSS_TEST_WRITES')
+$everyRay = @('/D', 'BEND_SSS_TEST_SKIP_QUADS=0')
 $builds = @(
   @{ Prefix = 'old_'; Root = $e2Before; Names = $bend.Keys; Defines = @() },
   @{ Prefix = 'new_'; Root = $repairRoot; Names = $bend.Keys; Defines = @() },
   @{ Prefix = 'noskip_'; Root = $repairRoot; Names = $bend.Keys; Defines = $noSkip },
-  @{ Prefix = 'wnew_'; Root = $repairRoot; Names = $skipping; Defines = $writes },
+  @{ Prefix = 'wnew_'; Root = $repairRoot; Names = $skipping; Defines = $writes + $everyRay },
+  @{ Prefix = 'wk_'; Root = $repairRoot; Names = $skipping; Defines = $writes },
   @{ Prefix = 'wref_'; Root = $repairRoot; Names = $skipping; Defines = $writes + $noSkip },
-  @{ Prefix = 'wskipall_'; Root = $repairRoot; Names = $attila; Defines = $writes + @('/D', 'BEND_SSS_TEST_SKIP_ALL') },
-  @{ Prefix = 'count_'; Root = $repairRoot; Names = $skipping; Defines = $counters },
-  @{ Prefix = 'signed_'; Root = $repairRoot; Names = $attila; Defines = $counters + @('/D', 'BEND_SSS_TEST_SIGNED') },
-  @{ Prefix = 'margin3_'; Root = $repairRoot; Names = $attila; Defines = $counters + @('/D', 'BEND_SSS_TEST_MARGIN=-1e-3') },
-  @{ Prefix = 'wmargin25_'; Root = $repairRoot; Names = $attila; Defines = $writes + @('/D', 'BEND_SSS_TEST_MARGIN=-0.25') },
-  @{ Prefix = 'skipall_'; Root = $repairRoot; Names = $attila; Defines = @('/D', 'BEND_SSS_TEST_SKIP_ALL') }
+  @{ Prefix = 'wskipall_'; Root = $repairRoot; Names = $attila; Defines = $writes + $everyRay + @('/D', 'BEND_SSS_TEST_SKIP_ALL') },
+  @{ Prefix = 'count_'; Root = $repairRoot; Names = $skipping; Defines = $counters + $everyRay },
+  @{ Prefix = 'countk_'; Root = $repairRoot; Names = $skipping; Defines = $counters },
+  @{ Prefix = 'signed_'; Root = $repairRoot; Names = $attila; Defines = $counters + $everyRay + @('/D', 'BEND_SSS_TEST_SIGNED') },
+  @{ Prefix = 'margin3_'; Root = $repairRoot; Names = $attila; Defines = $counters + $everyRay + @('/D', 'BEND_SSS_TEST_MARGIN=-1e-3') },
+  @{ Prefix = 'wmargin25_'; Root = $repairRoot; Names = $attila; Defines = $writes + $everyRay + @('/D', 'BEND_SSS_TEST_MARGIN=-0.25') },
+  @{ Prefix = 'skipall_'; Root = $repairRoot; Names = $attila; Defines = $everyRay + @('/D', 'BEND_SSS_TEST_SKIP_ALL') }
 )
 foreach ($build in $builds) {
   foreach ($name in $build.Names) {

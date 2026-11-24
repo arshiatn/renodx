@@ -180,6 +180,8 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
     dp.NearLightShare = 0.f;
     dp.FindHit = false;
     dp.FindThin = false;
+    // Its block skip from 128 quads (Length 524 at 100%): an RTX 5090 at 4K was slower with it at 117, faster at 276.
+    dp.BlockSkipQuads = 128;
   }
   // Its loops take four samples at a time (Hard Shadow Samples are fours): the count rounded up to fours (below 100%
   // render scale: 30 at 50%), the fade-out's down (4 at least, within those after the hard ones).

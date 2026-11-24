@@ -6,8 +6,8 @@
 // screen, the DLSS addon draws the depth into its top-left render scale part. The rays stay in full-size pixels (the
 // same shadow length on screen as at full size), read the depth in the rendered part and write each rendered pixel
 // once. At full size the same as the game's. The block skip (BEND_SSS_BLOCK_SKIP) and the FarFade skip: the main loop
-// leaves out blocks of samples that cannot reach the shadow window, and pixels FarFade fades fully leave out the loops,
-// with Bend's result to the bit.
+// leaves out blocks of samples that cannot reach the shadow window (rays of BlockSkipQuads quads and more), and pixels
+// FarFade fades fully leave out the loops, with Bend's result to the bit.
 
 // Copyright 2023 Sony Interactive Entertainment.
 //
@@ -128,6 +128,9 @@ struct DispatchParameters
 	bool MirrorEdges;
 	// RenoDX: the shadow fades out between these shares of the far plane's distance (y <= x: none).
 	float2 FarFade;
+	// RenoDX block skip: the fewest quads (the main loop's 4 samples) a ray takes it from; shorter rays run Bend's loop
+	// (BEND_SSS_FIND's samples cost more and pay it back sooner: FindThin's from 24, FindHit's from 40).
+	int BlockSkipQuads;
 #ifdef BEND_SSS_LIGHT_CASTERS
 	// RenoDX (Attila's Light Through Foliage): what a depth marked negative shadows keeps this share of the light.
 	float CasterLight;
@@ -166,6 +169,7 @@ struct DispatchParameters
 		FadeOutSamples				= FADE_OUT_SAMPLES;
 		MirrorEdges					= false;
 		FarFade						= float2(0, 0);
+		BlockSkipQuads				= 64;
 #ifdef BEND_SSS_EXTENDED
 		AutoThicknessScale			= 0;
 		ThinCasters					= false;
@@ -334,13 +338,16 @@ struct DispatchParameters
 	// RenoDX block skip (not with Auto Thickness, whose runs need every sample): the least and the most stored depth of
 	// each BEND_SSS_BLOCK DepthData entries, which the main loop tests before reading them. Blocks of 16; of 32 where the
 	// bounds of 16 would not fit SM 5's 32 KB of groupshared (Shogun 2's light caster passes at 3840 samples). Test harness
-	// only: BEND_SSS_TEST_NO_SKIP compiles both skips out (the same bytes as before them).
+	// only: BEND_SSS_TEST_NO_SKIP compiles both skips out (the same bytes as before them), BEND_SSS_TEST_SKIP_QUADS sets
+	// the fewest quads the block skip runs from (0: every ray).
 #if !(defined(BEND_SSS_EXTENDED) && defined(BEND_SSS_AUTO_THICKNESS)) && !defined(BEND_SSS_TEST_NO_SKIP)
 	#define BEND_SSS_BLOCK_SKIP
 	#if (READ_COUNT * WAVE_SIZE * (1 + defined(BEND_SSS_LIGHT_CASTERS)) + READ_COUNT * WAVE_SIZE / 8) * 4 > 32768
 		#define BEND_SSS_BLOCK 32
+		#define BEND_SSS_BLOCK_SHIFT 5
 	#else
 		#define BEND_SSS_BLOCK 16
+		#define BEND_SSS_BLOCK_SHIFT 4
 	#endif
 	groupshared float BlockLow[READ_COUNT * WAVE_SIZE / BEND_SSS_BLOCK];
 	groupshared float BlockHigh[READ_COUNT * WAVE_SIZE / BEND_SSS_BLOCK];
@@ -637,24 +644,39 @@ struct DispatchParameters
 		// RenoDX block skip: each block's bounds, built by every thread by its index (before any return). A thread reads its
 		// block in a skewed order: a warp's lanes 2p + q read banks 16q + ((k + p) & 15) (blocks of 32: (k + lane) & 31),
 		// no bank conflicts. A block holding a non-finite depth gets -inf..+inf and is always marched (a minimum or maximum
-		// would drop a NaN, which shadows today: max(NaN, light) is the light).
+		// would drop a NaN, which shadows today: max(NaN, light) is the light). Only for rays of BlockSkipQuads quads or more
+		// (the main range's, the same in every lane of a dispatch: its sample counts): shorter rays run Bend's loop, without
+		// the bounds and the barrier after them. RTX 5090 at 4K against Bend's loop: plain slower at 57 quads, not at 67;
+		// FindThin (Coloured Shadows) at 15, not at 27; FindHit (Softer) at 32, not at 57; the light mode (its pass with
+		// neither) at 117, not at 276 (its lanes march as few blocks as the sun's, and their warps as few, on WARP).
+		const uint quads = (uint)max(inSampleCount - inParameters.FadeOutSamples - inParameters.HardShadowSamples + 3, 0) >> 2;
+#if defined(BEND_SSS_TEST_SKIP_QUADS)
+		const bool block_skip = quads >= BEND_SSS_TEST_SKIP_QUADS;
+#elif defined(BEND_SSS_FIND)
+		const bool block_skip = quads >= (uint)(inParameters.FindThin ? 24 : (inParameters.FindHit ? 40 : inParameters.BlockSkipQuads));
+#else
+		const bool block_skip = quads >= (uint)inParameters.BlockSkipQuads;
+#endif
 		const uint block_count = (uint)read_count * (WAVE_SIZE / BEND_SSS_BLOCK);
-		[loop] for (uint block = (uint)inGroupThreadID; block < block_count; block += WAVE_SIZE)
+		[branch] if (block_skip)
 		{
-			float low = asfloat(0x7f800000);
-			float high = asfloat(0xff800000);
-			bool finite = true;
-			[unroll] for (uint k = 0; k < BEND_SSS_BLOCK; k++)
+			[loop] for (uint block = (uint)inGroupThreadID; block < block_count; block += WAVE_SIZE)
 			{
-				const float depth = DepthData[block * BEND_SSS_BLOCK + ((k + block * BEND_SSS_BLOCK / 32) & (BEND_SSS_BLOCK - 1))];
-				low = min(low, depth);
-				high = max(high, depth);
-				finite = finite && (asuint(depth) & 0x7f800000) != 0x7f800000;
+				float low = asfloat(0x7f800000);
+				float high = asfloat(0xff800000);
+				bool finite = true;
+				[unroll] for (uint k = 0; k < BEND_SSS_BLOCK; k++)
+				{
+					const float depth = DepthData[block * BEND_SSS_BLOCK + ((k + block * BEND_SSS_BLOCK / 32) & (BEND_SSS_BLOCK - 1))];
+					low = min(low, depth);
+					high = max(high, depth);
+					finite = finite && (asuint(depth) & 0x7f800000) != 0x7f800000;
+				}
+				BlockLow[block] = finite ? low : asfloat(0xff800000);
+				BlockHigh[block] = finite ? high : asfloat(0x7f800000);
 			}
-			BlockLow[block] = finite ? low : asfloat(0xff800000);
-			BlockHigh[block] = finite ? high : asfloat(0x7f800000);
+			GroupMemoryBarrierWithGroupSync();
 		}
-		GroupMemoryBarrierWithGroupSync();
 
 		// RenoDX: the sky and the pixels off the rendered part (render scale: writes there were out of bounds) return after
 		// both barriers (the latter returned after the loops before the block skip). So does a NaN distance to the far
@@ -707,7 +729,8 @@ struct DispatchParameters
 		// skipped blocks (false skips; 8 of them in lanes with depth_scale <= 0), 5 quads marched of 6 in the main ranges, 7
 		// lanes FarFade skipped, 9 samples in skipped blocks within 1e-3 past the window's edge (|offset| < 1.001, the false
 		// skips too), 10 samples within the window in lanes with depth_scale <= 0 (in any block: what a sign-blind block
-		// test could misjudge).
+		// test could misjudge), 11 lanes marched by Bend's loop (fewer quads than BlockSkipQuads: one block each, none
+		// skipped).
 		uint ignored;
 		if (far_fade >= 1)
 			BendTestCounters.InterlockedAdd(28, 1, ignored);
@@ -763,7 +786,6 @@ struct DispatchParameters
 			// ulp between the test's and a sample's instruction forms; NaN never skips. Quads in ascending order, each once
 			// (one over two blocks with the first), keep FindHit's first and FindThin's earliest; blocks past those built
 			// (only with fewer than 2 fade-out samples) are marched.
-			const uint quads = (uint)max(inSampleCount - inParameters.FadeOutSamples - inParameters.HardShadowSamples + 3, 0) >> 2;
 			const uint first_entry = (uint)(sample_index + inParameters.HardShadowSamples);
 			const uint end_entry = first_entry + 4 * quads;
 #ifdef BEND_SSS_TEST_MARGIN
@@ -777,23 +799,27 @@ struct DispatchParameters
 			uint test_flipped_inside = 0;
 #endif
 			uint next_quad = 0;
-			// Every lane's blocks in one loop (its bounds broadcasts), each lane marching its own quads.
+			// Every lane's blocks in one loop (its bounds broadcasts), each lane marching its own quads. Without the block
+			// skip one block of 2^16 entries (past any ray's), never skipped: Bend's quads in Bend's order (its bounds slot
+			// read, not built this dispatch, is left unused).
 			const uint group_end = WAVE_SIZE + (uint)inParameters.HardShadowSamples + 4 * quads;
-			[loop] for (uint block = (1 + (uint)inParameters.HardShadowSamples) / BEND_SSS_BLOCK; block * BEND_SSS_BLOCK < group_end; block++)
+			const uint block_shift = block_skip ? BEND_SSS_BLOCK_SHIFT : 16;
+			[loop] for (uint block = (1 + (uint)inParameters.HardShadowSamples) >> block_shift; (block << block_shift) < group_end; block++)
 			{
-				const uint block_first = max(block * BEND_SSS_BLOCK, first_entry);
-				const uint block_end = min((block + 1) * BEND_SSS_BLOCK, end_entry);
+				const uint block_first = max(block << block_shift, first_entry);
+				const uint block_end = min((block + 1) << block_shift, end_entry);
 				if (block_first >= block_end)
 					continue;
 				const float low_offset = start_depth - BlockLow[block] * depth_scale;
 				const float high_offset = start_depth - BlockHigh[block] * depth_scale;
 #if defined(BEND_SSS_TEST_SKIP_ALL)
-				const bool skip = true;
+				const bool skip = block_skip;
 #elif defined(BEND_SSS_TEST_SIGNED)
 				// Rev 0's test: depth_scale > 0 taken for granted (low_offset the interval's lower end).
-				const bool skip = block < block_count && !(low_offset > -window && high_offset < window);
+				const bool skip = block_skip && block < block_count && !(low_offset > -window && high_offset < window);
 #else
-				const bool skip = block < block_count && ((low_offset >= window && high_offset >= window) || (low_offset <= -window && high_offset <= -window));
+				const bool skip = block_skip && block < block_count
+				                  && ((low_offset >= window && high_offset >= window) || (low_offset <= -window && high_offset <= -window));
 #endif
 				// One past the last quad touching the block (the main range's last at most: end_entry).
 				const uint quad_end = (block_end - first_entry + 3) >> 2;
@@ -858,6 +884,7 @@ struct DispatchParameters
 			BendTestCounters.InterlockedAdd(32, (depth_scale <= 0) ? test_counts.z : 0, ignored);
 			BendTestCounters.InterlockedAdd(36, test_near, ignored);
 			BendTestCounters.InterlockedAdd(40, test_flipped_inside, ignored);
+			BendTestCounters.InterlockedAdd(44, block_skip ? 0 : 1, ignored);
 #endif
 #else
 			}

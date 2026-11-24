@@ -1800,8 +1800,13 @@ static Vector SunAt(const Camera& camera, float ndc_x, float ndc_y, bool behind)
   return Normalize(travel);
 }
 
+// The lanes the shipped passes march by Bend's loop (fewer quads than BlockSkipQuads) on a case: not checked, all, none,
+// the light mode's alone (its sun's march takes the block skip).
+enum class BendLoop { UNCHECKED, ALL, NONE, LIGHTS };
+
 // One of case 11's frames: its rows (Length, hard and fade-out samples among them), the render size below 100% (0: full),
-// the banners' depth this frame, the foliage's depth pass, the lights (the light mode: settings.lights of them).
+// the banners' depth this frame, the foliage's depth pass, the lights (the light mode: settings.lights of them), the
+// lanes in Bend's loop.
 struct SkipCase {
   std::string name;
   const Frame* frame = nullptr;
@@ -1811,6 +1816,7 @@ struct SkipCase {
   bool thin = false;
   const Foliage* foliage = nullptr;
   std::span<const LightInstance> lights;
+  BendLoop bend_loop = BendLoop::UNCHECKED;
 };
 
 // What a frame of the module wrote: the occlusion, what the sun draws read where Softness or Softer smoothed it, the
@@ -1909,6 +1915,7 @@ struct SkipCounts {
   uint64_t flipped_false = 0;  // false skips in lanes with depth_scale <= 0
   uint64_t near_misses = 0;    // samples in skipped blocks within 1e-3 past the window's edge (the false skips too)
   uint64_t flipped_inside = 0; // samples within the window in lanes with depth_scale <= 0 (any block)
+  uint64_t bend_loop = 0;      // lanes Bend's loop marched (fewer quads than BlockSkipQuads)
 
   SkipCounts& operator+=(const SkipCounts& other) {
     lanes += other.lanes;
@@ -1922,6 +1929,7 @@ struct SkipCounts {
     flipped_false += other.flipped_false;
     near_misses += other.near_misses;
     flipped_inside += other.flipped_inside;
+    bend_loop += other.bend_loop;
     return *this;
   }
 };
@@ -1961,7 +1969,8 @@ template <typename Work>
 static SkipCounts CountSkips(const CounterBuffer& counters, Work work) {
   const auto values = TestWords(counters, work);
   return {.lanes = values[0], .flipped = values[1], .blocks = values[2], .skipped = values[3], .false_skips = values[4], .marched = values[5],
-          .quads = values[6], .far_faded = values[7], .flipped_false = values[8], .near_misses = values[9], .flipped_inside = values[10]};
+          .quads = values[6], .far_faded = values[7], .flipped_false = values[8], .near_misses = values[9], .flipped_inside = values[10],
+          .bend_loop = values[11]};
 }
 
 // The writes builds' sums (BEND_SSS_TEST_WRITES: each pixel's count of writes, the shadow terms' sum, least and most bits,
@@ -1988,12 +1997,12 @@ static std::vector<uint8_t> CompareWrites(const std::string& what, const std::ve
 
 static void PrintCounts(const std::string& name, const SkipCounts& counts) {
   std::printf("   %s: %llu lanes (%llu with depth_scale <= 0, %llu samples of theirs in the window), %.1f%% of %llu blocks skipped (%llu "
-              "samples in them within 1e-3 past the window), %.1f%% of the quads marched, %llu lanes FarFade left out; FALSE SKIPS %llu "
-              "(%llu with depth_scale <= 0)\n",
+              "samples in them within 1e-3 past the window), %.1f%% of the quads marched, %llu lanes FarFade left out, %llu in Bend's loop; "
+              "FALSE SKIPS %llu (%llu with depth_scale <= 0)\n",
               name.c_str(), counts.lanes, counts.flipped, counts.flipped_inside,
               100.0 * static_cast<double>(counts.skipped) / static_cast<double>(std::max<uint64_t>(counts.blocks, 1)), counts.blocks, counts.near_misses,
               100.0 * static_cast<double>(counts.marched) / static_cast<double>(std::max<uint64_t>(counts.quads, 1)), counts.far_faded,
-              counts.false_skips, counts.flipped_false);
+              counts.bend_loop, counts.false_skips, counts.flipped_false);
 }
 
 // Case 11's scenes on the ground 2 m below the camera. The box scene: a box, a wall behind it, a pole beside it, a red
@@ -2037,11 +2046,14 @@ static std::vector<LightInstance> SkipTorches() {
 // 11. The block skip and the FarFade skip (bend_sss_gpu.hlsli BEND_SSS_BLOCK_SKIP) on the module's Bend passes: this tree's
 // (as embedded, checked) against db99b716b's (run.ps1's e2_cso) over design 9.2's matrix. The writes builds (this tree's
 // with both skips and without them, the latter db99b716b's bytes without the sums, run.ps1 checks) on each frame: every
-// pixel's writes to the bit, whatever order the waves ran in; then every output (CompareRuns), varying or apart only where
-// a pixel was written more than once (whichever write lands last: the sides' groups take different times, a pixel can be
-// one side's in all 8 runs and the other's in all of theirs); the counter build on each frame: no sample within the
-// shadow window in a skipped block (false skips 0), blocks skipped on the box and grass scenes, FarFade's lanes left out
-// past 60% of the far plane, lanes with depth_scale <= 0 reached, more lanes with more torches. CONTROLS (must fail):
+// pixel's writes to the bit, whatever order the waves ran in, with the block skip on every ray (BEND_SSS_TEST_SKIP_QUADS
+// 0) and from BlockSkipQuads (the shipped rule); then every output (CompareRuns), varying or apart only where a pixel was
+// written more than once (whichever write lands last: the sides' groups take different times, a pixel can be one side's
+// in all 8 runs and the other's in all of theirs); the counter builds on each frame: no sample within the shadow window
+// in a skipped block (false skips 0) with either, blocks skipped on the box and grass scenes, FarFade's lanes left out
+// past 60% of the far plane, lanes with depth_scale <= 0 reached, more lanes with more torches; with BlockSkipQuads each
+// pass's lanes all in Bend's loop or none, as the case says (a quad below and at each K: plain and Light Through Banners
+// 64, Coloured Shadows 24, Softer 40, the light mode 128). CONTROLS (must fail, every ray skipping):
 // margin -1e-3 (false skips on the boundary frames: the sun along a wall), margin -0.25 (the writes builds' sums differ at
 // Contrast 1), every block skipped (the occlusion apart; the sums differ). OBSERVATION (not a control): Rev 0's
 // sign-blind block test on the sun-in-view and torches' frames can misjudge only samples within the window in lanes with
@@ -2064,6 +2076,7 @@ static void TestBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driv
   const BendPasses fresh = LoadBendPasses(folder, "new_");
   const BendPasses old = LoadBendPasses(folder, "old_");
   const BendPasses counted = LoadBendPasses(folder, "count_");
+  const BendPasses counted_shipped = LoadBendPasses(folder, "countk_");
   const CounterBuffer counters = MakeCounterBuffer();
 
   const std::vector<Box> box_scene = SkipBoxScene();
@@ -2137,7 +2150,8 @@ static void TestBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driv
   };
   std::vector<SkipCase> cases;
   for (const float samples : {60.f, 120.f, 240.f, 480.f, 960.f, 1920.f}) {
-    cases.push_back({.name = "box, Length " + std::to_string(static_cast<int>(samples)), .frame = box, .settings = length(samples)});
+    cases.push_back({.name = "box, Length " + std::to_string(static_cast<int>(samples)), .frame = box, .settings = length(samples),
+                     .bend_loop = (samples < 480.f) ? BendLoop::ALL : BendLoop::NONE});
   }
   for (size_t index = 0; index < SCALES.size(); ++index) {
     cases.push_back({.name = std::string("box at ") + SCALES[index].name, .frame = scaled[index], .settings = length(240.f),
@@ -2190,8 +2204,30 @@ static void TestBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driv
   cases.push_back({.name = "torches 32, Length 1920", .frame = box, .settings = torch_rows(32, 1920.f), .lights = torches});
   cases.push_back({.name = "torches 32 at 58%", .frame = scaled[2], .settings = torch_rows(32, 240.f), .render_width = 278, .render_height = 157, .lights = torches});
   cases.push_back({.name = "torches 32, sun in view", .frame = box_front, .settings = torch_rows(32, 240.f), .lights = torches});
+  // A quad below each BlockSkipQuads and at it (quads = (Length - 12 + 3) / 4 at 100%, Hard 4, Fade 8).
+  for (const bool below : {true, false}) {
+    const auto at = [&](float samples, int quads) {
+      return ", Length " + std::to_string(static_cast<int>(samples)) + " (" + std::to_string(quads) + " quads: " + (below ? "Bend's loop)" : "the block skip)");
+    };
+    const BendLoop sun_loop = below ? BendLoop::ALL : BendLoop::NONE;
+    const float plain = below ? 264.f : 268.f;
+    cases.push_back({.name = "box" + at(plain, below ? 63 : 64), .frame = box, .settings = length(plain), .bend_loop = sun_loop});
+    cases.push_back({.name = "box, Light Through Banners" + at(plain, below ? 63 : 64), .frame = box,
+                     .settings = rows([&](sss::Settings& s) { s.samples = plain; s.thin_light = 0.35f; }), .thin = true, .bend_loop = sun_loop});
+    const float coloured = below ? 104.f : 108.f;
+    cases.push_back({.name = "box, Banners + Coloured" + at(coloured, below ? 23 : 24), .frame = box,
+                     .settings = rows([&](sss::Settings& s) { s.samples = coloured; s.thin_light = 0.35f; s.coloured = true; }), .thin = true,
+                     .bend_loop = sun_loop});
+    const float soft = below ? 168.f : 172.f;
+    cases.push_back({.name = "box, Softer" + at(soft, below ? 39 : 40), .frame = box,
+                     .settings = rows([&](sss::Settings& s) { s.samples = soft; s.sun_disk = 0.5f; }), .bend_loop = sun_loop});
+    const float lit = below ? 520.f : 524.f;
+    cases.push_back({.name = "torches 32" + at(lit, below ? 127 : 128), .frame = box, .settings = torch_rows(32, lit), .lights = torches,
+                     .bend_loop = below ? BendLoop::LIGHTS : BendLoop::NONE});
+  }
 
   const BendPasses written = LoadBendPasses(folder, "wnew_");
+  const BendPasses written_shipped = LoadBendPasses(folder, "wk_");
   const BendPasses written_before = LoadBendPasses(folder, "wref_");
   // A frame marches the lights the frame before drew (LightFrames' first those of the case before): the sums after a
   // frame of the case (the light mode's: LightFrames' two, each with the sun's march).
@@ -2200,10 +2236,13 @@ static void TestBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driv
     return TestWords(counters, [&] { RunSkipCase(skip_case, passes); });
   };
   SkipCounts total;
+  SkipCounts total_shipped;
   std::vector<uint64_t> torch_lanes;  // torches 1, 4 and 32's
   for (const auto& skip_case : cases) {
-    const auto twice = CompareWrites(skip_case.name + ", writes against db99b716b's", writes(skip_case, written), writes(skip_case, written_before), true,
-                                     skip_case.lights.empty() ? 1u : 2u);
+    const uint32_t frames = skip_case.lights.empty() ? 1u : 2u;
+    const std::vector<uint32_t> reference = writes(skip_case, written_before);
+    const auto twice = CompareWrites(skip_case.name + ", writes against db99b716b's", writes(skip_case, written), reference, true, frames);
+    CompareWrites(skip_case.name + ", writes (BlockSkipQuads) against db99b716b's", writes(skip_case, written_shipped), reference, true, frames);
     CompareSkipCase(skip_case, fresh, old, "against db99b716b's", true, twice);
     const SkipCounts counts = CountSkips(counters, [&] { RunSkipCase(skip_case, counted); });
     PrintCounts(skip_case.name, counts);
@@ -2212,9 +2251,23 @@ static void TestBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driv
     if (skip_case.name.starts_with("far wall")) CHECK(counts.far_faded > 0);
     if (skip_case.name == "torches 1" || skip_case.name == "torches 4" || skip_case.name == "torches 32") torch_lanes.push_back(counts.lanes);
     total += counts;
+    const SkipCounts shipped = CountSkips(counters, [&] { RunSkipCase(skip_case, counted_shipped); });
+    PrintCounts(skip_case.name + " (BlockSkipQuads)", shipped);
+    CHECK(shipped.false_skips == 0 && shipped.lanes == counts.lanes);
+    switch (skip_case.bend_loop) {
+      case BendLoop::ALL:     CHECK(shipped.bend_loop == shipped.lanes && shipped.skipped == 0); break;
+      case BendLoop::NONE:    CHECK(shipped.bend_loop == 0 && shipped.skipped > 0); break;
+      case BendLoop::LIGHTS:  CHECK(shipped.bend_loop > 0 && shipped.bend_loop < shipped.lanes && shipped.skipped > 0); break;
+      case BendLoop::UNCHECKED:
+        if (skip_case.lights.empty()) CHECK(shipped.bend_loop == 0 || shipped.bend_loop == shipped.lanes);
+        break;
+    }
+    total_shipped += shipped;
   }
   PrintCounts("ALL", total);
   CHECK(total.false_skips == 0 && total.flipped > 0 && total.skipped > 0 && total.far_faded > 0);
+  PrintCounts("ALL (BlockSkipQuads)", total_shipped);
+  CHECK(total_shipped.false_skips == 0 && total_shipped.skipped > 0 && total_shipped.bend_loop > 0 && total_shipped.bend_loop < total_shipped.lanes);
   CHECK(torch_lanes.size() == 3 && torch_lanes[0] < torch_lanes[1] && torch_lanes[1] < torch_lanes[2]);
 
   // CONTROLS.
@@ -2251,9 +2304,10 @@ static void TestBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driv
 
 // 11 on Shogun 2's sun shadow passes (sss.hlsli, SAMPLE_COUNT 3840): sss00 / sss01, Light Through Foliage's sss_foliage(_cascades)
 // (the depth's foliage pixels negative; light casters: blocks of 32 at 3840) and Softer Away from the Caster's
-// sss_distance(_cascades) (with the banner, its filter and the split texture's penumbra), 120 and 3840 samples, this tree's
-// against db99b716b's to the bit: the writes builds' sums, then the mask, the filter and the split texture (varying or
-// apart only where written twice); the counter builds: no false skip.
+// sss_distance(_cascades) (with the banner, its filter and the split texture's penumbra), 120, 240, 480 and 3840 samples,
+// this tree's against db99b716b's to the bit: the writes builds' sums (the block skip on every ray and from
+// BlockSkipQuads), then the mask, the filter and the split texture (varying or apart only where written twice); the
+// counter builds: no false skip, with BlockSkipQuads every lane in Bend's loop below it and none from it.
 static void TestBlockSkipShogun2(const std::string& before_folder, D3D_DRIVER_TYPE driver) {
   std::printf("11. the block skip on Shogun 2's passes on %s\n", (driver == D3D_DRIVER_TYPE_WARP) ? "WARP" : "the hardware GPU");
   MakeDevice(driver);
@@ -2296,23 +2350,29 @@ static void TestBlockSkipShogun2(const std::string& before_folder, D3D_DRIVER_TY
                                            {"s2_sss_distance_cascades", true, true, true}}};
   using Data = shogun2::ShaderInjectData;
   SkipCounts total;
+  SkipCounts total_shipped;
   for (const auto& pass : PASSES) {
     const auto old = LoadCso((folder / (std::string("old_") + pass.name + ".cso")).string());
     const auto fresh = LoadCso((folder / (std::string("new_") + pass.name + ".cso")).string());
     const auto counted = LoadCso((folder / (std::string("count_") + pass.name + ".cso")).string());
+    const auto counted_shipped = LoadCso((folder / (std::string("countk_") + pass.name + ".cso")).string());
     const auto written = LoadCso((folder / (std::string("wnew_") + pass.name + ".cso")).string());
+    const auto written_shipped = LoadCso((folder / (std::string("wk_") + pass.name + ".cso")).string());
     const auto written_before = LoadCso((folder / (std::string("wref_") + pass.name + ".cso")).string());
     const Frame& input = pass.foliage ? foliage : frame;
     const ShogunExtras extras = pass.distance ? ShogunExtras{.thin = frame.thin.srv.Get(), .colour = frame.colour.srv.Get(), .tint = tint_uav.Get(), .split = split_uav.Get()}
                                               : ShogunExtras{};
-    // 3840 samples (Shogun 2's row at 5), and 120 with Hard 4, Fade 4 and Contrast 2.
-    for (const bool most : {true, false}) {
+    // 3840 samples (Shogun 2's row at 5), 120 with Hard 4, Fade 4 and Contrast 2, 240 and 480 (rows 1 and 2; Hard 8, Fade
+    // 16): their quads 954, 28, 54 and 114, the block skip's from 64 (sss_distance's, banners and their filter bound:
+    // FindThin's 24).
+    for (const int row : {0, 1, 2, 3}) {
       std::vector<std::pair<size_t, float>> rows;
-      if (most) {
-        rows = {{offsetof(Data, sss_samples), 5.f}};
-      } else {
+      if (row == 1) {
         rows = {{offsetof(Data, sss_hard_samples), 4.f}, {offsetof(Data, sss_fade_samples), 4.f}, {offsetof(Data, sss_contrast), 2.f}};
+      } else {
+        rows = {{offsetof(Data, sss_samples), (row == 0) ? 5.f : static_cast<float>(row - 1)}};
       }
+      constexpr std::array<uint32_t, 4> QUADS = {954, 28, 54, 114};
       if (pass.foliage) rows.emplace_back(offsetof(Data, sss_foliage_light), 0.5f);
       if (pass.distance) {
         rows.emplace_back(offsetof(Data, sss_banner_light), 0.35f);
@@ -2341,7 +2401,8 @@ static void TestBlockSkipShogun2(const std::string& before_folder, D3D_DRIVER_TY
         filters[side].push_back(std::move(filter));
         penumbras[side].push_back(std::move(penumbra));
       }
-      const std::string name = std::string(pass.name) + (most ? ", 3840 samples" : ", 120 samples, Hard 4, Fade 4, Contrast 2");
+      constexpr std::array<const char*, 4> ROW_NAMES = {", 3840 samples", ", 120 samples, Hard 4, Fade 4, Contrast 2", ", 240 samples", ", 480 samples"};
+      const std::string name = std::string(pass.name) + ROW_NAMES[row];
       std::vector<uint32_t> ignored;
       // RunShogunPass ends with ClearState: the test buffer bound again first.
       const auto bound = [&](ID3D11ComputeShader* shader) {
@@ -2350,8 +2411,9 @@ static void TestBlockSkipShogun2(const std::string& before_folder, D3D_DRIVER_TY
           run(shader, &ignored, &ignored);
         };
       };
-      const auto twice = CompareWrites(name + ", writes against db99b716b's", TestWords(counters, bound(written.Get())),
-                                       TestWords(counters, bound(written_before.Get())));
+      const std::vector<uint32_t> reference = TestWords(counters, bound(written_before.Get()));
+      const auto twice = CompareWrites(name + ", writes against db99b716b's", TestWords(counters, bound(written.Get())), reference);
+      CompareWrites(name + ", writes (BlockSkipQuads) against db99b716b's", TestWords(counters, bound(written_shipped.Get())), reference);
       CompareRuns((name + ", mask against db99b716b's").c_str(), masks[0], masks[1], true, uint8_t{127}, 100, twice);
       if (pass.distance) {
         CompareRuns((name + ", filter against db99b716b's").c_str(), filters[0], filters[1], true, 0u, 10, twice);
@@ -2361,10 +2423,17 @@ static void TestBlockSkipShogun2(const std::string& before_folder, D3D_DRIVER_TY
       PrintCounts(name, counts);
       CHECK(counts.false_skips == 0 && counts.lanes > 0);
       total += counts;
+      const SkipCounts shipped = CountSkips(counters, bound(counted_shipped.Get()));
+      PrintCounts(name + " (BlockSkipQuads)", shipped);
+      const bool bend_loop = QUADS[row] < (pass.distance ? 24u : 64u);
+      CHECK(shipped.false_skips == 0 && shipped.lanes == counts.lanes && shipped.bend_loop == (bend_loop ? shipped.lanes : 0));
+      total_shipped += shipped;
     }
   }
   PrintCounts("Shogun 2 ALL", total);
   CHECK(total.false_skips == 0 && total.skipped > 0);
+  PrintCounts("Shogun 2 ALL (BlockSkipQuads)", total_shipped);
+  CHECK(total_shipped.false_skips == 0 && total_shipped.skipped > 0 && total_shipped.bend_loop > 0);
 }
 
 // ---- --time -----------------------------------------------------------------------------------------------------------
@@ -2535,11 +2604,13 @@ static void Time(const std::string& before) {
 // module (the light mode's: its frame's first light draw, the pick and the march), in turns db99b716b's, this tree's,
 // db99b716b's, this tree's: each row their means, the difference and the noise (A/A: db99b716b's two, B/B: this tree's),
 // SLOWER where this tree's is slower by more than both. Rows: plain (Banners 0), the shipped default (sss_bend_extended:
-// Light Through Banners 0.35 + Coloured Shadows, the banners' depth this frame), extended_find (Softer), the light mode with
-// 8 and 32 torches (SkipTorches: 32 fill sss_lights' budget); Length 60, 120, 240, 480 and 1920; 100% and 58% render scale;
-// the box scene, the dense pillars (the skip's worst case) and the box with the sun in view (no light rows). Then Shogun
-// 2's sss00 (the cascades) and sss01 (groupshared 15,872 -> 17,856 bytes: 6 -> 5 groups an SM on an RTX 5090) at its
-// default 120 samples and at 3840 (its row at 5), the box scene.
+// Light Through Banners 0.35 + Coloured Shadows, the banners' depth this frame), extended_find (Softer), Banners 0.35
+// alone (the sun on the light mode's pass: sss_bend_extended without Find), the light mode with 8 and 32 torches
+// (SkipTorches: 32 fill sss_lights' budget); Length 60, 120, 240, 480, 960 and 1920 (BlockSkipQuads' quads at 100%:
+// (Length - 9) / 4; at 58%, Length x 0.58 rounded up to fours); 100% and 58% render scale; the box scene, the dense
+// pillars (the skip's worst case) and the box with the sun in view (no light rows). Then Shogun 2's sss00 (the cascades)
+// and sss01 (groupshared 15,872 -> 17,856 bytes: 6 -> 5 groups an SM on an RTX 5090) at its default 120 samples, 240,
+// 480 and 3840 (its rows 0, 1, 2 and 5: 24, 54, 114 and 954 quads), the box scene.
 static void TimeBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driver, UINT width, UINT height) {
   std::printf("--block-skip-gpu: db99b716b's Bend passes against this tree's at %u x %u\n", width, height);
   MakeDevice(driver);
@@ -2571,9 +2642,10 @@ static void TimeBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driv
     float sun_disk;
     uint32_t lights;
   };
-  constexpr std::array<Row, 5> ROWS = {{{"plain (Banners 0)", 0.f, false, 0.f, 0},
+  constexpr std::array<Row, 6> ROWS = {{{"plain (Banners 0)", 0.f, false, 0.f, 0},
                                         {"extended (Banners 0.35 + Coloured: the default)", 0.35f, true, 0.f, 0},
                                         {"extended_find (Softer)", 0.f, false, 0.5f, 0},
+                                        {"extended (Banners 0.35 alone: the light mode's pass)", 0.35f, false, 0.f, 0},
                                         {"light mode, 8 torches", 0.f, false, 0.f, 8},
                                         {"light mode, 32 torches", 0.f, false, 0.f, 32}}};
   struct Scene {
@@ -2589,7 +2661,7 @@ static void TimeBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driv
     for (const bool full : {true, false}) {
       const Frame frame = full ? MakeFrame(width, height, scene.boxes, scene.sun)
                                : ScaledFrame(width, height, render_width, render_height, scene.boxes, scene.sun);
-      for (const float samples : {60.f, 120.f, 240.f, 480.f, 1920.f}) {
+      for (const float samples : {60.f, 120.f, 240.f, 480.f, 960.f, 1920.f}) {
         for (const auto& row : ROWS) {
           if (row.lights != 0 && !scene.lights) continue;
           sss::Settings settings = Defaults();
@@ -2627,9 +2699,10 @@ static void TimeBlockSkip(const std::string& before_folder, D3D_DRIVER_TYPE driv
   for (const std::string pass : {"s2_sss00", "s2_sss01"}) {
     const auto before = LoadCso((folder / ("old_" + pass + ".cso")).string());
     const auto after = LoadCso((folder / ("new_" + pass + ".cso")).string());
-    for (const float samples_row : {0.f, 5.f}) {
+    for (const float samples_row : {0.f, 1.f, 2.f, 5.f}) {
       const auto settings = ShogunInjection({{offsetof(shogun2::ShaderInjectData, sss_samples), samples_row}});
-      time_row("Shogun 2 " + pass + ((samples_row == 0.f) ? ", 120 samples (the default)" : ", 3840 samples"), [&](bool fresh_side) {
+      const int samples = 120 << static_cast<int>(samples_row);
+      time_row("Shogun 2 " + pass + ", " + std::to_string(samples) + " samples" + ((samples_row == 0.f) ? " (the default)" : ""), [&](bool fresh_side) {
         return GpuMilliseconds([&] {
           RunShogunPass(frame, inputs, output, output_uav.Get(), fresh_side ? after.Get() : before.Get(), pass == "s2_sss00", true, settings.Get(), {}, false);
         });
