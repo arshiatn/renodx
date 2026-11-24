@@ -762,6 +762,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G24 boxes from r3: Divinity 1 / 2 + R.U.S.E. trace-folder review (format checks ... | ?
 - G24 step-1 boxes: Expeditions tracer (view size, 2nd render scale, draw constant ... | ?
 - BLOCKED BY ANTIVIRUS ~14:3x: coord ran ATN's rule line exactly: powershell -NoPr ... | ?
+- MERGE fca_item1 + fca_exit_drain (after fi1_ r2 + fxi_ r2) -> mrg_: all-36 build ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14162,6 +14163,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         small loss, 1/2 visible, 1/4 rejected -> only as an Experimental row if ATN asks after numbers; per-frame schemes
         rejected (no temporal dither). Proof: WARP bit-identical cases 1-10 + all variants, then --time / Nsight. ->
         rvn_ (Opus xHigh) review started (plan_1117/rvn_sbr_review.md).
+        rvj_ FI1 CODE REVIEW GO (render_mt/fca/designs/rvj_fi1_code_review.md + _handback.md; 0 / 0, 1 SHOULD, 6 NIT): U
+        reads, budget, room-0 gating, game_cpus thread safety, Automatic L1 key test (dis_at), hysteresis, env re-read all
+        hold; heredoc edits clean; merges cleanly with fca_exit_drain + atn-mods. -> fi1_ r2 (sent): defaults run log +
+        NITs (BIG_TABLE switch line, braces, ?: -> if, >64-CPU groups, '1 cores'). t4i_ also parses item-1 lines + BIG_TABLE.
+        - [ ] MERGE fca_item1 + fca_exit_drain (after fi1_ r2 + fxi_ r2) -> mrg_: all-36 builds + on the merged tree x86
+        tw_engine_code -Quick + -Only effect_update + exit, tw_render_mt_defaults (rvj_ SHOULD-1; same test binary).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
