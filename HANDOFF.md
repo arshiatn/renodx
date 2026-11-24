@@ -14223,6 +14223,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         counter, M6 skewed LDS reads, M7 ms re-grounded (E2 -0.25..-0.4 @ 240; ATN's defaults = extended_find 1.408 ms;
         no 480 number until measured), M8 E1 pick points / clamp, M9 E6 padding + audit. -> sbr_ Rev 1 (sent) -> rvn_
         light re-check -> implementer. Note: on the 5090 Attila is CPU-limited, so the gain shows as GPU busy, not fps.
+        shg_ S0 REV1 + DESIGN REV 1 DONE (plan_1117/shg_sh_gi_upsample_design.md sec 10 = answers; shg_s0_report.md sec 11;
+        shg_s0_rev1_handback.md): stored form = ZH3 + memo, axis from g, (g, w) RGBA16F + A R16F; passes all 166 fields
+        (courtyard incl.); error at 15..60 deg .031-.081 vs today .130-.400. M1: Half 1 ray + SH is NOT Full's picture;
+        Half 4 rays + SH = quality anchor (~-0.2..-0.6 ms), new B2 Half 2 rays (~-1.1..-1.7 ms, wide filter only); headline
+        ~-2.0..-2.6 ms is the speed set. Back faces via stored w; directional AO occlusion-only in our AO upsample, row Off /
+        On / After Blur (default Off); Toru SVGF own item in twattila/svgf/ + LICENSE.txt + per-file notice; no ramp; S1a-S4
+        ~55-80 h. -> rvs_ short re-check (plan_1117/rvs_shg_recheck.md) -> S1a.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
