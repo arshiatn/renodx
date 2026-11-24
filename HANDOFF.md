@@ -723,7 +723,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Game exit race: a second drain at +0xD5D74 or the call at +0xC9AAF (engine_code, ... | ?
 - g19_ F1 follow-up after ho_g19 merges: graphics_page.hpp:237-239 comment (8 game ... | ?
 - Census line (G24 or one script): do Attila 18FF7787 / 82C6EE8B and Thrones 5247E ... | ?
-- gtp_ stage25b -> gpr_ + gtw_ re-check -> ATN sees the change -> golive + run_tes ... | ?
 - gate hook round 26: R25-2..R25-6, realpath / link hardening, HARNESS narrowing, ... | ?
 - rvm_ review of mem_fix -> mem_ fixes -> rvm_ re-check -> confirm run (ATN's go) ... | ?
 - fci_ / fxr_ designs -> feed the FCA ranked list (workers + pool analyst reads fc ... | ?
@@ -733,6 +732,20 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later, with numbers): Faster GT-VBAO (V3) is 10.3 % worse with Auto Thickne ... | ?
 - rvh_ G23 code review 1 -> g23_ fixes -> re-check; then gbf_'s ho_gbf_g23 review ... | ?
 - G23 H9 GPU tests T2-T4 in the GPU window (ATN's go). | ?
+- Fable 5.2 High review of mem_ r2 (with rvm_'s re-check), once. | ?
+- FCA: 8 Opus xHigh analysts -> Fable 5.2 xHigh completeness critic -> ranked list ... | ?
+- G-S2 (owner g23_): ngx_backend.hpp FENCE_TIMEOUT -> GPU_WAIT_TIMEOUT once gbf_'s ... | ?
+- G23 set (ea398af22 + H1-H8) GPU gate: helper build + H5 WARP + H9 T3 / T4 (ATN's ... | ?
+- Build-slot trial (after fcx_): slot1-6 locks, -j4, sample RAM / commit / paging ... | ?
+- g20 follow-ups: MI5 view_share.hpp:541 second texture read unscaled (older); MI7 ... | ?
+- mem_ (b) widened by rvi_: ONE shared predicate (combine gate, post multiply, rt_ ... | ?
+- WH3 89AF6FF5 CS bind: NOT as g20_ asked (WH3 binds a 1x1 t_ssao there in all 94 ... | ?
+- g19_ F1 follow-up: after ho_g20 merges (twwarhammer/addon.cpp), so the WH1 / WH2 ... | ?
+- After rvl_ GO: t4i_ makes ebo_check / ebo_final_eval parse the A line before the ... | ?
+- Helper end: active upscaler / reconstruction / generation owners not released at ... | ?
+- Cleanup for ATN's yes (agents' leftovers): C:\Users\arshi\AppData\Local\Temp\add ... | ?
+- GPU WINDOW (harness, not in-game; after fcx_ ends, CPU quiet): ho_gbf S4a + jobs ... | ?
+- gbf_ (after G23): main.cpp end-release change, gate T4 once per active owner (DL ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13645,7 +13658,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         .fog_shadows_defaulted_on = true (Thrones g01_ / WH3 after the freeze as before) -> rvb_ glance.
         - [ ] Census line (G24 or one script): do Attila 18FF7787 / 82C6EE8B and Thrones 5247E655 / 03E56410 (gather 4.1
         water, not on the forward-reader list) ever load? If yes, add them to the forward-reader list (rvf_ note).
-        - [ ] gtp_ stage25b -> gpr_ + gtw_ re-check -> ATN sees the change -> golive + run_tests.py copy.
+        - [x] gtp_ stage25b -> gpr_ + gtw_ re-check -> ATN sees the change -> golive + run_tests.py copy. DONE 11-24.
         - [ ] gate hook round 26: R25-2..R25-6, realpath / link hardening, HARNESS narrowing, xcopy /E, r''m / & $r, [422].
         - [ ] rvm_ review of mem_fix -> mem_ fixes -> rvm_ re-check -> confirm run (ATN's go) before the FCA analyst wave.
         - [ ] fci_ / fxr_ designs -> feed the FCA ranked list (workers + pool analyst reads fci_).
@@ -13686,6 +13699,131 @@ heading text are in HANDOFF_ARCHIVE.md)
         review). Skill row helper-fg-stability.md:43 waits for ho_g14.
         - [ ] rvh_ G23 code review 1 -> g23_ fixes -> re-check; then gbf_'s ho_gbf_g23 review (rvh_).
         - [ ] G23 H9 GPU tests T2-T4 in the GPU window (ATN's go).
+        GATE HOOK STAGE25b LIVE (ATN in chat 11-24 ~13:xx to coord's 'make stage25b live and copy its tests file?':
+        'Sure go ahead'): live stage24 a6b12f1ebeef + gates.tsv + mode.txt + INSTALL_FOR_ATN.md + tests/run_tests.py
+        (058247c54c09) backed up to testbin/scratch/gtp_/gtp_bak30; gtp_stage25b/gate_hook.py copied -> live sha256
+        3ed0213acbd6 (168773 B, LF); tests/run_tests.py -> 71ff6eec9694; mode.txt 'shadow'; smoke (git status, pre) exit 0,
+        no deny. Round 26 next (R25-2..6, HARNESS narrowing to testbin / heapfix, realpath / links, xcopy /E, r''m, & $r,
+        [422]).
+        ATN asked: mem_fix failed review - Opus or Sonnet? Fable 5.2 High once? COORD: mem_ = Opus 5.5 (implementer),
+        rvm_ = Opus xHigh found the trigger bug with the exact fix -> Fable not needed now; offered for r2 if it fails again.
+        ATN IN CHAT 11-24 (ONE TIME): Fable 5.2 xHigh for the FCA completeness critic AND the FCA design phase (designs for
+        the ranked list); Fable 5.2 High once on mem_fix (= independent review of mem_ r2 next to rvm_'s re-check). FCA wave
+        implementers: Opus xHigh, Sonnet xHigh if that fails (coord proposed: engine_code.hpp patch class straight to
+        Sonnet xHigh, ATN's 11-18 rule). Memory updated (feedback_fable_review_end / feedback_sonnet_engine_code).
+        fci_ DESIGN DONE (render_mt/fca/designs/fci_item1_workers_L1.md + fci_item1_handback.md): item 1 = real bug (no CPU
+        count read; '16' = no env cap): U = affinity n CPU sets n allocated, capped by job limits; BudgetWorkers(U) =
+        min(15, U-5, U/2-1) (U<=5 -> 0 = OFF; 8 -> 3; 16 -> 7: ATN's setup unchanged); always on. Automatic L1: effect-table
+        instance sum, on >= 20 000 / off < 16 000, default Off until 4 kill rules pass + ATN. ATN Qs (after review): L1
+        default Auto + ClearSavedRows rev 3; add a 6-CPU lowcore pair + 'L1 always' W3 start to the verify bench (~21 min).
+        -> rvj_ (Opus xHigh, read only) review sent (render_mt/fca/designs/rvj_fci_review.md).
+        g23_ bridge API: option (a) = gbf_ does 'Bridge (all)' + 3 dlaa_bridge.h fields + DlssRefused() FIRST on
+        ho_gbf_g23; g23_ glue on top; WH3 'FSR Reactive Particles' addon.cpp entry waits for ho_g20.
+        - [ ] Fable 5.2 High review of mem_ r2 (with rvm_'s re-check), once.
+        - [ ] FCA: 8 Opus xHigh analysts -> Fable 5.2 xHigh completeness critic -> ranked list -> Fable 5.2 xHigh designs
+        (fci_ / fxr_ designs as inputs) -> Opus xHigh reviews -> Opus xHigh implementers (Sonnet xHigh fallback).
+        rvh_ G23 CODE REVIEW 1 GO (reviews/rvh_g23_code_review.md + _handback.md): 1 MUST / 4 SHOULD / 1 NIT. cd16da81c may
+        merge now (-> mrg_ addendum 2, cherry-pick after 5.5). G-M1 MUST: ea398af22 + gbf_'s H1-H8 = ONE merge, only after
+        the full 64-bit helper build, H5 WARP suites and H9 T3 (switching) + T4 (helper end) in the GPU harness (ATN's go);
+        T2 SHOULD. G-S1 ho_gbf_g23 takes ea398af22 before H8. Q-S1 / Q-S2 / Q-N1 + the main.cpp end-release candidate -> gbf_.
+        - [ ] G-S2 (owner g23_): ngx_backend.hpp FENCE_TIMEOUT -> GPU_WAIT_TIMEOUT once gbf_'s H7 lands.
+        - [ ] G23 set (ea398af22 + H1-H8) GPU gate: helper build + H5 WARP + H9 T3 / T4 (ATN's go) -> one merge.
+        ATN IN CHAT 11-24: AGREED to coord's implementer split for the FCA wave: engine_code.hpp patch class straight to
+        Sonnet xHigh (safety stops); everything else Opus xHigh first, Sonnet xHigh if that fails. g23_ found a missed
+        bridge gate (dlaa_bridge.hpp:827 rr_extra zeroed for FSR without guides) -> gbf_ adds it to 'Bridge (all)' after
+        checking every caller.
+        ATN IN CHAT 11-24: no fixed writer cap (different files; limit = reviews / merges). Build TRIAL OK'd: 6 slots at
+        -j4 once fcx_ ends; keep only if peak RAM < ~26 GB and no paging, else back to 4; tell ATN the result.
+        - [ ] Build-slot trial (after fcx_): slot1-6 locks, -j4, sample RAM / commit / paging during a 6-build window ->
+        keep 6 or back to 4 -> report to ATN.
+        gbf_ BRIDGE API PUSHED (origin/ho_gbf_g23): EvaluateOptions {extra_written, exposure, fsr_sharpness}, 3 dlaa_bridge.h
+        fields in padding (no VERSION bump), DlssRefused() latched + log, Prepare FSR colour-before mask (8 callers checked:
+        only WH3 passes rr_extra). gbf_ touched ONE line of g23_'s taa_dlss.hpp (call site) -> g23_ told to rebase; gbf_
+        told to ask coord first next time. Attila + WH3 add-ons + helper variants build.
+        rvi_ G20 REVIEW NOT GO -> GO after MA1 (reviews/rvi_g20_review.md + _handback.md; 0 / 1 / 9 / 6): MA1 ao_skip.hpp:39
+        PT clause = setting + last trace, not paths' real ambient-out (no AO for 150 warm-up frames in WH1 / WH2, path
+        dropouts, bounce refused) -> bounced_frame window. MI6 tw_gtvbao_variants exits 1 (V3 check) -> info only. view_share
+        all right / harmless (own census: 0 compute changes, 0 changes in Attila / Thrones / Rome II). -> g20_ r2 sent (MA1 +
+        MI6 + MI1 / MI4 / MI8 / N1 / N3, push ho_g20) -> rvi_ MA1 re-check. Merge order: g21 + g02 set, then ho_g20 (conflict
+        twwarhammer/addon.cpp:377-398: keep path_reflection_occlusion = 1.f + g20's comment, no SkipGameSsao), build 8.
+        - [ ] g20 follow-ups: MI5 view_share.hpp:541 second texture read unscaled (older); MI7 VIEW_NDC second division
+        (unsound in general, no in-game effect); other MINORs in rvi_g20_review.md.
+        - [ ] mem_ (b) widened by rvi_: ONE shared predicate (combine gate, post multiply, rt_ambient_alone, ao_skip),
+        published lock-free (MI2 / MI3).
+        - [ ] WH3 89AF6FF5 CS bind: NOT as g20_ asked (WH3 binds a 1x1 t_ssao there in all 94 traces); a trace first.
+        g20_ R2 (handbacks/g20_r2_handback.md): ho_g20 pushed fe97927ec: 9eaa74bc8 MA1 (bounced_frame window) + MI1 / MI4 /
+        N1-N4 + tw_ao_skip warm-up / stale-bounce / no-bounce / bridge-down cases; fe97927ec MI6 (V3 info only, exit 0) + MI8
+        (V3 from ao_bitmask BITMASK_VARIANT 3; ao_bitmask_fast deleted, nothing V3 ships). Tests ALL PASSED; x64 5 + x86 3
+        builds OK. -> rvi_ re-check 1 sent.
+        t4i_ ROUND 7 DONE (render_mt/reports/t4i_final_round7_handback.md): apply_r6 applied, run_all green; F31 copy test
+        first FAILED (race EXCEPTION line = STOP) -> ebo_check.ps1 fix (.pre_r7): wer.json read first, the recorded race's
+        own EXCEPTION lines -> stop_recorded; copy now PASS. crash_causes.json (62 attempts, 5 heapfix-unloaded, 1 game race).
+        C-9 on fcx_ pickles: F03 14.32 ms/f, U10 20.44 (INVALID start), WAW3 30.21 (report) -> all >> 3.0. FINAL EVAL
+        ebo_final/final_eval_FINAL.txt / .json: NOT GO only on 'driver waits = ATN decides'; W3 ships on Q9 (a); exits 60 / 60
+        drained, 6 RECORDED crash lines, 0 PROBLEM. Lock incident: t4i_ took fcx_'s etl.lock as stale during WAW3 (pid gone;
+        fcx_ restarted) -> fcx_ told. -> ebr_ r7 glance sent.
+        COORD: the driver waits (14-20 ms/f vs < 3.0) go to the FCA 'D3D11 submit + driver waits' analyst; lowcore = FCA item
+        1 (fci_). Release v170 waits for the FCA verify bench anyway -> no ATN decision needed now (told ATN).
+        mrg_ ROUND C DONE (handbacks/mrg_wave2_rC_handback.md): origin atn-mods 7890b4dde = ho_g19 e0440497f, ho_g03
+        87a5b287e, ho_g09 02ef57a2b + ho_g07 f1924d506 (4db4c0146), ho_g21 61fe86fe5 (known comment conflict, g21's line),
+        ho_g02 d27c29ed4, ho_g10 1ec3681d8, ho_g23 cd16da81c (7890b4dde). Every build exit 0 (hashes scratch/mrg_/hashes_*.txt,
+        unstamped, not installed); tw_native_context, tw_expeditions_unit, tw_tales_unit, tw_ue_sss_gi, tw_warhammer_shaders
+        (832), tw_psychov35, tw_gpu_completion PASS. RC render_mt / engine_code / exit-drain untouched. ~20 s of three builds
+        at once (old slot2\ folder) -> only slotN.lock since. MA1 still holds (G07 67d421be3 not in).
+        COORD: mrg_ round D sent (merge + build in mrg_b1, push only when green): 5.6 ho_g04 -> 5.9c ho_g08 (Ryse / D1 / D2
+        builds = rva_'s gate) -> ho_g19_ryse (+ Ryse build) -> 5.8a ho_g14. rvk_ (Opus xHigh, read only) review of ho_g22
+        (src/utils writer-token helper + device_proxy stop on removal + RC diff) sent (reviews/rvk_g22_review.md).
+        - [ ] g19_ F1 follow-up: after ho_g20 merges (twwarhammer/addon.cpp), so the WH1 / WH2 line lands once.
+        rvi_ G20 RE-CHECK 1 GO (reviews/rvi_g20_recheck1_handback.md; 0 / 0 / 0 / 3 new NIT): MA1 fixed (SSAO skip and
+        ambient removal agree frame by frame), MI1 / MI4 / MI6 / MI8 / N1-N4 fixed. -> mrg_ round D step 5: ho_g20
+        fe97927ec (conflict twwarhammer/addon.cpp:377-398 as rvi_ says), 8 builds + tw_ao_skip + tw_gtvbao_variants.
+        ebr_ R7 GLANCE GO (render_mt/reports/ebr_r7_glance_handback.md): final_eval_FINAL stands (NOT GO only on driver
+        waits); stop_recorded can't hide a real STOP; crash_causes.json = 6 Event 1000 one to one. SHOULD: eval crash loop
+        shows any counted crash RECORDED when WER is recorded -> t4i_ round 8 (+ ebo_check time limit, text NITs; FINAL kept,
+        proof copy final_eval_FINAL_r8.txt).
+        fxr_ DESIGN DONE (render_mt/fca/designs/fxr_exit_race_drain.md PRIVATE + fxr_exit_race_handback.md): second Exit Job
+        Drain at +0xD5D74 (run loop's thiscall of root teardown +0xC9800, before every teardown step on WM_QUIT); keep
+        +0xC9AC1 as backstop / restart path; +0xC9AAF rejected. Both always on (bug fix), RENODX_TW_EXIT_DRAIN=0 off. __fastcall
+        stub, shared DrainJobPool(name) pins first, new A line (B text unchanged). Offline: part 30 A cases + 30f fake
+        teardown race with no-drain control; part 13. NO separate game run: folds into the ONE FCA verify bench (per-start
+        pass rule A then B, replaces the ~150-exit soak). -> rvl_ (Opus xHigh, read only) review sent.
+        - [ ] After rvl_ GO: t4i_ makes ebo_check / ebo_final_eval parse the A line before the verify bench.
+        g24_ STEP 0 DONE (handbacks/g24_step0_handback.md): ho_g24 (origin; worktree D:\Dev\renodx-g24) 0f90a780b + 56788e0a5
+        (.agents/skills/game-port-method/scripts/shader_audit.py + audit_rules games / ue4 / fixture / fixture_strict;
+        freeze SHA-256s in the hand-back). Selftest 28 / 28. Census of 13 games from ATN's dumps all exit 0 (Tales 13543,
+        Expeditions 15735, Ryse 894, TW 673-3818); hlsl disagreements = cmd_Decompiler drops dcl_resource_raw (Tales 4,
+        Expeditions 2). Ledgers Tales / Expeditions seeded + rules applied. 5 questions for rvg_ (position-only != depth-only;
+        circular CAMERA controls; family granularity; mesh-uv-only; Expeditions no view size). -> rvg_ step-0 review sent;
+        g24_ census lookup for rvf_'s gather 4.1 water shaders (Attila 18FF7787 / 82C6EE8B, Thrones 5247E655 / 03E56410).
+        ATN IN CHAT 11-24: the TW dump folders (bin\cmd_Decompiler-1.3.16\dump_shader_tw<game>_pack) may have been made by
+        us from packs next to the exe -> check nothing is missing. -> g24_ 'dump completeness' (read only; game containers
+        read-only; missing ones extracted to testbin/scratch/g24_/missing_<game>, never into bin\; census re-run).
+        rvj_ FCI REVIEW NOT GO -> GO after 3 MUST (render_mt/fca/designs/rvj_fci_review.md + _handback.md; 3 / 11 / 8):
+        M1 budget = 0 if U < 8 else min(15, U/2-1) (1-2 workers lose; uint32 wrap); M2 L1 floor / on / off test-settable +
+        small_round_presents out of ResetScheduler; M3 no pre-registered 30000 fallback (rule 2 fails -> L1 Off, new A/B).
+        ATN Q1 -> notice (11-15 rule decides); Q2 -> no 6-CPU pair, 'L1 always' W3 start fixed in the plan. Implementer
+        Opus xHigh (no engine_code.hpp). -> fci_ r2 sent; then rvj_ short re-check.
+        gbf_ G23 QUEUE DONE (handbacks/gbf_g23_queue_handback.md): origin/ho_gbf_g23 f89c128e3 = merge ho_g23 (4e7ab8e2d) +
+        Bridge (all) 54f65318f + H6 / H7 / H8b da903cb22 + H1-H5 4ebcdb535 + H8 f89c128e3. Helper (plain + PROBE / REFERENCE /
+        RECORDER) + Attila / WH3 add-ons build; WARP tw_gpu_completion + tw_helper_lifetime (T2a-e) PASS. -> rvh_ code review 2
+        sent; g23_ told: G-S2 (GPU_WAIT_TIMEOUT) with its rebase onto ho_gbf_g23.
+        - [ ] Helper end: active upscaler / reconstruction / generation owners not released at main.cpp's end (destructors
+        wait up to GPU_WAIT_TIMEOUT each; exit-crash risk) -> own reviewed change + GPU T4 (gbf_ listed, rvh_ judging).
+        - [ ] Cleanup for ATN's yes (agents' leftovers): C:\Users\arshi\AppData\Local\Temp\addon-cef401.cpp / .sh (clang
+        crash repro from an OOM build 11-24 11:26). rt_reference.cs_6_5.hlsl shows modified with an empty diff in gbf_'s
+        worktree (stat only).
+        rvh_ G23 CODE REVIEW 2 GO for the code (reviews/rvh_g23_code_review2_handback.md; 1 MUST / 1 SHOULD): H1-H8b match r3;
+        bridge ABI safe both ways without a VERSION bump (2f-2's dlss_refused write behind version >= 30). R2-S1: check the
+        rescue's ResumeThread (dlaa_bridge.hpp:624) -> gbf_ small commit. R2-M1 MERGE PLAN: ho_gbf_g23 AND ho_g23 (merged
+        da368bdba) carry ho_gbf's 14 un-gated NRD / ReSTIR / reflections commits -> G23 merges WITH or AFTER ho_gbf once S4a +
+        jobs 1-8 pass; ONE GPU window runs S4a + jobs 1-8 + G23 T3 / T4 (+ GT-VBAO V1 / V2 timing, render_pass x86).
+        - [ ] GPU WINDOW (harness, not in-game; after fcx_ ends, CPU quiet): ho_gbf S4a + jobs 1-8, G23 H9 T3 / T4 (T4: exit
+        DONE + no Event 1000 / dump), GT-VBAO V1 / V2 5090 timing, G10 render_pass x86 -> then ho_gbf + G23 merge. No ask
+        needed (ATN 11-24); report results.
+        - [ ] gbf_ (after G23): main.cpp end-release change, gate T4 once per active owner (DLSS, RR, FSR, XeSS, DLSS-G,
+        FSR FG).
+        ATN IN CHAT 11-24: GPU harness runs (gate jobs, helper T-tests, timing) run WITHOUT asking, inside a GPU window
+        (memory feedback_gpu_harness_runs.md). Game runs not covered.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.

@@ -54,9 +54,10 @@ void main(
   r1.xyzw = t_initial_texture.SampleLevel(s_default_s, r0.xy, 0).xyzw;
   const float4 centre = r1;
   r1.xyz = max(r1.xyz, 0.f.xxx);
-  r2.xyz = t_initial_texture.Gather(s_default_s, r0.xy).xyz;
+  // The game's gather4 reads green (s0.y, the luma FXAA takes), as Troy's fxaa00; the decompile's Gather read red.
+  r2.xyz = t_initial_texture.GatherGreen(s_default_s, r0.xy).xyz;
   r2.xyz = max(r2.xyz, 0.f.xxx);
-  r3.xyz = t_initial_texture.Gather(s_default_s, r0.xy, int2(-1, -1)).xzw;
+  r3.xyz = t_initial_texture.GatherGreen(s_default_s, r0.xy, int2(-1, -1)).xzw;
   r3.xyz = max(r3.xyz, 0.f.xxx);
   r0.z = max(r2.x, r1.y);
   r0.w = min(r2.x, r1.y);
@@ -215,7 +216,9 @@ void main(
     r0.z = r0.z * r0.z;
     r2.x = r2.x * -r2.w + 0.5;
     r0.z = 0.75 * r0.z;
-    r2.x = (int)r2.x & (int)r2.y;
+    // The game's `and r2.x, r2.x, r2.y`: the end-of-edge offset kept or zeroed by the compare's mask (r2.y -1 or 0 here);
+    // the decompile's (int) casts cut the 0 - 0.5 offset to 0 (as Troy's fxaa00, c87f82630).
+    r2.x = (r2.y != 0) ? r2.x : 0;
     r0.z = max(r2.x, r0.z);
     r2.xy = r0.zz * r2.zz + r0.xy;
     r3.x = r0.w ? r0.x : r2.x;

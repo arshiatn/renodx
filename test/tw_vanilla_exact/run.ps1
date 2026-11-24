@@ -33,11 +33,10 @@ if (-not $Fxc) {
 # t<add-on slot>>t<game slot> read in place of the game's input, which the game then reads); Inputs (by shader name): a
 # pixel shader's interpolants at given values (tests.cpp VertexShaderFor: "TEXCOORD2=x,y,z,w;...").
 # Attila and Thrones (the same table): every replaced shader the generic inputs exercise; ssr02-07 have tw_thrones_ssr,
-# vfx and battlefog tw_attila_builds, dof tw_dof_blurs. Left out: pointlight00-39 (their light's place and reach are vertex
-# inputs, so no texel is lit here: the control is never caught; their WARP proof is tools/tw/testbin/g4_point_shadows),
-# the UI sprites uiMap00 / uiMap02 / uiMenuText00 (ui00) (the clip rectangle discards every texel here), grass00 / grass01
-# (their stream output is not made here: no comparable output). The videos (cutscene00) are made for a 2.2 screen: Gamma
-# Correction on shows the game's bytes (off re-encodes them for the 2.0 decode), so no Gamma Correction check either.
+# vfx and battlefog tw_attila_builds, dof tw_dof_blurs; the point lights and UI sprites with their own inputs: AttilaPS.
+# Left out: grass00 / grass01 (their stream output is not made here: no comparable output). The videos (cutscene00) are
+# made for a 2.2 screen: Gamma Correction on shows the game's bytes (off re-encodes them for the 2.0 decode), so no Gamma
+# Correction check either.
 $attilaShaders = @{
   FrameGamma = '2'; Settings = 'ssr_quality=1,effects_share=1,grass_height_distance=1,sky_smooth_strength=1'
   ShaderSettings = @{ '^cutscenes?\d+_' = 'gamma_correction=1' }; NoGamma = '^cutscenes?\d+_'
@@ -64,6 +63,15 @@ $table = [ordered]@{
                      Inputs = @{ '^particlelight00_' = 'TEXCOORD0=1000000,0.5,0.5,1;TEXCOORD2=0.3,0.6,0,1'; '^vfxglow00_' = 'TEXCOORD3=0.3,0.6,-1000000,0.5;TEXCOORD4=0.5,0.3,4,-0.5' } }
   'Attila'      = $attilaShaders + @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'
                                       Shaders = '^((t|bloom|lensflare|sky|markersbattle|cutscene|vignette|autoexposure|ssao)\d+|ssr0[01]|grass02)_' }
+  # Attila's per-input cases (g10_ 11-22), none in the tone mapper's place (no Gamma Correction check), all EXACT: the
+  # point lights with their light's colour (POSITION1) and a reach past every texel (POSITION2.w: the generated inputs lit
+  # none), the UI sprites with their clip rectangle (TEXCOORD2: left, top, right, bottom) around the whole screen, uiMap02
+  # (vertex colour made for a 2.2 screen) with Gamma Correction on. The point lights' shadow builds (12 / 13 / 20 / 21 /
+  # 28 / 29 / 36 / 37) EXACT with their control not caught (their shadow map leaves 1e-4 of the light here; their WARP
+  # proof: tools/tw/testbin/g4_point_shadows); grass00 / 01 not comparable here (stream output), kept as the reminder.
+  'AttilaPS'    = @{ Folder = 'twattila'; Dump = 'dump_shader_twattila_pack\cso'; Settings = $attilaShaders.Settings
+                     Shaders = '^(pointlight\d+|uiMap0[02]|uiMenuText00)_'; ShaderSettings = @{ '^uiMap02_' = 'gamma_correction=1' }
+                     Inputs = @{ '^pointlight\d+_' = 'POSITION1=0.9,0.5,0.2,1;POSITION2=0.5,0.5,0.5,1000000'; '^ui' = 'TEXCOORD2=-1000000,1000000,1000000,-1000000' } }
   # Rome II (fix round 11-16): the tone mappers, bloom and lens flares and each family this driver sees, its VFX rows at 1.
   # Left out: the point lights (drawn only with the rays: tools/tw/rome2/lights_r3 on the game's bytes); bloodsplash00 (its
   # cso in no dump); dof01 / dof02 (compute, UAV output: nothing to compare); morefire00 (x 0.2 at VFX Fire Brightness 1 in
@@ -78,13 +86,27 @@ $table = [ordered]@{
   'Thrones'     = $attilaShaders + @{ Folder = 'twthronesofbritannia'; Dump = 'dump_shader_twthronesofbritannia_pack\cso'
                                       Shaders = '^((t|bloom|lensflare|sky|markersbattle|cutscenes|vignette|autoexposure|ssao)\d+|ssr0[01]|grass02)_' }
   # Warhammer I / II: also the sky and the vignette (WH2: the legacy battle fog 04 - 06); their other shaders in
-  # test/tw_warhammer_shaders and test/tw_dof_blurs. Not here: the cinematics (the video decoded at 2.2 and encoded with the
-  # frame's gamma by design; WH2's give 0 on these inputs), FXAA (alpha written 1), sharpening and the point light (0 on
-  # these inputs: no control).
+  # test/tw_warhammer_shaders and test/tw_dof_blurs; the point lights, cinematic00 and WH2's sharpening with their own
+  # inputs: WH1PS / WH2PS. Not here: WH2's cinematic01 (0.034 off by design: the video decoded as sRGB and encoded at 2.2).
   'WH1'         = @{ Folder = 'twwarhammer'; Dump = 'dump_shader_twwarhammer_pack\cso'; Shaders = '^(t|bloom|lensflare|sky|vignette)\d+_'
                      FrameGamma = '2' }
   'WH2'         = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^(t|bloom|lensflare|sky|vignette)\d+_|^battlefog0[4-6]_'
                      FrameGamma = '2'; Modes = '0,1,2,3,4' }
+  # Their per-input cases (g10_ 11-22), none in the tone mapper's place (no Gamma Correction check), all EXACT: the point
+  # lights with their light's colour (POSITION1) and a reach past every texel (POSITION2.w; WH2's pointlight00 with its
+  # control not caught); cinematic00 with Gamma Correction on (the video made for a 2.2 screen: then the game's bytes, as
+  # Attila's cutscenes), WH2's at the game's g_gamma_output 2.2 (its pow(1 / gamma) the frame's 2.2 encode), its mask off
+  # (sprite_PS c3.z 0) and the clip rectangle (TEXCOORD2) around the whole screen; WH2's sharpening.
+  'WH1PS'       = @{ Folder = 'twwarhammer'; Dump = 'dump_shader_twwarhammer_pack\cso'; Shaders = '^(cinematic00|pointlight0[01])_'
+                     ShaderSettings = @{ '^cinematic' = 'gamma_correction=1' }
+                     Inputs = @{ '^pointlight' = 'POSITION1=0.9,0.5,0.2,1;POSITION2=0.5,0.5,0.5,1000000' } }
+  'WH2PS'       = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^(cinematic00|sharpening00|pointlight00)_'
+                     ShaderSettings = @{ '^cinematic' = 'gamma_correction=1' }
+                     Registers = @{ '^cinematic' = 'colorimetry_VS_PS[0]=1,2.2,0.45454547,0;sprite_PS[3]=0,0,0,0' }
+                     Inputs = @{ '^pointlight' = 'POSITION1=0.9,0.5,0.2,1;POSITION2=0.5,0.5,0.5,1000000'; '^cinematic' = 'TEXCOORD2=-1000000,1000000,1000000,-1000000' } }
+  # WH2's FXAA on the clipped scene ramp at alpha 1 (t0~sdr: the game's FXAA takes the tone mapper's 0 - 1 output; the
+  # add-on writes alpha 1, the game its input's). EXACT with ho_g02's fxaa00 (98f8155e0); 0.41 off before it.
+  'WH2FXAA'     = @{ Folder = 'twwarhammer2'; Dump = 'dump_shader_twwarhammer2_pack\cso'; Shaders = '^fxaa00_'; Binds = 't0~sdr' }
   # Warhammer III (tw2_ 11-16: every replaced pixel shader tried): the tone mapper, bloom, flares, lens blood, the fog's light
   # draws (battlefog00-08, ours only under the rays or Fog Strength), the unit indicators and sharpening (no Gamma Correction
   # check: a pass on the tone mapper's output) and the vignette, each with its control caught. Left out: cutscene00 / 01,
@@ -115,19 +137,34 @@ $table = [ordered]@{
                                     '^bloom01_' = 'cb0[0]=0.35,1,8,0;cb0[1]=0.015625,0.0208333,0,0'; '^lensflare00_' = 'cb7[4]=1,0.05,0,0' } }
   # Rome Remastered's other replaced pixel shaders (cutscene, distortion, FXAA, SMAA's last pass).
   'RomeRPS'     = @{ Folder = 'twromeremastered'; Dump = 'dump_shader_twromeremastered_pack\cso'; Shaders = '^(cutscene|distortion|fxaa|smaa)\d+_' }
-  # Ryse (rys2_ 11-16): every replaced shader exact here with its control caught. Left out: post00 / 01 / 03, upscale00
-  # and taa00 (0.29 - 0.63 off: the game read their inputs through sRGB views, which the upgrade makes FP16 clones, and
-  # ours decode by hand; these inputs give both the same bytes, so the game's shader sees no decode: an sRGB-view input
-  # for the game's side is the missing piece); sunshadow00 / 02 / 04 (exact, the control not caught with these inputs:
-  # test/tw_ryse_shadow_skip has them against the game's bytes with casters).
+  # Ryse (rys2_ 11-16): every replaced shader exact here with its control caught; post00 / 01 / 03 and upscale00 with
+  # their screen constants: RyseSrgb / RysePost. Left out: taa00 (0.0084 off with the sRGB views of RyseSrgb: its
+  # history t5 is read between texels, reprojected by the noise constants, where the hardware's sRGB-view filtering and
+  # ours in float differ by up to a code value; upscale00 off the texel centres is 0.0019 off the same way); sunshadow00
+  # / 02 / 04 (exact, the control not caught with these inputs: test/tw_ryse_shadow_skip has them against the game's
+  # bytes with casters).
   'Ryse'        = @{ Folder = 'rysesonofrome'; Dump = 'dump_shader_ryse'
                      Shaders = '^(tonemap|shafts|smaa|mb|dof|video|ssdo)\d+_|^post02_|^sunshadow0[13]_' }
+  # Ryse's upscale reads its input through an sRGB view (g10_ 11-22, t<slot>~srgb): the game's side an sRGB view of 8-bit
+  # codes (the hardware decodes), the add-on's those codes in a float texture, as the FP16 clone holds them (ours decode
+  # by hand); the screen's uv at texel centres (screen_uv), where filtering before or after the decode agree, and its
+  # vParams the screen size (noise there read between texels). post00 / 01 / 03 read no sRGB view: their old 0.29 - 0.63
+  # came from noise in PS_ScreenSize (the screen size and texel size here).
+  'RyseSrgb'    = @{ Folder = 'rysesonofrome'; Dump = 'dump_shader_ryse'; Shaders = '^upscale00_'; Settings = 'screen_uv=1'; Binds = 't0~srgb'
+                     Registers = @{ '^upscale00_' = 'PER_BATCH[0]=64,48,0,0' } }
+  'RysePost'    = @{ Folder = 'rysesonofrome'; Dump = 'dump_shader_ryse'; Shaders = '^post0[013]_'; Settings = 'screen_uv=1'
+                     Registers = @{ '^post0[01]_' = 'PER_BATCH[3]=64,48,0.0078125,0.010416667'; '^post03_' = 'PER_BATCH[2]=64,48,0.0078125,0.010416667' } }
   # Divinity 1: the tone map (tw_divinity1's), bloom, god rays, UI, FXAA, SMAA, vignette.
   'Divinity1'   = @{ Folder = 'divinityoriginalsinenhanced'; Dump = $Divinity1
                      Shaders = '^(bloom|godsrays\d+|ui\d+)_|^0x(30A1D40D|35F39F1D|6AF33A9B|B7FC46C3|FB839D33|DDBCD866)\.' }
   # Divinity 2: PPApplyLUT, bloom, the UI and the sight / outline passes (Off keeps the game's levels; the modded modes'
-  # UI-relative ones are its own).
-  'Divinity2'   = @{ Folder = 'divinity2originalsindefinitive'; Dump = $Divinity2; Shaders = '^(t01|bloom00|ui00|outlines0[0-2])_' }
+  # UI-relative ones are its own), the fog and the vignette at their rows' 1 (the game's).
+  'Divinity2'   = @{ Folder = 'divinity2originalsindefinitive'; Dump = $Divinity2; Shaders = '^(t01|bloom00|ui00|outlines0[0-2]|fog0[01]|vignette0[01])_'
+                     Settings = 'vignette=1,fog_strength=1' }
+  # Its auto exposure's first downsample (autoexposure00, Modded Auto Exposure off) on the scene ramp with one +infinity
+  # texel (t0~scene_inf): "Base" gives a 0 - 1 mask, which never reaches the game's log2 above 2, and the control's swap
+  # lands on the non-finite guard (any infinity or NaN <-> a NaN in rgb), which only an infinity tells apart.
+  'Divinity2AE' = @{ Folder = 'divinity2originalsindefinitive'; Dump = $Divinity2; Shaders = '^autoexposure00_'; Binds = 't0~scene_inf' }
   'Tales'       = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^(tonemap|lut)\d+_' }
   # Tales' deferred sun lighting (lighting00-05) with its Extra rows at the game's 1 (filter scale, sun shadow distance,
   # shadow edge colour, sun haze), Smooth Volumetric Light off, the rays unbound, our GI off.
@@ -164,6 +201,10 @@ $table = [ordered]@{
                      Settings = 'swap_chain_encoding=2,gamma_correction=1'
                      Registers = @{ '^t\d+_' = 'cb0[0]=u64,u48,0,1;cb0[1]=2.2,1,1,0.2;cb0[2]=11,0.9,1.2,2;cb0[3]=0.5,0.6,0,1;cb0[4]=1,1,1,0.8' } }
   'Shogun2Sdr'  = @{ Folder = 'twshogun2completeedition'; Dump = 'dump_shader_shogun2_pack\cso'; Shaders = '^tonemap\d+_'; Settings = 'swap_chain_encoding=2' }
+  # The UE games' SDR encode (g10_ 11-22: Output SDR, Peak, Paper White and UI unused): the tone mappers and LUT builders
+  # against the game's bytes.
+  'TalesSdr'    = @{ Folder = 'talesofarise'; Dump = 'dump_shaders_tales_of_arise'; Shaders = '^(tonemap|lut)\d+_'; Settings = 'swap_chain_encoding=2' }
+  'ExpeditionsSdr' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^(t|lut)\d+_'; Settings = 'swap_chain_encoding=2' }
   # Expeditions' sky light passes (skylight00-02): Path-Traced Ambient's switch (t120) unbound, the game's bytes. The View's
   # BufferSizeAndInvSize (cb1[127]) the test's frame: skylight00's distance field AO upsample divides by its half (noise: NaN).
   'ExpeditionsSky' = @{ Folder = 'expeditionsrome'; Dump = 'dump_shaders_Expeditions_rome'; Shaders = '^skylight\d+_'

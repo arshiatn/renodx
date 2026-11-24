@@ -247,7 +247,7 @@ wall's foot 0.10 -> 0.49 red (green 0.11), near the camera 0.101, the sky untouc
 
 fix50 (ATN's batch 2, tested in game: Ryse's first combat, DLSS + FG): **Sun Shadow Softness** (Contact Shadows
 section, 0-5 degrees, default 0 = the game's filter): contact-hardening sun shadows (PCSS,
-twshogun2completeedition/shaders/pcss.hlsli, now with a Texture2D version) in the sun shadow mask's cascade passes
+twattila/pcss.hlsli, now with a Texture2D version) in the sun shadow mask's cascade passes
 (sunshadow00-04: 0xE9264ADE, 0xB5DC6E36, 0xF2B4EF30, 0xF864A048, 0xF81C7168; CryEngine draws each cascade into the
 mask with a rotated 12-tap kernel, found with the one-frame trace: the five cascade draws before the tiled lighting,
 the far cached 16384 map 0x10C1DA12 keeps the game's filter). The blockers' depth around the receiver, the penumbra
@@ -316,7 +316,7 @@ moves there once, and Settings Mode starts on HDR & Effects.
 **Helper route** (as the Total War games and Shogun 2): the AA modes run in renodx-tw-dlaa64.exe beside the add-on
 (`twattila/dlaa_bridge.hpp`, `upscaling.hpp`) in place of the in-process NGX D3D11 path (`ngx_backend.hpp` gone): the
 preparation pass's colour, depth (turned to 0 near) and motion go into the bridge (`upscale_inputs`), the helper's DLSS /
-DLAA, FSR or XeSS (`[Ryse AA] Upscaler`) evaluates, its result comes back (`upscale_output`, Shogun 2's) for the copy and
+DLAA, FSR or XeSS (`[Ryse AA] Upscaler`) evaluates, its result comes back (`upscale_output`, `twattila/upscale_output.hlsli`) for the copy and
 the post pass as before. Ray Reconstruction (Experimental, `[Ryse AA] RayReconstruction`, off by default) from the ray
 tracing's guides while a ray-traced effect is on, the colour's square root as Attila's. Frame generation is the helper's
 (`twattila/frame_generation.hpp`; DLSS, FSR or XeSS, `FrameGenerationMethod` Auto; HUD recomposition, its preset, Reflex
@@ -476,3 +476,12 @@ nearest texel's depth as before. `tw_gtvbao_exact` (WARP): ssdo00-02 off the bui
 Texture LOD bias (bug3_, 2026-11-17; built only, not run in game): the Ray Tracing presets RT/PT, No RT/PT and Reset
 also turn Texture LOD Bias on All Textures on (ATN: the LOD bias for everything on in every game; on by default
 already). The bias's level stays the player's; the row set off by hand stays off until a preset is pressed.
+
+Open items (g08_, 2026-11-22; not built yet, not run in game):
+New: one log line per render target the resource upgrades take (`[Ryse] upgrade 0x<handle> <width>x<height>
+<format> -> <format> view clone`, at most 256), for the census of the upgraded targets' readers: the handle is the
+game's resource, which the frame trace prints as `clone of <handle>` for a RenoDX clone view.
+New: Recommended (with Deeper Shadows) removed (ATN: after the V35 fit it changed PsychoV31 only); both Recommended
+presets set Video AutoHDR 0.2 (was 0.25; ATN: the porting rules' 0.2).
+Fixed: the back buffer check after Present (back_buffer_fix::CheckBound) runs before RenoDX's draw callbacks: it ran
+after them, so a custom shader's callback on the first draw after Present saw the target Present had unbound.

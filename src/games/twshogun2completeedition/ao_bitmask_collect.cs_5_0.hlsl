@@ -5,7 +5,7 @@
 
 // Ambient Occlusion: Visibility Bitmask in place of Shogun 2's AO collect (twwarhammer2/line_sweep_ao.hpp dispatches it,
 // 8 x 8 groups, with the collect's depth at t0 and output at u0, the sweep's camera at b0 and the addon's settings at
-// b13; the sweep is skipped): Warhammer II's bitmask_ao.hlsli over the viewport (the DLSS addon's render scale draws the
+// b13; the sweep is skipped): Warhammer II's bitmask_ao.hlsli over the viewport (the render scale draws the
 // 3D image into the top-left part of the full-size depth), then a 5 x 5 depth-aware average (the new path has no blur
 // pass after it). Half resolution (SI.ssao_resolution): over half the viewport (each pixel the top-left one of a 2 x 2)
 // into t_rw_ssao_half, then the AO_UPSAMPLE build (ao_upsample.cs_5_0.hlsl) over the output.

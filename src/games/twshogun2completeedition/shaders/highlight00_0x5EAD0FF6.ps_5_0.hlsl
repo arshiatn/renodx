@@ -1,5 +1,5 @@
 // gbuffer_highlight.hlsl ps_main: outlines of highlighted objects behind transparent ones (stencil), written from the
-// game's source. Render scale (DLSS addon): the full-screen quad's texcoord runs 0-1 over the viewport, the top-left
+// game's source. Render scale: the full-screen quad's texcoord runs 0-1 over the viewport, the top-left
 // render scale part of the full-size stencil: read at the pixel instead. At full size the same as the game's.
 #define HIGHLIGHT_TRANSPARENT_STENCIL_REF (1 << 2)
 #define HIGHLIGHT_COLOUR_SHIFT            5

@@ -9,8 +9,8 @@
 // penumbra (texels the comparison sampler finds in shadow: no assumption about the map's depth direction), the
 // penumbra the sun's size makes across the gap between them and the receiver, then a comparison filter that wide.
 // Samples on a Vogel disk, turned by `rotation` (per pixel and frame: the noise is settled by TAA / DLSS).
-#ifndef SRC_GAMES_TWSHOGUN2COMPLETEEDITION_SHADERS_PCSS_HLSLI_
-#define SRC_GAMES_TWSHOGUN2COMPLETEEDITION_SHADERS_PCSS_HLSLI_
+#ifndef SRC_GAMES_TWATTILA_PCSS_HLSLI_
+#define SRC_GAMES_TWATTILA_PCSS_HLSLI_
 
 static const uint PCSS_BLOCKER_SAMPLES = 16u;
 static const uint PCSS_FILTER_SAMPLES = 24u;
@@ -103,4 +103,4 @@ float PcssRotation(float2 pixel, float frame)
   return 6.2831853f * frac(52.9829189f * frac(dot(pixel + 5.588238f * frame, float2(0.06711056f, 0.00583715f))));
 }
 
-#endif  // SRC_GAMES_TWSHOGUN2COMPLETEEDITION_SHADERS_PCSS_HLSLI_
+#endif  // SRC_GAMES_TWATTILA_PCSS_HLSLI_

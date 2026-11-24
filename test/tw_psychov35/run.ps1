@@ -6,20 +6,22 @@
 # Part 9's control is -Before's PsychoV35 (before its edge-input fix, 2026-11-17): keep -Before older than that fix.
 # -AllShaders also compiles every shader of both add-ons on both sides and lists the ones whose bytes changed; -ReportOnly
 # runs part 4 alone. R.U.S.E.'s post (parts 3, 4, 6) is compiled from this tree alone, as ps_5_0 /Gec; its 25 D3D9
-# replacements are compiled as ps_3_0 with their instruction slots listed.
+# replacements are compiled as ps_3_0 with their instruction slots listed. WH1's and WH2's t00 (parts 3, 4, 8, into part
+# 7's t01) too.
 # -OutDir: where the test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.
 # Run as x86 and amd64.
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$AllShaders, [switch]$ReportOnly, [string]$Before = '4b5099035',
-      [string]$OutDir = '', [string]$GammaBefore = '242d6101')
+      [string]$OutDir = '', [string]$GammaBefore = '242d6101', [string]$CMakeCache = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_psychov35'
 $testBuild = if ($OutDir) { Join-Path $OutDir "tw_psychov35_$Architecture" } else { Join-Path $repairRoot "build\tw_psychov35_test_$Architecture" }
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 
-# The compilers the build found (build32's, else build's).
+# The compilers the build found (build32's, else build's; -CMakeCache: another tree's, for a worktree without a build).
 $cache = Join-Path $repairRoot 'build32\CMakeCache.txt'
 if (-not (Test-Path -LiteralPath $cache)) { $cache = Join-Path $repairRoot 'build\CMakeCache.txt' }
+if ($CMakeCache) { $cache = $CMakeCache }
 $fxc = (Select-String -LiteralPath $cache -Pattern '^FXC_BIN:FILEPATH=(.*)$').Matches[0].Groups[1].Value
 $dxc = (Select-String -LiteralPath $cache -Pattern '^DXC_BIN:FILEPATH=(.*)$').Matches[0].Groups[1].Value
 $beforeTree = Join-Path $testBuild 'before'
@@ -106,6 +108,11 @@ $gammaShaders = [ordered]@{
 foreach ($name in $gammaShaders.Keys) {
   Compile-Shader (Join-Path $gammaTree "src\games\$($gammaShaders[$name])") (Join-Path $beforeShaders "$name.cso") $false
   Compile-Shader (Join-Path $repairRoot "src\games\$($gammaShaders[$name])") (Join-Path $afterShaders "$name.cso") $false
+}
+# Warhammer's and Warhammer II's t00, this tree alone: with part 7's t01 (g_wh1, g_wh2) their real chain in parts 3, 4, 8.
+$warhammerToneMappers = [ordered]@{ 'w1_t00' = 'twwarhammer\shaders\t00_0xD275C403.ps_4_0.hlsl'; 'w2_t00' = 'twwarhammer2\shaders\t00_0x2333E142.ps_5_0.hlsl' }
+foreach ($name in $warhammerToneMappers.Keys) {
+  Compile-Shader (Join-Path $repairRoot "src\games\$($warhammerToneMappers[$name])") (Join-Path $afterShaders "$name.cso") $false
 }
 
 if ($AllShaders) {

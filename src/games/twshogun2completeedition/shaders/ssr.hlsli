@@ -1,6 +1,6 @@
 // environment_specular_light.hlsl / hierarchical_depth_buffer.hlsl: the screen-space reflections' resolution.
 // The game traces them at half its render size (2 render pixels per SSR pixel) into buffers half the display size.
-// With the DLSS addon's render scale that was half the render size: 640x360 at 33%, noisy and flickering (ATN debug8).
+// With the render scale that was half the render size: 640x360 at 33%, noisy and flickering (ATN debug8).
 // SSR Resolution Full traces at the buffers' size instead, up to the render size: the render size at 50% or less, half
 // the display above (at 67% 1920 instead of 1267 wide; at 100% the game's). Shared by ssrhiz00, ssrray00,
 // ssrfilter00 / 01 and ssrresolve00; needs camera_VS_PS's screen_size and g_viewport_dimensions declared.

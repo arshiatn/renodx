@@ -1,5 +1,5 @@
 // waterplane.hlsl ps30_campaign_low_water_quality (decompiled): the campaign map's water.
-// Render scale (DLSS addon): the map overlay (roads, borders, rivers; 4800x2700, drawn at its full size for the whole
+// Render scale: the map overlay (roads, borders, rivers; 4800x2700, drawn at its full size for the whole
 // view) was read at its projected position x the viewport over the screen, the render size's part of it: below 100%
 // roads moved with the camera and sat in the wrong place (ATN debug22). Read at the projected position (the viewport
 // factor divided out; at full size the game's).
@@ -792,7 +792,7 @@ void main(
   r1.y = r1.z ? r1.y : 0;
   r0.w = r0.w * r1.x + r1.y;
   r1.xy = cmp(r3.xy < -r3.xy);
-  r1.x = r1.x ? -3.141593 : 0;
+  r1.x = r1.x ? -3.14159274 : 0;  // the game's l(0xc0490fdb): -pi to the bit (the decompile printed -3.141593, one ulp off)
   r0.w = r1.x + r0.w;
   r1.x = min(r3.z, r3.x);
   r1.z = max(r3.z, r3.x);

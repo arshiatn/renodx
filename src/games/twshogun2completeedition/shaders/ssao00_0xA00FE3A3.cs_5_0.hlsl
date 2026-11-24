@@ -1,6 +1,6 @@
 // ssao_3k.hlsl cs50_new_sweep: the ambient occlusion's line sweeps (convex hull of the depth along 36 directions),
 // written from the game's source.
-// Render scale (DLSS addon): the 3D passes draw into the top-left render scale part of the full-size depth. The view
+// Render scale: the 3D passes draw into the top-left render scale part of the full-size depth. The view
 // positions came from the screen UV (the rendered part squeezed into a corner of the view: wrong occlusion) and the
 // lines ran through the stale rest. Now the view positions come from the viewport (the camera's g_viewport_dimensions,
 // patched to the render size) and the depth outside the rendered part is the sky (far). At full size the same as the

@@ -4,15 +4,16 @@
 # WaterShader and PatchWaterCaustics too, as water_patch; view_share.hpp's Reflect and Patch as view_share_patch), and out of
 # -Before (the commit before Warhammer's AMBIENT_AFTER_HARMONICS_Z) for the other games' bytes. Holds tools/tw's GPU job
 # lock while it runs when -Lock names it: created only when it doesn't exist (CreateNew), kept only if it still holds this
-# run's line 3 s later (else waits again, the file left alone), deleted only while it is this run's.
+# run's line 3 s later (else waits again, the file left alone), deleted only while it is this run's. -OutDir: where the
+# test exe is built and run (ATN's antivirus-excluded test folder, tools\tw\testbin); else build\.
 param([Parameter(Mandatory = $true)][string]$Dump, [ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64', [string]$Lock = '',
-      [string]$Before = 'df1aff82', [string]$Wh2Dump = '')
+      [string]$Before = 'df1aff82', [string]$Wh2Dump = '', [string]$OutDir = '')
 # Warhammer II's dump (part 25's A50883CE): by default the folder next to $Dump with twwarhammer2 for twwarhammer.
 if ($Wh2Dump -eq '') { $Wh2Dump = $Dump -replace 'twwarhammer_pack', 'twwarhammer2_pack' }
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_warhammer_shaders'
-$testBuild = Join-Path $repairRoot "build\tw_warhammer_shaders_test_$Architecture"
+$testBuild = Join-Path $(if ($OutDir) { $OutDir } else { Join-Path $repairRoot 'build' }) "tw_warhammer_shaders_test_$Architecture"
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 $shadows = [IO.File]::ReadAllText((Join-Path $repairRoot 'src\games\twattila\screen_space_shadows.hpp'))
 $start = $shadows.IndexOf('inline std::vector<uint8_t> Patch(std::span<const uint8_t> code')

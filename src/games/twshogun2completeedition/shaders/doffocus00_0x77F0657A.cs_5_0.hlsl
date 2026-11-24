@@ -1,6 +1,6 @@
 // depthoffield.hlsl cs_compute_focal_depth (written from the game's source): the depth of field's auto focus, the
 // nearest depth in a cross around each focus point, then a moving average of the focus depth / width.
-// Render scale (DLSS addon): the focus points (0-1) were scaled by the full depth texture, but the 3D image only fills
+// Render scale: the focus points (0-1) were scaled by the full depth texture, but the 3D image only fills
 // g_viewport_dimensions of it, so they read stale depth: now the viewport, the crosses kept inside it. At full size
 // the same as the game's (the cross's left / top clamp is now signed: the game's wrapped as unsigned).
 struct Focal_info
