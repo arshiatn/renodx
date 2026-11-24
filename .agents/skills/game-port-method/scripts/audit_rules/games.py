@@ -24,8 +24,9 @@ GAMES[game]:
   engine, pack    ENGINES key; rule pack module in this folder (None: no rules yet)
   sources         (tier S shipped / R runtime dump, root, path, glob, floor): floor = unique (hash, stage) the source must
                   yield; when a (hash, stage) is in several files the first source's file is the census file. The stages
-                  a source keeps come from its producer's record in the folder, census_stages.txt ("stages: vs ps cs"),
-                  never typed here (13.9 C0); without one they are unknown (fullscreen and after-ui fail closed, C4)
+                  a source keeps come from its producer's record in the folder, census_stages.txt ("producer: <tool>
+                  <version>" and "stages: vs ps cs"; design 13.10), never typed here (13.9 C0); without a valid one
+                  they are unknown (fullscreen and after-ui fail closed, C4)
   not_game        {(hash, stage): where}: shaders in a dump that are not the game's (an injected DLL's); never counted
   trace_folders, trace_floor, trace_files   traces (only these give level A), the unique (hash, stage) they must hold and
                   the trace files they must hold (the summary prints a digest of their paths and sizes)
@@ -248,12 +249,13 @@ GAMES['fixture_host'] = GAMES['fixture_screen'] | {
 GAMES['fixture_host_tales'] = GAMES['fixture_host'] | {'host_state': None}
 GAMES['fixture_badscope'] = GAMES['fixture'] | {'pack': 'fixture_badscope'}
 # 13.9: every fixture census folder holds a producer record keeping every stage, except three copies of cso_screen:
-# _vsps keeps vs / ps / cs (C4), _norecord has none and _badrecord a malformed one (C0). fixture_139 adds the compiled
+# _vsps keeps vs / ps / cs (C4), _norecord has none, _badrecord a malformed one (C0) and _noproducer one without its
+# "producer:" line (13.10). fixture_139 adds the compiled
 # 13.9 shaders (cso_139) and two traces at scales 0.5 / 1.0 (traces_139: a fixed 256x256 target, a pixel load after the
 # upscale; SHOULD-2); its pack's mesh-uv rule is cross-checked by the traces (MUST-C). fixture_139_pair adds a trace
 # whose lines pair a VS with a PS it does not feed (C6); fixture_noview's pack settles SCALED by a rule on a shader
 # without View facts (MUST-B); fixture_tool registers one fixture tool under 9 ids (C1-C3, C7).
-for _variant in ('vsps', 'norecord', 'badrecord'):
+for _variant in ('vsps', 'norecord', 'badrecord', 'noproducer'):
     GAMES[f'fixture_screen_{_variant}'] = GAMES['fixture_screen'] | {
         'sources': GAMES['fixture']['sources'] + [('R', 'tools', f'audit/fixture/cso_screen_{_variant}', '*.cso', 8)]}
 GAMES['fixture_139'] = GAMES['fixture_screen'] | {

@@ -49,8 +49,9 @@ AXES = ('mv', 'scale', 'rt')
 COLUMNS = ('hash', 'stage', 'mv', 'mv_ev', 'scale', 'scale_ev', 'rt', 'rt_ev', 'note')
 GAPS = {'GAP', 'BUG', 'MISSING'}
 COMPONENTS = 'xyzw'
-# 13.9 C0: the dumper's own record in each census source folder, a line "stages: vs ps cs": the stages it keeps (a source
-# without one keeps unknown stages: fullscreen and after-ui fail closed, C4)
+# 13.9 C0: the producer's own record in each census source folder (the dumper's, the pak carve's): lines "producer: <tool>
+# <version>" (13.10) and "stages: vs ps cs", the stages it keeps; a source without a valid one keeps unknown stages
+# (fullscreen and after-ui fail closed, C4)
 STAGE_RECORD = 'census_stages.txt'
 
 # ------------------------------------------------------------------------------------------- evidence matrix (M2, R3)
@@ -735,6 +736,7 @@ class Context:
                 self.problems.append(f'rule {name}: an rt CAPTURED rule needs games naming only games whose manifest has '
                                      f'a host_state (has {games!r}) (13.9 SHOULD-1)')
         self.rules = {name: rule for name, rule in self.rules.items() if name not in self.scoped_out}
+        self.failing = {}  # 13.10 MUST-F: rule -> why its controls fail in this game (main() fills it from controls())
         self.cache_dir = os.path.join(args.tools, 'audit', 'cache', args.game)
 
     def path(self, spec):
@@ -782,15 +784,19 @@ def census(ctx, header, final=False):
         cache = {}
     found, fresh, broken = {}, {}, False
     ctx.census_stages = set(STAGES)  # 13.9 C0: what every source keeps, by its producer's record; None = unknown
+    ctx.producers = {}  # 13.10: source path -> its record's "producer: <tool> <version>", None without a valid record
     for tier, root, path, pattern, floor in sources:
         unique, folder = set(), os.path.join(ctx.roots[root], path)
         record = ctx.text(os.path.join(folder, STAGE_RECORD))
         kept = next((line[7:].split() for line in (record or '').splitlines() if line.startswith('stages:')), None)
-        if record is not None and (not kept or set(kept) - set(STAGES)):
-            ctx.problems.append(f'census source {path}: {STAGE_RECORD} needs a line "stages: <{" / ".join(STAGES)} ...>" '
-                                '(13.9 C0)')
+        producer = next((line[9:].strip() for line in (record or '').splitlines() if line.startswith('producer:')), '')
+        valid = record is not None and kept and not set(kept) - set(STAGES) and len(producer.split()) >= 2
+        if record is not None and not valid:  # 13.10: a hand-written record names no producer and version
+            ctx.problems.append(f'census source {path}: {STAGE_RECORD} needs the lines "producer: <tool> <version>" and '
+                                f'"stages: <{" / ".join(STAGES)} ...>" (13.9 C0, 13.10)')
+        ctx.producers[path] = producer if valid else None
         if ctx.census_stages is not None:
-            ctx.census_stages = ctx.census_stages & set(kept) if kept and record is not None else None
+            ctx.census_stages = ctx.census_stages & set(kept) if valid else None
         for name in sorted(glob.glob(os.path.join(folder, pattern), recursive=True)):
             match = NAME.match(os.path.basename(name))
             if not match:
@@ -1139,7 +1145,7 @@ def direct_pair(ctx, text):
 def stage_hole(ctx):
     """13.9 C4: why the census may lack hull, domain or geometry shaders (the dumper's record), or ''."""
     if ctx.census_stages is None:
-        return f'a census source has no {STAGE_RECORD} (the stages it keeps are unknown)'
+        return f'a census source has no valid {STAGE_RECORD} (the stages it keeps are unknown)'
     missing = sorted({'hs', 'ds', 'gs'} - ctx.census_stages)
     return f'the census sources keep no {" / ".join(missing)} shaders (their {STAGE_RECORD})' if missing else ''
 
@@ -1328,7 +1334,11 @@ def check_token(ctx, row, axis, cell, token, cited, said, fact, kinds):
             return f'{token}: facts of {value} missing or partial for the rule (have {", ".join(sorted(kinds)) or "none"}) (R3)'
         if state == 'scope':
             return f'{token}: {value} ({fact.get("family", "?")}) is outside the rule\'s scope'
-        return '' if state else f'{token}: the rule does not fire on {value}'
+        if not state:
+            return f'{token}: the rule does not fire on {value}'
+        if rest in ctx.failing:  # design 5: a failing control opens every row citing the rule
+            return f'{token}: its controls fail in {ctx.args.game} ({ctx.failing[rest]}): the rule\'s rows open (13.10 MUST-F)'
+        return ''
     if kind == 'facts':
         if rest not in claim.split('|'):
             return f'{token}: facts:{rest} does not show {cell} (accepted: facts:{claim})'
@@ -1586,7 +1596,7 @@ def check_cell(ctx, row, axis, cited, key):
     if missing:  # R3
         problems.append(f'{subject}: {cell} is guarded by tripwires, facts missing or partial (no {", ".join(sorted(missing))}'
                         f'{"; " + error if error else ""}): fails closed (R3)')
-    problems += [f'{subject}: {why}' for why in tripwires(axis, verdict, reason, fact, kinds, primary, ctx.engine['view'])]
+    problems += [f'{subject}: {why}' for why in tripwires(axis, verdict, reason, fact, kinds, tokens, ctx.engine['view'])]
     for name, rule in ctx.rules.items():  # overrides (M3)
         if rule['axis'] == axis and (rule['verdict'], rule['reason']) != (verdict, full_reason) and \
                 fires(ctx, rule, row, fact, kinds) is True and f'override:{name}' not in tokens:
@@ -1604,8 +1614,10 @@ def check_cell(ctx, row, axis, cited, key):
     return problems, (kind, state, any(t.startswith('override:') for t in tokens))
 
 
-def tripwires(axis, verdict, reason, fact, kinds, primary, view):
-    """Fixed checks over the facts, on every row whoever settled it (M4); 'view' is the engine's View layout."""
+def tripwires(axis, verdict, reason, fact, kinds, tokens, view):
+    """Fixed checks over the facts, on every row whoever settled it (M4); 'view' is the engine's View layout. The
+    SCALED-by-rule checks key on a cited rule: token, resolved or not (13.10: MUST-F fails the token of a rule whose
+    controls fail, and the facts still refuse the cell)."""
     out = []
     if axis == 'mv' and verdict == 'CAMERA':
         for key, why in (('bone_like', 'bone-like inputs (skinned)'), ('vtf', 'a texture read in the position (vertex texture fetch)'),
@@ -1627,7 +1639,7 @@ def tripwires(axis, verdict, reason, fact, kinds, primary, view):
         screen = [r for r in fact.get('read_roots', []) if set(r[2]) & screen]
         if screen:
             out.append(f'N/A/{reason} with screen-space, interpolant or dependent reads {screen[:3]}')
-    if axis == 'scale' and verdict == 'SCALED' and any(t.startswith('rule:') for t in primary):
+    if axis == 'scale' and verdict == 'SCALED' and any(t.startswith('rule:') for t in tokens):
         if not {'dataflow', 'view'} <= kinds:  # 13.9 MUST-B: no root facts, nothing for the tripwire to read
             out.append('SCALED by a rule on a shader without root facts (no dataflow / View facts): fails closed (R3)')
         risky = [r for r in fact.get('read_roots', []) if set(r[2]) & {'proj', 'size', 'input', 'thread', 'const'}]
@@ -1656,31 +1668,36 @@ def tripwires(axis, verdict, reason, fact, kinds, primary, view):
     return out
 
 
-def controls(ctx, rows, found):
-    """At least one positive and one negative hand-row control per rule (M3, R3); a positive one is level A (S0-S7)."""
-    problems, by_key = [], {(r['hash'], r['stage']): r for r in rows}
+def controls(ctx, rows, found, cited):
+    """At least one positive and one negative hand-row control per rule (M3, R3); a positive one is level A (S0-S7).
+    Returns the problems and {rule: why} for each rule with one (13.10 MUST-F: its rule: tokens fail). A control is a
+    hand row (no rule: token), so its own check_cell never depends on the controls; it runs on every row, --only or not."""
+    problems, failing, by_key = [], {}, {(r['hash'], r['stage']): r for r in rows}
     for name, rule in ctx.rules.items():
-        own = rule.get('controls', {}).get(ctx.args.game, {'positive': [], 'negative': []})
+        own, mine = rule.get('controls', {}).get(ctx.args.game, {'positive': [], 'negative': []}), []
         if not own['positive'] or not own['negative']:
-            problems.append(f'rule {name}: needs at least one positive and one negative control for {ctx.args.game} '
-                            f'(has {len(own["positive"])} / {len(own["negative"])}) (R3)')
+            mine.append(f'needs at least one positive and one negative control for {ctx.args.game} '
+                        f'(has {len(own["positive"])} / {len(own["negative"])}) (R3)')
         for value, want in [(v, True) for v in own['positive']] + [(v, False) for v in own['negative']]:
             row = next((by_key[(value, s)] for s in rule['stages'] if (value, s) in by_key), None)  # n-s0-2
             if row is None:
-                problems.append(f'rule {name}: control {value} has no {"/".join(rule["stages"])} row')
+                mine.append(f'control {value} has no {"/".join(rule["stages"])} row')
                 continue
             key = (row['hash'], row['stage'])
             if want and 'A' not in found.get(key, {'tiers': ()})['tiers']:
-                problems.append(f'rule {name}: positive control {value} is not level A (in no manifest trace)')
+                mine.append(f'positive control {value} is not level A (in no manifest trace)')
             fact, kinds, _ = ctx.facts.get(key, ({}, frozenset(), None))
             state = fires(ctx, rule, row, fact, kinds)
             same = split_cell(row[rule['axis']])[0::2] == (rule['verdict'], rule['reason'])
             hand = bool(row[rule['axis'] + '_ev']) and 'rule:' not in row[rule['axis'] + '_ev']
-            settled = not any(p.startswith(f'{row["hash"]} {row["stage"]} {rule["axis"]}:') for p in ctx.cell_problems)
+            settled = hand and not check_cell(ctx, row, rule['axis'], cited, key)[0]
             if state not in (True, False) or state != want or same != want or not hand or not settled:
-                problems.append(f'rule {name}: control {value} ({"positive" if want else "negative"}) fails: fires {state}, '
-                                f'verdict {row[rule["axis"]]}, settled without rules {hand}, proven {settled}')
-    return problems
+                mine.append(f'control {value} ({"positive" if want else "negative"}) fails: fires {state}, '
+                            f'verdict {row[rule["axis"]]}, settled without rules {hand}, proven {settled}')
+        problems += [f'rule {name}: {why}' for why in mine]
+        if mine:
+            failing[name] = mine[0]
+    return problems, failing
 
 
 # ------------------------------------------------------------------------------------------------ fill (--seed, --apply-rules)
@@ -1699,7 +1716,10 @@ def seed(ctx, header_lines, rows, found):
     return added
 
 
-def apply_rules(ctx, rows):
+def apply_rules(ctx, rows, cited):
+    """Fills '?' cells where the pack's rules agree, fail closed (13.10): a rule whose controls fail in this game never
+    fills (MUST-F), and a fill is written only when check_cell passes it (the rule token, the trace claims, SHOULD-2,
+    the tripwires, the overrides)."""
     filled, conflicts, gaps = collections.Counter(), [], collections.defaultdict(list)
     for row in rows:
         key = (row['hash'], row['stage'])
@@ -1707,24 +1727,31 @@ def apply_rules(ctx, rows):
         for axis in AXES:
             if row[axis] != '?':
                 continue
+            subject = f'{row["hash"]} {row["stage"]} {axis}'
             firing = [(name, rule) for name, rule in ctx.rules.items() if rule['axis'] == axis and fires(ctx, rule, row, fact, kinds) is True]
             verdicts = {(r['verdict'], r['reason']) for _, r in firing}
             if len(verdicts) > 1:
-                conflicts.append(f'{row["hash"]} {row["stage"]} {axis}: rules disagree: {", ".join(n for n, _ in firing)}')
+                conflicts.append(f'{subject}: rules disagree: {", ".join(n for n, _ in firing)}')
                 continue
-            if not firing:
+            good = [(name, rule) for name, rule in firing if name not in ctx.failing]
+            if firing and not good:
+                conflicts.append(f'{subject}: {", ".join(n for n, _ in firing)} fires, its controls fail in '
+                                 f'{ctx.args.game}: left open (13.10 MUST-F)')
                 continue
-            name, rule = firing[0]
-            claim = cross_checked(ctx, axis, rule['verdict'], rule['reason'].partition(':')[0])
-            if claim and trace_lines(ctx, row['hash'], row['stage']) and \
-                    trace_claim(ctx, claim, row['hash'], row['stage'], 'the traces'):
-                conflicts.append(f'{row["hash"]} {row["stage"]} {axis}: {name} fires, the traces disagree ({claim}): left open')
+            if not good:
                 continue
+            name, rule = good[0]
+            tag, evidence = f'[audit {ctx.args.game} {axis} {fact.get("family", "unparsed")}]', row[axis + '_ev']
             row[axis] = rule['verdict'] + (('/' + rule['reason']) if rule['reason'] else '')
-            row[axis + '_ev'] = f'rule:{name}'
+            row[axis + '_ev'] = f'rule:{name}' + (f';box:{tag}' if rule['verdict'] in GAPS else '')
+            # this run writes a gap's pending line below, so only that box may be missing yet
+            why = [p for p in check_cell(ctx, row, axis, cited, key)[0]
+                   if not (rule['verdict'] in GAPS and p.endswith('nor a line of the pending file (M7, S-r2)'))]
+            if why:
+                conflicts.append(f'{why[0]} ({name} fires; the fill fails check_cell: left open, 13.10)')
+                row[axis], row[axis + '_ev'] = '?', evidence
+                continue
             if rule['verdict'] in GAPS:
-                tag = f'[audit {ctx.args.game} {axis} {fact.get("family", "unparsed")}]'
-                row[axis + '_ev'] += f';box:{tag}'
                 gaps[tag].append(row['hash'])
             filled[name] += 1
     if gaps:  # M7: one pending line per gap family, written by this run
@@ -1766,7 +1793,8 @@ def census_holes(ctx):
     out.append(f'census stages (13.9 C0 / C4; the sources\' {STAGE_RECORD}): '
                + (" ".join(s for s in STAGES if s in ctx.census_stages) if ctx.census_stages is not None else 'unknown')
                + (f'; stage hole: {stage_hole(ctx)}: fullscreen and after-ui fail closed' if stage_hole(ctx) else '')
-               + f'; census digest {ctx.census_digest}')
+               + f'; census digest {ctx.census_digest}; producers (13.10): '
+               + ', '.join(sorted({p or 'no valid record' for p in ctx.producers.values()})))
     if ctx.excluded:
         out.append(f'not game: {len(ctx.excluded)} (hash, stage) excluded ({", ".join(sorted(set(ctx.excluded.values())))})')
     if ctx.engine['view'] is not None:
@@ -1836,12 +1864,23 @@ def main(argv=None):
         return rerun_tools(ctx, rows)
     header_lines = [line for line in open(args.ledger, encoding='utf-8') if line.startswith('#')] \
         if os.path.isfile(args.ledger) else [f'#! game: {args.game}\n']
+    cited = {}  # R1: a header trace id only names a trace a token cites
+    for spec in header.get('trace', []):
+        trace_id, _, path = spec.partition(' ')
+        full = os.path.normcase(os.path.abspath(ctx.path(path.strip()) or ''))
+        if full not in ctx.scale:
+            ctx.problems.append(f'trace {trace_id}: not a trace of the manifest\'s folders (M1)')
+            continue
+        cited[trace_id] = full
+    # 13.10 MUST-F: the controls first (hand rows, never filled by a rule), so a failing rule neither fills nor settles
+    control_problems, ctx.failing = controls(ctx, rows, found, cited)
     if args.seed or args.apply_rules:
         added = seed(ctx, header_lines, rows, found) if args.seed else 0
-        filled, conflicts = apply_rules(ctx, rows) if args.apply_rules else ({}, [])
+        filled, conflicts = apply_rules(ctx, rows, cited) if args.apply_rules else ({}, [])
         write_ledger(args.ledger, header_lines, rows)
         print(f'shader_audit {args.game}: seeded {added} rows, rules filled {sum(filled.values())} cells '
-              f'({", ".join(f"{k} {v}" for k, v in sorted(filled.items())) or "none"}); ledger {args.ledger} (.bak kept)')
+              f'({", ".join(f"{k} {v}" for k, v in sorted(filled.items())) or "none"}), {len(conflicts)} left open by a '
+              f'conflict; ledger {args.ledger} (.bak kept)')
         for conflict in conflicts[:50]:
             print(f'  CONFLICT\t{conflict}')
         header, rows = read_ledger(ctx, args.ledger)
@@ -1861,15 +1900,7 @@ def main(argv=None):
         if signed.get(tool_id) != now:
             ctx.problems.append(f'#! tools: {tool_id} reviewed with {signed.get(tool_id, "(not signed)")}, its pins are now '
                                 f'{now}: re-run it and re-review (13.9 C2)')
-    cited = {}  # R1: a header trace id only names a trace a token cites
-    for spec in header.get('trace', []):
-        trace_id, _, path = spec.partition(' ')
-        full = os.path.normcase(os.path.abspath(ctx.path(path.strip()) or ''))
-        if full not in ctx.scale:
-            ctx.problems.append(f'trace {trace_id}: not a trace of the manifest\'s folders (M1)')
-            continue
-        cited[trace_id] = full
-    only = {v.upper() for v in args.only} if args.only is not None else None
+    only ={v.upper() for v in args.only} if args.only is not None else None
     in_part = (lambda key: (only is None or key[0] in only) and
                (args.family is None or fnmatch.fnmatch(ctx.facts.get(key, ({},))[0].get('family', 'unparsed'), args.family)))
     seen = collections.Counter((r['hash'], r['stage']) for r in rows)
@@ -1903,8 +1934,7 @@ def main(argv=None):
                     (row[axis] + '|' + row[axis + '_ev']).encode()).hexdigest()[:10], override))
     contradictions, findings = tool_cross_check(ctx, rows)  # 13.9 C7
     ctx.problems += contradictions
-    control_problems = controls(ctx, rows, found)
-    picked = sample(ctx, strata, args) if (args.sample or args.review or args.final) else []
+    picked =sample(ctx, strata, args) if (args.sample or args.review or args.final) else []
     review_problems = review(ctx, picked, args) if (args.review or args.final) else []
     if args.final:
         changed = refacts(ctx, found, picked, rows)
