@@ -16,8 +16,10 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <charconv>
 #include <cstring>
 #include <format>
+#include <functional>
 #include <new>
 #include <string>
 #include <string_view>
@@ -30,6 +32,11 @@
 // Parallel Effect Update, L1 (Attila 1.6.0, x86): the game's walk over its effects runs the effects' instances on the shared
 // worker pool, and the picture is the one the serial walk makes. The sites and their thunks are effect_update_sites.hpp; this
 // file is the handler they call.
+//
+// When (Automatic L1): the walk's first call sums the effect instances of the node's table as the game's own loop walks it (a
+// slot whose key is the table's empty or deleted key holds no effect it walks, then a null effect is skipped). The walk runs
+// parallel from 20000 instances on and serial again below 16000 (the hysteresis), never below 256; a serial frame is the
+// game's own walk. RENODX_TW_L1_UNITS=<on>:<off> (the bench) sets the two. A switch is said at the next present.
 //
 // The rule: an instance's update (a unit) runs on any thread until its first shared touch, an order point (the 27 sites). It
 // passes that point only when every unit before it in the serial order is done, and from then on it is the one direct unit:
@@ -83,12 +90,10 @@ constexpr uint32_t MAX_BLOCKS = 256;
 // A normal segment's rank is its index << 12; a late segment takes the middle of the gap it goes into (twelve of them nest).
 constexpr uint32_t RANK_STEP = 1u << 12;
 constexpr uint32_t RANK_LIMIT = 1u << 19;  // more effects than that in a round: the round does not run
-constexpr uint32_t MIN_ROUND_UNITS = 256;
+constexpr uint32_t MIN_ROUND_UNITS = 256;  // the rule's floor (UnitRule)
 constexpr uint32_t BUCKETS = 4096;
 constexpr uint32_t SPIN_MICROSECONDS = 20;
 constexpr uint32_t WAIT_TIMEOUT_MILLISECONDS = 50;
-// A round too small to be worth it is tried again after this many presents.
-constexpr uint32_t SMALL_ROUND_RETRY_PRESENTS = 120;
 
 // The game's addresses (RVAs): the instance's update, the per-effect function's render switch, the random state.
 constexpr uint32_t INSTANCE_UPDATE_RVA = 0x1893470;
@@ -104,6 +109,20 @@ constexpr uint32_t SLOT_EFFECT_OFFSET = 0xC;
 constexpr uint32_t EFFECT_COUNT_OFFSET = 0x18;
 constexpr uint32_t EFFECT_ENTRIES_OFFSET = 0x1C;
 constexpr uint32_t APPEND_VECTOR_OFFSET = 0x14;
+// The table's empty and deleted keys (node + 0xD0 / + 0xDC). A slot's key is at its +0: {length +0, capacity +4, the bytes'
+// pointer +8}; two keys are equal with equal lengths and equal bytes (the game's compare, +0xDE0D0). A table with more slots
+// than TABLE_SLOT_LIMIT (8 times the game's 0x200 effect types) is not summed: its walk is serial.
+constexpr uint32_t EMPTY_KEY_OFFSET = 0xD0;
+constexpr uint32_t DELETED_KEY_OFFSET = 0xDC;
+constexpr uint32_t KEY_BYTES_OFFSET = 8;
+constexpr uint32_t TABLE_SLOT_LIMIT = 4096;
+// The rule: a walk runs parallel with at least `on` instances in the table (`off` while the last walk did), never below `floor`.
+struct UnitRule {
+  uint32_t floor;
+  uint32_t on;
+  uint32_t off;
+};
+constexpr UnitRule SHIPPED_UNIT_RULE = {MIN_ROUND_UNITS, 20000, 16000};
 // L2: the node's pipeline (node + 0x180) and its two vtables, the three-step random draw and its create-path caller's return address, the spawn record (48 bytes at +0x2C of the
 // particle the game's spawn takes) and the spawn's vtable slot. The CPU pipeline's buffer is at +0x10 (count +0x28, capacity +8, simulation room from two words at +0x14 / +0x18), the
 // GPU's at +0x14 (count +0x14, capacity +0xC).
@@ -138,9 +157,9 @@ struct Entries {
 };
 static Entries entries;
 
-enum class SerialReason : uint8_t { SESSION_OFF, SMALL, NEW_NODE, NO_WORKERS, START_REFUSED, ALLOCATION, COUNT };
+enum class SerialReason : uint8_t { SESSION_OFF, FEW_UNITS, NEW_NODE, NO_WORKERS, BIG_TABLE, START_REFUSED, ALLOCATION, COUNT };
 constexpr std::array<std::string_view, static_cast<size_t>(SerialReason::COUNT)> SERIAL_REASON_NAMES = {
-    "session off", "too few units last round", "new node", "no workers", "start refused", "allocation"};
+    "session off", "effect instances below the threshold", "new node", "no workers", "table above the slot limit", "start refused", "allocation"};
 
 // Counters: the first block (up to FOREIGN_HITS) only in a trace window but for two slow-path ones (CountedAlways), the second (from HANGS) always: the safety checks.
 enum class Counter : uint8_t {
@@ -177,10 +196,10 @@ constexpr std::array<std::string_view, static_cast<size_t>(Counter::COUNT)> COUN
 // The counters that are counted outside trace windows too: the safety ones, a foreign thread's hit and a wake that timed out (both rare). Update folds them into the session's totals.
 constexpr bool CountedAlways(Counter counter) { return counter >= Counter::HANGS || counter == Counter::WAKE_TIMEOUTS || counter == Counter::FOREIGN_HITS; }
 
-enum class EventKind : uint8_t { WATCHED_MISMATCH, CENSUS_ERROR, LATE_OVERFLOW, HANG, FAILED_ROUND, SPAWN_OVERFLOW, TAG_LEAK, STAGE_FULL, SPAWNS_OFF, SLOT_GROWTH };
-constexpr std::array<std::string_view, 10> EVENT_NAMES = {"watched word changed", "site hit where the census has none", "late overflow", "hang",
+enum class EventKind : uint8_t { WATCHED_MISMATCH, CENSUS_ERROR, LATE_OVERFLOW, HANG, FAILED_ROUND, SPAWN_OVERFLOW, TAG_LEAK, STAGE_FULL, SPAWNS_OFF, SLOT_GROWTH, BIG_TABLE };
+constexpr std::array<std::string_view, 11> EVENT_NAMES = {"watched word changed", "site hit where the census has none", "late overflow", "hang",
                                                           "round failed", "spawn budget overflow", "deferred draw outside its record", "spawn staging full",
-                                                          "spawns off for the session", "slot list growth on a worker"};
+                                                          "spawns off for the session", "slot list growth on a worker", "effect table above the slot limit, walks serial"};
 // Why L2 went off for the session (the SPAWNS_OFF event's value).
 enum class SpawnsOffReason : uint8_t { RESERVATION, TAG_LEAK, CAP_REACHED };
 constexpr std::array<std::string_view, 3> SPAWNS_OFF_REASONS = {"the staging pool could not be reserved", "a deferred draw's value went outside its record",
@@ -273,6 +292,7 @@ struct Controls {
   bool merge_by_completion = false;  // L2: the staged records are merged in the reverse of the serial order
   bool overflow_ignored = false;     // L2: a commit does not check the budget
   bool defer_any_caller = false;     // L2: the random draw is deferred for every caller, not only the create path's
+  uint32_t table_sums = 0;           // the rule's sums over the table so far (counted, not a control)
 };
 static Controls controls;
 #endif
@@ -412,9 +432,37 @@ static bool off_said = false;
 // The units' or segments' blocks could not grow (no memory, or MAX_BLOCKS of them): a store on the walk's thread, the line at the present.
 static std::atomic<bool> allocation_failed = false;
 static bool allocation_said = false;
-static uint32_t last_round_units = MIN_ROUND_UNITS;
+static uint32_t last_round_units = MIN_ROUND_UNITS;  // the units' reserve for the next round
 static uint32_t last_node = 0;
-static uint32_t small_round_presents = 0;
+// The rule (the env and the tests set it), the last walk's decision (the hysteresis: back to serial through ResetRule), a switch
+// Update says at the next present, the env generation read last and its bad value said.
+static UnitRule unit_rule = SHIPPED_UNIT_RULE;
+static bool was_parallel = false;
+struct RuleSwitch {
+  bool pending = false;
+  bool parallel = false;
+  uint32_t instances = 0;
+  uint32_t threshold = 0;
+  std::string_view reset;  // not empty: the state was reset (no sum)
+};
+static RuleSwitch rule_switch;
+static uint32_t rule_env_applied = ~0u;
+static bool rule_env_said = false;
+// A trace window's view of the sums since the last line: how many and their time, the last one's instances, the table's
+// capacity and its three effects with the most instances (vtable RVA and count; the capacity once a window).
+struct TopEffect {
+  uint32_t rva = 0;
+  uint32_t count = 0;
+};
+struct SumTrace {
+  uint32_t sums = 0;
+  uint64_t ticks = 0;
+  uint32_t instances = 0;
+  uint32_t capacity = 0;
+  std::array<TopEffect, 3> top = {};
+};
+static SumTrace sum_trace;
+static uint32_t capacity_window = 0;  // the trace window whose line printed the capacity
 static bool spawns_row = false;
 static bool spawns_off = false;
 static uint32_t last_round_spawned = 0;
@@ -435,6 +483,15 @@ inline void Note(EventKind kind, uint32_t site, uint32_t value) {
   if (index < events.size()) {
     events[index] = {.kind = kind, .site = site, .thread = GetCurrentThreadId(), .value = value};
   }
+}
+
+// The rule's state back to serial (a new node, a table above the slot limit, the row or the session off); a parallel one says
+// so at the next present, so the bench's bins follow.
+inline void ResetRule(std::string_view reset) {
+  if (was_parallel) {
+    rule_switch = {.pending = true, .reset = reset};
+  }
+  was_parallel = false;
 }
 
 // L2 off for the rest of the session, with its reason (stored once; Update logs it).
@@ -954,7 +1011,6 @@ inline void FinishRound(bool failed) {
   data->direct_high.store(0, std::memory_order_seq_cst);
   data->staging.store(0, std::memory_order_seq_cst);
   last_round_units = round.enqueued_units;
-  small_round_presents = 0;
   if (round.violation.load(std::memory_order_relaxed)) session_off = true;
   if (failed) {
     data->walk_armed.store(0, std::memory_order_seq_cst);
@@ -1111,13 +1167,61 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
         };
         const uint32_t node = word(2) - NODE_ARGUMENT_OFFSET;
         if (!row_on || session_off) return serial(SerialReason::SESSION_OFF);
-        if (last_round_units < MIN_ROUND_UNITS) return serial(SerialReason::SMALL);
         if (node != last_node) {
           last_node = node;
+          ResetRule("new node");
           return serial(SerialReason::NEW_NODE);
         }
         const uint32_t workers = worker_pool::Available(worker_pool::User::EFFECT_UPDATE);
         if (workers == 0) return serial(SerialReason::NO_WORKERS);
+        // The rule: this frame's effect instances, the node's table summed as the game's own loop walks it (before any effect is
+        // updated): a slot whose key equals the empty or the deleted key is skipped (a deleted slot may keep a stale effect),
+        // then a null effect.
+        const uint32_t slots = Read(node + TABLE_OFFSET);
+        const uint32_t table_capacity = Read(node + TABLE_OFFSET + 4);
+        if (table_capacity > TABLE_SLOT_LIMIT) {
+          Note(EventKind::BIG_TABLE, site_index, table_capacity);
+          ResetRule("table above the slot limit");
+          return serial(SerialReason::BIG_TABLE);
+        }
+        const auto same_key = [](uint32_t key, uint32_t other) {
+          const uint32_t length = Read(key);
+          return length == Read(other)
+                 && (length == 0
+                     || std::memcmp(reinterpret_cast<const void*>(Read(key + KEY_BYTES_OFFSET)), reinterpret_cast<const void*>(Read(other + KEY_BYTES_OFFSET)), length) == 0);
+        };
+        const bool tracing = worker_pool::Tracing();
+        const uint64_t sum_start = (tracing ? worker_pool::Qpc() : 0);
+        std::array<TopEffect, 3> top = {};
+        uint32_t instances = 0;
+        for (uint32_t slot = 0; slot < table_capacity; ++slot) {
+          const uint32_t key = slots + slot * SLOT_SIZE;
+          if (same_key(key, node + EMPTY_KEY_OFFSET) || same_key(key, node + DELETED_KEY_OFFSET)) continue;
+          const uint32_t effect = Read(key + SLOT_EFFECT_OFFSET);
+          if (effect == 0) continue;
+          const uint32_t count = Read(effect + EFFECT_COUNT_OFFSET);
+          instances += count;
+          if (tracing && count > top.back().count) {
+            top.back() = {.rva = Read(effect) - Address(base), .count = count};
+            std::ranges::sort(top, std::ranges::greater(), &TopEffect::count);
+          }
+        }
+#if defined(TWATTILA_EFFECT_UPDATE_CONTROLS)
+        ++controls.table_sums;
+#endif
+        if (tracing) {
+          sum_trace.sums += 1;
+          sum_trace.ticks += worker_pool::Qpc() - sum_start;
+          sum_trace.instances = instances;
+          sum_trace.capacity = table_capacity;
+          sum_trace.top = top;
+        }
+        const uint32_t threshold = std::max(unit_rule.floor, (was_parallel ? unit_rule.off : unit_rule.on));
+        if ((instances >= threshold) != was_parallel) {
+          was_parallel = !was_parallel;
+          rule_switch = {.pending = true, .parallel = was_parallel, .instances = instances, .threshold = threshold};
+        }
+        if (!was_parallel) return serial(SerialReason::FEW_UNITS);
         // The node's pipeline and its spawn buffer (read outside the round: nothing changes them before a direct unit does): the count word, the room for the game's "is there room"
         // (query_limit: CPU, also the simulation's room) and for its spawn (cap_limit). L2 stages when the row asks and there is room enough and the last round left half of it.
         const uint32_t pipeline = Read(node + PIPELINE_OFFSET);
@@ -1488,8 +1592,9 @@ inline void LogSessionTotals() {
 }
 
 // The present's call (owner thread, outside a round, after engine_code::Update and worker_pool::Update): the row, the handler, the
-// gates, and the lines of what the last frames stored. A round still open here (the walk never reached its end) is closed.
-inline void Update(bool row, bool spawns = false) {
+// gates, and the lines of what the last frames stored. A round still open here (the walk never reached its end) is closed. The
+// bench env RENODX_TW_L1_UNITS is read at the first present and again whenever `env_generation` changes.
+inline void Update(bool row, bool spawns = false, uint32_t env_generation = 0) {
   using namespace internal;
   if (data == nullptr) return;
   session_used |= row;
@@ -1518,9 +1623,40 @@ inline void Update(bool row, bool spawns = false) {
     renodx::utils::log::w(std::format("[Total War] Parallel Effect Update: no memory for its records ({} unit and {} segment blocks of {}); its rounds run serially.",
                                       units.capacity / BLOCK_SIZE, segments.capacity / BLOCK_SIZE, MAX_BLOCKS));
   }
-  if (row && last_round_units < MIN_ROUND_UNITS && ++small_round_presents >= SMALL_ROUND_RETRY_PRESENTS) {
-    last_round_units = MIN_ROUND_UNITS;
-    small_round_presents = 0;
+  if (env_generation != rule_env_applied) {
+    rule_env_applied = env_generation;
+    constexpr const char* NAME = "RENODX_TW_L1_UNITS";
+    std::string text(GetEnvironmentVariableA(NAME, nullptr, 0), '\0');
+    text.resize(GetEnvironmentVariableA(NAME, text.data(), static_cast<DWORD>(text.size())));
+    const auto parse = [&](size_t from, size_t to, uint32_t* value) {
+      const auto [end, error] = std::from_chars(text.data() + from, text.data() + to, *value);
+      return error == std::errc() && end == text.data() + to;
+    };
+    const size_t colon = text.find(':');
+    uint32_t on = 0;
+    uint32_t off = 0;
+    unit_rule = SHIPPED_UNIT_RULE;
+    if (colon != std::string::npos && parse(0, colon, &on) && parse(colon + 1, text.size(), &off)) {
+      on = std::max(on, MIN_ROUND_UNITS);
+      unit_rule = {.floor = MIN_ROUND_UNITS, .on = on, .off = std::clamp(off, MIN_ROUND_UNITS, on)};
+      renodx::utils::log::i(std::format("[Total War] Parallel Effect Update: parallel from {} effect instances, serial below {} (RENODX_TW_L1_UNITS, bench only).",
+                                        unit_rule.on, unit_rule.off));
+    } else if (!text.empty() && !rule_env_said) {
+      rule_env_said = true;
+      renodx::utils::log::w(std::format("[Total War] RENODX_TW_L1_UNITS=\"{}\" does not parse; parallel from {}, serial below {}.", text, unit_rule.on, unit_rule.off));
+    }
+  }
+  if (!row || session_off) {
+    ResetRule(row ? "session off" : "row off");
+  }
+  if (rule_switch.pending) {
+    rule_switch.pending = false;
+    if (!rule_switch.reset.empty()) {
+      renodx::utils::log::i("[Total War] Parallel Effect Update: serial from here (", rule_switch.reset, ").");
+    } else {
+      renodx::utils::log::i(std::format("[Total War] Parallel Effect Update: {} from here ({} effect instances, {} {}).", (rule_switch.parallel ? "parallel" : "serial"),
+                                        rule_switch.instances, (rule_switch.parallel ? "from" : "below"), rule_switch.threshold));
+    }
   }
   // Every site the walk's gate opens needs all 27 in the game's code: a partial set (a site that stood down) never arms.
   data->walk_armed.store((row && !session_off && written == ALL_SITES ? 1 : 0), std::memory_order_seq_cst);
@@ -1547,6 +1683,25 @@ inline void Update(bool row, bool spawns = false) {
       line += std::format(" serial ({}) {},", SERIAL_REASON_NAMES[index], value);
       traced = true;
     }
+  }
+  if (sum_trace.sums != 0) {
+    line += std::format(" table instances {}, table sum {:.1f} us,", sum_trace.instances,
+                        static_cast<double>(sum_trace.ticks) * 1e6 / static_cast<double>(worker_pool::qpc_frequency) / sum_trace.sums);
+    if (capacity_window != worker_pool::TraceWindow()) {
+      capacity_window = worker_pool::TraceWindow();
+      line += std::format(" table capacity {},", sum_trace.capacity);
+    }
+    if (sum_trace.top[0].count != 0) {
+      line += " top effects";
+      for (const TopEffect& effect : sum_trace.top) {
+        if (effect.count != 0) {
+          line += std::format(" 0x{:X} {}", effect.rva, effect.count);
+        }
+      }
+      line += ",";
+    }
+    sum_trace = {};
+    traced = true;
   }
   for (size_t index = 0; index < SITE_COUNT; ++index) {
     if (const uint32_t value = order_point_hits[index].exchange(0, std::memory_order_relaxed); value != 0) {
@@ -1633,7 +1788,7 @@ inline void Detach() {
 
 #else
 
-inline void Update(bool, bool = false) {}
+inline void Update(bool, bool = false, uint32_t = 0) {}
 inline void Detach() {}
 
 #endif  // !defined(_WIN64)

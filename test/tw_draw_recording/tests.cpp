@@ -5,7 +5,7 @@
 // before its own partition, a late worker skipping a closed job, work functions waiting mid-job on a word the owner
 // publishes, a job open across game code (every user's Available() is 0, nested and off-owner Starts refused and counted),
 // an open job joined at Update, the environment limits (RENODX_TW_WORKER_LIMITS, 1 = the render thread alone) and the spin
-// knob, the types' offsets (static asserts in the header).
+// knob, the types' offsets (static asserts in the header), the budget of the CPUs the game may use (BudgetWorkers).
 // Part 2 (C.2-2): the depth path on a synthetic loop with the same state machine as the game's (written from its listing),
 // driven by a synthetic driver that splits the list into portions from the tracker's +0x50 (so the portions start at
 // begin != 0, back to back on one tracker, and a stale stride changes the split). The fake flush does the real flush's
@@ -879,6 +879,83 @@ static void PoolArmTrace() {
   CHECK(LogCount("starts and Available() calls refused") == lines && !wp::Tracing());
   wp::Update({.in_use = false});
   std::printf("pool: ArmTrace: no window before the header, exactly the frames counted (2), numbered, an arm while pending or open ignored, nothing counted after the last present; 0 ignored\n");
+}
+
+// The budget (BudgetWorkers of the CPUs the game may use): its table, the clamp through `ready` for every user, a live drop and
+// rise above 0 (no thread made or lost), budget 0 on the add-on's path (in_use false: the pool stops, the threads are made
+// again after), the budget line once per change of the CPUs or the row, the trace header's end.
+static void PoolBudget() {
+  static_assert(wp::BudgetWorkers(0) == 15 && wp::BudgetWorkers(7) == 0 && wp::BudgetWorkers(8) == 3 && wp::BudgetWorkers(UINT32_MAX) == 15);
+  constexpr std::array<std::pair<uint32_t, uint32_t>, 12> TABLE = {
+      {{0, 15}, {1, 0}, {7, 0}, {8, 3}, {9, 3}, {10, 4}, {12, 5}, {16, 7}, {31, 14}, {32, 15}, {64, 15}, {UINT32_MAX, 15}}};
+  for (const auto& [cpus, workers] : TABLE) CHECK(wp::BudgetWorkers(cpus) == workers);
+  // U = 1..64 against the formula in signed arithmetic (an unsigned subtraction below 8 would wrap to 15).
+  for (uint32_t cpus = 1; cpus <= 64; ++cpus) {
+    const int64_t expected = (cpus < wp::MIN_GAME_CPUS ? 0 : std::min<int64_t>(15, static_cast<int64_t>(cpus) / 2 - 1));
+    CHECK(static_cast<int64_t>(wp::BudgetWorkers(cpus)) == expected);
+  }
+
+  // The clamp: every user's Available() is the budget (row 16).
+  const auto every_user = [](uint32_t workers) {
+    bool all = true;
+    for (size_t user = 0; user < static_cast<size_t>(wp::User::COUNT); ++user) all = all && wp::Available(static_cast<wp::User>(user)) == workers;
+    return all;
+  };
+  for (const auto& [cpus, workers] : std::array<std::pair<uint32_t, uint32_t>, 3>{{{8, 3}, {16, 7}, {0, 15}}}) {
+    wp::Update({.in_use = false});
+    wp::Update({.threads = 16, .in_use = true, .game_cpus = cpus});
+    CHECK(wi::created == workers && every_user(workers));
+  }
+  wp::Update({.in_use = false});
+
+  // A live drop above 0 (16 -> 8 CPUs): the threads stay, 3 are offered, an ALL job completes; the rise makes no thread.
+  wp::Update({.threads = 16, .in_use = true, .game_cpus = 16});
+  CHECK(wi::created == 7 && every_user(7));
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
+  const uint32_t attempts = wi::thread_attempts;
+#endif
+  wp::Update({.threads = 16, .in_use = true, .game_cpus = 8});
+  CHECK(wi::created == 7 && wi::ready == 3 && every_user(3));
+  ResetReports();
+  RunReport(3);
+  for (uint32_t w = 1; w <= wp::MAX_WORKERS; ++w) CHECK(reports[w].runs == (w <= 3 ? 1u : 0u));
+  CHECK(!wp::Start({.work = ReportWork}, 4));
+  wp::Update({.threads = 16, .in_use = true, .game_cpus = 16});
+  CHECK(wi::created == 7 && every_user(7));
+#if defined(TWATTILA_WORKER_POOL_CONTROLS)
+  CHECK(wi::thread_attempts == attempts);
+#endif
+
+  // Budget 0 (4 CPUs): the add-on passes in_use false (every stage off), the pool stops; the line says so once. 16 CPUs again:
+  // the threads are made again.
+  const std::string_view zero_line =
+      "[Total War] Worker pool: 4 CPUs for the game leave room for 0 workers; Worker Threads 16: 0 workers (the multi-threaded options are off).";
+  const size_t zero_lines = LogCount(zero_line);
+  wp::Update({.threads = 16, .in_use = false, .game_cpus = 4});
+  CHECK(wi::created == 0 && every_user(0) && LogCount(zero_line) == zero_lines + 1);
+  wp::Update({.threads = 16, .in_use = false, .game_cpus = 4});
+  CHECK(LogCount(zero_line) == zero_lines + 1);
+  const std::string_view room_line = "[Total War] Worker pool: 16 CPUs for the game leave room for 7 workers; Worker Threads 16: 7 workers.";
+  const size_t room_lines = LogCount(room_line);
+  wp::Update({.threads = 16, .in_use = true, .game_cpus = 16});
+  CHECK(wi::created == 7 && every_user(7) && LogCount(room_line) == room_lines + 1);
+  for (int present = 0; present < 5; ++present) wp::Update({.threads = 16, .in_use = true, .game_cpus = 16});
+  CHECK(LogCount(room_line) == room_lines + 1);
+  // The row changes, then the count is not known.
+  wp::Update({.threads = 4, .in_use = true, .game_cpus = 16});
+  CHECK(LogHas("[Total War] Worker pool: 16 CPUs for the game leave room for 7 workers; Worker Threads 4: 3 workers."));
+  wp::Update({.threads = 4, .in_use = true});
+  CHECK(LogHas("[Total War] Worker pool: CPUs for the game not known: no limit; Worker Threads 4: 3 workers."));
+
+  // The trace window's header ends with the CPUs and the room.
+  wp::Update({.threads = 4, .in_use = true, .game_cpus = 12});
+  wp::ArmTrace(1);
+  wp::Update({.threads = 4, .in_use = true, .game_cpus = 12});
+  CHECK(LogHas("ring 16, CPUs 12, room 5"));
+  wp::Update({.threads = 4, .in_use = true, .game_cpus = 12});
+  CHECK(!wp::Tracing());
+  wp::Update({.in_use = false});
+  std::printf("pool: budget: the table (U 0..64, UINT32_MAX), the clamp for every user, 16 -> 8 -> 16 live (no thread made), budget 0 stops the pool, the line once per change, the header\n");
 }
 
 // ---------------------------------------------------------------- part 2: the synthetic game
@@ -5396,6 +5473,7 @@ int main() {
   PoolStopOwnJob();
   PoolEnvironment();
   PoolArmTrace();
+  PoolBudget();
   Setup();
   RecordRules();
   DepthStages();

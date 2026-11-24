@@ -85,6 +85,27 @@ Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t DEFAULT_SPIN_U
 # Faster Game CPU Code (graphics_page.hpp's row, addon.cpp's binding) on; RENODX_TW_ANIMATION_SCHEDULE unset: stream.
 Check ((Read-Source 'graphics_page.hpp') -match '(?s)\.key = "FasterGameCpuCode",.{0,200}?\.default_value = 1\.f,' -and $text -match '(?m)^float engine_code_row = 1\.f;') 'FasterGameCpuCode default 1'
 Check ((Read-Source 'animation_rows.hpp').Contains('(text == "bulk" ? Schedule::BULK : Schedule::STREAM)')) 'animation schedule stream unless bulk'
+# FCA item 1 (a bug fix, no row): the CPUs the game may use (the bench's env, else cpu_sets::Update every present), the pool's
+# room from BudgetWorkers (none below 8 CPUs), every pool user's stage gated by it (L1 in its three places, C's worker stages
+# before SiteGroups, the fill, the fold, B3b) and the count passed to the pool last.
+Check ($text.Contains('const uint32_t game_cpus = game_cpus_env.value_or(twattila::cpu_sets::Update(keep_render_core_row != 0.f, GAME_THREAD_MODULES));')) 'game_cpus: the env, else cpu_sets::Update'
+Check ($text.Contains('const bool pool_room = (twattila::worker_pool::BudgetWorkers(game_cpus) != 0);')) 'pool_room from BudgetWorkers(game_cpus)'
+Check ($text.Contains('const bool effect_update_on = (pool_room && effect_update_row != 0.f);') -and $text.Contains('bool pool_in_use = effect_update_on;') `
+       -and $text.Contains('.effect_update = effect_update_on,') -and $text.Contains('twattila::effect_update::Update(effect_update_on,')) 'L1 gated by pool_room (pool, engine code, its Update)'
+$gate = $text.IndexOf('if (recording_wakes_workers && !pool_room) {', [StringComparison]::Ordinal)
+Check ($gate -ge 0 -and $gate -lt $text.IndexOf('recording_groups = twattila::draw_recording::SiteGroups(', [StringComparison]::Ordinal) `
+       -and $text.Contains('pool_in_use |= (recording_wakes_workers && pool_room);')) 'C''s worker stages gated by pool_room before SiteGroups'
+Check ($text.Contains('instance_fill_on = (pool_room && instance_fill_row != 0.f);')) 'instance fill gated by pool_room'
+Check ($text.Contains('fill_fold_on = (pool_room && fill_fold_row != 0.f);')) 'fill fold gated by pool_room'
+Check ($text.Contains('((animation_rows_row == 0.f || !pool_room)')) 'animation rows gated by pool_room'
+Check ($text -match '\.env_generation = env_generation,\s+\.game_cpus = game_cpus\}\);') 'the pool gets .game_cpus = game_cpus, last'
+Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t MIN_GAME_CPUS = 8;') 'MIN_GAME_CPUS 8'
+# Automatic L1 (inside its row, which stays Off above): parallel from 20000 effect instances, serial below 16000, never below
+# 256; the bench env RENODX_TW_L1_UNITS read again at the pool's env generation.
+$effect = Read-Source 'effect_update.hpp'
+Check ($effect.Contains('constexpr UnitRule SHIPPED_UNIT_RULE = {MIN_ROUND_UNITS, 20000, 16000};') -and $effect -match 'constexpr uint32_t MIN_ROUND_UNITS = 256;' `
+       -and $effect.Contains('static UnitRule unit_rule = SHIPPED_UNIT_RULE;')) 'L1 rule 256 / 20000 / 16000'
+Check ($text.Contains('twattila::effect_update::Update(effect_update_on, effect_spawns_row != 0.f, env_generation);')) 'L1 gets the env generation'
 
 if ($failures.Count -ne 0) { throw "render_mt defaults: $($failures.Count) mismatch(es)" }
 'render_mt defaults: all match'
