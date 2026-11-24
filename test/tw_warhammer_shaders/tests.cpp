@@ -153,17 +153,17 @@
 //    AO 0.5 and 1 with the march's light (confidence 1), and with the cubes' light alone (confidence 0) the environment x t46,
 //    no AO. CONTROLS: without t46 the game's AO changes it; the resolve as it was (the cubes' light x AO x t46) changes with
 //    the AO.
-// 29. Rays Replace Shadow Maps on the sun draws that read the sun's atlas (each addon.cpp's ATLAS_SUN_SHADERS, the game's
-//    bytes patched as the runtime: screen_space_shadows' Patch, then PatchAmbient with the row's ambient sites), drawn as part
-//    8 draws (FORWARD_CONSTANTS: cascade 0; the scene the first fill, sun, glint and height where the atlas's value reaches
-//    the game's output; the MSAA builds need it there, with their G-buffer unbound only Warhammer II's do, and under the
-//    game's MSAA no upscaler and so no rays run). Warhammer (its 18 gather 5.0 and Shader Model 4.1 builds, the ones the
-//    screen-space shadows' patch multiplies by t49, and Warhammer II's 12 software / hardware pcf builds, its
-//    ATLAS_PCF_SUN_SHADERS; atlas_far_plane.hpp: t1 a 1 x 1 R32 of 1, the far plane): t49 0 bit-identical to the game's
-//    bytes over a lit atlas (4 x 4 of 1); t49 1 to the game's over a shadowing atlas (0: every comparison and read
-//    failing): the rays' shadow alone. Warhammer II (twattila/sun_replace_maps.hpp: an ALWAYS point comparison sampler at
-//    s1): t49 0 bit-identical to the game's bytes with every comparison lit (ALWAYS); t49 1 to the game's with every one
-//    failing (NEVER); t49 0.5 to its patch over an empty atlas (FLT_MAX, the game's sampler): Replace = the multiply over a
+// 29. Rays Replace Shadow Maps on the sun draws that read the sun's atlas (each addon.cpp's lists, the game's bytes patched
+//    as the runtime: screen_space_shadows' Patch, then PatchAmbient with the row's ambient sites), drawn as part 8 draws
+//    (FORWARD_CONSTANTS: cascade 0; the scene the first fill, sun, glint and height where the atlas's value reaches the
+//    game's output; the MSAA builds need it there, with their G-buffer unbound only Warhammer II's do, and under the game's
+//    MSAA no upscaler and so no rays run). The far-plane route (atlas_far_plane.hpp: t1 a 1 x 1 R32 of 1, the far plane):
+//    Warhammer's ATLAS_GATHER_SUN_SHADERS (6 gather 5.0 builds, the game's comparison sampler) and both games'
+//    ATLAS_SAMPLED_SUN_SHADERS (12 software / hardware pcf + 6 gather 4.1 builds each, our point CLAMP sampler at s1): t49 0
+//    bit-identical to the game's bytes over a lit atlas (4 x 4 of 1); t49 1 to the game's over a shadowing atlas (0: every
+//    comparison and read failing): the rays' shadow alone. Warhammer II's ATLAS_SUN_SHADERS (twattila/sun_replace_maps.hpp:
+//    an ALWAYS point comparison sampler at s1): t49 0 bit-identical to the game's bytes with every comparison lit (ALWAYS);
+//    t49 1 to the game's with every one failing (NEVER); t49 0.5 to its patch over an empty atlas (FLT_MAX, the game's sampler): Replace = the multiply over a
 //    map that shades nothing. CONTROL (both): today's multiply with the game's shadowing atlas under t49 0 differs from the
 //    lit reference (the map's shadow is what Replace takes away).
 // 30. Warhammer's one occlusion a reflection (shaders/ssr00_0x6B80E35B, part 2's resolve; the sun draws' AO at t45 / s5, as
@@ -751,12 +751,13 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
   int ours_differ = 0;
   int all_shaders = 0;
   int defaults_differ = 0;
-  // Patch's own change (ho_g21 f7fb7a901): Warhammer I / II's Shader Model 4.1 and pcf sun builds (no comparison) patched
-  // too, nothing else: Warhammer II's rows and both games' defaults differ from before.
+  // Patch's own change (ho_g21 f7fb7a901 + cc349d79b): the Shader Model 4.1, gather 4.1 and pcf sun builds (no comparison)
+  // patched too: Warhammer II's 18 rows (12 pcf + 6 gather 4.1) and these PS with Patch's defaults differ from before.
+  constexpr std::array<std::pair<const char*, int>, 8> GAMES = {{{"twattila", 5}, {"twpharaohdynasties", 0}, {"twrome2", 0}, {"twthronesofbritannia", 5},
+                                                                 {"twtroy", 0}, {"twwarhammer2", 546}, {"twwarhammer3", 0}, {"twwarhammer", 276}}};
   int wh2_differ = 0;
-  int wh1_defaults_differ = 0;
-  int wh2_defaults_differ = 0;
-  for (const char* game : {"twattila", "twpharaohdynasties", "twrome2", "twthronesofbritannia", "twtroy", "twwarhammer2", "twwarhammer3", "twwarhammer"}) {
+  int defaults_off = 0;
+  for (const auto& [game, expected_defaults_differ] : GAMES) {
     const std::string game_dump = std::string(dump).replace(at, pack.size(), std::string("dump_shader_") + game + "_pack");
     int rows = 0;
     int patched = 0;
@@ -787,15 +788,18 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
       for (const bool forward : {false, true}) {
         const auto now = ambient_patch::Patch(code, forward, 1);
         defaults_patched += now.empty() ? 0 : 1;
-        game_defaults_differ += (now != ambient_patch_before::Patch(code, forward, 1)) ? 1 : 0;
+        const bool changed = now != ambient_patch_before::Patch(code, forward, 1);
+        game_defaults_differ += changed ? 1 : 0;
+        // The few outside Warhammer I / II by name.
+        if (changed && expected_defaults_differ < 50) std::printf("    %s %s%s differs\n", game, entry.path().filename().string().c_str(), forward ? " (forward)" : "");
       }
     }
     all_shaders += shaders;
     defaults_differ += game_defaults_differ;
-    std::printf("  %s: %d rows in its dump, %d patched, %d differ from before; Patch's defaults on its %d PS: %d patched, %d differ\n", game, rows,
-                patched, differ, shaders, defaults_patched, game_defaults_differ);
-    if (std::string(game) == "twwarhammer") wh1_defaults_differ = game_defaults_differ;
-    if (std::string(game) == "twwarhammer2") wh2_defaults_differ = game_defaults_differ, wh2_differ = differ;
+    defaults_off += (game_defaults_differ == expected_defaults_differ) ? 0 : 1;
+    std::printf("  %s: %d rows in its dump, %d patched, %d differ from before; Patch's defaults on its %d PS: %d patched, %d differ (expected %d)\n", game,
+                rows, patched, differ, shaders, defaults_patched, game_defaults_differ, expected_defaults_differ);
+    if (std::string(game) == "twwarhammer2") wh2_differ = differ;
     if (std::string(game) == "twwarhammer") {
       ours_differ = differ;
     } else {
@@ -804,12 +808,11 @@ static void TestSharedBytes(const std::string& games, const std::string& dump) {
       other_differ += differ;
     }
   }
-  CHECK(other_rows > 100 && other_differ == wh2_differ && wh2_differ == 12, "the other games: %d rows, %d differ (Warhammer II's 12 sun builds: %d)",
+  CHECK(other_rows > 100 && other_differ == wh2_differ && wh2_differ == 18, "the other games: %d rows, %d differ (Warhammer II's 18 sun builds: %d)",
         other_rows, other_differ, wh2_differ);
   CHECK(ours_differ == 31, "CONTROL Warhammer's: %d of 31 differ", ours_differ);
-  CHECK(all_shaders > 10000 && defaults_differ == wh1_defaults_differ + wh2_defaults_differ && wh1_defaults_differ == 184 && wh2_defaults_differ == 364,
-        "Patch's defaults: %d of %d PS (x2) differ (Warhammer %d of 184, Warhammer II %d of 364, the others none)", defaults_differ, all_shaders,
-        wh1_defaults_differ, wh2_defaults_differ);
+  CHECK(all_shaders > 10000 && defaults_differ == 832 && defaults_off == 0, "Patch's defaults: %d of %d PS (x2) differ (832 expected), %d games off their count",
+        defaults_differ, all_shaders, defaults_off);
   int declared = 0;
   for (const uint32_t hash : {0x0BF2DB7Fu, 0xBCB9B1D6u}) {
     const auto code = GameBytes(dump, hash);
@@ -1405,6 +1408,7 @@ struct ForwardScene {
   UINT atlas_size = 4;                                       // the shadow map's width and height (1: Warhammer's far-plane stand-in)
   int comparison_slot = -1;                                  // a point comparison sampler with `comparison` there (< 0: none)
   D3D11_COMPARISON_FUNC comparison = D3D11_COMPARISON_ALWAYS;
+  int clamp_slot = -1;  // atlas_far_plane.hpp's point CLAMP sampler (no comparison) there (< 0: none)
 };
 
 // A forward pixel shader's bytes drawn over 4 x 4 pixels: its inputs from a vertex shader made from its input signature
@@ -1543,14 +1547,16 @@ static std::vector<Float4> DrawForward(std::span<const uint8_t> code, std::span<
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.occlusion, scene.occlusion, scene.occlusion, scene.occlusion})));
     context->PSSetShaderResources(49, 1, views.back().GetAddressOf());
   }
-  if (scene.comparison_slot >= 0) {
-    // As twattila/sun_replace_maps.hpp makes it (point: each comparison exactly 0 or 1).
-    const D3D11_SAMPLER_DESC sampler = {.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
-                                        .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP,
-                                        .ComparisonFunc = scene.comparison, .MaxLOD = D3D11_FLOAT32_MAX};
+  // As twattila/sun_replace_maps.hpp (point: each comparison exactly 0 or 1) and atlas_far_plane.hpp make them.
+  for (const auto& [slot, compare] : {std::pair{scene.comparison_slot, true}, std::pair{scene.clamp_slot, false}}) {
+    if (slot < 0) continue;
+    const D3D11_SAMPLER_DESC sampler = {.Filter = compare ? D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT : D3D11_FILTER_MIN_MAG_MIP_POINT,
+                                        .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP, .AddressV = D3D11_TEXTURE_ADDRESS_CLAMP,
+                                        .AddressW = D3D11_TEXTURE_ADDRESS_CLAMP, .ComparisonFunc = compare ? scene.comparison : D3D11_COMPARISON_NEVER,
+                                        .MaxLOD = D3D11_FLOAT32_MAX};
     samplers.emplace_back();
     device->CreateSamplerState(&sampler, samplers.back().GetAddressOf());
-    context->PSSetSamplers(static_cast<UINT>(scene.comparison_slot), 1, samplers.back().GetAddressOf());
+    context->PSSetSamplers(static_cast<UINT>(slot), 1, samplers.back().GetAddressOf());
   }
   if (scene.caustics >= 0.f) {
     views.push_back(View(4, 4, std::vector<Float4>(16, Float4{scene.caustics, scene.caustics, scene.caustics, scene.caustics})));
@@ -3925,9 +3931,11 @@ static void TestWh2ReflectionSkip(const std::string& games) {
               rays_differ, pixels, rays_used, shadow_read, game_differ);
 }
 
-// Part 29: a list of each game's addon.cpp (ATLAS_SUN_SHADERS; Warhammer II's ATLAS_PCF_SUN_SHADERS on Warhammer's far-plane
-// route: sampler_slot < 0), patched as the runtime patches its LIGHT_BOUNCE_DRAWS rows.
-static void TestReplaceMaps(const std::string& games, const std::string& dump, const char* game, const char* list_name, int sampler_slot) {
+// Part 29: a list of a game's addon.cpp, patched as the runtime patches its LIGHT_BOUNCE_DRAWS rows. sampler_slot >= 0:
+// Warhammer II's ALWAYS comparison sampler there (sun_replace_maps.hpp); else the far plane at t1 (atlas_far_plane.hpp),
+// with the game's sampler or (own_sampler) our point CLAMP sampler at s1.
+static void TestReplaceMaps(const std::string& games, const std::string& dump, const char* game, const char* list_name, int sampler_slot,
+                            bool own_sampler) {
   const std::string text = ReadText(games + "/" + game + "/addon.cpp");
   std::smatch listed;
   std::vector<uint32_t> hashes;
@@ -4004,6 +4012,7 @@ static void TestReplaceMaps(const std::string& games, const std::string& dump, c
       replace.comparison_slot = sampler_slot;
     } else {
       replace.atlas_size = 1;
+      if (own_sampler) replace.clamp_slot = 1;
     }
     ForwardScene rays_lit = replace;
     rays_lit.occlusion = 0.f;
@@ -4423,9 +4432,10 @@ int main(int argc, char** argv) {
   TestBitmaskSkips(argv[1], argv[2]);
   TestWh2ReflectionSkip(games);
   TestWh2OneOcclusion(games);
-  TestReplaceMaps(games, argv[2], "twwarhammer", "ATLAS_SUN_SHADERS", -1);
-  TestReplaceMaps(games, argv[3], "twwarhammer2", "ATLAS_SUN_SHADERS", 1);
-  TestReplaceMaps(games, argv[3], "twwarhammer2", "ATLAS_PCF_SUN_SHADERS", -1);
+  TestReplaceMaps(games, argv[2], "twwarhammer", "ATLAS_GATHER_SUN_SHADERS", -1, false);
+  TestReplaceMaps(games, argv[2], "twwarhammer", "ATLAS_SAMPLED_SUN_SHADERS", -1, true);
+  TestReplaceMaps(games, argv[3], "twwarhammer2", "ATLAS_SUN_SHADERS", 1, false);
+  TestReplaceMaps(games, argv[3], "twwarhammer2", "ATLAS_SAMPLED_SUN_SHADERS", -1, true);
   TestResolveOneOcclusion(games);
   TestWh2AmbientReaders(games, argv[3]);
   TestReflectionOcclusionStrength(games);
