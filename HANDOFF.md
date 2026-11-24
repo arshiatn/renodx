@@ -800,6 +800,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 i ... | ?
 - ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ ke ... | ?
 - ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); ... | ?
+- p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byt ... | ?
+- ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own buil ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14541,6 +14543,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         edit ATN's allowed atn_harness_runs.ps1 -> new script beside it, F1 / F2 name it; F0 changes all four of his lines.
         R-S1 T2 turn order; R-S2 gate 'after P7 and ATN's A-C'. -> pk1_ Rev 1.1 (sent, text only); then the PK1 P1
         implementer (Opus xHigh) after a file-overlap check.
+        rv3_ PK3 RE-CHECK (rv3_pk3_recheck.md + _handback.md; 0 / 3 MUST / 5 SHOULD / 5 NIT): S1 GO now; +0x60 control
+        GO with a tighter layout; timing script NO-GO until MUST-1 (2 x A/A = 29 % false calls -> 2.6 x RMS of >= 5 ABBA
+        rounds), MUST-2 (std::exit(3) so it never prints PASS), MUST-3 (waits for ATN's run rule). Option R ceiling
+        ~-0.9. -> pk3_ Rev 2 text only (sent; coord ticks, no rv3_ pass).
+        - [ ] p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byte test 23zi + census;
+        build gate (3 x .addon32 + twattila .addon64 + 5 test suites). -> short review (rv3_) -> merge ALONE to atn-mods
+        before pk2_'s implementer. Overlap checked: fxi_ (tests.cpp / exit_drain.inc), sse_ (Bend SSS), s1a_ (none yet).
+        - [ ] ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own build in testbin, game DLL mapped
+        read-only, process affinity, ~10 min a step + 40-60 min S4 sweep; idle PC only).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
