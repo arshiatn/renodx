@@ -2256,10 +2256,9 @@ void ConfigureAddon() {
           .default_value = 6.f,
           .label = "Threaded Draw Recording (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "The game's draw loops, recorded on worker threads and replayed on the render thread in order:\n"
-                     "less CPU time on the render thread in big battles. Same picture.\n"
-                     "Each stage does more of it; Off leaves the game's own loops alone.",
-          .labels = {"Off", "Direct", "Touch ahead", "Chunked", "Recorded", "One worker", "Workers"},
+          .tooltip = "The game's draw calls are prepared on worker threads: less CPU time on the render thread in big battles.\n"
+                     "Same picture. One Worker and Test 1-4 are slower steps, only for tracking down a problem.",
+          .labels = {"Off", "Test 1", "Test 2", "Test 3", "Test 4", "One Worker", "On"},
       },
       DrawRecordingGroupRow("DrawRecordingDepthA", "Draw Recording Depth A (Private)", 0, "The depth passes' item loop."),
       DrawRecordingGroupRow("DrawRecordingColourA", "Draw Recording Colour A (Private)", 1, "The colour passes' item loop."),
@@ -2566,36 +2565,13 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::ssr_hiz::OnDestroyDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(twattila::grass_fade::OnDestroyDevice);
 
-  // Rows saved at an old default, each cleared once by the revision that brought it in. 1 (before v149): NRD when Ray
-  // Reconstruction is off, the banners' light and colour on. 2 (the render_mt defaults): the rows whose default changed and the
-  // rows hidden now (a value saved earlier would stay on unseen).
-  constexpr std::array<std::pair<int, const char*>, 14> OLD_DEFAULT_ROWS = {{
-      {1, "RayTracingDenoiser"},
-      {1, "ScreenSpaceShadowsBannerLight"},
-      {1, "ScreenSpaceShadowsColoured"},
-      {2, "DrawRecordingStage"},
-      {2, "DrawRecordingDepthA"},
-      {2, "DrawRecordingColourA"},
-      {2, "DrawRecordingDepthB"},
-      {2, "DrawRecordingColourB"},
-      {2, "DrawRecordingFamilies"},
-      {2, "AnimationRowsWorkers"},
-      {2, "ParallelInstanceFill"},
-      {2, "FillWithDrawRecording"},
-      {2, "ParallelEffectSpawns"},
-      {2, "CachedParticleCount"},
-  }};
-  constexpr int SETTINGS_REVISION = 2;
-  if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
-    for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
-      for (const auto& [cleared_at, key] : OLD_DEFAULT_ROWS) {
-        if (revision < cleared_at) {
-          reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
-        }
-      }
-    }
-    reshade::set_config_value(nullptr, "renodx", "SettingsRevision", SETTINGS_REVISION);
-  }
+  // Rows saved at an old default (a preset saves every row, hidden ones too), each cleared once. 1 (before v149): NRD when
+  // Ray Reconstruction is off, the banners' light and colour on. 2 (the render_mt defaults): the rows whose default changed
+  // and the rows hidden now (a value saved earlier would stay on unseen).
+  twattila::graphics_page::ClearSavedRows(1, {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
+  twattila::graphics_page::ClearSavedRows(2, {"DrawRecordingStage", "DrawRecordingDepthA", "DrawRecordingColourA", "DrawRecordingDepthB",
+                                              "DrawRecordingColourB", "DrawRecordingFamilies", "AnimationRowsWorkers", "ParallelInstanceFill",
+                                              "FillWithDrawRecording", "ParallelEffectSpawns", "CachedParticleCount"});
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 

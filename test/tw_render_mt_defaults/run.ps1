@@ -1,27 +1,28 @@
 # The render_mt rows' shipped defaults (src/games/twattila/addon.cpp) against the end batch's defaults table (eba_ rev 2,
 # section 6, ATN 2026-11-24): each row's default, its binding's start value and whether players see it; the add-on built
-# with Threaded Draw Recording; the worker pool's spin. Reads the source only (nothing is built or run).
+# with Threaded Draw Recording; the saved values cleared once; the worker pool's spin and the animation schedule. Reads the
+# source only (nothing is built or run).
 # -Source: another addon.cpp (a mutation check).
 param([string]$Source = '')
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 if ($Source -eq '') { $Source = Join-Path $repairRoot 'src\games\twattila\addon.cpp' }
 $text = [System.IO.File]::ReadAllText($Source).Replace("`r`n", "`n")
-$pool = [System.IO.File]::ReadAllText((Join-Path $repairRoot 'src\games\twattila\worker_pool.hpp'))
 $failures = [System.Collections.Generic.List[string]]::new()
 function Check([bool]$ok, [string]$what) {
   if ($ok) { "ok   $what" } else { "FAIL $what"; $failures.Add($what) }
 }
 # The text from `start` to the line that closes it (`end`); empty when `start` is missing.
 function Block([string]$start, [string]$end) {
-  $at = $text.IndexOf($start)
+  $at = $text.IndexOf($start, [StringComparison]::Ordinal)
   if ($at -lt 0) { return '' }
-  return $text.Substring($at, $text.IndexOf($end, $at) - $at)
+  return $text.Substring($at, $text.IndexOf($end, $at, [StringComparison]::Ordinal) - $at)
 }
+function Read-Source([string]$name) { [System.IO.File]::ReadAllText((Join-Path $repairRoot "src\games\twattila\$name")) }
 
 # Built with Threaded Draw Recording (its rows, Parallel Instance Fill's and Fill With Draw Recording's), before any include.
-$define = $text.IndexOf("`n#define TWATTILA_DRAW_RECORDING 1")
-Check ($define -ge 0 -and $define -lt $text.IndexOf("`n#include")) 'TWATTILA_DRAW_RECORDING defined before the includes'
+$define = $text.IndexOf("`n#define TWATTILA_DRAW_RECORDING 1", [StringComparison]::Ordinal)
+Check ($define -ge 0 -and $define -lt $text.IndexOf("`n#include", [StringComparison]::Ordinal)) 'TWATTILA_DRAW_RECORDING defined before the includes'
 
 # Key, default, binding, its start value, shown to players.
 $rows = @(
@@ -35,7 +36,14 @@ $rows = @(
   @('CachedParticleCount', 0, 'particle_count_row', '0.f', $false),
   @('WorkerThreads', 1, 'worker_threads_row', '4.f', $true),
   @('KeepRenderCoreFree', 0, 'keep_render_core_row', '0.f', $true),
-  @('FasterJobWakeUps', 0, 'job_wakeups_row', '0.f', $true)
+  @('FasterJobWakeUps', 0, 'job_wakeups_row', '0.f', $true),
+  @('FasterRenderLists', 1, 'render_lists_row', '1.f', $true),
+  @('FasterEffectPrefetch', 0, 'effect_prefetch_row', '0.f', $true),
+  @('FasterEmitterPrefetch', 0, 'emitter_prefetch_row', '0.f', $true),
+  @('FasterParticlePrefetch', 0, 'particle_prefetch_row', '0.f', $true),
+  @('FasterSweepPrefetch', 0, 'sweep_prefetch_row', '0.f', $true),
+  @('FewerConstantUploads', 0, 'fewer_constant_uploads_row', '0.f', $true),
+  @('FewerDriverWaits', 0, 'fewer_driver_waits_row', '0.f', $true)
 )
 $hidden = '.is_visible = [] { return false; },'
 foreach ($row in $rows) {
@@ -47,6 +55,9 @@ foreach ($row in $rows) {
   Check ($block.Contains($hidden) -ne $shown) "$key $(if ($shown) { 'shown' } else { 'hidden' })"
   Check ($text -match "(?m)^float $binding = $([regex]::Escape($start));") "$binding starts at $start"
 }
+# The stage's 7 labels (6, the default, is the last one).
+$stage = Block '.key = "DrawRecordingStage",' "`n      },"
+Check ($stage.Contains('.labels = {"Off", "Test 1", "Test 2", "Test 3", "Test 4", "One Worker", "On"},')) 'DrawRecordingStage labels, On at 6'
 # WorkerThreads' index 1 is 4 threads.
 Check ($text -match '\.labels = \{"2", "4", "6", "8", "12", "16"\},') 'WorkerThreads index 1 = 4 threads'
 # Animation Rows on Workers: Off / On only (Check through RENODX_TW_ANIMATION_CHECK).
@@ -60,16 +71,20 @@ Check ($text -match '(?m)^std::array<float, 4> draw_recording_group_rows = \{1\.
 foreach ($group in 'DepthA', 'ColourA', 'DepthB', 'ColourB') {
   Check ($text.Contains("DrawRecordingGroupRow(`"DrawRecording$group`",")) "DrawRecording$group declared"
 }
-# Values saved by older versions go once (SettingsRevision 2): every row above whose default changed or that is hidden.
-$revision = Block 'OLD_DEFAULT_ROWS = {{' "`n  }};"
-Check ($text -match 'constexpr int SETTINGS_REVISION = 2;') 'settings revision 2'
+# Values saved by older versions go once: revision 1's rows as they were; revision 2 every row above whose default changed
+# or that is hidden.
+Check ($text.Contains('twattila::graphics_page::ClearSavedRows(1, {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});')) 'revision 1 rows unchanged'
+$revision = Block 'twattila::graphics_page::ClearSavedRows(2, {' '});'
 foreach ($key in 'DrawRecordingStage', 'DrawRecordingDepthA', 'DrawRecordingColourA', 'DrawRecordingDepthB', 'DrawRecordingColourB',
          'DrawRecordingFamilies', 'AnimationRowsWorkers', 'ParallelInstanceFill', 'FillWithDrawRecording', 'ParallelEffectSpawns',
          'CachedParticleCount') {
-  Check ($revision.Contains("{2, `"$key`"},")) "$key cleared once at revision 2"
+  Check ($revision.Contains("`"$key`"")) "$key cleared once at revision 2"
 }
 # RENODX_TW_POOL_SPIN_US unset: 3 us.
-Check ($pool -match 'constexpr uint32_t DEFAULT_SPIN_US = 3;') 'pool spin 3 us'
+Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t DEFAULT_SPIN_US = 3;') 'pool spin 3 us'
+# Faster Game CPU Code (graphics_page.hpp's row, addon.cpp's binding) on; RENODX_TW_ANIMATION_SCHEDULE unset: stream.
+Check ((Read-Source 'graphics_page.hpp') -match '(?s)\.key = "FasterGameCpuCode",.{0,200}?\.default_value = 1\.f,' -and $text -match '(?m)^float engine_code_row = 1\.f;') 'FasterGameCpuCode default 1'
+Check ((Read-Source 'animation_rows.hpp').Contains('(text == "bulk" ? Schedule::BULK : Schedule::STREAM)')) 'animation schedule stream unless bulk'
 
 if ($failures.Count -ne 0) { throw "render_mt defaults: $($failures.Count) mismatch(es)" }
 'render_mt defaults: all match'
