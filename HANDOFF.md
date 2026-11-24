@@ -763,6 +763,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G24 step-1 boxes: Expeditions tracer (view size, 2nd render scale, draw constant ... | ?
 - BLOCKED BY ANTIVIRUS ~14:3x: coord ran ATN's rule line exactly: powershell -NoPr ... | ?
 - MERGE fca_item1 + fca_exit_drain (after fi1_ r2 + fxi_ r2) -> mrg_: all-36 build ... | ?
+- FCA DESIGN WAVE (Fable 5.2 xHigh, brief render_mt/fca/designs/pk_design_brief.md ... | ?
+- PK6 tooling -> t4i_ (after its parsers): sec 6 items 2-8; item 1 (WPR tasks' foc ... | ?
+- fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench). | ?
+- ATN QUESTIONS (critic sec 7): Q2 release timing, Q3 FDW D1 cost vs per-battle la ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14169,6 +14173,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         NITs (BIG_TABLE switch line, braces, ?: -> if, >64-CPU groups, '1 cores'). t4i_ also parses item-1 lines + BIG_TABLE.
         - [ ] MERGE fca_item1 + fca_exit_drain (after fi1_ r2 + fxi_ r2) -> mrg_: all-36 builds + on the merged tree x86
         tw_engine_code -Quick + -Only effect_update + exit, tw_render_mt_defaults (rvj_ SHOULD-1; same test binary).
+        fbc_ FCA CRITIC DONE (render_mt/fca/fca_critic_ranked.md + fbc_critic_handback.md): only F05 + WAD1 are clean
+        captures. Top: T1 rings (FCU + FDW) = bug fix ALWAYS on, S1 early sort-chain start + L1, J1 Faster Job Wake-Ups
+        (existing row), C streamed replay, A1 leaf census, B Animation Rows, U per-draw cost, M1 ERMSB, P + X pool /
+        interrupt CPUs, H author notes. Expect W3 volley 86 -> 56..75 ms, D1 36 -> 27..32. Packages PK1..PK7 (sec 5);
+        one verify bench (sec 6: whole starts only, >= 160 battle s, leave-one-out arms, ~5 h). Analyst errors fixed by
+        the critic (WU = existing row, fa8_ M3 dlmalloc IS heapfix-patched, FDW not FCU protects, RecordUnits -> PK1).
+        - [ ] FCA DESIGN WAVE (Fable 5.2 xHigh, brief render_mt/fca/designs/pk_design_brief.md): pk1_ (T1-T3, U1-U2),
+        pk2_ (C1-C3, P1, X1, B3's draw_recording sites), pk3_ (B1-B3 animation_rows.hpp), pk4_ (S1 census -> design, S2
+        author text), pk5_ (A1-A3, M1-M3 studies; design after the data run) -> each: Opus xHigh review -> implementers
+        (engine_code: Fable 5.2 Medium TRIAL on the first one, else Sonnet xHigh; report the result to ATN). Order:
+        engine_code.hpp fxi_ -> PK4 -> PK5; worker_pool / cpu_sets fi1_ -> PK2; addon.cpp mem_fix -> PK1.
+        - [ ] PK6 tooling -> t4i_ (after its parsers): sec 6 items 2-8; item 1 (WPR tasks' focus steal) = ATN's question.
+        - [ ] fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench).
+        - [ ] ATN QUESTIONS (critic sec 7): Q2 release timing, Q3 FDW D1 cost vs per-battle latch, Q4 WU default rule, Q5
+        sort-chain route, Q6 ERMSB experiment + tell the author, Q7 data run (2 W3 starts ~10 min), Q8 RT on / off, Q11
+        KRCF 8 starts, Q12 campaign map, WPR tasks' focus. Answered by standing rules: Q1 rings on, Q9 NO, Q10 keep, Q13 parked.
+        mem_fix r3 DONE (handoff_plan/handbacks/mem_fix_r3_handback.md; 34810855f + 8d2a905cf pushed): scene release opt-in
+        per host (Attila only via addon.cpp one line; TW_HOST untouched), MarkDrawn marks the scene, 1 s floor, one
+        address-space walk per event (fa8_ M4); 17 builds + tw_cluster_rewrite / tw_native_context x86 + amd64 pass.
+        -> rvm_ re-check r3 (handoff_plan/reviews/rvm_mem_fix_recheck_r3.md) -> then ask ATN for the confirm run. Left:
+        test_hooks.hpp:198 bench memory key walks every 60 s (owner decides); fbm_ n2 / n3 helper side; Rome II / Thrones
+        scene_release only after the confirm run.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
