@@ -13869,6 +13869,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 11-24 NEW: SH (L1) GI downscaling / upsampling (Toru's world_svgf_upsample + David Matos's GI downscaling
         article) for GT-VBGI / GT-VBAO / SSS / SSR -> shg_ (Opus xHigh, read only) extensive analysis + design
         (plan_1117/shg_sh_gi_upsample_design.md) -> Opus xHigh review -> into the plan (Attila first).
+        fcx_ TABLES DONE (render_mt/fca/fcx_tables_handback.md): all 7 jobs T1-T8 + deltas + T9 lowcore in
+        render_mt/fca/tables (README), captures E:\renodx_fca_dumps (zstd), query helper testbin/scratch/fca/fca_query.py.
+        Headlines: F02 -> F03 main -14.3 / nv-driver -22.8 / C-9 30.5 -> 14.3 ms/f; F05 C-9 1.5; lowcore 4 CPUs +13.40.
+        -> FCA analyst wave waits for mem_'s confirm game run (ATN's go) per the in-game rule.
+        BUILD SLOT TRIAL STARTED (ATN's OK): 6 slots at -j 4 (build_slots/README.txt); coord sampler 3 h ->
+        testbin/scratch/coord/slot_trial_1124.csv. Keep 6 only if RAM use < ~26 GB and no paging; report to ATN.
+        GPU WINDOW (CHECKS) OPEN: gbf_ S4a + jobs 1-8 -> g10_ render_pass x86 -> g23_ H9 T3 / T4 (after its helper build);
+        GT-VBAO V1 / V2 TIMING waits for a held quiet window.
+        rvh_ G23 CODE REVIEW 3 GO (reviews/rvh_g23_code_review3_handback.md; 6 NIT -> g23_ folds N1-N3 / N6); R2-S1 resolved.
+        rvl_ FXR REVIEW NOT GO as written (render_mt/fca/designs/rvl_fxr_review_handback.md; 1 MUST text: Linux-derived
+        names app_module / globals out of public code; 6 SHOULD / 9 NIT) -> fxr_ r2 -> rvl_ re-check. Engineering holds.
+        g19_ F1 (handbacks/g19_f1_handback.md): ho_g19_f1 5ba0cad0e = Rome II flag only (WH1 / WH2 never had 1 as default;
+        git evidence) + comment; Rome II x86 built -> rvb_ glance.
+        ATN 11-24: R.U.S.E. / D1 / D2 shaders -> shd_ (Opus High) dumps into NEW bin\cmd_Decompiler-1.3.16\
+        dump_shader_{ruse,divinity1,divinity2}_pack (ATN asked in chat; nothing else in bin\ touched) + completeness ->
+        later a separate census manifest change for g24_ / rvg_.
+        rvm_ MEM RE-CHECK: NOT GO, 1 MUST (reviews/rvm_mem_fix_recheck.md + handoff_plan/reviews/rvm_mem_recheck_handback.md):
+        R1 rt_core.hpp:5092 MarkDrawn never sets scene_frame -> R.U.S.E. still-only views release every 30 presents; fix =
+        one line + a case-9 MarkDrawn-only test. Host flag: NO (bug fix always on). -> mem_ fixes R1 together with fbm_'s
+        items once the Fable review is in (one round, one build set).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
