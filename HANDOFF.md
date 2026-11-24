@@ -806,6 +806,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; ... | ?
 - PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else S ... | ?
 - p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), obj ... | ?
+- GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -Bloc ... | ?
+- rdl_ (Opus xHigh, worktree): tw_romer_dlaa crashes 0xC0000005 in case 2 on atn-m ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14594,6 +14596,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         addon.cpp + render_mt_defaults + README (P4; p1i_ = sole addon.cpp writer now), tw_map_replay + the new script
         written, not run (P5). Overlap checked vs p3i_ / p4i_ / s1a_ (light_bounce*, shared.h) / sse_. -> P7 Opus review.
         P6 waits for ATN's F1 / F2 rule lines (exact text in pk1_rev11_handback.md).
+        sse_ SSS E2 + E4 DONE on WARP (plan_1117/sse_e2_handback.md; sss_e2 ab0c90e51, bend_sss_gpu.hlsli + SSS tests only;
+        ports need no edits): writes-oracle 0 differences in 51 Attila cases + 12 Shogun 2 runs; 0 false skips over 10.1 M
+        lanes (97.5 % of blocks skipped); controls fail as required; NO_SKIP = db99b716b's bytes; 15 amd64 + 3 .addon32
+        builds green. Deviations: Shogun 2 32-entry blocks (groupshared limit), dcl_temps up 1-3. -> rvn_ code review
+        (sent; plan_1117/rvn_sss_e2_code_review.md).
+        - [ ] GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -BlockSkipGpu (5090 case 11 +
+        48 timing rows; take gpu_job.lock), optional -Time, tw_ruse_bridge run.ps1 (H1). Then merge sss_e2 + an Attila
+        README / changelog line for E2 / E4.
+        - [ ] rdl_ (Opus xHigh, worktree): tw_romer_dlaa crashes 0xC0000005 in case 2 on atn-mods - pre-existing, not E2;
+        bisect + root cause + player impact; small fix on romer_dlaa_fix, else propose.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
