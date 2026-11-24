@@ -1245,7 +1245,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
 inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   // Debug: also renodx_trace_now next to the exe traces the next frame (Tales' frame_trace.hpp: expeditions_frame_trace.txt).
-  talesofarise::frame_trace::OnPresent("expeditions", {.view_size_row = VIEW_SIZE_AND_INV_SIZE});
+  talesofarise::frame_trace::OnPresent("expeditions", {.view_size_row = VIEW_SIZE_AND_INV_SIZE, .mesh_identity = true});
   // Before any row is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS on
   // Intel's, else FSR (as Attila's).
   twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));

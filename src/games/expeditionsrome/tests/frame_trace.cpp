@@ -6,9 +6,11 @@
 // The one-frame tracer (src/games/talesofarise_dlss/frame_trace.hpp) as Tales and Expeditions run it, on WARP with
 // ReShade's events and objects mocked (the utilities attached as the DevKit attaches them; real DXBC from D3DCompile).
 // Built and run by test/tw_expeditions_unit/run.ps1; the trace files land next to the exe.
-// 1. Tales (no options): a draw's line exactly as before; the view from UE 4.21's View rows (c122 / c123), none from
-//    4.23's.
+// 1. Tales (no options): a draw's line exactly as before, no mesh part (VS constant buffers and resources bound); the
+//    view from UE 4.21's View rows (c122 / c123), none from 4.23's.
 // 2. Expeditions (4.23's rows, c126 / c127): the view from them, none from 4.21's.
+// 3. Expeditions' mesh identity: an indexed draw's, a draw's and an indirect draw's mesh part (arguments, then the index,
+//    vertex and VS constant buffers and the VS resources by address), the header's mesh paragraph (not in Tales').
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -202,6 +204,16 @@ int main() {
   const std::array<UINT, 2> offsets = {0u, 4u};
   context->IASetVertexBuffers(0, 2, vertex_buffers.data(), strides.data(), offsets.data());
   context->IASetIndexBuffer(index_buffer.Get(), DXGI_FORMAT_R16_UINT, 6);
+  // The VS's own inputs: a constant buffer at b2 (a primitive's uniform buffer), a buffer at t3 (bones).
+  const std::array<float, 16> primitive = {};
+  const ComPtr<ID3D11Buffer> primitive_buffer = make_buffer(sizeof(primitive), D3D11_USAGE_DEFAULT, D3D11_BIND_CONSTANT_BUFFER, primitive.data());
+  context->VSSetConstantBuffers(2, 1, primitive_buffer.GetAddressOf());
+  const ComPtr<ID3D11Buffer> bone_buffer = make_buffer(sizeof(primitive), D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, primitive.data());
+  D3D11_SHADER_RESOURCE_VIEW_DESC bone_view_desc = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .ViewDimension = D3D11_SRV_DIMENSION_BUFFER};
+  bone_view_desc.Buffer.NumElements = 4;
+  ComPtr<ID3D11ShaderResourceView> bone_view;
+  native_device->CreateShaderResourceView(bone_buffer.Get(), &bone_view_desc, bone_view.GetAddressOf());
+  context->VSSetShaderResources(3, 1, bone_view.GetAddressOf());
 
   // A View uniform buffer (128 rows): the view size at `row`, the buffer size at the next.
   const auto make_view = [&](uint32_t row) {
@@ -218,43 +230,79 @@ int main() {
   const ComPtr<ID3D11Buffer> view_423 = make_view(126);
 
   // One traced frame (`draws` between the present that starts it and the one that writes <game>_frame_trace.txt): its
-  // draw lines.
+  // header and its draw lines.
+  struct Trace {
+    std::string header;
+    std::vector<std::string> lines;
+  };
   const auto trace = [&](std::string_view game, const talesofarise::frame_trace::Options& options, const std::function<void()>& draws) {
     talesofarise::frame_trace::Request();
     talesofarise::frame_trace::OnPresent(game, options);
     draws();
     talesofarise::frame_trace::OnPresent(game, options);
     std::ifstream file(talesofarise::frame_trace::internal::ExecutableFolder() / std::format("{}_frame_trace.txt", game));
-    std::vector<std::string> lines;
+    Trace result;
     for (std::string line; std::getline(file, line);) {
-      if (line.starts_with("draw") || line.starts_with("indexed")) lines.push_back(line);
+      if (line.starts_with("draw") || line.starts_with("indexed")) {
+        result.lines.push_back(line);
+      } else {
+        result.header += line + "\n";
+      }
     }
-    return lines;
+    return result;
   };
   const auto draw_indexed = [&] { InvokeBool<api_event::draw_indexed>(cmd_list, 36u, 2u, 3u, -1, 1u); };
-  const std::string line_state = std::format(
-      "indexed 72 vs {:08X} ps {:08X} | rt0 {} 64x32 f28 | vp 64x32 at 0,0 scissor 0,0-64,32 | | vb0 96 bytes stride 12 "
-      "offset 0 vb1 20 bytes stride 4 offset 4 dynamic",
-      vertex_hash, pixel_hash, static_cast<const void*>(target.Get()));
+  // A line's state up to its vertex buffers.
+  const auto line_state = [&](std::string_view head) {
+    return std::format(
+        "{} vs {:08X} ps {:08X} | rt0 {} 64x32 f28 | vp 64x32 at 0,0 scissor 0,0-64,32 | | vb0 96 bytes stride 12 offset 0 "
+        "vb1 20 bytes stride 4 offset 4 dynamic",
+        head, vertex_hash, pixel_hash, static_cast<const void*>(target.Get()));
+  };
+  const std::string indexed_state = line_state("indexed 72");
   const std::string view_line = " | view 1920x1080 buffer 1920x1088";
 
   // 1. Tales.
   context->PSSetConstantBuffers(1, 1, view_421.GetAddressOf());
-  auto lines = trace("trc_tales", {}, draw_indexed);
-  Expect(lines.size() == 1, "tales: one line");
-  if (!lines.empty()) ExpectLine(lines[0], line_state + view_line, "tales: the line as before, its view from c122 / c123");
+  auto traced = trace("trc_tales", {}, draw_indexed);
+  Expect(traced.lines.size() == 1, "tales: one line");
+  if (!traced.lines.empty()) ExpectLine(traced.lines[0], indexed_state + view_line, "tales: the line as before, its view from c122 / c123");
+  Expect(traced.header.find("Mesh") == std::string::npos, "tales: no mesh paragraph in the header");
   context->PSSetConstantBuffers(1, 1, view_423.GetAddressOf());
-  lines = trace("trc_tales", {}, draw_indexed);
-  if (!lines.empty()) ExpectLine(lines[0], line_state, "tales: no view from c126 / c127");
+  traced = trace("trc_tales", {}, draw_indexed);
+  if (!traced.lines.empty()) ExpectLine(traced.lines[0], indexed_state, "tales: no view from c126 / c127");
 
-  // 2. Expeditions.
-  const talesofarise::frame_trace::Options expeditions = {.view_size_row = 126};
-  lines = trace("trc_expeditions", expeditions, draw_indexed);
-  Expect(lines.size() == 1, "expeditions: one line");
-  if (!lines.empty()) ExpectLine(lines[0], line_state + view_line, "expeditions: the view from c126 / c127");
+  // 2. Expeditions' view rows.
+  const talesofarise::frame_trace::Options view_423_only = {.view_size_row = 126};
+  traced = trace("trc_expeditions", view_423_only, draw_indexed);
+  Expect(traced.lines.size() == 1, "expeditions: one line");
+  if (!traced.lines.empty()) ExpectLine(traced.lines[0], indexed_state + view_line, "expeditions: the view from c126 / c127");
   context->PSSetConstantBuffers(1, 1, view_421.GetAddressOf());
-  lines = trace("trc_expeditions", expeditions, draw_indexed);
-  if (!lines.empty()) ExpectLine(lines[0], line_state, "expeditions: no view from c122 / c123");
+  traced = trace("trc_expeditions", view_423_only, draw_indexed);
+  if (!traced.lines.empty()) ExpectLine(traced.lines[0], indexed_state, "expeditions: no view from c122 / c123");
+
+  // 3. Expeditions' mesh identity (as dlss_graphics.hpp's OnPresent passes it).
+  const talesofarise::frame_trace::Options expeditions = {.view_size_row = 126, .mesh_identity = true};
+  const std::string buffers = std::format(" vb0 {}+0 vb1 {}+4 cb2 {} vt3 {}", static_cast<const void*>(position_buffer.Get()),
+                                          static_cast<const void*>(id_buffer.Get()), static_cast<const void*>(primitive_buffer.Get()),
+                                          static_cast<const void*>(bone_buffer.Get()));
+  context->PSSetConstantBuffers(1, 1, view_423.GetAddressOf());
+  traced = trace("trc_expeditions", expeditions, [&] {
+    draw_indexed();
+    InvokeBool<api_event::draw>(cmd_list, 6u, 4u, 2u, 1u);
+    InvokeBool<api_event::draw_or_dispatch_indirect>(cmd_list, indirect_command::draw_indexed, resource{0u}, uint64_t{0}, 1u, 0u);
+  });
+  Expect(traced.lines.size() == 3, "expeditions mesh: three lines");
+  Expect(traced.header.find("Mesh, after the vertex buffers") != std::string::npos, "expeditions mesh: the header's mesh paragraph");
+  if (traced.lines.size() == 3) {
+    ExpectLine(traced.lines[0],
+               indexed_state
+                   + std::format(" | mesh indices 36 first 3 base -1 instances 2 at 1 ib {}+6 f57", static_cast<const void*>(index_buffer.Get()))
+                   + buffers + view_line,
+               "expeditions mesh: an indexed draw");
+    ExpectLine(traced.lines[1], line_state("draw 24") + " | mesh vertices 6 first 2 instances 4 at 1" + buffers, "expeditions mesh: a draw");
+    ExpectLine(traced.lines[2], line_state("draw indirect 0") + " | mesh ?" + buffers, "expeditions mesh: an indirect draw");
+  }
 
   talesofarise::frame_trace::Stop();
   if (failures != 0) {

@@ -18,6 +18,7 @@
 #include <format>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <span>
 #include <string_view>
@@ -44,6 +45,9 @@ struct Options {
   // The View uniform buffer's ViewSizeAndInvSize row, BufferSizeAndInvSize the next: UE 4.21's c122 (the TAA's b1,
   // README); 4.23's c126 (ClipToWorld came before it).
   uint32_t view_size_row = 122;
+  // Each draw's mesh after its vertex buffers (" | mesh ..."): the shader audit's twin matching of one mesh's draws
+  // across passes.
+  bool mesh_identity = false;
 };
 
 namespace internal {
@@ -221,7 +225,17 @@ std::string DescribeInputs(GetViews get_views) {
   return inputs;
 }
 
-inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, uint32_t count) {
+// A draw's arguments as the game gave them (an indirect draw's stay on the GPU: none).
+struct DrawArguments {
+  bool indexed = false;
+  uint32_t count = 0;  // an instance's indices (or vertices)
+  uint32_t instances = 0;
+  uint32_t first = 0;  // the first index (or vertex)
+  int32_t base_vertex = 0;
+  uint32_t first_instance = 0;
+};
+
+inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kind, const std::optional<DrawArguments>& arguments) {
   if (!state.tracing.load(std::memory_order_acquire)) return;
   ID3D11DeviceContext* context = NativeContext(cmd_list);
   if (context == nullptr) return;
@@ -258,7 +272,51 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
     vertex_buffers[slot]->GetDesc(&desc);
     vertices += std::format(" vb{} {} bytes stride {} offset {}{}", slot, desc.ByteWidth, strides[slot], offsets[slot],
                             (desc.Usage == D3D11_USAGE_DYNAMIC ? " dynamic" : ""));
-    vertex_buffers[slot]->Release();
+  }
+  // Options' mesh identity: Unreal's depth passes may draw a mesh with other index and vertex buffers than its base pass
+  // (the depth-only index buffer, the position-only stream), so the mesh is named by its arguments, its buffers and its
+  // VS inputs by address (the primitive's uniform buffer, the bones).
+  std::string mesh;
+  if (state.options.mesh_identity) {
+    if (!arguments.has_value()) {
+      mesh = " | mesh ?";
+    } else if (arguments->indexed) {
+      ComPtr<ID3D11Buffer> index_buffer;
+      DXGI_FORMAT index_format = DXGI_FORMAT_UNKNOWN;
+      UINT index_offset = 0;
+      context->IAGetIndexBuffer(index_buffer.GetAddressOf(), &index_format, &index_offset);
+      mesh = std::format(" | mesh indices {} first {} base {} instances {} at {} ib {}+{} f{}", arguments->count, arguments->first,
+                         arguments->base_vertex, arguments->instances, arguments->first_instance,
+                         static_cast<const void*>(index_buffer.Get()), index_offset, static_cast<int>(index_format));
+    } else {
+      mesh = std::format(" | mesh vertices {} first {} instances {} at {}", arguments->count, arguments->first, arguments->instances,
+                         arguments->first_instance);
+    }
+    for (uint32_t slot = 0; slot < vertex_buffers.size(); ++slot) {
+      if (vertex_buffers[slot] == nullptr) continue;
+      mesh += std::format(" vb{} {}+{}", slot, static_cast<const void*>(vertex_buffers[slot]), offsets[slot]);
+    }
+    std::array<ID3D11Buffer*, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT> vertex_constants = {};
+    context->VSGetConstantBuffers(0, static_cast<UINT>(vertex_constants.size()), vertex_constants.data());
+    for (uint32_t slot = 0; slot < vertex_constants.size(); ++slot) {
+      if (vertex_constants[slot] == nullptr) continue;
+      mesh += std::format(" cb{} {}", slot, static_cast<const void*>(vertex_constants[slot]));
+      vertex_constants[slot]->Release();
+    }
+    std::array<ID3D11ShaderResourceView*, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT> vertex_views = {};
+    context->VSGetShaderResources(0, static_cast<UINT>(vertex_views.size()), vertex_views.data());
+    for (uint32_t slot = 0; slot < vertex_views.size(); ++slot) {
+      if (vertex_views[slot] == nullptr) continue;
+      ComPtr<ID3D11Resource> resource;
+      vertex_views[slot]->GetResource(resource.GetAddressOf());
+      mesh += std::format(" vt{} {}", slot, static_cast<const void*>(resource.Get()));
+      vertex_views[slot]->Release();
+    }
+  }
+  for (auto* buffer : vertex_buffers) {
+    if (buffer != nullptr) {
+      buffer->Release();
+    }
   }
   // The view sizes once per change (they stay for most of a pass).
   std::array<ID3D11Buffer*, 14> constants = {};
@@ -287,22 +345,26 @@ inline void TraceDraw(reshade::api::command_list* cmd_list, std::string_view kin
   const uint32_t pixel_hash = renodx::utils::state::GetCurrentShaderHash(cmd_list, reshade::api::pipeline_stage::pixel_shader);
   const std::string vertex_declared = Declared(cmd_list, reshade::api::pipeline_stage::vertex_shader, vertex_hash);
   const std::string pixel_declared = Declared(cmd_list, reshade::api::pipeline_stage::pixel_shader, pixel_hash);
-  Append(std::format("{} {} vs {:08X}{} ps {:08X}{} |{} | vp {}x{} at {},{}{} |{} |{}{}", kind, count, vertex_hash, vertex_declared, pixel_hash,
+  Append(std::format("{} {} vs {:08X}{} ps {:08X}{} |{} | vp {}x{} at {},{}{} |{} |{}{}{}", kind,
+                     (arguments.has_value() ? (arguments->count * arguments->instances) : 0u), vertex_hash, vertex_declared, pixel_hash,
                      pixel_declared, outputs, viewport.Width, viewport.Height, viewport.TopLeftX, viewport.TopLeftY,
                      (scissor_count != 0 ? std::format(" scissor {},{}-{},{}", scissor.left, scissor.top, scissor.right, scissor.bottom)
                                          : std::string()),
-                     inputs, vertices, view));
+                     inputs, vertices, mesh, view));
 }
 
-inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t instance_count, uint32_t,
-                   uint32_t) {
-  TraceDraw(cmd_list, "draw", vertex_count * instance_count);
+inline bool OnDraw(reshade::api::command_list* cmd_list, uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex,
+                   uint32_t first_instance) {
+  TraceDraw(cmd_list, "draw",
+            DrawArguments{.count = vertex_count, .instances = instance_count, .first = first_vertex, .first_instance = first_instance});
   return false;
 }
 
 inline bool OnDrawIndexed(reshade::api::command_list* cmd_list, uint32_t index_count, uint32_t instance_count,
-                          uint32_t, int32_t, uint32_t) {
-  TraceDraw(cmd_list, "indexed", index_count * instance_count);
+                          uint32_t first_index, int32_t vertex_offset, uint32_t first_instance) {
+  TraceDraw(cmd_list, "indexed",
+            DrawArguments{.indexed = true, .count = index_count, .instances = instance_count, .first = first_index,
+                          .base_vertex = vertex_offset, .first_instance = first_instance});
   return false;
 }
 
@@ -342,7 +404,7 @@ inline bool OnIndirect(reshade::api::command_list* cmd_list, reshade::api::indir
   if (type == reshade::api::indirect_command::dispatch) {
     TraceDispatch(cmd_list, "dispatch indirect");
   } else {
-    TraceDraw(cmd_list, "draw indirect", 0);
+    TraceDraw(cmd_list, "draw indirect", std::nullopt);
   }
   return false;
 }
@@ -443,6 +505,12 @@ inline void OnPresent(std::string_view game, const Options& options = {}) {
           "One frame: draws, dispatches, clears and copies in order (vs / ps / cs hashes, targets, viewport, scissor,\n"
           "inputs; Unreal's view and buffer size when they change). Formats: DXGI numbers (10 RGBA16F, 24 RGB10A2,\n"
           "26 R11G11B10F, 28 RGBA8, 29 RGBA8 sRGB, 87 BGRA8).\n";
+      if (options.mesh_identity) {
+        state.text +=
+            "Mesh, after the vertex buffers: indices (or vertices), first index (or vertex), base vertex, instances at the\n"
+            "first instance (?: an indirect draw's), then by address the index buffer (+offset, format), the vertex buffers\n"
+            "(+offset), the VS constant buffers (cb) and the VS shader resources (vt).\n";
+      }
       state.lines = 0;
       state.last_view.clear();
       state.declared.clear();
