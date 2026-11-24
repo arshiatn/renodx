@@ -236,7 +236,8 @@ struct Bindings {
   // left out of RT/PT (Divinity 2).
   bool has_fog_shadows = true;
   // Fog Shadows and Specular Occlusion defaulted to 1 here before 2026-11-16 (f41f04fd0: SetRaysPresetDefaults in Thrones,
-  // Rome Remastered, Warhammer III, Pharaoh, Troy): presets that saved them with no ray-traced method on are cleared once.
+  // Rome Remastered, Warhammer III, Pharaoh, Troy; Rome II's Specular Occlusion, its Fog Shadows set off; Warhammer I and II
+  // set both off from their first page): presets that saved them with no ray-traced method on are cleared once.
   bool fog_shadows_defaulted_on = false;
   bool every_row = true;  // false: a row this page lists that the game lacks is no mistake, no log line (Rome Remastered)
 };
