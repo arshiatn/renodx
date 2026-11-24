@@ -1336,12 +1336,12 @@ float engine_code_row = 1.f;
 float render_lists_row = 1.f;
 // Faster Job Wake-Ups (Experimental, off; graphics_page-style row below): engine_code.hpp's job system sites.
 float job_wakeups_row = 0.f;
-// Fewer Constant Uploads (Experimental, off): mods::shader::use_native_d3d11_injection (once used, the game's device keeps
-// it: Off after a restart).
-float fewer_constant_uploads_row = 0.f;
-// Fewer Driver Waits (Experimental, off): buffer_pool.hpp, the game's constant buffers through one ring (Off after a
-// restart).
-float fewer_driver_waits_row = 0.f;
+// Fewer Constant Uploads (Experimental, on): mods::shader::use_native_d3d11_injection (once used, the game's device
+// keeps it: Off after a restart).
+float fewer_constant_uploads_row = 1.f;
+// Fewer Driver Waits (Experimental, on; NVIDIA's GPUs only): buffer_pool.hpp, the game's constant buffers through one
+// ring (Off after a restart).
+float fewer_driver_waits_row = 1.f;
 // Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site and particle update loop site.
 float effect_prefetch_row = 0.f;
 // Keep Render Core Free (Experimental, off): cpu_sets.hpp.
@@ -1620,13 +1620,28 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // The bench's RENODX_TW_GAME_CPUS, else the count cpu_sets reads. value_or always evaluates its argument, so cpu_sets::Update
   // (Keep Render Core Free and the count's reads) runs every present either way: never move it into a branch that may skip it.
   const uint32_t game_cpus = game_cpus_env.value_or(twattila::cpu_sets::Update(keep_render_core_row != 0.f, GAME_THREAD_MODULES));
+  // Before any setting is read this frame: Fewer Driver Waits and DLSS on NVIDIA's GPUs only, a saved DLSS or a preset's
+  // is XeSS on Intel's, else FSR.
+  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
   renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads_row != 0.f, std::memory_order_relaxed);
+  // The two rings' lines, each once: the first present that stores Fewer Constant Uploads on, Fewer Driver Waits' row
+  // on another vendor's GPU.
+  static bool uploads_logged = false;
+  static bool vendor_logged = false;
+  if (!uploads_logged && fewer_constant_uploads_row != 0.f) {
+    uploads_logged = true;
+    renodx::utils::log::i("[Total War] Fewer Constant Uploads: on.");
+  }
+  if (!vendor_logged && fewer_driver_waits_row != 0.f && !twattila::dlaa_bridge::OnNvidia()) {
+    vendor_logged = true;
+    renodx::utils::log::i("[Total War] Fewer Driver Waits: off (not an NVIDIA GPU).");
+  }
   // A traced frame's full-ring line waits (its own work fills the ring).
   if (queue->get_device()->get_api() == reshade::api::device_api::d3d11) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
     const bool traced = twattila::frame_trace::Tracing()
                         || twattila::frame_trace::internal::map_trace.tracing.load(std::memory_order_relaxed);
-    twattila::buffer_pool::Update(context, fewer_driver_waits_row != 0.f, traced);
+    twattila::buffer_pool::Update(context, fewer_driver_waits_row != 0.f && twattila::dlaa_bridge::OnNvidia(), traced);
   }
   talesofarise::pixel_trace::OnPresent(queue);
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
@@ -1634,9 +1649,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   twattila::particle_layer::Update(swapchain);
-  // Before any setting is read this frame: DLSS never starts on another vendor's GPU, a saved DLSS or a preset's is XeSS
-  // on Intel's, else FSR.
-  twattila::dlaa_bridge::ReadGpuVendor(reinterpret_cast<ID3D11Device*>(swapchain->get_device()->get_native()));
   if (aa_sliders.method == 5.f && !twattila::dlaa_bridge::OnNvidia()) {
     renodx::utils::settings::UpdateSettings({{"AntiAliasing", (twattila::dlaa_bridge::gpu_vendor == 0x8086 ? 7.f : 6.f)}});
   }
@@ -2148,11 +2160,10 @@ void ConfigureAddon() {
           .key = "FewerConstantUploads",
           .binding = &fewer_constant_uploads_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
+          .default_value = 1.f,
           .label = "Fewer Constant Uploads (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "The mod's shader settings go to the GPU once a frame instead of before every draw:\n"
-                     "less waiting on the graphics driver on the render thread. Same results.\n"
+          .tooltip = "Prevents long stalls from the graphics driver in big battles. Same results.\n"
                      "Turning it off takes effect after restarting the game.",
           .labels = {"Off", "On"},
       },
@@ -2160,11 +2171,10 @@ void ConfigureAddon() {
           .key = "FewerDriverWaits",
           .binding = &fewer_driver_waits_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
+          .default_value = 1.f,
           .label = "Fewer Driver Waits (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "The game's shader constants go to the GPU through one shared ring instead of a new buffer each time:\n"
-                     "the render thread waits less for the graphics driver. Same results.\n"
+          .tooltip = "Prevents long stalls from the NVIDIA graphics driver in big battles. Same results.\n"
                      "Turning it off takes effect after restarting the game.",
           .labels = {"Off", "On"},
       },
@@ -2598,11 +2608,14 @@ bool AttachAddon() {
 
   // Rows saved at an old default (a preset saves every row, hidden ones too), each cleared once. 1 (before v149): NRD when
   // Ray Reconstruction is off, the banners' light and colour on. 2 (the render_mt defaults): the rows whose default changed
-  // and the rows hidden now (a value saved earlier would stay on unseen).
+  // and the rows hidden now (a value saved earlier would stay on unseen). 3 (PK1): the two rings' rows, on now (a saved
+  // Off would keep them off). Every later default change takes the next free number; a number once shipped gets no more
+  // keys.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
   twattila::graphics_page::ClearSavedRows(2, {"DrawRecordingStage", "DrawRecordingDepthA", "DrawRecordingColourA", "DrawRecordingDepthB",
                                               "DrawRecordingColourB", "DrawRecordingFamilies", "AnimationRowsWorkers", "ParallelInstanceFill",
                                               "FillWithDrawRecording", "ParallelEffectSpawns", "CachedParticleCount"});
+  twattila::graphics_page::ClearSavedRows(3, {"FewerConstantUploads", "FewerDriverWaits"});
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -2633,6 +2646,7 @@ bool AttachAddon() {
                                                         .wind_pixel_shader = __motion_wind,
                                                         .unit_pixel_shader = __motion_unit_recorded,
                                                         .unit_records_compute_shader = __motion_unit_records,
+                                                        .unit_records_in_ring = true,
                                                         .capture_pixel_shader = __motion_capture,
                                                         .rigid_compute_shader = __motion_rigid},
                                    RENDER_SCALE_READS, RENDER_SCALE_VERTEX_SHADERS, FULL_DEPTH_SHADERS,

@@ -1,5 +1,24 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Fewer Driver Waits stage 1 (2026-11-24; built only, not stamped, not installed, not run in game)
+
+- Changed: **Fewer Constant Uploads** and **Fewer Driver Waits** are **on** by default (rows kept, still in Graphics
+  (Experimental); saved Offs cleared once: settings revision 3). Fewer Driver Waits goes in on NVIDIA's GPUs only
+  (logged once: "Fewer Driver Waits: off (not an NVIDIA GPU)."); "Fewer Constant Uploads: on." logged once.
+- Fixed: the ring grew to its 32 pieces in a battle (a buffer written every few seconds kept its piece busy to the next
+  lap). A new current piece now takes the buffers of the closed pieces in the half ring ahead of it, and an ended piece
+  not passed yet is asked once more with a flush before the ring grows: 8-10 pieces in the tests and the b3 streams.
+- Changed: a full ring (all 32 pieces still read by the GPU) waits up to 100 ms for its oldest piece before the old
+  way's DISCARD (logged once: "all <N> pieces in use by the GPU: waited <ms> ms for it."); after a wait that timed out
+  none again until a piece frees. While another D3D11 device is known the ring waits to go in (logged once a device:
+  "waiting (<N> D3D11 devices known, not only the game's)."), no refusal. The stop line is "Fewer Driver Waits: off.
+  Restart the game for full speed." in every case.
+- Changed: the unit records' per-run constants go into the motion constants' rings (`object_motion.hpp`
+  `Shaders::unit_records_in_ring`, Attila only) instead of one UpdateSubresource before each of ~372 dispatches a frame.
+- Checked in `test/tw_buffer_pool` (the reclaim stream, its control, the flush, the full ring's wait, the lone device),
+  `test/tw_unit_pack_rounds` (every case with the records in one buffer and in the rings: the motion dumps byte-equal;
+  the hand-over inside the records, the rings dropped, 8,320 runs in one call) and `test/tw_render_mt_defaults`.
+
 ## Dev, Fewer Constant Uploads Off after a restart (2026-11-20; built only, not stamped, not installed, not run in game)
 
 - Fixed: **Fewer Constant Uploads** turned Off after On cost +47 ms a frame until the battle ended (batch 2b): ReShade's
@@ -30,8 +49,8 @@
   +11..+45 ms a frame (the driver no longer renamed them). A call on the context from another
   thread, a lost device, a body in the context's table that the install never saw (checked at each present and after
   each swap: another d3d11.dll build) or a swap below the hook: the ring unwinds at the render thread's next call (the
-  Off latched or not) and stays off until the row is turned off and on again (logged, with "Restart the game for full
-  speed."). Our own constant buffers are made below ReShade (no
+  Off latched or not) and stays off until the row is turned off and on again (logged: "Fewer Driver Waits: off. Restart
+  the game for full speed."). Our own constant buffers are made below ReShade (no
   init_resource): never in the ring. Rome II, Thrones and WH3 compile it without the row.
 - Checked in `test/tw_buffer_pool` (x86, amd64, WARP: pixels, compute output and copies equal with the ring, a full ring,
   another thread's call and the measure path beside it, seven CONTROLS that must differ; Get / Get1 / Map parity and the

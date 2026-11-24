@@ -42,8 +42,8 @@ $rows = @(
   @('FasterEmitterPrefetch', 0, 'emitter_prefetch_row', '0.f', $true),
   @('FasterParticlePrefetch', 0, 'particle_prefetch_row', '0.f', $true),
   @('FasterSweepPrefetch', 0, 'sweep_prefetch_row', '0.f', $true),
-  @('FewerConstantUploads', 0, 'fewer_constant_uploads_row', '0.f', $true),
-  @('FewerDriverWaits', 0, 'fewer_driver_waits_row', '0.f', $true)
+  @('FewerConstantUploads', 1, 'fewer_constant_uploads_row', '1.f', $true),
+  @('FewerDriverWaits', 1, 'fewer_driver_waits_row', '1.f', $true)
 )
 $hidden = '.is_visible = [] { return false; },'
 foreach ($row in $rows) {
@@ -72,7 +72,7 @@ foreach ($group in 'DepthA', 'ColourA', 'DepthB', 'ColourB') {
   Check ($text.Contains("DrawRecordingGroupRow(`"DrawRecording$group`",")) "DrawRecording$group declared"
 }
 # Values saved by older versions go once: revision 1's rows as they were; revision 2 every row above whose default changed
-# or that is hidden.
+# or that is hidden; revision 3 the two rings' rows.
 Check ($text.Contains('twattila::graphics_page::ClearSavedRows(1, {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});')) 'revision 1 rows unchanged'
 $revision = Block 'twattila::graphics_page::ClearSavedRows(2, {' '});'
 foreach ($key in 'DrawRecordingStage', 'DrawRecordingDepthA', 'DrawRecordingColourA', 'DrawRecordingDepthB', 'DrawRecordingColourB',
@@ -80,6 +80,15 @@ foreach ($key in 'DrawRecordingStage', 'DrawRecordingDepthA', 'DrawRecordingColo
          'CachedParticleCount') {
   Check ($revision.Contains("`"$key`"")) "$key cleared once at revision 2"
 }
+# Revision 3 (PK1): the two rings' rows, on now, right after revision 2 (a saved Off would keep them off).
+$third = $text.IndexOf('twattila::graphics_page::ClearSavedRows(3, {"FewerConstantUploads", "FewerDriverWaits"});', [StringComparison]::Ordinal)
+Check ($third -gt $text.IndexOf('twattila::graphics_page::ClearSavedRows(2, {', [StringComparison]::Ordinal)) 'FewerConstantUploads, FewerDriverWaits cleared once at revision 3, after revision 2'
+# Fewer Driver Waits on NVIDIA's GPUs only, the vendor read before the ring's Update.
+$vendor = $text.IndexOf('twattila::dlaa_bridge::ReadGpuVendor(', [StringComparison]::Ordinal)
+$ring = $text.IndexOf('twattila::buffer_pool::Update(context, fewer_driver_waits_row != 0.f && twattila::dlaa_bridge::OnNvidia(), traced);', [StringComparison]::Ordinal)
+Check ($vendor -ge 0 -and $ring -gt $vendor) 'Fewer Driver Waits on NVIDIA only, the vendor read before its Update'
+# The unit records' constants in the motion rings (object_motion.hpp's opt-in).
+Check ($text.Contains('.unit_records_in_ring = true,')) 'unit records in the motion rings'
 # RENODX_TW_POOL_SPIN_US unset: 3 us.
 Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t DEFAULT_SPIN_US = 3;') 'pool spin 3 us'
 # Faster Game CPU Code (graphics_page.hpp's row, addon.cpp's binding) on; RENODX_TW_ANIMATION_SCHEDULE unset: stream.
