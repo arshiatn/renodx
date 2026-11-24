@@ -589,6 +589,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     });
     page.Take({.match = "AntiAliasingSharpening", .section = section, .shown = [b] { return b.aa->method == 3.f || b.aa->method == 4.f; },
                .label = "Sharpening"});
+    // Its own row shows it only while FSR runs.
+    page.Take({.match = "AntiAliasingFsrSharpening", .section = section, .shown = [] { return true; }});
     page.Take({.match = "AntiAliasingDlssMode", .section = section, .shown = scale_rows, .label = "Upscaling Mode",
                .tooltip = "Native: the game at your resolution. The others draw it smaller and the upscaler brings it up (faster)."});
     if (b.upscaling_mode == nullptr) {

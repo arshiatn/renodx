@@ -95,6 +95,7 @@ struct Settings {
   bool extra_sharpness = false;  // CMAA2's
   float history_weight = 0.9f;   // TAA: the history's share each frame
   float sharpening = 0.25f;      // TAA, SMAA T2x
+  float fsr_sharpness = 0.f;     // FSR's RCAS, 0-1 (0: off)
   uint32_t dlaa_preset = 0;      // DLAA: NVSDK_NGX_DLSS_Hint_Render_Preset (0: NVIDIA's)
   float render_scale = 1.f;      // DLAA below 1: DLSS (the 3D image drawn at this fraction of the display's size)
   bool effects_at_output = true;  // DLSS: the effects' resolutions follow the render scale (frame_history::effect_share)
@@ -1296,7 +1297,8 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     resolved = dlaa_bridge::Evaluate(
         native, input_width, input_height, runtime.jitter[0], -runtime.jitter[1], !continued, runtime.settings.dlaa_preset,
         reconstruct ? &reconstruction : nullptr, (method != Method::DLAA ? &reconstruction.view_to_clip : nullptr),
-        {.exposure = (exposure_test && method == Method::DLAA && !reconstruct && runtime.settings.dlaa_preset == 11u) ? 1.f : 0.f});
+        {.exposure = (exposure_test && method == Method::DLAA && !reconstruct && runtime.settings.dlaa_preset == 11u) ? 1.f : 0.f,
+         .fsr_sharpness = runtime.settings.fsr_sharpness});
     if (resolved) {
       bind(objects.dlaa_finish.Get(),
            {dlaa_bridge::bridge.output.srv.Get(), frame_view, dlaa_bridge::bridge.motion.srv.Get(),

@@ -334,6 +334,7 @@ struct FrameGenerationFrame {
 
 std::atomic<AAMode> requested_mode = AAMode::OFF;
 std::atomic<uint32_t> preset = 13u;  // NVSDK_NGX_DLSS_Hint_Render_Preset M
+std::atomic<float> fsr_sharpness = 0.f;  // FSR's RCAS, 0-1 (0: off)
 // The page's upscaler (dlaa_bridge::UPSCALER_*) and its name.
 std::atomic<uint32_t> requested_upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;
 constexpr std::array<const char*, 3> UPSCALER_NAMES = {"DLSS", "FSR", "XeSS"};
@@ -1228,7 +1229,7 @@ bool Evaluate(Frame* frame, bool replace) {
                                                                      .view_to_clip = view_to_clip};
     evaluated = twattila::dlaa_bridge::Evaluate(context, frame->render_width, frame->render_height, frame->pixel_jitter[0], frame->pixel_jitter[1],
                                                 reset, preset.load(), reconstruct ? &reconstruction : nullptr,
-                                                nvidia_model ? nullptr : &view_to_clip);
+                                                nvidia_model ? nullptr : &view_to_clip, {.fsr_sharpness = fsr_sharpness.load()});
     reconstructed = evaluated && reconstruct && bridge.reconstructing;
     talesofarise::rt_shadows::reconstructing.store(reconstructed, std::memory_order_relaxed);
     runtime.performance.Mark(context);
@@ -2248,6 +2249,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     const auto aa = twattila::feature_settings::AaSettings(aa_sliders);
     requested_upscaler.store(twattila::anti_aliasing::UpscalerOf(aa.method));
     preset.store(aa.dlaa_preset);
+    fsr_sharpness.store(aa.fsr_sharpness);
     // What the bridge serves this frame (upscaling.hpp): the upscaler, Ray Reconstruction's guides, frame generation's frames.
     std::array<uint32_t, 2> size;
     {

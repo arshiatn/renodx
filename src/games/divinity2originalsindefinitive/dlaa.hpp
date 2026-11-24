@@ -582,7 +582,8 @@ inline void OnApplyLut(reshade::api::command_list* cmd_list) {
   };
   const bool reconstructing = aa.ray_reconstruction && guides_written && bridge.guides;
   const bool resolved = twattila::dlaa_bridge::Evaluate(native, width, height, camera.jitter[0], -camera.jitter[1], !continued, preset,
-                                                        (reconstructing ? &reconstruction : nullptr), (dlss ? nullptr : &view_to_clip));
+                                                        (reconstructing ? &reconstruction : nullptr), (dlss ? nullptr : &view_to_clip),
+                                                        {.fsr_sharpness = aa.fsr_sharpness});
   if (resolved) {
     bind(objects.finish.Get(), {bridge.output.srv.Get(), input.Get(), bridge.motion.srv.Get()}, {objects.result_uav.Get()});
     native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);

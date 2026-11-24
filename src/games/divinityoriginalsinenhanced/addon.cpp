@@ -1107,7 +1107,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                .square_root = upscaling && (ray_reconstruction || (aa.method == twattila::anti_aliasing::Method::DLAA && aa.dlaa_preset != 11u)),
                                .ray_reconstruction = ray_reconstruction,
                                .ray_reconstruction_preset = aa.ray_reconstruction_preset,
-                               .debug_view = aa_sliders.debug_view != 0.f},
+                               .debug_view = aa_sliders.debug_view != 0.f,
+                               .fsr_sharpness = aa.fsr_sharpness},
                               traced);
   if (ray_tracing_installed) divinity::ray_tracing::Update(rays);
   twattila::frame_generation::Update({

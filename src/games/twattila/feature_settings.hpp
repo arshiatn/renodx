@@ -53,6 +53,7 @@ struct AaSliders {
   float taa_strength = 0.9f;
   float taa_motion = 0.f;  // Attila's (graphics_page.hpp): TAA's: the camera's motion, or the objects' own too
   float sharpening = 0.25f;
+  float fsr_sharpness = 0.f;  // FSR's RCAS, 0-1 (0: off)
   float dlaa_preset = 2.f;  // K, M, L
   float dlss_mode = 0.f;       // DLAA's scale: DLSS_MODE_SCALES, the last Custom (render_scale)
   float render_scale = 100.f;  // Custom, in percent (below 100: DLSS)
@@ -119,6 +120,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .extra_sharpness = (sliders.extra_sharpness != 0.f),
       .history_weight = sliders.taa_strength,
       .sharpening = sliders.sharpening,
+      .fsr_sharpness = std::clamp(sliders.fsr_sharpness, 0.f, 1.f),
       // NVSDK_NGX_DLSS_Hint_Render_Preset K, M, L.
       .dlaa_preset = std::array<uint32_t, 3>{11u, 13u, 12u}[std::clamp(static_cast<int>(sliders.dlaa_preset), 0, 2)],
       .render_scale = RenderScale(sliders),
@@ -423,6 +425,19 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .max = 1.f,
                                             .format = "%.2f",
                                             .is_enabled = [sliders] { return sliders->method == 3.f || sliders->method == 4.f; },
+                                        },
+                                        // Its own row at 0: the TAA row's 0.25 default would sharpen every AMD and Intel player.
+                                        new renodx::utils::settings::Setting{
+                                            .key = "AntiAliasingFsrSharpening",
+                                            .binding = &sliders->fsr_sharpness,
+                                            .default_value = 0.f,
+                                            .label = "FSR Sharpening",
+                                            .section = AA_SECTION,
+                                            .tooltip = "Sharpens FSR's image (0: off).",
+                                            .max = 1.f,
+                                            .format = "%.2f",
+                                            // FSR chosen, or running in DLSS's place (AaSettings).
+                                            .is_visible = [sliders] { return AaSettings(*sliders).method == anti_aliasing::Method::FSR; },
                                         },
                                         new renodx::utils::settings::Setting{
                                             .key = "AntiAliasingDlaaPreset",

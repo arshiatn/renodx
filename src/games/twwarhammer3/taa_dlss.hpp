@@ -370,7 +370,7 @@ inline bool EvaluateInputs(ID3D11DeviceContext* context, UINT width, UINT height
   }
   return twattila::dlaa_bridge::Evaluate(context, width, height, jitter[0], jitter[1], reset, state.settings.dlaa_preset,
                                          reconstruct ? &reconstruction : nullptr, nvidia_model ? nullptr : &reconstruction.view_to_clip,
-                                         {.extra_written = rr_extra_written});
+                                         {.extra_written = rr_extra_written, .fsr_sharpness = state.settings.fsr_sharpness});
 }
 
 // A size proven earlier in this run from now on (state.mutex held): no frame of the game's TAA for it.

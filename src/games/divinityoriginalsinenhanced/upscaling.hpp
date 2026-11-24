@@ -57,7 +57,8 @@ struct Settings {
   bool square_root = false;
   bool ray_reconstruction = false;
   uint32_t ray_reconstruction_preset = 0;
-  bool debug_view = false;  // the Upscaling Debug View: the motion the upscaler gets
+  bool debug_view = false;    // the Upscaling Debug View: the motion the upscaler gets
+  float fsr_sharpness = 0.f;  // FSR's RCAS, 0-1 (0: off)
 };
 
 // The main view's camera as the game uploaded it, without the jitter (b12's rows, column vectors).
@@ -442,7 +443,8 @@ inline void OnTonemap(ID3D11DeviceContext* context) {
   const bool reconstructing = settings.ray_reconstruction && talesofarise::upscaling::Guides() && bridge.guides;
   // The camera's jitter (y up) as it moves the picture (y down).
   const bool evaluated = twattila::dlaa_bridge::Evaluate(context, display[0], display[1], jitter[0], -jitter[1], reset, settings.preset,
-                                                         reconstructing ? &reconstruction : nullptr, &view_to_clip);
+                                                         reconstructing ? &reconstruction : nullptr, &view_to_clip,
+                                                         {.fsr_sharpness = settings.fsr_sharpness});
   if (evaluated) {
     const talesofarise::dlss::ContextStateScope scope(context1.Get(), state.private_state.Get());
     const std::array<float, 4> output_settings = {settings.square_root ? 1.f : 0.f, settings.debug_view ? 1.f : 0.f, 0.f, 0.f};
