@@ -15293,6 +15293,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATTILA64, build id at the first D3D11 present, non-D3D11 stands down; game-code rows hidden behind a seam
         predicate; files addon.cpp / frame_trace.hpp / tests (F7 repro first); rule lines -Smoke -ReShade (+ -PerfFix,
         -Warp, -Package). Risks R2 / R4 / R7 (Sol's test pictures invalid with the add-on) / R9 / R12.
+        - [x] a64bdr_ BRING-UP REVIEW = GO WITH CHANGES (hand-back attila64/a64bdr_review_handback.md;
+        designs/bringup_design_review.md): A2 real, A2a right for HDR10 / scRGB / SDR incl. mode changes. M1 drop the
+        mutex contract (Sol's fixed loader draws into the picture), M2 present_picture = resource handle, M3 F7 capture in
+        zz_capture's present + TutorialProgress=4 in every ini we write (a64ab_ too). S: is_visible wrap before
+        AssignPages, keyless rows, GrassHeightDistance stays, R4 image-freed assert + PerfFix test-device cycle, C6
+        required, tone-mapper no-upgrade log, TAA pin, stale -Package sha. Seam S12 OK under 3 conditions (lookup after
+        the non-D3D11 return, all new lines in if constexpr (ATTILA64), x86 Update call stays at :1774). -> a64bd_ fix
+        round sent (seam section cites plugin_design.md's).
         - [ ] AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer.
         - [x] a64pl_ PLUGIN DESIGN DONE (hand-back attila64/a64pl_design_handback.md; designs/plugin_design.md, PRIVATE):
         load order Sol -> perffix64 -> probe -> renodx_attila64.dll -> ctors -> game_started; all writes once at init
