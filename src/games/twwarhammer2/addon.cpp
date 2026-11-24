@@ -42,6 +42,7 @@
 #include "../twattila/lighting_settings.hpp"
 #include "../twattila/rt_capture_imposter_gs.h"
 #include "../twattila/rt_scene.hpp"
+#include "../twattila/ao_skip.hpp"
 #include "../twattila/anti_aliasing.hpp"
 #include "../twattila/ao_filter.hpp"
 #include "../twattila/engine_tests.hpp"
@@ -575,8 +576,8 @@ renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
 // GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone): the rays' AO stands
-// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO stays
-// there, as when the page turned GT-VBAO off with them.
+// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO is
+// left out (GameSsaoOut).
 bool bitmask_ao = false;
 // GT-VBAO in the collect's place leaves the sweep 4D2C2BF5 unread: its output's one reader in ATN's traces is the collect's t0
 // (36 of 36, by handle), and ours declares only the depth at t2 and the camera (fxc -dumpbin). Left out while ours drew in the
@@ -584,21 +585,16 @@ bool bitmask_ao = false;
 // the collect (only its dispatch is skipped).
 bool bitmask_collect_drawn = false;
 bool bitmask_collect_last_frame = false;
-// The rays' AO in place of the game's SSAO, the game's left out (ATN 2026-11-16: one method; Warhammer's way). The game's
-// passes and their readers by handle in ATN's 36 traces and the A-F runs (tools/tw/tw1_1116/tw1_reader_census_wh2.txt, 41
-// traces): the depth downsample F1CE6943 -> the sweep 4D2C2BF5 alone, the sweep -> the collect 19CF3C83 alone, the collect's
-// output -> the sun draws' t_ssao (their red alone, test/tw_warhammer_shaders part 31) and the SSR resolve's t_ssao (7E1CDD0A
-// t1: red alone). Under the rays' AO the sun draws read the rays' combine in its place (rt_core's ambient_alone: the traced
-// visibility in red, part 15) and the resolve the AO the sun draws read (sun_ambient.hpp, bound at its t1): nothing reads the
-// game's passes then, so they are left out (the blurs C7B1F6F7 / 901C2215 too, drawn in no trace; they read and write only
-// the sweep's and the collect's outputs) and the collect's output, what a frame without the combine reads, cleared to open.
-// While the rays feed it (this frame's trace or the last: these passes come before it); not under the paths (their sky light
-// keeps the game's SSAO, as GT-VBAO's switch).
-bool SkipGameSsao() {
-  const auto& runtime = twattila::rt_scene::internal::runtime;
-  return runtime.settings.ambient_occlusion && twattila::dlaa_bridge::bridge.ray_tracing && runtime.traced_frame != UINT64_MAX
-         && runtime.traced_frame + 1 >= runtime.frame;
-}
+// The rays' AO or Path-Traced Ambient in place of the game's SSAO, the game's left out (ATN 2026-11-16: one method). The
+// game's passes and their readers by handle in ATN's 36 traces and the A-F runs (tools/tw/tw1_1116/tw1_reader_census_wh2.txt,
+// 41 traces): the depth downsample F1CE6943 -> the sweep 4D2C2BF5 alone, the sweep -> the collect 19CF3C83 alone, the
+// collect's output -> the sun draws' t_ssao (their red alone, test/tw_warhammer_shaders part 31) and the SSR resolve's t_ssao
+// (7E1CDD0A t1: red alone). Under the rays' AO the sun draws read the rays' combine in its place (rt_core's ambient_alone:
+// the traced visibility in red, part 15) and the resolve the AO the sun draws read (sun_ambient.hpp, bound at its t1):
+// nothing reads the game's passes then, so they are left out (the blurs C7B1F6F7 / 901C2215 too, drawn in no trace; they
+// read and write only the sweep's and the collect's outputs) and the collect's output, what a frame without the combine
+// and the paths read, cleared to open. While ours stands in for it: twattila/ao_skip.hpp GameSsaoOut, every Total War
+// add-on's rule (the rays' AO traced this frame or the last, or Path-Traced Ambient).
 // The game's AO view at the resolve's t1, bound again after it where the sun draws' was bound in its place.
 Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> resolve_game_ao;
 bool resolve_ao_swapped = false;
@@ -631,20 +627,14 @@ void BuildRuntimeData() {
   // collect stays its own code (Game's costs what it did); the game's blur, when it runs, blurs it as the game's.
   custom_shaders[0xF1CE6943].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0xF1CE6943, true);
-    if (SkipGameSsao()) return false;
+    if (twattila::ao_skip::GameSsaoOut()) return false;
     if (bitmask_ao) tw::line_sweep_ao::KeepComputeDepth(cmd_list, 0);
     return true;
   };
   custom_shaders[0x19CF3C83].on_draw = [](auto* cmd_list) {
     tw::ao_trace::OnPass(cmd_list, 0x19CF3C83, true);
-    if (SkipGameSsao()) {
-      auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-      Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
-      native->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
-      const std::array<float, 4> open = {1.f, 1.f, 1.f, 1.f};
-      if (output) {
-        native->ClearUnorderedAccessViewFloat(output.Get(), open.data());
-      }
+    if (twattila::ao_skip::GameSsaoOut()) {
+      twattila::ao_skip::ClearOpen(cmd_list, true);
       return false;
     }
     if (!bitmask_ao) return true;
@@ -653,9 +643,9 @@ void BuildRuntimeData() {
                                                                true, __ao_upsample_collect, shader_injection.ssao_resolution != 0.f);
     return !bitmask_collect_drawn;
   };
-  custom_shaders[0x4D2C2BF5].on_draw = [](auto*) { return !SkipGameSsao() && !(bitmask_ao && bitmask_collect_last_frame); };
+  custom_shaders[0x4D2C2BF5].on_draw = [](auto*) { return !twattila::ao_skip::GameSsaoOut() && !(bitmask_ao && bitmask_collect_last_frame); };
   for (const uint32_t hash : {0xC7B1F6F7u, 0x901C2215u}) {
-    custom_shaders[hash].on_draw = [](auto*) { return !SkipGameSsao(); };
+    custom_shaders[hash].on_draw = [](auto*) { return !twattila::ao_skip::GameSsaoOut(); };
   }
 
   // Reflections: the ray-traced ones in the resolve (ssr00, twattila/rt_scene.hpp, rt_reflection.hlsli); while they

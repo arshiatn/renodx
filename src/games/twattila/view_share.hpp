@@ -64,6 +64,7 @@ using Microsoft::WRL::ComPtr;
 constexpr uint32_t SLOT = 12;
 constexpr uint32_t OP_DIV = 14, OP_EQ = 24, OP_FTOU = 28, OP_CUSTOMDATA = 53, OP_MAD = 50, OP_MOV = 54, OP_MOVC = 55,
                    OP_MUL = 56, OP_UTOF = 86;
+constexpr uint32_t OP_ITOF = 43, OP_RESINFO = 61;
 constexpr uint32_t OP_LD = 45, OP_SAMPLE = 69, OP_SAMPLE_C = 70, OP_SAMPLE_C_LZ = 71, OP_SAMPLE_L = 72, OP_SAMPLE_D = 73,
                    OP_SAMPLE_B = 74, OP_GATHER4 = 109, OP_GATHER4_C = 126, OP_GATHER4_PO = 127, OP_GATHER4_PO_C = 128;
 constexpr uint32_t OP_DCL_RESOURCE = 88, OP_DCL_CONSTANT_BUFFER = 89, OP_DCL_TEMPS = 104, OP_DCL_GLOBAL_FLAGS = 106;
@@ -203,7 +204,8 @@ inline Reflection Reflect(std::span<const uint8_t> code, const dxbc::Program& pr
   return reflection;
 }
 
-enum class Source { UNKNOWN, TEXTURE, VIEW, CAMERA_PROJECTION };
+// VIEW_NDC: an NDC made from a texture's or the viewport's uv (Classify), the view's position as a camera projection's.
+enum class Source { UNKNOWN, TEXTURE, VIEW, CAMERA_PROJECTION, VIEW_NDC };
 
 // What a camera register is: the texture's size, the viewport's, the camera's (view-)projection.
 inline Source CameraRegister(const Reflection& reflection, uint32_t reg) {
@@ -223,10 +225,40 @@ inline uint32_t SourceComponent(const Operand& operand, uint32_t component) {
   return component;
 }
 
+// A mad whose two written components take immediates (`a0`, `a1`) x and (`b0`, `b1`) +: its first two components
+// (`more`: it may write others too).
+inline bool MadWith(const Instruction& instruction, uint32_t a0, uint32_t a1, uint32_t b0, uint32_t b1,
+                    std::array<uint32_t, 2>* components, bool more = false) {
+  if (instruction.opcode != OP_MAD || instruction.operands.size() != 4) return false;
+  const Operand& destination = instruction.operands[0];
+  const Operand& scale = instruction.operands[2];
+  const Operand& offset = instruction.operands[3];
+  if (destination.type != TYPE_TEMP || destination.mode != 0 || destination.relative || scale.type != TYPE_IMMEDIATE
+      || offset.type != TYPE_IMMEDIATE) {
+    return false;
+  }
+  uint32_t found = 0;
+  for (uint32_t component = 0; component < 4 && found < 2; ++component) {
+    if ((destination.select & (1u << component)) != 0) (*components)[found++] = component;
+  }
+  if (found != 2 || (!more && (destination.select & ~((1u << (*components)[0]) | (1u << (*components)[1]))) != 0)) return false;
+  return scale.values[(*components)[0]] == a0 && scale.values[(*components)[1]] == a1 && offset.values[(*components)[0]] == b0
+         && offset.values[(*components)[1]] == b1;
+}
+
+// A uv to NDC (x 4: a half-size pass's uv of the full size): its two components.
+inline bool UvToNdc(const Instruction& instruction, std::array<uint32_t, 2>* components) {
+  return MadWith(instruction, TWO, MINUS_TWO, MINUS_ONE, ONE, components) || MadWith(instruction, FOUR, MINUS_FOUR, MINUS_ONE, ONE, components);
+}
+
 // Where temp `reg`'s `components` (mask) were last made before instruction `index`: from the camera's texture size
-// (TEXTURE), its viewport (VIEW) or unknown. `viewport_chains`: a product (mul, mad, div) with any factor made from the
-// viewport is VIEW (the game's own mapping to its viewport, which the render scale rewrites: uv x (c29.zw x c31.xy)),
-// whatever its first factor is.
+// (TEXTURE), its viewport (VIEW), its (view-)projection or unknown. `viewport_chains`: a product (mul, mad, div) with any
+// factor made from the viewport is VIEW (the game's own mapping to its viewport, which the render scale rewrites: uv x
+// (c29.zw x c31.xy)), whatever its first factor is. An NDC made from a texture's or the viewport's uv is the view's
+// position (Patch divides the texture's uv by the share first), as a projection's is: a uv projected back from it, and
+// that uv's NDC again, are the view's (the contact march: its start the pixel's NDC, the loop's later positions that plus
+// steps, followed back to the loop's entry). VIEW_NDC, never through an instruction reading another buffer's constants
+// (a world position made from it projected by the overlay's or a shadow map's matrix is not the view's).
 inline Source Classify(const std::vector<Instruction>& code, size_t index, uint32_t reg, uint32_t components,
                        const Reflection& reflection, int depth = 0, bool viewport_chains = false) {
   if (depth > 8) return Source::UNKNOWN;
@@ -237,6 +269,14 @@ inline Source Classify(const std::vector<Instruction>& code, size_t index, uint3
     if (destination.type != TYPE_TEMP || destination.mode != 0 || destination.relative || destination.index[0] != reg
         || (destination.select & components) == 0) {
       continue;
+    }
+    if (std::array<uint32_t, 2> ndc = {}; UvToNdc(instruction, &ndc)) {
+      const Operand& uv = instruction.operands[1];
+      if (uv.type == TYPE_TEMP && !uv.relative) {
+        const uint32_t read = (1u << SourceComponent(uv, ndc[0])) | (1u << SourceComponent(uv, ndc[1]));
+        const Source found = Classify(code, at, uv.index[0], read, reflection, depth + 1, viewport_chains);
+        if (found == Source::TEXTURE || found == Source::VIEW) return Source::VIEW_NDC;
+      }
     }
     // The components of a temp source this instruction reads for those components.
     const auto read_of = [&](const Operand& operand) {
@@ -274,32 +314,17 @@ inline Source Classify(const std::vector<Instruction>& code, size_t index, uint3
       if (operand.type == TYPE_INPUT) return Source::UNKNOWN;
       if (operand.type != TYPE_TEMP || operand.relative) continue;
       const Source found = Classify(code, at, operand.index[0], read_of(operand), reflection, depth + 1, viewport_chains);
+      if (found == Source::VIEW_NDC
+          && std::ranges::any_of(instruction.operands, [&](const Operand& constants) {
+               return constants.type == TYPE_CONSTANT_BUFFER && constants.index[0] != reflection.camera_slot;
+             })) {
+        continue;
+      }
       if (found != Source::UNKNOWN) return found;
     }
     return Source::UNKNOWN;
   }
   return Source::UNKNOWN;
-}
-
-// A mad whose two written components take immediates (`a0`, `a1`) x and (`b0`, `b1`) +: its first two components
-// (`more`: it may write others too).
-inline bool MadWith(const Instruction& instruction, uint32_t a0, uint32_t a1, uint32_t b0, uint32_t b1,
-                    std::array<uint32_t, 2>* components, bool more = false) {
-  if (instruction.opcode != OP_MAD || instruction.operands.size() != 4) return false;
-  const Operand& destination = instruction.operands[0];
-  const Operand& scale = instruction.operands[2];
-  const Operand& offset = instruction.operands[3];
-  if (destination.type != TYPE_TEMP || destination.mode != 0 || destination.relative || scale.type != TYPE_IMMEDIATE
-      || offset.type != TYPE_IMMEDIATE) {
-    return false;
-  }
-  uint32_t found = 0;
-  for (uint32_t component = 0; component < 4 && found < 2; ++component) {
-    if ((destination.select & (1u << component)) != 0) (*components)[found++] = component;
-  }
-  if (found != 2 || (!more && (destination.select & ~((1u << (*components)[0]) | (1u << (*components)[1]))) != 0)) return false;
-  return scale.values[(*components)[0]] == a0 && scale.values[(*components)[1]] == a1 && offset.values[(*components)[0]] == b0
-         && offset.values[(*components)[1]] == b1;
 }
 
 // Whether temp `reg`'s `components` written at `index` are read as a texture read's coordinate before being written
@@ -337,6 +362,7 @@ struct Patched {
   uint32_t projected = 0;
   uint32_t region = 0;
   uint32_t whole = 0;
+  uint32_t offset = 0;
 };
 
 // `region_slots`: the texture slots (bit per slot) whose reads take the frame's render share (render-space textures
@@ -392,7 +418,7 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
   }
   if (temps_at == 0) return result;
 
-  enum class Kind { NDC, PROJECTED, REGION, SPLIT, WHOLE };
+  enum class Kind { NDC, PROJECTED, REGION, SPLIT, WHOLE, OFFSET };
   struct Site {
     size_t instruction = 0;
     Kind kind = Kind::NDC;
@@ -402,13 +428,12 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
   for (size_t index = 0; index < instructions.size(); ++index) {
     const Instruction& instruction = instructions[index];
     std::array<uint32_t, 2> components = {};
-    // Its uv to NDC (x 4: a half-size pass's uv of the full size).
-    if (camera && (MadWith(instruction, TWO, MINUS_TWO, MINUS_ONE, ONE, &components)
-                   || MadWith(instruction, FOUR, MINUS_FOUR, MINUS_ONE, ONE, &components))) {
+    if (camera && UvToNdc(instruction, &components)) {
       const Operand& source = instruction.operands[1];
       if (source.type != TYPE_TEMP || source.relative || source.mode != 1) continue;
       const uint32_t read = (1u << SourceComponent(source, components[0])) | (1u << SourceComponent(source, components[1]));
-      if (Classify(instructions, index, source.index[0], read, reflection, 0, viewport_chains) == Source::TEXTURE) {
+      if (const Source found = Classify(instructions, index, source.index[0], read, reflection, 0, viewport_chains);
+          found == Source::TEXTURE || found == Source::VIEW_NDC) {
         sites.push_back({.instruction = index, .kind = Kind::NDC, .components = components});
       }
     } else if (camera && MadWith(instruction, HALF, MINUS_HALF, HALF, HALF, &components, true)) {
@@ -419,8 +444,8 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
       if (source.type != TYPE_TEMP || source.relative) continue;
       const uint32_t read = (1u << SourceComponent(source, components[0])) | (1u << SourceComponent(source, components[1]));
       const uint32_t written = (1u << components[0]) | (1u << components[1]);
-      if (Classify(instructions, index, source.index[0], read, reflection) != Source::CAMERA_PROJECTION
-          || !(compute || ReadAsCoordinate(instructions, index, destination.index[0], written))) {
+      if (const Source found = Classify(instructions, index, source.index[0], read, reflection);
+          found != Source::CAMERA_PROJECTION && found != Source::VIEW_NDC) {
         continue;
       }
       // Viewport chains: a projected uv first read by a product (mul, mad) whose other factor is made from the viewport (the
@@ -461,9 +486,121 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
           break;
         }
       }
-      if (!scaled_by_viewport) {
-        sites.push_back({.instruction = index, .kind = Kind::PROJECTED, .components = components});
+      if (scaled_by_viewport) continue;
+      if (!compute && !ReadAsCoordinate(instructions, index, destination.index[0], written)) {
+        // A texel address made from it (the contact march's: uv x utof(resinfo), then rounded, ftoi and clamped for its
+        // ld): that product x the draw's share, the uv left as it is (the march takes its NDC from it again).
+        // The temp components an operand of `reader` reads for the components `reader` writes.
+        const auto read_for_written = [](const Instruction& reader, const Operand& operand) {
+          uint32_t components_read = 0;
+          for (uint32_t component = 0; component < 4; ++component) {
+            if ((reader.operands[0].select & (1u << component)) != 0) components_read |= 1u << SourceComponent(operand, component);
+          }
+          return components_read;
+        };
+        const auto texture_size = [&](const Operand& factor, size_t reader_at) {
+          size_t before = reader_at;
+          const Operand* operand = &factor;
+          uint32_t needed = read_for_written(instructions[reader_at], factor);
+          for (int step = 0; step < 4 && operand->type == TYPE_TEMP && !operand->relative; ++step) {
+            size_t writer_at = before;
+            for (size_t at = before; at-- > 0;) {
+              const auto& operands = instructions[at].operands;
+              if (!operands.empty() && operands[0].type == TYPE_TEMP && operands[0].mode == 0 && !operands[0].relative
+                  && operands[0].index[0] == operand->index[0] && (operands[0].select & needed) != 0) {
+                writer_at = at;
+                break;
+              }
+            }
+            if (writer_at == before) return false;
+            const Instruction& writer = instructions[writer_at];
+            if (writer.opcode == OP_RESINFO) return true;
+            if ((writer.opcode != OP_MOV && writer.opcode != OP_UTOF && writer.opcode != OP_ITOF) || writer.operands.size() != 2) return false;
+            uint32_t next = 0;
+            for (uint32_t component = 0; component < 4; ++component) {
+              if ((needed & (1u << component)) != 0) next |= 1u << SourceComponent(writer.operands[1], component);
+            }
+            operand = &writer.operands[1];
+            needed = next;
+            before = writer_at;
+          }
+          return false;
+        };
+        for (size_t at = index + 1; at < instructions.size(); ++at) {
+          const Instruction& reader = instructions[at];
+          if (reader.operands.empty()) continue;
+          const auto ours = [&](const Operand& operand) {
+            return operand.type == TYPE_TEMP && !operand.relative && operand.index[0] == destination.index[0]
+                   && (read_for_written(reader, operand) & written) != 0;
+          };
+          if (reader.opcode == OP_MUL && reader.operands.size() == 3 && reader.operands[0].type == TYPE_TEMP && reader.operands[0].mode == 0
+              && std::popcount(reader.operands[0].select) == 2
+              && ((ours(reader.operands[1]) && texture_size(reader.operands[2], at)) || (ours(reader.operands[2]) && texture_size(reader.operands[1], at)))) {
+            const uint32_t low = std::countr_zero(reader.operands[0].select);
+            const uint32_t high = 31 - std::countl_zero(reader.operands[0].select);
+            sites.push_back({.instruction = at, .kind = Kind::PROJECTED, .components = {low, high}});
+            break;
+          }
+          const Operand& overwritten = reader.operands[0];
+          if (overwritten.type == TYPE_TEMP && overwritten.mode == 0 && overwritten.index[0] == destination.index[0]
+              && (overwritten.select & written) != 0) {
+            break;
+          }
+        }
+        continue;
       }
+      sites.push_back({.instruction = index, .kind = Kind::PROJECTED, .components = components});
+    } else if (camera && instruction.opcode == OP_MAD && instruction.operands.size() == 4) {
+      // A texture's uv plus a distortion (uv x g_screen_size.zw + d, d made from a texture read: the water's refraction,
+      // from its normal map, in the view's uv units), read as a coordinate: d x the draw's share, as the uv is. Without it
+      // the distortion grew by 1 / share below 100% (and a whole texture's read divides it by the share again). Offsets of
+      // constants alone (a blur's taps, a texel apart) stay.
+      const Operand& destination = instruction.operands[0];
+      const Operand& size = instruction.operands[2];
+      const Operand& offset = instruction.operands[3];
+      if (destination.type != TYPE_TEMP || destination.mode != 0 || destination.relative || std::popcount(destination.select) != 2
+          || size.type != TYPE_CONSTANT_BUFFER || size.relative || size.index[0] != reflection.camera_slot
+          || CameraRegister(reflection, size.index[1]) != Source::TEXTURE || offset.type != TYPE_TEMP || offset.relative || offset.mode != 1) {
+        continue;
+      }
+      components = {static_cast<uint32_t>(std::countr_zero(destination.select)), static_cast<uint32_t>(31 - std::countl_zero(destination.select))};
+      const uint32_t offset_read = (1u << SourceComponent(offset, components[0])) | (1u << SourceComponent(offset, components[1]));
+      // Whether temp `reg`'s `mask` before `before` was made from a texture read (its writers followed back, as Classify).
+      const auto made_from_read = [&](const auto& self, size_t before, uint32_t reg, uint32_t mask, int depth) -> bool {
+        if (depth > 8) return false;
+        for (size_t at = before; at-- > 0;) {
+          const Instruction& writer = instructions[at];
+          if (writer.operands.empty()) continue;
+          const Operand& written = writer.operands[0];
+          if (written.type != TYPE_TEMP || written.mode != 0 || written.relative || written.index[0] != reg || (written.select & mask) == 0) continue;
+          switch (writer.opcode) {
+            case OP_LD: case OP_SAMPLE: case OP_SAMPLE_C: case OP_SAMPLE_C_LZ: case OP_SAMPLE_L: case OP_SAMPLE_D: case OP_SAMPLE_B:
+            case OP_GATHER4: case OP_GATHER4_C: case OP_GATHER4_PO: case OP_GATHER4_PO_C:
+              return true;
+            default:
+              break;
+          }
+          for (size_t source = 1; source < writer.operands.size(); ++source) {
+            const Operand& operand = writer.operands[source];
+            if (operand.type != TYPE_TEMP || operand.relative) continue;
+            uint32_t read = 0;
+            for (uint32_t component = 0; component < 4; ++component) {
+              if ((written.select & mask & (1u << component)) != 0) read |= 1u << SourceComponent(operand, component);
+            }
+            if (self(self, at, operand.index[0], read, depth + 1)) return true;
+          }
+          return false;
+        }
+        return false;
+      };
+      // Its texture size's reciprocal (zw) for both components.
+      if (SourceComponent(size, components[0]) != 2 || SourceComponent(size, components[1]) != 3
+          || !ReadAsCoordinate(instructions, index, destination.index[0], destination.select)
+          || Classify(instructions, index, offset.index[0], offset_read, reflection) == Source::TEXTURE
+          || !made_from_read(made_from_read, index, offset.index[0], offset_read, 0)) {
+        continue;
+      }
+      sites.push_back({.instruction = index, .kind = Kind::OFFSET, .components = components});
     } else {
       switch (instruction.opcode) {
         case OP_LD: case OP_SAMPLE: case OP_SAMPLE_C: case OP_SAMPLE_C_LZ: case OP_SAMPLE_L: case OP_SAMPLE_D:
@@ -517,6 +654,10 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
     }
   }
   if (sites.empty()) return result;
+  // In code order (a texel address's site is the product after its uv, found at the uv), each instruction once: patched
+  // from the last back below.
+  std::ranges::sort(sites, {}, &Site::instruction);
+  sites.erase(std::ranges::unique(sites, {}, &Site::instruction).begin(), sites.end());
 
   // Two more temps: rS the share (cb12, 0 -> 1: xy the draw's, zw the frame's) and rU a site's coordinate.
   const uint32_t share = tokens[temps_at + 1];
@@ -562,20 +703,26 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
   // From the last site back (the earlier ones keep their place).
   for (auto site = sites.rbegin(); site != sites.rend(); ++site) {
     const Instruction& original = instructions[site->instruction];
-    if (site->kind == Kind::NDC) {
-      // div rU.xy, <the mad's uv, its two components into x / y>, rS.xyxx; the mad then reads rU.
-      const Operand& source = original.operands[1];
+    if (site->kind == Kind::NDC || site->kind == Kind::OFFSET) {
+      // div rU.xy, <the mad's uv, its two components into x / y>, rS.xyxx (an offset: mul rU.xy, <the mad's offset>,
+      // rS.xyxx); the mad then reads rU.
+      const bool ndc = site->kind == Kind::NDC;
+      const Operand& source = original.operands[ndc ? 1 : 3];
       std::vector<uint32_t> uv_operand(tokens.begin() + static_cast<ptrdiff_t>(source.at),
                                        tokens.begin() + static_cast<ptrdiff_t>(source.at + source.length));
       const uint32_t x = SourceComponent(source, site->components[0]);
       const uint32_t y = SourceComponent(source, site->components[1]);
       uv_operand[0] = (uv_operand[0] & ~0xFF0u) | ((x | (y << 2) | (x << 4) | (x << 6)) << 4);
       std::vector<uint32_t> added;
-      instruction(&added, OP_DIV, {masked(uv, 0b0011), uv_operand, swizzled(share, 0x04)});
+      instruction(&added, (ndc ? OP_DIV : OP_MUL), {masked(uv, 0b0011), uv_operand, swizzled(share, 0x04)});
       const auto rewritten = replaced(original, source, swizzled(uv, to_components(site->components)));
       added.insert(added.end(), rewritten.begin(), rewritten.end());
       put(original, added);
-      ++result.ndc;
+      if (ndc) {
+        ++result.ndc;
+      } else {
+        ++result.offset;
+      }
     } else if (site->kind == Kind::PROJECTED) {
       // mul rD.c0c1, rD.c0c1, rS.(x at c0, y at c1) right after the mad.
       const uint32_t destination = original.operands[0].index[0];
@@ -687,7 +834,7 @@ inline bool OnCreatePipeline(reshade::api::device* device, reshade::api::pipelin
       if (!patched.code.empty()) {
         renodx::utils::log::i("[Total War] Render scale: ", (type == reshade::api::pipeline_subobject_type::compute_shader ? "compute" : "pixel"),
                               " shader ", std::format("0x{:08X}", hash), " patched (", patched.ndc, " positions, ", patched.projected,
-                              " projected reads, ", patched.region, " region reads, ", patched.whole, " whole reads).");
+                              " projected reads, ", patched.region, " region reads, ", patched.whole, " whole reads, ", patched.offset, " offsets).");
       }
       found = runtime.patched.emplace(hash, std::move(patched.code)).first;
     }
