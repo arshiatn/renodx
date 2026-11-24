@@ -14432,6 +14432,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         junctions: remove links first before any delete.
         - [ ] fxi_ test fix (sent; branch ec_test_fix from atn-mods): R3-N1 bounded spins, R3-N2 comment, Thrones
         PARTICLE_EPOCH stale check + full Thrones suite -> rvl_ short look -> mrg_.
+        rv2_ PK2 REVIEW (render_mt/fca/designs/rv2_pk2_review.md + _handback.md; 1 BLOCKER / 10 MUST / 7 SHOULD / 4 NIT):
+        C1 protocol sound, GO after Rev 1 (M1-M6, M9); C2 / C3 GO; P1 NO-GO (B1: ascending ticket stores + Join(ALL)
+        without timeout can freeze the game -> descending stores, chain entered jobs only, race test); X1 NO-GO until M7;
+        V2 measure lines only; env switches need ATN's rules (Q-F). M2: the 'C3 alone 0' evidence mixed live toggles;
+        recompute from fold-free windows. M5: worker_pool / cpu_sets compile into Rome II + Thrones x86 via
+        engine_code.hpp (add their gates); draw_recording.hpp is Attila-only. -> pk2_ Rev 1 (sent; B3 = pk3_'s helper
+        unless rv3_ overrules); t4i_ told: arms carry env vars, GREY verdict, non-WPR timing frames, W3-only trap counts.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
