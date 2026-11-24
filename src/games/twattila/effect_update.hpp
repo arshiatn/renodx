@@ -434,8 +434,8 @@ static std::atomic<bool> allocation_failed = false;
 static bool allocation_said = false;
 static uint32_t last_round_units = MIN_ROUND_UNITS;  // the units' reserve for the next round
 static uint32_t last_node = 0;
-// The rule (the env and the tests set it), the last walk's decision (the hysteresis: back to serial at a new node, with the row
-// off or the session off), a switch Update says at the next present, the env generation read last and its bad value said.
+// The rule (the env and the tests set it), the last walk's decision (the hysteresis: back to serial through ResetRule), a switch
+// Update says at the next present, the env generation read last and its bad value said.
 static UnitRule unit_rule = SHIPPED_UNIT_RULE;
 static bool was_parallel = false;
 struct RuleSwitch {
@@ -483,6 +483,15 @@ inline void Note(EventKind kind, uint32_t site, uint32_t value) {
   if (index < events.size()) {
     events[index] = {.kind = kind, .site = site, .thread = GetCurrentThreadId(), .value = value};
   }
+}
+
+// The rule's state back to serial (a new node, a table above the slot limit, the row or the session off); a parallel one says
+// so at the next present, so the bench's bins follow.
+inline void ResetRule(std::string_view reset) {
+  if (was_parallel) {
+    rule_switch = {.pending = true, .reset = reset};
+  }
+  was_parallel = false;
 }
 
 // L2 off for the rest of the session, with its reason (stored once; Update logs it).
@@ -1160,8 +1169,7 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
         if (!row_on || session_off) return serial(SerialReason::SESSION_OFF);
         if (node != last_node) {
           last_node = node;
-          if (was_parallel) rule_switch = {.pending = true, .reset = "new node"};
-          was_parallel = false;
+          ResetRule("new node");
           return serial(SerialReason::NEW_NODE);
         }
         const uint32_t workers = worker_pool::Available(worker_pool::User::EFFECT_UPDATE);
@@ -1173,7 +1181,7 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
         const uint32_t table_capacity = Read(node + TABLE_OFFSET + 4);
         if (table_capacity > TABLE_SLOT_LIMIT) {
           Note(EventKind::BIG_TABLE, site_index, table_capacity);
-          was_parallel = false;
+          ResetRule("table above the slot limit");
           return serial(SerialReason::BIG_TABLE);
         }
         const auto same_key = [](uint32_t key, uint32_t other) {
@@ -1638,9 +1646,8 @@ inline void Update(bool row, bool spawns = false, uint32_t env_generation = 0) {
       renodx::utils::log::w(std::format("[Total War] RENODX_TW_L1_UNITS=\"{}\" does not parse; parallel from {}, serial below {}.", text, unit_rule.on, unit_rule.off));
     }
   }
-  if ((!row || session_off) && was_parallel) {
-    was_parallel = false;
-    rule_switch = {.pending = true, .reset = (row ? "session off" : "row off")};
+  if (!row || session_off) {
+    ResetRule(row ? "session off" : "row off");
   }
   if (rule_switch.pending) {
     rule_switch.pending = false;
@@ -1687,7 +1694,9 @@ inline void Update(bool row, bool spawns = false, uint32_t env_generation = 0) {
     if (sum_trace.top[0].count != 0) {
       line += " top effects";
       for (const TopEffect& effect : sum_trace.top) {
-        if (effect.count != 0) line += std::format(" 0x{:X} {}", effect.rva, effect.count);
+        if (effect.count != 0) {
+          line += std::format(" 0x{:X} {}", effect.rva, effect.count);
+        }
       }
       line += ",";
     }

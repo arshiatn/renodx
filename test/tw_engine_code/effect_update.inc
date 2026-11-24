@@ -2089,7 +2089,8 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
       std::printf("26d. Automatic L1: reset by \"%s\" (one line), a 170 world after it serial at {0, 200, 160}\n", reset);
     }
 
-    // The slot limit: a table of 4264 slots is not summed (serial, one stored note, said once at the present); 4096 slots are summed.
+    // The slot limit: a table of 4264 slots is not summed (serial, one stored note, said once at the present; a parallel state
+    // goes back to serial and says so, once); 4096 slots are summed.
     {
       ResetScheduler();
       clear_log();
@@ -2101,20 +2102,24 @@ int RunEffectUpdateTests(const TestBuild& build, uint8_t* game, uint8_t* patched
       auto serial = Build(560, shape);
       auto parallel = Build(560, shape);
       Walk(*serial, false);
+      ei::was_parallel = true;  // (the walks before ran parallel)
       Walk(*parallel, true);
       CHECK(Equal(*serial, *parallel, &why) && finish_round_checks(*parallel) && ei::last_round_units == SENTINEL_UNITS && ei::controls.table_sums == 0
-            && serial_count(ei::SerialReason::BIG_TABLE) == 1);
+            && serial_count(ei::SerialReason::BIG_TABLE) == 1 && !ei::was_parallel);
       CHECK(ei::event_count.load() == 1 && ei::events[0].kind == ei::EventKind::BIG_TABLE && ei::events[0].value == 4264);
       eu::Update(true);
       CHECK(lines_with("Parallel Effect Update: effect table above the slot limit, walks serial (site ") == 1 && lines_with("value 0x10A8)") == 1);
+      CHECK(lines_with("Parallel Effect Update: serial from here (table above the slot limit).") == 1);
       auto again = Build(561, shape);
       Walk(*again, true);
       CHECK(serial_count(ei::SerialReason::BIG_TABLE) == 1 && ei::event_count.load() == 0 && finish_round_checks(*again));  // (the present's line took the first)
+      eu::Update(true);
+      CHECK(lines_with("from here") == 1);  // already serial: no second line
       shape.gap = 672;  // 6 x 672 + 64 = 4096 slots: summed
       auto limit = Build(562, shape);
       Walk(*limit, true);
       CHECK(ei::last_round_units != SENTINEL_UNITS && ei::controls.table_sums == 1 && finish_round_checks(*limit));
-      std::printf("26d. Automatic L1: a table of 4264 slots walks serial without a sum (one note, said once); 4096 slots are summed\n");
+      std::printf("26d. Automatic L1: a table of 4264 slots walks serial without a sum (one note, said once; parallel -> serial said once); 4096 slots are summed\n");
     }
 
     // The bench env RENODX_TW_L1_UNITS=<on>:<off>, read when the generation changes: clamped to at least 256 and off to at most on; a bad value is said once and the
