@@ -254,13 +254,16 @@ static_assert(std::max({PROBE_EVEC_A.size(), PROBE_EVEC_B.size(), PROBE_READY.si
               <= SLOT);
 
 // The sites that have a probe, in the order of their slots.
-inline const std::array<Probe, 7> PROBES = {{{ITEM_PUSH_FIRST_SITE, PROBE_EVEC_A.data(), PROBE_EVEC_A.size()},
+inline constexpr std::array<Probe, 7> PROBES = {{{ITEM_PUSH_FIRST_SITE, PROBE_EVEC_A.data(), PROBE_EVEC_A.size()},
                                               {ITEM_PUSH_FIRST_SITE + 1, PROBE_EVEC_B.data(), PROBE_EVEC_B.size()},
                                               {4, PROBE_READY.data(), PROBE_READY.size()},
                                               {SWEEP_PREFETCH_INDEX, PROBE_SWEEP.data(), PROBE_SWEEP.size()},
                                               {PARTICLE_PREFETCH_INDEX, PROBE_PARTICLE.data(), PROBE_PARTICLE.size()},
                                               {CHILD_SUM_INDEX, PROBE_SUM.data(), PROBE_SUM.size()},
                                               {ENTRY_PREFETCH_INDEX, PROBE_ENTRY.data(), PROBE_ENTRY.size()}}};
+// `installed` has a bit and `stub_of` / `size_of` an entry for the first 32 sites only.
+static_assert(std::ranges::all_of(PROBES, [](const Probe& probe) { return probe.site < std::tuple_size_v<decltype(stub_of)>; })
+              && std::tuple_size_v<decltype(stub_of)> == 32 && std::tuple_size_v<decltype(size_of)> == 32);
 
 // The counters' addresses in the sentinels' order.
 inline std::array<const uint8_t*, FIELDS> Fields() {

@@ -1773,7 +1773,7 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
 // The stubs' memory: [code 0][code 1][data]. The stubs above are all on code page 0 (the worker sites' cut ends with it); the data page
 // (WorkerData, CountData) starts at `page + 2 * PAGE_SIZE`.
 constexpr size_t STUB_CODE_SIZE = 2 * PAGE_SIZE;
-static_assert(STUB_CODE_SIZE == 2 * PAGE_SIZE && COUNT_DATA_AT + sizeof(CountData) <= PAGE_SIZE);
+static_assert(COUNT_DATA_AT + sizeof(CountData) <= PAGE_SIZE);
 
 // A mask of the sites below (bits by `sites` index). The effect update's and the fill's own tables and the probe's `installed` keep 32 bits.
 using SiteMask = uint64_t;
@@ -3000,13 +3000,13 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
                    [[maybe_unused]] uint32_t draw_recording_groups = 0, const WorkerRows& worker_rows = {}) {
   pending_sweep::Update();
   const internal::SiteMask wanted = (enabled ? internal::CPU_CODE_SITES : 0u) | (lists ? internal::LIST_SITES : 0u) | (jobs ? internal::JOB_SITES : 0u)
-                          | (prefetch ? internal::PREFETCH_SITES : 0u) | (emitter_prefetch ? internal::EMITTER_PREFETCH_BIT : 0u)
-                          | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u) | (sweep_prefetch ? internal::SWEEP_PREFETCH_BIT : 0u)
-                          | (model_detail != 1.f ? internal::MODEL_DETAIL_BIT : 0u)
-                          | (worker_rows.animation != animation_rows::Stage::OFF ? internal::WORKER_FILL_BIT : 0u)
-                          | (worker_rows.pending_sweep_trace ? internal::WORKER_SWEEP_BIT : 0u)
-                          | (worker_rows.particle_count ? internal::PARTICLE_COUNT_SITES : 0u)
-                          | (worker_rows.exit_job_drain ? internal::EXIT_DRAIN_SITES : 0u);
+                                    | (prefetch ? internal::PREFETCH_SITES : 0u) | (emitter_prefetch ? internal::EMITTER_PREFETCH_BIT : 0u)
+                                    | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u) | (sweep_prefetch ? internal::SWEEP_PREFETCH_BIT : 0u)
+                                    | (model_detail != 1.f ? internal::MODEL_DETAIL_BIT : 0u)
+                                    | (worker_rows.animation != animation_rows::Stage::OFF ? internal::WORKER_FILL_BIT : 0u)
+                                    | (worker_rows.pending_sweep_trace ? internal::WORKER_SWEEP_BIT : 0u)
+                                    | (worker_rows.particle_count ? internal::PARTICLE_COUNT_SITES : 0u)
+                                    | (worker_rows.exit_job_drain ? internal::EXIT_DRAIN_SITES : 0u);
   if (wanted != 0 && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;

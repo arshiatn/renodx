@@ -3774,7 +3774,7 @@ int main(int argc, char** argv) {
       // (a) the job sleeps changed before the jobs go in
       foreign(6, hook);
       on();
-      CHECK(ec::found == (all & ~ec::JOB_SITES) && ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && holds(6, hook) && game_bytes(ec::JOB_SITES & ~0b01000000u));
+      CHECK(ec::found == (all & ~ec::JOB_SITES) && ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && holds(6, hook) && game_bytes(ec::JOB_SITES & ~ec::SiteMask{0b01000000}));
       CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("job stops") != std::string::npos);
       foreign(6, ec::sites[6].game);
       off();
@@ -3785,7 +3785,7 @@ int main(int argc, char** argv) {
       CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
       foreign(7, hook);
       off();
-      CHECK(ec::written == 0 && holds(7, hook) && game_bytes(all & ~0b10000000u) && (ec::found & 0b10000000u) == 0);
+      CHECK(ec::written == 0 && holds(7, hook) && game_bytes(all & ~ec::SiteMask{0b10000000}) && (ec::found & 0b10000000u) == 0);
       foreign(7, ec::sites[7].game);
       // switched on again with the destructor's call out of found: the other two job sites do not go in alone
       on();
@@ -3865,7 +3865,7 @@ int main(int argc, char** argv) {
     CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
     foreign(0, hook);
     off();
-    CHECK(ec::written == 0 && holds(0, hook) && game_bytes(all & ~1u));
+    CHECK(ec::written == 0 && holds(0, hook) && game_bytes(all & ~ec::SiteMask{1}));
     foreign(0, ec::sites[0].game);
     prepare_again();
     if (build.code->float4_reload_rva != 0) {

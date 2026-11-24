@@ -191,13 +191,13 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
 
   // 30b. Not the game's code as expected: the sites that are not found are not written, one line names them. A site whose own function is not as expected leaves the other to stand
   // (`stays`: the bits still found); the accessor or the pool's pointer wrong leaves neither.
-  const auto left_alone = [&](const char* why, uint32_t stays, const std::string& names) {
+  const auto left_alone = [&](const char* why, ec::SiteMask stays, const std::string& names) {
     prepare();
     CHECK((ec::found & ec::EXIT_DRAIN_SITES) == stays);
     const std::array<std::pair<size_t, uint32_t>, 2> exit_sites = {{{ec::EXIT_DRAIN_INDEX, site_rva}, {ec::EXIT_TEARDOWN_INDEX, teardown_site_rva}}};
     for (const auto& [index, rva] : exit_sites) CHECK((ec::sites[index].at == nullptr) == ((stays >> index & 1) == 0));
     ec::prefetch_logged = 0;
-    ec::asked = ~0u;
+    ec::asked = ~ec::SiteMask{0};
     ec::failed_writes = 0;
     const size_t lines_before = log_lines.size();
     drain(true);
