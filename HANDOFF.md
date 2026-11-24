@@ -14766,6 +14766,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN: groups Q41 (grey out Light Bounce Rays under RR + PT, tooltip '1 ray under Ray Reconstruction').
         - [ ] pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ Rev 1.2 -> rv5_; pk3_ Rev 3 ->
         rv3_ review.
+        ATN 11-24 ev: 'For GT-VBGI/AO and SSS, I can still check it out myself later even after bad numbers' + S1a-D's
+        4-6 h on WARP is too long. -> SH GI: no stop gate; s1a_ (sent) does M1 / S1 / NITs AND rvs_'s Q4 Attila-only _sh
+        wrappers now, row SHOWN '(Experimental)' default off (row off byte-identical) for ATN's in-game look; S1a-D =
+        tuning only, renders on the 5090 (run.ps1 item under gpu_job.lock, coord's GPU window), WARP only for byte checks.
+        B2 / B4 / S3 wait for ATN's look at S1a (not dropped). Memory feedback_experimental_rows updated.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
