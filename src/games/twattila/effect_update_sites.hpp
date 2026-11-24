@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "../../utils/log.hpp"
+#include "./code_ranges.hpp"
 #include "../twrome2/engine_tweaks.hpp"
 #endif
 
@@ -702,6 +703,7 @@ inline bool Prepare(HMODULE module) {
     return false;
   }
   FlushInstructionCache(GetCurrentProcess(), memory, CODE_SIZE);
+  device_loss::AddPartRange("B1", "effect_thunks", memory, CODE_SIZE);
   for (size_t index = 0; index < SITE_COUNT; ++index) {
     const SiteInfo& info = SITES[index];
     PatchedSite& site = sites[index];

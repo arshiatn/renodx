@@ -27,7 +27,12 @@ All four keep Peak, Paper White, UI, Settings Mode and Output (SDR also sets Out
 - General: Peak, Paper White, UI, Rendering Mode. Page 1 says to keep the game's Gamma Correction at 1: no shader of
   the game reads it (its value goes to a renderer method as 1 / value; the tone map encodes a fixed 1 / 2.2).
 - Extended: Hue Clip Emulation. PsychoV30 / Pragmap rows only in their modes (Advanced).
-- Extra: Bloom, Vignette, Godrays. Game-Specific: UI, Player Light Intensity (lights with shadows: point and spot
+- Extra: Bloom, VFX Brightness (Experimental, 1 the game's, HDR; restart after first moving it from 1: the effects'
+  colour x the row, `vfx_brightness.hpp`: 244 unlit effect shaders patched as the game creates them, the slider minus 1
+  at cb7.x on their draws, the add-on's fire and particle shaders by shared.h; the effects that read the scene's colour
+  (refraction, heat haze, shields, water: 21) and those lit by the sun's shadows and SSAO (effect surfaces: 49) are
+  left out), Ground Marker Brightness (1 the game's, HDR, the same restart; the 14 marker shaders, target / range / selection /
+  perception, at cb7.y; the lists from the census by `test/tw_d1_vfx/vfx_hashes.py`), Vignette, Godrays. Game-Specific: UI, Player Light Intensity (lights with shadows: point and spot
   shadow passes), Local Light Intensity (lights without), Sun Shadow Softness (Experimental: the PCSS light size x
   the row, Ultra shadows), Smooth Grade Shoulder (Experimental, off; Extended and PsychoV35), Game's Screen-Space
   Reflections (Experimental, off, restart: writes the settings object's SSR byte at swap chain creation, see Engine
@@ -40,7 +45,7 @@ The game makes a new swap chain 2-4 times a start and at each window-mode change
 last flip chain go first (`release_flip_chains_before_recreate`) and handles a removed device. LightVolume's SMAA
 passes and the scene's float targets are upgraded with view cloning and the hot swap.
 
-## Graphics 1 of 2 (Settings Mode)
+## Graphics (Settings Mode)
 
 Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); without them the page says so.
 
@@ -81,13 +86,31 @@ Needs renodx-tw-dlaa64.exe and its DLLs next to the add-on (the full download); 
 - `test/tw_divinity1/run.ps1`: the tone map 0x30A1D40D against the game's bytes: SDR (Native) exact, Extended and
   PsychoV35 on the game's mid gray (control: mode 1's curve on a curve), Smooth Grade Shoulder on (slope, the stock
   below 0.8) with a hard-knee control, the row off bit-equal to the tone map before it (a6762afab^; control: the row on).
+  Part 7, the V35 fit: PsychoV35's Contrast / Shadows / Saturation / Highlight Contrast minimax-fitted to the game's
+  SDR below white (grey 0.05 - 1 and 1 - 15 nits, OkLab chroma at equal lightness 1 - 30 nits) with R1's traced save
+  constants (level A), PsychoV35's highlights kept within 15 % at 1000 / 203 (20 % at 2500 / 275). A fit within 5 %
+  would ship as shared.h DIVINITY_V35_* (Reset and Recommended start from them); none reaches it, so they stay Musa's
+  own (1). WARP: the best 1.29 / 1.42 / 0.76 / 0.81 misses by 20.6 % (10 % guard 28.9 %, 20 % guard 22.2 %); with
+  Shadow Contrast (below mid gray only) as a fifth, seeded from the four's best, 1.27 / 1.44 / 0.78 / 0.81 / 1.15
+  misses by 18.3 % (10 % guard 16.0 %, 20 % guard 17.1 %; grey 0.05 - 1 nits x0.82..x1.18 and chroma 1 - 30 nits x0.83); Musa's
+  own misses by 148.4 % (grey x2.07..x2.48 at 0.05 - 1 nits, x1.13..x2.01 at 1 - 15 nits, chroma x0.86 at 1 - 30
+  nits); the menu's Musa's own x3.28..x6.85 / x1.14..x2.96. Controls: Musa's own must miss by over 5 %, Extended is
+  the game's grey (0.00 %).
 - `test/tw_d1_rays/run.ps1`: the helper's inputs and the rays' replacements, the game's sun pass reading them: the motion
   and the rays' positions within 0.002 px, the colour's round trip, the guides against its own normal decode, the shadow
   mask and the AO over the SSAO result giving its light, Path-Traced Ambient's sky texels against the pass's ambient
   facing each axis (1.2e-7), the pass from PerFrame without the ambient bit-equal to it from R1's zeroed, the bounce's
   apply against the pass's ambient (2.4e-7); each with a control that must fail.
 - `test/tw_d1_post/run.ps1`: 22 replaced passes Vanilla exact against the game's census bytes, each with a wrong copy
-  that must fail; the light rows at 2 give twice the game's light.
+  that must fail; the light rows at 2 give twice the game's light. The PCSS sun shadows (0x8F114E47) also with R1 save
+  T1's traced PerShadow / PerView (`pcss_r1_cb0.txt`, `pcss_r1_cb12.txt`; the cascades' projection, not in the trace,
+  orthographic from their widths and far planes). Its output stays one value with them too: the harness's
+  interpolants (not the game's view rays) put every pixel's receiver in front of the cascades, so the filter's branch
+  is still not reached offline (the game's vertex shader and a traced GBuffer1 would be needed).
+- `test/tw_d1_vfx/run.ps1`: VFX and Ground Marker Brightness's patch on each of the 258 effect / marker shaders' census
+  bytes: the program the game's plus its row's brightness (D3DDisassemble), and on WARP the game's bits with cb7
+  unbound, both rows at 1 and the other row alone at 2, rgb x 2 with its own row alone at 2; controls: a pixel drawn,
+  the colour changed at 2.
 - `test/tw_d1_swapchain`, `test/tw_device_loss`, `test/tw_output_encoding`: the window's chains, device loss, Output.
 - `test/tw_psychov30_nan/run.ps1`: PsychoV30's NaN / infinity guards live against a copy without them.
 
@@ -105,6 +128,23 @@ The Steam exe, 21,605,888 bytes, SHA-256 f7c759e7...33d88, ASLR on (addresses at
   settings apply (0x140820990, vtable slot 0x141064570). On a change it creates SSR (0x140820040) or releases it
   (0x14081FEB0). So SSR can only be turned on by writing that byte in the game's memory (the Game's Screen-Space
   Reflections row).
+
+## Frame facts (R1's traces: the menu and the Act 2 / 3 save)
+
+- Upgraded RGBA8 targets: the tone map's and EoCFog's outputs, SMAA's edges and weights (each read only by a replaced,
+  Vanilla-exact pass) and the back buffer. In the save the half-size SSAO targets were RGBA16F (in the menu RGBA8):
+  DeferredSSAO (0x385DCF3C) writes unsaturated, its blurs (0x0524EF64, 0xB887004F) saturate, so the sun pass and the
+  forward materials see the game's range at 16-bit precision. The G-buffer, the shadow mask and the UI layer stay RGBA8.
+- Clamps: the 9 census candidates did not draw in R0 or R1. The 7 material emissive clamps are authored in the
+  material graphs, bloom 0x921AE8C3's saturate is in its source, DOF 0x95B9D5E8 saturates only its CoC: the
+  developers' look, left as it is.
+- Tone map (0x30A1D40D): the ColorMatrix is a saturation matrix with weights 0.3086 / 0.6094 / 0.0820 (save 1.1, menu
+  1.14); Params A / B / D and PPHDRExposure's (min, max) are atmospheres.tsv's: the save's ThePrisonGardenOfStoneKing
+  Sunny (A 0.22, B 0.18, D 0.2, exposure 1 / 1.5), the menu's Menuscreen_Cyseal (A 0.48, B 0.14, D 0.62, 0.85 / 1.5).
+  Source / Target colour were white in both: a scene with coloured ones (the beach, Black Cove) is not traced yet.
+- Fire 0xED93F883 (alpha blend): (texture x 0.5 + 0.5) x vertex colour, fogged; candles 0x93AEBB93 (additive): texture x
+  vertex colour x Brightness x fades. Their and the lights' constants are not in R1's traces (the frame trace has them
+  since this build).
 
 ## Credits
 

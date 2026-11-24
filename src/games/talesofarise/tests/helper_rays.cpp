@@ -34,6 +34,9 @@
 
 #include "../ray_tracing.hpp"
 
+// utils/settings.hpp (through ray_tracing.hpp) names the add-on.
+extern "C" __declspec(dllexport) const char* const NAME = "Tales helper_rays test";
+
 namespace {
 
 using Microsoft::WRL::ComPtr;

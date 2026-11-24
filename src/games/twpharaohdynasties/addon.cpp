@@ -20,6 +20,7 @@
 #include <cmath>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <deps/imgui/imgui.h>
 #include <include/reshade.hpp>
@@ -107,6 +108,14 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, the ACES fit).
 constexpr float HUE_CLIP_DEFAULT = 80.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): its ACES fit's shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", PHARAOH_V35_CONTRAST},
+    {"v35_shadows", PHARAOH_V35_SHADOWS},
+    {"v35_saturation", PHARAOH_V35_SATURATION},
+    {"v35_highlight_contrast", PHARAOH_V35_HIGHLIGHT_CONTRAST},
+};
+
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f && IsHDRMode();
 }
@@ -177,6 +186,7 @@ void ApplyResetPreset() {
       {"filmgrain", 0.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 // SDR: the game's own tonemapper and look, every other control at its default; video AutoHDR is already off in Reset.
@@ -441,8 +451,8 @@ renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
 // GT-VBAO this frame: its setting, not under the rays' AO or the paths' (as Attila's rt_ambient_alone): the rays' AO stands
-// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO stays
-// there, as when the page turned GT-VBAO off with them.
+// in place of the game's in the sun's t_ssao (rt_ambient_combine's in-place path), and under the paths the game's SSAO is
+// left out (BuildRuntimeData), as when the page turned GT-VBAO off with them.
 bool bitmask_ao = false;
 
 void BuildRuntimeData() {
@@ -475,12 +485,23 @@ void BuildRuntimeData() {
   // Ambient Occlusion: Visibility Bitmask in place of the AO's horizontal blur: the addon's own shader
   // (ao_bitmask_blur, twwarhammer2/line_sweep_ao.hpp) with the blur's bindings; the blur's replacement stays the game's
   // code (Game's costs what it did). The collect always runs: where no blur runs (Warhammer II at some settings), the
-  // game's AO stays, never an unwritten one.
+  // game's AO stays, never an unwritten one. While ours stands in for the game's AO (the rays' AO or Path-Traced
+  // Ambient) the blur's output is cleared open instead (twattila/ao_readers.hpp ClearInsteadOfLineSweepBlur): in-game
+  // SSAO 1 and 2 no longer multiply into the paths, as SSAO 2's chain below.
   custom_shaders[0x6CF96BAF].on_draw = [](auto* cmd_list) {
+    if (twattila::ao_readers::ClearInsteadOfLineSweepBlur(cmd_list)) return false;
     if (!bitmask_ao) return true;
     return !tw::line_sweep_ao::DispatchInstead(cmd_list, __ao_bitmask_blur, &shader_injection, sizeof(shader_injection),
                                                false, __ao_upsample_blur, shader_injection.ssao_resolution != 0.f);
   };
+  // The game's SSAO 2 (the HBAO at in-game SSAO 3) has no reader in the data run's 5 traces but the sun draws' t12 (phase 2's
+  // census by handle) and the building pools (AO_READERS, trace_12). So while ours stands in for it (the rays' AO, which the
+  // sun draws and the pools read, or Path-Traced Ambient) the chain doesn't run, the generate's target cleared to open in its
+  // place (twattila/ao_readers.hpp, Troy's way). Otherwise: the game's draws.
+  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); }};
+  custom_shaders[0xD42C3523].on_draw = [](auto* cmd_list) { return !twattila::ao_readers::ClearInsteadOfGenerate(cmd_list); };
+  custom_shaders[0x7F637259].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
+  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.
@@ -1547,7 +1568,15 @@ void BuildRuntimeData() {
     //     },
     // },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 // Graphics (Experimental): engine values x the sliders (their tweaks are filled in ConfigureAddon).
@@ -1578,9 +1607,9 @@ twattila::feature_settings::SssSliders sss_sliders;
 twattila::feature_settings::AaSliders aa_sliders;
 // Ray tracing's (twattila/rt_scene.hpp).
 twattila::rt_scene::Sliders rt_sliders;
-// The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View, and Hills Out of
-// View for its terrain (Experimental, off: no game run has shown them yet).
-float rays_units_out_of_view_row = 0.f;
+// The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View (on, ATN
+// 2026-11-22), and Hills Out of View for its terrain (Experimental, off: no game run has shown it yet).
+float rays_units_out_of_view_row = 1.f;
 float rays_hills_out_of_view_row = 0.f;
 // Fire Shadows from Particle Lights (Experimental, off, not in the RT/PT preset): PARTICLE_LIGHTS' draws left alone while 0.
 float particle_light_shadows_row = 0.f;
@@ -2995,8 +3024,8 @@ void ConfigureAddon() {
                                              .smoke_strength = &smoke_map_sliders.strength,
                                              .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row,
+                                             // Shadow Casters Out of View: on (ATN 2026-11-22), in the defaults and RT/PT.
                                              .rays_units_out_of_view = &rays_units_out_of_view_row,
-                                             .units_out_of_view_tested = false,
                                              .rays_skip_cascades = &rays_skip_cascades_row,
                                              .rays_untraced_casters = &rays_untraced_casters_row,
                                              // Smooth Banner Shadows: the thin sheets (cloth 2F2A0E7E, flags 8DE94E2F) don't
@@ -3011,7 +3040,9 @@ void ConfigureAddon() {
                                              .smoke_map_tested = false,
                                              .smoke_shadows_tested = false,
                                              .sprites_tested = false,
-                                             .lights_own_row = true});
+                                             .lights_own_row = true,
+                                             // Fog Shadows / Specular Occlusion defaulted to 1 here before f41f04fd0.
+                                             .fog_shadows_defaulted_on = true});
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
@@ -3051,11 +3082,12 @@ bool AttachAddon() {
   // Rows saved at an old default, cleared once: Smoke Shadows and Sprite Soldier Shadows were saved hidden at RT/PT's 1
   // (SetRaysPresetDefaults) until they showed, Experimental and off. Rays Replace Shadow Maps was saved at its old
   // Experimental 0; the row is gone since (the rays always replace) and nothing reads the key. Sky Debanding was saved at its old Medium (default, Reset and every Recommended);
-  // now off in every preset, as Attila's.
+  // now off in every preset, as Attila's. Shadow Casters Out of View was saved at its old 0 (on since 545b99ced, ATN 31).
   twattila::graphics_page::ClearSavedRows(1, {"RayTracedSmokeShadows"});
   twattila::graphics_page::ClearSavedRows(2, {"RayTracedSpriteShadows"});
   twattila::graphics_page::ClearSavedRows(3, {"RayTracedReplaceShadowMaps"});
   twattila::graphics_page::ClearSavedRows(4, {"sky_deband"});
+  twattila::graphics_page::ClearSavedRows(5, {"RayTracedUnitsOutOfView"});
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -3065,10 +3097,11 @@ bool AttachAddon() {
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 
-  // Ray-Traced Water Reflections (twattila/water_reflections.hpp): traced at backward_ssr 9A55B7F2 (its inputs from t1); where
-  // they left from the water, the chain after it left out too (0B78827B, 55298A11, F49D4738) and our apply DE4F92CD drawn.
+  // Ray-Traced Water Reflections (twattila/water_reflections.hpp): traced at heights_part1 E3C49D93 (its depth at t1) with last
+  // frame's light, else at backward_ssr 9A55B7F2 (its inputs from t1); where they left from the water, the height pyramid and
+  // the chain after it left out too (0B78827B, 55298A11, F49D4738) and our apply DE4F92CD drawn.
   twattila::water_reflections::Install(&custom_shaders,
-                                       {.backward_ssr = 0x9A55B7F2, .inputs_slot = 1, .chain = {0x0B78827B, 0x55298A11, 0xF49D4738}, .apply = 0xDE4F92CD,
+                                       {.heights_part1 = 0xE3C49D93, .backward_ssr = 0x9A55B7F2, .inputs_slot = 1, .chain = {0x0B78827B, 0x55298A11, 0xF49D4738}, .apply = 0xDE4F92CD,
                                         .apply_code = __0xDE4F92CD},
                                        &rt_sliders);
   renodx::mods::shader::Use(DLL_PROCESS_ATTACH, custom_shaders, &shader_injection);
@@ -3096,7 +3129,9 @@ bool AttachAddon() {
   twattila::contact_shadows_off::Install(LIGHT_BOUNCE_DRAWS);
   // The rays replace the atlas's sun shadow: also after the screen-space shadows' and before the Light Bounce's. Skip the
   // Shadow Maps through Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
-  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS);
+  // The baked far map too (s1 sBakedShadowBuffer: in all 12 sun draws only its 10 comparisons of t1; ATN #30, "ours
+  // replaces the game's").
+  twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS, 2, 1);
   twattila::rt_scene::InstallShadowsOnly();
   // The frame trace (the data run): renodx_trace_now next to the exe traces the next frame, and FrameTrace's frame also
   // at 100% (twattila/frame_trace.hpp). The sun light draws' (standard and skin) and the tone mapper's constants once

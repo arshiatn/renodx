@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstring>
 #include <format>
+#include <new>
 #include <span>
 #include <string>
 #include <string_view>
@@ -289,6 +290,8 @@ static bool control_note_on_mismatch = false;
 static bool control_all_or_none = false;
 // Wanted asks for the stubs whether or not their cut is in
 static bool control_stubs_without_cut = false;
+// The check's scratch buffers cannot be made (std::bad_alloc)
+static bool control_check_alloc_fails = false;
 #else
 constexpr bool control_overlap = false;
 constexpr bool control_drop_last = false;
@@ -302,6 +305,7 @@ constexpr bool control_ignore_pixel_byte = false;
 constexpr bool control_note_on_mismatch = false;
 constexpr bool control_all_or_none = false;
 constexpr bool control_stubs_without_cut = false;
+constexpr bool control_check_alloc_fails = false;
 #endif
 
 using RecordCopy = void(__thiscall*)(void* functor, Range* range);
@@ -389,11 +393,29 @@ static FillJob fold_fill;
 // Uninstall runs on the detach path: at process exit no other game thread is left, and on a runtime unload a thread
 // between the retargeted call and the count is not seen (a window of a few instructions).
 static std::atomic<int32_t> active = 0;
-static bool check_enabled = false;  // RENODX_TW_FILL_CHECK=1, read once by Prepare
-static std::atomic<uint32_t> checked = 0;
+// RENODX_TW_FILL_CHECK=1, read once by Prepare; its summary line needs a pool trace window (none: nothing is said)
+static bool check_enabled = false;
+static std::atomic<uint32_t> checked = 0;  // the fills compared since the start
+static uint32_t check_window = 0;          // the pool trace window whose compared fills are being counted (0: none open)
+static uint32_t check_window_start = 0;
 static std::atomic<uint32_t> check_mismatches = 0;
-static std::atomic<uint32_t> check_skipped = 0;
+static std::atomic<uint32_t> check_skipped = 0;  // fills not compared: too big, scratch busy or out of memory
+// The two scratch buffers of a compared fill (serial, dispatched): kept at their high water, zeroed per fill. `check_busy` is
+// taken for the compare, so a second thread's fill in check mode is skipped, not mixed in.
+static std::array<std::vector<uint8_t>, 2> check_scratch;
+static std::atomic<bool> check_busy = false;
+// The fills that ended with chunks not done since the start: the first one is said at the next present, the total at detach.
 static std::atomic<uint32_t> incomplete_fills = 0;
+struct IncompleteFill {
+  uint8_t site = 0;
+  uint32_t count = 0;
+  uint32_t chunks_done = 0;
+  uint32_t chunks = 0;
+  const char* join = "";
+};
+static IncompleteFill first_incomplete = {};
+static std::atomic<bool> first_incomplete_kept = false;
+static bool first_incomplete_said = false;
 static std::array<TraceRecord, TRACE_RECORDS> trace_records;
 static std::atomic<uint32_t> trace_count = 0;
 
@@ -404,6 +426,27 @@ constexpr std::array<uint32_t, 3> FOLD_GROUPS = {
     1u << static_cast<uint32_t>(draw_recording::Group::COLOUR_A),
     (1u << static_cast<uint32_t>(draw_recording::Group::DEPTH_B))
         | (1u << static_cast<uint32_t>(draw_recording::Group::COLOUR_B))};
+#endif
+
+// A fill that ended with chunks not done. It runs in the game's call: a count and the first one's numbers, no log, no allocation.
+inline void NoteIncomplete(const IncompleteFill& fill) {
+  if (incomplete_fills.fetch_add(1, std::memory_order_relaxed) == 0) {
+    first_incomplete = fill;
+    first_incomplete_kept.store(true, std::memory_order_release);
+  }
+}
+
+#if defined(TWATTILA_DRAW_RECORDING)
+static size_t fold_site = 0;  // the site whose fold is open
+
+// The fold's close found chunks not done (draw_recording's callback: the fold knows no site).
+inline void NoteFoldIncomplete(uint32_t chunks_done) {
+  NoteIncomplete({.site = static_cast<uint8_t>(fold_site),
+                  .count = fold_fill.end - fold_fill.begin,
+                  .chunks_done = chunks_done,
+                  .chunks = fold_fill.chunks,
+                  .join = "fold"});
+}
 #endif
 
 inline void KeepTrace(const TraceRecord& record) {
@@ -486,7 +529,11 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
                              workers, [&] { FillWork(&job, 0); });
         chunks_done = job.chunks_done.load(std::memory_order_acquire);
         if (chunks_done != chunks) {
-          incomplete_fills.fetch_add(1, std::memory_order_relaxed);
+          NoteIncomplete({.site = static_cast<uint8_t>(site),
+                          .count = count,
+                          .chunks_done = chunks_done,
+                          .chunks = chunks,
+                          .join = (control_all_join ? "ALL" : "ENTERED")});
         }
         return joined;
       };
@@ -501,12 +548,23 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
         std::memcpy(&stride, tracker + TRACKER_STRIDE, sizeof(stride));
         const uint64_t bytes = uint64_t{count} * stride;
         const uint32_t first = (SITES[site].copy == Copy::LIST_ITEMS ? words[2] : 0u);
-        if (range->begin == first && bytes <= CHECK_MAX_BYTES) {
-          std::vector<uint8_t> serial_bytes(bytes);
-          std::vector<uint8_t> parallel_bytes(bytes);
+        bool scratch_ready = false;
+        if (range->begin == first && bytes <= CHECK_MAX_BYTES && !check_busy.exchange(true, std::memory_order_acquire)) {
+          try {
+            if (control_check_alloc_fails) throw std::bad_alloc();
+            for (std::vector<uint8_t>& scratch : check_scratch) {
+              scratch.resize(std::max<size_t>(scratch.size(), bytes));
+              std::fill_n(scratch.begin(), bytes, uint8_t{0});
+            }
+            scratch_ready = true;
+          } catch (const std::bad_alloc&) {
+            check_busy.store(false, std::memory_order_release);
+          }
+        }
+        if (scratch_ready) {
           std::array<std::array<uint8_t, TRACKER_BYTES>, 2> trackers;
           std::array<std::array<uint32_t, 3>, 2> functors = {words, words};
-          const std::array<uint8_t*, 2> destinations = {serial_bytes.data(), parallel_bytes.data()};
+          const std::array<uint8_t*, 2> destinations = {check_scratch[0].data(), check_scratch[1].data()};
           for (size_t side = 0; side < 2; ++side) {
             std::memcpy(trackers[side].data(), tracker, TRACKER_BYTES);
             const auto destination = reinterpret_cast<uintptr_t>(destinations[side]);
@@ -517,13 +575,14 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
           copy(functors[0].data(), &whole);
           fill(functors[1].data());
           checked.fetch_add(1, std::memory_order_relaxed);
-          if (bytes != 0 && std::memcmp(serial_bytes.data(), parallel_bytes.data(), bytes) != 0) {
+          if (bytes != 0 && std::memcmp(check_scratch[0].data(), check_scratch[1].data(), bytes) != 0) {
             if (check_mismatches.fetch_add(1, std::memory_order_relaxed) < 8) {
               renodx::utils::log::w(
                   "[Total War] Parallel Instance Fill check: the dispatched fill differs from the serial one (",
                   SITES[site].name, ", ", count, " items, ", stride, " bytes each)");
             }
           }
+          check_busy.store(false, std::memory_order_release);
         } else {
           check_skipped.fetch_add(1, std::memory_order_relaxed);
         }
@@ -545,6 +604,7 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
         void* const ring = *reinterpret_cast<void**>(static_cast<uint8_t*>(tracker) + dr::TRACKER_RING);
         const uint32_t fold_workers = dr::FoldWorkers(FOLD_GROUPS[stub]);
         if (fold_workers != 0 && *(static_cast<const uint8_t*>(ring) + dr::RING_FLAG) == 0) {
+          fold_site = site;
           fold_fill.copy = copy;
           fold_fill.functor = functor;
           fold_fill.begin = range->begin;
@@ -559,7 +619,7 @@ inline void Dispatch(size_t site, Range* range, void* functor, void* manager) {
                                  .context = &fold_fill,
                                  .chunks_done = &fold_fill.chunks_done,
                                  .chunks = chunks,
-                                 .incomplete = &incomplete_fills},
+                                 .incomplete = &NoteFoldIncomplete},
                                 fold_workers);
         }
       }
@@ -959,13 +1019,27 @@ inline uint32_t Wanted(bool row, [[maybe_unused]] bool fold_row = false, [[maybe
                             record.render_ticks * microseconds));
     }
   }
-  if (const uint32_t compared = checked.exchange(0, std::memory_order_relaxed); compared != 0) {
-    renodx::utils::log::i("[Total War] Parallel Instance Fill check: ", compared, " fills compared, ",
-                          check_mismatches.load(std::memory_order_relaxed), " mismatches so far, ",
-                          check_skipped.load(std::memory_order_relaxed), " skipped so far");
+  // Check mode: one line per pool trace window (at the first present after it), not one per present.
+  if (worker_pool::Tracing()) {
+    if (check_window != worker_pool::TraceWindow()) {
+      check_window = worker_pool::TraceWindow();
+      check_window_start = checked.load(std::memory_order_relaxed);
+    }
+  } else if (check_window != 0) {
+    if (const uint32_t compared = checked.load(std::memory_order_relaxed) - check_window_start; compared != 0) {
+      renodx::utils::log::i("[Total War] Parallel Instance Fill check (trace window ", check_window, "): ", compared,
+                            " fills compared, ", check_mismatches.load(std::memory_order_relaxed), " mismatches so far, ",
+                            check_skipped.load(std::memory_order_relaxed), " skipped so far");
+    }
+    check_window = 0;
   }
-  if (const uint32_t incomplete = incomplete_fills.exchange(0, std::memory_order_relaxed); incomplete != 0) {
-    renodx::utils::log::w("[Total War] Parallel Instance Fill: ", incomplete, " fills ended with chunks not done");
+  if (first_incomplete_kept.load(std::memory_order_acquire) && !first_incomplete_said) {
+    first_incomplete_said = true;
+    renodx::utils::log::w(std::format(
+        "[Total War] Parallel Instance Fill: a fill ended with chunks not done ({}, {} items, chunks {}/{}, join rule {}); "
+        "no more of these lines this run, the total is said at detach.",
+        SITES[first_incomplete.site].name, first_incomplete.count, first_incomplete.chunks_done, first_incomplete.chunks,
+        first_incomplete.join));
   }
   return wanted;
 }

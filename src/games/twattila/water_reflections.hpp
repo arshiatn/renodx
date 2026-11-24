@@ -7,12 +7,18 @@
 
 // Ray-Traced Water Reflections (Experimental, off; tools\tw\pharaoh\reflections_plan.md; Pharaoh's, moved here for Troy): the
 // water is the only surface the game's screen-space reflections touch (ssr_new: extract_mask takes the G-buffer's channel 3
-// alpha bit 64, which only the sea and the rivers write). The rays are traced once a frame at backward_ssr, after the water's
-// G-buffer and light: rt_scene's Reflections with the water's depth (its t_depth_src: the positions and the guides again from
-// it, rt_host's rewrite_guides) and this frame's light (its t_colour_src, R16G16B16A16F: rt_host's light_copy). Where they left
-// from the water, the game's chain is left out (backward_ssr, downsample and its 10 downsample_mip and 10 lute_mip: in every
-// trace their target's only other reader is the apply) and our copy of the apply (the addon's shaders/ssrapply00) draws with
-// the rays (OnWaterApplyDraw). Under the game's MSAA (its multisampled views bound) the game's reflections stay. The addon
+// alpha bit 64, which only the sea and the rivers write). The rays are traced once a frame, after the water's G-buffer and
+// light: rt_scene's Reflections with the water's depth (its t_depth_src: the positions and the guides again from it, rt_host's
+// rewrite_guides) and this frame's light (its t_colour_src, R16G16B16A16F: rt_host's light_copy). At the height pyramid's
+// first dispatch (heights_part1, which binds the same depth; nothing between it and backward_ssr writes the light) with the
+// light view backward_ssr bound last frame (in 49 traces the same view all session, a new one only after a load); else, the
+// first frame, after a load, under MSAA, at backward_ssr itself. Where they left from the water, the game's chain is left out
+// (the pyramid's four dispatches, backward_ssr, downsample and its 10 downsample_mip and 10 lute_mip: in every trace their
+// targets' only other readers are each other and the apply, census g17_/heights_census.py) and our copy of the apply (the
+// addon's shaders/ssrapply00) draws with the rays (OnWaterApplyDraw). backward_ssr checks that the depth and light are the
+// ones heights_part1 traced with: a new light without a gap frame gives one frame of last frame's light on the water (logged;
+// three frames in a row: the pyramid's decision off for the session). Under the game's MSAA (its multisampled views bound) the
+// game's reflections stay. The addon
 // leaves its apply out of its custom shaders (OnWaterApplyDraw draws ours), Installs before renodx::mods::shader::Use, and
 // passes its rows through SetRows and its rt_scene settings through GateSettings.
 
@@ -45,12 +51,21 @@ namespace twattila::water_reflections {
 
 // The game's ssr_new shaders and our apply.
 struct Shaders {
-  uint32_t backward_ssr = 0;            // the rays traced at its dispatch
+  uint32_t heights_part1 = 0;           // the height pyramid's first dispatch: the rays traced here with last frame's light view
+  uint32_t backward_ssr = 0;            // else at its dispatch
   UINT inputs_slot = 0;                 // backward_ssr's t_depth_src: its multisampled view, the light and its multisampled view after it
   std::array<uint32_t, 3> chain = {};   // downsample, downsample_mip, lute_mip: left out where the rays left from the water
   uint32_t apply = 0;                   // ps50_apply: ours in its place
   std::span<const uint8_t> apply_code;  // ours (shaders/ssrapply00)
 };
+
+// The height pyramid after heights_part1, the same bytes in Troy and Pharaoh: heights_part2, heights_part3, clear_buffer.
+constexpr std::array<uint32_t, 3> HEIGHTS = {0x6F8F5A27, 0xFD16D491, 0xEA2A706A};
+constexpr UINT HEIGHTS_DEPTH_SLOT = 1;  // heights_part1's depth and its multisampled view (backward_ssr's)
+constexpr int EARLY_MISMATCHES = 3;     // in a row: the decision at heights_part1 off for the session
+// The decision at heights_part1 hooked: off until its CPU decision test and its WARP bit-equal test pass (rve_ M1); off,
+// backward_ssr decides every frame as before and no light is kept.
+constexpr bool EARLY_DECISION = false;
 
 namespace internal {
 
@@ -65,8 +80,55 @@ struct WaterReflections {
   bool msaa_logged = false;
   bool logged = false;
   bool scaled_logged = false;
+  // backward_ssr's light view and its frame: heights_part1 traces with it the next frame. A ComPtr: a view the game released
+  // would dangle.
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> light;
+  uint64_t light_frame = UINT64_MAX;
+  uint64_t early_frame = UINT64_MAX;      // the frame traced at heights_part1 (the chain left out from it)
+  ID3D11Resource* early_depth = nullptr;  // its depth and light (compared only)
+  ID3D11Resource* early_light = nullptr;
+  int mismatches = 0;                     // in a row
+  bool early_off = false;
+  bool mismatch_logged = false;
 };
 inline WaterReflections water_reflections;
+
+inline uint64_t Frame() {
+  auto& runtime = rt_scene::internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  return runtime.frame;
+}
+
+inline ID3D11Texture2D* TextureOf(ID3D11ShaderResourceView* view, Microsoft::WRL::ComPtr<ID3D11Texture2D>* texture,
+                                  D3D11_TEXTURE2D_DESC* desc) {
+  *desc = {};
+  if (view == nullptr) return nullptr;
+  Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+  view->GetResource(resource.GetAddressOf());
+  if (FAILED(resource.As(texture))) return nullptr;
+  (*texture)->GetDesc(desc);
+  return texture->Get();
+}
+
+inline bool Multisampled(std::span<ID3D11ShaderResourceView* const> views) {
+  return std::ranges::any_of(views, [](ID3D11ShaderResourceView* view) {
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    D3D11_TEXTURE2D_DESC desc = {};
+    TextureOf(view, &texture, &desc);
+    return desc.SampleDesc.Count > 1;
+  });
+}
+
+// The immediate context where the rays' water reflections are on; else nullptr (the game's chain runs).
+inline ID3D11DeviceContext* WaterContext(reshade::api::command_list* cmd_list) {
+  if (sliders->reflections == 0.f || sliders->water_reflections == 0.f || !rt_scene::internal::active.load(std::memory_order_relaxed)) {
+    return nullptr;
+  }
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return nullptr;
+  return native;
+}
 // Our apply made on `device` (again on a new one); false: not made. With water_reflections' lock held.
 inline bool MakeWaterApply(ID3D11Device* device) {
   auto& state = water_reflections;
@@ -77,28 +139,125 @@ inline bool MakeWaterApply(ID3D11Device* device) {
   state.device = device;
   return true;
 }
-// False: left out (the rays left from the water).
-inline bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
+// After Reflections (`views`): true where the rays left from the water and our apply is made (the chain left out from
+// `hash` on, water_rays set).
+inline bool TakeWater(ID3D11DeviceContext* native, const std::array<ID3D11ShaderResourceView*, 2>& views, uint32_t hash) {
+  bool water_traced = false;
+  {
+    auto& runtime = rt_scene::internal::runtime;
+    const std::unique_lock lock(runtime.mutex);
+    water_traced = views[0] != nullptr && runtime.settings.reflections && runtime.water_traced;
+  }
+  if (!water_traced) return false;
+  // Made before the chain is left out: without it the game's apply would read a buffer nothing wrote.
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  auto& state = water_reflections;
+  const std::unique_lock lock(state.mutex);
+  if (!MakeWaterApply(device.Get())) return false;
+  water_rays.store(true, std::memory_order_relaxed);
+  if (!std::exchange(state.logged, true)) {
+    renodx::utils::log::i(std::format("[Total War] First run: Ray-Traced Water Reflections: the game's screen-space reflections from {:08X} on "
+                                      "({:08X}, {:08X} and its 20 mips) left out, its apply {:08X} drawn with the rays.",
+                                      hash, shaders.backward_ssr, shaders.chain[0], shaders.apply));
+  }
+  return true;
+}
+
+// False: left out, with the rest of the chain (the rays left from the water, traced here with last frame's light view).
+// The first frame, after a load (no light from last frame), under MSAA: true, backward_ssr decides.
+inline bool OnHeightsPart1(reshade::api::command_list* cmd_list) {
   water_rays.store(false, std::memory_order_relaxed);
-  if (sliders->reflections == 0.f || sliders->water_reflections == 0.f || !rt_scene::internal::active.load(std::memory_order_relaxed)) {
+  auto* native = WaterContext(cmd_list);
+  if (native == nullptr) return true;
+  const uint64_t frame = Frame();
+  auto& state = water_reflections;
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> light;
+  {
+    const std::unique_lock lock(state.mutex);
+    if (!state.early_off && state.light_frame + 1 == frame) light = state.light;
+  }
+  if (!light) return true;
+  std::array<ID3D11ShaderResourceView*, 2> depth = {};
+  native->CSGetShaderResources(HEIGHTS_DEPTH_SLOT, static_cast<UINT>(depth.size()), depth.data());
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> depth_texture;
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> light_texture;
+  D3D11_TEXTURE2D_DESC depth_desc = {};
+  D3D11_TEXTURE2D_DESC light_desc = {};
+  ID3D11Resource* depth_resource = TextureOf(depth[0], &depth_texture, &depth_desc);
+  ID3D11Resource* light_resource = TextureOf(light.Get(), &light_texture, &light_desc);
+  Microsoft::WRL::ComPtr<ID3D11Device> device;
+  Microsoft::WRL::ComPtr<ID3D11Device> light_device;
+  native->GetDevice(device.GetAddressOf());
+  light->GetDevice(light_device.GetAddressOf());
+  std::array<ID3D11ShaderResourceView*, 2> views = {};
+  if (!Multisampled(depth) && depth_resource != nullptr && light_resource != nullptr && device == light_device
+      && light_desc.SampleDesc.Count == 1 && light_desc.Width == depth_desc.Width && light_desc.Height == depth_desc.Height) {
+    const rt_scene::internal::ComputeState kept(native);
+    views = rt_scene::Reflections(native, depth[0], light.Get());
+  }
+  for (auto* view : depth) {
+    if (view != nullptr) view->Release();
+  }
+  if (!TakeWater(native, views, shaders.heights_part1)) return true;
+  const std::unique_lock lock(state.mutex);
+  state.early_frame = frame;
+  state.early_depth = depth_resource;
+  state.early_light = light_resource;
+  return false;
+}
+
+// False: left out (the rays left from the water: traced at heights_part1, or here). Keeps its light view for the next
+// frame's heights_part1.
+inline bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
+  auto* native = WaterContext(cmd_list);
+  if (native == nullptr) {
+    water_rays.store(false, std::memory_order_relaxed);
     return true;
   }
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return true;
+  const uint64_t frame = Frame();
   // The depth, its multisampled view, the light, its multisampled view (backward_ssr's RDEF; one sample: the multisampled
   // views are the others).
   std::array<ID3D11ShaderResourceView*, 4> inputs = {};
   native->CSGetShaderResources(shaders.inputs_slot, static_cast<UINT>(inputs.size()), inputs.data());
-  const bool multisampled = std::ranges::any_of(inputs, [](ID3D11ShaderResourceView* view) {
-    if (view == nullptr) return false;
-    Microsoft::WRL::ComPtr<ID3D11Resource> resource;
-    view->GetResource(resource.GetAddressOf());
-    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-    D3D11_TEXTURE2D_DESC desc = {};
-    if (SUCCEEDED(resource.As(&texture))) texture->GetDesc(&desc);
-    return desc.SampleDesc.Count > 1;
-  });
+  const bool multisampled = Multisampled(inputs);
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> depth_texture;
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> light_texture;
+  D3D11_TEXTURE2D_DESC depth_desc = {};
+  D3D11_TEXTURE2D_DESC light_desc = {};
+  ID3D11Resource* depth_resource = TextureOf(inputs[0], &depth_texture, &depth_desc);
+  ID3D11Resource* light_resource = TextureOf(inputs[2], &light_texture, &light_desc);
+  auto& state = water_reflections;
+  bool early = false;
+  {
+    const std::unique_lock lock(state.mutex);
+    early = state.early_frame == frame && water_rays.load(std::memory_order_relaxed);
+    const bool keep = EARLY_DECISION && !multisampled;
+    state.light = keep ? inputs[2] : nullptr;
+    state.light_frame = keep ? frame : UINT64_MAX;
+    if (early) {
+      // The pyramid is left out: the game's march cannot run this frame whatever it binds.
+      if (depth_resource == state.early_depth && light_resource == state.early_light) {
+        state.mismatches = 0;
+      } else {
+        if (!std::exchange(state.mismatch_logged, true)) {
+          renodx::utils::log::i("[Total War] Ray-Traced Water Reflections: the water's light at backward_ssr is not last frame's (one frame of it).");
+        }
+        if (++state.mismatches >= EARLY_MISMATCHES && !std::exchange(state.early_off, true)) {
+          renodx::utils::log::i(std::format("[Total War] Ray-Traced Water Reflections: {} frames in a row with a new light: traced at backward_ssr "
+                                            "from now on.",
+                                            EARLY_MISMATCHES));
+        }
+      }
+    }
+  }
+  if (early) {
+    for (auto* view : inputs) {
+      if (view != nullptr) view->Release();
+    }
+    return false;
+  }
+  water_rays.store(false, std::memory_order_relaxed);
   std::array<ID3D11ShaderResourceView*, 2> views = {};
   if (!multisampled) {
     const rt_scene::internal::ComputeState kept(native);
@@ -107,7 +266,6 @@ inline bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
   for (auto* view : inputs) {
     if (view != nullptr) view->Release();
   }
-  auto& state = water_reflections;
   if (multisampled) {
     const std::unique_lock lock(state.mutex);
     if (!std::exchange(state.msaa_logged, true)) {
@@ -115,25 +273,7 @@ inline bool OnBackwardSsr(reshade::api::command_list* cmd_list) {
     }
     return true;
   }
-  bool water_traced = false;
-  {
-    auto& runtime = rt_scene::internal::runtime;
-    const std::unique_lock lock(runtime.mutex);
-    water_traced = views[0] != nullptr && runtime.settings.reflections && runtime.water_traced;
-  }
-  if (!water_traced) return true;
-  // Made before the chain is left out: without it the game's apply would read a buffer nothing wrote.
-  Microsoft::WRL::ComPtr<ID3D11Device> device;
-  native->GetDevice(device.GetAddressOf());
-  const std::unique_lock lock(state.mutex);
-  if (!MakeWaterApply(device.Get())) return true;
-  water_rays.store(true, std::memory_order_relaxed);
-  if (!std::exchange(state.logged, true)) {
-    renodx::utils::log::i(std::format("[Total War] First run: Ray-Traced Water Reflections: the game's screen-space reflections ({:08X}, {:08X} and "
-                                      "its 20 mips) left out, its apply {:08X} drawn with the rays.",
-                                      shaders.backward_ssr, shaders.chain[0], shaders.apply));
-  }
-  return false;
+  return !TakeWater(native, views, shaders.backward_ssr);
 }
 
 // The apply where the rays left from the water this frame: the rays bound (t46, t47, b10: rt_scene's BindReflections) and our
@@ -196,12 +336,22 @@ constexpr auto OnWaterApplyDraw = []<typename Context>(Context& command) -> reno
   }};
 };
 
-// Only our apply's device (nullptr: the addon's end, Uninstall).
+// Only our apply's device and the kept light's (nullptr: the addon's end, Uninstall).
 inline void OnDestroyWaterReflectionsDevice(reshade::api::device* device) {
   if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
   auto& state = water_reflections;
   const std::unique_lock lock(state.mutex);
-  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
+  auto* native = (device != nullptr) ? reinterpret_cast<ID3D11Device*>(device->get_native()) : nullptr;
+  if (state.light) {
+    Microsoft::WRL::ComPtr<ID3D11Device> light_device;
+    state.light->GetDevice(light_device.GetAddressOf());
+    if (native == nullptr || light_device.Get() == native) {
+      state.light.Reset();
+      state.light_frame = UINT64_MAX;
+      state.early_frame = UINT64_MAX;
+    }
+  }
+  if (native != nullptr && state.device != native) return;
   state.apply.Reset();
   state.device = nullptr;
   water_rays.store(false, std::memory_order_relaxed);
@@ -246,20 +396,28 @@ inline void SetRows(std::vector<renodx::utils::settings::Setting*>* settings, co
   }
 }
 
-// Traced at backward_ssr (OnBackwardSsr); where they left from the water, the chain after it left out too and our apply drawn
-// (OnWaterApplyDraw). Before renodx::mods::shader::Use (the custom shaders' on_draw).
+// Traced at heights_part1 (OnHeightsPart1) or backward_ssr (OnBackwardSsr); where they left from the water, the chain after
+// it left out too and our apply drawn (OnWaterApplyDraw). Before renodx::mods::shader::Use (the custom shaders' on_draw).
 inline void Install(renodx::mods::shader::CustomShaders* custom_shaders, const Shaders& game_shaders, const rt_scene::Sliders* sliders) {
   internal::shaders = game_shaders;
   internal::sliders = sliders;
   (*custom_shaders)[game_shaders.backward_ssr] = {.crc32 = game_shaders.backward_ssr, .on_draw = &internal::OnBackwardSsr};
-  for (const uint32_t shader_hash : game_shaders.chain) {
-    (*custom_shaders)[shader_hash] = {.crc32 = shader_hash, .on_draw = [](auto*) { return !internal::water_rays.load(std::memory_order_relaxed); }};
+  const auto left_out = [custom_shaders](std::span<const uint32_t> hashes) {
+    for (const uint32_t shader_hash : hashes) {
+      (*custom_shaders)[shader_hash] = {.crc32 = shader_hash, .on_draw = [](auto*) { return !internal::water_rays.load(std::memory_order_relaxed); }};
+    }
+  };
+  left_out(game_shaders.chain);
+  if constexpr (EARLY_DECISION) {
+    (*custom_shaders)[game_shaders.heights_part1] = {.crc32 = game_shaders.heights_part1, .on_draw = &internal::OnHeightsPart1};
+    left_out(HEIGHTS);
   }
   reshade::register_event<reshade::addon_event::destroy_device>(internal::OnDestroyWaterReflectionsDevice);
   renodx::utils::command_action::Register(
       internal::OnWaterApplyDraw, {.shader_hash = game_shaders.apply, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
-  renodx::utils::log::i(std::format("[Total War] Ray-Traced Water Reflections: hooks applied ({:08X}, {:08X}, {:08X}, {:08X}, {:08X}).",
-                                    game_shaders.backward_ssr, game_shaders.chain[0], game_shaders.chain[1], game_shaders.chain[2], game_shaders.apply));
+  renodx::utils::log::i(std::format("[Total War] Ray-Traced Water Reflections: hooks applied ({:08X}, {:08X}, {:08X}, {:08X}, {:08X}); heights_part1 {:08X} {}.",
+                                    game_shaders.backward_ssr, game_shaders.chain[0], game_shaders.chain[1], game_shaders.chain[2], game_shaders.apply,
+                                    game_shaders.heights_part1, EARLY_DECISION ? "hooked" : "not hooked"));
 }
 
 inline void Uninstall() {

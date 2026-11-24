@@ -12,10 +12,16 @@
 // bound again after its draw. With every reader of a game's SSAO on the rays' AO, its SSAO chain can be left out under
 // Ray-Traced AO (as Troy's 9d9dd3284). Otherwise (no rays' AO, Path-Traced Ambient, GT-VBAO, before the combine, another
 // texture at the slot): the game's. WARP: test/tw_ao_readers.
+// Troy's and Pharaoh's SSAO 2 chain (ssao2.hlsl: downsample B320992B, generate D42C3523, blur_x 7F637259, blur_y BFD285BD
+// back into the generate's target) is left out while ours stands in for it (rt_scene::AmbientReplaced: the rays' AO or
+// Path-Traced Ambient, as Attila's rt_ambient_alone), the generate's target cleared open (ClearInsteadOfGenerate); the
+// line-sweep AO of in-game SSAO 1 and 2 (ssao.hlsl) the same at its blur (ClearInsteadOfLineSweepBlur). AmbientReplaced
+// also holds for up to 30 frames that the helper misses: the game's AO stays out there too (Attila's rule, rt_ambient_alone).
 
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <array>
 #include <climits>
 #include <cstdint>
 #include <mutex>
@@ -43,6 +49,37 @@ inline Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> BindRaysAo(ID3D11DeviceC
   if (runtime.combined_frame != runtime.frame || game_ao.Get() != runtime.game_ao || !runtime.objects.combined_srv) return {};
   native->PSSetShaderResources(slot, 1, runtime.objects.combined_srv.GetAddressOf());
   return game_ao;
+}
+
+constexpr std::array<float, 4> OPEN = {1.f, 1.f, 1.f, 1.f};  // no occlusion
+
+// The SSAO 2 generate's draw while ours stands in for the game's AO: its target cleared open (1) in its place (true), what
+// the sun draws and the listed readers read where nothing of ours is bound there (past the traced part, a frame without
+// the combine; under Path-Traced Ambient everywhere: the paths are the occlusion, as Attila's white AO pass). False: the
+// game's draw.
+inline bool ClearInsteadOfGenerate(reshade::api::command_list* cmd_list) {
+  if (!rt_scene::AmbientReplaced()) return false;
+  auto* native = rt_scene::internal::NativeContext(cmd_list);
+  if (native == nullptr) return false;
+  Microsoft::WRL::ComPtr<ID3D11RenderTargetView> output;
+  native->OMGetRenderTargets(1, output.GetAddressOf(), nullptr);
+  if (!output) return false;
+  native->ClearRenderTargetView(output.Get(), OPEN.data());
+  return true;
+}
+
+// The line-sweep AO's blur (ssao.hlsl cs50_blur_x: in-game SSAO 1 and 2; its bytes write every pixel of u0 from the
+// collect alone) while ours stands in for the game's AO: u0 cleared open (1) in its place (true), so the sun draws read
+// no game AO under the paths and past the traced part under the rays, as SSAO 2's generate. False: the game's dispatch.
+inline bool ClearInsteadOfLineSweepBlur(reshade::api::command_list* cmd_list) {
+  if (!rt_scene::AmbientReplaced()) return false;
+  auto* native = rt_scene::internal::NativeContext(cmd_list);
+  if (native == nullptr) return false;
+  Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> output;
+  native->CSGetUnorderedAccessViews(0, 1, output.GetAddressOf());
+  if (!output) return false;
+  native->ClearUnorderedAccessViewFloat(output.Get(), OPEN.data());
+  return true;
 }
 
 namespace internal {

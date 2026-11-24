@@ -585,11 +585,8 @@ int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bo
   // A parked thread whose saved Eip is each byte of the site (and the byte before, the bytes after): the row switched, the site changes only with Eip at
   // its first byte or outside it.
   {
-    std::atomic<bool> stop = false;
-    std::thread parked([&] {
-      while (!stop.load()) Sleep(1);
-    });
-    HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+    ParkedThread parked;
+    HANDLE thread = parked.Open();
     CHECK(thread != nullptr);
     const uint8_t* site = patched + site_rva;
     bool on = (ec::written >> ec::PARTICLE_PREFETCH_INDEX & 1) != 0;
@@ -614,8 +611,7 @@ int RunParticleTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bo
       twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true);
       on = (ec::written >> ec::PARTICLE_PREFETCH_INDEX & 1) != 0;
     }
-    stop = true;
-    parked.join();
+    parked.Stop();
     CloseHandle(thread);
     CHECK(wrong == 0 && on);
     std::printf("   a parked thread at the site -1 .. +6: the site is refused at +1 .. +4 and written at the others\n");

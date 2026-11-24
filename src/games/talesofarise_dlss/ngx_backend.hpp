@@ -21,6 +21,7 @@
 #include <windows.h>
 
 #include <d3d11.h>
+#include <d3d11_4.h>
 #include <wrl/client.h>
 
 #include <nvsdk_ngx.h>
@@ -29,6 +30,7 @@
 #include <include/reshade.hpp>
 
 #include "../../utils/directx.hpp"
+#include "../twattila/dlaa_helper/gpu_completion.hpp"
 
 namespace talesofarise::dlss {
 
@@ -96,7 +98,8 @@ enum class Mode : uint8_t {
 };
 
 // DLSS Ray Reconstruction's guides (the render size; world-space normals, read through `world_to_view`): with them
-// rr_d3d12.hpp runs NVIDIA's denoising upscaler (nvngx_dlssd.dll next to nvngx_dlss.dll) in place of Super Resolution.
+// NVIDIA's denoising upscaler (nvngx_dlssd.dll next to nvngx_dlss.dll) ran in place of Super Resolution through
+// rr_d3d12.hpp (deleted 2026-11-22: Ray Reconstruction goes through the TW helper now).
 struct RayReconstruction {
   ID3D11Resource* diffuse_albedo = nullptr;
   ID3D11Resource* specular_albedo = nullptr;
@@ -145,6 +148,7 @@ inline bool ShutdownInProgress() {
 
 // Evaluate/Reset must be serialized by the adapter, outside the loader lock.
 // The caller owns complete D3D11 state restoration and a private output resource.
+// Evaluate records on the device's immediate context: this backend's fence is signalled there.
 class Backend {
  private:
   Microsoft::WRL::ComPtr<ID3D11Device> device_;
@@ -162,6 +166,16 @@ class Backend {
   bool initialized_ = false;
   bool failed_ = false;
   bool first_frame_ = true;
+  // NVIDIA's guide 5.5: the feature and NGX freed only once no evaluation that used them can still run. This backend's
+  // fence: signalled after each evaluation (the next reconfigure waits for it) and behind everything queued when a
+  // release is due.
+  Microsoft::WRL::ComPtr<ID3D11DeviceContext4> idle_context_;
+  Microsoft::WRL::ComPtr<ID3D11Fence> idle_fence_;
+  HANDLE idle_event_ = nullptr;
+  uint64_t idle_value_ = 0;
+
+  // The CPU's longest wait for this backend's evaluations (as Ray Reconstruction's and FSR's queues).
+  static constexpr DWORD FENCE_TIMEOUT = 5000;
 
   static void LogResult(const char* operation, const NVSDK_NGX_Result result) {
     std::ostringstream message;
@@ -198,19 +212,39 @@ class Backend {
     initialized_ = std::exchange(other.initialized_, false);
     failed_ = std::exchange(other.failed_, false);
     first_frame_ = std::exchange(other.first_frame_, true);
+    idle_context_ = std::move(other.idle_context_);
+    idle_fence_ = std::move(other.idle_fence_);
+    idle_event_ = std::exchange(other.idle_event_, nullptr);
+    idle_value_ = std::exchange(other.idle_value_, 0);
     return *this;
   }
 
   ~Backend() { Reset(); }
 
+  // Every object dropped without NGX or D3D calls: under the loader lock (Reset), and at the helper's end, where the
+  // game's GPU that this backend's work waits on is gone.
+  void Abandon() {
+    feature_ = nullptr;
+    parameters_ = nullptr;
+    initialized_ = false;
+    device_.Detach();
+    idle_context_.Detach();
+    idle_fence_.Detach();
+  }
+
   void Reset() {
     if (ShutdownInProgress()) {
-      feature_ = nullptr;
-      parameters_ = nullptr;
-      initialized_ = false;
-      device_.Detach();
+      Abandon();
     }
     if (feature_ != nullptr) {
+      // NVIDIA's guide 5.5: no evaluation of the feature may still run (a removed device runs none). The marker follows
+      // everything this device queued (also a failed create's or evaluation's recording); a failed Signal leaves the
+      // fence below it, and the wait reports that.
+      if (device_->GetDeviceRemovedReason() == S_OK) {
+        idle_context_->Signal(idle_fence_.Get(), ++idle_value_);
+        idle_context_->Flush();
+        twattila::dlaa_helper::WaitForGpuBeforeRelease(idle_fence_.Get(), idle_event_, idle_value_, FENCE_TIMEOUT, "DLSS");
+      }
       const auto result = NVSDK_NGX_D3D11_ReleaseFeature(feature_);
       if (NVSDK_NGX_FAILED(result)) {
         LogResult("ReleaseFeature", result);
@@ -230,6 +264,12 @@ class Backend {
         LogResult("Shutdown1", result);
       }
     }
+    if (idle_event_ != nullptr) {
+      CloseHandle(std::exchange(idle_event_, nullptr));
+    }
+    idle_fence_.Reset();
+    idle_context_.Reset();
+    idle_value_ = 0;
     initialized_ = false;
     failed_ = false;
     first_frame_ = true;
@@ -246,15 +286,6 @@ class Backend {
 
   const char* Status() const {
     return status_.load(std::memory_order_relaxed);
-  }
-
-  // The feature freed (Ray Reconstruction runs instead: its memory); the next evaluation makes it again.
-  void ReleaseFeature() {
-    if (feature_ == nullptr) return;
-    if (const auto result = NVSDK_NGX_D3D11_ReleaseFeature(feature_); NVSDK_NGX_FAILED(result)) {
-      LogResult("ReleaseFeature", result);
-    }
-    feature_ = nullptr;
   }
 
   bool Failed() const {
@@ -425,6 +456,15 @@ class Backend {
         return fail("NGX cache is not a directory", NVSDK_NGX_Result_FAIL_UnableToWriteToAppDataPath,
                     "NGX cache directory invalid; game TAA");
       }
+      // This backend's fence, made before any feature (Reset and the reconfigure wait on it).
+      Microsoft::WRL::ComPtr<ID3D11DeviceContext> immediate_context;
+      device_->GetImmediateContext(&immediate_context);
+      Microsoft::WRL::ComPtr<ID3D11Device5> device5;
+      idle_event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+      if (idle_event_ == nullptr || FAILED(immediate_context.As(&idle_context_)) || FAILED(device_.As(&device5))
+          || FAILED(device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&idle_fence_)))) {
+        return fail("D3D11.4 fence", NVSDK_NGX_Result_FAIL_PlatformError, "DLAA/DLSS needs D3D11.4; game TAA");
+      }
       const wchar_t* runtime_paths[] = {runtime_folder.c_str()};
       const NVSDK_NGX_FeatureCommonInfo common_info = {
           .PathListInfo = {.Path = runtime_paths, .Length = 1},
@@ -565,6 +605,14 @@ class Backend {
         reshade::log::message(reshade::log::level::info, message.str().c_str());
       }
       if (feature_ != nullptr) {
+        // NVIDIA's guide 5.5: its last evaluation not proven done on a live device (a removed device runs none). This
+        // request only; the next asks again.
+        if (device_->GetDeviceRemovedReason() == S_OK
+            && !twattila::dlaa_helper::WaitForGpu(idle_fence_.Get(), idle_event_, idle_value_, FENCE_TIMEOUT)) {
+          status_.store("DLAA/DLSS: its GPU work did not finish", std::memory_order_relaxed);
+          first_frame_ = true;
+          return false;
+        }
         const auto result = NVSDK_NGX_D3D11_ReleaseFeature(feature_);
         feature_ = nullptr;
         if (NVSDK_NGX_FAILED(result)) {
@@ -656,6 +704,8 @@ class Backend {
     if (NVSDK_NGX_FAILED(result)) {
       return fail("Evaluate DLAA/DLSS", result, "DLAA/DLSS evaluation failed; game TAA");
     }
+    // Its evaluation's end, for the next reconfigure (main.cpp flushes the context after its own signal).
+    idle_context_->Signal(idle_fence_.Get(), ++idle_value_);
     first_frame_ = false;
     switch (evaluation.mode) {
       case Mode::DLAA:

@@ -14,18 +14,14 @@
 
 #include "../../utils/settings.hpp"
 #include "./light_bounce.hpp"
+#include "./settings_pages.hpp"
 
 // The ambient occlusion (GT-VBAO) and Global Illumination (GT-VBGI, the Light Bounce) settings of every Total War
-// addon: the same keys, presets and tooltips (each game's shader_injection names the bindings the same; its section
-// tints and settings mode use the section names here). ATN's presets: ambient occlusion Faster / Recommended / Heavier,
-// Global Illumination Faster (Recommended) / Heavier (More accurate); the defaults are the recommended ones (Global
+// addon: the same keys, presets and tooltips (each game's shader_injection names the bindings the same; their section
+// names and tints: settings_pages.hpp). ATN's presets: ambient occlusion Faster / Recommended / Heavier, Global
+// Illumination Faster (Recommended) / Heavier (More accurate); the defaults are the recommended ones (Global
 // Illumination off).
 namespace twattila::lighting_settings {
-
-constexpr const char* AO_SECTION = "Ambient Occlusion (GT-VBAO, Experimental, needs in-game SSAO)";
-constexpr const char* GI_SECTION = "Global Illumination (GT-VBGI, Experimental, no in-game SSAO needed)";
-constexpr uint32_t AO_TINT = 0x7FBFFF;
-constexpr uint32_t GI_TINT = 0xFFB86B;
 
 // Global Illumination's Fast MSAA: the games with MSAA have its setting.
 template <typename ShaderInjection>
@@ -95,7 +91,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
       {"ssao_quality", 2.f},
       {"ssao_directions", 0.f},
       {"ssao_resolution", (AO_SCALES ? 1.f : 0.f)},
-      {"ssao_auto_thickness", 0.f},
+      {"ssao_auto_thickness", 1.f},
   };
   if constexpr (AO_TEMPORAL) {
     ao_defaults.insert(ao_defaults.end(), {{"ssao_temporal", 1.f}, {"ssao_edge_fix", 0.f}, {"ssao_denoise", 1.f}});
@@ -115,7 +111,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
       {"light_bounce_multi_bounce", 0.f},
       {"light_bounce_checkerboard", 1.f},
       {"light_bounce_backface", 0.f},
-      {"light_bounce_auto_thickness", 0.f},
+      {"light_bounce_auto_thickness", 1.f},
   };
   if constexpr (HAS_MSAA<ShaderInjection>) {
     gi_defaults.emplace_back("light_bounce_msaa_pixel", 1.f);
@@ -271,7 +267,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
                                       : std::vector<std::string>{"Full", "Half"}),
           .is_enabled = ao_enabled,
       },
-      toggle("ssao_auto_thickness", &data->ssao_auto_thickness, "Auto Thickness (Experimental)", AO_SECTION,
+      toggle("ssao_auto_thickness", &data->ssao_auto_thickness, "Auto Thickness", AO_SECTION,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",
              ao_enabled),
@@ -405,7 +401,7 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
              }),
       toggle("light_bounce_backface", &data->light_bounce_backface, "Back-Face Rejection (Experimental)", GI_SECTION,
              "Ignores light from surfaces seen from behind. Heavier; not always better.", search_enabled),
-      toggle("light_bounce_auto_thickness", &data->light_bounce_auto_thickness, "Auto Thickness (Experimental)",
+      toggle("light_bounce_auto_thickness", &data->light_bounce_auto_thickness, "Auto Thickness",
              GI_SECTION,
              "Guesses each object's thickness from its width, Thickness as the least:\n"
              "spears stay thin, walls and hills block fully.",

@@ -4,7 +4,7 @@
  */
 
 // Private ray tracing shader (ray_tracing.hpp), not a game replacement registration: the helper's G-buffer guides (its
-// reflections and paths read them) from Unreal 4.26's G-buffer at the sun's deferred light draw: diffuse albedo (base
+// reflections and paths read them) from Unreal 4.23's G-buffer at the sun's deferred light draw: diffuse albedo (base
 // colour x (1 - metallic)), specular albedo (F0: 0.08 x specular toward the base colour with metallic), world normals
 // (none where unlit) and roughness, at the render pixels.
 Texture2D<float4> gbuffer_a : register(t0);  // world normal x 0.5 + 0.5

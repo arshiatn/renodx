@@ -122,6 +122,9 @@
 #include <embed/fg_hdr10.h>
 #include <embed/swap_chain_proxy_pixel_shader_dx11.h>
 #include <embed/swap_chain_proxy_vertex_shader_dx11.h>
+// Before bridge.hpp (utils/gpu_fence.hpp's <ntstatus.h> makes the EXCEPTION_* codes NTSTATUS: its exception switch's
+// cases narrow to DWORD), as addon.cpp has it (through twattila/frame_generation.hpp).
+#include "src/games/twattila/device_loss.hpp"
 #include "src/games/ruse/bridge.hpp"
 #include "src/games/ruse/ray_tracing.hpp"
 #include "src/games/ruse/shared.h"
@@ -1950,6 +1953,11 @@ int main(int argc, char** argv) {
     const int foreground = static_cast<int>(std::lround(FOREGROUND * 1023));
     size_t flat = 0;
     size_t flat_kept = 0;
+    // Per tone (0 the background, 1 the foreground): flat pixels, those kept and the result's codes' sum, printed: a
+    // failure's cause (one tone's brightness changed, or the picture moved).
+    std::array<size_t, 2> tone_flat = {};
+    std::array<size_t, 2> tone_kept = {};
+    std::array<int64_t, 2> tone_sum = {};
     size_t edge = 0;
     size_t edge_between = 0;
     for (int y = 3; y < static_cast<int>(HEIGHT) - 3; ++y) {
@@ -1964,8 +1972,15 @@ int main(int argc, char** argv) {
         }
         const int got = red(result, x, y);
         if (lowest == highest) {
+          const bool kept = std::abs(got - red(aliased, x, y)) <= 3;
+          const size_t tone = (red(aliased, x, y) > (background + foreground) / 2) ? 1 : 0;
           ++flat;
-          if (std::abs(got - red(aliased, x, y)) <= 3) ++flat_kept;
+          ++tone_flat[tone];
+          tone_sum[tone] += got;
+          if (kept) {
+            ++flat_kept;
+            ++tone_kept[tone];
+          }
         } else if (std::abs(red(aliased, x + 1, y) - red(aliased, x, y)) > 100 || std::abs(red(aliased, x, y + 1) - red(aliased, x, y)) > 100) {
           ++edge;
           if (got > background + 8 && got < foreground - 8) ++edge_between;
@@ -1973,6 +1988,11 @@ int main(int argc, char** argv) {
       }
     }
     std::printf("H2 %s: flat %zu (kept %zu), edge %zu (between the colours %zu)\n", upscaler.c_str(), flat, flat_kept, edge, edge_between);
+    for (size_t tone = 0; tone < 2; ++tone) {
+      std::printf("H2 %s: flat %s (code %d) %zu (kept %zu), the result's mean code %.1f\n", upscaler.c_str(), (tone == 0 ? "background" : "foreground"),
+                  (tone == 0 ? background : foreground), tone_flat[tone], tone_kept[tone],
+                  (tone_flat[tone] != 0) ? static_cast<double>(tone_sum[tone]) / static_cast<double>(tone_flat[tone]) : 0.0);
+    }
     CHECK(flat > 1000 && flat_kept >= flat * 99 / 100);
     CHECK(edge > 50 && edge_between * 2 >= edge);
 

@@ -431,7 +431,7 @@ void main(
     r4.x = r4.y ? r4.x : 0;
     r2.w = r2.w * r3.w + r4.x;
     r3.w = cmp(r1.w < -r1.w);
-    r3.w = r3.w ? -3.141593 : 0;
+    r3.w = r3.w ? -3.14159274 : 0;
     r2.w = r3.w + r2.w;
     r3.w = min(r1.w, r0.z);
     r0.z = max(r1.w, r0.z);

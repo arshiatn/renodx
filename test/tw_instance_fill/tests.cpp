@@ -29,6 +29,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <memory>
@@ -757,7 +758,7 @@ struct Rigs {
 };
 
 std::atomic<uint32_t> no_chunks_done{0};
-std::atomic<uint32_t> no_incomplete{0};
+void NoIncomplete(uint32_t) {}
 void NoFillWork(void*, uint32_t) {}
 
 bool FoldOpen() { return di::fold.thread.load() == GetCurrentThreadId(); }
@@ -765,7 +766,7 @@ bool FoldOpen() { return di::fold.thread.load() == GetCurrentThreadId(); }
 // A fold for `tracker` (a fill with no chunks), as the fill site opens one.
 bool OpenFoldFor(FakeTracker* tracker) {
   return di::OpenFold(tracker, tracker->ring,
-                      {.work = &NoFillWork, .context = nullptr, .chunks_done = &no_chunks_done, .chunks = 0, .incomplete = &no_incomplete}, 2);
+                      {.work = &NoFillWork, .context = nullptr, .chunks_done = &no_chunks_done, .chunks = 0, .incomplete = &NoIncomplete}, 2);
 }
 
 void CloseOpenFold() {
@@ -1257,11 +1258,44 @@ void TestControls() {
     CHECK(fi::incomplete_fills.load() == fill::FILL_SITE_COUNT);
     log_lines.clear();
     fill::Wanted(true);
+    fill::Wanted(true);
     size_t said_not_done = 0;
+    bool names_the_fill = false;
     for (const std::string& line : log_lines) {
-      said_not_done += (line.find("4 fills ended with chunks not done") != std::string::npos);
+      if (line.find("a fill ended with chunks not done (") != std::string::npos) {
+        ++said_not_done;
+        names_the_fill = (line.find(fill::SITES[fi::first_incomplete.site].name) != std::string::npos
+                          && line.find(" items, chunks ") != std::string::npos && line.find("join rule ENTERED)") != std::string::npos
+                          && line.find("the total is said at detach.") != std::string::npos);
+      }
     }
-    CHECK(said_not_done == 1 && fi::incomplete_fills.load() == 0);
+    // Once, at the first present after the first fill; the count stays for the detach's total.
+    CHECK(said_not_done == 1 && names_the_fill && fi::first_incomplete.chunks_done < fi::first_incomplete.chunks);
+    CHECK(fi::incomplete_fills.load() == fill::FILL_SITE_COUNT);
+#if defined(TWATTILA_DRAW_RECORDING)
+    // The fold's close reports through the callback: the same count, the first one's numbers with the fold's join.
+    fi::incomplete_fills.store(0);
+    fi::first_incomplete_said = false;
+    fi::fold_site = 2;
+    fi::fold_fill.begin = 10;
+    fi::fold_fill.end = 5010;
+    fi::fold_fill.chunks = 9;
+    fi::NoteFoldIncomplete(4);
+    fi::NoteFoldIncomplete(5);
+    CHECK(fi::incomplete_fills.load() == 2 && std::string_view(fi::first_incomplete.join) == "fold" && fi::first_incomplete.count == 5000
+          && fi::first_incomplete.chunks_done == 4 && fi::first_incomplete.chunks == 9 && fi::first_incomplete.site == 2);
+    log_lines.clear();
+    fill::Wanted(true);
+    size_t said_fold = 0;
+    for (const std::string& line : log_lines) {
+      said_fold += (line.find("a fill ended with chunks not done (") != std::string::npos
+                    && line.find("5000 items, chunks 4/9, join rule fold)") != std::string::npos);
+    }
+    CHECK(said_fold == 1);
+#endif
+    fi::incomplete_fills.store(0);
+    fi::first_incomplete_kept.store(false);
+    fi::first_incomplete_said = false;
   }
 #if defined(TWATTILA_WORKER_POOL_CONTROLS)
   // The join waits only for the workers that entered the job: a worker still asleep when the fill is done is left behind, and
@@ -1348,6 +1382,49 @@ void TestCheckMode() {
     CallSite(1, &range, &scenario->functors[0]);
   }
   CHECK(fi::check_skipped.load() == 1);
+  // The scratch buffers are kept at their high water: smaller fills after the biggest one reuse them.
+  const uint8_t* const kept_scratch = fi::check_scratch[0].data();
+  const size_t kept_size = fi::check_scratch[0].size();
+  CHECK(kept_size >= 20000 * 16 && RunExact(1, 3000, 64, 12, false, &random));
+  CHECK(fi::check_scratch[0].data() == kept_scratch && fi::check_scratch[0].size() == kept_size && !fi::check_busy.load());
+#if defined(TWATTILA_INSTANCE_FILL_CONTROLS)
+  // Scratch memory that cannot be made: the fill is not compared (counted skipped), the game's fill still runs, and the scratch
+  // is free for the next one.
+  const uint32_t checked_before = fi::checked.load();
+  fill::control_check_alloc_fails = true;
+  CHECK(RunExact(1, 3000, 64, 12, false, &random));
+  fill::control_check_alloc_fails = false;
+  CHECK(fi::check_skipped.load() == 2 && fi::checked.load() == checked_before && !fi::check_busy.load());
+  CHECK(RunExact(1, 3000, 64, 12, false, &random) && fi::checked.load() == checked_before + 1);
+  fi::check_skipped.store(1);
+#endif
+  // The summary goes once per trace window, at the first present after it (not at every present).
+  {
+    log_lines.clear();
+    fi::check_window = 0;
+    wp::ArmTrace(1);
+    UpdatePool(4);
+    CHECK(wp::Tracing());
+    const uint32_t window = wp::TraceWindow();
+    fill::Wanted(true);
+    for (size_t site = 0; site < 3; ++site) {
+      CHECK(RunExact(site, 3000, 64, 12, false, &random));
+    }
+    fill::Wanted(true);
+    UpdatePool(4);
+    CHECK(!wp::Tracing());
+    const auto summaries = [&] {
+      size_t lines = 0;
+      for (const std::string& line : log_lines) {
+        lines += (line.find(std::format("Parallel Instance Fill check (trace window {}): 3 fills compared", window)) != std::string::npos);
+      }
+      return lines;
+    };
+    CHECK(summaries() == 0);
+    fill::Wanted(true);
+    fill::Wanted(true);
+    CHECK(summaries() == 1);
+  }
   fi::check_enabled = false;
   std::printf("check mode: equal fills pass, a thread-dependent copy is seen\n");
 }

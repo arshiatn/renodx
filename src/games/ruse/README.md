@@ -76,7 +76,7 @@ the ground at 256 x 144, at 4K about a quarter of the rays' surface offset). Our
 | Ray-Traced Object Shadows | 642 object pixel shaders, patched in their bytecode (`ru_scene_patches.py`): after their shadow-map factor's off-map select, `cmp rD, -rT.w, rD, rT.x` with s15 the visibility (its alpha 1: the rays in place of the factor, where they found the sun blocked; an alpha-0 texel when untraced: the game's). Moving units are a frame late (last frame's main depth reprojected). |
 | Screen-Space Ground Shadows | Bend Studio's march with the game's shadow maps (the darker of the two in the ground mask). Off under the ground rays. Its IgnoreEdgePixels on (Bend's advice for large flat surfaces): far ground's row-to-row depth steps pass its edge threshold, and such a row's sample shadowed the pixel beside it (single dark pixels on lit ground). |
 | Screen-space rows' depth | Bend, GT-VBAO and GT-VBGI march over O1's start depth: last frame's main depth (kept at the bloom) reprojected over the ground pre-pass's. The pre-pass draws the terrain alone; on its depth they found only its relief, which the shadow maps already shade (run_rn3: no visible change for +1.1 / +2.5 / +2.6 ms GPU). Without the anti-aliasing's bridge (GT-VBAO alone) there is no main depth: the terrain's. |
-| Ray-Traced Ground Ambient Occlusion / Screen-Space Ground Ambient Occlusion | The rays' AO, else GT-VBAO, into the 108 terrain shaders' ambient (s14). Both skipped once Path-Traced Light Bounce replaces the ambient. |
+| Ray-Traced Ground Ambient Occlusion / Screen-Space Ground Ambient Occlusion | The rays' AO, else GT-VBAO, into the 110 terrain shaders' ambient (s14; in the two that divide a pre-lit texture's light out, `0x4B1D1523` / `0xAFFF53E4`, the second ambient read alone). Both skipped once Path-Traced Light Bounce replaces the ambient. |
 | Exact Depth Samples (live, Experimental, off) | GT-VBAO's and GT-VBGI's ground samples take the depth at their own place between pixels where the four around it lie on one plane (options.y; twattila/bitmask.hlsli BitmaskPlaneDepth): open ground seen at a low angle no longer shades itself. `tw_gtvbao_flat -ExactDepth 1`: flat ground at 13.6 degrees 0.9638 -> 1.0000 (lowest 0.80 -> 0.99), the plateau's side still darker (0.8431); `tw_gtvbao_exact`: off the build before's bits, CONTROL on 9687 values. |
 | Ground Light Bounce | Screen-Space: GT-VBGI on the ground. Ray-Traced / Path-Traced: the helper's Light Bounce through guides the patched terrain and object shaders write (oC1 albedo, oC2 normal), into the same s14 texel; Path-Traced brings the sky in place of the game's flat ambient on the ground and the objects (Lean and Near ReSTIR Reuse on). |
 | Water Reflections | Screen-Space: a march over the start depth, its hits in last frame's scene; Ray-Traced: the helper's reflections; the 120 water shaders blend it over their cube by its share (s13). |
@@ -86,8 +86,10 @@ the ground at 256 x 144, at 4K about a quarter of the rays' surface offset). Our
 | Time Each Pass (One Frame) | The next frame's D3D9 timestamps at its bounds (start, camera pass, trace point and its end, bloom, after the anti-aliasing, final post, present) into ReShade.log. The add-on's CPU waits for the D3D11 queue and the helper show as D3D9 time between the trace point and its end. With rt_core's Record Ray Tracing Profile (`RENODX_TW_PROFILE`) the CPU's steps (replay, ground passes: D3D9 wait, capture, trace request, D3D11 and helper wait; anti-aliasing) log one line at its end. |
 | Ground Debug View (live) | Over the scene at the bloom: the ground mask's red (the game's term with ours), our sun visibility (rays or Bend), the ground's occlusion (rays or GT-VBAO); black shadowed, magenta where that frame made none. |
 
-Not covered: 2 object shaders whose shadow select writes an output, 60 lit object shaders the guides can't patch, 12
-terrain shaders (they keep the game's shading). The game's shadow-map pass still draws (its readers: water, sprites,
+Not covered: 2 shaders whose shadow select writes an output (the ground mask's pre-passes `0x8588D239` / `0x1AD365A4`:
+the mask is covered by its target, whichever draws it), 60 lit object shaders the guides can't patch (52 without the
+sun's N.L, 6 without uniAmbientColor / uniSunDirection, 2 whose light goes into a `lrp`), 2 terrain shaders without
+uniAmbientColor (`0xE697765A` / `0xF17D27A4`; they keep the game's shading). The game's shadow-map pass still draws (its readers: water, sprites,
 the shaders above).
 
 The log says what runs: `[R.U.S.E.] Anti-aliasing: DLAA ready at WxH`, `... applied`, `[R.U.S.E.] Ray tracing:
@@ -117,7 +119,7 @@ Advanced → Extra: Bloom and Vignette (HDR modes), Motion Blur (0 = the centre 
 Depth of Field (the two DOF filters `0x6F08A739` / `0xDC8B14DB` bypassed, the masks `0x971790DF` / `0x7E5A7D9B` alpha
 scaled), Video AutoHDR (default 0) and Video Dithering on every video and loading-screen draw.
 
-UI and video: 26 replacements (ScaleForm, interface, text effects, the cutscene videos `0x1D8E1FA8` / `0x66D7BE52`, the
+UI and video: 28 replacements (ScaleForm, interface, text effects, the cutscene videos `0x1D8E1FA8` / `0x66D7BE52`, the
 loading screens) keep the game's math and scale only their final back-buffer draw (UI by the UI row, video by Paper
 White). The native DX9 ReShade GUI is blocked after a successful proxy present (`R.U.S.E.: native DX9 GUI draw filter
 installed.`); the proxy's overlay stays.
@@ -145,6 +147,8 @@ Offline checks (tools/nontw/ruse/scripts, outside the repo):
   shadow patches free of the shadow map at alpha 1. `ru_d3d9_validate.py`: the D3D9 runtime accepts each (NULLREF
   device, with a refused control).
 - `test/tw_psychov35` part 6 (WARP): grey, slope, markers and Extended's ramp for the three grades.
+- `test/tw_ruse_bridge/run.ps1 -V35` (WARP): the V35 fit; PsychoV35 at Musa's own sliders is the game's SDR below white
+  (grey and colour 0.0 % off at the median map's grade), so the add-on keeps them.
 - `test/tw_ruse_bridge` (GPU): H1 INTZ, shared textures, the 10-bit round trip and jitter; H2 the helper's DLAA / FSR /
   XeSS and frame generation on synthetic frames, the rays end to end at the game's coordinates (case 12); 6b O1's
   reprojection and the screen-space rows over it; H3 the replay against the census VS.

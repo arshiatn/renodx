@@ -47,6 +47,9 @@ foreach ($hash in $passes.Keys) {
   if ($mutantExit -ne 0) { throw "fxc failed: the wrong copy of $($source.Name)" }
   # The light passes: Player / Local Light Intensity at 2 must double the game's light.
   $row = if ($lightRows -contains $hash) { ' row' } else { '' }
+  # The PCSS sun shadows: R1 save T1's traced b0 / b12 (pcss_r1_cb0.txt: its 64 traced floats, then an orthographic
+  # projection of the two cascades' widths and far planes, which the trace does not hold).
+  if ($hash -eq '8F114E47') { $row += " cb0=$testRoot\pcss_r1_cb0.txt cb12=$testRoot\pcss_r1_cb12.txt" }
   $manifest += "$hash $($passes[$hash]) $game $addon $mutant$row"
 }
 $manifestPath = Join-Path $testBuild 'manifest.txt'

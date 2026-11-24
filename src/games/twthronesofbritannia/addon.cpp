@@ -2308,11 +2308,13 @@ void ConfigureAddon() {
   // Graphics 1 of 2's layout (twattila/graphics_page.hpp, as Attila's and Rome II's), ATN's RT/PT preset as the defaults of
   // what the methods leave, then Settings Mode's pages. Light Through Foliage, both Smoke Shadows, Water Caustics and the
   // sprite soldiers' and far trees' ray-traced shadows Experimental (no run has shown them here); Light Through All Banners
-  // off (no trace has drawn the unit banners). RT/PT sets them all as Attila's does (ATN 2026-11-14).
+  // off (no trace has drawn the unit banners). Steady Bounce Light and Torch and Fire Shadow Lights at their own rows'
+  // defaults (both Experimental: off, 32; ATN 2026-11-22). RT/PT sets them all as Attila's does (ATN 2026-11-14).
   twattila::graphics_page::SetRaysPresetDefaults(&settings);
   for (auto* setting : settings) {
     if (setting->key == "RayTracedSmokeShadows" || setting->key == "RayTracedSpriteShadows" || setting->key == "RayTracedFarTreeShadows"
-        || setting->key == "WaterCaustics" || setting->key == "RayTracedBannerLight") {
+        || setting->key == "WaterCaustics" || setting->key == "RayTracedBannerLight" || setting->key == "RayTracedPathKeptCube"
+        || setting->key == "RayTracedLightCount") {
       setting->default_value = 0.f;
     }
   }
@@ -2372,8 +2374,9 @@ bool AttachAddon() {
 
   // Rows saved at an old default, cleared once (as Rome II's): Graphics 1 of 2 (SetRaysPresetDefaults) raised these, hidden
   // until what they act on is hooked: they show then at ATN's values. 2: the sliders split from Unit Animation and Campaign
-  // Detail start at the saved value of the one they come from.
-  constexpr int SETTINGS_REVISION = 2;
+  // Detail start at the saved value of the one they come from. 3: Steady Bounce Light and Torch and Fire Shadow Lights
+  // saved at SetRaysPresetDefaults' on and 128, off and 32 now.
+  constexpr int SETTINGS_REVISION = 3;
   if (int revision = 0; !reshade::get_config_value(nullptr, "renodx", "SettingsRevision", revision) || revision < SETTINGS_REVISION) {
     for (const char* preset : {"renodx-preset1", "renodx-preset2", "renodx-preset3"}) {
       if (revision < 1) {
@@ -2382,12 +2385,19 @@ bool AttachAddon() {
           reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
         }
       }
-      for (const auto& [from, to] : std::initializer_list<std::pair<const char*, const char*>>{
-               {"GraphicsUnitAnimation", "GraphicsFacialAnimation"}, {"GraphicsUnitAnimation", "GraphicsHandAnimation"},
-               {"GraphicsCampaignDetail", "GraphicsCampaignPlants"}, {"GraphicsCampaignDetail", "GraphicsCampaignProps"}}) {
-        if (float value = 0.f, kept = 0.f; reshade::get_config_value(nullptr, preset, from, value)
-                                           && !reshade::get_config_value(nullptr, preset, to, kept)) {
-          reshade::set_config_value(nullptr, preset, to, value);
+      if (revision < 3) {
+        for (const char* key : {"RayTracedPathKeptCube", "RayTracedLightCount"}) {
+          reshade::set_config_value(nullptr, preset, key, static_cast<const char*>(nullptr));
+        }
+      }
+      if (revision < 2) {
+        for (const auto& [from, to] : std::initializer_list<std::pair<const char*, const char*>>{
+                 {"GraphicsUnitAnimation", "GraphicsFacialAnimation"}, {"GraphicsUnitAnimation", "GraphicsHandAnimation"},
+                 {"GraphicsCampaignDetail", "GraphicsCampaignPlants"}, {"GraphicsCampaignDetail", "GraphicsCampaignProps"}}) {
+          if (float value = 0.f, kept = 0.f; reshade::get_config_value(nullptr, preset, from, value)
+                                             && !reshade::get_config_value(nullptr, preset, to, kept)) {
+            reshade::set_config_value(nullptr, preset, to, value);
+          }
         }
       }
     }

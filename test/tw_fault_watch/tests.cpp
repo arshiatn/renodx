@@ -4,10 +4,13 @@
 // frame thread's, anywhere, for the stall line), which it leaves alone (software codes, other threads' faults outside its
 // code), that it always lets the search go on, and that the top-level filter says an unhandled one once and passes it on.
 #include <windows.h>
+#include <array>
+#include <atomic>
 #include <csignal>
 #include <cstdio>
 #include <format>
 #include <mutex>
+#include <regex>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -185,11 +188,63 @@ int main() {
   CHECK(!handling.empty() && Logged("The frame thread is handling an exception") == 1);
   std::printf("%s\n", handling.c_str());
   CHECK(Logged("(handled; it went on)") == 0);
-  // The note an add-on adds to the stall line.
-  loss::stall_note = [] { return std::string("worker pool: a test note"); };
   loss::LogStall(2000, false);
-  loss::stall_note = nullptr;
-  CHECK(LineWith("No frame for 2 s").ends_with("; worker pool: a test note"));
+  CHECK(LineWith("No frame for 2 s").find("; worker pool: effects") == std::string::npos);  // no job open: no words
+#if !defined(_WIN64)
+  // The open pool job's words ride on the stall line (x86: the pool exists only there).
+  {
+    namespace wp = twattila::worker_pool;
+    static std::atomic<bool> release = false;
+    // Each worker's thread id, and the fault line it formats for itself while the job is open (no allocation: FormatFault's).
+    static std::array<std::atomic<DWORD>, 3> worker_ids = {};
+    static std::array<std::array<char, 512>, 3> worker_lines = {};
+    static EXCEPTION_RECORD worker_fault = {.ExceptionCode = EXCEPTION_ACCESS_VIOLATION, .NumberParameters = 2};
+    worker_fault.ExceptionAddress = reinterpret_cast<void*>(inside + 0x40);
+    worker_fault.ExceptionInformation[0] = 1;
+    worker_fault.ExceptionInformation[1] = 0x20;
+    wp::Update({.threads = 3, .in_use = true});
+    CHECK(wp::Start({.work =
+                         [](void*, uint32_t worker) {
+                           loss::FormatFault(worker_lines[worker], "Fault (first chance)", worker_fault, loss::own_image_name.data(),
+                                             loss::own_image_begin);
+                           worker_ids[worker].store(GetCurrentThreadId());
+                           while (!release.load()) Sleep(1);
+                         },
+                     .user = wp::User::EFFECT_UPDATE,
+                     .join = wp::JoinRule::ENTERED},
+                    2));
+    for (int wait = 0; wait < 2000 && wp::internal::entered.load() != 2; ++wait) Sleep(1);
+    for (int wait = 0; wait < 2000 && (worker_ids[1].load() == 0 || worker_ids[2].load() == 0); ++wait) Sleep(1);
+    loss::LogStall(3000, false);
+    CHECK(LineWith("No frame for 3 s").ends_with("; worker pool: effects, open, asked 2, entered 2, done 0"));
+    // The pool records its threads' ids at CreateThread, and a fault on a worker names its number and the open job's user: the
+    // gates' job_line (the bench's crash pin, rule 2) matches it.
+    CHECK(worker_ids[1].load() == wp::internal::pool[0].id.load() && worker_ids[2].load() == wp::internal::pool[1].id.load());
+    const std::regex job_line("crash on pool worker (\\d+) in (\\w+)'s job", std::regex::icase);
+    for (uint32_t worker = 1; worker <= 2; ++worker) {
+      const std::string line = worker_lines[worker].data();
+      std::printf("%s\n", line.c_str());
+      CHECK(line.find(std::format("at {}+0x1040 (thread {}, crash on pool worker {} in effects's job; write at 0x20).", exe, worker_ids[worker].load(), worker)) != std::string::npos);
+      std::smatch matched;
+      CHECK(std::regex_search(line, matched, job_line) && matched[1] == std::to_string(worker) && matched[2] == "effects");
+    }
+    // A pool thread with no job open (here the main thread entered as the pool's fourth slot): its number, no user.
+    std::array<char, 512> main_line = {};
+    wp::internal::pool[3].id.store(main_thread);
+    loss::FormatFault(main_line, "Fault (first chance)", worker_fault, nullptr, 0);
+    CHECK(std::string(main_line.data()).find(std::format("(thread {}, crash on pool worker 4 in effects's job; write at 0x20).", main_thread)) != std::string::npos);
+    release = true;
+    wp::Join();
+    loss::FormatFault(main_line, "Fault (first chance)", worker_fault, nullptr, 0);
+    CHECK(std::string(main_line.data()).find(std::format("(thread {}, pool worker 4, no job open; write at 0x20).", main_thread)) != std::string::npos);
+    wp::internal::pool[3].id.store(0);
+    wp::Stop();
+    CHECK(wp::internal::pool[0].id.load() == 0 && wp::internal::pool[1].id.load() == 0);
+    // Not a pool thread: the frame thread / another thread words stay.
+    loss::FormatFault(main_line, "Fault (first chance)", worker_fault, nullptr, 0);
+    CHECK(std::string(main_line.data()).find(std::format("(thread {}, another thread; write at 0x20).", main_thread)) != std::string::npos);
+  }
+#endif
   CHECK(WaitForSingleObject(frame_thread, 10000) == WAIT_OBJECT_0);
   CloseHandle(frame_thread);
   const size_t handling_lines = Logged("The frame thread is handling an exception");
@@ -228,10 +283,22 @@ int main() {
   CHECK(loss::CodePlace(reinterpret_cast<uintptr_t>(page) + 0x10) == "test stubs+0x10");
   CHECK(Filter(EXCEPTION_ACCESS_VIOLATION, reinterpret_cast<uintptr_t>(page) + 0x10, 0, 0x1234) == EXCEPTION_CONTINUE_SEARCH);
   CHECK(Logged(std::format("Fault (first chance) 0xC0000005 at test stubs+0x10 (thread {}, another thread; read at 0x1234).", main_thread)) == 1);
-  CHECK(loss::AddCodeRange(reinterpret_cast<void*>(0x10), reinterpret_cast<void*>(0x20), "two"));
+  // A render_mt part's page (engine_code, effect_update_sites and draw_recording_sites call this once each): the range's INFO line is
+  // the gates' part_range, and a fault in the page is named by the same token and offset.
+  loss::AddPartRange("B3b", "engine_stubs", reinterpret_cast<void*>(0x10), 0x10);
+  const std::string range_line = LineWith("render_mt range:");
+  std::printf("%s\n", range_line.c_str());
+  const std::regex part_range("render_mt range: (\\w+) (?:code|stub) ([^\\s+]+)\\+0x([0-9A-Fa-f]+)\\.\\.\\+?0x([0-9A-Fa-f]+)");
+  std::smatch range_match;
+  CHECK(std::regex_search(range_line, range_match, part_range) && range_match[1] == "B3b" && range_match[2] == "engine_stubs"
+        && range_match[3] == "0" && range_match[4] == "10");
+  CHECK(loss::CodePlace(0x18) == "engine_stubs+0x8");
   CHECK(loss::AddCodeRange(reinterpret_cast<void*>(0x20), reinterpret_cast<void*>(0x30), "three"));
   CHECK(loss::AddCodeRange(reinterpret_cast<void*>(0x30), reinterpret_cast<void*>(0x40), "four"));
   CHECK(!loss::AddCodeRange(reinterpret_cast<void*>(0x40), reinterpret_cast<void*>(0x50), "five"));
+  // All 4 places taken: a warning says the page is not named, and no part_range line is made.
+  loss::AddPartRange("C", "recording_page", reinterpret_cast<void*>(0x40), 0x10);
+  CHECK(Logged("render_mt range: C page recording_page is not named in fault lines") == 1 && Logged("stub recording_page") == 0);
 
   // 6. Up to 4 places are said (a handled first chance, Detours' own, costs one), the floating-point codes too; a place
   // said once is not said again.

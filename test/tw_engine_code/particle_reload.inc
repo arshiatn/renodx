@@ -513,11 +513,8 @@ int ReloadAlone(size_t index, const uint8_t* game_bytes, size_t load_size, size_
 // sweep's (the eighth argument).
 int ParkedAtSites(uint32_t mask, int last_offset, bool entry_row = false, bool sweep_row = false) {
   namespace ec = twattila::engine_code::internal;
-  std::atomic<bool> stop = false;
-  std::thread parked([&] {
-    while (!stop.load()) Sleep(1);
-  });
-  HANDLE thread = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, GetThreadId(parked.native_handle()));
+  ParkedThread parked;
+  HANDLE thread = parked.Open();
   CHECK(thread != nullptr);
   bool on = true;
   CHECK((ec::written & mask) == mask);
@@ -545,8 +542,7 @@ int ParkedAtSites(uint32_t mask, int last_offset, bool entry_row = false, bool s
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, true, entry_row || sweep_row, sweep_row);
     on = (ec::written & mask) == mask;
   }
-  stop = true;
-  parked.join();
+  parked.Stop();
   CloseHandle(thread);
   CHECK(wrong == 0 && on && (ec::written & mask) == mask);
   return 0;

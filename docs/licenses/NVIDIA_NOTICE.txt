@@ -1,0 +1,12 @@
+NVIDIA DLSS, NVIDIA Reflex and NVIDIA Streamline
+
+This mod uses NVIDIA DLSS (Super Resolution, Ray Reconstruction and Frame Generation), NVIDIA Reflex, NVIDIA Streamline
+and NVAPI. This software contains source code provided by NVIDIA Corporation.
+
+nvngx_dlss.dll, nvngx_dlssd.dll and nvngx_dlssg.dll (DLSS 310.9.16) and sl.interposer.dll, sl.common.dll, sl.dlss_g.dll,
+sl.reflex.dll and sl.pcl.dll (Streamline 2.14.16) are NVIDIA's files, included with this mod under NVIDIA's licenses:
+NVIDIA_DLSS_LICENSE.txt and NVIDIA_REFLEX_LICENSE.txt (NVIDIA RTX SDKs license), STREAMLINE_LICENSE.txt (MIT) with
+STREAMLINE_3RD_PARTY_LICENSES.md, and NVAPI_LICENSE.txt (MIT).
+
+NVIDIA, the NVIDIA logo, GeForce RTX, DLSS and Reflex are trademarks and/or registered trademarks of NVIDIA Corporation
+in the U.S. and other countries.

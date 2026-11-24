@@ -1,5 +1,14 @@
 # Total War Saga: THRONES OF BRITANNIA (RenoDX HDR, ATN)
 
+## Open items G01 (2026-11-22; built only, not run in game)
+
+- Changed: Steady Bounce Light and Torch and Fire Shadow Lights start at their own rows' defaults (off, 32), not RT/PT's
+  (on, 128): both Experimental (ATN 2026-11-22). Saved values of both are cleared once (Settings Revision 3). RT/PT still
+  sets them as Attila's. Auto Thickness on by default comes with the shared rows.
+- Checked: the V35 fit (`test/tw_rome2_thrones_v35`, WARP): PsychoV35 at Musa's own sliders already is the game's SDR
+  below white (grey x1.000 at 0.05 - 100 nits, colour x1.000 at 1 - 30 nits; the fit's best is Musa's own, 0.04 %), so its
+  defaults stay. Ray Reconstruction's specular guide already takes Fresnel (aa_rr_guides includes Attila's rr_specular).
+
 ## Dev, Model Detail Distance at any time (2026-11-18; built only, not stamped, not installed, not run in game)
 
 - Faster: at **Model Detail Distance 1x** (the default) the game runs its own LOD code (the hook shared with Attila and Rome II

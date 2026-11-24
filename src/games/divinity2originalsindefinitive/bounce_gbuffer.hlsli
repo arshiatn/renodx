@@ -7,7 +7,7 @@
 #define SRC_GAMES_DIVINITY2ORIGINALSINDEFINITIVE_BOUNCE_GBUFFER_HLSLI_
 
 // GT-VBGI (screen_space.hpp): Divinity 2's G-buffer and camera for the shared passes (twattila/light_bounce_*.hlsli) as
-// talesofarise_dlss/ue_light_bounce.hpp binds them (its ue_light_bounce_* wrappers here): GBuffer1 (the view-space
+// talesofarise_dlss/ue_light_bounce.hpp binds them (its host_light_bounce_* wrappers here): GBuffer1 (the view-space
 // normal, stereographic / 1.7777) at t42, GBuffer2 (base colour) at t43, GBuffer3 (roughness, reflectance, metal mask,
 // shading model << 1) at t44, LinearizeDepth's depth (view z / the far plane, 1 on the sky) at t45, the camera at b11
 // (screen_space.hpp BounceView: PerView's main camera as dlaa.hpp keeps it, and the last frame's). Positions in metres,

@@ -39,7 +39,9 @@
 #include "../../mods/swapchain.hpp"
 #include "../../utils/log.hpp"
 #include "../../utils/vtable.hpp"
+#include "./code_ranges.hpp"
 #include "./output_encoding.hpp"
+#include "./worker_pool.hpp"
 
 // A Total War game after a GPU reset. It builds a new device and swap chain for the same window, in one of two orders:
 // - The old device alive (WH3, ATN's log 2026-11-05): a chain whose back buffer's view is bound or held keeps the
@@ -110,53 +112,6 @@ static std::atomic_uint64_t last_present_tick = 0;
 static std::atomic_uint32_t present_thread = 0;
 static HANDLE watch_thread = nullptr;
 static HANDLE watch_stop = nullptr;  // that thread's own: a watch that could not be waited for keeps its event
-// Set by an add-on with more to say about a stall (its worker pool's job, say): appended to the stall line after "; ".
-static std::string (*stall_note)() = nullptr;
-
-// The add-on's own code: its image (set by Install) and up to 4 pages outside it (AddCodeRange). A range is published by
-// its `end`, stored last: a handler on any thread reads `end` first and skips a range without one.
-static uintptr_t own_image_begin = 0;
-static uintptr_t own_image_end = 0;
-static std::array<char, MAX_PATH> own_image_name = {};
-struct CodeRange {
-  std::atomic<const char*> name = nullptr;  // claims the place
-  std::atomic<uintptr_t> begin = 0;
-  std::atomic<uintptr_t> end = 0;
-};
-static std::array<CodeRange, 4> code_ranges;
-
-// A page of the add-on's code outside its image (engine-code stubs, thunks), named like the image in the fault,
-// unhandled-exception and stall lines. For a page that stays for the image's life: added once it is executable and
-// before anything jumps there. `name` is a literal. False: the 4 places are taken.
-static bool AddCodeRange(const void* begin, const void* end, const char* name) {
-  for (CodeRange& range : code_ranges) {
-    const char* free_place = nullptr;
-    if (!range.name.compare_exchange_strong(free_place, name)) continue;
-    range.begin.store(reinterpret_cast<uintptr_t>(begin), std::memory_order_relaxed);
-    range.end.store(reinterpret_cast<uintptr_t>(end), std::memory_order_release);
-    return true;
-  }
-  return false;
-}
-
-// The name of the add-on's code that holds `address` (its image's file or a range's name), its start in `start`; null:
-// not the add-on's. No allocation, no lock: exception handlers call it.
-static const char* OwnCode(uintptr_t address, uintptr_t* start) {
-  if (address - own_image_begin < own_image_end - own_image_begin) {
-    *start = own_image_begin;
-    return own_image_name.data();
-  }
-  for (const CodeRange& range : code_ranges) {
-    const uintptr_t end = range.end.load(std::memory_order_acquire);
-    if (end == 0) continue;
-    const uintptr_t begin = range.begin.load(std::memory_order_relaxed);
-    if (address - begin < end - begin) {
-      *start = begin;
-      return range.name.load(std::memory_order_relaxed);
-    }
-  }
-  return nullptr;
-}
 
 // A hardware fault as the first vectored handler sees it (OnException), before any handler of the game's. In the add-on's
 // code it is logged at once, as a first chance: nothing in its code handles one, but a library linked into it can
@@ -221,7 +176,17 @@ static void FormatFault(std::span<char> line, const char* kind, const EXCEPTION_
   } else {
     append("0x%zX", address);
   }
-  append(" (thread %lu, %s", thread, (thread == present_thread.load(std::memory_order_relaxed) ? "the frame thread" : "another thread"));
+  // A pool thread says which worker and whose job (the keys of worker_pool::USER_KEYS), for the bench's crash pin.
+  const char* job = nullptr;
+  const uint32_t worker = worker_pool::FaultWorker(&job);
+  append(" (thread %lu, ", thread);
+  if (worker != 0 && job != nullptr) {
+    append("crash on pool worker %u in %s's job", worker, job);
+  } else if (worker != 0) {
+    append("pool worker %u, no job open", worker);
+  } else {
+    append("%s", (thread == present_thread.load(std::memory_order_relaxed) ? "the frame thread" : "another thread"));
+  }
   if ((record.ExceptionCode == EXCEPTION_ACCESS_VIOLATION || record.ExceptionCode == EXCEPTION_IN_PAGE_ERROR) && record.NumberParameters >= 2) {
     const char* access = "access";
     switch (record.ExceptionInformation[0]) {
@@ -250,23 +215,23 @@ static void FormatFault(std::span<char> line, const char* kind, const EXCEPTION_
 static LONG CALLBACK OnException(EXCEPTION_POINTERS* info) {
   const EXCEPTION_RECORD& record = *info->ExceptionRecord;
   switch (record.ExceptionCode) {
-    case EXCEPTION_ACCESS_VIOLATION:
-    case EXCEPTION_IN_PAGE_ERROR:
-    case EXCEPTION_ILLEGAL_INSTRUCTION:
-    case EXCEPTION_PRIV_INSTRUCTION:
-    case EXCEPTION_INT_DIVIDE_BY_ZERO:
-    case EXCEPTION_INT_OVERFLOW:
-    case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
-    case EXCEPTION_FLT_DENORMAL_OPERAND:
-    case EXCEPTION_FLT_DIVIDE_BY_ZERO:
-    case EXCEPTION_FLT_INEXACT_RESULT:
-    case EXCEPTION_FLT_INVALID_OPERATION:
-    case EXCEPTION_FLT_OVERFLOW:
-    case EXCEPTION_FLT_STACK_CHECK:
-    case EXCEPTION_FLT_UNDERFLOW:
+    case static_cast<DWORD>(EXCEPTION_ACCESS_VIOLATION):
+    case static_cast<DWORD>(EXCEPTION_IN_PAGE_ERROR):
+    case static_cast<DWORD>(EXCEPTION_ILLEGAL_INSTRUCTION):
+    case static_cast<DWORD>(EXCEPTION_PRIV_INSTRUCTION):
+    case static_cast<DWORD>(EXCEPTION_INT_DIVIDE_BY_ZERO):
+    case static_cast<DWORD>(EXCEPTION_INT_OVERFLOW):
+    case static_cast<DWORD>(EXCEPTION_ARRAY_BOUNDS_EXCEEDED):
+    case static_cast<DWORD>(EXCEPTION_FLT_DENORMAL_OPERAND):
+    case static_cast<DWORD>(EXCEPTION_FLT_DIVIDE_BY_ZERO):
+    case static_cast<DWORD>(EXCEPTION_FLT_INEXACT_RESULT):
+    case static_cast<DWORD>(EXCEPTION_FLT_INVALID_OPERATION):
+    case static_cast<DWORD>(EXCEPTION_FLT_OVERFLOW):
+    case static_cast<DWORD>(EXCEPTION_FLT_STACK_CHECK):
+    case static_cast<DWORD>(EXCEPTION_FLT_UNDERFLOW):
     case 0xC00002B4:  // STATUS_FLOAT_MULTIPLE_FAULTS (SSE)
     case 0xC00002B5:  // STATUS_FLOAT_MULTIPLE_TRAPS (SSE)
-    case EXCEPTION_STACK_OVERFLOW:
+    case static_cast<DWORD>(EXCEPTION_STACK_OVERFLOW):
       break;
     default:
       // C++ exceptions, thread names, breakpoints and single steps (the Graphics watch's) are no faults.
@@ -445,10 +410,8 @@ static void LogStall(uint64_t age_ms, bool dump) {
       ++added;
     }
   }
-  if (stall_note != nullptr) {
-    if (const std::string note = stall_note(); !note.empty()) {
-      line += "; " + note;
-    }
+  if (const std::string job = worker_pool::Describe(); !job.empty()) {
+    line += "; worker pool: " + job;
   }
   renodx::utils::log::w(line);
   // A thread inside an exception's handling holds a return address into ntdll's exception dispatcher on its stack (+0x2E
