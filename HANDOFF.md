@@ -786,6 +786,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-dif ... | ?
 - s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 i ... | ?
 - PK5 S0 microbench (tests only) after the FCA merge + fxi_'s test follow-up (test ... | ?
+- g24_ fill (sent): 941 mechanical -> rt vs|-|-|- families -> mv 673 (111 GPU-scen ... | ?
+- gsr_ (Opus xHigh) scale route design (handoff_plan/gsr_scale_route_design.md): o ... | ?
+- ATN trace requests (later, one go): Expeditions tracer 4.23 View offsets + a new ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14395,6 +14398,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         its first step; test parts pk4_ 31-33, pk5_ 34+.
         - [ ] PK5 S0 microbench (tests only) after the FCA merge + fxi_'s test follow-up (tests.cpp one writer); run only on
         an idle PC (CPU timing).
+        rvg_ G24 STEP1 R2 GO, CORE HASHES STAMPED (handoff_plan/reviews/rvg_g24_step1_r2_recheck.md + _handback.md):
+        checker 191fc689f1c5, games.py 9294603a30f8, ue4 456d60807248, fixture 92c3254d9bb0, fixture_strict 5f44218d158f,
+        make_fixture ad73242fce39, cases.tsv 996c77f28980. Mutation 21 / 26 (M14 / M15 later, M17 truly uncatchable).
+        Sizing: mv / rt ~890 holds; SCALE NOT SIZED: 9,496 of 12,536 open scale cells have only a BUG route (no SCALED
+        trace kind, interpolant-rooted reads refused, no out: / test: tool) incl. the 4,866-cell translucency / decal
+        signature; in-scope level-A controls push scale to ~1,944. 33 mv gap families = 2 route decisions (VTF static-
+        heightmap exemption; bones via twin: logging). Post / ui tripwire now needs a View layout in TW / CryEngine /
+        Divinity packs.
+        - [ ] g24_ fill (sent): 941 mechanical -> rt vs|-|-|- families -> mv 673 (111 GPU-scene parked) -> ruleable scale
+        (2,133 + 907); never BUG to make progress; a decision block for ATN on the 33 gap families.
+        - [ ] gsr_ (Opus xHigh) scale route design (handoff_plan/gsr_scale_route_design.md): offline WARP scale tool as
+        out: / test: vs mesh-UV interpolant extension vs new trace kind -> rvg_ review -> re-run S8 for scale.
+        - [ ] ATN trace requests (later, one go): Expeditions tracer 4.23 View offsets + a new trace run; GPU-scene traces
+        (111 mv cells); twin: logging (first index / buffers) for the bones families.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
