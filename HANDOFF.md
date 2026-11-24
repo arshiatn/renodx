@@ -13465,6 +13465,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         131, lib 657). COORD 04:1x: NIT 7 day1_three names confirmed (ALL / +OLD6pf / +FCU / +FDW); t4i_ adds -Affinity +
         -NoHeapfix (follow-ups only; main args byte-identical) and fixes the ETL size estimate (batch W3-5 = 14.8 GB for
         ~305 s, not 0.4 GB/s) or moves each WPR ETL to D:\bench_etl after its start; then ONE ebr_ delta re-review.
+        t4i_ ROUND 3 (render_mt/reports/t4i_final_round3_handback.md): -Affinity <mask> (lowcore) + -NoHeapfix (noheapfix) in
+        constantinople_bench.ps1, follow-ups only (main args byte-identical, new paths not run in game yet); ETL size from
+        the measured 22-67 MB/s (70 MB/s used: main ~9.6 GB, wpr_analysis ~5.5 GB; C: ~83 GB free); run_all green (leg 256,
+        analyze 221, check 223, make 131, lib 657). COORD 04:0x: final.json files filled from rc_1124 (addon 3852fc47, FP
+        twin 3d94ae84, helper 38db7a5d; file hashes checked, no placeholders), rc_manifest.json -> ebo_final\manifest.json,
+        ebo_final_make.py rerun (40 main starts). GAP: the RC manifest lacks heapfix_prep (ebo_leg:191 = PROBLEM) + the env /
+        rows / row_values / optional / defines / log_formats tables -> t4i_ ROUND 4 builds the full RC manifest from
+        bd46d12fd (offline tests only); then ONE ebr_ delta re-review (rounds 2-4); then coord's real -Final -DryRun.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
