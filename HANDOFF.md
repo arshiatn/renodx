@@ -807,7 +807,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), obj ... | ?
 - GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -Bloc ... | ?
 - ATN (gsr_): approve the dumper change (src/utils/shader_dump.hpp, 3 switch cases ... | ?
-- coord GPU run A (gate sse_e2_r2_a, 16:28; slot2 for the build part; CPU 3 %, gpu ... | ?
+- sse_ K fallback (sent): Bend's own loop below K groups (K from the crossover), l ... | ?
 - trc_ (Opus xHigh, worktree, branch trc_tracer) Expeditions tracer prep: 4.23 Vie ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -14701,8 +14701,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         100 % row at Length >= 480. K FALLBACK (Bend's own loop below K quads; WARP proof + GPU re-time; before the merge
         unless the worst short loss < 0.02 ms at 4K): only short rows slower. Shogun 2: 3840 also slower = occupancy ->
         opt sss00 / sss01 out by a define (ATN). Merge as is if nothing fails / is really slower after the repeat.
-        - [ ] coord GPU run A (gate sse_e2_r2_a, 16:28; slot2 for the build part; CPU 3 %, gpu_job.lock free, 4 zombie
-        Attila = 0 threads = skipped by ns_busy) -> run B repeat only if a row is flagged -> merge or K / block.
+        - [x] coord GPU run A DONE (gate sse_e2_r2_a, 16:28-16:31; log testbin/scratch/sse_/gpu_run_a_5090_sse_e2_r2_a.log):
+        exit 0 PASS (oracle, false skips 0, varying, light bits, Shogun 2). 4K timing: Attila DEFAULT (extended L240)
+        -0.36 / -0.33 / -0.35 ms at 100 % (box / dense / sun), -0.02..-0.03 at 58 %; L480 extended -1.0, L1920 -5.2..-5.9.
+        LOSSES: short rows L60 / L120 +0.03..+0.19 (32 torches +0.33); LIGHT MODE slower up to L480 (8 torches L240 +0.10
+        / +0.14, 32 torches +0.23 / +0.35; L480 box 32 +0.035, dense 8 +0.030 = B3 by rvn_'s threshold); Shogun 2 at 120
+        +0.175 / +0.177 (3840 -0.58 = per-ray overhead). -> NOT merged as is; run B repeat skipped (the K build gets re-timed).
+        - [ ] sse_ K fallback (sent): Bend's own loop below K groups (K from the crossover), light-mode loss root cause +
+        cover, WARP proof both sides of K, x86 + amd64 -> hand-back 'sse_ e2 k' -> coord GPU re-time (+ repeat) -> merge.
         pk4_ REV 1.1 DONE = PK4 DESIGN FINAL (pk4_design.md 949 lines; pk4_rev11_handback.md): clear guard 66 bytes with
         rv4_'s exact bytes (no S3 re-check needed); game bytes re-read and match; parts 31-33 extended (output size 0
         after a late clear); G3a = 14 no-heapfix starts (10 only if A/A noise allows); main = present thread stated.
