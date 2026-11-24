@@ -14,7 +14,8 @@
 //    (the delete clears the app's global; the teardown gets the loop object the outer loop passed), the drain only once (a second call goes straight on); the line of a drain that waited names
 //    the workers busy at its first poll;
 // 30f. The race, deterministic: a battle job that reads the battle until the end of its window while the fake teardown frees it. Control: no drain at +0xD5D74 (the teardown called directly): the job
-//    sees the free and the later drain waits for it; through +0xD5D74: the job never sees the free, the drain at +0xD5D74 waited for it and the later drain found every worker asleep.
+//    sees the free and the later drain waits for it; through +0xD5D74: the job never sees the free, the drain at +0xD5D74 waited for it and the later drain found every worker asleep. On the fake
+//    pool, then with Faster Job Wake-Ups on, on five of the game's own workers (its constructor, semaphores, Sleep through the row's stub, the job queued and the pool woken by its WakeAll).
 // ====================================================================================================================
 
 std::atomic<int> exit_fake_deletes = 0;
@@ -25,6 +26,38 @@ std::atomic<void*> exit_fake_teardown_self = nullptr;
 std::function<void()> exit_fake_teardown_extra;  // what the fake root teardown does after recording (30f: frees the battle, then makes the app delete's call)
 std::array<uint8_t*, 8> exit_fake_workers = {};
 uint32_t exit_fake_count = 0;
+
+// 30f with Faster Job Wake-Ups on: a pool of the game's own workers (its constructor and semaphores), one thread each that runs the game's Sleep (ours: the row's stub), then the queued jobs, until the game's
+// Stop (state 3).
+struct ExitJobPool {
+  const JobCopy* copy = nullptr;
+  std::array<uint8_t*, 8> workers = {};
+  std::mutex lock;
+  std::deque<std::function<void()>> jobs;
+};
+struct ExitJobThread {
+  ExitJobPool* pool;
+  uint32_t index;
+};
+DWORD WINAPI ExitJobThreadMain(void* parameter) {
+  const auto* context = static_cast<const ExitJobThread*>(parameter);
+  ExitJobPool* pool = context->pool;
+  uint8_t* worker = pool->workers[context->index];
+  for (;;) {
+    pool->copy->sleep(worker, nullptr);
+    if (*reinterpret_cast<volatile uint32_t*>(worker + 0x18) == 3) return 0;
+    for (;;) {
+      std::function<void()> job;
+      {
+        const std::unique_lock guard(pool->lock);
+        if (pool->jobs.empty()) break;
+        job = std::move(pool->jobs.front());
+        pool->jobs.pop_front();
+      }
+      job();
+    }
+  }
+}
 
 // The fake pool's workers that are neither asleep with no wake pending (state 1, [+0x50] 0) nor stopped (3).
 int ExitFakeBusy() {
@@ -429,41 +462,43 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
   CHECK(teardown_done() && took < 500 && line().find(teardown_line + "the game built no job system") != std::string::npos);
   std::printf("   +0xD5D74: no pool: no wait, the teardown runs\n");
 
-  // 30f. The race. Worker 1 is in state 2 before any call; the "battle job" thread reads the battle for its window and only then puts the worker to sleep (a release store after its last read,
-  // so a drain that saw the sleep sees every read). The fake teardown records the workers still running, frees the battle, then makes the app delete's call (the nested call of +0xC9AC1).
+  // 30f. The race. A job on a worker reads the battle for its window and only then ends, the worker asleep again (a fake worker: a release store of state 1 after the last read, so a drain that saw the sleep sees
+  // every read; a worker of the game's: its Sleep). The fake teardown records the workers still running, frees the battle, then makes the app delete's call (the nested call of +0xC9AC1).
+  // Two pools: five fake workers, then, with Faster Job Wake-Ups on (its three sites in), five of the game's own workers: the job is queued and the pool woken by the game's WakeAll, as a frame does.
   {
     std::atomic<uint32_t> fake_battle = 1;
     std::atomic<bool> started = false;
+    std::atomic<bool> job_done = false;
     std::atomic<bool> saw_freed = false;
     exit_fake_teardown_extra = [&] {
       fake_battle.store(0, std::memory_order_release);
       at_exit();
     };
-    // One case: the control (no drain at +0xD5D74: the teardown called as it is; the job runs until it has seen the free, at most 5 s, and ends 30 ms after) or through +0xD5D74 (the job's
-    // window is 80 ms).
-    const auto race = [&](bool through_drain) {
-      world(5, {{1, 2}});
+    // The job: the control (no drain at +0xD5D74: the teardown called as it is) runs until it has seen the free, at most 5 s, and ends 30 ms after; through +0xD5D74 its window is 80 ms.
+    const auto job_reads_battle = [&](bool through_drain) {
+      started = true;
+      const auto begin = std::chrono::steady_clock::now();
+      const auto window = std::chrono::milliseconds(through_drain ? 80 : 5000);
+      while (std::chrono::steady_clock::now() - begin < window) {
+        if (fake_battle.load(std::memory_order_acquire) == 0) {
+          saw_freed = true;
+          if (!through_drain) {
+            Sleep(30);
+            break;
+          }
+        }
+        std::this_thread::yield();
+      }
+    };
+    // One case: `start_job` puts the job on a worker (it returns the thread of a fake worker, joined at the end, or none); the exit then runs without a drain at +0xD5D74 (the control) or through it.
+    const auto race = [&](bool through_drain, const std::function<std::thread(bool)>& start_job) {
       fake_battle = 1;
       started = false;
+      job_done = false;
       saw_freed = false;
       ec::game_exiting = false;
       ec::teardown_drained = false;
-      std::thread job_thread([&] {
-        started = true;
-        const auto begin = std::chrono::steady_clock::now();
-        const auto window = std::chrono::milliseconds(through_drain ? 80 : 5000);
-        while (std::chrono::steady_clock::now() - begin < window) {
-          if (fake_battle.load(std::memory_order_acquire) == 0) {
-            saw_freed = true;
-            if (!through_drain) {
-              Sleep(30);
-              break;
-            }
-          }
-          std::this_thread::yield();
-        }
-        std::atomic_ref<uint32_t>(*reinterpret_cast<uint32_t*>(exit_fake_workers[1] + 0x18)).store(1, std::memory_order_release);
-      });
+      std::thread job_thread = start_job(through_drain);
       while (!started) std::this_thread::yield();
       if (through_drain) {
         at_teardown();
@@ -471,35 +506,111 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
         forget_teardown();
         ExitFakeTeardown(&fake_loop_object);
       }
-      job_thread.join();
+      while (!job_done) std::this_thread::yield();
+      if (job_thread.joinable()) job_thread.join();
     };
     // A run in which the test thread stalled past the job's window (or its 30 ms) before the drain's first poll shows that drain no busy worker and proves nothing: it is run again (3 times at most).
-    const auto waited_for_job = [&](size_t index, const std::string& drain_name) {
-      return log_lines[index].find(drain_name + ": drained 1 of 5 job workers in ") != std::string::npos && log_lines[index].ends_with(" ms (busy at the first poll: 1).");
+    // `busy_workers`: how many workers that first poll must name (0: any).
+    const auto waited_for_job = [&](size_t index, const std::string& drain_name, int busy_workers) {
+      const std::string prefix = drain_name + ": drained ";
+      const size_t at = log_lines[index].find(prefix);
+      const int busy = (at != std::string::npos ? std::atoi(log_lines[index].c_str() + at + prefix.size()) : 0);
+      return busy >= 1 && (busy_workers == 0 || busy == busy_workers) && log_lines[index].find(" job workers in ") != std::string::npos
+             && log_lines[index].find(" ms (busy at the first poll: ") != std::string::npos && log_lines[index].ends_with(").");
     };
-    // Control: the job sees the free; the drain at +0xC9AC1 waited for it after the free.
-    bool waited = false;
-    for (int attempt = 0; attempt < 3 && !waited; ++attempt) {
-      const size_t first_line = log_lines.size();
-      race(false);
-      CHECK(saw_freed && teardown_done() && exit_fake_busy_at_teardown == 1 && deleted_once() && exit_fake_busy_at_delete == 0);
-      CHECK(log_lines.size() == first_line + 1);
-      waited = waited_for_job(first_line, "Exit Job Drain");
-      if (waited) std::printf("   the race, no drain at +0xD5D74 (attempt %d of 3): the job saw the battle freed; \"%s\"\n", attempt + 1, log_lines[first_line].c_str());
+    const auto both_races = [&](const char* pool_name, const std::function<std::thread(bool)>& start_job, int busy_workers) -> int {
+      // Control: the job sees the free; the drain at +0xC9AC1 waited for it after the free.
+      bool waited = false;
+      for (int attempt = 0; attempt < 3 && !waited; ++attempt) {
+        const size_t first_line = log_lines.size();
+        race(false, start_job);
+        CHECK(saw_freed && teardown_done() && exit_fake_busy_at_teardown >= 1 && (busy_workers == 0 || exit_fake_busy_at_teardown == busy_workers) && deleted_once() && exit_fake_busy_at_delete == 0);
+        CHECK(log_lines.size() == first_line + 1);
+        waited = waited_for_job(first_line, "Exit Job Drain", busy_workers);
+        if (waited) std::printf("   the race%s, no drain at +0xD5D74 (attempt %d of 3): the job saw the battle freed; \"%s\"\n", pool_name, attempt + 1, log_lines[first_line].c_str());
+      }
+      CHECK(waited);
+      // Through +0xD5D74: the drain waits for the job before the free; the later drain finds every worker asleep.
+      waited = false;
+      for (int attempt = 0; attempt < 3 && !waited; ++attempt) {
+        const size_t first_line = log_lines.size();
+        race(true, start_job);
+        CHECK(!saw_freed && teardown_done() && exit_fake_busy_at_teardown == 0 && deleted_once() && exit_fake_busy_at_delete == 0);
+        CHECK(log_lines.size() == first_line + 2 && log_lines[first_line + 1].find("Exit Job Drain: drained 0 of 5 job workers in ") != std::string::npos
+              && log_lines[first_line + 1].ends_with(" ms."));
+        waited = waited_for_job(first_line, "Exit Job Drain before the teardown", busy_workers);
+        if (waited) {
+          std::printf("   the race%s, through +0xD5D74 (attempt %d of 3): the job never saw the battle freed; \"%s\", then \"%s\"\n", pool_name, attempt + 1, log_lines[first_line].c_str(),
+                      log_lines[first_line + 1].c_str());
+        }
+      }
+      CHECK(waited);
+      return 0;
+    };
+    // The fake pool: worker 1 is in state 2 before any call and the job's thread puts it to sleep.
+    if (both_races("", [&](bool through_drain) {
+          world(5, {{1, 2}});
+          return std::thread([&, through_drain] {
+            job_reads_battle(through_drain);
+            std::atomic_ref<uint32_t>(*reinterpret_cast<uint32_t*>(exit_fake_workers[1] + 0x18)).store(1, std::memory_order_release);
+            job_done = true;
+          });
+        }, 1) != 0) {
+      return 1;
     }
-    CHECK(waited);
-    // Through +0xD5D74: the drain waits for the job before the free; the later drain finds every worker asleep.
-    waited = false;
-    for (int attempt = 0; attempt < 3 && !waited; ++attempt) {
-      const size_t first_line = log_lines.size();
-      race(true);
-      CHECK(!saw_freed && teardown_done() && exit_fake_busy_at_teardown == 0 && deleted_once() && exit_fake_busy_at_delete == 0);
-      CHECK(log_lines.size() == first_line + 2 && log_lines[first_line + 1].find("Exit Job Drain: drained 0 of 5 job workers in ") != std::string::npos
-            && log_lines[first_line + 1].ends_with(" ms."));
-      waited = waited_for_job(first_line, "Exit Job Drain before the teardown");
-      if (waited) std::printf("   the race, through +0xD5D74 (attempt %d of 3): the job never saw the battle freed; \"%s\", then \"%s\"\n", attempt + 1, log_lines[first_line].c_str(), log_lines[first_line + 1].c_str());
+
+    // Faster Job Wake-Ups on: the same race on the game's own workers (five threads in its Sleep, the stub's side table keyed to the pool).
+    const auto wake_ups = [&](bool on) -> int {
+      ec::failed_writes = 0;
+      const uint32_t wanted = ec::EXIT_DRAIN_SITES | (on ? ec::JOB_SITES : 0u);
+      for (int tries = 0; ec::written != wanted && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
+        twattila::engine_code::Update(false, ATTILA_GAME, false, on, false, false, false, false, 1.f, 0, {.exit_job_drain = true});
+      }
+      CHECK(ec::written == wanted);
+      return 0;
+    };
+    CHECK((ec::found & ec::JOB_SITES) == ec::JOB_SITES);
+    if (wake_ups(true) != 0) return 1;
+    FillKernelImports(patched);
+    const uint32_t make_semaphore_rva = SemaphoreWrapperRva(game);
+    CHECK(make_semaphore_rva != 0);
+    const JobCopy job_copy = MakeJobCopy(build, make_semaphore_rva, "ours", patched, nullptr);
+    CHECK(job_copy.pool != nullptr);
+    constexpr uint32_t JOB_WORKERS = 5;
+    ExitJobPool job_pool;
+    job_pool.copy = &job_copy;
+    std::array<ExitJobThread, JOB_WORKERS> contexts = {};
+    std::array<HANDLE, JOB_WORKERS> threads = {};
+    for (uint32_t index = 0; index < JOB_WORKERS; ++index) {
+      contexts[index] = {&job_pool, index};
+      threads[index] = CreateThread(nullptr, 0, &ExitJobThreadMain, &contexts[index], CREATE_SUSPENDED, nullptr);
+      job_pool.workers[index] = NewWorker(job_copy, index, JOB_WORKERS, threads[index]);
+      exit_fake_workers[index] = job_pool.workers[index];
     }
-    CHECK(waited);
+    exit_fake_count = JOB_WORKERS;
+    Write32(reinterpret_cast<uint8_t*>(ec::job_pool_global), address(job_copy.pool));
+    for (const HANDLE thread : threads) ResumeThread(thread);
+    const int woken_races = both_races(" with Faster Job Wake-Ups on, five of the game's workers", [&](bool through_drain) {
+      for (int wait = 0; wait < 5000 && ExitFakeBusy() != 0; ++wait) Sleep(1);  // every worker asleep again after the last run
+      {
+        const std::unique_lock guard(job_pool.lock);
+        job_pool.jobs.push_back([&, through_drain] {
+          job_reads_battle(through_drain);
+          job_done = true;
+        });
+      }
+      job_copy.wake_all(job_copy.pool, nullptr);  // after the push, as a frame does
+      return std::thread();
+    }, 0);
+    for (uint32_t index = 0; index < JOB_WORKERS; ++index) {
+      job_copy.destroy(job_pool.workers[index], nullptr);  // the game's destructor: Stop (state 3, the semaphore released, the thread waited for and closed), then the semaphore
+      DecommitWorker(job_pool.workers[index]);
+    }
+    exit_fake_count = 0;
+    Write32(reinterpret_cast<uint8_t*>(ec::job_pool_global), 0);
+    VirtualFree(job_copy.pool, 0, MEM_RELEASE);
+    if (woken_races != 0 || wake_ups(false) != 0) return 1;
+    CHECK(JobTableField(0) == address(job_copy.pool) && JobTableField(1) == 0 && JobTableField(3) == 0);  // the row's stubs ran on this pool (the table's key), no request left, no loop running
     exit_fake_teardown_extra = nullptr;
   }
   ec::exit_root_teardown = reinterpret_cast<decltype(ec::exit_root_teardown)>(patched + teardown_rva);
@@ -510,6 +621,6 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
   CHECK(ec::written == 0 && std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   *app_global = 0;
   VirtualFree(memory, 0, MEM_RELEASE);
-  std::printf("30. exit job drain: both sites as Prepare made them, the signatures (each alone, the accessor, the pool's pointer), the root teardown's callers, in and out, the drain on a fake pool at both sites (waited for, the busy workers named, a queued job, the cap, no pool, once), the race with its control, another mod's bytes over either call: PASS\n");
+  std::printf("30. exit job drain: both sites as Prepare made them, the signatures (each alone, the accessor, the pool's pointer), the root teardown's callers, in and out, the drain on a fake pool at both sites (waited for, the busy workers named, a queued job, the cap, no pool, once), the race with its control (on the fake pool and with Faster Job Wake-Ups on), another mod's bytes over either call: PASS\n");
   return 0;
 }

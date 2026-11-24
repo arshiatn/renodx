@@ -729,6 +729,31 @@ uint8_t* NewWorker(const JobCopy& copy, uint32_t index, uint32_t count, HANDLE t
   return worker;
 }
 
+// The semaphore constructor's wrapper that the worker constructor calls (its rva in the game's image `game`; 0: the constructor is not found).
+uint32_t SemaphoreWrapperRva(const uint8_t* game) {
+  const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(game + reinterpret_cast<const IMAGE_DOS_HEADER*>(game)->e_lfanew);
+  const auto* text_header = IMAGE_FIRST_SECTION(nt);
+  const uint8_t* constructor = tw::engine_tweaks::FindPattern({std::string_view(reinterpret_cast<const char*>(game + text_header->VirtualAddress), text_header->Misc.VirtualSize)}, JOB_WORKER_CONSTRUCTOR);
+  if (constructor == nullptr) return 0;
+  const uint8_t* semaphore_call = constructor + JOB_WORKER_CONSTRUCTOR_SEMAPHORE_CALL;
+  return static_cast<uint32_t>(semaphore_call + 5 + static_cast<int32_t>(Read32(semaphore_call + 1)) - game);
+}
+
+// The game's job functions in `image` (the game's mapping or the patched one), callable, with a pool of its own page (engine_code's table keys the first pool its WakeAll
+// sees); `asleep` as JobCopy has it.
+JobCopy MakeJobCopy(const TestBuild& build, uint32_t make_semaphore_rva, const char* name, uint8_t* image, const volatile uint32_t* asleep) {
+  return {
+      .name = name,
+      .image = image,
+      .wake_all = reinterpret_cast<void(__fastcall*)(void*, void*)>(image + build.code->job_wake_all_rva),
+      .sleep = reinterpret_cast<void(__fastcall*)(void*, void*)>(image + build.code->job_sleep_rva),
+      .destroy = reinterpret_cast<void(__fastcall*)(void*, void*)>(image + build.code->job_worker_destructor_rva),
+      .make_semaphore = reinterpret_cast<void*(__fastcall*)(void*, void*, uint32_t, uint32_t, uint32_t, uint32_t)>(image + make_semaphore_rva),
+      .pool = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)),
+      .asleep = asleep,
+  };
+}
+
 // Decommits a worker's page (a worker used afterwards faults) and keeps its reservation for a while: each VirtualAlloc reserves
 // 64 KB of the 32-bit address space, so the oldest go back (the shutdown cycles would otherwise use up 2 GB).
 void DecommitWorker(uint8_t* worker) {
@@ -970,28 +995,13 @@ int RunJobTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
   // No sentinel is left in the stub, and every call and jump in it lands in the page or on the game's functions.
   const uint8_t* stub = ec::page + ec::JOB_PAGE;
   for (size_t at = 0; at + 4 <= ec::JOB_STUB.size(); ++at) CHECK(Read32(stub + at) - ec::STUB_FIELD_SENTINEL >= 0x20);
-  const uint8_t* constructor = tw::engine_tweaks::FindPattern({std::string_view(reinterpret_cast<const char*>(game + text_rva), text_size)}, JOB_WORKER_CONSTRUCTOR);
-  CHECK(constructor != nullptr);
-  const uint8_t* semaphore_call = constructor + JOB_WORKER_CONSTRUCTOR_SEMAPHORE_CALL;
-  const uint32_t make_semaphore_rva = static_cast<uint32_t>(semaphore_call + 5 + static_cast<int32_t>(Read32(semaphore_call + 1)) - game);
+  const uint32_t make_semaphore_rva = SemaphoreWrapperRva(game);
+  CHECK(make_semaphore_rva != 0);
 
   FillKernelImports(game);
   FillKernelImports(patched);
-  const auto copy_of = [&](const char* name, uint8_t* image) {
-    JobCopy copy = {
-        .name = name,
-        .image = image,
-        .wake_all = reinterpret_cast<void(__fastcall*)(void*, void*)>(image + wake_all_rva),
-        .sleep = reinterpret_cast<void(__fastcall*)(void*, void*)>(image + sleep_rva),
-        .destroy = reinterpret_cast<void(__fastcall*)(void*, void*)>(image + destructor_rva),
-        .make_semaphore = reinterpret_cast<void*(__fastcall*)(void*, void*, uint32_t, uint32_t, uint32_t, uint32_t)>(image + make_semaphore_rva),
-        .pool = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)),
-        .asleep = (image == patched ? reinterpret_cast<const volatile uint32_t*>(ec::job_table + 2 * 64) : nullptr),
-    };
-    return copy;
-  };
-  const JobCopy original = copy_of("the game's", game);
-  const JobCopy ours = copy_of("ours", patched);
+  const JobCopy original = MakeJobCopy(build, make_semaphore_rva, "the game's", game, nullptr);
+  const JobCopy ours = MakeJobCopy(build, make_semaphore_rva, "ours", patched, reinterpret_cast<const volatile uint32_t*>(ec::job_table + 2 * 64));
   CHECK(original.pool != nullptr && ours.pool != nullptr);
   const auto stubs_on = [&](bool on) { twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, on); };
   stubs_on(true);
