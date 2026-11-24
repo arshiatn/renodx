@@ -764,7 +764,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BLOCKED BY ANTIVIRUS ~14:3x: coord ran ATN's rule line exactly: powershell -NoPr ... | ?
 - MERGE fca_item1 + fca_exit_drain (after fi1_ r2 + fxi_ r2) -> mrg_: all-36 build ... | ?
 - FCA DESIGN WAVE (Fable 5.2 xHigh, brief render_mt/fca/designs/pk_design_brief.md ... | ?
-- PK6 tooling -> t4i_ (after its parsers): sec 6 items 2-8; item 1 (WPR tasks' foc ... | ?
+- rv6_ (Opus xHigh) review of PK6 tooling (sent; render_mt/reports/rv6_pk6_review. ... | ?
 - fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench). | ?
 - ATN QUESTIONS (critic sec 7): Q2 release timing, Q3 FDW D1 cost vs per-battle la ... | ?
 - rvg_ review of step 1 (handoff_plan/reviews/rvg_g24_step1_review.md) -> then g24 ... | ?
@@ -14226,7 +14226,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         author text), pk5_ (A1-A3, M1-M3 studies; design after the data run) -> each: Opus xHigh review -> implementers
         (engine_code: Fable 5.2 Medium TRIAL on the first one, else Sonnet xHigh; report the result to ATN). Order:
         engine_code.hpp fxi_ -> PK4 -> PK5; worker_pool / cpu_sets fi1_ -> PK2; addon.cpp mem_fix -> PK1.
-        - [ ] PK6 tooling -> t4i_ (after its parsers): sec 6 items 2-8; item 1 (WPR tasks' focus steal) = ATN's question.
+        - [x] PK6 tooling DONE by t4i_ (render_mt/reports/t4i_pk6_handback.md): items 2-8 (ebo_trap.py trap seconds +
+        Fisher, go.driver_waits window, OLD6 false FAIL re-verified, arm variants in ebo_final_make.py, ebo_wpr_delta.py +
+        rules, GREY verdicts, memory-walk frames dropped); folded pk1_ / pk2_ Rev 1, rv2_, PK4 Rev 1 / 1.1 (unless, heapfix
+        none arms, env_bump, foreign-thread map count = PROBLEM). run_all green (lib 681, check 237, leg 260, analyze 260).
+        A/A: pooled SD 0.49 ms (3 dof) -> keep 14 G3a starts. G1: final.json lacks frontend / naval / siege scenes -> one
+        row-off check start per missing scene. Old final re-eval still NOT GO (W3 -6.56, 9 / 60 trapped Go windows).
+        ATN: verify-bench rule (-Verify or move ebo_final aside; in atn_questions_1124.md A.5), env OKs THREAD_PARTS /
+        SORT_CHECK (/ SORT_OVER_MOD if Q5), heapfix removal for G3a (E6). Item 1 (WPR focus) = ATN (G5).
+        - [ ] rv6_ (Opus xHigh) review of PK6 tooling (sent; render_mt/reports/rv6_pk6_review.md) -> t4i_ fixes if any.
+        (was: PK6 tooling -> t4i_ (after its parsers): sec 6 items 2-8; item 1 (WPR tasks' focus steal) = ATN's question.)
         - [ ] fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench).
         - [ ] ATN QUESTIONS (critic sec 7): Q2 release timing, Q3 FDW D1 cost vs per-battle latch, Q4 WU default rule, Q5
         sort-chain route, Q6 ERMSB experiment + tell the author, Q7 data run (2 W3 starts ~10 min), Q8 RT on / off, Q11
