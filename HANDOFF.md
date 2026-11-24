@@ -737,6 +737,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G-S2 (owner g23_): ngx_backend.hpp FENCE_TIMEOUT -> GPU_WAIT_TIMEOUT once gbf_'s ... | ?
 - G23 set (ea398af22 + H1-H8) GPU gate: helper build + H5 WARP + H9 T3 / T4 (ATN's ... | ?
 - Build-slot trial (after fcx_): slot1-6 locks, -j4, sample RAM / commit / paging ... | ?
+- g20 follow-ups: MI5 view_share.hpp:541 second texture read unscaled (older); MI7 ... | ?
+- mem_ (b) widened by rvi_: ONE shared predicate (combine gate, post multiply, rt_ ... | ?
+- WH3 89AF6FF5 CS bind: NOT as g20_ asked (WH3 binds a 1x1 t_ssao there in all 94 ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13727,6 +13730,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         -j4 once fcx_ ends; keep only if peak RAM < ~26 GB and no paging, else back to 4; tell ATN the result.
         - [ ] Build-slot trial (after fcx_): slot1-6 locks, -j4, sample RAM / commit / paging during a 6-build window ->
         keep 6 or back to 4 -> report to ATN.
+        gbf_ BRIDGE API PUSHED (origin/ho_gbf_g23): EvaluateOptions {extra_written, exposure, fsr_sharpness}, 3 dlaa_bridge.h
+        fields in padding (no VERSION bump), DlssRefused() latched + log, Prepare FSR colour-before mask (8 callers checked:
+        only WH3 passes rr_extra). gbf_ touched ONE line of g23_'s taa_dlss.hpp (call site) -> g23_ told to rebase; gbf_
+        told to ask coord first next time. Attila + WH3 add-ons + helper variants build.
+        rvi_ G20 REVIEW NOT GO -> GO after MA1 (reviews/rvi_g20_review.md + _handback.md; 0 / 1 / 9 / 6): MA1 ao_skip.hpp:39
+        PT clause = setting + last trace, not paths' real ambient-out (no AO for 150 warm-up frames in WH1 / WH2, path
+        dropouts, bounce refused) -> bounced_frame window. MI6 tw_gtvbao_variants exits 1 (V3 check) -> info only. view_share
+        all right / harmless (own census: 0 compute changes, 0 changes in Attila / Thrones / Rome II). -> g20_ r2 sent (MA1 +
+        MI6 + MI1 / MI4 / MI8 / N1 / N3, push ho_g20) -> rvi_ MA1 re-check. Merge order: g21 + g02 set, then ho_g20 (conflict
+        twwarhammer/addon.cpp:377-398: keep path_reflection_occlusion = 1.f + g20's comment, no SkipGameSsao), build 8.
+        - [ ] g20 follow-ups: MI5 view_share.hpp:541 second texture read unscaled (older); MI7 VIEW_NDC second division
+        (unsound in general, no in-game effect); other MINORs in rvi_g20_review.md.
+        - [ ] mem_ (b) widened by rvi_: ONE shared predicate (combine gate, post multiply, rt_ambient_alone, ao_skip),
+        published lock-free (MI2 / MI3).
+        - [ ] WH3 89AF6FF5 CS bind: NOT as g20_ asked (WH3 binds a 1x1 t_ssao there in all 94 traces); a trace first.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
