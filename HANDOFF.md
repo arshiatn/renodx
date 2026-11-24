@@ -716,6 +716,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ fixes ebr_'s FINAL MUSTs + SHOULDs -> run_all -> ebr_ delta re-review (befo ... | ?
 - rcr_ review of rc_defaults -> rcd_ (a5513819749516fc5) fixes -> rcr_ re-check -> ... | ?
 - At the release after the bench's Go: drop '(Experimental)' from the two default- ... | ?
+- sym_build_head.ps1: a real clean-tree check that works with junctions (after the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13429,6 +13430,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         RC BUILD sent to rcd_: stamped x86 'Attila v170 RC 2026-11-24' + unstamped copy, FP twin (sym_build_head.ps1
         -FramePointers), amd64 check, tests, rc_manifest.json in testbin/cpu1_addons/rc_1124; helper = final1118 unchanged;
         HFx 323bf407. Final bench stays NOT GO until t4i_'s BENCH-1 + ebr_'s MUSTs are fixed and re-reviewed.
+        RC BUILT 03:1x (render_mt/reports/rcd_rc_build_handback.md), testbin/cpu1_addons/rc_1124 from bd46d12fd: STAMPED x86
+        renodx-twattila.addon32 3852fc47...5cfb ('Attila v170 RC 2026-11-24', scan verifies), unstamped 7fa01699...3070 (pdb
+        9c39befd...), FP twin fp/ 3d94ae84...a67f (pdb bcd64e1d...), amd64 check b50c3a23...85b8 (not shipped); tests at the
+        commit PASS; rc_manifest.json 08d40176...e3f1 (helper final1118 38db7a5d, HFx 323bf407 reads [fixes] yes). Note:
+        sym_build_head.ps1's clean-tree check is empty with junctions (git status -- external fatal) -> tool fix after.
+        rfs_ FINAL REVIEW GO (render_mt/reports/rfs_rc_final_review.md + _handback.md), no MUST. SHOULD 1 check + log the
+        GetModuleHandleExW pin result (engine_code.hpp ~1943); SHOULD 2 tests.cpp part 13 on() with .exit_job_drain = true
+        (revert the 17 ~EXIT_DRAIN_BIT edits). NITs in the file. t4i_ got: env_unset RENODX_TW_EXIT_DRAIN, part-Off sets
+        '0', clean process end after 'Unloading add-on' recorded per exit. rfo_ (Opus) still reviewing.
+        - [ ] sym_build_head.ps1: a real clean-tree check that works with junctions (after the bench).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
