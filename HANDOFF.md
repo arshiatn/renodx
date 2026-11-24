@@ -13718,6 +13718,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         T2 SHOULD. G-S1 ho_gbf_g23 takes ea398af22 before H8. Q-S1 / Q-S2 / Q-N1 + the main.cpp end-release candidate -> gbf_.
         - [ ] G-S2 (owner g23_): ngx_backend.hpp FENCE_TIMEOUT -> GPU_WAIT_TIMEOUT once gbf_'s H7 lands.
         - [ ] G23 set (ea398af22 + H1-H8) GPU gate: helper build + H5 WARP + H9 T3 / T4 (ATN's go) -> one merge.
+        ATN IN CHAT 11-24: AGREED to coord's implementer split for the FCA wave: engine_code.hpp patch class straight to
+        Sonnet xHigh (safety stops); everything else Opus xHigh first, Sonnet xHigh if that fails. g23_ found a missed
+        bridge gate (dlaa_bridge.hpp:827 rr_extra zeroed for FSR without guides) -> gbf_ adds it to 'Bridge (all)' after
+        checking every caller.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
