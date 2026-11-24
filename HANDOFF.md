@@ -798,8 +798,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Coord: real gbf gates (gbf_gpu_gates.ps1, no switch) in the first quiet GPU wind ... | ?
 - g24_ 13.10 (sent): MUST-F, apply_rules fail-closed, apply the shadow rule to Exp ... | ?
 - rv5_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2'); fixes wait for ... | ?
-- ATN (pk5_ q7): bench env vars RENODX_TW_DRAW_COPY / RENODX_TW_POSE_COPY / RENODX ... | ?
-- Tell ATN: A2 is one-way per start (Uninstall leaves the bytes; off works from th ... | ?
 - Data session (t4i_ -Data): log the arena's state words at first present + battle ... | ?
 - mem_ / address space: PK5 A2 adds +0.25 MB. | ?
 - PK5 S0 microbench (pk5_ q2): coord runs it in a quiet CPU window (no ATN questio ... | ?
@@ -14825,7 +14823,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         budgets / deadlines, phase logs) -> memory feedback_fix_tooling_now; (2) in-game runs only when really needed, as
         few as possible -> memory feedback_no_game_tests: Attila = ONE -Data session (rings starts + PK4 check incl. sea1 +
         PK5 sampler + mem_fix confirm checks; t4i_ told) + the verify bench; Expeditions = ONE dump + trace session (trc_
-        told). Pending ATN: 14 vs 10 G3a starts.
+        told). ATN OK 11-24 ('sure'): PK4 G3a = 14 no-heapfix starts as designed (t4i_ told).
         gbf_ HELPERPATHS FIXED (handoff_plan/handbacks/gbf_helperpaths_handback.md; backup gbf_gpu_gates.pre_helperpaths.ps1,
         byte copy): the g23 rev's include closure is checked against the g23 tree ($G23TreePaths), pre / post / gbf stay on
         $HelperPaths. Coord -DryRun 17:09 (20261124_170940_24636): exit 0, 0 PROBLEM, 08e953b68 = 48 sources '(the g23 tree)';
@@ -14861,9 +14859,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         sampler 60 s approved, captures RT off. Sums -1.0..-2.05 volley / -2.05..-4.95 late melee / -0.35..-0.65 D1.
         Rule slips: one heredoc scratch helper (rewritten with Write), one sed -i fix (grep-checked).
         - [ ] rv5_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2'); fixes wait for Friday.
-        - [ ] ATN (pk5_ q7): bench env vars RENODX_TW_DRAW_COPY / RENODX_TW_POSE_COPY / RENODX_TW_LIST_PREFETCH /
-        RENODX_TW_ITEM_PAGES for the verify bench arms (E8 named only RENODX_TW_SORT_CHECK).
-        - [ ] Tell ATN: A2 is one-way per start (Uninstall leaves the bytes; off works from the next start).
+        - [x] ATN OK 11-24 ('sure'): bench env vars RENODX_TW_DRAW_COPY / RENODX_TW_POSE_COPY / RENODX_TW_LIST_PREFETCH /
+        RENODX_TW_ITEM_PAGES for the verify bench arms (set by ebo_run.ps1 arms only; t4i_ told).
+        - [x] Told ATN 11-24: A2 is one-way per start (Uninstall leaves the bytes; off works from the next start).
         - [ ] Data session (t4i_ -Data): log the arena's state words at first present + battle start / end (pk5_ sec 8 item 2).
         - [ ] mem_ / address space: PK5 A2 adds +0.25 MB.
         - [ ] PK5 S0 microbench (pk5_ q2): coord runs it in a quiet CPU window (no ATN question).
