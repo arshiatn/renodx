@@ -23,7 +23,9 @@ ENGINES[engine]:
 GAMES[game]:
   engine, pack    ENGINES key; rule pack module in this folder (None: no rules yet)
   sources         (tier S shipped / R runtime dump, root, path, glob, floor): floor = unique (hash, stage) the source must
-                  yield; when a (hash, stage) is in several files the first source's file is the census file
+                  yield; when a (hash, stage) is in several files the first source's file is the census file. The stages
+                  a source keeps come from its producer's record in the folder, census_stages.txt ("stages: vs ps cs"),
+                  never typed here (13.9 C0); without one they are unknown (fullscreen and after-ui fail closed, C4)
   not_game        {(hash, stage): where}: shaders in a dump that are not the game's (an injected DLL's); never counted
   trace_folders, trace_floor, trace_files   traces (only these give level A), the unique (hash, stage) they must hold and
                   the trace files they must hold (the summary prints a digest of their paths and sizes)
@@ -35,7 +37,11 @@ GAMES[game]:
   host_state      the trace claim that shows the RT host takes a draw (rt CAPTURED by trace:), or None
   src_files       repo files or globs src: may cite, per axis
   ours            repo globs whose 0x<HASH> file names are shaders we build or replace
-  tools           registered commands for out: / test: {id: {cmd, output, hash_column, verdict_column, map}}
+  tools           registered commands for out: / test: (13.9 C1-C3, C7) {id: {'axis', 'command': argv ({python},
+                  {scripts}, {game}, {tools}, {tree}, {bin} filled in; the checker appends --only <hash>... for its
+                  --final re-run), 'pins': {name: '<root>:<path>' (pinned by its digest; root system = System32) or a
+                  value}, 'output' (its first line shader_audit.tool_header()), 'hash_column', 'stage_column',
+                  'verdict_column', 'map': {tool verdict: (verdict, reason)}, 'timeout' (seconds)}}
   dead            hashes known never to load; no_rt: the game has no RT host
   box_pending     the per-game file gap boxes wait in until the coordinator copies them into HANDOFF
 """
@@ -241,3 +247,36 @@ GAMES['fixture_host'] = GAMES['fixture_screen'] | {
     'trace_folders': [FIXTURE + 'traces_screen', FIXTURE + 'traces_host'], 'trace_files': 3}
 GAMES['fixture_host_tales'] = GAMES['fixture_host'] | {'host_state': None}
 GAMES['fixture_badscope'] = GAMES['fixture'] | {'pack': 'fixture_badscope'}
+# 13.9: every fixture census folder holds a producer record keeping every stage, except three copies of cso_screen:
+# _vsps keeps vs / ps / cs (C4), _norecord has none and _badrecord a malformed one (C0). fixture_139 adds the compiled
+# 13.9 shaders (cso_139) and two traces at scales 0.5 / 1.0 (traces_139: a fixed 256x256 target, a pixel load after the
+# upscale; SHOULD-2); its pack's mesh-uv rule is cross-checked by the traces (MUST-C). fixture_139_pair adds a trace
+# whose lines pair a VS with a PS it does not feed (C6); fixture_noview's pack settles SCALED by a rule on a shader
+# without View facts (MUST-B); fixture_tool registers one fixture tool under 9 ids (C1-C3, C7).
+for _variant in ('vsps', 'norecord', 'badrecord'):
+    GAMES[f'fixture_screen_{_variant}'] = GAMES['fixture_screen'] | {
+        'sources': GAMES['fixture']['sources'] + [('R', 'tools', f'audit/fixture/cso_screen_{_variant}', '*.cso', 8)]}
+GAMES['fixture_139'] = GAMES['fixture_screen'] | {
+    'pack': 'fixture_139',
+    'sources': GAMES['fixture_screen']['sources'] + [('R', 'tools', 'audit/fixture/cso_139', '*.cso', 10)],
+    'trace_folders': [FIXTURE + 'traces_screen', FIXTURE + 'traces_139'], 'trace_files': 4}
+GAMES['fixture_139_pair'] = GAMES['fixture_139'] | {
+    'trace_folders': GAMES['fixture_139']['trace_folders'] + [FIXTURE + 'traces_139_pair'], 'trace_files': 5}
+GAMES['fixture_noview'] = GAMES['fixture_139'] | {'pack': 'fixture_noview'}
+
+
+def fixture_tool(name, *extra, timeout=60):
+    """A fixture tool entry (13.9): the one script under another id; extra arguments make it fail or run slow."""
+    return {'axis': 'scale', 'command': ['{python}', '-I', '-B', '{tools}/audit/fixture/tool/fixture_tool.py', '--scripts',
+                                         '{scripts}', '--game', '{game}', '--tools', '{tools}', '--tree', '{tree}', '--id',
+                                         name, '--truth', '{tools}/audit/fixture/tool/truth.tsv', *extra],
+            'pins': {'script': 'tools:audit/fixture/tool/fixture_tool.py', 'tolerance': '0.001'},
+            'output': f'tools:audit/fixture/tool/{name}.tsv', 'hash_column': 0, 'stage_column': 1, 'verdict_column': 2,
+            'map': {'OK': ('SCALED', ''), 'MESH': ('N/A', 'mesh-uv-only')}, 'timeout': timeout}
+
+
+GAMES['fixture_tool'] = GAMES['fixture_139'] | {'tools': {
+    name: fixture_tool(name, *extra, **budget) for name, extra, budget in (
+        ('closure', (), {}), ('norun', (), {}), ('edited', (), {}), ('failing', ('--fail',), {}),
+        ('slow', ('--sleep', '10'), {'timeout': 2}), ('stale_script', (), {}), ('stale_census', (), {}),
+        ('stale_stages', (), {}), ('noheader', (), {}))}}

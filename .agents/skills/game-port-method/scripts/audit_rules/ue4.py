@@ -23,17 +23,40 @@ Controls (step0 r3, traces = the manifest's g1g2 / g1 folders):
   BD2D0865 / E976B71D CAMERA by facts:static-chain. Before it went in (g24_ fill_rule_check.py): Expeditions 9 traced
   and 279 untraced VS, Tales 7 traced and 491 untraced; every traced one writes the velocity target in every trace.
   ue-mesh-uv-ps-b (fill part 2): 63075590 (Tales depth prepass PS) and 43311719 (Expeditions sprite PS) N/A/mesh-uv-only
-  by trace; 1BC3762C (Tales) N/A/no-screen-read and 18FCCF50 (Expeditions screen pass) SCALED by facts.
+  by trace; 1BC3762C (Tales) and 168BD0E1 (Expeditions; 13.9: was 18FCCF50, reopened by SHOULD-2) N/A/no-screen-read.
   ue-svpos-ps-b (fill part 2): 63A516AF (Tales base pass PS) SCALED by facts:roots-pixel and 18FCCF50 (Expeditions)
   by facts:roots-view; 1BC3762C / 168BD0E1 N/A/no-screen-read by facts:roots-world. Before they went in
   (fill_rule_check.py --list, fill4_c2_*.txt): mesh-uv Expeditions 1 traced + 195 untraced, Tales 4 + 59; svpos
-  Expeditions 6 + 172 (84 already SCALED by facts), Tales 14 + 301; no override or control problem.
+  Expeditions 6 + 172 (84 already SCALED by facts), Tales 14 + 301; no override or control problem. 13.9: 18FCCF50 is
+  open again (SHOULD-2: no Expeditions trace has a view line, so no traced SCALED cell holds there), so Expeditions has
+  no level-A positive for ue-svpos-ps-b until the tracer writes one (F4).
+  ue-shadow-depth-vs-b (13.9, rvg_ 13.8 re-check section 4): 0F234715 (Tales) and 1559C19F (Expeditions) shadow atlas
+  VS, N/A/depth-only by trace; 4CD6A3D9 / 6A657BEA (skinned velocity VS, OWN by trace: they read the translation row
+  and View rows 0-3) and E976B71D (Expeditions GPU Scene base pass, CAMERA by facts).
   A CS rule (dependent reads through buffers only) was dropped: 4 of the 22 traced Tales CS it fired on write targets
   whose size does not follow the render scale (fixed-target), which no CS fact tells apart.
 """
+import re
 
 # Tales rt_shadows.hpp DEPTH_SHADERS: the View slot the add-on reads per prepass vertex shader (the S3 controls).
 VIEW_CONTROLS = {'tales': {'C81C5E1F': 0, '287D5CA8': 1, '344F8ACF': 1, '5F4BCA38': 1, 'F1D731D5': 1, '2C264050': 0}}
+VIEW_MIN_ROWS = 63  # games.py View min_rows, 4.21 (4.23: 67): a smaller buffer is never the View
+TRANSLATION = {'62', '66'}  # the View's PreViewTranslation row: 4.21 row 62, 4.23 row 66
+
+
+def own_projection(f):
+    """A mesh in the View's translated world projected by another matrix: a View-sized buffer's PreViewTranslation row
+    feeds the clip position and none of the View-sized buffers' rows 0-7 (or a dynamic row) does, while a smaller
+    buffer (the pass's own matrix, Unreal's shadow projection) feeds it too."""
+    rows = {}
+    for label in f['position_sources']:
+        hit = re.fullmatch(r'(?:idx:)?cb(\d+)\[(\d+|dyn)\]', label)
+        if hit:
+            rows.setdefault(hit.group(1), set()).add(hit.group(2))
+    view = {str(slot) for slot, count in f['constant_buffers'].items() if count >= VIEW_MIN_ROWS}
+    from_view = set().union(*[rows.get(slot, set()) for slot in view])
+    return bool(from_view & TRANSLATION) and 'dyn' not in from_view and not from_view & {str(r) for r in range(8)} \
+        and any(slot not in view for slot in rows)
 
 
 def roots_within(f, allowed):
@@ -84,6 +107,29 @@ RULES = {
         'controls': {'tales': {'positive': ['4CD6A3D9'], 'negative': ['BD2D0865']},
                      'expeditions': {'positive': ['6A657BEA', '6E8E2927'], 'negative': ['E976B71D']}},
     },
+    'ue-shadow-depth-vs-b': {  # rvg_ 13.7 MUST-2 / 13.8 re-check MUST-E: semantic, not the output layout
+        'axis': 'mv', 'verdict': 'N/A', 'reason': 'depth-only', 'stages': ('vs',),
+        'scope': lambda f: f['stage'] == 'vs' and not f['position_only'],
+        'needs': {'signature', 'dataflow', 'resources'},
+        'predicate': own_projection,
+        'proof': 'The discriminator: the VS reads the View\'s PreViewTranslation row (62 in 4.21, 66 in 4.23) into its '
+                 'clip position, and no View-sized buffer\'s projection rows 0-7 (or a dynamic row) feed it, so another '
+                 'matrix projects it (Unreal\'s shadow depth pass: the shadow\'s own projection in its pass buffer). A '
+                 'draw no View projects is not drawn into the main view and carries no main-view motion. The clause "a '
+                 'smaller buffer feeds the position too" always holds in 4.21 (every mesh VS reads its Primitive '
+                 'buffer), so it is not the discriminator. A large material buffer counts as View-sized (12185B5A: '
+                 'cb4[68] beside the View cb1[133]); that only makes the rows 0-7 test stricter (it may drop a shadow '
+                 'VS, never add one). The constants are the 4.21 / 4.23 union (63 rows; row 62 or 66); each engine\'s '
+                 'own values (63 / 62, 67 / 66) give identical fires (Expeditions 830, Tales 921; rvg_ '
+                 's138_rules_probe2). Fired VS that read more View data (camera origin and axes, time) are world '
+                 'position offset or camera-facing casters; none reads a full other View projection. Traced fires '
+                 'draw only into the shadow atlas (Expeditions 38 VS / 25,689 lines, Tales 18 / 1,881), and traced rows '
+                 'are cross-checked by the depth-only trace claim. Residual: a colour shadow pass (reflective shadow '
+                 'maps, translucent shadow) keeps mv N/A, but its reason is not depth-only; the depth-only claim '
+                 'refuses a traced one, an untraced one carries the wrong reason.',
+        'controls': {'tales': {'positive': ['0F234715'], 'negative': ['4CD6A3D9']},
+                     'expeditions': {'positive': ['1559C19F'], 'negative': ['E976B71D', '6A657BEA']}},
+    },
     'ue-mesh-uv-ps-b': {
         'axis': 'scale', 'verdict': 'N/A', 'reason': 'mesh-uv-only', 'stages': ('ps',),
         'scope': lambda f: f['stage'] == 'ps',
@@ -102,7 +148,7 @@ RULES = {
                  'mesh-uv trace claim checks that on traced rows (all 5 it fires on pass: Tales 4, Expeditions 1), '
                  'untraced rows carry it.',
         'controls': {'tales': {'positive': ['63075590'], 'negative': ['1BC3762C']},
-                     'expeditions': {'positive': ['43311719'], 'negative': ['18FCCF50']}},
+                     'expeditions': {'positive': ['43311719'], 'negative': ['168BD0E1']}},
     },
     'ue-svpos-ps-b': {
         'axis': 'scale', 'verdict': 'SCALED', 'reason': '', 'stages': ('ps',),
@@ -119,7 +165,11 @@ RULES = {
                  'which draw the shadow atlas (fixed-target; fill4_ps_passes.py: all 58 traced in both games). Traced '
                  'rows it fires on (Tales 14, Expeditions 6) draw the scene depth or scene-sized colour, and none '
                  'passes fixed-target. Residual: an untraced PS of another fixed-size pass (a capture, a cube face) '
-                 'is FIXED/fixed-target, which the rule calls SCALED.',
+                 'is FIXED/fixed-target, which the rule calls SCALED. The shadow exclusion is a layout test: 7 PS with '
+                 'the tangent pair first and no SV_IsFrontFace but no TEXCOORD7 look like shadow depth PS and are not '
+                 'excluded (Expeditions 28000D96, 57BE1875, 84EB9902, 93EB6A72, 95E2C2D3, FB3AD561; Tales 2AA215FE). '
+                 'A label risk only (SCALED where FIXED/fixed-target may hold, no scale bug hidden); they stay '
+                 'UNCLEAR:fixed-target-class for the closure tool until classified (rvg_ 13.8 re-check NIT-2).',
         'controls': {'tales': {'positive': ['63A516AF'], 'negative': ['1BC3762C']},
                      'expeditions': {'positive': ['18FCCF50'], 'negative': ['168BD0E1']}},
     },
