@@ -13784,6 +13784,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         teardown race with no-drain control; part 13. NO separate game run: folds into the ONE FCA verify bench (per-start
         pass rule A then B, replaces the ~150-exit soak). -> rvl_ (Opus xHigh, read only) review sent.
         - [ ] After rvl_ GO: t4i_ makes ebo_check / ebo_final_eval parse the A line before the verify bench.
+        g24_ STEP 0 DONE (handbacks/g24_step0_handback.md): ho_g24 (origin; worktree D:\Dev\renodx-g24) 0f90a780b + 56788e0a5
+        (.agents/skills/game-port-method/scripts/shader_audit.py + audit_rules games / ue4 / fixture / fixture_strict;
+        freeze SHA-256s in the hand-back). Selftest 28 / 28. Census of 13 games from ATN's dumps all exit 0 (Tales 13543,
+        Expeditions 15735, Ryse 894, TW 673-3818); hlsl disagreements = cmd_Decompiler drops dcl_resource_raw (Tales 4,
+        Expeditions 2). Ledgers Tales / Expeditions seeded + rules applied. 5 questions for rvg_ (position-only != depth-only;
+        circular CAMERA controls; family granularity; mesh-uv-only; Expeditions no view size). -> rvg_ step-0 review sent;
+        g24_ census lookup for rvf_'s gather 4.1 water shaders (Attila 18FF7787 / 82C6EE8B, Thrones 5247E655 / 03E56410).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
