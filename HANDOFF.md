@@ -14671,6 +14671,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         EXTRACTOR bump reopens 279. MUST-B / C, SHOULD-1..3; shadow-depth rule may enter unscoped with MUST-E. Route R GO as
         direction; G-M1..6 before tool code; A0-A4 decided. -> g24_ 13.9 (sent, rvg_'s order), gsr_ Rev 1 (sent).
         Rule slip: rvg_ one heredoc patch (scratch).
+        gsr_ REV 1 DONE (handoff_plan/gsr_scale_route_design.md; handbacks/gsr_rev1_handback.md): G-M1..6 folded - no
+        extract() copy (coord's pick: one core parse-and-propagate function with a transfer table, in 13.9), lattice with
+        C / N types, WARP on every candidate, C5 strict, C4 counted (Expeditions 0, Tales' 33 wait), tool controls known
+        without the tool; A0-A4 / Q1-Q5 recorded; new C7 tool cross-check (g24_ told: mechanism in 13.9 if cheap); NOSCREEN
+        verdict counted in S8. Coverage 7,603 = upper bound. Tool code waits for 13.9 + ATN's dump run.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
