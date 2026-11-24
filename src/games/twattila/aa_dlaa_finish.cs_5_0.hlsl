@@ -10,7 +10,9 @@
 // NVIDIA got (1: t2) or the objects' own (2: t3, motion.hlsli MotionTexel; t4 the depth), at the input size (top-left),
 // stretched over the picture: the direction as the hue, brighter the faster (32 pixels a frame: full). Object Motion
 // (t5 / t6 the in-draw motion and depth too): grey where an object's is the final surface but still (yellowish: drawn
-// again, not in-draw), dark red where it is hidden (not used), the scene dimmed where there is none.
+// again, not in-draw), dark red where it is hidden (not used), the scene dimmed where there is none. Warp Error (4):
+// last frame's input (t7, anti_aliasing.hpp's copy while this view is on) moved along the motion NVIDIA got, minus this
+// frame's, orange the larger (a quarter of the encoded range: full); the jitter's sub-pixel steps show on edges.
 #include "./aa.hlsli"
 #include "./motion.hlsli"
 
@@ -27,16 +29,27 @@ Texture2D<uint2> t_object_motion : register(t3);
 Texture2D<float> t_depth : register(t4);
 Texture2D<float2> t_drawn_motion : register(t5);
 Texture2D<float> t_drawn_depth : register(t6);
+Texture2D<float4> t_warp_history : register(t7);
 RWTexture2D<float4> t_rw_result : register(u0);
+SamplerState s_linear_clamp : register(s0);
 
 [numthreads(8, 8, 1)]
 void main(uint2 pixel : SV_DispatchThreadID)
 {
   if (any(int2(pixel) >= int2(g_aa_metrics.zw))) return;
   const float4 current = t_current.Load(int3(pixel, 0));
-  if (g_dlaa_debug.x == 1.f || g_dlaa_debug.x == 2.f) {
+  if (g_dlaa_debug.x == 1.f || g_dlaa_debug.x == 2.f || g_dlaa_debug.x == 4.f) {
     const int2 input = min(int2((float2(pixel) + 0.5f) * g_dlaa_debug.yz * g_aa_metrics.xy), int2(g_dlaa_debug.yz) - 1);
-    const float3 scene = 0.1f * dot(abs(t_current.Load(int3(input, 0)).rgb), float3(0.2126f, 0.7152f, 0.0722f));
+    const float3 now = t_current.Load(int3(input, 0)).rgb;
+    const float3 scene = 0.1f * dot(abs(now), float3(0.2126f, 0.7152f, 0.0722f));
+    if (g_dlaa_debug.x == 4.f) {
+      // The motion points to where the pixel was; the same top-left place in the full-size copy.
+      const float2 before_uv = (float2(input) + 0.5f + t_motion.Load(int3(input, 0))) * g_aa_metrics.xy;
+      const float3 before = t_warp_history.SampleLevel(s_linear_clamp, before_uv, 0.f).rgb;
+      const float error = dot(abs(before - now), float3(0.2126f, 0.7152f, 0.0722f));
+      t_rw_result[pixel] = float4(max(float3(1.f, 0.5f, 0.f) * saturate(4.f * error), scene), current.a);
+      return;
+    }
     float3 colour = max(MotionColour(t_motion.Load(int3(input, 0))), scene);
     if (g_dlaa_debug.x == 2.f) {
       const float depth = t_depth.Load(int3(input, 0));

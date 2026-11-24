@@ -188,7 +188,7 @@ struct Bindings {
   float* light_ratio = nullptr;
   const Texts* texts = &ATTILA_TEXTS;
   std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
-  // The status line under the anti-aliasing with any upscaler; null: the helper's, FSR's and XeSS's only.
+  // The status line under the anti-aliasing with any upscaler; null: the helper's (DLSS, FSR, XeSS).
   std::string (*upscaler_status)() = nullptr;
   // The upscaling mode, render scale, LOD bias, effects' resolution, object motion; false: the game owns its scale.
   bool has_scale_rows = true;
@@ -519,11 +519,15 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                            if (b.upscaler_status != nullptr) {
                              ImGui::TextWrapped("%s", b.upscaler_status().c_str());
                            } else {
-                             ImGui::TextWrapped("%s", (dlaa_bridge::bridge.shared != nullptr ? dlaa_bridge::bridge.shared->status : "Upscaling off"));
+                             // Why the helper did not start (WH3's Status), else what it runs (FSR in DLSS's place too).
+                             const auto& bridge = dlaa_bridge::bridge;
+                             ImGui::TextWrapped("%s", (bridge.failed              ? bridge.status.c_str()
+                                                       : bridge.shared != nullptr ? bridge.shared->status
+                                                                                  : "Upscaling off"));
                            }
                            return false;
                          },
-                         .is_visible = [b] { return (b.upscaler_status != nullptr) ? feature_settings::Upscaling(*b.aa) : b.aa->method > 5.f; }});
+                         .is_visible = [b] { return (b.upscaler_status != nullptr) ? feature_settings::Upscaling(*b.aa) : b.aa->method >= 5.f; }});
     if (b.upscaling_mode != nullptr) {
       const auto mode_shown = [b, upscaling] { return upscaling() && b.upscaling_mode_found(); };
       page.Add(new Setting{
@@ -738,7 +742,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "AntiAliasingDebugView", .section = section, .shown = more(&more_aa, upscaling), .label = "Upscaling Debug View",
                .tooltip = (b.has_scale_rows ? "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).\n"
                                               "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"
-                                              "No Camera Motion: the upscaler gets the objects' motion alone."
+                                              "No Camera Motion: the upscaler gets the objects' motion alone.\n"
+                                              "Warp Error: where last frame, moved along the motion, misses this one (orange)."
                                             : "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).")});
     page.Take({.match = "FrameGenerationDebugView", .section = section, .shown = more(&more_aa, dlss_generation)});
     page.Add(EmptyLine(section));
