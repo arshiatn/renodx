@@ -14121,6 +14121,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         sizing gate on Expeditions -> Expeditions fill.
         - [ ] G24 step-1 boxes: Expeditions tracer (view size, 2nd render scale, draw constants for pair:); pair: claims;
         SKILL / README rows after ho_g14.
+        rvl_ FXI CODE REVIEW GO (render_mt/fca/designs/rvl_fxi_code_review.md + _handback.md; 0 / 0, 1 SHOULD, 5 NIT):
+        calling convention, 30a+ uniqueness (no short jump into +0xC9800, dis_at), caps, catch, heapfix clearance, foreign
+        bytes, names all fine; 30f retries hide nothing; merge-tree 0 conflicts with atn-mods + fca_item1. -> fxi_ r2 (sent):
+        S1 run the Thrones / Rome II absence check (exit_drain.inc:58), N1-N4, re-tests, build32 Attila / Rome II / Thrones +
+        amd64 Attila -> merge fca_exit_drain.
+        EXIT DRAIN A RAISE RULE (moved out of code per rvl_ N1): A's limit is EXIT_TEARDOWN_DRAIN_LIMIT 1000 ms; raise to
+        3000 ms only if a bench start shows A 'gave up' AND B 'drained 0' in the same start (R2-N6), and look at the design's
+        '> 500 ms' trigger first (A drained but took > 500 ms = a job that runs across frames; don't raise blind).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
