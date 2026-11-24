@@ -815,7 +815,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
-- a64p_ (Opus xHigh, planning only: no builds / game runs / downloads, never copie ... | ?
+- ATN: the plan's 14 decisions (port_plan.md section 4; coord sent them with the r ... | ?
+- a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the l ... | ?
+- PORT WAVE 1 started 11-24 (read-only, decision-independent): a64p0d_ (Opus xHigh ... | ?
 - gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GP ... | ?
 - GPU WAVE 1 (low priority, resume_1124.md section 4): pdd2_ (Opus xHigh) PT DI + ... | ?
 - ATN: vMF Q4 WH3 sunlight row: ATN asked 'why last?'. Coord: WH3's sun already us ... | ?
@@ -15134,7 +15136,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         CPU work (heapfix-side patches + our 32-bit CPU items re-done by name + new 64-bit items) get battle s 20..200
         below 249 s (64-bit + PerfFix 64)? Coord view: the battle step (sim) is the limit, not drawing -> gains must come
         from the step itself; Phase 0 = WPR with the ELF symbols on the 64-bit step tells how much.
-        - [ ] a64p_ (Opus xHigh, planning only: no builds / game runs / downloads, never copies PerfFix code) writes
+        - [x] a64p_ DONE (hand-back attila64/a64p_port_plan_handback.md; plan attila64/port_plan.md, PRIVATE, 44 KB).
+        KEY FINDING (from the A/B tick-trace lines, all 4 starts): beside the drawing one battle step takes 167-185 ms (93 %
+        of the step thread inside the tick, 11.5 ms hand-over); in two mid-battle stretches ~300 steps run 'on their own'
+        at 20-33 ms -> the slow motion is mostly HOW the step runs beside the drawing (5-8x), not sim work (causes
+        unproven: drawing tasks run while it waits / spread over frames / a shared lock). Estimate: below 249 s ~85 %
+        (205-240 s from placement + hand-over levers), real time 180 s ~45 %, floor ~153 s, central 175-215 s. Levers: L1
+        step isolation, L2 placement (V-cache CCD, free SMT sibling), L3 hand-over; L7 split over cores not needed while
+        own steps are 20-33 ms. Our 32-bit CPU items mostly moot (drawing thread). Friday FCA: PK1 FCU / T2 / T3 / U1 / U2
+        carry, FDW moot; PK2-PK4 parked (PK2's placement -> L2); PK5 A1 method -> the step; PK6 -> a64_ab; PK7 done.
+        Verdicts: HDR feasible after re-proving (Sol's RGBA8 copy, 8-bit overlay writes, crash filter); DLSS / FG / RR work,
+        low risk; RT / PT medium (DYNAMIC-buffer capture keys; PerfFix's Flag Wave swaps 4 rigid-prop VS); graphics options
+        medium-high (hooks re-found for SysV); tooling feasible. Architecture: add-on64 D3D11-only from the same twattila
+        folder; game-code work in our own Sol-loader plugin renodx_attila64.dll (after perffix64, byte-checked sites,
+        ELF identity check, overlap table, versioned exported block); helper kept.
+        - [ ] ATN: the plan's 14 decisions (port_plan.md section 4; coord sent them with the recommendations).
+        - [ ] a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the logs, other explanations of
+        the fast stretches, estimates, architecture, completeness, rules, decisions, first wave) -> port_plan_review.md.
+        - [ ] PORT WAVE 1 started 11-24 (read-only, decision-independent): a64p0d_ (Opus xHigh) Phase 0 design ->
+        tools/tw/attila64/p0/design.md (+ its xHigh review); a64c_ (Opus High) hash + MV + Flag Wave censuses ->
+        tools/tw/attila64/census/. After ATN's decisions: a64ab_ Phase 0 switches (rule lines for ATN), a64b_ add-on
+        bring-up + Sol-present repro (one TW build slot), a64pl_ plugin design, messages to Sol / JSa25 (ATN sends).
+        - [x] (was) a64p_ (Opus xHigh, planning only: no builds / game runs / downloads, never copies PerfFix code) writes
         round_notes\attila64\port_plan.md (+ port_plan_work\progress.md): verdicts, delivery architecture (64-bit add-on +
         helper, our engine patches as own plugin vs add-on, perffix64 / Sol updates), workstreams A-G, the 249 s estimate,
         decisions for ATN, first wave -> save hand-back -> coord review -> ATN decides -> first wave.
