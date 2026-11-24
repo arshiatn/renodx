@@ -13566,6 +13566,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         not GetActiveProcessorCount alone) + C / B3b off or clamped at <= 4 -> FULL CPU ANALYSIS item 1 ('per-user worker
         counts'), own review, re-check at 4 / 8 CPUs. NOHEAPFIX: overrides -> noheapfix, fu_noheapfix (warm-up with HFx, W3
         ALL without dinput8.dll), DRY RUN CLEAN -> LAST SESSION STARTED ~10:18 (~14 min).
+        NOHEAPFIX SESSION DONE 10:17-10:25 (LAST final session): 2 / 2 PASS, gate PASS, no WER crash; 'dinput8.dll moved
+        back (hash ok)', hash mismatches after restore 0; INFO 12440 (Check + compare arms), mt_trace windows missing 1.
+        ALL FINAL SESSIONS DONE (main + reruns + wpr_analysis + lowcore + noheapfix; row_by_row deferred). Machine free.
+        t4i_ ROUND 7: apply r6, run_all, F31 copy test, crash_causes.json, C-9 (U10rerun own dump; F03 / WAW3 from fcx_'s
+        captures), final eval -> ebo_final/final_eval_FINAL.txt. fcx_ GO: fca_run.py (6 jobs: WAW3, WAD1, F03, F02, F05,
+        F04; dumps E:\renodx_fca_dumps ~53 GB; ~1-1.7 h; one heavy ETL job at a time via testbin/scratch/fca/etl.lock);
+        design hand-back render_mt/fca/fcx_design_handback.md. Six batch ETLs left out (eba_ covers them).
+        POST-BENCH WAVE started 10:4x (ATN: every plan resumes): mrg_ (Opus High, abd2fa78968410a8b) = resume_point step 5.1
+        (ho_g18 merge + clean rebuild) + a READY / BLOCKED plan for 5.2-5.9 (max 2 builds while fcx_ runs); gtp_ resumed =
+        gated_build.ps1.proposed apply, gate hook round 25 (F24 timing; golive only on ATN's OK in chat), run_tests.py.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
