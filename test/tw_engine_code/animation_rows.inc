@@ -2064,9 +2064,9 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
         && ec::worker_cut.active == &ec::worker_data->cut_active);
   MEMORY_BASIC_INFORMATION code_info = {};
   MEMORY_BASIC_INFORMATION data_info = {};
-  CHECK(VirtualQuery(ec::page, &code_info, sizeof(code_info)) == sizeof(code_info) && VirtualQuery(ec::page + ec::PAGE_SIZE, &data_info, sizeof(data_info)) == sizeof(data_info));
-  CHECK(code_info.Protect == PAGE_EXECUTE_READ && code_info.RegionSize == ec::PAGE_SIZE && data_info.Protect == PAGE_READWRITE && data_info.RegionSize == ec::PAGE_SIZE
-        && code_info.AllocationBase == ec::page && data_info.AllocationBase == ec::page && reinterpret_cast<uint8_t*>(ec::worker_data) == ec::page + ec::PAGE_SIZE);
+  CHECK(VirtualQuery(ec::page, &code_info, sizeof(code_info)) == sizeof(code_info) && VirtualQuery(ec::page + ec::STUB_CODE_SIZE, &data_info, sizeof(data_info)) == sizeof(data_info));
+  CHECK(code_info.Protect == PAGE_EXECUTE_READ && code_info.RegionSize == ec::STUB_CODE_SIZE && data_info.Protect == PAGE_READWRITE && data_info.RegionSize == ec::PAGE_SIZE
+        && code_info.AllocationBase == ec::page && data_info.AllocationBase == ec::page && reinterpret_cast<uint8_t*>(ec::worker_data) == ec::page + ec::STUB_CODE_SIZE);
   CHECK(::Address(&ec::worker_data->fill_slot) == ::Address(ec::worker_data) + 0x40 && ::Address(&ec::worker_data->sweep_slot) == ::Address(ec::worker_data) + 0x44);
   const auto no_sentinel = [](const uint8_t* stub, size_t size) {
     for (size_t at = 0; at + 3 <= size; ++at) {
@@ -2230,7 +2230,8 @@ int RunAnimationRowsTests(const TestBuild& build, uint8_t* game, uint8_t* patche
     for (size_t offset = 0; offset < ec::FILL_CALL_STUB.size(); ++offset) try_off(fill_stub() + offset, true);
     for (size_t offset = 0; offset < ec::SWEEP_ENTRY_STUB.size(); ++offset) try_off(sweep_stub() + offset, true);
     try_off(fill_stub() - 1, false);           // the byte before the stubs: another stub's
-    try_off(ec::page + ec::PAGE_SIZE, false);  // the data page's first byte
+    try_off(ec::page + ec::PAGE_SIZE, false);  // the first byte after the cut: code page 1's
+    try_off(ec::page + ec::STUB_CODE_SIZE, false);  // the data page's first byte
     parked.Stop();
     CloseHandle(thread);
     CHECK(wrong == 0);

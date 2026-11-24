@@ -717,7 +717,7 @@ int RunEmitterTests(const TestBuild& build, uint8_t* game, uint8_t* patched, boo
       CONTEXT moved = saved;
       moved.Eip = Address(site + offset);
       CHECK(SetThreadContext(thread, &moved) != FALSE);
-      const uint32_t before = ec::written;
+      const ec::SiteMask before = ec::written;
       twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, true, !on);
       const bool changed = ((ec::written ^ before) >> ec::EMITTER_PREFETCH_INDEX & 1) != 0;
       wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;

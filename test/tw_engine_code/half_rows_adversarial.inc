@@ -4,8 +4,8 @@
 // through the site, e8 one lane at a time on the vector path with the others random).
 
 // PausedWrite as the tests call it: the sites to hold their jumps, False when a thread stood inside one.
-bool PausedWriteMask(uint32_t patched) {
-  uint32_t stood_down;
+bool PausedWriteMask(twattila::engine_code::internal::SiteMask patched) {
+  twattila::engine_code::internal::SiteMask stood_down;
   return twattila::engine_code::internal::PausedWrite(patched, &stood_down);
 }
 
@@ -779,11 +779,11 @@ int RunAdv(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_t tex
     bool ok = true;
     std::string line;
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true, true);  // the state the loop below switches off and on
-    std::printf("   E7b starts with written %X of found %X\n", ec::written, ec::found);
+    std::printf("   E7b starts with written %llX of found %llX\n", ec::written, ec::found);
     for (int k = 0; k <= 5; ++k) {
       context.Eip = Address(site) + k;
       CHECK(SetThreadContext(thread, &context) != FALSE);
-      const uint32_t before = ec::written;
+      const ec::SiteMask before = ec::written;
       twattila::engine_code::Update(false, twattila::engine_code::Game::ATTILA, true, false, true, true);
       const bool refused = (ec::written == before);
       line += std::format(" k={}:{}", k, refused ? "refused" : "written");
@@ -845,11 +845,11 @@ int RunAdv(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_t tex
     {
       const std::array<uint32_t, 5> sites5 = {0, 1, 2, 4, 8};
       for (uint32_t subset = 1; subset < 32; ++subset) {
-        uint32_t off_mask = 0;
-        for (uint32_t bit = 0; bit < 5; ++bit) off_mask |= (subset >> bit & 1) != 0 ? 1u << sites5[bit] : 0u;
+        ec::SiteMask off_mask = 0;
+        for (uint32_t bit = 0; bit < 5; ++bit) off_mask |= (subset >> bit & 1) != 0 ? ec::SiteMask{1} << sites5[bit] : 0u;
         int refused = 0;
         for (int round = 0; round < 20; ++round) {
-          const uint32_t current = ec::written;
+          const ec::SiteMask current = ec::written;
           if (!PausedWriteMask(current & ~off_mask)) {
             ++refused;
             continue;
@@ -860,19 +860,19 @@ int RunAdv(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_t tex
           }
           ec::written = current;
         }
-        if (refused != 0 || subset == 31) std::printf("   subset %02X (sites %08X off together): refused %d of 20\n", subset, off_mask, refused);
+        if (refused != 0 || subset == 31) std::printf("   subset %02X (sites %08llX off together): refused %d of 20\n", subset, off_mask, refused);
       }
     }
     // Each CPU site alone, turned off and on by PausedWrite: which one a busy thread refuses.
     for (const uint32_t site : {0u, 1u, 2u, 4u, 8u}) {
       int refused_off = 0, refused_on = 0;
       for (int round = 0; round < 50; ++round) {
-        const uint32_t current = ec::written;
-        if (!PausedWriteMask(current & ~(1u << site))) {
+        const ec::SiteMask current = ec::written;
+        if (!PausedWriteMask(current & ~(ec::SiteMask{1} << site))) {
           ++refused_off;
           continue;
         }
-        ec::written = current & ~(1u << site);
+        ec::written = current & ~(ec::SiteMask{1} << site);
         Sleep(1);
         if (!PausedWriteMask(current)) {
           ++refused_on;
@@ -886,10 +886,10 @@ int RunAdv(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_t tex
     }
     // Site 8 alone, by PausedWrite itself.
     {
-      uint32_t mask = ec::written;
+      ec::SiteMask mask = ec::written;
       int single_done = 0, single_tries = 0, single_failed = 0;
       for (int round = 0; round < switches; ++round) {
-        const uint32_t wanted_mask = mask ^ (1u << 8);
+        const ec::SiteMask wanted_mask = mask ^ (ec::SiteMask{1} << 8);
         int tries = 0;
         bool done = false;
         while (!done && tries < 30) {

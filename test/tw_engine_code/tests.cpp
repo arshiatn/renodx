@@ -2446,7 +2446,7 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
       CONTEXT moved = saved;
       moved.Eip = Address(site + offset);
       CHECK(SetThreadContext(thread, &moved) != FALSE);
-      const uint32_t before = ec::written;
+      const ec::SiteMask before = ec::written;
       twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, false, false, !on, true);
       const bool changed = ((ec::written ^ before) >> ec::CHILD_SUM_INDEX & 1) != 0;
       wrong += (changed != !(offset > 0 && offset < 5)) ? 1 : 0;
@@ -3758,13 +3758,13 @@ int main(int argc, char** argv) {
       ec::Prepare(reinterpret_cast<HMODULE>(patched), *build.code);
     };
     const std::array<uint8_t, ec::SITE_SIZE> hook = {0xE9, 0x10, 0x20, 0x30, 0x40};
-    const uint32_t all = ec::found;
+    const ec::SiteMask all = ec::found;
     const auto on = [&] {
       twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, true, true, true, true, true, 2.f, 0,
                                     {.animation = twattila::animation_rows::Stage::ON, .pending_sweep_trace = true, .particle_count = true});
     };
     const auto off = [&] { twattila::engine_code::Update(false); };
-    const auto game_bytes = [&](uint32_t mask) {  // every site of `mask` holds the game's bytes
+    const auto game_bytes = [&](ec::SiteMask mask) {  // every site of `mask` holds the game's bytes
       for (size_t index = 0; index < ec::sites.size(); ++index) {
         if ((mask >> index & 1) != 0 && !holds(index, ec::sites[index].game)) return false;
       }
@@ -3774,7 +3774,7 @@ int main(int argc, char** argv) {
       // (a) the job sleeps changed before the jobs go in
       foreign(6, hook);
       on();
-      CHECK(ec::found == (all & ~ec::JOB_SITES) && ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && holds(6, hook) && game_bytes(ec::JOB_SITES & ~0b01000000u));
+      CHECK(ec::found == (all & ~ec::JOB_SITES) && ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && holds(6, hook) && game_bytes(ec::JOB_SITES & ~ec::SiteMask{0b01000000}));
       CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("job stops") != std::string::npos);
       foreign(6, ec::sites[6].game);
       off();
@@ -3785,7 +3785,7 @@ int main(int argc, char** argv) {
       CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
       foreign(7, hook);
       off();
-      CHECK(ec::written == 0 && holds(7, hook) && game_bytes(all & ~0b10000000u) && (ec::found & 0b10000000u) == 0);
+      CHECK(ec::written == 0 && holds(7, hook) && game_bytes(all & ~ec::SiteMask{0b10000000}) && (ec::found & 0b10000000u) == 0);
       foreign(7, ec::sites[7].game);
       // switched on again with the destructor's call out of found: the other two job sites do not go in alone
       on();
@@ -3865,7 +3865,7 @@ int main(int argc, char** argv) {
     CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
     foreign(0, hook);
     off();
-    CHECK(ec::written == 0 && holds(0, hook) && game_bytes(all & ~1u));
+    CHECK(ec::written == 0 && holds(0, hook) && game_bytes(all & ~ec::SiteMask{1}));
     foreign(0, ec::sites[0].game);
     prepare_again();
     if (build.code->float4_reload_rva != 0) {
@@ -3878,7 +3878,7 @@ int main(int argc, char** argv) {
         CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
         foreign(changed, hook);
         off();
-        CHECK(ec::written == 0 && holds(changed, hook) && game_bytes(all & ~(1u << changed)) && (ec::found & (1u << changed)) == 0);
+        CHECK(ec::written == 0 && holds(changed, hook) && game_bytes(all & ~(ec::SiteMask{1} << changed)) && (ec::found & (ec::SiteMask{1} << changed)) == 0);
         foreign(changed, ec::sites[changed].game);
         prepare_again();
       }
@@ -3992,7 +3992,7 @@ int main(int argc, char** argv) {
       CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
       foreign(changed, hook);
       off();
-      CHECK(ec::written == 0 && holds(changed, hook) && game_bytes(all & ~(1u << changed)) && (ec::found & (1u << changed)) == 0);
+      CHECK(ec::written == 0 && holds(changed, hook) && game_bytes(all & ~(ec::SiteMask{1} << changed)) && (ec::found & (ec::SiteMask{1} << changed)) == 0);
       foreign(changed, ec::sites[changed].game);
       prepare_again();
     }

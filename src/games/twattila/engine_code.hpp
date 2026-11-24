@@ -1574,7 +1574,7 @@ inline void BuildParticleCount(effect_update::internal::Assembler* assembler, Co
   assembler->Bytes({0xC3});
 }
 
-// The words the cut stubs use, on the allocation's second page (read-write, never executable), a cache line for the
+// The words the cut stubs use, on the allocation's data page (read-write, never executable), a cache line for the
 // count and one for the slots.
 struct WorkerData {
   alignas(64) std::atomic<int32_t> cut_active = 0;  // +0x00: the threads in a cut stub past its first test
@@ -1770,55 +1770,61 @@ static_assert(TRUNCATION_PAGE + TRUNCATION_STUB.size() <= HALF_PAGE  // the thre
               && MODEL_DETAIL_PAGE + MODEL_DETAIL_STUB.size() <= WORKER_FILL_PAGE
               && WORKER_FILL_PAGE + FILL_CALL_STUB.size() <= WORKER_SWEEP_PAGE
               && WORKER_SWEEP_PAGE + SWEEP_ENTRY_STUB.size() <= PAGE_SIZE);
+// The stubs' memory: [code 0][code 1][data]. The stubs above are all on code page 0 (the worker sites' cut ends with it); the data page
+// (WorkerData, CountData) starts at `page + 2 * PAGE_SIZE`.
+constexpr size_t STUB_CODE_SIZE = 2 * PAGE_SIZE;
+static_assert(COUNT_DATA_AT + sizeof(CountData) <= PAGE_SIZE);
 
-// Which sites each row writes (bits by `sites` index).
+// A mask of the sites below (bits by `sites` index). The effect update's and the fill's own tables and the probe's `installed` keep 32 bits.
+using SiteMask = uint64_t;
+// Which sites each row writes.
 constexpr size_t FLOAT4_RELOAD_FIRST_SITE = 10;  // the colour's reload; the vector's is the next
-constexpr uint32_t FLOAT4_RELOAD_SITES = 0b11u << FLOAT4_RELOAD_FIRST_SITE;  // the particle writer's two reloads
+constexpr SiteMask FLOAT4_RELOAD_SITES = SiteMask{0b11} << FLOAT4_RELOAD_FIRST_SITE;  // the particle writer's two reloads
 static_assert(FLOAT4_RELOAD_AT.size() == 2);
 constexpr size_t SOLDIER_ROWS_FIRST_SITE = 14;  // the soldier draw's first row reload; the second and third are the next
-constexpr uint32_t SOLDIER_ROWS_SITES = 0b111u << SOLDIER_ROWS_FIRST_SITE;
+constexpr SiteMask SOLDIER_ROWS_SITES = SiteMask{0b111} << SOLDIER_ROWS_FIRST_SITE;
 constexpr size_t MATRIX_PRODUCT_FIRST_SITE = 17;  // the matrix product's first row reload; the second and third are the next
-constexpr uint32_t MATRIX_PRODUCT_SITES = 0b111u << MATRIX_PRODUCT_FIRST_SITE;
+constexpr SiteMask MATRIX_PRODUCT_SITES = SiteMask{0b111} << MATRIX_PRODUCT_FIRST_SITE;
 constexpr size_t ENTRY_PREFETCH_INDEX = 20;  // the particle writer's table entry prefetch (after the matrix product's rows)
 constexpr size_t ITEM_PUSH_FIRST_SITE = 21;  // the render list builders' item push loop A; B is the next
-constexpr uint32_t ITEM_PUSH_SITES = 0b11u << ITEM_PUSH_FIRST_SITE;
+constexpr SiteMask ITEM_PUSH_SITES = SiteMask{0b11} << ITEM_PUSH_FIRST_SITE;
 constexpr size_t SWEEP_PREFETCH_INDEX = 23;  // the pending list sweep's chain prefetch (after the item push loops)
-constexpr uint32_t SWEEP_PREFETCH_BIT = 1u << SWEEP_PREFETCH_INDEX;  // Faster Sweep Prefetch: its own row
+constexpr SiteMask SWEEP_PREFETCH_BIT = SiteMask{1} << SWEEP_PREFETCH_INDEX;  // Faster Sweep Prefetch: its own row
 constexpr size_t MODEL_DETAIL_INDEX = 24;  // the LOD pick's scale (after the sweep prefetch)
-constexpr uint32_t MODEL_DETAIL_BIT = 1u << MODEL_DETAIL_INDEX;  // Model Detail Distance: its own row, on while the slider is above 1x
+constexpr SiteMask MODEL_DETAIL_BIT = SiteMask{1} << MODEL_DETAIL_INDEX;  // Model Detail Distance: its own row, on while the slider is above 1x
 constexpr size_t WORKER_FILL_INDEX = 25;   // the animation update's call of the animation texture fill (after the LOD pick)
 constexpr size_t WORKER_SWEEP_INDEX = 26;  // the pending list sweep's entry
 constexpr size_t PARTICLE_EPOCH_INDEX = 27;  // the node's update (Cached Particle Count: the generation's bump)
 constexpr size_t PARTICLE_COUNT_INDEX = 28;  // the visible particle sum (Cached Particle Count: the cache)
 constexpr size_t EXIT_DRAIN_INDEX = 29;      // the app destruction's call at the game's end (Exit Job Drain, 21.)
 constexpr size_t EXIT_TEARDOWN_INDEX = 30;   // the outer loop's call of the root teardown at the game's end (Exit Job Drain, 21.)
-constexpr uint32_t EXIT_DRAIN_BIT = 1u << EXIT_DRAIN_INDEX;
-constexpr uint32_t EXIT_TEARDOWN_BIT = 1u << EXIT_TEARDOWN_INDEX;
-constexpr uint32_t EXIT_DRAIN_SITES = EXIT_DRAIN_BIT | EXIT_TEARDOWN_BIT;  // a bug fix: asked for by the add-on (WorkerRows::exit_job_drain) unless RENODX_TW_EXIT_DRAIN=0, no row; each site on its own
-constexpr uint32_t PARTICLE_EPOCH_BIT = 1u << PARTICLE_EPOCH_INDEX;
-constexpr uint32_t PARTICLE_COUNT_BIT = 1u << PARTICLE_COUNT_INDEX;
-constexpr uint32_t PARTICLE_COUNT_SITES = PARTICLE_EPOCH_BIT | PARTICLE_COUNT_BIT;  // Cached Particle Count: its own row, both sites or neither
-constexpr uint32_t WORKER_FILL_BIT = 1u << WORKER_FILL_INDEX;    // Animation Rows on Workers: its own row
-constexpr uint32_t WORKER_SWEEP_BIT = 1u << WORKER_SWEEP_INDEX;  // Pending Sweep Trace: its own row, a bench's
-constexpr uint32_t WORKER_SITES = WORKER_FILL_BIT | WORKER_SWEEP_BIT;  // the cut sites: they come out only under PausedWrite's cut rule
-constexpr uint32_t CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES | SOLDIER_ROWS_SITES | MATRIX_PRODUCT_SITES | ITEM_PUSH_SITES;  // Faster Game CPU Code
-constexpr uint32_t LIST_SITES = 0b01000;      // Faster Render Lists
-constexpr uint32_t JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
+constexpr SiteMask EXIT_DRAIN_BIT = SiteMask{1} << EXIT_DRAIN_INDEX;
+constexpr SiteMask EXIT_TEARDOWN_BIT = SiteMask{1} << EXIT_TEARDOWN_INDEX;
+constexpr SiteMask EXIT_DRAIN_SITES = EXIT_DRAIN_BIT | EXIT_TEARDOWN_BIT;  // a bug fix: asked for by the add-on (WorkerRows::exit_job_drain) unless RENODX_TW_EXIT_DRAIN=0, no row; each site on its own
+constexpr SiteMask PARTICLE_EPOCH_BIT = SiteMask{1} << PARTICLE_EPOCH_INDEX;
+constexpr SiteMask PARTICLE_COUNT_BIT = SiteMask{1} << PARTICLE_COUNT_INDEX;
+constexpr SiteMask PARTICLE_COUNT_SITES = PARTICLE_EPOCH_BIT | PARTICLE_COUNT_BIT;  // Cached Particle Count: its own row, both sites or neither
+constexpr SiteMask WORKER_FILL_BIT = SiteMask{1} << WORKER_FILL_INDEX;    // Animation Rows on Workers: its own row
+constexpr SiteMask WORKER_SWEEP_BIT = SiteMask{1} << WORKER_SWEEP_INDEX;  // Pending Sweep Trace: its own row, a bench's
+constexpr SiteMask WORKER_SITES = WORKER_FILL_BIT | WORKER_SWEEP_BIT;  // the cut sites: they come out only under PausedWrite's cut rule
+constexpr SiteMask CPU_CODE_SITES = 0b100010111 | FLOAT4_RELOAD_SITES | SOLDIER_ROWS_SITES | MATRIX_PRODUCT_SITES | ITEM_PUSH_SITES;  // Faster Game CPU Code
+constexpr SiteMask LIST_SITES = 0b01000;      // Faster Render Lists
+constexpr SiteMask JOB_SITES = 0b11100000;    // Faster Job Wake-Ups: WakeAll, Sleep, the destructor's call of Stop
 constexpr size_t CHILD_SUM_INDEX = 9;  // the effect tree's child sum
 constexpr size_t PARTICLE_PREFETCH_INDEX = 12;  // the particle update loop's prefetch
 constexpr size_t EMITTER_PREFETCH_INDEX = 13;   // the emitter update loop's prefetch
-constexpr uint32_t CHILD_SUM_BIT = 1u << CHILD_SUM_INDEX;
-constexpr uint32_t PARTICLE_PREFETCH_BIT = 1u << PARTICLE_PREFETCH_INDEX;
-constexpr uint32_t EMITTER_PREFETCH_BIT = 1u << EMITTER_PREFETCH_INDEX;  // Faster Emitter Prefetch: its own row
-constexpr uint32_t ENTRY_PREFETCH_BIT = 1u << ENTRY_PREFETCH_INDEX;      // Faster Particle Prefetch: its own row
-constexpr uint32_t PREFETCH_SITES = CHILD_SUM_BIT | PARTICLE_PREFETCH_BIT;  // Faster Effect Prefetch: the child sum, the particle loop
-constexpr uint32_t ALL_PREFETCH_SITES = PREFETCH_SITES | EMITTER_PREFETCH_BIT | ENTRY_PREFETCH_BIT | SWEEP_PREFETCH_BIT;  // every prefetch row's sites
-constexpr uint32_t NAMED_ONCE_SITES = ALL_PREFETCH_SITES | WORKER_SITES | PARTICLE_COUNT_SITES | EXIT_DRAIN_SITES;  // the sites named once by their row when asked for and not found
-constexpr uint32_t MODULE_CALL_SITES = WORKER_SITES | EXIT_DRAIN_SITES;  // the sites whose stubs or call lead into this module: one that cannot come out pins it
-constexpr uint32_t HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
-constexpr uint32_t HALF_ROWS_BIT = 0b100000000;
+constexpr SiteMask CHILD_SUM_BIT = SiteMask{1} << CHILD_SUM_INDEX;
+constexpr SiteMask PARTICLE_PREFETCH_BIT = SiteMask{1} << PARTICLE_PREFETCH_INDEX;
+constexpr SiteMask EMITTER_PREFETCH_BIT = SiteMask{1} << EMITTER_PREFETCH_INDEX;  // Faster Emitter Prefetch: its own row
+constexpr SiteMask ENTRY_PREFETCH_BIT = SiteMask{1} << ENTRY_PREFETCH_INDEX;      // Faster Particle Prefetch: its own row
+constexpr SiteMask PREFETCH_SITES = CHILD_SUM_BIT | PARTICLE_PREFETCH_BIT;  // Faster Effect Prefetch: the child sum, the particle loop
+constexpr SiteMask ALL_PREFETCH_SITES = PREFETCH_SITES | EMITTER_PREFETCH_BIT | ENTRY_PREFETCH_BIT | SWEEP_PREFETCH_BIT;  // every prefetch row's sites
+constexpr SiteMask NAMED_ONCE_SITES = ALL_PREFETCH_SITES | WORKER_SITES | PARTICLE_COUNT_SITES | EXIT_DRAIN_SITES;  // the sites named once by their row when asked for and not found
+constexpr SiteMask MODULE_CALL_SITES = WORKER_SITES | EXIT_DRAIN_SITES;  // the sites whose stubs or call lead into this module: one that cannot come out pins it
+constexpr SiteMask HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
+constexpr SiteMask HALF_ROWS_BIT = 0b100000000;
 // The rows by name, for the log lines.
-constexpr std::array<std::pair<uint32_t, std::string_view>, 12> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
+constexpr std::array<std::pair<SiteMask, std::string_view>, 12> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
                                                                          {LIST_SITES, "Faster Render Lists"},
                                                                          {JOB_SITES, "Faster Job Wake-Ups"},
                                                                          {PREFETCH_SITES, "Faster Effect Prefetch"},
@@ -1874,8 +1880,7 @@ static std::array<Site, 31> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "particle count"},
                                      {.name = "exit job drain", .opcode = 0xE8},
                                      {.name = "exit teardown drain", .opcode = 0xE8}}};
-// The reload rows' sites follow each other; every site has a bit of the uint32_t masks. At 32 sites the row-cover assert below (`(1u << size) - 1`) is
-// undefined: the next site needs a wider mask.
+// The reload rows' sites follow each other; every site has a bit of the SiteMask masks.
 static_assert(SOLDIER_ROWS_FIRST_SITE + SOLDIER_ROWS_STUBS.size() == MATRIX_PRODUCT_FIRST_SITE
               && MATRIX_PRODUCT_FIRST_SITE + MATRIX_PRODUCT_STUBS.size() == ENTRY_PREFETCH_INDEX
               && ENTRY_PREFETCH_INDEX + 1 == ITEM_PUSH_FIRST_SITE && ITEM_PUSH_FIRST_SITE + 2 == SWEEP_PREFETCH_INDEX
@@ -1883,15 +1888,16 @@ static_assert(SOLDIER_ROWS_FIRST_SITE + SOLDIER_ROWS_STUBS.size() == MATRIX_PROD
               && WORKER_FILL_INDEX + 1 == WORKER_SWEEP_INDEX && WORKER_SWEEP_INDEX + 1 == PARTICLE_EPOCH_INDEX
               && PARTICLE_EPOCH_INDEX + 1 == PARTICLE_COUNT_INDEX && PARTICLE_COUNT_INDEX + 1 == EXIT_DRAIN_INDEX
               && EXIT_DRAIN_INDEX + 1 == EXIT_TEARDOWN_INDEX && EXIT_TEARDOWN_INDEX + 1 == std::tuple_size_v<decltype(sites)>
-              && std::tuple_size_v<decltype(sites)> <= 32);
+              && std::tuple_size_v<decltype(sites)> <= sizeof(SiteMask) * 8);
 // Every site belongs to exactly one row: the rows' masks are disjoint and cover every site.
 static_assert([] {
-  uint32_t covered = 0;
+  SiteMask covered = 0;
   for (const auto& [row_sites, name] : ROWS) {
     if ((covered & row_sites) != 0) return false;
     covered |= row_sites;
   }
-  return covered == (1u << std::tuple_size_v<decltype(sites)>) - 1;
+  // The low `size` bits, without a shift by the mask's whole width at a full table.
+  return covered == ~SiteMask{0} >> (sizeof(SiteMask) * 8 - std::tuple_size_v<decltype(sites)>);
 }());
 // The loop stubs of the effect update (8., 10., 11.) go on at the instruction after their 5-byte site.
 static_assert(CHILD_SUM_RESUME == CHILD_SUM_SITE + SITE_SIZE && PARTICLE_LOOP_EXIT == PARTICLE_LOOP_SITE + SITE_SIZE);
@@ -2064,8 +2070,8 @@ static void __fastcall ExitDrainBeforeTeardown(void* loop_object, void*) {
 static uint8_t* job_table = nullptr;
 static std::atomic<uint32_t>* model_detail_scale = nullptr;  // the stub's float (18.), as bits; null: the site isn't there
 static uint8_t* page = nullptr;
-static WorkerData* worker_data = nullptr;  // the allocation's second page
-static CountData* count_data = nullptr;    // Cached Particle Count's words (the second page, COUNT_DATA_AT)
+static WorkerData* worker_data = nullptr;  // the allocation's data page
+static CountData* count_data = nullptr;    // Cached Particle Count's words (the data page, COUNT_DATA_AT)
 static bool count_mismatch_logged = false;
 static uint32_t count_window = 0;  // the pool trace window whose hits and misses are being counted (0: none open)
 static uint32_t count_window_hits = 0;
@@ -2078,9 +2084,9 @@ static std::atomic<bool> bypass_cut_active_once = false;
 #endif
 static bool module_pinned = false;
 static bool prepared = false;
-static uint32_t found = 0;    // the sites found (bits by index)
-static uint32_t written = 0;  // the sites holding their jump
-static uint32_t asked = 0;    // the sites the rows last asked for
+static SiteMask found = 0;    // the sites found (bits by index)
+static SiteMask written = 0;  // the sites holding their jump
+static SiteMask asked = 0;    // the sites the rows last asked for
 static uint32_t failed_writes = 0;
 // The thread that last kept PausedWrite from writing, and where it was stopped (0: none was found inside a site).
 static DWORD blocked_thread = 0;
@@ -2093,7 +2099,7 @@ static bool control_fail_context = false;   // a thread's context cannot be read
 static uint32_t control_fail_page = 0;      // Prepare's page: 1 cannot be allocated, 2 cannot be made executable
 #endif
 static bool job_missing_logged = false;
-static uint32_t prefetch_logged = 0;  // the prefetch and worker sites already named as left alone: each is named once
+static SiteMask prefetch_logged = 0;  // the prefetch and worker sites already named as left alone: each is named once
 // Threaded Draw Recording's table (draw_recording_sites.hpp, compiled only with TWATTILA_DRAW_RECORDING): the same window writes it
 // with the 27 sites above, its masks have 64 bits. Without the feature nothing is ever found in it.
 constexpr size_t RECORDING_SITES = 59;
@@ -2239,7 +2245,7 @@ static_assert([] {
 // first byte of a site. In the private draw recording build, a fold open on a thread other than the caller's (a render thread between a fill site and
 // its cut: workers fill the ring and the game's Unmap is noted for its close) refuses every attempt in which the fill's or the recording's sites
 // go out, read with every thread stopped; the caller's own fold does not (that thread closes it).
-inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recording_patched = 0,
+inline bool PausedWrite(SiteMask patched, SiteMask* stood_down, uint64_t recording_patched = 0,
                         uint64_t* recording_stood_down = nullptr, uint32_t effect_patched = 0, uint32_t* effect_stood_down = nullptr,
                         uint32_t fill_patched = 0, uint32_t* fill_stood_down = nullptr) {
   namespace eu = effect_update::internal;
@@ -2530,7 +2536,7 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
     if (index < suspended) ResumeThread(threads[index]);
     CloseHandle(threads[index]);
   }
-  *stood_down = static_cast<uint32_t>(stood[0]);
+  *stood_down = stood[0];
   if (recording_stood_down != nullptr) *recording_stood_down = stood[1];
   if (effect_stood_down != nullptr) *effect_stood_down = effect_stood;
   if (fill_stood_down != nullptr) *fill_stood_down = fill_stood;
@@ -2542,7 +2548,7 @@ inline bool PausedWrite(uint32_t patched, uint32_t* stood_down, uint64_t recordi
 // the game's own code), and one going in gets its word after its jump is written; the zeroing is the sequentially
 // consistent store the stubs' raise-then-read pairs with (PausedWrite's sequentially consistent load of `cut_active`
 // follows it).
-inline void SyncWorkerSlots(uint32_t live) {
+inline void SyncWorkerSlots(SiteMask live) {
   if (worker_data == nullptr) return;
   const auto set = [](std::atomic<uint32_t>* slot, bool on, uint32_t function) {
     const uint32_t value = (on ? function : 0);
@@ -2620,9 +2626,9 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
     }
   };
 
-  // Two pages: the stubs, made read-execute once built, and the cut stubs' words (WorkerData), read-write for good:
+  // Three pages: the stubs' two, made read-execute once built, and the cut stubs' words (WorkerData), read-write for good:
   // nothing is ever both.
-  page = static_cast<uint8_t*>(VirtualAlloc(nullptr, 2 * PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+  page = static_cast<uint8_t*>(VirtualAlloc(nullptr, STUB_CODE_SIZE + PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
 #if defined(TWATTILA_ENGINE_CODE_CONTROLS)
   if (control_fail_page == 1 && page != nullptr) {
     VirtualFree(page, 0, MEM_RELEASE);
@@ -2632,8 +2638,8 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
 #endif
   const char* page_failure = "allocated";
   DWORD page_error = (page == nullptr ? GetLastError() : 0);
-  worker_data = (page != nullptr ? new (page + PAGE_SIZE) WorkerData : nullptr);
-  count_data = (page != nullptr ? new (page + PAGE_SIZE + COUNT_DATA_AT) CountData : nullptr);
+  worker_data = (page != nullptr ? new (page + STUB_CODE_SIZE) WorkerData : nullptr);
+  count_data = (page != nullptr ? new (page + STUB_CODE_SIZE + COUNT_DATA_AT) CountData : nullptr);
   worker_cut = (page != nullptr ? CutRange{page + WORKER_FILL_PAGE, page + PAGE_SIZE, &worker_data->cut_active} : CutRange{});
   std::array<uint8_t*, std::tuple_size_v<decltype(sites)>> stubs = {};
   // The stub `code` of a site (8. to 13.: a loop's bottom, or a float4 reload) at `stub` for the site at `site`: its last
@@ -2868,7 +2874,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       }
     }
     DWORD protection;
-    bool executable = (VirtualProtect(page, PAGE_SIZE, PAGE_EXECUTE_READ, &protection) != FALSE);
+    bool executable = (VirtualProtect(page, STUB_CODE_SIZE, PAGE_EXECUTE_READ, &protection) != FALSE);
 #if defined(TWATTILA_ENGINE_CODE_CONTROLS)
     if (control_fail_page == 2) {
       executable = false;
@@ -2889,8 +2895,8 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       if (job_table != nullptr) VirtualFree(job_table, 0, MEM_RELEASE);
       job_table = nullptr;
     } else {
-      FlushInstructionCache(GetCurrentProcess(), page, PAGE_SIZE);
-      device_loss::AddPartRange("B3b", "engine_stubs", page, PAGE_SIZE);
+      FlushInstructionCache(GetCurrentProcess(), page, STUB_CODE_SIZE);
+      device_loss::AddPartRange("B3b", "engine_stubs", page, STUB_CODE_SIZE);
       // The effect update takes an E9 at these two of its entries, to these stubs, as ours.
       effect_update::internal::sibling_entries =
           (sites[PARTICLE_EPOCH_INDEX].at != nullptr && sites[PARTICLE_COUNT_INDEX].at != nullptr
@@ -2969,7 +2975,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       *names += std::format("{}{}", names->empty() ? "" : ", ", site.name);
     }
     if (site.at == nullptr) continue;
-    found |= 1u << index;
+    found |= SiteMask{1} << index;
     std::memcpy(site.game.data(), site.at, SITE_SIZE);
     site.jump[0] = site.opcode;
     write32(site.jump.data() + 1, relative(site.at + SITE_SIZE, stubs[index]));
@@ -2993,14 +2999,14 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
                    bool emitter_prefetch = false, bool particle_prefetch = false, bool sweep_prefetch = false, float model_detail = 1.f,
                    [[maybe_unused]] uint32_t draw_recording_groups = 0, const WorkerRows& worker_rows = {}) {
   pending_sweep::Update();
-  const uint32_t wanted = (enabled ? internal::CPU_CODE_SITES : 0u) | (lists ? internal::LIST_SITES : 0u) | (jobs ? internal::JOB_SITES : 0u)
-                          | (prefetch ? internal::PREFETCH_SITES : 0u) | (emitter_prefetch ? internal::EMITTER_PREFETCH_BIT : 0u)
-                          | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u) | (sweep_prefetch ? internal::SWEEP_PREFETCH_BIT : 0u)
-                          | (model_detail != 1.f ? internal::MODEL_DETAIL_BIT : 0u)
-                          | (worker_rows.animation != animation_rows::Stage::OFF ? internal::WORKER_FILL_BIT : 0u)
-                          | (worker_rows.pending_sweep_trace ? internal::WORKER_SWEEP_BIT : 0u)
-                          | (worker_rows.particle_count ? internal::PARTICLE_COUNT_SITES : 0u)
-                          | (worker_rows.exit_job_drain ? internal::EXIT_DRAIN_SITES : 0u);
+  const internal::SiteMask wanted = (enabled ? internal::CPU_CODE_SITES : 0u) | (lists ? internal::LIST_SITES : 0u) | (jobs ? internal::JOB_SITES : 0u)
+                                    | (prefetch ? internal::PREFETCH_SITES : 0u) | (emitter_prefetch ? internal::EMITTER_PREFETCH_BIT : 0u)
+                                    | (particle_prefetch ? internal::ENTRY_PREFETCH_BIT : 0u) | (sweep_prefetch ? internal::SWEEP_PREFETCH_BIT : 0u)
+                                    | (model_detail != 1.f ? internal::MODEL_DETAIL_BIT : 0u)
+                                    | (worker_rows.animation != animation_rows::Stage::OFF ? internal::WORKER_FILL_BIT : 0u)
+                                    | (worker_rows.pending_sweep_trace ? internal::WORKER_SWEEP_BIT : 0u)
+                                    | (worker_rows.particle_count ? internal::PARTICLE_COUNT_SITES : 0u)
+                                    | (worker_rows.exit_job_drain ? internal::EXIT_DRAIN_SITES : 0u);
   if (wanted != 0 && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
@@ -3091,7 +3097,7 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   }
   // A prefetch row's sites asked for and not found (another mod's bytes, or another build): each is named once, by its row.
   for (const auto& [row_sites, name] : internal::ROWS) {
-    const uint32_t missing = wanted & row_sites & internal::NAMED_ONCE_SITES & ~internal::found & ~internal::prefetch_logged;
+    const internal::SiteMask missing = wanted & row_sites & internal::NAMED_ONCE_SITES & ~internal::found & ~internal::prefetch_logged;
     if (!internal::prepared || missing == 0) continue;
     internal::prefetch_logged |= missing;
     std::string names;
@@ -3103,8 +3109,8 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   // A group of sites that only work together is asked for only while all of them are found: one that stood down (another mod's bytes over our jump on the way out, a page that
   // could not be made writable) leaves the others out too, and one that went in alone comes out. Cached Particle Count (the sum alone would answer the first value for the session)
   // and the job sites (Stop's call keeps the pool's destruction safe).
-  uint32_t target = wanted & internal::found;
-  for (const uint32_t group : {internal::PARTICLE_COUNT_SITES, internal::JOB_SITES}) {
+  internal::SiteMask target = wanted & internal::found;
+  for (const internal::SiteMask group : {internal::PARTICLE_COUNT_SITES, internal::JOB_SITES}) {
     if ((internal::found & group) != group) {
       target &= ~group;
     }
@@ -3122,7 +3128,7 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
       || internal::failed_writes >= internal::MAX_FAILED_WRITES) {
     return;
   }
-  uint32_t stood_down = 0;
+  internal::SiteMask stood_down = 0;
   uint64_t recording_stood_down = 0;
   uint32_t effect_stood_down = 0;
   // Cached Particle Count going in: the epoch did not run while the row was off, so what the cache holds is of an older update; no stub runs yet, so a plain bump
@@ -3131,9 +3137,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   uint32_t fill_stood_down = 0;
   if (internal::PausedWrite(target, &stood_down, recording_target, &recording_stood_down, effect_wanted, &effect_stood_down, fill_wanted,
                             &fill_stood_down)) {
-    const uint32_t changing = target ^ internal::written;
-    const uint32_t now = (internal::written & ~changing) | (target & changing & ~stood_down);
-    const uint32_t changed = now ^ internal::written;
+    const internal::SiteMask changing = target ^ internal::written;
+    const internal::SiteMask now = (internal::written & ~changing) | (target & changing & ~stood_down);
+    const internal::SiteMask changed = now ^ internal::written;
     // A worker site that stood down on its way out (another mod's bytes over our jump) may still chain to our stub.
     if ((stood_down & changing & ~target & internal::written & internal::MODULE_CALL_SITES) != 0) {
       internal::PinModule();
@@ -3313,7 +3319,7 @@ inline void Uninstall() {
   for (int attempt = 0;
        (internal::written != 0 || internal::recording_written != 0 || eu::written != 0 || fi::written != 0) && attempt < 100;
        ++attempt) {
-    uint32_t stood_down;
+    internal::SiteMask stood_down;
     uint64_t recording_stood_down;
     uint32_t effect_stood_down;
     uint32_t fill_stood_down;

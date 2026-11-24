@@ -241,7 +241,7 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     update(ALL_GROUPS, true, true);
     update(ALL_GROUPS, true, true);
     CHECK(fi::written == fill::ALL_SITES);
-    const uint32_t written_before = ec::written;
+    const ec::SiteMask written_before = ec::written;
     const uint32_t effect_before = eu::written;
     const uint64_t recording_before = ec::recording_written;
     CHECK(recording_before != 0);
@@ -260,7 +260,7 @@ int RunFoldStubTests(uint8_t* patched, uint32_t text_rva, uint32_t text_size) {
     update(ALL_GROUPS, true, true);
     update(ALL_GROUPS, true, true);
     CHECK(fi::written == fill::ALL_SITES);
-    const uint32_t written_before = ec::written;
+    const ec::SiteMask written_before = ec::written;
     const uint32_t effect_before = eu::written;
     const uint64_t recording_before = ec::recording_written;
     std::jthread other([](std::stop_token token) {  // joins on every way out of the block: a failing CHECK exits 1, not std::terminate
@@ -693,7 +693,7 @@ int RunInstanceFillTests(const TestBuild& build, uint8_t* game, uint8_t* patched
     // The stubs' page that cannot be allocated or made executable: the line says which, with the error. The state Prepare leaves is put back.
     {
       const bool job_missing = ec::job_missing_logged;
-      const uint32_t prefetch = ec::prefetch_logged;
+      const ec::SiteMask prefetch = ec::prefetch_logged;
       const auto prepare_again = [&] {
         for (ec::Site& site : ec::sites) site.at = nullptr;
         ec::prepared = false;

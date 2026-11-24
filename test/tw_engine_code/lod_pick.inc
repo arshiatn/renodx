@@ -546,7 +546,7 @@ int RunLodTests(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_
       main_call(value);
       // Above 1x, the float alone: no write, the site and the written mask as they were.
       if (value != 1.f) {
-        const uint32_t before = ec::written;
+        const ec::SiteMask before = ec::written;
         for (const float other : ABOVE) {
           twattila::engine_code::Update(false, ATTILA_GAME, false, false, false, false, false, false, other);
           CHECK(ec::written == before && std::memcmp(model_site.at, model_site.jump.data(), ec::SITE_SIZE) == 0);
@@ -581,7 +581,7 @@ int RunLodTests(const TestBuild& build, uint8_t* game, uint8_t* patched, uint32_
       CONTEXT moved = saved;
       moved.Eip = Address(where);
       thread_ok &= (SetThreadContext(thread, &moved) != FALSE);
-      const uint32_t before = ec::written;
+      const ec::SiteMask before = ec::written;
       const float toggled = ((((before >> ec::MODEL_DETAIL_INDEX) & 1) != 0) ? 1.f : 2.f);
       twattila::engine_code::Update(false, ATTILA_GAME, false, false, false, false, false, false, toggled);
       const bool changed = (((ec::written ^ before) >> ec::MODEL_DETAIL_INDEX) & 1) != 0;

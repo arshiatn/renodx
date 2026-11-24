@@ -191,13 +191,13 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
 
   // 30b. Not the game's code as expected: the sites that are not found are not written, one line names them. A site whose own function is not as expected leaves the other to stand
   // (`stays`: the bits still found); the accessor or the pool's pointer wrong leaves neither.
-  const auto left_alone = [&](const char* why, uint32_t stays, const std::string& names) {
+  const auto left_alone = [&](const char* why, ec::SiteMask stays, const std::string& names) {
     prepare();
     CHECK((ec::found & ec::EXIT_DRAIN_SITES) == stays);
     const std::array<std::pair<size_t, uint32_t>, 2> exit_sites = {{{ec::EXIT_DRAIN_INDEX, site_rva}, {ec::EXIT_TEARDOWN_INDEX, teardown_site_rva}}};
     for (const auto& [index, rva] : exit_sites) CHECK((ec::sites[index].at == nullptr) == ((stays >> index & 1) == 0));
     ec::prefetch_logged = 0;
-    ec::asked = ~0u;
+    ec::asked = ~ec::SiteMask{0};
     ec::failed_writes = 0;
     const size_t lines_before = log_lines.size();
     drain(true);
@@ -267,7 +267,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
     std::memcpy(site, hook.data(), hook.size());
     ec::failed_writes = 0;
     drain(false);
-    CHECK(ec::module_pinned && ec::written == 0 && (ec::found & ec::EXIT_DRAIN_SITES) == (ec::EXIT_DRAIN_SITES & ~(1u << index)) && std::memcmp(site, hook.data(), hook.size()) == 0);
+    CHECK(ec::module_pinned && ec::written == 0 && (ec::found & ec::EXIT_DRAIN_SITES) == (ec::EXIT_DRAIN_SITES & ~(ec::SiteMask{1} << index)) && std::memcmp(site, hook.data(), hook.size()) == 0);
     CHECK(std::memcmp(ec::sites[other].at, ec::sites[other].game.data(), ec::SITE_SIZE) == 0);
     ec::module_pinned = false;
     std::memcpy(site, ec::sites[index].game.data(), ec::SITE_SIZE);
@@ -570,7 +570,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
     // Faster Job Wake-Ups on: the same race on the game's own workers (five threads in its Sleep, the stub's side table keyed to the pool).
     const auto wake_ups = [&](bool on) -> int {
       ec::failed_writes = 0;
-      const uint32_t wanted = ec::EXIT_DRAIN_SITES | (on ? ec::JOB_SITES : 0u);
+      const ec::SiteMask wanted = ec::EXIT_DRAIN_SITES | (on ? ec::JOB_SITES : 0u);
       for (int tries = 0; ec::written != wanted && tries < static_cast<int>(ec::MAX_FAILED_WRITES); ++tries) {
         twattila::engine_code::Update(false, ATTILA_GAME, false, on, false, false, false, false, 1.f, 0, {.exit_job_drain = true});
       }

@@ -57,7 +57,7 @@ static_assert(sizeof(Counters) <= 0x1000);
 
 inline uint8_t* code = nullptr;  // the probe stubs (read-write while Prepare fills them, then read-execute)
 inline Counters* counters = nullptr;
-inline uint32_t installed = 0;                 // the sites that have a probe stub in front of their production stub
+inline uint32_t installed = 0;                 // the sites that have a probe stub in front of their production stub (32 bits, as the arrays below: every probed site is below 32)
 inline std::array<uint8_t*, 32> stub_of = {};  // by site index
 inline std::array<size_t, 32> size_of = {};
 inline uint32_t dump_after = 0;  // the presents after the first write at which the histograms are dumped (0: never)
@@ -254,13 +254,16 @@ static_assert(std::max({PROBE_EVEC_A.size(), PROBE_EVEC_B.size(), PROBE_READY.si
               <= SLOT);
 
 // The sites that have a probe, in the order of their slots.
-inline const std::array<Probe, 7> PROBES = {{{ITEM_PUSH_FIRST_SITE, PROBE_EVEC_A.data(), PROBE_EVEC_A.size()},
+inline constexpr std::array<Probe, 7> PROBES = {{{ITEM_PUSH_FIRST_SITE, PROBE_EVEC_A.data(), PROBE_EVEC_A.size()},
                                               {ITEM_PUSH_FIRST_SITE + 1, PROBE_EVEC_B.data(), PROBE_EVEC_B.size()},
                                               {4, PROBE_READY.data(), PROBE_READY.size()},
                                               {SWEEP_PREFETCH_INDEX, PROBE_SWEEP.data(), PROBE_SWEEP.size()},
                                               {PARTICLE_PREFETCH_INDEX, PROBE_PARTICLE.data(), PROBE_PARTICLE.size()},
                                               {CHILD_SUM_INDEX, PROBE_SUM.data(), PROBE_SUM.size()},
                                               {ENTRY_PREFETCH_INDEX, PROBE_ENTRY.data(), PROBE_ENTRY.size()}}};
+// `installed` has a bit and `stub_of` / `size_of` an entry for the first 32 sites only.
+static_assert(std::ranges::all_of(PROBES, [](const Probe& probe) { return probe.site < std::tuple_size_v<decltype(stub_of)>; })
+              && std::tuple_size_v<decltype(stub_of)> == 32 && std::tuple_size_v<decltype(size_of)> == 32);
 
 // The counters' addresses in the sentinels' order.
 inline std::array<const uint8_t*, FIELDS> Fields() {
@@ -322,7 +325,7 @@ inline void Dump() {
 // Each present: counts the presents since the sites were first written and dumps once, at the Nth or at the first present
 // with a counter at 2^31 or more (before it wraps). The scan takes every field but the last (entry_prev, an address);
 // sweep_last is state too, but an index below the list's count: never near 2^31.
-inline void Tick(uint32_t written_sites) {
+inline void Tick(SiteMask written_sites) {
   if (counters == nullptr || dump_after == 0 || written_sites == 0 || dumped) return;
   if (++presents_on != dump_after) {
     const std::span<const uint32_t> words(reinterpret_cast<const uint32_t*>(counters),
@@ -336,7 +339,7 @@ inline void Tick(uint32_t written_sites) {
 }
 
 // The five jump bytes of every site now (after a write), and which of them are the game's own.
-inline void LogSites(const std::array<Site, std::tuple_size_v<decltype(sites)>>& all, uint32_t written_sites) {
+inline void LogSites(const std::array<Site, std::tuple_size_v<decltype(sites)>>& all, SiteMask written_sites) {
   for (size_t index = 0; index < all.size(); ++index) {
     const Site& site = all[index];
     if (site.at == nullptr) continue;
