@@ -432,10 +432,10 @@ void BuildRuntimeData() {
   // each reading its red once (their bytes). So while ours stands in for it (the rays' AO alone in the sun's slot through
   // rt_ambient_combine, or Path-Traced Ambient) the chain doesn't run, the generate's target cleared to open in its place
   // (twattila/ao_readers.hpp; Warhammer's way, test/tw_warhammer_shaders part 15). Otherwise: the game's draws.
-  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); }};
+  custom_shaders[0xB320992B] = {.crc32 = 0xB320992B, .on_inject = [](auto*) { return false; }, .on_draw = [](auto*) { return !twattila::ao_skip::GameSsaoOut(); }};
   custom_shaders[0xD42C3523].on_draw = [](auto* cmd_list) { return !twattila::ao_readers::ClearInsteadOfGenerate(cmd_list); };
-  custom_shaders[0x7F637259].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
-  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !twattila::rt_scene::AmbientReplaced(); };
+  custom_shaders[0x7F637259].on_draw = [](auto*) { return !twattila::ao_skip::GameSsaoOut(); };
+  custom_shaders[0xBFD285BD].on_draw = [](auto*) { return !twattila::ao_skip::GameSsaoOut(); };
 
   // Settings ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // PsychoV31 sliders: 0 - max, 1 = its own.

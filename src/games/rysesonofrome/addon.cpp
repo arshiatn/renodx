@@ -60,6 +60,7 @@
 #include "../twattila/output_encoding.hpp"
 #include "../twattila/pass_timing.hpp"
 #include "../twattila/rays_preset.hpp"
+#include "../twattila/settings_pages.hpp"
 // RENODX_TW_PROFILE's action: rt_core's Record Ray Tracing Profile (this add-on has no Total War ray-tracing scene).
 #define RENODX_TEST_HOOKS_PROFILE twattila::rt_scene::StartProfile
 #include "../twattila/test_hooks.hpp"
@@ -206,13 +207,15 @@ void ApplyRecommendedPreset() {
 }
 
 // This add-on alone (the upstream snapshot): the helper and the NVIDIA, AMD and Intel files come with the full download.
-using twattila::credits::FULL_DOWNLOAD_NOTE;
-constexpr uint32_t WARNING_TINT = 0xFF5050;
-// Settings Mode's pages: their sections (the Total War add-ons' names; the rest is HDR & Effects).
+using twattila::graphics_page::FULL_DOWNLOAD_NOTE;
+using twattila::graphics_page::Note;
+using twattila::graphics_page::WARNING_TINT;
+// Settings Mode's pages (twattila/settings_pages.hpp AssignPages): their sections (the Total War add-ons' names; the rest
+// is HDR & Effects).
 const std::string AA_SECTION = "Anti-Aliasing and Upscaling";
-const std::array<std::string, 5> GRAPHICS_1_SECTIONS = {AA_SECTION, "Ambient Occlusion", "Contact Shadows", "Light Bounce",
-                                                        "Ray Tracing (Experimental)"};
-const std::array<std::string, 3> GRAPHICS_2_SECTIONS = {"Graphics", "Graphics (Experimental)", "Audio"};
+const std::vector<std::string> GRAPHICS_1_SECTIONS = {AA_SECTION, "Ambient Occlusion", "Contact Shadows", "Light Bounce",
+                                                      "Ray Tracing (Experimental)"};
+const std::vector<std::string> GRAPHICS_2_SECTIONS = {"Graphics", "Graphics (Experimental)", "Audio"};
 
 bool HelperAbsent() {
   return !twattila::dlaa_bridge::HelperInstalled();
@@ -220,6 +223,13 @@ bool HelperAbsent() {
 
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
+
+// RT/PT's value of `key` (twattila/rays_preset.hpp): the traced Light Bounce's and the paths' sliders start and Reset at it
+// (ATN 2026-11-22). 0 for a key the list lacks. Not during static initialization: the list may be empty then.
+float RtPtValue(std::string_view key) {
+  const auto value = std::ranges::find(twattila::graphics_page::RAYS_PRESET, key, &twattila::graphics_page::Values::value_type::first);
+  return (value != twattila::graphics_page::RAYS_PRESET.end()) ? value->second : 0.f;
+}
 
 // Ray tracing (ray_tracing.hpp): its sliders; installed when on at launch (its scene's shaders are kept from the start).
 struct RtSliders {
@@ -235,10 +245,11 @@ struct RtSliders {
   float reflection_samples = 1.f;
   float specular_occlusion = 0.f;  // without the traced reflections: merged into the game's screen-space ones
   float light_bounce = 0.f;
-  float rays = 4.f;
-  float range = 10.f;  // metres
+  // rays, range, bounces and light_bounce_resolution: their rows' defaults (RT/PT's) when the settings load.
+  float rays = 0.f;
+  float range = 0.f;  // metres
   float path_tracing = 0.f;
-  float bounces = 2.f;
+  float bounces = 0.f;
   float path_ambient = 0.f;  // Path-Traced Ambient (ray_tracing.hpp): the paths' sky for the game's probes' ambient
   float path_sky_apart = 1.f;
   float path_kept_cube = 0.f;
@@ -255,7 +266,7 @@ struct RtSliders {
   float rays_paths = 1.f;
   float debug_log = 0.f;
   float ambient_rays = 2.f;
-  float light_bounce_resolution = 1.f;  // the ray-traced Light Bounce's: 0 full, 1 half, 2 quarter
+  float light_bounce_resolution = 0.f;  // the ray-traced Light Bounce's: 0 full, 1 half, 2 quarter
   float reflection_reuse = 0.f;         // 0 off, 1 from ReSTIR GI (with path tracing), 2 Own ReSTIR
   float ao_reblur = 0.f;                // AO under Ray Reconstruction: 0 Light History, 1 REBLUR
   float debug_view = 0.f;               // rt_core's Debug View value (the row's parse)
@@ -289,9 +300,9 @@ bool RaysBesideSpecularOcclusion() {
          || (shader_injection.light_bounce > 0.f && (rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f));
 }
 
-// The Ray Tracing presets: RT/PT writes RAYS_RESET, then the one list every game's RT/PT writes
+// The Ray Tracing presets: RT/PT writes RaysReset(), then the one list every game's RT/PT writes
 // (twattila/rays_preset.hpp; the keys this section lacks are skipped), then RAYS_OWN_KEYS; No RT/PT RAYS_OFF and the
-// screen-space methods; Reset RAYS_OFF and RAYS_RESET.
+// screen-space methods; Reset RAYS_OFF and RaysReset().
 using PresetValues = twattila::graphics_page::Values;
 const PresetValues RAYS_OFF = {
     {"RayTracedSunShadows", 0.f}, {"RayTracedAmbientOcclusion", 0.f}, {"RayTracedReflections", 0.f},
@@ -304,38 +315,42 @@ const PresetValues RAYS_OWN_KEYS = {
     {"RayTracedLightBounce", 1.f}, {"PathTracing", 1.f}, {"light_bounce", 1.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f},
     {"RayTracedPathAmbient", 0.f},
 };
-const PresetValues RAYS_RESET = {
-    {"RayTracedShadowSoftness", 0.5f},
-    {"RayTracedReplaceShadowMaps", 0.f},
-    {"RayTracedUnitsOutOfView", 0.f},
-    {"RayTracedSkipSunShadowMaps", 0.f},
-    {"RayTracedAmbientRange", 2.f},
-    {"RayTracedAOQuarter", 0.f},
-    {"RayTracedReflectionSamples", 1.f},
-    {"RayTracedLightBounceRays", 4.f},
-    {"RayTracedLightBounceRange", 10.f},
-    {"PathTracingBounces", 2.f},
-    {"RayTracedPathSkyApart", 1.f},
-    {"RayTracedPathKeptCube", 0.f},
-    {"RayTracingDenoiser", 0.f},
-    {"RayTracedSharc", 0.f},
-    {"RayTracedReuseLean", 1.f},
-    {"RayTracedReuseNear", 1.f},
-    {"RayTracedPathSer", 0.f},
-    {"RayTracingOutputResolution", 0.f},
-    {"RayTracingRaysShadows", 1.f},
-    {"RayTracingRaysAmbient", 1.f},
-    {"RayTracingRaysReflections", 1.f},
-    {"RayTracingRaysPaths", 1.f},
-    {"RayTracedDebugLog", 0.f},
-    {"RayTracedAORays", 2.f},
-    {"RayTracedLightBounceResolution", 1.f},
-    {"RayTracedReflectionReuse", 0.f},
-    {"RayTracedAoReblur", 0.f},
-    {"RayTracedDebugView", 0.f},
-    {"RayTracedSceneTest", 0.f},
-    {"RayTracedUnitsRange", 0.f},
-};
+// Built at its first use, after static initialization (RtPtValue).
+const PresetValues& RaysReset() {
+  static const PresetValues RAYS_RESET = {
+      {"RayTracedShadowSoftness", 0.5f},
+      {"RayTracedReplaceShadowMaps", 0.f},
+      {"RayTracedUnitsOutOfView", 0.f},
+      {"RayTracedSkipSunShadowMaps", 0.f},
+      {"RayTracedAmbientRange", 2.f},
+      {"RayTracedAOQuarter", 0.f},
+      {"RayTracedReflectionSamples", 1.f},
+      {"RayTracedLightBounceRays", RtPtValue("RayTracedLightBounceRays")},
+      {"RayTracedLightBounceRange", RtPtValue("RayTracedLightBounceRange")},
+      {"PathTracingBounces", RtPtValue("PathTracingBounces")},
+      {"RayTracedPathSkyApart", 1.f},
+      {"RayTracedPathKeptCube", 0.f},
+      {"RayTracingDenoiser", 0.f},
+      {"RayTracedSharc", 0.f},
+      {"RayTracedReuseLean", 1.f},
+      {"RayTracedReuseNear", 1.f},
+      {"RayTracedPathSer", 0.f},
+      {"RayTracingOutputResolution", 0.f},
+      {"RayTracingRaysShadows", 1.f},
+      {"RayTracingRaysAmbient", 1.f},
+      {"RayTracingRaysReflections", 1.f},
+      {"RayTracingRaysPaths", 1.f},
+      {"RayTracedDebugLog", 0.f},
+      {"RayTracedAORays", 2.f},
+      {"RayTracedLightBounceResolution", RtPtValue("RayTracedLightBounceResolution")},
+      {"RayTracedReflectionReuse", 0.f},
+      {"RayTracedAoReblur", 0.f},
+      {"RayTracedDebugView", 0.f},
+      {"RayTracedSceneTest", 0.f},
+      {"RayTracedUnitsRange", 0.f},
+  };
+  return RAYS_RESET;
+}
 
 void BuildRuntimeData() {
   custom_shaders = {
@@ -471,7 +486,7 @@ void BuildRuntimeData() {
   };
   custom_shaders[0x3BA5B162] = {.crc32 = 0x3BA5B162, .on_replace = keep_shader, .on_drawn = keep_color};
 
-  // Ray Tracing's preset buttons and Attila's rows (an off / on or a list, default 0 or as RAYS_RESET's), with the helper
+  // Ray Tracing's preset buttons and Attila's rows (an off / on or a list, default 0 or as RaysReset()'s), with the helper
   // and a ray-traced effect on; `enabled`: when they act.
   const auto ray_button = [](const std::string& label, const std::string& tooltip, std::function<void()> on_change) {
     return new renodx::utils::settings::Setting{
@@ -492,12 +507,12 @@ void BuildRuntimeData() {
   };
   const auto ray_choice = [](const std::string& key, float* binding, const std::string& label, std::vector<std::string> labels,
                              const std::string& tooltip, std::function<bool()> enabled = [] { return true; }) {
-    const auto reset = std::ranges::find(RAYS_RESET, key, &PresetValues::value_type::first);
+    const auto reset = std::ranges::find(RaysReset(), key, &PresetValues::value_type::first);
     return new renodx::utils::settings::Setting{
         .key = key,
         .binding = binding,
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = (reset != RAYS_RESET.end()) ? reset->second : 0.f,
+        .default_value = (reset != RaysReset().end()) ? reset->second : 0.f,
         .label = label,
         .section = "Ray Tracing (Experimental)",
         .tooltip = tooltip,
@@ -559,13 +574,7 @@ void BuildRuntimeData() {
                    "F5: execution skull. Controller: map them in Steam Input (e.g. back buttons).",
           .section = "General",
       },
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = FULL_DOWNLOAD_NOTE,
-          .section = "General",
-          .tint = WARNING_TINT,
-          .is_visible = HelperAbsent,
-      },
+      Note(FULL_DOWNLOAD_NOTE, "General", WARNING_TINT, HelperAbsent),
       new renodx::utils::settings::Setting{
           .key = "peak_white_nits",
           .binding = &shader_injection.peak_white_nits,
@@ -684,13 +693,7 @@ void BuildRuntimeData() {
       slider("ext_highlight_saturation", &shader_injection.ext_highlight_saturation, "Highlight Saturation",
              "Extended", "How much brighter colors desaturate. 0 = more, 1 = default, 2 = less.", IsExtendedMode,
              IsExtendedMode),
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "Fire too yellow, green or pink? Pick one or change the settings below.",
-          .section = "Extended",
-          .tint = 0xFFD23C,
-          .is_visible = IsExtendedMode,
-      },
+      Note("Fire too yellow, green or pink? Pick one or change the settings below.", "Extended", 0xFFD23C, IsExtendedMode),
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "Option 1 (Default)",
@@ -797,13 +800,7 @@ void BuildRuntimeData() {
           .is_enabled = IsPsychoMode,
           .is_visible = IsPsychoMode,
       },
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "Fire too pink, too yellow or too pale? Pick one or change the settings below.",
-          .section = "PsychoV31",
-          .tint = 0xFFD23C,
-          .is_visible = IsPsychoMode,
-      },
+      Note("Fire too pink, too yellow or too pale? Pick one or change the settings below.", "PsychoV31", 0xFFD23C, IsPsychoMode),
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "Option 1 (Default)",
@@ -984,8 +981,8 @@ void BuildRuntimeData() {
           .key = "ssao_auto_thickness",
           .binding = &shader_injection.ssao_auto_thickness,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "AO Auto Thickness (Experimental)",
+          .default_value = 1.f,
+          .label = "AO Auto Thickness",
           .section = "Ambient Occlusion",
           .tooltip = "Guesses each object's thickness from its width, AO Thickness as the least:\n"
                      "spears stay thin, walls and pillars block fully.",
@@ -1172,8 +1169,8 @@ void BuildRuntimeData() {
           .key = "light_bounce_auto_thickness",
           .binding = &shader_injection.light_bounce_auto_thickness,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Light Bounce Auto Thickness (Experimental)",
+          .default_value = 1.f,
+          .label = "Light Bounce Auto Thickness",
           .section = "Light Bounce",
           .tooltip = "Guesses each object's thickness from its width, AO Thickness as the least:\n"
                      "spears stay thin, walls and pillars block fully.",
@@ -1181,18 +1178,12 @@ void BuildRuntimeData() {
           .is_enabled = [] { return shader_injection.light_bounce > 0.f; },
       },
       // Ray tracing (ray_tracing.hpp): through renodx-tw-dlaa64.exe; on at launch only (restart).
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = FULL_DOWNLOAD_NOTE,
-          .section = "Ray Tracing (Experimental)",
-          .tint = WARNING_TINT,
-          .is_visible = HelperAbsent,
-      },
+      Note(FULL_DOWNLOAD_NOTE, "Ray Tracing (Experimental)", WARNING_TINT, HelperAbsent),
       ray_button("RT/PT",
                  "Every ray-traced effect and path tracing on, the rest of this section at its default (restart the\n"
                  "game). Turns the Light Bounce on, and Ray Reconstruction where DLSS runs without it.",
                  [] {
-                   renodx::utils::settings::UpdateSettings(RAYS_RESET);
+                   renodx::utils::settings::UpdateSettings(RaysReset());
                    renodx::utils::settings::UpdateSettings(twattila::graphics_page::RAYS_PRESET);
                    renodx::utils::settings::UpdateSettings(RAYS_OWN_KEYS);
                    // Without Ray Reconstruction the rays have only the built-in denoisers (Attila's preset: F).
@@ -1211,7 +1202,7 @@ void BuildRuntimeData() {
                  }),
       ray_button("Reset", "Every ray-traced effect off, this section's sliders at their defaults (restart the game).", [] {
         renodx::utils::settings::UpdateSettings(RAYS_OFF);
-        renodx::utils::settings::UpdateSettings(RAYS_RESET);
+        renodx::utils::settings::UpdateSettings(RaysReset());
       }),
       new renodx::utils::settings::Setting{
           .key = "RayTracedSunShadows",
@@ -1404,7 +1395,7 @@ void BuildRuntimeData() {
           .key = "RayTracedLightBounceRays",
           .binding = &rt_sliders.rays,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 4.f,
+          .default_value = RtPtValue("RayTracedLightBounceRays"),
           .label = "Ray-Traced Light Bounce Rays",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "Rays per texel: less noise, heavier.",
@@ -1417,7 +1408,7 @@ void BuildRuntimeData() {
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceRange",
           .binding = &rt_sliders.range,
-          .default_value = 10.f,
+          .default_value = RtPtValue("RayTracedLightBounceRange"),
           .label = "Ray-Traced Light Bounce Range",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "How far its rays look for light.",
@@ -1431,7 +1422,7 @@ void BuildRuntimeData() {
           .key = "RayTracedLightBounceResolution",
           .binding = &rt_sliders.light_bounce_resolution,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
+          .default_value = RtPtValue("RayTracedLightBounceResolution"),
           .label = "Ray-Traced Light Bounce Resolution",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "Its own resolution (the screen-space Light Bounce's resolution and Checkerboard no longer apply to it).\n"
@@ -1456,7 +1447,7 @@ void BuildRuntimeData() {
           .key = "PathTracingBounces",
           .binding = &rt_sliders.bounces,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 2.f,
+          .default_value = RtPtValue("PathTracingBounces"),
           .label = "Path Tracing Bounces",
           .section = "Ray Tracing (Experimental)",
           .tooltip = "Bounces past the first. More: brighter shade, heavier.",
@@ -2302,22 +2293,11 @@ void ConfigureAddon() {
       },
   });
 
-  // Section titles: one colour (as Attila's), Output and About their own.
-  renodx::utils::settings::section_tints = {
-      {"General", 0x7EE08A},
-      {"Presets", 0x7EE08A},
-      {"Extended", 0x7EE08A},
-      {"PsychoV31", 0x7EE08A},
-      {"Extra", 0x7EE08A},
-      {"Ambient Occlusion", 0x7EE08A},
-      {"Contact Shadows", 0x7EE08A},
-      {"Output (Restart Required)", 0xFF7FAF},
-      {"About", 0xE6C27A},
-      {AA_SECTION, 0xB39DDB},
-      {"Graphics", 0xFF7FAF},
-      {"Graphics (Experimental)", 0xFF7FAF},
-      {"Audio", 0x7EE08A},
-  };
+  // Section titles: one colour (as Attila's), Output and the game's graphics the engine sections' pink, About and the
+  // anti-aliasing their own.
+  twattila::feature_settings::SetTints({"General", "Presets", "Extended", "PsychoV31", "Extra", "Ambient Occlusion", "Contact Shadows", "Audio"},
+                                       {"Output (Restart Required)", "Graphics", "Graphics (Experimental)"});
+  renodx::utils::settings::section_tints.insert(renodx::utils::settings::section_tints.end(), {{"About", 0xE6C27A}, {AA_SECTION, 0xB39DDB}});
 
   // Graphics 1 of 2 and 2 of 2 (graphics.hpp; once the DLSS add-on's overlay, which still writes its own ReShade.ini
   // keys: [Ryse AA], [Ryse Game Settings]), before About.
@@ -2334,13 +2314,7 @@ void ConfigureAddon() {
   };
   const auto about = std::ranges::find(settings, std::string("About"), &renodx::utils::settings::Setting::section);
   settings.insert(about, {
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = FULL_DOWNLOAD_NOTE,
-          .section = AA_SECTION,
-          .tint = WARNING_TINT,
-          .is_visible = HelperAbsent,
-      },
+      Note(FULL_DOWNLOAD_NOTE, AA_SECTION, WARNING_TINT, HelperAbsent),
       custom_row("##Anti-Aliasing", AA_SECTION, [] { rysesonofrome::graphics::DrawAntiAliasing(IsAdvancedSettings()); }),
       new renodx::utils::settings::Setting{
           .key = "AntiAliasingTextureLodBiasTrilinear",
@@ -2369,19 +2343,8 @@ void ConfigureAddon() {
       custom_row("##Audio", "Audio", [] { rysesonofrome::graphics::DrawAudio(IsAdvancedSettings()); }),
   });
 
-  // Settings Mode's pages (as the Total War add-ons'; About and the two mode rows on every page).
-  for (auto* setting : settings) {
-    if (setting->key == "SettingsMode" || setting->key == "SettingsAdvanced" || setting->section == "About") continue;
-    int page = 0;
-    if (std::ranges::find(GRAPHICS_1_SECTIONS, setting->section) != GRAPHICS_1_SECTIONS.end()) {
-      page = 1;
-    } else if (std::ranges::find(GRAPHICS_2_SECTIONS, setting->section) != GRAPHICS_2_SECTIONS.end()) {
-      page = 2;
-    }
-    setting->is_visible = [page, shown = setting->is_visible] {
-      return static_cast<int>(current_settings_mode) == page && (shown == nullptr || shown());
-    };
-  }
+  // Settings Mode's pages (the Total War add-ons'; About and the two mode rows on every page).
+  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, GRAPHICS_2_SECTIONS, GRAPHICS_1_SECTIONS);
 
   // Simple / Advanced was Settings Mode's (renodx) and the DLSS add-on's own ([Ryse AA] SettingsMode) until the one
   // add-on: either one's Advanced becomes SettingsAdvanced, once, and Settings Mode starts on HDR & Effects.
@@ -2394,6 +2357,10 @@ void ConfigureAddon() {
     reshade::set_config_value(nullptr, global, "SettingsAdvanced", advanced ? 1 : 0);
     if (mode == 1.f) reshade::set_config_value(nullptr, global, "SettingsMode", 0);
   }
+
+  // Rows saved at an old default, cleared once before settings::Use: both Auto Thickness rows off and Texture LOD Bias on
+  // All Textures off (on since ATN 2026-11-22 and 11-17).
+  twattila::graphics_page::ClearSavedRows(1, {"ssao_auto_thickness", "light_bounce_auto_thickness", "AntiAliasingTextureLodBiasTrilinear"});
 
   configured = true;
 }
