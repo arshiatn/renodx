@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <intrin.h>
 #include <tlhelp32.h>
 
 #include <algorithm>
@@ -63,6 +64,8 @@
 // Animation Rows on Workers and the Pending Sweep trace (Attila; 19. and 20. below, the twenty-sixth and twenty-seventh sites): two sites whose stubs call into
 // this module (animation_rows.hpp, pending_sweep.hpp) through words of a read-write page, and come out only when no thread is in them (CutRange).
 // Exit Job Drain (Attila; 21. below, the thirtieth and thirty-first sites; a bug fix, always on, no row): the game's end waits for its job workers.
+// Early Unit Sort (Attila; 22. below, the thirty-second to thirty-fifth sites; its own row): the draw pass's two entries go through a handler of this module, and two guards
+// stand in front of the weighted add and the node clear.
 namespace twattila::engine_code {
 
 // Whose build of the routines to look for.
@@ -76,7 +79,8 @@ enum class Game : uint8_t { ATTILA, THRONES, ROME2 };
 // on every call and compared with the cache, a bench's RENODX_TW_COUNT_CHECK, never a player's); the 4 fill sites of Parallel
 // Instance Fill (instance_fill.hpp: their own table too) while `instance_fill` is set, and (private build) its 3 Unmap stubs while
 // `fill_fold` is set too; the Exit Job Drain's sites (21. below, Attila; a bug fix: the add-on sets it unless a bench's RENODX_TW_EXIT_DRAIN=0, no row) while `exit_job_drain`
-// is set.
+// is set; the four sites of Early Unit Sort (22. below, Attila) while `early_unit_sort` or `early_unit_sort_check` is set (the check: the handler only counts and compares,
+// a bench's RENODX_TW_SORT_CHECK, never a player's).
 struct WorkerRows {
   animation_rows::Stage animation = animation_rows::Stage::OFF;
   bool pending_sweep_trace = false;
@@ -86,6 +90,8 @@ struct WorkerRows {
   bool instance_fill = false;
   bool fill_fold = false;
   bool exit_job_drain = false;
+  bool early_unit_sort = false;
+  bool early_unit_sort_check = false;
 };
 
 // What the cache of Cached Particle Count counted (the check's mismatches are what the row's end-of-soak line reports).
@@ -1639,6 +1645,12 @@ struct Build {
   uint32_t exit_destroy_rva;    // the function that deletes the app at the game's end (EXIT_DESTROY's first byte; rva 0: not looked for)
   uint32_t exit_teardown_rva;   // the outer loop's call of the root teardown (EXIT_TEARDOWN_CALLER's first byte; rva 0: not looked for)
   uint32_t job_pool_rva;        // the job system's accessor (JOB_POOL_ACCESSOR's first byte)
+  uint32_t weighted_add_rva;       // Early Unit Sort (22.): the weighted add (WEIGHTED_ADD's first byte; rva 0: none of its six is looked for)
+  uint32_t draw_pass_caller_rva;   // the draw pass's caller (DRAW_PASS_CALLER's first byte)
+  uint32_t draw_pass_thunk_rva;    // the draw pass's thunk (DRAW_PASS_THUNK's first byte)
+  uint32_t rigid_draw_update_rva;  // the rigid node's draw update (RIGID_DRAW_UPDATE's first byte)
+  uint32_t node_clear_rva;         // the rigid node's clear (NODE_CLEAR's first byte)
+  uint32_t task_wait_rva;          // the task wait (TASK_WAIT's first byte)
 };
 constexpr Build ATTILA_BUILD = {
     .truncation_rva = TRUNCATION_RVA,
@@ -1673,6 +1685,12 @@ constexpr Build ATTILA_BUILD = {
     .exit_destroy_rva = 0xc9a90,
     .exit_teardown_rva = 0xd5d5b,
     .job_pool_rva = 0x169d350,
+    .weighted_add_rva = 0x17F7FC0,
+    .draw_pass_caller_rva = 0x177C1B0,
+    .draw_pass_thunk_rva = 0x1748810,
+    .rigid_draw_update_rva = 0x1827A70,
+    .node_clear_rva = 0x1832CB0,
+    .task_wait_rva = 0x16B5500,
 };
 // Rome II: no such job system (see 6.). Thrones of Britannia: the same site is not proven there (no function of the +0xc9a90 shape, no job system accessor of the shape
 // JOB_POOL_ACCESSOR has; the functions with the bytes of Attila's +0x1374230 are +0x173c970, with no E8 caller, and +0x17ae260, called from
@@ -1798,6 +1816,12 @@ constexpr size_t PARTICLE_EPOCH_INDEX = 27;  // the node's update (Cached Partic
 constexpr size_t PARTICLE_COUNT_INDEX = 28;  // the visible particle sum (Cached Particle Count: the cache)
 constexpr size_t EXIT_DRAIN_INDEX = 29;      // the app destruction's call at the game's end (Exit Job Drain, 21.)
 constexpr size_t EXIT_TEARDOWN_INDEX = 30;   // the outer loop's call of the root teardown at the game's end (Exit Job Drain, 21.)
+constexpr size_t WEIGHTED_ADD_INDEX = 31;    // the weighted add's guard (Early Unit Sort, 22.)
+constexpr size_t DRAW_PASS_CALL_INDEX = 32;  // the draw pass's call
+constexpr size_t DRAW_PASS_JUMP_INDEX = 33;  // the draw pass's jump
+constexpr size_t NODE_CLEAR_INDEX = 34;      // the node clear's guard
+constexpr SiteMask DRAW_PASS_SITES = SiteMask{0b11} << DRAW_PASS_CALL_INDEX;   // the two sites that lead into this module's handler
+constexpr SiteMask EARLY_SORT_SITES = SiteMask{0b1111} << WEIGHTED_ADD_INDEX;  // Early Unit Sort: its own row, all four sites or none
 constexpr SiteMask EXIT_DRAIN_BIT = SiteMask{1} << EXIT_DRAIN_INDEX;
 constexpr SiteMask EXIT_TEARDOWN_BIT = SiteMask{1} << EXIT_TEARDOWN_INDEX;
 constexpr SiteMask EXIT_DRAIN_SITES = EXIT_DRAIN_BIT | EXIT_TEARDOWN_BIT;  // a bug fix: asked for by the add-on (WorkerRows::exit_job_drain) unless RENODX_TW_EXIT_DRAIN=0, no row; each site on its own
@@ -1819,12 +1843,12 @@ constexpr SiteMask EMITTER_PREFETCH_BIT = SiteMask{1} << EMITTER_PREFETCH_INDEX;
 constexpr SiteMask ENTRY_PREFETCH_BIT = SiteMask{1} << ENTRY_PREFETCH_INDEX;      // Faster Particle Prefetch: its own row
 constexpr SiteMask PREFETCH_SITES = CHILD_SUM_BIT | PARTICLE_PREFETCH_BIT;  // Faster Effect Prefetch: the child sum, the particle loop
 constexpr SiteMask ALL_PREFETCH_SITES = PREFETCH_SITES | EMITTER_PREFETCH_BIT | ENTRY_PREFETCH_BIT | SWEEP_PREFETCH_BIT;  // every prefetch row's sites
-constexpr SiteMask NAMED_ONCE_SITES = ALL_PREFETCH_SITES | WORKER_SITES | PARTICLE_COUNT_SITES | EXIT_DRAIN_SITES;  // the sites named once by their row when asked for and not found
-constexpr SiteMask MODULE_CALL_SITES = WORKER_SITES | EXIT_DRAIN_SITES;  // the sites whose stubs or call lead into this module: one that cannot come out pins it
+constexpr SiteMask NAMED_ONCE_SITES = ALL_PREFETCH_SITES | WORKER_SITES | PARTICLE_COUNT_SITES | EXIT_DRAIN_SITES | EARLY_SORT_SITES;  // the sites named once by their row when asked for and not found
+constexpr SiteMask MODULE_CALL_SITES = WORKER_SITES | EXIT_DRAIN_SITES | DRAW_PASS_SITES;  // the sites whose stubs or call lead into this module: one that cannot come out pins it
 constexpr SiteMask HALF_FUNCTION_BIT = 0b10;  // the half function, which the half rows' stub calls as the game does
 constexpr SiteMask HALF_ROWS_BIT = 0b100000000;
 // The rows by name, for the log lines.
-constexpr std::array<std::pair<SiteMask, std::string_view>, 12> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
+constexpr std::array<std::pair<SiteMask, std::string_view>, 13> ROWS = {{{CPU_CODE_SITES, "Faster Game CPU Code"},
                                                                          {LIST_SITES, "Faster Render Lists"},
                                                                          {JOB_SITES, "Faster Job Wake-Ups"},
                                                                          {PREFETCH_SITES, "Faster Effect Prefetch"},
@@ -1835,7 +1859,8 @@ constexpr std::array<std::pair<SiteMask, std::string_view>, 12> ROWS = {{{CPU_CO
                                                                          {WORKER_FILL_BIT, "Animation Rows on Workers"},
                                                                          {WORKER_SWEEP_BIT, "Pending Sweep Trace"},
                                                                          {PARTICLE_COUNT_SITES, "Cached Particle Count"},
-                                                                         {EXIT_DRAIN_SITES, "Exit Job Drain"}}};
+                                                                         {EXIT_DRAIN_SITES, "Exit Job Drain"},
+                                                                         {EARLY_SORT_SITES, "Early Unit Sort"}}};
 
 // The first instruction (or two or three, whole) of each site: 5 bytes that become a jump into the page (the render list
 // push's: a 4-byte instruction and the first byte of the next, both run by its stub).
@@ -1849,7 +1874,7 @@ struct Site {
   uint8_t opcode = 0xE9;  // jmp; the worker destructor's call of Stop stays a call (E8)
 };
 
-static std::array<Site, 31> sites = {{{.name = "soldier draw rounding"},
+static std::array<Site, 35> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "half floats"},
                                      {.name = "fmod"},
                                      {.name = "render list pushes"},
@@ -1879,7 +1904,11 @@ static std::array<Site, 31> sites = {{{.name = "soldier draw rounding"},
                                      {.name = "particle count epoch"},
                                      {.name = "particle count"},
                                      {.name = "exit job drain", .opcode = 0xE8},
-                                     {.name = "exit teardown drain", .opcode = 0xE8}}};
+                                     {.name = "exit teardown drain", .opcode = 0xE8},
+                                     {.name = "weighted add guard"},
+                                     {.name = "draw pass call", .opcode = 0xE8},
+                                     {.name = "draw pass jump"},
+                                     {.name = "node clear guard"}}};
 // The reload rows' sites follow each other; every site has a bit of the SiteMask masks.
 static_assert(SOLDIER_ROWS_FIRST_SITE + SOLDIER_ROWS_STUBS.size() == MATRIX_PRODUCT_FIRST_SITE
               && MATRIX_PRODUCT_FIRST_SITE + MATRIX_PRODUCT_STUBS.size() == ENTRY_PREFETCH_INDEX
@@ -1887,7 +1916,9 @@ static_assert(SOLDIER_ROWS_FIRST_SITE + SOLDIER_ROWS_STUBS.size() == MATRIX_PROD
               && SWEEP_PREFETCH_INDEX + 1 == MODEL_DETAIL_INDEX && MODEL_DETAIL_INDEX + 1 == WORKER_FILL_INDEX
               && WORKER_FILL_INDEX + 1 == WORKER_SWEEP_INDEX && WORKER_SWEEP_INDEX + 1 == PARTICLE_EPOCH_INDEX
               && PARTICLE_EPOCH_INDEX + 1 == PARTICLE_COUNT_INDEX && PARTICLE_COUNT_INDEX + 1 == EXIT_DRAIN_INDEX
-              && EXIT_DRAIN_INDEX + 1 == EXIT_TEARDOWN_INDEX && EXIT_TEARDOWN_INDEX + 1 == std::tuple_size_v<decltype(sites)>
+              && EXIT_DRAIN_INDEX + 1 == EXIT_TEARDOWN_INDEX && EXIT_TEARDOWN_INDEX + 1 == WEIGHTED_ADD_INDEX
+              && WEIGHTED_ADD_INDEX + 1 == DRAW_PASS_CALL_INDEX && DRAW_PASS_CALL_INDEX + 1 == DRAW_PASS_JUMP_INDEX
+              && DRAW_PASS_JUMP_INDEX + 1 == NODE_CLEAR_INDEX && NODE_CLEAR_INDEX + 1 == std::tuple_size_v<decltype(sites)>
               && std::tuple_size_v<decltype(sites)> <= sizeof(SiteMask) * 8);
 // Every site belongs to exactly one row: the rows' masks are disjoint and cover every site.
 static_assert([] {
@@ -2067,6 +2098,252 @@ static void __fastcall ExitDrainBeforeTeardown(void* loop_object, void*) {
   exit_root_teardown(loop_object);
 }
 
+// 22. Early Unit Sort (Attila; its own row, WorkerRows::early_unit_sort). Each rigid node sorts its weighted (skinned) instances in a task that the node's draw update
+// (+0x1827a70, the rigid vtable's slot 0x30) starts at the end of the draw pass (+0x1748a80: its node loop is the last thing it does), and the frame then waits for it. The
+// task's input is complete before the pass: its one writer is the weighted add (+0x17f7fc0, a vtable slot of the 10 weighted mesh classes). Four sites, all or none:
+// - the pass's two entries, the call at +0x177c1b7 and the thunk's jump at +0x1748823 (its only references), go to EarlySortPass, which calls the pass;
+// - the weighted add's head goes through a guard: while the guard byte is 1 an add to a node whose task is started is skipped and counted (it would race the task);
+// - the rigid node's clear (+0x1832cb0, the vtable's slot 0xcc; it frees the whole record pool and does not wait) goes through a guard too: while the byte is 1 the clear of
+//   a started node first waits for the task (the list reset's own idiom at +0x1811f0d) and empties the node's output (its size at node + 0xdc, as +0x1811f62), then runs.
+// With the byte at 2 (the check: a bench's RENODX_TW_SORT_CHECK) both guards only count and the handler starts nothing: it counts the pass's rigid nodes and compares the
+// weighted meshes' sort keys before and after the pass. With it at 0 each guard is one compare and the game's own code. The guards call nothing of this module and their
+// page is never freed; the two pass sites lead into the handler and come out only while no thread is in it (`inside`, PausedWrite's cut) or stay in with the module pinned.
+// Found by their bytes, all read-only checks included (the pass by its node loop: its head is a row of heapfix's timing hooks; the draw update, its weighted start block
+// and the start function behind it; the task wait the clear guard calls). test/tw_engine_code part 31 holds what the game's code is read for, parts 32 on the rest.
+constexpr std::string_view WEIGHTED_ADD = "83 EC 4C 56 57 8B 7C 24 6C 8B F1 8D 4C 24 20 51 8D 4C 24 28 83 BE 00 01 00 00 02";
+constexpr std::string_view DRAW_PASS_CALLER = "8B 4E 08 50 8B 49 18 E8 ?? ?? ?? ?? 8D 4C 24 07 5E 83 C4 04 E9";
+constexpr size_t DRAW_PASS_CALL = 7;  // call the draw pass
+constexpr std::string_view DRAW_PASS_THUNK = "8B 49 1C 8B 01 FF 60 30 CC CC CC CC CC CC CC CC 8B 49 08 E9 ?? ?? ?? ??";
+constexpr size_t DRAW_PASS_JUMP = 0x13;  // jmp the draw pass
+constexpr std::string_view NODE_CLEAR = "53 56 57 8B F9 33 F6 8B 9F A0 00 00 00 85 DB 74 16 8B 87 A4 00 00 00 8B 0C B0 8B 01 FF 90 2C 01 00 00";
+constexpr uint32_t DRAW_PASS_RVA = 0x1748A80;  // where the call and the jump go (compared with their decoded targets)
+constexpr std::string_view DRAW_PASS_NODE_LOOP = "8B 83 40 05 00 00 57 8B 0C B0 8B 01 FF 50 30 46 3B B3 3C 05 00 00";
+constexpr size_t DRAW_PASS_NODE_LOOP_AT = 0x350;  // in the pass
+constexpr std::string_view RIGID_DRAW_UPDATE = "56 8B F1 83 BE 6C 0C 00 00 00 8B 46 34 74 38";
+constexpr std::string_view WEIGHTED_START = "80 BE 94 0A 00 00 00 75 17 6A 00 FF B6 84 0A 00 00 C6 86 94 0A 00 00 01 E8 ?? ?? ?? ?? 83 C4 08";
+constexpr size_t WEIGHTED_START_AT = 0xF6;    // in the draw update
+constexpr size_t WEIGHTED_START_CALL = 0x18;  // call the task start (a thunk: an E9 to it)
+constexpr uint32_t TASK_START_RVA = 0x16AF970;  // the function behind that call (the heapfix check below and the tests; checked at runtime by its bytes)
+constexpr std::string_view TASK_START = "56 E8 ?? ?? ?? ?? 8B 74 24 08 BA 01 00 00 00 8D 4E 18 87 11";
+constexpr std::string_view TASK_WAIT = "56 8B F1 56 E8 ?? ?? ?? ?? 83 C4 04 84 C0 75 09 8D 4E 1C 5E E9";
+// The game's layout the handler reads: the scene's nodes (the pass's node loop), a node's meshes (the clear's loop), its weighted task, started flag (the start block)
+// and callback (the draw update's head), the vtable slots (part 31: the 10 weighted vtables hold the weighted add at 0x14c).
+constexpr size_t SCENE_NODE_COUNT = 0x53C;
+constexpr size_t SCENE_NODES = 0x540;
+constexpr size_t NODE_DRAW_UPDATE_SLOT = 0x30;
+constexpr size_t NODE_MESH_COUNT = 0xA0;
+constexpr size_t NODE_MESHES = 0xA4;
+constexpr size_t NODE_WEIGHTED_TASK = 0xA84;
+constexpr size_t NODE_WEIGHTED_STARTED = 0xA94;
+constexpr size_t NODE_CALLBACK = 0xC6C;
+constexpr size_t MESH_KEY_SLOT = 0xD8;   // the mesh's sort key (a reader, thiscall, no argument)
+constexpr size_t MESH_ADD_SLOT = 0x14C;  // the weighted add in a weighted mesh's vtable
+// The guard byte's values: 0 closed.
+constexpr uint8_t SORT_GUARD_OPEN = 1;   // an early start is under way: adds to a started node are skipped, clears of one wait first
+constexpr uint8_t SORT_GUARD_COUNT = 2;  // the check: adds and clears are counted and run
+// The weighted add's guard (thiscall, 7 stack arguments; eax and the flags are free at the entry; the skip returns as the add does, its callers do not use the result).
+constexpr std::array<uint8_t, 62> WEIGHTED_ADD_GUARD = {
+    0x80, 0x3D, 0, 0, 0, 0, 0x00,              // +00 cmp byte ptr [guard], 0
+    0x75, 0x0A,                                // +07 jne slow
+    0x83, 0xEC, 0x4C, 0x56, 0x57,              // +09 head: sub esp, 0x4c; push esi; push edi (the game's five bytes)
+    0xE9, 0, 0, 0, 0,                          // +0E jmp the weighted add + 5
+    0x80, 0x3D, 0, 0, 0, 0, SORT_GUARD_OPEN,   // +13 slow: cmp byte ptr [guard], 1
+    0x75, 0x19,                                // +1A jne count
+    0x8B, 0x81, 0x44, 0x02, 0x00, 0x00,        // +1C mov eax, dword ptr [ecx + 0x244] (the mesh's owner: its node + 0xb8)
+    0x80, 0xB8, 0xDC, 0x09, 0x00, 0x00, 0x00,  // +22 cmp byte ptr [eax + 0x9dc], 0 (that node's started flag)
+    0x74, 0xDE,                                // +29 je head (not started: the game's own add)
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,              // +2B lock inc dword ptr [add_hits]
+    0xC2, 0x1C, 0x00,                          // +32 ret 0x1c (the add skipped)
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,              // +35 count: lock inc dword ptr [add_hits]
+    0xEB, 0xCB};                               // +3C jmp head
+// The node clear's guard (thiscall, no stack argument). The flag stays set: the draw update does not start the task again, and the consumer's wait returns at once,
+// clears the flag and finds an empty output.
+constexpr std::array<uint8_t, 66> NODE_CLEAR_GUARD = {
+    0x80, 0x3D, 0, 0, 0, 0, 0x00,              // +00 cmp byte ptr [guard], 0
+    0x75, 0x0A,                                // +07 jne slow
+    0x53, 0x56, 0x57, 0x8B, 0xF9,              // +09 head: push ebx; push esi; push edi; mov edi, ecx (the game's five bytes)
+    0xE9, 0, 0, 0, 0,                          // +0E jmp the node clear + 5
+    0x80, 0x3D, 0, 0, 0, 0, SORT_GUARD_OPEN,   // +13 slow: cmp byte ptr [guard], 1
+    0x75, 0x1D,                                // +1A jne count (the check: nothing was started, so nothing to empty)
+    0x80, 0xB9, 0x94, 0x0A, 0x00, 0x00, 0x00,  // +1C cmp byte ptr [ecx + 0xa94], 0 (this node's started flag)
+    0x74, 0xE4,                                // +23 je head (not started: the game's own case)
+    0x51,                                      // +25 push ecx
+    0x8B, 0x89, 0x84, 0x0A, 0x00, 0x00,        // +26 mov ecx, dword ptr [ecx + 0xa84] (the weighted task)
+    0xE8, 0, 0, 0, 0,                          // +2C call the task wait
+    0x59,                                      // +31 pop ecx
+    0x83, 0xA1, 0xDC, 0x00, 0x00, 0x00, 0x00,  // +32 and dword ptr [ecx + 0xdc], 0 (the output's size)
+    0xF0, 0xFF, 0x05, 0, 0, 0, 0,              // +39 count: lock inc dword ptr [clear_hits]
+    0xEB, 0xC7};                               // +40 jmp head
+// Where the addresses go in both guards, in the add's (its two counts) and in the clear's (the wait, its count).
+constexpr std::array<size_t, 2> SORT_GUARD_BYTE_AT = {0x02, 0x15};
+constexpr size_t SORT_GUARD_RESUME_AT = 0x0F;
+constexpr std::array<size_t, 2> WEIGHTED_ADD_GUARD_HITS_AT = {0x2E, 0x38};
+constexpr size_t NODE_CLEAR_GUARD_WAIT_AT = 0x2D;
+constexpr size_t NODE_CLEAR_GUARD_HITS_AT = 0x3C;
+// Both on the stubs' second code page; the next feature's stubs start at its 0x90.
+constexpr size_t WEIGHTED_ADD_GUARD_PAGE = PAGE_SIZE;
+constexpr size_t NODE_CLEAR_GUARD_PAGE = PAGE_SIZE + 0x40;
+constexpr size_t EARLY_SORT_PAGE_END = PAGE_SIZE + 0x90;
+static_assert(WEIGHTED_ADD_GUARD_PAGE + WEIGHTED_ADD_GUARD.size() <= NODE_CLEAR_GUARD_PAGE && NODE_CLEAR_GUARD_PAGE + NODE_CLEAR_GUARD.size() <= EARLY_SORT_PAGE_END
+              && EARLY_SORT_PAGE_END <= STUB_CODE_SIZE);
+// The owner the add's guard reads is the node + 0xb8: its 0x9dc is the node's started flag.
+static_assert(0xB8 + 0x9DC == NODE_WEIGHTED_STARTED);
+
+enum class EarlySortMode : uint8_t {
+  OFF,    // the handler only calls the pass
+  ON,     // the early start
+  CHECK,  // counts and the key comparison, nothing started
+};
+// The feature's words on the data page. The guard byte has a cache line to itself (every weighted add reads it, nothing writes it outside the pass), the guards' two
+// counts another. The handler writes the rest on the pass's thread; Update reads it at the present.
+struct EarlySortData {
+  alignas(64) std::atomic<uint8_t> guard = 0;
+  alignas(64) std::atomic<uint32_t> add_hits = 0;  // the weighted adds the guard saw while it was not 0
+  std::atomic<uint32_t> clear_hits = 0;            // the node clears
+  alignas(64) std::atomic<int32_t> inside = 0;     // the threads in the handler (PausedWrite's cut count)
+  std::atomic<EarlySortMode> mode = EarlySortMode::OFF;
+  std::atomic<bool> tripped = false;         // no early start for the rest of the session
+  std::atomic<uint32_t> passes_done = 0;     // outer passes that came back to the handler
+  std::atomic<uint32_t> skipped_adds = 0;    // what tripped it
+  std::atomic<uint32_t> waited_clears = 0;
+  std::atomic<uint32_t> first_start_nodes = 0;  // the first early start: the rigid nodes started, and those left because their flag was set
+  std::atomic<uint32_t> first_start_left = 0;
+  // The check's totals.
+  std::atomic<uint64_t> passes_call = 0;
+  std::atomic<uint64_t> passes_jump = 0;
+  std::atomic<uint64_t> rigid_nodes = 0;
+  std::atomic<uint64_t> callback_nodes = 0;
+  std::atomic<uint64_t> flags_set = 0;
+  std::atomic<uint64_t> adds_inside = 0;
+  std::atomic<uint64_t> clears_inside = 0;
+  std::atomic<uint64_t> key_differences = 0;
+  std::atomic<uint64_t> key_meshes_changed = 0;
+  std::atomic<uint64_t> key_overflow = 0;
+};
+constexpr size_t EARLY_SORT_DATA_AT = 0x100;  // in the data page, after CountData
+static_assert(COUNT_DATA_AT + sizeof(CountData) <= EARLY_SORT_DATA_AT && EARLY_SORT_DATA_AT % alignof(EarlySortData) == 0
+              && EARLY_SORT_DATA_AT + sizeof(EarlySortData) <= PAGE_SIZE && offsetof(EarlySortData, guard) == 0 && offsetof(EarlySortData, add_hits) == 0x40
+              && offsetof(EarlySortData, clear_hits) == 0x44 && offsetof(EarlySortData, inside) == 0x80);
+// A weighted mesh and its sort key at the pass's start (the check).
+struct EarlySortKey {
+  const uint8_t* mesh;
+  uint32_t key;
+  bool seen;  // found again after the pass
+};
+constexpr size_t EARLY_SORT_KEYS = 8192;
+static EarlySortData* early_sort_data = nullptr;  // the data page's (EARLY_SORT_DATA_AT); null: no page
+static EarlySortKey* early_sort_keys = nullptr;   // EARLY_SORT_KEYS of them, made by Update when the check is first asked for, kept
+static void(__thiscall* draw_pass)(uint8_t* scene, void* context) = nullptr;  // the game's pass both sites went to
+static const uint8_t* draw_pass_call_return = nullptr;  // the handler's return address when it is entered through the call site
+static const uint8_t* rigid_draw_update = nullptr;      // what a rigid node's vtable holds at NODE_DRAW_UPDATE_SLOT
+static const uint8_t* weighted_add = nullptr;           // what a weighted mesh's holds at MESH_ADD_SLOT
+// Update's two-present rule: what the last present read.
+static bool early_sort_busy = false;
+static uint32_t early_sort_passes = 0;
+static bool early_sort_stuck = false;  // the pass did not come back: off for the session
+
+// Both guards built at their stubs: `add_site` and `clear_site` the game's code (the stubs go on 5 bytes after them), `task_wait` what the clear's guard calls.
+inline void BuildEarlySortGuards(uint8_t* add_stub, uint8_t* clear_stub, EarlySortData* data, const uint8_t* add_site, const uint8_t* clear_site, const uint8_t* task_wait) {
+  // An absolute address at `at`, or (with `relative`) a rel32 to it.
+  const auto put = [](uint8_t* at, const void* address, bool relative = false) {
+    const auto word = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(address) - (relative ? reinterpret_cast<uintptr_t>(at) + sizeof(uint32_t) : 0));
+    std::memcpy(at, &word, sizeof(word));
+  };
+  const auto place = [&](uint8_t* stub, std::span<const uint8_t> code, const uint8_t* site) {
+    std::memcpy(stub, code.data(), code.size());
+    for (const size_t at : SORT_GUARD_BYTE_AT) put(stub + at, &data->guard);
+    put(stub + SORT_GUARD_RESUME_AT, site + SITE_SIZE, true);
+  };
+  place(add_stub, WEIGHTED_ADD_GUARD, add_site);
+  for (const size_t at : WEIGHTED_ADD_GUARD_HITS_AT) put(add_stub + at, &data->add_hits);
+  place(clear_stub, NODE_CLEAR_GUARD, clear_site);
+  put(clear_stub + NODE_CLEAR_GUARD_WAIT_AT, task_wait, true);
+  put(clear_stub + NODE_CLEAR_GUARD_HITS_AT, &data->clear_hits);
+}
+
+// The two pass sites' call: the game's thiscall with one stack argument (__fastcall with edx unused, as ExitDrainBeforeTeardown). The count first, then the mode (the
+// order PausedWrite's cut rests on: Update stores OFF before the sites come out, so a thread that enters while they do starts nothing). Only the outer entry acts: a
+// nested or second thread's entry calls the pass and nothing else. No log call and no lock here: Update logs at the present.
+static void __fastcall EarlySortPass(uint8_t* scene, void*, void* context) {
+  EarlySortData* const data = early_sort_data;
+  const bool outer = (data->inside.fetch_add(1) == 0);
+  const bool check = (outer && data->mode.load() == EarlySortMode::CHECK);
+  const auto slot = [](const uint8_t* object, size_t at) { return (*reinterpret_cast<const uint8_t* const* const*>(object))[at / sizeof(void*)]; };
+  const auto rigid_nodes = [&](auto visit) {
+    uint8_t* const* const nodes = *reinterpret_cast<uint8_t* const* const*>(scene + SCENE_NODES);
+    const uint32_t count = *reinterpret_cast<const uint32_t*>(scene + SCENE_NODE_COUNT);
+    for (uint32_t index = 0; index < count; ++index) {
+      if (slot(nodes[index], NODE_DRAW_UPDATE_SLOT) == rigid_draw_update) visit(nodes[index]);
+    }
+  };
+  const auto weighted_meshes = [&](auto visit) {
+    rigid_nodes([&](uint8_t* node) {
+      uint8_t* const* const meshes = *reinterpret_cast<uint8_t* const* const*>(node + NODE_MESHES);
+      const uint32_t count = *reinterpret_cast<const uint32_t*>(node + NODE_MESH_COUNT);
+      for (uint32_t index = 0; index < count; ++index) {
+        if (slot(meshes[index], MESH_ADD_SLOT) == weighted_add) visit(meshes[index]);
+      }
+    });
+  };
+  const auto key_of = [&](uint8_t* mesh) { return reinterpret_cast<uint32_t(__thiscall*)(uint8_t*)>(const_cast<uint8_t*>(slot(mesh, MESH_KEY_SLOT)))(mesh); };
+  uint32_t keys = 0;        // the meshes whose key was taken before the pass
+  uint32_t not_taken = 0;   // the meshes the buffer had no room for
+  // The way out, also on a C++ unwind through the pass (not on an SEH unwind, a thread that ends in the pass or a longjmp: Update's two-present rule).
+  const auto leave = [&] {
+    if (outer) {
+      data->guard.store(0);
+      const uint32_t adds = data->add_hits.exchange(0);
+      const uint32_t clears = data->clear_hits.exchange(0);
+      if (check) {
+        data->adds_inside += adds;
+        data->clears_inside += clears;
+        // The key of every mesh that is there before and after (only live meshes are called); a mesh in one walk only is counted as changed.
+        EarlySortKey* const end = early_sort_keys + keys;
+        std::sort(early_sort_keys, end, [](const EarlySortKey& a, const EarlySortKey& b) { return a.mesh < b.mesh; });
+        uint32_t seen = 0;
+        weighted_meshes([&](uint8_t* mesh) {
+          EarlySortKey* const taken = std::lower_bound(early_sort_keys, end, mesh, [](const EarlySortKey& key, const uint8_t* wanted) { return key.mesh < wanted; });
+          if (taken == end || taken->mesh != mesh || taken->seen) {
+            if (not_taken == 0) ++data->key_meshes_changed;
+            return;
+          }
+          taken->seen = true;
+          ++seen;
+          if (key_of(mesh) != taken->key) ++data->key_differences;
+        });
+        data->key_meshes_changed += keys - seen;
+        data->key_overflow += not_taken;
+      }
+      data->passes_done.fetch_add(1);
+    }
+    data->inside.fetch_sub(1);
+  };
+  const struct Leave {
+    decltype(leave)& leave;
+    ~Leave() { leave(); }
+  } at_leave{leave};
+  if (check) {
+    data->guard.store(SORT_GUARD_COUNT);
+    ++(_ReturnAddress() == draw_pass_call_return ? data->passes_call : data->passes_jump);
+    rigid_nodes([&](const uint8_t* node) {
+      ++data->rigid_nodes;
+      if (*reinterpret_cast<const uint32_t*>(node + NODE_CALLBACK) != 0) {
+        ++data->callback_nodes;
+      } else if (node[NODE_WEIGHTED_STARTED] != 0) {
+        ++data->flags_set;
+      }
+    });
+    weighted_meshes([&](uint8_t* mesh) {
+      if (early_sort_keys == nullptr || keys == EARLY_SORT_KEYS) {
+        ++not_taken;
+        return;
+      }
+      early_sort_keys[keys++] = {.mesh = mesh, .key = key_of(mesh), .seen = false};
+    });
+  }
+  draw_pass(scene, context);
+}
+
 static uint8_t* job_table = nullptr;
 static std::atomic<uint32_t>* model_detail_scale = nullptr;  // the stub's float (18.), as bits; null: the site isn't there
 static uint8_t* page = nullptr;
@@ -2097,6 +2374,7 @@ static bool snapshot_failure_logged = false;
 static bool control_fail_snapshot = false;  // the thread list cannot be read
 static bool control_fail_context = false;   // a thread's context cannot be read
 static uint32_t control_fail_page = 0;      // Prepare's page: 1 cannot be allocated, 2 cannot be made executable
+static int32_t control_sort_mode_at_removal = -1;  // Early Unit Sort's mode as the last window that took its sites out found it (-1: none did)
 #endif
 static bool job_missing_logged = false;
 static SiteMask prefetch_logged = 0;  // the prefetch and worker sites already named as left alone: each is named once
@@ -2208,6 +2486,28 @@ static_assert([] {
          && !TouchesPatched(EXIT_APP_DELETE_RVA, static_cast<uint32_t>(PatternSize(EXIT_APP_DELETE)), no_entry)
          && !TouchesPatched(ATTILA_BUILD.job_pool_rva, static_cast<uint32_t>(PatternSize(JOB_POOL_ACCESSOR)), no_entry);
 }());
+// Early Unit Sort: its four sites clear of every row heapfix patches, hooks for timing or checks, and the nine ranges they are found by clear of the patched ones and of
+// the timing hooks (the pass's head is a timing hook's row: that is why the pass is found by its node loop).
+static_assert([] {
+  const auto no_entry = [](uint32_t) { return false; };
+  for (const uint32_t site : {ATTILA_BUILD.weighted_add_rva, ATTILA_BUILD.draw_pass_caller_rva + static_cast<uint32_t>(DRAW_PASS_CALL),
+                              ATTILA_BUILD.draw_pass_thunk_rva + static_cast<uint32_t>(DRAW_PASS_JUMP), ATTILA_BUILD.node_clear_rva}) {
+    if (TouchesPatched(site, SITE_SIZE, no_entry) || TouchesChecked(site, SITE_SIZE)) return false;
+  }
+  const std::array<std::pair<uint32_t, std::string_view>, 9> found_by = {{{ATTILA_BUILD.weighted_add_rva, WEIGHTED_ADD},
+                                                                          {ATTILA_BUILD.draw_pass_caller_rva, DRAW_PASS_CALLER},
+                                                                          {ATTILA_BUILD.draw_pass_thunk_rva, DRAW_PASS_THUNK},
+                                                                          {ATTILA_BUILD.node_clear_rva, NODE_CLEAR},
+                                                                          {DRAW_PASS_RVA + static_cast<uint32_t>(DRAW_PASS_NODE_LOOP_AT), DRAW_PASS_NODE_LOOP},
+                                                                          {ATTILA_BUILD.rigid_draw_update_rva, RIGID_DRAW_UPDATE},
+                                                                          {ATTILA_BUILD.rigid_draw_update_rva + static_cast<uint32_t>(WEIGHTED_START_AT), WEIGHTED_START},
+                                                                          {TASK_START_RVA, TASK_START},
+                                                                          {ATTILA_BUILD.task_wait_rva, TASK_WAIT}}};
+  for (const auto& [rva, pattern] : found_by) {
+    if (TouchesPatched(rva, static_cast<uint32_t>(PatternSize(pattern)), no_entry)) return false;
+  }
+  return true;
+}());
 // The check row that starts where the epoch's instruction ends is clear of the 6 bytes and touched by a seventh.
 static_assert([] {
   for (const HeapfixRange& range : HEAPFIX_CHECKED) {
@@ -2265,11 +2565,13 @@ inline bool PausedWrite(SiteMask patched, SiteMask* stood_down, uint64_t recordi
   // is not clear. A partial removal only waits for the cut stubs.
   // The effect update's thunks count the threads in their slow paths (and in the game's calls they make), and any thread
   // anywhere in the page may be about to enter one: the whole page.
-  const std::array<std::pair<CutRange, bool>, 4> cuts = {{
+  // Early Unit Sort's sites come out only while no thread is in its handler (the guards' stubs need no cut: they call nothing of this module and their page stays).
+  const std::array<std::pair<CutRange, bool>, 5> cuts = {{
       {worker_cut, (changing[0] & ~wanted[0] & WORKER_SITES) != 0},
       {{recording_cut.begin, (recording_patched == 0 ? recording_page_end : recording_cut.end), recording_cut.active}, recording_out},
       {{eu::page, eu::page_end, (eu::data != nullptr ? &eu::data->active : nullptr)}, effect_out},
-      {{nullptr, nullptr, &instance_fill::internal::active}, fill_out}}};
+      {{nullptr, nullptr, &instance_fill::internal::active}, fill_out},
+      {{nullptr, nullptr, (early_sort_data != nullptr ? &early_sort_data->inside : nullptr)}, (changing[0] & ~wanted[0] & EARLY_SORT_SITES) != 0}}};
   std::array<uint64_t, 2> stood = {};
   uint32_t effect_stood = 0;
   uint32_t fill_stood = 0;
@@ -2359,6 +2661,9 @@ inline bool PausedWrite(SiteMask patched, SiteMask* stood_down, uint64_t recordi
       blocked_eip = context.Eip;
     }
   }
+#if defined(TWATTILA_ENGINE_CODE_CONTROLS)
+  if (cuts.back().second && early_sort_data != nullptr) control_sort_mode_at_removal = static_cast<int32_t>(early_sort_data->mode.load());
+#endif
   for (const auto& [cut, out] : cuts) {
     // The stubs raise the count and then read their slot; Update stores the slot (seq_cst) and then PausedWrite loads
     // the count (seq_cst).
@@ -2409,6 +2714,8 @@ inline bool PausedWrite(SiteMask patched, SiteMask* stood_down, uint64_t recordi
       stood[0] |= PARTICLE_COUNT_SITES & going_in[0];
       if ((stood[0] & PARTICLE_COUNT_BIT) != 0) stood[0] |= PARTICLE_EPOCH_BIT & changing[0];
     }
+    // Early Unit Sort: all four sites go in or none (the handler without a guard would start early with nothing to stop a late add or clear).
+    if ((stood[0] & EARLY_SORT_SITES) != 0) stood[0] |= EARLY_SORT_SITES & going_in[0];
     // The recording sites that go in stand down by group; the entry hook is every group's, so it takes them all, and
     // with no group left it is no use alone.
     const uint64_t entry_in = going_in[1] & recording_entry_bit;
@@ -2560,6 +2867,17 @@ inline void SyncWorkerSlots(SiteMask live) {
   set(&worker_data->sweep_slot, (live & WORKER_SWEEP_BIT) != 0, static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&pending_sweep::Arm)));
 }
 
+// Early Unit Sort's mode for the sites in `live` (as the cut stubs' words above): `check` while all four hold their jump and are still asked for, else OFF. OFF is
+// stored before the sites come out, and anything else only after a write that left all four in: the handler raises its count and then loads the mode, PausedWrite
+// loads the count after this store (both sequentially consistent), so a thread that enters the handler while the sites come out reads OFF.
+inline void SyncEarlySortMode(SiteMask live, bool check) {
+  if (early_sort_data == nullptr) return;
+  const EarlySortMode mode = ((live & EARLY_SORT_SITES) == EARLY_SORT_SITES && check && !early_sort_stuck ? EarlySortMode::CHECK : EarlySortMode::OFF);
+  if (early_sort_data->mode.load(std::memory_order_relaxed) != mode) {
+    early_sort_data->mode.store(mode);
+  }
+}
+
 // A worker or effect update site that did not come out cleanly (a game thread kept running it, or another mod's bytes
 // are over our jump and its hook may still lead to our stub) keeps the stubs and this module's Dispatch, Arm and handler
 // reachable: the module stays loaded for the life of the process (the pages are never freed either).
@@ -2640,6 +2958,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   DWORD page_error = (page == nullptr ? GetLastError() : 0);
   worker_data = (page != nullptr ? new (page + STUB_CODE_SIZE) WorkerData : nullptr);
   count_data = (page != nullptr ? new (page + STUB_CODE_SIZE + COUNT_DATA_AT) CountData : nullptr);
+  early_sort_data = (page != nullptr ? new (page + STUB_CODE_SIZE + EARLY_SORT_DATA_AT) EarlySortData : nullptr);
   worker_cut = (page != nullptr ? CutRange{page + WORKER_FILL_PAGE, page + PAGE_SIZE, &worker_data->cut_active} : CutRange{});
   std::array<uint8_t*, std::tuple_size_v<decltype(sites)>> stubs = {};
   // The stub `code` of a site (8. to 13.: a loop's bottom, or a float4 reload) at `stub` for the site at `site`: its last
@@ -2873,6 +3192,37 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
         }
       }
     }
+    // Early Unit Sort: the four sites and every read-only check, or none of them. Both pass sites must go to the pass, the pass must hold its node loop, the draw
+    // update its weighted start block, and that block's call must lead (through its thunk) to the start function.
+    if (build.weighted_add_rva != 0) {
+      uint8_t* const add = find(WEIGHTED_ADD, build.weighted_add_rva);
+      uint8_t* const caller = find(DRAW_PASS_CALLER, build.draw_pass_caller_rva);
+      uint8_t* const thunk = find(DRAW_PASS_THUNK, build.draw_pass_thunk_rva);
+      uint8_t* const clear = find(NODE_CLEAR, build.node_clear_rva);
+      const uint8_t* const draw_update = find(RIGID_DRAW_UPDATE, build.rigid_draw_update_rva);
+      const uint8_t* const task_wait = find(TASK_WAIT, build.task_wait_rva);
+      uint8_t* const pass = base + DRAW_PASS_RVA;
+      if (add != nullptr && caller != nullptr && thunk != nullptr && clear != nullptr && draw_update != nullptr && task_wait != nullptr
+          && target(caller + DRAW_PASS_CALL) == pass && target(thunk + DRAW_PASS_JUMP) == pass && holds(pass + DRAW_PASS_NODE_LOOP_AT, DRAW_PASS_NODE_LOOP)
+          && holds(draw_update + WEIGHTED_START_AT, WEIGHTED_START)) {
+        const uint8_t* const start = target(draw_update + WEIGHTED_START_AT + WEIGHTED_START_CALL);
+        if (holds((in_code(start, SITE_SIZE) && *start == 0xE9 ? target(start) : start), TASK_START)) {
+          BuildEarlySortGuards(page + WEIGHTED_ADD_GUARD_PAGE, page + NODE_CLEAR_GUARD_PAGE, early_sort_data, add, clear, task_wait);
+          draw_pass = reinterpret_cast<decltype(draw_pass)>(pass);
+          draw_pass_call_return = caller + DRAW_PASS_CALL + SITE_SIZE;
+          rigid_draw_update = draw_update;
+          weighted_add = add;
+          const std::array<std::pair<uint8_t*, uint8_t*>, 4> placed = {{{add, page + WEIGHTED_ADD_GUARD_PAGE},
+                                                                        {caller + DRAW_PASS_CALL, reinterpret_cast<uint8_t*>(&EarlySortPass)},
+                                                                        {thunk + DRAW_PASS_JUMP, reinterpret_cast<uint8_t*>(&EarlySortPass)},
+                                                                        {clear, page + NODE_CLEAR_GUARD_PAGE}}};
+          for (size_t index = 0; index < placed.size(); ++index) {
+            sites[WEIGHTED_ADD_INDEX + index].at = placed[index].first;
+            stubs[WEIGHTED_ADD_INDEX + index] = placed[index].second;
+          }
+        }
+      }
+    }
     DWORD protection;
     bool executable = (VirtualProtect(page, STUB_CODE_SIZE, PAGE_EXECUTE_READ, &protection) != FALSE);
 #if defined(TWATTILA_ENGINE_CODE_CONTROLS)
@@ -2891,6 +3241,7 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
       page = nullptr;
       worker_data = nullptr;
       count_data = nullptr;
+      early_sort_data = nullptr;
       worker_cut = {};
       if (job_table != nullptr) VirtualFree(job_table, 0, MEM_RELEASE);
       job_table = nullptr;
@@ -2928,9 +3279,10 @@ inline void Prepare(HMODULE module, const Build& build = ATTILA_BUILD) {
   const uint32_t product_rva = (sse4_1 ? build.matrix_product_rva : 0);
   // The worker sites aren't listed either (like the other sites of their own rows): NAMED_ONCE_SITES names them when
   // their row asks.
-  const std::array<uint32_t, 31> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
+  const std::array<uint32_t, 35> rvas = {build.truncation_rva, build.half_rva, build.fmod_rva, build.list_push_rva, build.ready_check_rva,
                                          0, 0, 0, build.half_rows_rva, 0, reload_rva, reload_rva, 0, 0, rows_rva, rows_rva, rows_rva,
-                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva, 0, 0, 0, 0, 0, 0, 0, 0};
+                                         product_rva, product_rva, product_rva, 0, build.push_loop_a_rva, build.push_loop_b_rva, 0, 0, 0, 0, 0, 0, 0, 0,
+                                         0, 0, 0, 0};
   static_assert(std::tuple_size_v<decltype(rvas)> == std::tuple_size_v<decltype(sites)>);
 #if defined(TWATTILA_ENGINE_PROBE)
   // The probe build: each probed site's jump goes to its probe stub first (a copy of the probe's bytes with the counters' addresses put in), whose last jump goes on
@@ -3006,7 +3358,8 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
                                     | (worker_rows.animation != animation_rows::Stage::OFF ? internal::WORKER_FILL_BIT : 0u)
                                     | (worker_rows.pending_sweep_trace ? internal::WORKER_SWEEP_BIT : 0u)
                                     | (worker_rows.particle_count ? internal::PARTICLE_COUNT_SITES : 0u)
-                                    | (worker_rows.exit_job_drain ? internal::EXIT_DRAIN_SITES : 0u);
+                                    | (worker_rows.exit_job_drain ? internal::EXIT_DRAIN_SITES : 0u)
+                                    | (worker_rows.early_unit_sort || worker_rows.early_unit_sort_check ? internal::EARLY_SORT_SITES : 0u);
   if (wanted != 0 && !internal::prepared) {
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     if (module == nullptr) return;
@@ -3080,6 +3433,28 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
       internal::model_detail_scale->store(bits, std::memory_order_relaxed);
     }
   }
+  if (internal::EarlySortData* const sort = internal::early_sort_data; sort != nullptr) {
+    // The two-present rule. The present thread is the one that runs the pass, so a thread in the handler or an open guard at a present is another thread's pass or a
+    // pass that never came back to the handler (an SEH unwind, a thread that ended in it): seen at two presents in a row with no pass finished between them, the guard
+    // is closed for good (it would skip every add to a started node for the session). The sites stay in: their count is stuck.
+    const bool busy = (sort->inside.load() != 0 || sort->guard.load() != 0);
+    const uint32_t passes = sort->passes_done.load();
+    if (busy && internal::early_sort_busy && passes == internal::early_sort_passes) {
+      sort->guard.store(0);
+      sort->tripped.store(true);
+      sort->mode.store(internal::EarlySortMode::OFF);
+      if (!internal::early_sort_stuck) {
+        internal::early_sort_stuck = true;
+        renodx::utils::log::w("[Total War] Early Unit Sort: off for this session (the pass did not come back).");
+      }
+    }
+    internal::early_sort_busy = busy;
+    internal::early_sort_passes = passes;
+    // The check's key buffer, before the mode can become CHECK (the handler counts every mesh as not compared without it).
+    if (worker_rows.early_unit_sort_check && internal::early_sort_keys == nullptr) {
+      internal::early_sort_keys = new (std::nothrow) internal::EarlySortKey[internal::EARLY_SORT_KEYS];
+    }
+  }
 #if defined(TWATTILA_ENGINE_PROBE)
   internal::probe::Tick(internal::written);
 #endif
@@ -3108,9 +3483,9 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
   }
   // A group of sites that only work together is asked for only while all of them are found: one that stood down (another mod's bytes over our jump on the way out, a page that
   // could not be made writable) leaves the others out too, and one that went in alone comes out. Cached Particle Count (the sum alone would answer the first value for the session)
-  // and the job sites (Stop's call keeps the pool's destruction safe).
+  // and the job sites (Stop's call keeps the pool's destruction safe), and Early Unit Sort's four (the handler and both guards).
   internal::SiteMask target = wanted & internal::found;
-  for (const internal::SiteMask group : {internal::PARTICLE_COUNT_SITES, internal::JOB_SITES}) {
+  for (const internal::SiteMask group : {internal::PARTICLE_COUNT_SITES, internal::JOB_SITES, internal::EARLY_SORT_SITES}) {
     if ((internal::found & group) != group) {
       target &= ~group;
     }
@@ -3120,6 +3495,7 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     target &= ~internal::HALF_ROWS_BIT;
   }
   internal::SyncWorkerSlots(internal::written & target);  // a site leaving: its word first
+  internal::SyncEarlySortMode(internal::written & target, worker_rows.early_unit_sort_check);  // the same for the mode: OFF before the sites come out
   if (effect_wanted == 0 && eu::written != 0) {
     effect_update::Disarm();  // the effect update's sites leaving: no thread enters a slow path from now on
   }
@@ -3146,6 +3522,7 @@ inline void Update(bool enabled, Game game = Game::ATTILA, bool lists = false, b
     }
     internal::written = now;
     internal::SyncWorkerSlots(now & target);  // a site that went in: its word now
+    internal::SyncEarlySortMode(now & target, worker_rows.early_unit_sort_check);
     // The effect update's sites (all found or none): a site that stood down on its way out may still chain to our thunk.
     const uint32_t effect_changing = (effect_wanted ^ eu::written) & eu::found;
     const uint32_t effect_now = (eu::written & ~effect_changing) | (effect_wanted & effect_changing & ~effect_stood_down);
@@ -3303,12 +3680,25 @@ inline const char* ModelDetailStatus(float model_detail) {
   return ((internal::found & internal::MODEL_DETAIL_BIT) == 0 ? "object detail: the game's LOD code was not found" : "object detail: not hooked yet");
 }
 
+// Early Unit Sort's check totals in one line (nothing while no pass was counted): the add-on asks for it when a bench's env generation changes, Uninstall at detach.
+inline void LogEarlySortCheck() {
+  const internal::EarlySortData* const data = internal::early_sort_data;
+  if (data == nullptr || data->passes_call + data->passes_jump == 0) return;
+  renodx::utils::log::i(std::format(
+      "[Total War] Early Unit Sort check: passes {} (call {}, jump {}), rigid nodes {}, with a callback {}, start flags already set {}, weighted adds inside the pass {}, "
+      "node clears inside the pass {}, key differences {} (meshes changed {}, not compared {}).",
+      data->passes_call + data->passes_jump, data->passes_call.load(), data->passes_jump.load(), data->rigid_nodes.load(), data->callback_nodes.load(), data->flags_set.load(),
+      data->adds_inside.load(), data->clears_inside.load(), data->key_differences.load(), data->key_meshes_changed.load(), data->key_overflow.load()));
+}
+
 // Addon detach: the game's bytes back. The page stays (a thread may still be in it), so the jumps are safe to leave in
 // the game's code if no attempt finds the threads clear: the stubs need nothing of this module.
 inline void Uninstall() {
   namespace eu = effect_update::internal;
   namespace fi = instance_fill::internal;
   internal::SyncWorkerSlots(0);
+  internal::SyncEarlySortMode(0, false);
+  LogEarlySortCheck();
   effect_update::Disarm();
   instance_fill::Wanted(false);  // the fill's sites run the game's own call from now on
   // A fold open on another thread (a render thread between a fill site and its cut; this thread's own is closed by CloseFoldAtPresent,
@@ -3372,6 +3762,7 @@ inline ParticleCountStats ParticleCount() { return {}; }
 inline bool DrawRecordingSitesIn() { return false; }
 inline uint32_t DrawRecordingGroupsIn() { return 0; }
 inline const char* ModelDetailStatus(float) { return nullptr; }
+inline void LogEarlySortCheck() {}
 inline void Uninstall() {}
 #if defined(TWATTILA_ENGINE_PROBE)
 inline void ProbeArm(uint32_t) {}
