@@ -59,10 +59,22 @@ struct Plan {
 // Presents of the render thread counted for its core.
 constexpr uint32_t SAMPLE_PRESENTS = 64;
 
+// The CPUs the game may use: the available ones in `default_sets` (empty: all) and in `affinity` (bit = logical CPU).
+inline std::vector<CpuSet> UsableCpus(std::span<const CpuSet> system, std::span<const ULONG> default_sets, uint64_t affinity) {
+  std::vector<CpuSet> usable;
+  for (const CpuSet& cpu : system) {
+    const bool in_default = default_sets.empty() || std::ranges::find(default_sets, cpu.id) != default_sets.end();
+    if (cpu.available && in_default && cpu.logical < 64 && ((affinity >> cpu.logical) & 1) != 0) {
+      usable.push_back(cpu);
+    }
+  }
+  return usable;
+}
+
 // The render thread gets its core's logical CPUs inside the base, every other thread the rest of the base. The base: the
-// available CPUs in `default_sets` (empty: all) and in `affinity` (bit = logical CPU). `runs`: the render thread's presents
-// on each logical CPU of the group; its core is the one with the most (ties: the lowest core index) among the cores with
-// a second logical CPU in the base, core 0 (CoreIndex 0: most of the PC's interrupts) only when no other has one.
+// UsableCpus. `runs`: the render thread's presents on each logical CPU of the group; its core is the one with the most
+// (ties: the lowest core index) among the cores with a second logical CPU in the base, core 0 (CoreIndex 0: most of the
+// PC's interrupts) only when no other has one.
 inline Plan PlanSets(std::span<const CpuSet> system, std::span<const ULONG> default_sets, uint64_t affinity,
                      std::span<const uint32_t, 64> runs) {
   Plan plan;
@@ -74,13 +86,7 @@ inline Plan PlanSets(std::span<const CpuSet> system, std::span<const ULONG> defa
     plan.stand_down = "more than one processor group";
     return plan;
   }
-  std::vector<CpuSet> base;
-  for (const CpuSet& cpu : system) {
-    const bool in_default = default_sets.empty() || std::ranges::find(default_sets, cpu.id) != default_sets.end();
-    if (cpu.available && in_default && cpu.logical < 64 && ((affinity >> cpu.logical) & 1) != 0) {
-      base.push_back(cpu);
-    }
-  }
+  const std::vector<CpuSet> base = UsableCpus(system, default_sets, affinity);
   if (base.empty()) {
     plan.stand_down = "no CPU inside the game's CPU set and affinity";
     return plan;
@@ -180,6 +186,26 @@ inline std::optional<std::vector<ULONG>> ReadSets(BOOL(WINAPI* read)(HANDLE, PUL
   sets.resize(count);
   std::ranges::sort(sets);
   return sets;
+}
+
+// The game's process default CPU sets (sorted; empty: none) and its affinity (bit = logical CPU); `process_mask` is the mask
+// as Windows gives it (a thread's own affinity is compared with it).
+struct ProcessCpus {
+  std::vector<ULONG> default_sets;
+  uint64_t affinity = 0;
+  DWORD_PTR process_mask = 0;
+};
+
+// nullopt when a read fails (GetLastError says why).
+inline std::optional<ProcessCpus> ReadProcessCpus() {
+  std::optional<std::vector<ULONG>> default_sets = ReadSets(GetProcessDefaultCpuSets, GetCurrentProcess());
+  DWORD_PTR process_mask = 0;
+  DWORD_PTR system_mask = 0;
+  if (!default_sets || GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &system_mask) == FALSE) return std::nullopt;
+  // A 32-bit process's mask covers 32 logical CPUs: one nobody narrowed stands for all of them.
+  return ProcessCpus{.default_sets = std::move(*default_sets),
+                     .affinity = (process_mask == system_mask ? ~0ull : static_cast<uint64_t>(process_mask)),
+                     .process_mask = process_mask};
 }
 
 // Milliseconds between the worker's reads of the game's CPU set and affinity (the tests' shorter): a new rule of the
@@ -334,14 +360,11 @@ static DWORD WINAPI WorkerLoop(void* stop) {
 
   while (WaitForSingleObject(stop, tick_ms) == WAIT_TIMEOUT) {
     try {
-      DWORD_PTR process_mask = 0;
-      DWORD_PTR system_mask = 0;
-      const auto default_sets = ReadSets(GetProcessDefaultCpuSets, GetCurrentProcess());
-      if (GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &system_mask) == FALSE || !default_sets) continue;
-      // A 32-bit process's mask covers 32 logical CPUs: one nobody narrowed stands for all of them.
-      const uint64_t affinity = (process_mask == system_mask ? ~0ull : static_cast<uint64_t>(process_mask));
+      const std::optional<ProcessCpus> process_cpus = ReadProcessCpus();
+      if (!process_cpus) continue;
+      const auto& [default_sets, affinity, process_mask] = *process_cpus;
       // Every tick: a new rule (the player's or Windows') clears ours at once.
-      if (applied && (*default_sets != applied_default || affinity != applied_affinity)) {
+      if (applied && (default_sets != applied_default || affinity != applied_affinity)) {
         stand_down_applied("the game's CPU set or affinity changed");
         continue;
       }
@@ -372,7 +395,7 @@ static DWORD WINAPI WorkerLoop(void* stop) {
           continue;
         }
         const std::vector<CpuSet> system = SystemCpuSets();
-        Plan plan = PlanSets(system, *default_sets, affinity, runs);
+        Plan plan = PlanSets(system, default_sets, affinity, runs);
         if (!plan.stand_down.empty()) {
           note(std::string(plan.stand_down));
           measure_again();
@@ -387,7 +410,7 @@ static DWORD WINAPI WorkerLoop(void* stop) {
             applied_cpus += std::format("{}{}", (applied_cpus.empty() ? "" : ", "), cpu.logical);
           }
         }
-        applied_default = *default_sets;
+        applied_default = default_sets;
         // The render thread first (wherever it started): without its sets nobody moves. Measured again when it can't
         // have them: it may have ended (a loading screen's thread) or have its own rule.
         if (const std::string_view refused = give(render_thread.load(std::memory_order_relaxed), plan.render_sets, process_mask, nullptr);
@@ -456,7 +479,7 @@ static DWORD WINAPI WorkerLoop(void* stop) {
             "[Total War] Keep Render Core Free: on: the render thread (thread {}) on logical CPUs {} (one core), {} of the game's "
             "threads on the other {} logical CPUs of {}, {} left alone (their own CPU rules), {} not the game's.",
             render_thread.load(std::memory_order_relaxed), applied_cpus, others, applied_plan.worker_sets.size(),
-            (default_sets->empty() ? "the game's affinity" : "the game's CPU set"), left_alone, not_games));
+            (default_sets.empty() ? "the game's affinity" : "the game's CPU set"), left_alone, not_games));
       }
     } catch (...) {
       // No-op: the next check goes on from here.
