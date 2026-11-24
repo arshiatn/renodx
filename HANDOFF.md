@@ -320,7 +320,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PLAN 11-17 (ATN 23:4x-23:5x, read first after a compaction): C:/Users/arshi/.cla ... | coordinator
 - (sk3_ 01:xx) Shared shaders rule (skills lesson 12): rysesonofrome/upscale_outpu ... | next shared round
 - ATN 09:10 ANSWERS (each its own box below): CPU benches started (cpb_, plan_1117 ... | coordinator
-- SHARC UPDATE (ATN 09:10 "update to nvidia sdk's newer version and fix the bug .. ... | coordinator (next helper implementer after rv3_)
 - HELPER SCREENSHOT KEY (ATN 09:10 "Sure go ahead"): the helper (64-bit, own proce ... | next helper / add-on implementer
 - RT FREEZE 2.7 S (ATN 09:10 "What do you suggest?"): coordinator's suggestion: dr ... | next helper round
 - RENDER SCALE CENSUS, OTHER GAMES (ATN 09:10 asked whether every shader was check ... | coordinator, AFTER EVERYTHING (ATN 17:3x: "maybe do it after
@@ -344,11 +343,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU B7 (EJOB job-semaphore spin-then-sleep + SetEvent only for sleepers: design ... | ATN
 - C: B3 / CLASSIFIER (21:3x: ATN "Then do it. You are allowed to": the coordinator ... | ?
 - C: (ATN 19:0x asked how it could be fixed: answered: measure first (one WPR + GP ... | ?
-- SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his pat ... | plan step 6
+- SER IN FORESTS (11-24: WH3 part DONE, SER on by default in WH3 492d08fc6; LEFT: ... | plan step 6
 - MIRRORS OF MADNESS START (run2_ 20:4x): game_startup_mode battle_benchmark / ben ... | next run batch
 - STEP 4 TRACES (nsr_ Low STARTED 22:2x): all 15 recordings BASE + SER on + SHaRC ... | nsr_, coordinator
 - RT / PT SETTINGS SWEEP (ATN 20:0x: "we are testing every RT and PT setting ... o ... | gpr_, coordinator
-- GPU PLAN (gpr_ xHigh, plan_1117/gpu_plan.md): queue fix1_ (merged) -> G1 -> SHaR ... | coordinator
+- GPU PLAN (11-24 status: plan_1117/resume_1124.md: fix1_, G1, SHaRC 1.8.3, SER R1 ... | coordinator
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
 - WRITER SMALL FIXES (from Sol's 0001 review): our engine_code.hpp writer: (a) a f ... | ATN's go (game-code file, theoretical today: no site crosses
@@ -375,7 +374,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ (after the LOGX case): end batch records SPAWN_ROUNDS / GUARD_ROUNDS / SPAW ... | ?
 - ROUND REPORT: ebr_ put the shared scratchpad on sys.path once; ec4s_'s old scrat ... | ?
 - ATN BEFORE GPU S1 (s0r_): Q8 ns_busy part (S1a's F4 line); Q12 hooks in principl ... | ?
-- ATN (unified PT, not blocking now): Q1-Q10 of the design + NQ1 rough SO route (r ... | ?
 - group 3 (lg3_ NOT started: waits for ATN's go; the X1 wait is stale, X1 out of t ... | ?
 - ATN. (5) = YES to my suggestions: unpinned non-leak crash -> retry the start onc ... | ?
 - ATN: a MISSING key / empty value in heapfix.ini -> NOTE instead of PROBLEM? heap ... | ?
@@ -462,7 +460,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord (before ANY install): D:\Dev\renodx\bin's twattila / twrome2 / thronesofbr ... | ?
 - render_mt after the batch (tkp_ LOST): X1 Faster FPU Reset BUILD (no owner; with ... | ?
 - coord (tkp_): 11475 CPU STEP 8 (ETLS) is a zombie (ATN dropped ETLS at 2690) -> ... | ?
-- GPU plan (tkp_ LOST): gto_ S4 in-process Nsight trace (ATN Q6 yes, after S3c); g ... | ?
+- GPU plan (tkp_ LOST): gto_ S4 in-process Nsight trace (ATN Q6 yes, after S3c); ( ... | ?
 - grs_ / helper owner (tdv2_ 8372): first-frame fix steps 3-6 (grs_first_frame.md ... | ?
 - Attila README (tdv2_ 11346 REJECT): Dev section for the ES8b ready-check stub + ... | ?
 - ATN (tdv1_ 2747): the 11-19 install kept heapfix 7.0 P although HFx was 0.64 ms ... | ?
@@ -819,6 +817,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
 - a64p_ (Opus xHigh, planning only: no builds / game runs / downloads, never copie ... | ?
 - gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GP ... | ?
+- GPU WAVE 1 (low priority, resume_1124.md section 4): pdd2_ (Opus xHigh) PT DI + ... | ?
+- ATN (GPU, 11-24): vMF Q1 receivers only (blocks S2; rec yes); vMF Q4 WH3 sunligh ... | ?
+- coord N5: owner of PT DI step 5 vs unified U3 / U3d (G3, G6) -> pdd2_ recommends ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -842,7 +843,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CR3 LOW FIXES (review_ci3s.md): L1 Faster Effect Prefetch row text (addon.cpp:13 ... | the next engine_code implementer (L2 / N1-N3), coordinator r
 - ASMT NITS (review_asm1.md): set `applied` right after give() for the render thre ... | the next cpu_sets touch / release round
 - ALPK NITS (review_alp1.md): L1 optional restore of lights_last on every frame (~ ... | the next rt_core touch
-- ATN: vMF ROUGH DIFFUSE DEFAULT SLIDER (s0_report.md 7.1): Attila's gloss is ~1 a ... | ATN
 - WH3 RR GUIDES CHECK (s0_report.md 6): 76 % of WH3 forest pixels have guide albed ... | next WH3 round
 - CR4 FOLLOW-UPS (review_ci4s.md): M1 emitters 0 / 1 of every effect never prefetc ... | after the final bench
 - CR5 BEFORE THE BENCH (review_ci5.md): M1 site 8 stub -> the per-slot K|K/2 form ... | the engine_code implementer after ci6_ (EF4b), before the fi
@@ -875,16 +875,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REF1 LEFT (ref1_ "Left"): the reflections' traced-lobe share output (G0 share ro ... | REF BUILD steps 2-6
 - RESTIR GI CLAMP FIX (ref2_ R-B, bug, on by default once proven): REUSE_W_CLAMP ( ... | fix1_
 - FIX1 LEFT: (a) play the merged helper vs the capture-pass recordings (day1 / nig ... | fx1p_ (a), next ReSTIR round (b, c)
-- L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 ... | PT DI step 1
 - REF STEP 2 LEFT (ref2_): rt_lights' shadow bits compared at the pixels; the rati ... | REF steps
 - REF1 DECISIONS (coordinator 03:4x, ATN asleep; ATN may change them): captures ru ... | coordinator
 - FIND ALL BUGS AT ONCE (ATN 02:xx: "I find a small bug everytime I play instead o ... | coordinator (one implementer at a time in the helper)
 - NVIDIA SDKS (ATN 02:xx "if nvidia got any other SDKs that we can use or compare. ... | coordinator
 - (survey DONE nvsdk_ 04:xx: tools/tw/round_notes/plan_1117/nvidia_sdks.md, 183 li ... | coordinator, per plan step
-- DESIGN PT DI (des1_ DONE 09:0x, 559 lines; review rv1_ (Opus xHigh) STARTED -> d ... | des1_, coordinator (review)
-- DESIGN VMF (Revision 1 DONE 10:2x des2_: receivers only (path hits / caches / SH ... | des2_, coordinator (review)
 - DESIGN SDK AUDIT (des3_ DONE 08:4x, review rv3_ (Opus xHigh) STARTED 08:5x -> de ... | des3_, coordinator (review, verdict column)
-- VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT st ... | coordinator
+- VMF DIFFUSE EVERYWHERE (11-24: design + S0 done; S1 = vms1_ 11-24; S2-S6 in plan ... | coordinator
 - SDK REPLACE AUDIT (ATN ~05:xx: "if you think that it is just better to use origi ... | coordinator after REF BUILD step 1
 - SKILLS UPDATE 5 (ATN 05:xx "Don't remember to add/fix skills after everything to ... | coordinator, last step of the plan
 - SKILLS UPDATE 4 (ATN 02:xx "after the refrence tests, maybe we should add/fix ou ... | coordinator (4b)
@@ -2750,7 +2747,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         on stress; A / P x2 night1; trim A/B night1 + sea1 x2; Small Soldiers as Sprites stress x2 (performance only); data
         run (sampler, va_probe2, a screenshot, 60 s out of front, a restart); capture v3 WPR A vs P; day1 Constantinople
         bench. Results plan_1117/cpu_bench_results.md. Owner: cpb_
-      - [ ] SHARC UPDATE (ATN 09:10 "update to nvidia sdk's newer version and fix the bug ... Bug fixes should become
+      - [x] SHARC UPDATE (DONE: ssr_ merge 3bc663638 = 1.8.3 + S1-S4 + OMM per-bake buffers; only the depth-4 soak G7
+        left -> ATN N4 in the 11-24 GPU questions box) (ATN 09:10 "update to nvidia sdk's newer version and fix the bug ... Bug fixes should become
         default"): SHaRC 1.6.5 -> 1.8.3 + GrowBuffer(std::addressof(...)) for sharc_buffers_ (cache kept across frames),
         build.ps1 picks 1.8.3 explicitly, our clamp + NaN guard (1.8.3 dropped the anti-firefly filter), entry-0 overflow
         gone with 1.8.3; depth-4 / 4K soak before depth 4; on by default once HARNESS_DUMP / reference / soak pass (design
@@ -3198,7 +3196,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         a terminated helper is gone; device release never blocking on an unsignalled wait. FIXER bfx_ (High) STARTED 18:2x
         in its own worktree (bridge + add-on destroy sites only, not dlaa_helper/: no overlap with fix1_), failing tests
         first. Owner: bfx_, coordinator (merge before plan step 7)
-      - [ ] SER IN FORESTS (ATN 17:3x, Forge: SER made a huge difference in forests; his path tracer's split: turning its
+      - [ ] SER IN FORESTS (11-24: WH3 part DONE, SER on by default in WH3 492d08fc6; LEFT: Attila's default, re-measured
+        after PT DI / vMF = Phase 3 item 4) (ATN 17:3x, Forge: SER made a huge difference in forests; his path tracer's split: turning its
         reorder off +19 ms, instruction misses +186 %, GCC->L2 +32 GB; the cost is L2 traffic + 6.1 GB local-memory
         spills a pass, not math): ours is "Path Tracing SER (Experimental)", off, +0.86 ms in the test scene, hint = the
         instance's group of eight (rt_path.hlsli REORDER). Plan step 6 item 4: record a forest battle view, SER off / on on
@@ -3302,7 +3301,8 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [x] REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a change per chunk (mean /
         max relative difference of float outputs, mean luminance shift) so fixes like fix1_'s brightening are measured,
         not just counted. Owner: next recorder touch (tools)
-      - [ ] GPU PLAN (gpr_ xHigh, plan_1117/gpu_plan.md): queue fix1_ (merged) -> G1 -> SHaRC 1.8.3 -> PT DI -> vMF -> G2 ->
+      - [ ] GPU PLAN (11-24 status: plan_1117/resume_1124.md: fix1_, G1, SHaRC 1.8.3, SER R1, PT DI step 1 done; PT DI
+        step 2 next, wave 1 in the 11-24 boxes) (gpr_ xHigh, plan_1117/gpu_plan.md): queue fix1_ (merged) -> G1 -> SHaRC 1.8.3 -> PT DI -> vMF -> G2 ->
         X -> faster RT freeze rebuild -> helper screenshot key. G1 = A1 (trace: one ray for ShownNormal + the banner
         sheet test, bit-identical; -0.2 day1 / -0.25 night1 / -0.4 sea1 / -0.25 stress) + A2 (rt_lights' tile list by all
         64 threads; -0.15..0.25 with torches) + tools K1-K3 + the CPU2 review low fixes: g1_ DONE 00:2x, merged
@@ -6817,7 +6817,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         F1 = REAL: game caps bounces at 2 (in-frame vertex alias harness / PROBE_REFERENCE only); cross-frame repeats at
         Light Bounce Rays 9-16 or 4 x Rays a Pixel >= 3 (Match Output at DLSS Balanced / Performance / Ultra
         Performance), reflections at samples x density >= 9; defaults + ATN's preset unaffected; no bias.
-        - [ ] ATN (unified PT, not blocking now): Q1-Q10 of the design + NQ1 rough SO route (rec test (a) no-ray PT
+        - [x] ANSWERED 11-22 (unified_pt.md section 9 'Still open: none'). ATN (unified PT, not blocking now): Q1-Q10 of the design + NQ1 rough SO route (rec test (a) no-ray PT
         Reflection Occlusion first; blocks U4), NQ2 IGN -> white noise in the mode (rec yes if flicker at floor), NQ3
         F1 hybrid fix on by default before U1 (rec yes), NQ4 reflection reuse set (rec at least today's), NQ5 torch
         light on smoke as is vs shadows / 128 lights (look change), NQ6 full-4K RR scoring now vs P2.
@@ -11668,7 +11668,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         A1 early-Flush fallback (ring parked, not failed), 1-in-N timer fallback, the W3m one-start check, the TBB grain
         tweak rigid_min_number_instances_for_async_tbb, MWIN WPR windows; ReShade bug report = ATN deferred (4022) -> into
         plan.md's Deferred table.
-        - [ ] GPU plan (tkp_ LOST): gto_ S4 in-process Nsight trace (ATN Q6 yes, after S3c); gto_ S6 the lab in the skills
+        - [ ] GPU plan (tkp_ LOST): gto_ S4 in-process Nsight trace (ATN Q6 yes, after S3c); (DONE a202f5580) gto_ S6 the lab in the skills
         (testing.md rows, gate ids, nsight README, memory notes); PT DI tile histogram needs a frame (tdv1_ 2628 / 3238);
         plan step 8 "finish Attila, then port to every helper game" (tdv1_ 2344); draft the NVIDIA bug reports for ATN to
         send (decision 19 yes; tdv1_ 190); 10332 left parts: 4 lifetimes per arm (gtb_ sigma-floor proof + ATN's OK) +
@@ -15150,6 +15150,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         'slow steps' = the sim at real time (10 steps / s = 180 s for the window; today 7.2 = 249 s with PerfFix 64; 32-bit
         always looked slow too). Sent to a64p_: estimate how far toward 180 s, the levers (incl. parts of the battle step on
         more cores if Phase 0 shows one thread), and the Friday 11-27 FCA wave re-planned for 64-bit per design.
+        - [x] gpn_ DONE (hand-back plan_1117/gpn_resume_handback.md, plan plan_1117/resume_1124.md; coord spot-checked:
+        bridge VERSION 32 (dlaa_bridge.h:17), merges 29eeab5ce / 7945f7a71 / 3bc663638, no vmf_diffuse / tw_point_light
+        file yet): 12 done, 5 partly, 25 open, 9 blocked (7 by the 64-bit add-on / a 64-bit frame). Bridge stays v32 (it
+        holds every PT DI / vMF field); the port owns v33 if it needs fields. Designs valid: PT DI Rev 2 delta (14 points),
+        vMF Rev 2 delta (8) + xHigh re-check, unified v2.7 cite refresh before U1. Helper files the port may touch:
+        main.cpp, dlaa_bridge.*, rt_d3d12.hpp, upscale / fg_proxy, build.ps1 -> coord serialises rt_d3d12.hpp + build.ps1.
+        Stale boxes: SHARC UPDATE, unified Qs, vMF slider, L1 FALLOFF, DESIGN PT DI / VMF ticked; SER IN FORESTS,
+        GPU PLAN, tkp_ LOST, VMF EVERYWHERE reworded.
+        - [ ] GPU WAVE 1 (low priority, resume_1124.md section 4): pdd2_ (Opus xHigh) PT DI + vMF Rev 2 deltas -> fresh
+        xHigh re-check -> pds2_ (Opus High, the only implementer in existing helper files) PT DI step 2 ReSTIR GI, and
+        pdw1_ (Opus High, new files only) step 4a tw_point_light.hlsli + W1; vms1_ (Opus High, new files only, worktree)
+        vMF S1 header + CPU twin + WARP gates: started 11-24 beside pdd2_. Coord merges after an xHigh review.
+        - [ ] ATN (GPU, 11-24): vMF Q1 receivers only (blocks S2; rec yes); vMF Q4 WH3 sunlight row (blocks S5; rec WH3
+        last); N1 split unified's U0 gate so U1-U5 don't wait for the port (rec yes); N2 one 64-bit capture after the
+        bring-up for O2 / tile histogram / G-T0 / a v32 recording (rec yes); N3 keep the helper screenshot key, low (rec
+        yes); N4 drop the SHaRC depth-4 soak G7 (rec drop).
+        - [ ] coord N5: owner of PT DI step 5 vs unified U3 / U3d (G3, G6) -> pdd2_ recommends in its delta.
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
         --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
         removed). New for us: GPU Trace shader profiler (hot lines / stalls / SASS), Graphics Debugger capture + replay
@@ -15483,7 +15500,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         invariant: nothing reads it before Update's swap); N1 move the 0.23 ms history out of the comment
         (rt_core.hpp:3518-3522); N2 wrap 3520 / 3521 / 3527 / 3645 / 3648; N3 tw_native_context run.ps1 -OutDir. Owner:
         the next rt_core touch
-      - [ ] ATN: vMF ROUGH DIFFUSE DEFAULT SLIDER (s0_report.md 7.1): Attila's gloss is ~1 almost everywhere, so at
+      - [x] (ANSWERED 11-18 11:10: 40 %, ATN judges by eye later) ATN: vMF ROUGH DIFFUSE DEFAULT SLIDER (s0_report.md 7.1): Attila's gloss is ~1 almost everywhere, so at
         100 % nearly every pixel gets r 0.40 (+26 / -23 % at sun 45 / view 45, +84 / -54 % at 70 / 70, +143 / -65 % at
         70 / 85); ~40 % (r 0.16) gives +13 / -11 %. Recommend 40 % (row Experimental, off either way). Owner: ATN
       - [ ] WH3 RR GUIDES CHECK (s0_report.md 6): 76 % of WH3 forest pixels have guide albedo 0 + rho 0 in the route B
@@ -15793,7 +15810,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Rays off) and 40-light residuals (ReSTIR GI bias); (c) cheaper calibration constants from the C++ side (the
         reflections' +0.04..0.05 ms). fix1_'s 24 play dump folders (60 GB) deleted 19:5x. Owner: fx1p_ (a), next ReSTIR
         round (b, c)
-      - [ ] L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 - d / r) to 1.9e-7, the
+      - [x] (DONE: pdi1_ merge 29eeab5ce, on by default; G-T0 with a game capture -> box PDI1 IN GAME) L1 FALLOFF FIX (ref2_ WARP: 20 of Attila's 40 point-light shaders fall off as (1 - d / r) to 1.9e-7, the
         helper's LightArriving squares it for every light: up to 49 % off; the 20 smooth shaders match the square to
         3.5e-7): a falloff kind per shader hash in b4's light_colours.w (add-on + helper), per-game tables (Rome II / WH1
         own shaders), the 3 other squared-falloff places (fog lights, the add-on's torch glow in smoke); G-T0 with a game
@@ -15835,7 +15852,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         2026.3 are the newest already; Aftermath dev-only switch = audit A33 (ATN); (g) licence: RTX SDKs licence 4(e): NVIDIA
         files never under the repo's MIT header: keep fetching them at build time as NRD / SHaRC; library headers
         unchanged, single functions copied with NVIDIA's notice. Owner: coordinator, per plan step
-      - [ ] DESIGN PT DI (des1_ DONE 09:0x, 559 lines; review rv1_ (Opus xHigh) STARTED -> designs/pt_di_rtxdi_review.md;
+      - [x] (DONE: Rev 1 + rv1_ review; Rev 2 delta = pdd2_ 11-24; build = plan_1117/resume_1124.md) DESIGN PT DI (des1_ DONE 09:0x, 559 lines; review rv1_ (Opus xHigh) STARTED -> designs/pt_di_rtxdi_review.md;
         decisions: a shadow ratio per pixel (K=2 picks by the game's own light weights) instead of DI reservoirs, torches in
         the paths from the pixel's light mask, our ReSTIR GI core kept + bias correction (CONFLICT with the audit's RTXDI GI:
         rv1_ settles it), bridge v32; lead L1: 20 of 40 Attila point-light shaders fall off linearly but LightArriving
@@ -15843,7 +15860,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         RTXDI-Library's RAB_* bridge keeping the game's light formula, torches via one DI + GI reservoir, the ReSTIR GI
         upgrades (lin2026, junkins2026, pairwise MIS / duplication map / RR decorrelation, kajiya feedback check); then an
         Opus xHigh review, ATN's short summary. Owner: des1_, coordinator (review)
-      - [ ] DESIGN VMF (Revision 1 DONE 10:2x des2_: receivers only (path hits / caches / SHaRC / reflection hits stay
+      - [x] (DONE: Rev 1 + rv2_ review, S0 done; Rev 2 delta = pdd2_ 11-24; build S1-S6 = resume_1124.md) DESIGN VMF (Revision 1 DONE 10:2x des2_: receivers only (path hits / caches / SHaRC / reflection hits stay
         Lambert), step 0 = 19-item transcription list (x2 on the cosine terms; the printed series + the paper's albedo remap
         = controls that must fail), AO saturate(1 - blocked lobe / N) once per pixel, per-channel lobe, rt_diffuse_roughness
         in PT DI's v32, slider on the paper's r capped 0.40, median roughness for non-RT, far field documented, budgets RT/PT
@@ -15870,7 +15887,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         table (ReSTIR GI, PT DI row, SHaRC 1.8.3, NRD vs NRD-Sample, OMM SDK, RTXPT pieces, STBN, NVAPI R620) with replace /
         fix / keep per row + designs for the update rows; reference verdicts filled after the REF BUILD steps; then an Opus
         xHigh review. Owner: des3_, coordinator (review, verdict column)
-      - [ ] VMF DIFFUSE EVERYWHERE (ATN 05:xx "I think we should have it for non RT/RT/PT stuffs. Any SDK for that?"): paper
+      - [ ] VMF DIFFUSE EVERYWHERE (11-24: design + S0 done; S1 = vms1_ 11-24; S2-S6 in plan_1117/resume_1124.md) (ATN 05:xx "I think we should have it for non RT/RT/PT stuffs. Any SDK for that?"): paper
         "VMF Diffuse: A Unified Rough Diffuse BRDF" (d'Eon + Weidlich, NVIDIA Research, EGSR 2024, CC BY 4.0); no NVIDIA SDK
         ships it (tools/nvsdk checked: Falcor has Oren-Nayar + vMF lobe helpers only, RTXPT none): own code from the paper.
         One shared vmf_diffuse.hlsli: RT/PT our shading (path hits, bounce, PT ambient, PT DI, reflection hits); non-RT
