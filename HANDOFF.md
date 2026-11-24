@@ -819,6 +819,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-po ... | ?
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
+- ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
 - a64pi_ (Opus High) probe implementer STARTED (design section 12): site-table che ... | ?
 - AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer. | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
@@ -15273,6 +15274,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         triggers only (P-TT8, P-L2B with ATN's yes, NOPROBE). Rule lines in design section 10 (given to ATN once
         a64ab_ has -Probe / -Wpr). Open E: checksum live before clear, entity layouts, exceptions through post stubs,
         CPU Set Setter re-apply, cycle-query cost.
+        - [ ] ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No need to ask all the time'
+        (memory feedback_pc_free_default.md). Coord gave him the window 3 lines EXACTLY as design section 10 (-AB -Arms
+        base,inline,base -Probe full -Wpr + -DryRun twin; round 2 -Arms tt8 -Probe full, -Arms base) + a Sol smoke line
+        with -Exe64Sha * (sha changes in s3f_'s fix round) -> a64ab_ MUST implement those exact switch names. L2B still
+        needs ATN's yes. D15 drop asked.
         - [ ] a64pi_ (Opus High) probe implementer STARTED (design section 12): site-table check, renodx_a64probe.dll,
         offline self-test, names_d0.py + analyze_d0.py, dry plan for a64ab_ -> R1 xHigh review -> a64ab_ switches ->
         ATN's rule lines -> window 3.
