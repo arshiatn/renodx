@@ -1992,6 +1992,22 @@ int RunAnimationRowsExactFor(const TestBuild& build, uint8_t* game, uint8_t* pat
     CHECK(in && refused && bypassed && (ec::written & ec::WORKER_SITES) == 0 && ec::worker_data->cut_active.load() == 0);
   }
 #endif
+  // 23zi. The prefetch hint (not under the controls macro: every build of this part runs it): PrefetchRead (prefetch.hpp, the 8 prefetches of animation_rows.hpp) must emit prefetcht0 (0F 18 /1) and
+  // never prefetcht2 (0F 18 /3). clang-cl reads `_mm_prefetch`'s hint as a locality, so the SDK's _MM_HINT_T0 had become prefetcht2. The scan stops at the function's return.
+  if (selected("prefetch")) {
+    const uint8_t* const code = reinterpret_cast<const uint8_t*>(&twattila::PrefetchRead);
+    bool has_t0 = false;
+    bool has_t2 = false;
+    for (size_t at = 0; at < 32 && code[at] != 0xC3 && code[at] != 0xC2; ++at) {
+      if (code[at] == 0x0F && code[at + 1] == 0x18) {
+        const uint8_t level = (code[at + 2] >> 3) & 7;
+        has_t0 = has_t0 || level == 1;
+        has_t2 = has_t2 || level == 3;
+      }
+    }
+    std::printf("23zi. PrefetchRead's code: prefetcht0 %s, prefetcht2 %s\n", has_t0 ? "present" : "ABSENT", has_t2 ? "PRESENT" : "absent");
+    CHECK(has_t0 && !has_t2);
+  }
   set_workers(0);
   set_stage(Stage::OFF);
   CHECK((ec::written & ec::WORKER_SITES) == 0 && ec::worker_data->fill_slot.load() == 0 && ec::worker_data->cut_active.load() == 0 && !ec::module_pinned);

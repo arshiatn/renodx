@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "../../utils/log.hpp"
+#include "./prefetch.hpp"
 #include "./worker_pool.hpp"
 #endif
 
@@ -350,13 +351,13 @@ inline bool Gather(Call* call, uint32_t block) {
     const uint32_t item_index = first + i;
     // Two levels ahead: the instance's line holding +0x60 and +0x70 for the item 16 on; the animation's lines for the item 8 on.
     if (item_index + 16 < call->total) {
-      _mm_prefetch(reinterpret_cast<const char*>(call->instances[item_index + 16]) + 0x40, _MM_HINT_T0);
+      PrefetchRead(reinterpret_cast<const char*>(call->instances[item_index + 16]) + 0x40);
     }
     if (item_index + 8 < call->total) {
       if (const uint8_t* near_instance = reinterpret_cast<const uint8_t*>(call->instances[item_index + 8]); near_instance != nullptr) {
         const char* near_animation = reinterpret_cast<const char*>(*reinterpret_cast<const uintptr_t*>(near_instance + 0x60));
-        _mm_prefetch(near_animation, _MM_HINT_T0);
-        _mm_prefetch(near_animation + 0x1b, _MM_HINT_T0);
+        PrefetchRead(near_animation);
+        PrefetchRead(near_animation + 0x1b);
       }
     }
     Item& item = slot.items[i];
@@ -396,8 +397,8 @@ inline void Scatter(Call* call, uint32_t block, uint32_t items_end) {
 #endif
   for (uint32_t i = 0; i < count; ++i) {
     if (i + 16 < count) {
-      _mm_prefetch(reinterpret_cast<const char*>(slot.items[i + 16].instance) + 0x5C, _MM_HINT_T0);
-      _mm_prefetch(reinterpret_cast<const char*>(slot.items[i + 16].instance) + 0xA4, _MM_HINT_T0);
+      PrefetchRead(reinterpret_cast<const char*>(slot.items[i + 16].instance) + 0x5C);
+      PrefetchRead(reinterpret_cast<const char*>(slot.items[i + 16].instance) + 0xA4);
     }
     uint8_t* instance = slot.items[i].instance;
     uint32_t bits = slot.texels[i];
@@ -677,13 +678,13 @@ inline uint32_t __fastcall Dispatch(void* cache, void*, void* device, uint32_t f
       // ahead; and the animation's cached placement 32 items ahead. The placement's three words end at +0x1b: the same line as
       // +0x10 unless the animation straddles one, so +0x1b is asked for only then.
       if (const Item* item_64 = ((i & 3) == 0 ? item_at(i + 64) : nullptr); item_64 != nullptr) {
-        _mm_prefetch(reinterpret_cast<const char*>(item_64), _MM_HINT_T0);
+        PrefetchRead(item_64);
       }
       if (const Item* item_32 = item_at(i + 32); item_32 != nullptr) {
         const char* placement = reinterpret_cast<const char*>(item_32->animation) + 0x10;
-        _mm_prefetch(placement, _MM_HINT_T0);
+        PrefetchRead(placement);
         if (((reinterpret_cast<uintptr_t>(placement) ^ reinterpret_cast<uintptr_t>(placement + 0xB)) >> 6) != 0) {
-          _mm_prefetch(placement + 0xB, _MM_HINT_T0);
+          PrefetchRead(placement + 0xB);
         }
       }
       uint32_t& placed_frame = Word(item.animation, 0x10);

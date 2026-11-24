@@ -800,8 +800,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 i ... | ?
 - ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ ke ... | ?
 - ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); ... | ?
-- p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byt ... | ?
+- PK3 S1 follow-ups: SHOULD-1 source-text guard in test/tw_render_mt_defaults/run. ... | ?
+- drl_ (Opus xHigh, worktree): tw_draw_recording_loop part 7 FAILS 736x on atn-mod ... | ?
 - ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own buil ... | ?
+- ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; ... | ?
+- PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else S ... | ?
+- p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), obj ... | ?
+- GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -Bloc ... | ?
+- ATN (gsr_): approve the dumper change (src/utils/shader_dump.hpp, 3 switch cases ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14547,9 +14553,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         GO with a tighter layout; timing script NO-GO until MUST-1 (2 x A/A = 29 % false calls -> 2.6 x RMS of >= 5 ABBA
         rounds), MUST-2 (std::exit(3) so it never prints PASS), MUST-3 (waits for ATN's run rule). Option R ceiling
         ~-0.9. -> pk3_ Rev 2 text only (sent; coord ticks, no rv3_ pass).
-        - [ ] p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byte test 23zi + census;
+        - [x] p3i_ DONE (p3i_s1_handback.md): fca_pk3_s1 = b4a7a441e (0294d40cf helper + 8 sites, b4a7a441e 23zi); census
+        0 prefetcht2 / 31 prefetcht0 in all three .addon32 (before / after .text: 31 ModRM bytes + 3 line digits); part 23
+        both schedules PASS, 23zi negative control fails as it should; gates PASS except tw_draw_recording_loop (pre-existing).
+        -> rv3_ GO (rv3_pk3_s1_look.md) -> MERGED ALONE into atn-mods c2859c971. Correction: the 3 non-prefetch differing
+        bytes are the build's __TIME__ string (addon.cpp:78 BUILD_TIME), not line digits. Gate record: all PASS except
+        tw_draw_recording_loop part 7, identical on the parent (drl_). Census tool for S6: testbin/scratch/p3i_/census.py.
+        - [ ] PK3 S1 follow-ups: SHOULD-1 source-text guard in test/tw_render_mt_defaults/run.ps1 (prefetch.hpp clang
+        branch = __builtin_prefetch(address, 0, 3); no _mm_prefetch( / _MM_HINT_T in animation_rows.hpp, later
+        draw_recording.hpp) - writer AFTER p1i_'s P4 (p1i_ owns that file now), by PK3 S6; NIT: 23zi comment 'catches
+        level edits only' with S0's .inc commit. pk2_'s implementer now bases on c2859c971.
+        (was: p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byte test 23zi + census;
         build gate (3 x .addon32 + twattila .addon64 + 5 test suites). -> short review (rv3_) -> merge ALONE to atn-mods
-        before pk2_'s implementer. Overlap checked: fxi_ (tests.cpp / exit_drain.inc), sse_ (Bend SSS), s1a_ (none yet).
+        before pk2_'s implementer. Overlap checked: fxi_ (tests.cpp / exit_drain.inc), sse_ (Bend SSS), s1a_ (none yet).)
+        - [ ] drl_ (Opus xHigh, worktree): tw_draw_recording_loop part 7 FAILS 736x on atn-mods (line 1772, colour B
+        state blocks; same on 61c2ce70e; never in mrg_'s gate) - bisect, test vs ADD-ON bug, player impact; test-only
+        fix on draw_loop_fix, src changes proposed first. Gate for PK2's implementer.
         - [ ] ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own build in testbin, game DLL mapped
         read-only, process affinity, ~10 min a step + 40-60 min S4 sweep; idle PC only).
         fxi_ TEST FIX DONE (render_mt/fca/designs/fxi_test_fix_handback.md): ec_test_fix a8ee4640e (exit_drain.inc +
@@ -14557,6 +14576,112 @@ heading text are in HANDOFF_ARCHIVE.md)
         _COUNT absence checks -> rva == 0 || count == 1 (build 64A47C87 matches once, rva 0). Thrones full -Quick PASS,
         Attila -Quick PASS, Rome II / Thrones -Only exit PASS. -> rvl_ short look (sent) -> mrg_ merge; then PK5 S0 may
         start (tests.cpp free).
+        MERGED ec_test_fix into atn-mods (2443b5de1, rvl_ GO: rvl_fxi_test_fix_look.md; tests only). tests.cpp free again.
+        pk3_ REV 2 DONE + ticked by coord (pk3_rev2_handback.md): band = 2.6 x RMS of >= 5 ABBA rounds per metric, > 3 %
+        invalid; std::exit(3) after 'TIMING ONLY'; animation_timing.ps1 waits for ATN's rule (S2-S5 land on part 23,
+        timing later in one batch); +0x60 control layout fixed; R ceiling -0.9.
+        rv4_ PK4 REVIEW (rv4_pk4_review.md + _handback.md; 0 / 6 MUST / 10 SHOULD / 5 NIT): core confirmed by disassembly;
+        S1 GO (+ MUST-6 engine_probe.hpp), S2 / S3 / S5 / S6 GO, S4 NO-GO until Rev 1, G3 NO-GO as written. MUST-1 rule H
+        reads 7 addresses; MUST-2 ATN's heapfix setup can never pass the gates -> Q6 required; MUST-3 second writer
+        +0x1832CB0 frees records with no wait; MUST-4 stuck-pass guard; MUST-5 mode off before site removal. -> pk4_ Rev 1
+        (sent) -> rv4_ re-check.
+        - [x] p4i_ DONE (p4i_s1_handback.md): fca_pk4 = 88e4cd874 - SiteMask 64-bit, cover assert, STUB_CODE_SIZE + third
+        page, engine_probe.hpp; 11 files (8 test .inc on coord's OK); 3 x .addon32 + -Probe / -DrawRecording built;
+        tw_engine_code -Quick PASS Attila / Rome II / Thrones. FABLE TRIAL: NO block, NO safety / classifier / AV stop;
+        slowed only by the worktree guard on compound git commands; one sed -i slip (restored). -> rv4_ code review incl.
+        'more / fewer findings than Sonnet's usual' (sent; rv4_pk4_s1_code_review.md); if OK -> Fable Medium for every
+        engine-specific implementation (PK2 / PK3 S0+ / PK4 S2+ / PK5); report to ATN.
+        (was: p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + engine_probe.hpp, cover
+        assert, three pages; 3 x .addon32 + -Probe / -DrawRecording; tw_engine_code on 3 DLLs. Report trial result to ATN.
+        Then PK5 S0 (tests.cpp after p4i_), then PK5 S2+ on PK4 S1.)
+        - [ ] ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; Q4b mode-on response to the
+        +0x1832CB0 clear (advice: wait on the task, then trip); G1 go + RENODX_TW_SORT_CHECK rule.
+        Writer exception (coord): p4i_ may edit on fca_pk4 half_rows_adversarial.inc (SiteMask), exit_drain.inc / other
+        .inc narrowing copies of ec::written (-> SiteMask), and ONLY animation_rows.inc part 19 (:2047-2053, :2217) + its
+        copy lines outside part 23; p3i_ told to stay off them. Merge order: fca_pk3_s1 first, fca_pk4 on top.
+        rv2_ PK2 RE-CHECK (rv2_pk2_recheck.md + _handback.md; scripts testbin/scratch/rv2_/c3*.py): BLOCKER + 10 MUST
+        closed; GO for implementation in Rev 1's order. C3 claim REPRODUCED to the digit (fa2_'s F3 per-item cost falls);
+        own estimate at 4 balanced chunks -3.1 W3 / ~-1.0 D1, confidence medium-low (one 9-frame window); 0 conflicts in
+        333,591 ebo call lines. Critic ranking: C3 rank 12 -> ~5-6. PK3 numbers unchanged. Coord calls: N-C1 arm YES (ATN
+        Q-B), draw count stays OUT of frame_trace.hpp (header shared by 8+ games). NITs N1-N7 folded at the implementer's
+        step 0 (no new revision). t4i_ got the parser notes.
+        - [ ] PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else Sonnet xHigh) - waits for PK1
+        stage 1 + PK3 S1 merged; bench starts need ATN's Q-F rule for RENODX_TW_THREAD_PARTS.
+        pk1_ REV 1.1 DONE (pk1_rev11_handback.md): coord ACCEPTS R-M1 taken to its end - all PK1 runs (incl. 6.2 (a)'s
+        lists) go through the NEW script tools/tw/bench/analysis_b2/replay/pk1_harness_runs.ps1 (-Pk1 ~25 min, -Pk1Focus);
+        ATN's atn_harness_runs.ps1 stays byte-identical; PK1 no longer waits for F0 (advice: leave the runner as the
+        old-ring reference). R-S1 turn order + new WARP case (> 8,192 runs, new soldier each draw). Race accepted.
+        - [ ] p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), object_motion.hpp (P3),
+        addon.cpp + render_mt_defaults + README (P4; p1i_ = sole addon.cpp writer now), tw_map_replay + the new script
+        written, not run (P5). Overlap checked vs p3i_ / p4i_ / s1a_ (light_bounce*, shared.h) / sse_. -> P7 Opus review.
+        P6 waits for ATN's F1 / F2 rule lines (exact text in pk1_rev11_handback.md).
+        sse_ SSS E2 + E4 DONE on WARP (plan_1117/sse_e2_handback.md; sss_e2 ab0c90e51, bend_sss_gpu.hlsli + SSS tests only;
+        ports need no edits): writes-oracle 0 differences in 51 Attila cases + 12 Shogun 2 runs; 0 false skips over 10.1 M
+        lanes (97.5 % of blocks skipped); controls fail as required; NO_SKIP = db99b716b's bytes; 15 amd64 + 3 .addon32
+        builds green. Deviations: Shogun 2 32-entry blocks (groupshared limit), dcl_temps up 1-3. -> rvn_ code review
+        (sent; plan_1117/rvn_sss_e2_code_review.md).
+        - [ ] GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -BlockSkipGpu (5090 case 11 +
+        48 timing rows; take gpu_job.lock), optional -Time, tw_ruse_bridge run.ps1 (H1). Then merge sss_e2 + an Attila
+        README / changelog line for E2 / E4.
+        - [x] rdl_ (plan_1117/rdl_romer_dlaa_handback.md): tw_romer_dlaa crash = TEST bug since c43d88318 (case 3 called
+        OnPresent(nullptr) and SetTracking reads queue->get_device()); NO player impact (ReShade always passes the
+        immediate context). Test-only fix cf37a630f, all 6 cases PASS; MERGED 70203674a. Later check: tests of other
+        SetTracking callers (Attila anti_aliasing, Shogun 2, WH3 taa_dlss, Ryse) that present with nullptr.
+        pk4_ REV 1 DONE (pk4_design.md 866 lines; pk4_rev1_handback.md): rule H reads 7 sites (bytes listed); gates G1 ->
+        G3a (10 no-heapfix starts, REQUIRED before any default flip) -> G2 / Q5 override -> G3b; new site 34 clear guard
+        at +0x1832CB0 (wait on the task, count, run the clear; Q4b); stuck-pass rule (two presents); mode off before site
+        removal; add guard tests the node's own flag; key snapshot in check mode (start vs END). Sites 31-34 all or none.
+        Code page 1: add guard +0x00, clear guard +0x40, PK5 from +0x80 (PK5's sites start at 35). -> rv4_ re-check S3 /
+        S4 / gates (sent); t4i_ got the bench needs.
+        g24_ FILL PART 2 (handoff_plan/handbacks/g24_fill_part2_handback.md): step 4 scale - ue-mesh-uv-ps-b (195) +
+        ue-svpos-ps-b (94), controls in both games (ho_g24 54383835c, pack a2f28e243ef7); 13.8 core (baa953c3d): games
+        key, scene depth by address, host-state cross-checked, X2; selftest 73/73, mutation 8/8; 2 CAPTURED reopened as
+        predicted. Expeditions 1,622 settled / 17,164 open; Tales 530 / 20,891. Findings: CS thread id read as a pixel
+        root (fixed-size CS settled SCALED?), SCALED rule without 'view' skips the tripwire, mesh-uv not cross-checked.
+        Rule slips: two heredoc patches + one sed (noted). -> rvg_ re-check 13.8 + step-4 rules + findings (sent;
+        rvg_g24_138_recheck.md), then gsr_'s route review.
+        gsr_ SCALE ROUTE Rev 0 (handoff_plan/gsr_scale_route_design.md + handbacks/gsr_scale_route_handback.md): route R =
+        static UE scale-closure tool (out: in the Expeditions manifest) + WARP top-left runner on every SCALED candidate;
+        no cell becomes BUG, residue boxed per family. Census fix first (dumper keeps only VS / PS / CS today). ~7,600 of
+        9,496 after the fix (floor 1,748); residue ~1,900 (1,297 post / UI PS -> phase 2 tracer). Core C0 + refusal-only
+        C1-C6. Findings F1 fullscreen guard vacuous without GS / HS / DS; F3 roots-pixel accepts non-View constants;
+        F4 tracer reads 4.21 View rows on 4.23. -> rvg_ review after its 13.8 re-check (queued).
+        - [ ] ATN (gsr_): approve the dumper change (src/utils/shader_dump.hpp, 3 switch cases: dump HS / DS / GS) + ONE
+        Expeditions dump run; phase 2 later: tracer change + one trace run at two render scales (joins the open
+        'Expeditions tracer 4.23 offsets + new trace run' item).
+        rv4_ PK4 RE-CHECK (rv4_pk4_review.md '## Re-check of Rev 1' + rv4_pk4_recheck_handback.md): six MUSTs folded;
+        S1 / S2 / S4-S6 GO, G1 GO to ask ATN, G3a the gate before any flip. NEW R-MUST-1: the node clear frees the WHOLE
+        record pool -> guard must also zero the output size ([ecx+0xDC]) after the wait (7 bytes; clear guard 66 bytes,
+        +0x40..+0x82). PK5 code moves to +0x90, sites from 35. -> pk4_ Rev 1.1 (sent; no re-check if bytes match);
+        pk5_design.md offsets fixed (+0x90, sites 35+, asserts after +0x82; pk5_offsets_handback.md).
+        rvn_ SSS E2 CODE REVIEW (plan_1117/rvn_sss_e2_code_review.md + _handback.md): shader correct as landed, no
+        defect; writes-oracle pass rule sound; occupancy: Attila 5 groups / SM unchanged, Shogun 2 sss00 / 01 6 -> 5 (needs
+        measuring); dcl_temps can't limit. MUST-1 timing rows for the SHIPPED default pass (extended + banners 0.35 +
+        Coloured), MUST-2 -BlockSkipGpu takes gpu_job.lock, MUST-3 merge atn-mods in + tw_romer_dlaa PASS; SHOULD-1..6.
+        -> sse_ r2 (sent; test / run-list only; README line given to coord, added at merge). Then GPU window, merge if
+        the default pass shows no slowdown beyond noise.
+        pk4_ REV 1.1 DONE = PK4 DESIGN FINAL (pk4_design.md 949 lines; pk4_rev11_handback.md): clear guard 66 bytes with
+        rv4_'s exact bytes (no S3 re-check needed); game bytes re-read and match; parts 31-33 extended (output size 0
+        after a late clear); G3a = 14 no-heapfix starts (10 only if A/A noise allows); main = present thread stated.
+        t4i_ told. Next: PK4 S2+ after p4i_'s S1 (model per the Fable trial result).
+        rvg_ G24 13.8 RE-CHECK + GSR_ ROUTE REVIEW (handoff_plan/reviews/rvg_g24_138_recheck.md,
+        rvg_gsr_scale_route_review.md; handbacks/rvg_g24_138_and_gsr_handback.md): 13.8 GO, stamp it; step-4 rules GO.
+        TWO HOLES in settled cells: MUST-A CS thread id counted as a pixel root (243 Expeditions CS settled SCALED; 3 of
+        the 5 traced are fixed-grid / buffer-only) and MUST-D non-View constants in screen reads (36 PS) -> 13.9 with an
+        EXTRACTOR bump reopens 279. MUST-B / C, SHOULD-1..3; shadow-depth rule may enter unscoped with MUST-E. Route R GO as
+        direction; G-M1..6 before tool code; A0-A4 decided. -> g24_ 13.9 (sent, rvg_'s order), gsr_ Rev 1 (sent).
+        Rule slip: rvg_ one heredoc patch (scratch).
+        gsr_ REV 1 DONE (handoff_plan/gsr_scale_route_design.md; handbacks/gsr_rev1_handback.md): G-M1..6 folded - no
+        extract() copy (coord's pick: one core parse-and-propagate function with a transfer table, in 13.9), lattice with
+        C / N types, WARP on every candidate, C5 strict, C4 counted (Expeditions 0, Tales' 33 wait), tool controls known
+        without the tool; A0-A4 / Q1-Q5 recorded; new C7 tool cross-check (g24_ told: mechanism in 13.9 if cheap); NOSCREEN
+        verdict counted in S8. Coverage 7,603 = upper bound. Tool code waits for 13.9 + ATN's dump run.
+        rv4_ PK4 S1 CODE REVIEW (rv4_pk4_s1_code_review.md + _handback.md): GO to merge, no MUST, 0 production defects;
+        SHOULD-1 three 32-bit literal complements in tests.cpp (:3777 / :3788 / :3868) would hide sites 32-34; SHOULD-2
+        -Quick on the merge commit (animation_rows.inc = PK3 23zi + S1 layout checks); full 2^32 run not needed for S1.
+        FABLE 5.2 MEDIUM TRIAL PASSED: no stop of any kind, review 'fewer findings than Sonnet's usual' (weak evidence).
+        -> Fable Medium now builds EVERY engine-specific implementation (memory updated). p4i_ continues: SHOULD-1 + NITs,
+        merge atn-mods in + -Quick x5, then S2 + S3 -> rv4_ code review -> S4; S5 after p1i_'s P4.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
