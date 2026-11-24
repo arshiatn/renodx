@@ -446,7 +446,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
       saw_freed = false;
       ec::game_exiting = false;
       ec::teardown_drained = false;
-      std::thread battle_job([&] {
+      std::thread job_thread([&] {
         started = true;
         const auto begin = std::chrono::steady_clock::now();
         const auto window = std::chrono::milliseconds(through_drain ? 80 : 5000);
@@ -469,7 +469,7 @@ int RunExitDrainTests(const TestBuild& build, uint8_t* game, uint8_t* patched, u
         forget_teardown();
         ExitFakeTeardown(&fake_loop_object);
       }
-      battle_job.join();
+      job_thread.join();
     };
     // A run in which the test thread stalled past the job's window (or its 30 ms) before the drain's first poll shows that drain no busy worker and proves nothing: it is run again (3 times at most).
     const auto waited_for_job = [&](size_t index, const std::string& drain_name) {
