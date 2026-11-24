@@ -818,7 +818,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64p_ (Opus xHigh, planning only: no builds / game runs / downloads, never copie ... | ?
 - gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GP ... | ?
 - GPU WAVE 1 (low priority, resume_1124.md section 4): pdd2_ (Opus xHigh) PT DI + ... | ?
-- ATN (GPU, 11-24): vMF Q1 receivers only (blocks S2; rec yes); vMF Q4 WH3 sunligh ... | ?
+- ATN: vMF Q4 WH3 sunlight row: ATN asked 'why last?'. Coord: WH3's sun already us ... | ?
+- SHARC DEPTH 4 (ATN 11-24: 'can you not fix and test it in nsight? ... if you can ... | ?
 - coord N5: owner of PT DI step 5 vs unified U3 / U3d (G3, G6) -> pdd2_ recommends ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
@@ -15162,10 +15163,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         xHigh re-check -> pds2_ (Opus High, the only implementer in existing helper files) PT DI step 2 ReSTIR GI, and
         pdw1_ (Opus High, new files only) step 4a tw_point_light.hlsli + W1; vms1_ (Opus High, new files only, worktree)
         vMF S1 header + CPU twin + WARP gates: started 11-24 beside pdd2_. Coord merges after an xHigh review.
-        - [ ] ATN (GPU, 11-24): vMF Q1 receivers only (blocks S2; rec yes); vMF Q4 WH3 sunlight row (blocks S5; rec WH3
-        last); N1 split unified's U0 gate so U1-U5 don't wait for the port (rec yes); N2 one 64-bit capture after the
-        bring-up for O2 / tile histogram / G-T0 / a v32 recording (rec yes); N3 keep the helper screenshot key, low (rec
-        yes); N4 drop the SHaRC depth-4 soak G7 (rec drop).
+        - [x] ATN (GPU, 11-24) ANSWERED: vMF Q1 receivers only = YES (coord's advice; S2 unblocked); N1 split unified's U0
+        gate = YES; N2 one 64-bit capture after the bring-up = YES; N3 helper screenshot key, low = YES; N4 NOT dropped (box
+        below). All sent to pdd2_.
+        - [ ] ATN: vMF Q4 WH3 sunlight row: ATN asked 'why last?'. Coord: WH3's sun already uses CA's own Oren-Nayar rough
+        diffuse (Attila / most games use plain Lambert), so vMF there REPLACES the developers' shading (look change, not a
+        fix); Attila first, then WH3 as Experimental off after ATN has seen Attila's look; or leave WH3's sun alone.
+        - [ ] SHARC DEPTH 4 (ATN 11-24: 'can you not fix and test it in nsight? ... if you cannot fix the depth 4 then I can
+        use fable'): today depth 2 + resampling = NVIDIA 1.8.3's own default (SharcCommon.h:94-98, Integration.md:173: 2
+        with resampling, 4 without; 'can be increased if longer paths are required'). Depth 4 + resampling hung the 5090 on
+        1.6.5 (memory reference_sharc_hang); never tried on 1.8.3. Plan: a depth-4 variant (build.ps1 line 102 +
+        rt_sharc_update.hlsl; one writer: AFTER pds2_ releases build.ps1) -> harness on the recordings 640 then 4K in a GPU
+        window (each hang = one GPU reset; ATN not playing) -> no hang: depth 2 vs 4 picture (reference / rec_compare) +
+        lab cost, keep 4 only if it is better within budget -> hang: Aftermath dump (nv-aftermath-monitor or the MCP in a
+        new session; running the monitor = ATN's OK first) names the hung shader -> root cause + fix (bug fixes always on)
+        by Opus xHigh; Fable only if Opus can't (ATN offered). Owner: coordinator, after GPU wave 1's step 2.
         - [ ] coord N5: owner of PT DI step 5 vs unified U3 / U3d (G3, G6) -> pdd2_ recommends in its delta.
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
         --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
