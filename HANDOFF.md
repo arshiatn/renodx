@@ -14129,6 +14129,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         EXIT DRAIN A RAISE RULE (moved out of code per rvl_ N1): A's limit is EXIT_TEARDOWN_DRAIN_LIMIT 1000 ms; raise to
         3000 ms only if a bench start shows A 'gave up' AND B 'drained 0' in the same start (R2-N6), and look at the design's
         '> 500 ms' trigger first (A drained but took > 500 ms = a job that runs across frames; don't raise blind).
+        fi1_ FCA ITEM 1 + AUTOMATIC L1 DONE (render_mt/fca/designs/fi1_impl_handback.md): fca_item1 14be1b950 PUSHED (5
+        commits from f7fad4192: cpu_sets UsableCpus / GameCpuCount, worker_pool BudgetWorkers + MIN_GAME_CPUS 8, addon.cpp
+        wiring + RENODX_TW_GAME_CPUS, effect_update Automatic L1 20000 / 16000 / 256, TABLE_SLOT_LIMIT 4096 + BIG_TABLE;
+        L1 row default Off); 17 / 17 suites exit 0; build32 attila 7c9fc7f4..., amd64 1ef5b0ca...; 11 deviations (2 heredoc
+        edits = rule slip); addon.cpp FREE for other writers. Bench log lines + verify-bench overrides (lowcore 0xF -> room
+        0, 0xFF -> room 3; L1 Auto arm; RENODX_TW_L1_UNITS=256:256) in the hand-back. -> rvj_ code review (sent).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
