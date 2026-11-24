@@ -14076,6 +14076,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         constant repeats; -0.8..-1.4 / -0.6..-1.1); F3 recording 1.5-2x direct per item; F4 gallop + bisect cut search,
         ColourA split ~neutral (per-group A/B); F5 B3b allocate on main; F6 object_motion redraws + command_action dispatch;
         F7 pool Join (fa5_); F8 = trap (FCU). Ruled out: deferred contexts, KeepRenderCoreFree, longer spin, more C workers.
+        fa5_ FCA WORKERS + POOL DONE (render_mt/fca/analysis/fa5_workers_pool.md + fa5_handback.md; 10 items, 15 ruled out):
+        #1 Faster Job Wake-Ups (EXISTING Experimental row WU in engine_code.hpp, default off; main in WakeAll 6.20 / 10.64 /
+        4.57) -> -4..-5 clean W3 / -2.5..-3.1 D1, needs a whole-start ABBA on untrapped starts; #2 sort_by_keys idle (=
+        fa1_ #1); #3 B3b gathers memory-bound (deeper prefetch); #4 C join tail (= fa2_ F1); #5 memcpy (ERMSB bit, harness
+        first); #6 chained pool Start wakes; #8 game parallel phase CPU-bound (only less work helps); fci_ answers: B3b
+        workers don't spin (0.4), U/2-1 holds. NIT: _MM_HINT_T0 -> prefetcht2 under clang via winnt.h (10 sites).
+        ALL 8 FCA ANALYSTS DONE. -> fbc_ FABLE 5.2 xHIGH COMPLETENESS CRITIC STARTED (ONE TIME per ATN): gaps,
+        contradictions (fa4_ vs fa8_ dlmalloc owner, fa6_ 'EJOB' vs fa5_ WU existing row, S8-2 on dropped B2, prefetch hint,
+        trap bundle), de-dup, overlap-adjusted RANKED list, design packages (one writer per file), the ONE verify bench plan,
+        ATN questions with numbers -> render_mt/fca/fca_critic_ranked.md. Then Fable xHigh designs per package.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
