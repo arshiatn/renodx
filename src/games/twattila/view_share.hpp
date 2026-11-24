@@ -204,7 +204,8 @@ inline Reflection Reflect(std::span<const uint8_t> code, const dxbc::Program& pr
   return reflection;
 }
 
-enum class Source { UNKNOWN, TEXTURE, VIEW, CAMERA_PROJECTION };
+// VIEW_NDC: an NDC made from a texture's or the viewport's uv (Classify), the view's position as a camera projection's.
+enum class Source { UNKNOWN, TEXTURE, VIEW, CAMERA_PROJECTION, VIEW_NDC };
 
 // What a camera register is: the texture's size, the viewport's, the camera's (view-)projection.
 inline Source CameraRegister(const Reflection& reflection, uint32_t reg) {
@@ -256,7 +257,8 @@ inline bool UvToNdc(const Instruction& instruction, std::array<uint32_t, 2>* com
 // (c29.zw x c31.xy)), whatever its first factor is. An NDC made from a texture's or the viewport's uv is the view's
 // position (Patch divides the texture's uv by the share first), as a projection's is: a uv projected back from it, and
 // that uv's NDC again, are the view's (the contact march: its start the pixel's NDC, the loop's later positions that plus
-// steps, followed back to the loop's entry).
+// steps, followed back to the loop's entry). VIEW_NDC, never through an instruction reading another buffer's constants
+// (a world position made from it projected by the overlay's or a shadow map's matrix is not the view's).
 inline Source Classify(const std::vector<Instruction>& code, size_t index, uint32_t reg, uint32_t components,
                        const Reflection& reflection, int depth = 0, bool viewport_chains = false) {
   if (depth > 8) return Source::UNKNOWN;
@@ -273,7 +275,7 @@ inline Source Classify(const std::vector<Instruction>& code, size_t index, uint3
       if (uv.type == TYPE_TEMP && !uv.relative) {
         const uint32_t read = (1u << SourceComponent(uv, ndc[0])) | (1u << SourceComponent(uv, ndc[1]));
         const Source found = Classify(code, at, uv.index[0], read, reflection, depth + 1, viewport_chains);
-        if (found == Source::TEXTURE || found == Source::VIEW) return Source::CAMERA_PROJECTION;
+        if (found == Source::TEXTURE || found == Source::VIEW) return Source::VIEW_NDC;
       }
     }
     // The components of a temp source this instruction reads for those components.
@@ -312,6 +314,12 @@ inline Source Classify(const std::vector<Instruction>& code, size_t index, uint3
       if (operand.type == TYPE_INPUT) return Source::UNKNOWN;
       if (operand.type != TYPE_TEMP || operand.relative) continue;
       const Source found = Classify(code, at, operand.index[0], read_of(operand), reflection, depth + 1, viewport_chains);
+      if (found == Source::VIEW_NDC
+          && std::ranges::any_of(instruction.operands, [&](const Operand& constants) {
+               return constants.type == TYPE_CONSTANT_BUFFER && constants.index[0] != reflection.camera_slot;
+             })) {
+        continue;
+      }
       if (found != Source::UNKNOWN) return found;
     }
     return Source::UNKNOWN;
@@ -424,7 +432,8 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
       const Operand& source = instruction.operands[1];
       if (source.type != TYPE_TEMP || source.relative || source.mode != 1) continue;
       const uint32_t read = (1u << SourceComponent(source, components[0])) | (1u << SourceComponent(source, components[1]));
-      if (Classify(instructions, index, source.index[0], read, reflection, 0, viewport_chains) == Source::TEXTURE) {
+      if (const Source found = Classify(instructions, index, source.index[0], read, reflection, 0, viewport_chains);
+          found == Source::TEXTURE || found == Source::VIEW_NDC) {
         sites.push_back({.instruction = index, .kind = Kind::NDC, .components = components});
       }
     } else if (camera && MadWith(instruction, HALF, MINUS_HALF, HALF, HALF, &components, true)) {
@@ -435,7 +444,10 @@ inline Patched Patch(std::span<const uint8_t> code, const Reflection& reflection
       if (source.type != TYPE_TEMP || source.relative) continue;
       const uint32_t read = (1u << SourceComponent(source, components[0])) | (1u << SourceComponent(source, components[1]));
       const uint32_t written = (1u << components[0]) | (1u << components[1]);
-      if (Classify(instructions, index, source.index[0], read, reflection) != Source::CAMERA_PROJECTION) continue;
+      if (const Source found = Classify(instructions, index, source.index[0], read, reflection);
+          found != Source::CAMERA_PROJECTION && found != Source::VIEW_NDC) {
+        continue;
+      }
       // Viewport chains: a projected uv first read by a product (mul, mad) whose other factor is made from the viewport (the
       // game's own mapping to it: Pharaoh's battlefog sun_scan, (c29.xy x c31.zw) x the projected uv) is the view's already.
       bool scaled_by_viewport = false;
