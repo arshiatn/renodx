@@ -830,7 +830,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
-- s3fr_ round 2 re-check (resumed) -> GO -> Sol smoke (ATN's -Exe64Sha * line) aft ... | ?
+- ATN 11-25 ~00:0x: WPR traces on D: (C: 82 GB free, D: 327 GB). His tasks RenoDX_ ... | ?
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
 - vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows). | ?
 - a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the l ... | ?
@@ -15402,8 +15402,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         on R16F / R10. Re-authored with ATN's real email. exe sha256 789a51b92c6a489f...; zip c03be79e...; patch
         538ca115...; TESTS_for_sol.md (no user paths / agent names); message rewritten. Open: overlay sits in the game's
         picture between present and the next frame (vs Sol's comment) -> re-check view.
-        - [ ] s3fr_ round 2 re-check (resumed) -> GO -> Sol smoke (ATN's -Exe64Sha * line) after the GPU gate ends ->
-        ATN sends message_for_sol.md + patch + zip + TESTS_for_sol.md.
+        - [x] s3fr_ ROUND 2 = GO (hand-back attila64/s3fr_round2_handback.md; s3f_review.md 'Round 2 re-check'): all 14
+        crash cases reproduced in its own build, crash_filter frame 56 B, cover_frames once per module within 4 GB with a
+        logged fallback, overlay right on all formats, patch byte-exact, From: = ATN's real noreply. R2-1 one message line
+        (overlay stays in the picture until the next frame), R2-2 Sol's dx11_device.inc:355-356 comment, nits (sha label,
+        near-game page in in_own_code) -> s3f_ last round sent -> coord runs the Sol smoke -> ATN sends.
+        - [ ] ATN 11-25 ~00:0x: WPR traces on D: (C: 82 GB free, D: 327 GB). His tasks RenoDX_WPR_Start = 'wpr.exe -start
+        CPU -start GPU -filemode', RenoDX_WPR_Stop = 'wpr.exe -stop C:\...\nsight\attila_run\attila_wpr.etl' (coord
+        never edits them) -> asked ATN to add -recordtempto D:\RenoDX_WPR to Start and stop into D:\RenoDX_WPR (folder
+        made by coord); a64ab_'s -Wpr reads the etl from there. No restart needed (zombies are kernel-stuck, harmless).
         - [x] ATN 11-24: WH3 gets the Experimental vMF slider too (Forge: PT looks better with vMF) -> sent to pdd2_;
         SHaRC depth 4 plan: 'Good idea'.
         - [ ] vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree-agent-aa2f659ee853ca432
