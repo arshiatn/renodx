@@ -918,7 +918,8 @@ int main() {
       const std::unique_lock lock(runtime.mutex);
       chain_capture = !runtime.address_space_capture && std::exchange(runtime.address_space_trace, false)
                       && std::ranges::count_if(log_lines, [](const std::string& line) {
-                           return line.find("the first main-view capture after it: address space free ") != std::string::npos;
+                           return line.find("the first main-view capture after it: address space free ") != std::string::npos
+                                  && line.find("largest free block") == std::string::npos;
                          }) == 1;
     }
     CHECK(runtime.depth_seen.view == depth);

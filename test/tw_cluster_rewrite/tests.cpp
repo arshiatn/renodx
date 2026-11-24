@@ -19,8 +19,9 @@
 //    never taken). The scene held: a mesh's set (the game's index buffer), a mask's atlas slice (the game's texture), a
 //    cut-out texture, a known mesh, this frame's new set.
 //    a. In front: nothing at 29 presents; at 30 all let go (the buffer's and the texture's references one fewer, the slice
-//       free again, the cut-out pointer no longer cut out, scene_gone), one line saying so with the address space before it
-//       (32-bit) and its address space again 30 presents later; drawn again, the set made again and to be sent.
+//       free again, the cut-out pointer no longer cut out, scene_gone), one line saying so with the free address space
+//       before it (32-bit) and the address space with its largest free block 30 presents later (the release's one walk);
+//       drawn again, the set made again and to be sent.
 //    b. Out of front for 100 presents: all kept, no line, not scene_gone. CONTROL and an alt-tab across present 30: 20 in
 //       front, 20 out, 9 in front kept; the 10th lets go.
 //    c. Static-only frames (every draw a known mesh's, so no main-view capture): a scene draw each frame (scene_frame,
@@ -39,7 +40,8 @@
 // 10. The address space's chain (rt_core.hpp): armed at the helper's let go only once its present callback ran
 //     (OnPresentAddressSpace: the host registered it) and not mid-chain (32-bit; 64-bit never); its last lines (armed by a
 //     trace two presents on): over 100 presents, once each and in order, that frame's present callbacks done
-//     (OnPresentAddressSpace), then the next present's (Update).
+//     (OnPresentAddressSpace, the chain's one walk: the largest free block), then the next present's (Update, the free
+//     total alone).
 // tests.exe
 #include <windows.h>
 #include <d3d11.h>
@@ -395,14 +397,16 @@ int main() {
     constexpr long long LATER_LINES = 0;
 #else
     const bool address_space = line != log_lines.end() && line->find("; before it: address space free ") != std::string::npos
-                               && line->find("after") == std::string::npos;
+                               && line->find("after") == std::string::npos && line->find("largest free block") == std::string::npos;
     constexpr long long LATER_LINES = 1;
 #endif
     const auto later_lines = [&] { return lines_with("presents after the loading screen's release: address space free "); };
+    const auto walked_lines = [&] { return lines_with("largest free block"); };
+    const long long walks_before = walked_lines();
     presents(29, true, false);
     const bool not_yet = later_lines() == 0;
     presents(11, true, false);
-    const bool once = loading_lines() == 1 && later_lines() == LATER_LINES;
+    const bool once = loading_lines() == 1 && later_lines() == LATER_LINES && walked_lines() - walks_before == LATER_LINES;
     const bool remade = wait_made(buffer.Get(), 40) && !made(buffer.Get())->sent;
     std::printf("9a. in front: the set made %d, kept at 29 presents %d, let go at 30 %d (references one fewer %d: the buffer's %lu -> %lu, the "
                 "mask's %lu -> %lu), one line with the counts %d and the address space before it %d, none 29 presents on %d, once each "
@@ -621,10 +625,14 @@ int main() {
     }
     const bool in_order = chain.size() == 2 && chain[0].find("that frame's present callbacks done: ") != std::string::npos
                           && chain[1].find("the next present: ") != std::string::npos && runtime.address_space_present == 0;
+    // The chain's one walk: its last lines, the present callbacks' with the largest free block, the next present's without.
+    const bool one_walk = in_order && chain[0].find("largest free block") != std::string::npos
+                          && chain[1].find("largest free block") == std::string::npos;
     std::printf("10. the chain at the helper's let go: not armed before its present callback ran %d, armed after (32-bit only) %d, not "
-                "mid-chain %d; its last lines over 100 presents: the present callbacks' line, then the next present's, once each %d\n",
-                without_callback ? 1 : 0, with_callback ? 1 : 0, mid_chain ? 1 : 0, in_order ? 1 : 0);
-    CHECK(without_callback && with_callback && mid_chain && in_order);
+                "mid-chain %d; its last lines over 100 presents: the present callbacks' line, then the next present's, once each %d, "
+                "the walk in the first alone %d\n",
+                without_callback ? 1 : 0, with_callback ? 1 : 0, mid_chain ? 1 : 0, in_order ? 1 : 0, one_walk ? 1 : 0);
+    CHECK(without_callback && with_callback && mid_chain && in_order && one_walk);
   }
 
   {

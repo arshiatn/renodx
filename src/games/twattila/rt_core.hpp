@@ -2297,7 +2297,7 @@ void Capture(Context& command, const SceneShader& shader) {
     if (runtime.address_space_capture) {
       runtime.address_space_capture = false;
       runtime.address_space_trace = true;
-      renodx::utils::log::i("[Total War] Ray tracing: the first main-view capture after it: ", device_end::AddressSpace(), ".");
+      renodx::utils::log::i("[Total War] Ray tracing: the first main-view capture after it: ", device_end::FreeAddressSpace(), ".");
     }
   }
   if (full_share < SHARE_NAMES.size()) {
@@ -3740,7 +3740,7 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   // The address space's chain: a steady request returns before its answer (read at the next request).
   if (std::exchange(runtime.address_space_trace, false)) {
     renodx::utils::log::i(std::format("[Total War] Ray tracing: that frame's trace request returned (traced {}, its answer {}): {}.", traced ? 1 : 0,
-                                      dlaa_bridge::bridge.pending ? "read at the next request" : "waited for", device_end::AddressSpace()));
+                                      dlaa_bridge::bridge.pending ? "read at the next request" : "waited for", device_end::FreeAddressSpace()));
     runtime.address_space_present = runtime.frame + 2;
   }
   if (stamped) {
@@ -4480,7 +4480,7 @@ inline void Update(const Settings& settings) {
     internal::address_space_after_present.store(true, std::memory_order_relaxed);
   } else if (runtime.address_space_present == runtime.frame) {
     runtime.address_space_present = 0;
-    renodx::utils::log::i("[Total War] Ray tracing: the next present: ", device_end::AddressSpace(), ".");
+    renodx::utils::log::i("[Total War] Ray tracing: the next present: ", device_end::FreeAddressSpace(), ".");
   }
   if (runtime.address_space_release == runtime.frame) {
     runtime.address_space_release = 0;
@@ -4502,7 +4502,7 @@ inline void Update(const Settings& settings) {
 #if defined(_WIN64)
       const std::string address_space;
 #else
-      const std::string address_space = "; " + device_end::AddressSpace();
+      const std::string address_space = "; " + device_end::FreeAddressSpace();
       // The chain where its last lines come (OnPresentAddressSpace registered), and not again while it runs.
       if (internal::address_space_callback.load(std::memory_order_relaxed) && !runtime.address_space_trace && runtime.address_space_present == 0) {
         runtime.address_space_capture = true;
@@ -4812,7 +4812,7 @@ inline void Update(const Settings& settings) {
     // No line with nothing to let go (the front end before the helper's first trace) and not more often than RELEASE_LINE_MS.
     const bool line = known_meshes + cluster_sets + atlas_slices + cut_out_textures != 0 && tick >= runtime.release_line_tick + internal::RELEASE_LINE_MS;
 #if !defined(_WIN64)
-    const std::string address_space = line ? device_end::AddressSpace() : std::string();
+    const std::string address_space = device_end::FreeAddressSpace();
 #endif
     internal::ForgetScene();
     for (const auto& [texture, slice] : std::views::values(runtime.atlas_slices)) runtime.free_slices.push_back(slice);
@@ -4824,7 +4824,8 @@ inline void Update(const Settings& settings) {
                                      "{} cluster sets, {} atlas slices, {} cut-out textures",
                                      internal::SCENE_GONE_FRAMES, known_meshes, cluster_sets, atlas_slices, cut_out_textures);
 #if !defined(_WIN64)
-      // What is let go is destroyed later (D3D11 at a flush, the heap keeps its segments): its address space again later.
+      // What is let go is destroyed later (D3D11 at a flush, the heap keeps its segments): its address space again later,
+      // with the largest free block (the release's one walk, still in the loading screen).
       text += "; before it: " + address_space;
       runtime.address_space_release = runtime.frame + internal::SCENE_GONE_FRAMES;
 #endif
@@ -4864,7 +4865,8 @@ inline void Update(const Settings& settings) {
 
 // 32-bit, a present callback registered after swapchain::Use's (ReShade calls them in their order: its fake fullscreen's
 // "applied_fake_fullscreen" line comes before this one when it applied in this present): the address space's chain after
-// that callback, in the present of the frame whose trace it logged.
+// that callback, in the present of the frame whose trace it logged. With the largest free block: the chain's one walk
+// (its other lines the free total alone), at the end of the frame the scene came back in.
 inline void OnPresentAddressSpace(reshade::api::command_queue*, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*,
                                   uint32_t, const reshade::api::rect*) {
   internal::address_space_callback.store(true, std::memory_order_relaxed);
