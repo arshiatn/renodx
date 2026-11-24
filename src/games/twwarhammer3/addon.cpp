@@ -4251,6 +4251,19 @@ void ConfigureAddon() {
                                                                 "At 100% render scale.",
                                                      .labels = {"Off", "On"},
                                                  },
+                                                 // FSR's (taa_dlss.hpp FsrReactive), shown while FSR runs (also in DLSS's place).
+                                                 new renodx::utils::settings::Setting{
+                                                     .key = "FsrReactiveParticles",
+                                                     .binding = &twwarhammer3::taa_dlss::fsr_reactive_row,
+                                                     .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                                                     .default_value = 0.f,
+                                                     .label = "FSR Reactive Particles (Experimental)",
+                                                     .tooltip = "Less ghosting behind smoke and fire with FSR (at 100% render scale).",
+                                                     .labels = {"Off", "On"},
+                                                     .is_visible = [] {
+                                                       return twattila::feature_settings::AaSettings(aa_sliders).method == twattila::anti_aliasing::Method::FSR;
+                                                     },
+                                                 },
                                              },
                                              .rays_hills_out_of_view = &rays_hills_out_of_view_row,
                                              .rays_terrain_count_later = &rays_terrain_count_later_row,

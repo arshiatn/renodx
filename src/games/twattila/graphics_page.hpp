@@ -172,7 +172,8 @@ struct Bindings {
   float* rays_sheets_unselfed = nullptr;  // Cloth and sails don't shade themselves in the sun's rays; null: no such row
   float* engine_code = nullptr;  // Faster Game CPU Code (twattila/engine_code.hpp), any anti-aliasing; null: no such row
   Setting* pixel_trace = nullptr;      // The pixel trace's row, in the rays' extra options; null: elsewhere or none
-  std::vector<Setting*> rr_inputs = {};  // Ray Reconstruction's optional inputs, rows under its More Options
+  // The upscaler's optional inputs, rows under its More Options: Ray Reconstruction's, or a row's own is_visible.
+  std::vector<Setting*> rr_inputs = {};
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
   float* rays_terrain_count_later = nullptr;  // rt_core.hpp Settings::terrain_count_later; null: no such row
   float* rays_grass_counts_later = nullptr;  // rt_core.hpp Settings::indirect_counts_later; null: no such row
@@ -734,9 +735,11 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     }
     page.Take({.match = "FrameGenerationHudRecomposition", .section = section, .shown = more(&more_aa, composing_generation)});
     page.Take({.match = "FrameGenerationPreset", .section = section, .shown = more(&more_aa, dlss_generation)});
+    // With Ray Reconstruction, or by a row's own condition (WH3's FSR Reactive Particles).
     for (Setting* setting : b.rr_inputs) {
       setting->section = section;
-      setting->is_visible = more(&more_aa, [b, dlss] { return dlss() && b.aa->ray_reconstruction != 0.f; });
+      setting->is_visible = more(&more_aa, (setting->is_visible != nullptr ? setting->is_visible
+                                                                            : [b, dlss] { return dlss() && b.aa->ray_reconstruction != 0.f; }));
       page.Add(setting);
     }
     page.Take({.match = "AntiAliasingDebugView", .section = section, .shown = more(&more_aa, upscaling), .label = "Upscaling Debug View",
