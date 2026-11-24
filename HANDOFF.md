@@ -815,7 +815,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - After s64a_: port map of OUR Attila work onto 64-bit (carry over / re-port / moo ... | ?
 - ATN go needed before: downloads (each named with source + size), building the lo ... | ?
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
-- Runtime files (SDL2 2.24.1, steam_api64.dll, GCC 4.9 libstdc++ / libgcc_s, packs ... | ?
+- a64ab_ (Opus High, started ~18:3x): tools/tw/attila64/ab/a64_ab.ps1 -Smoke / -Ga ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15017,8 +15017,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         (git archive 0a94200) -> testbin\attila64_1124\src\; attila64.exe built with build.ps1's exact zig cc line (gen_gl
         skipped: shim_gl_gen.c committed) in 24 s, 1,187,840 B, sha256 e8e9eeef8f3c9be7... -> testbin\attila64_1124\build\.
         Bitdefender: no block so far. NOT run.
-        - [ ] Runtime files (SDL2 2.24.1, steam_api64.dll, GCC 4.9 libstdc++ / libgcc_s, packs) after s64a_'s list; then
-        the stress A/B (ATN's go for the game run + Steam launch option).
+        - [x] RUNTIME FILES + 1.3.20 BUILD (coord ~18:2x; ATN's 'allowed to download and build'): GitHub moved to 1.3.20
+        (fd8e56c, = Workshop); diff 0a94200..fd8e56c grepped: no new network / registry code; new self_update.inc runs the
+        Workshop installer only from <own>\..\..\..\workshop\... (not reachable from testbin) and stops on update_off.txt /
+        ATTILA_NO_SELF_UPDATE; new plugins.inc copies JSa25's perffix64 / FrameBridge from HIS Workshop items when present.
+        Built 1.3.20 (zig 0.17.0, same line, slot2): testbin\attila64_1124\build_1320\attila64.exe 1,241,088 B sha256
+        05bc257d51520aba... Downloads (own dirs): libstdc++6_4.9.2-10+deb8u1_amd64.deb 273,048 B + libgcc1_4.9.2-10+deb8u1
+        _amd64.deb 39,494 B from archive.debian.org (sha256 = jessie Packages.xz: a8f4ef67... / 3101d5dc...); SDL2-2.24.1-
+        win32-x64.zip 796,285 B from github.com/libsdl-org/SDL release-2.24.1 (sha256 a733f9d4...). Run folder
+        testbin\attila64_1124\run_1320\: attila64.exe, Attila (ELF copy), libstdc++.so.6 (6.0.20, 1,008,120 B), libgcc_s.so.1
+        (90,096 B), SDL2.dll (2,449,408 B), steam_api64.dll (WH3 copy), LICENSE.txt, update_off.txt. NOT run. Disk: C: 38 GB,
+        D: 44 GB free (99% full).
+        - [ ] a64ab_ (Opus High, started ~18:3x): tools/tw/attila64/ab/a64_ab.ps1 -Smoke / -GateR / -AB (+ -DryRun), direct
+        start (no launch option), ATTILA_TEST_HOME copy, -A32Plain moves dxgi.dll + add-on aside per start; dry runs only.
+        Then ATN: rule lines, -A32Plain yes / no, the go + a time window. perffix64.dll is NOT in JSa25's repo (64bit\ has a
+        changelog only): arm B64P needs his 7.4+ package or Workshop item (ATN's call).
         p4i_ S2-S3 DONE (render_mt/fca/designs/p4i_s2s3_handback.md; fca_pk4 a5923fa29 S2 + 3ede64a7f S3, pushed; all gates
         PASS). PARKED (ATN hold): rv4_ review of S2-S3 -> S4. NOTE s64c_: PK4 never starts under heapfix 7.4+.
         sse_ E2 K + RESOLUTION ROW DONE (plan_1117/sse_e2_k_handback.md; origin/sss_e2, not merged): 352a9b785 K fallback
