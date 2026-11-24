@@ -820,6 +820,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - a64p0r_ (Opus xHigh) reviews the Phase 0 design (arms, probe sites, determinism, ... | ?
+- a64abr_ (Opus xHigh) reviews a64_ab.ps1 (ATN-file safety, hard-linked ELF writes ... | ?
 - Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab ... | ?
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
@@ -15263,8 +15264,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         loses ALL32 + cap arms (sent to a64p0r_; H2 / H4a / H4b need probe / WPR / measure or are dropped). Memory
         feedback_no_all32_cap_arms.md. ATN's git email is the template placeholder (global .gitconfig) -> explained;
         he decides; s3f_ regenerates the Sol patch after.
-        - [ ] Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab_'s trim + the xHigh
-        arm-code review are in; no game of ATN's running, fresh backups.
+        - [x] a64ab_ trim + package smoke DONE (hand-back attila64/study_1124/a64ab_package_trim_handback.md):
+        cap30 / cap45 / all32 code removed; stageB = measure, tt8 (~14 min); base task threads = 15 (game's choice),
+        so tt8 = 8 vs 15. -Smoke -Package <dir> -Exe64Sha <sha16+>: run folder run_pkg_<sha16> (small files copied,
+        ELF hard-linked to run_1320's, exe sha re-checked), no CPU Set Setter rule there -> -Affinity64 0xFFFF
+        (CCD0 = V-cache), quit at front s 200, picture s 195, TESTS.md pass rule in summary.txt. All dry runs as
+        intended. Rule line for the Sol build smoke WAITS for the s3fr_ review (a fix round changes the sha).
+        - [ ] a64abr_ (Opus xHigh) reviews a64_ab.ps1 (ATN-file safety, hard-linked ELF writes, process handling,
+        inline clock shift vs test_auto.c, slow share, STAGE B rule, picture diff, failure handling) ->
+        study_1124/a64ab_review.md -> a64ab_ fixes.
+        - [ ] Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64abr_'s review is fixed;
+        no game of ATN's running, fresh backups.
         - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
         arms; a64ab_ window-1 switches (prefs-override arm, caps 30 / 45, all-32, TASK_THREADS, measuring start, spin
         off, fine timer, fixed-second screenshot, slow-motion share, real CPU Set Setter status) -> rule lines for ATN;
