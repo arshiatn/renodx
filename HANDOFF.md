@@ -753,7 +753,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - g14r_ r3 tool follow-up (report_check.py) still open. | ?
 - Rome II Specular Occlusion: the commit that later hooks it (traced reflections) ... | ?
 - g24_ boxes: pair: claims need constant-logging traces; Expeditions tracer 'view ... | ?
-- g24_: add dump_shader_ruse_pack / dump_shader_divinity1_pack / dump_shader_divin ... | ?
 - bench WPR tasks must not take focus (fa3_ (d)) + false 'FAIL (6 fails)' switch l ... | ?
 - trap open questions (harness / game only): does alt-tab trigger it in normal pla ... | ?
 - merge ho_g03_comptr with the next mrg_ batch (ho_gbf + G23 after the gates); sha ... | ?
@@ -761,6 +760,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - eval: trap-seconds line in the bench eval + WPR tasks that don't take focus (fa3 ... | ?
 - game runs proposed (ATN's go, after the ranked list): G1 W3 ALL vs ALL+FDW+FCU 8 ... | ?
 - report the Fable Medium trial result to ATN (blocked y/n, review counts, time) a ... | ?
+- G24 boxes from r3: Divinity 1 / 2 + R.U.S.E. trace-folder review (format checks ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13989,8 +13989,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         mv, scaling, we got everything' -> census includes the already-extracted pack shaders (replaces the 02:3x dump-only
         rule; still no pak opened at audit time) -> g24_ lands the source change in step0 r3; shd_'s R.U.S.E. / D1 / D2
         pack folders join when published.
-        - [ ] g24_: add dump_shader_ruse_pack / dump_shader_divinity1_pack / dump_shader_divinity2_pack to the census after
-        shd_'s hand-back (coord SENT counts 11-24 ~13:3x).
+        - [x] g24_: add dump_shader_ruse_pack / dump_shader_divinity1_pack / dump_shader_divinity2_pack to the census after
+        shd_'s hand-back (coord SENT counts 11-24 ~13:3x; done in step0 r3).
         fa3_ FCA D3D11 + DRIVER DONE (render_mt/fca/analysis/fa3_d3d11_driver.md + fa3_handback.md; 10 items, 9 ruled out):
         the big W3 driver waits (F03 14.3 / F02 30.7 / WAW3 30.2 / U10 20.4 ms/f) are a 'no-rename trap': the bench's WPR
         start / stop tasks take focus -> SetFullscreenState(FALSE) + ~2 s no draws -> NVIDIA stops renaming DISCARD buffers;
@@ -14102,6 +14102,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         1000 ms, R2-N1..N6 in), B at +0xC9AC1 kept; tests x86 -Only exit part 30 (30a+..30f) PASS + full -Quick PASS;
         build32 attila 4d976609..., amd64 8a78f6e3... (A inactive on 64-bit); 7 small deviations; exact log lines for the
         parser. -> rvl_ code review (sent, rvl_fxi_code_review.md) + t4i_ drain A parser (sent). Not run in game.
+        g24_ STEP0 R3 (handbacks/g24_step0_r3_handback.md): ho_g24 edc6aa628 pushed; selftest 46 / 46; r2-M1 primitive_data
+        (603 Expeditions VS read one structured buffer by ATTRIBUTE13 alone; E976B71D positive, 6A657BEA + 6E8E2927
+        negatives), mesh-uv widened, S1 / S2 / NITs; Expeditions exit 1 (was 3), 152 cells filled; census = every shader:
+        16 games census-only exit 0 incl. divinity1 3188 / divinity2 7188 (2141 console-only counted) / ruse 1803 (D3D9 =
+        'not analysed' line); manifest 587002983851. -> rvg_ re-check r3 (sent).
+        - [ ] G24 boxes from r3: Divinity 1 / 2 + R.U.S.E. trace-folder review (format checks first); D3D9 facts path design
+        for R.U.S.E.; Divinity 2 console-only rows N/A/dead via a reviewed list.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
