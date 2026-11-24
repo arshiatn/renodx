@@ -800,7 +800,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 i ... | ?
 - ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ ke ... | ?
 - ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); ... | ?
-- p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byt ... | ?
+- drl_ (Opus xHigh, worktree): tw_draw_recording_loop part 7 FAILS 736x on atn-mod ... | ?
 - ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own buil ... | ?
 - p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + ... | ?
 - ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; ... | ?
@@ -14553,9 +14553,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         GO with a tighter layout; timing script NO-GO until MUST-1 (2 x A/A = 29 % false calls -> 2.6 x RMS of >= 5 ABBA
         rounds), MUST-2 (std::exit(3) so it never prints PASS), MUST-3 (waits for ATN's run rule). Option R ceiling
         ~-0.9. -> pk3_ Rev 2 text only (sent; coord ticks, no rv3_ pass).
-        - [ ] p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byte test 23zi + census;
+        - [x] p3i_ DONE (p3i_s1_handback.md): fca_pk3_s1 = b4a7a441e (0294d40cf helper + 8 sites, b4a7a441e 23zi); census
+        0 prefetcht2 / 31 prefetcht0 in all three .addon32 (before / after .text: 31 ModRM bytes + 3 line digits); part 23
+        both schedules PASS, 23zi negative control fails as it should; gates PASS except tw_draw_recording_loop (pre-existing).
+        -> rv3_ short look (sent; rv3_pk3_s1_look.md) -> coord merges ALONE.
+        (was: p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byte test 23zi + census;
         build gate (3 x .addon32 + twattila .addon64 + 5 test suites). -> short review (rv3_) -> merge ALONE to atn-mods
-        before pk2_'s implementer. Overlap checked: fxi_ (tests.cpp / exit_drain.inc), sse_ (Bend SSS), s1a_ (none yet).
+        before pk2_'s implementer. Overlap checked: fxi_ (tests.cpp / exit_drain.inc), sse_ (Bend SSS), s1a_ (none yet).)
+        - [ ] drl_ (Opus xHigh, worktree): tw_draw_recording_loop part 7 FAILS 736x on atn-mods (line 1772, colour B
+        state blocks; same on 61c2ce70e; never in mrg_'s gate) - bisect, test vs ADD-ON bug, player impact; test-only
+        fix on draw_loop_fix, src changes proposed first. Gate for PK2's implementer.
         - [ ] ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own build in testbin, game DLL mapped
         read-only, process affinity, ~10 min a step + 40-60 min S4 sweep; idle PC only).
         fxi_ TEST FIX DONE (render_mt/fca/designs/fxi_test_fix_handback.md): ec_test_fix a8ee4640e (exit_drain.inc +
