@@ -808,6 +808,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Friday pk5_ fold-in: PK5 tail code writes only mapped rows (never instance +0x60 ... | ?
 - PK7 heapfix package: pk3_ 15.13 note (only ATN sends). | ?
 - rvs_ m1 light re-check on the merged tree (sent; item 1 + hash.ps1 in a fresh wo ... | ?
+- s1a_ FOUND (note in s1a_m1_handback.md): with the row ON, m1's apply can write N ... | ?
 - Coord GPU window: s1a_ item t (5090, gpu_job.lock): powershell -NoProfile -Execu ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -14907,6 +14908,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         row shown '(Experimental)', default off, Beta 0; S1 / N1-N4 / N6 done. Builds 16 x64 + 3 x86 OK; tw_bounce_sh item 1
         (WARP) PASS; hash.ps1 203 / 203 .cso identical.
         - [ ] rvs_ m1 light re-check on the merged tree (sent; item 1 + hash.ps1 in a fresh worktree).
+        - [ ] s1a_ FOUND (note in s1a_m1_handback.md): with the row ON, m1's apply can write NaN (all window taps ~90 deg
+        off -> facing^8 weights ~1e-38 underflow -> normalize() NaN -> black / white dots). Fix in the 's1a_ d' commit:
+        light_bounce_apply.hlsli guards sh.weight > 1e-12f (row-on code only; row off stays byte-identical). DON'T install
+        atn-mods 3338f9289 for ATN's in-game look of the row until s1a_ d is merged (default off, so no player harm).
         - [ ] Coord GPU window: s1a_ item t (5090, gpu_job.lock): powershell -NoProfile -ExecutionPolicy Bypass -File
         D:\Dev\renodx\.claude\worktrees\agent-a52ae84ccc5c1ca47\test\tw_bounce_sh\run.ps1 -Before
         C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\testbin\scratch\s1a_\before -Items t -Lock
