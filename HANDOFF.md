@@ -14536,6 +14536,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); Q-C Colour A row Off if no
         gain after C3 + C1; Q-D two V2 measure lines; Q-E replay advances the two dirty counters; Q-F run rule for
         RENODX_TW_THREAD_PARTS.
+        rv1_ PK1 RE-CHECK (render_mt/fca/designs/rv1_pk1_recheck.md + _handback.md): GO for P1-P4, bench sizes GO, no
+        BLOCKER; agrees with pk1_'s N W3 10, focus x3, any wait line fails, retry only device-count. R-M1 MUST: P5 must not
+        edit ATN's allowed atn_harness_runs.ps1 -> new script beside it, F1 / F2 name it; F0 changes all four of his lines.
+        R-S1 T2 turn order; R-S2 gate 'after P7 and ATN's A-C'. -> pk1_ Rev 1.1 (sent, text only); then the PK1 P1
+        implementer (Opus xHigh) after a file-overlap check.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
