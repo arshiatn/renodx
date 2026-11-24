@@ -797,6 +797,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Data-run additions (pk5_ sec 8): VirtualQueryEx both ends, +0x17c8180 ns per cal ... | ?
 - ATN (pk4_): 1 route a / b-w / both (advice: send the note now, build b-w up to t ... | ?
 - PK5 S0 implementer (tests only: part 34 copy_bench.inc) after fxi_'s ec_test_fix ... | ?
+- ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 i ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14490,6 +14491,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         if no source stall); designed parts -0.7..-1.45 / c9 -1.75..-4.35 / D1 -0.25..-0.4. S1 = PK4's S1 (PK5 stubs on
         code page 1 after PK4's 38 bytes); A2 suspend-all write for Rev 2; A3 K sweep beyond the 96 MB L3. No further
         review needed (MUST touched S0 only). ATN Q7 = one run rule for DRAW_COPY / POSE_COPY / LIST_PREFETCH / SORT_CHECK.
+        g24_ FILL PART 1 (handoff_plan/handbacks/g24_fill_part1_handback.md; design 13.7): ho_g24 20e2b620f ue4 pack rule
+        ue-velocity-vs-b (mv OWN, pack 784ab271d9e6; selftest 65/65; Tales ledger unchanged). Expeditions ledger settled
+        156 -> 1,335, open 18,630 -> 17,451 (mv 2,223 / scale 12,536 / rt 2,692). Seed 900 (38 shadow-atlas rt cells
+        HELD). Core extensions for rvg_: (a) per-game rule scope, (b) SKIPPED/twin + twin: logging, (c) host_state
+        depth-only size check + 'host-state' not in CROSS_CHECKED. -> rvg_ review 13.7 (sent; rvg_g24_137_review.md),
+        g24_ step 4 scale (sent; no core edits until the review; 9,496 BUG-only cells stay with gsr_).
+        - [ ] ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 in 20; 463 shadow-depth
+        settle N/A with (a)). Route A VTF static-heightmap exemption (offline core change) / Route B bones = twin:
+        logging + trace run (ATN's go). Which are GAP, which wait for A / B? List: testbin/scratch/g24_/fill6_gap_families.txt.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
