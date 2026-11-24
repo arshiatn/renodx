@@ -13603,6 +13603,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         visible under More Options in every GI state (Attila / WH3 / Thrones; greyed unless PT GI on; N2 as intended); traced
         GI defaults unchanged. ho_g19_ryse BUG found + fixed: Reset set Rays / Range / Bounces 0 (static-init order) -> new tip
         4df4c1737 RaysReset() at first use; g19ryfix2 = g19ry. -> rvb_ re-check sent (both branches). Then mrg_ merges 5.2.
+        ATN IN CHAT 2026-11-24 ~11:4x: "Go ahead" to both stage25 items ((a) golive stage25 in shadow, (b) copy
+        gtp_stage25\tests\run_tests.py into TW\gates\tests). Coord does both itself AFTER gpr_ + gtw_ say GO on stage25
+        (if they need changes, the changed stage goes back to ATN first). ATN is around ~1.5 h, may answer late.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
