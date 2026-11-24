@@ -732,6 +732,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (later, with numbers): Faster GT-VBAO (V3) is 10.3 % worse with Auto Thickne ... | ?
 - rvh_ G23 code review 1 -> g23_ fixes -> re-check; then gbf_'s ho_gbf_g23 review ... | ?
 - G23 H9 GPU tests T2-T4 in the GPU window (ATN's go). | ?
+- Fable 5.2 High review of mem_ r2 (with rvm_'s re-check), once. | ?
+- FCA: 8 Opus xHigh analysts -> Fable 5.2 xHigh completeness critic -> ranked list ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13693,6 +13695,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         [422]).
         ATN asked: mem_fix failed review - Opus or Sonnet? Fable 5.2 High once? COORD: mem_ = Opus 5.5 (implementer),
         rvm_ = Opus xHigh found the trigger bug with the exact fix -> Fable not needed now; offered for r2 if it fails again.
+        ATN IN CHAT 11-24 (ONE TIME): Fable 5.2 xHigh for the FCA completeness critic AND the FCA design phase (designs for
+        the ranked list); Fable 5.2 High once on mem_fix (= independent review of mem_ r2 next to rvm_'s re-check). FCA wave
+        implementers: Opus xHigh, Sonnet xHigh if that fails (coord proposed: engine_code.hpp patch class straight to
+        Sonnet xHigh, ATN's 11-18 rule). Memory updated (feedback_fable_review_end / feedback_sonnet_engine_code).
+        fci_ DESIGN DONE (render_mt/fca/designs/fci_item1_workers_L1.md + fci_item1_handback.md): item 1 = real bug (no CPU
+        count read; '16' = no env cap): U = affinity n CPU sets n allocated, capped by job limits; BudgetWorkers(U) =
+        min(15, U-5, U/2-1) (U<=5 -> 0 = OFF; 8 -> 3; 16 -> 7: ATN's setup unchanged); always on. Automatic L1: effect-table
+        instance sum, on >= 20 000 / off < 16 000, default Off until 4 kill rules pass + ATN. ATN Qs (after review): L1
+        default Auto + ClearSavedRows rev 3; add a 6-CPU lowcore pair + 'L1 always' W3 start to the verify bench (~21 min).
+        -> rvj_ (Opus xHigh, read only) review sent (render_mt/fca/designs/rvj_fci_review.md).
+        g23_ bridge API: option (a) = gbf_ does 'Bridge (all)' + 3 dlaa_bridge.h fields + DlssRefused() FIRST on
+        ho_gbf_g23; g23_ glue on top; WH3 'FSR Reactive Particles' addon.cpp entry waits for ho_g20.
+        - [ ] Fable 5.2 High review of mem_ r2 (with rvm_'s re-check), once.
+        - [ ] FCA: 8 Opus xHigh analysts -> Fable 5.2 xHigh completeness critic -> ranked list -> Fable 5.2 xHigh designs
+        (fci_ / fxr_ designs as inputs) -> Opus xHigh reviews -> Opus xHigh implementers (Sonnet xHigh fallback).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
