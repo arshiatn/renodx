@@ -761,6 +761,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - report the Fable Medium trial result to ATN (blocked y/n, review counts, time) a ... | ?
 - G24 boxes from r3: Divinity 1 / 2 + R.U.S.E. trace-folder review (format checks ... | ?
 - G24 step-1 boxes: Expeditions tracer (view size, 2nd render scale, draw constant ... | ?
+- BLOCKED BY ANTIVIRUS ~14:3x: coord ran ATN's rule line exactly: powershell -NoPr ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14147,6 +14148,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         8-12 starts / arm); row / ring ON->OFF mid-battle traps 6 / 7; cost W3 ALL rings off +15..+20 ms/f. -> fbc_ told.
         gbf_ GATE SCRIPT R4 (handbacks/gbf_gate_script_r4_handback.md): Stop-Tree by CreationDate walk + held handles (no
         taskkill), T4a = h9's exact list, N1-N6; 923 lines, parser 0. -> rvh_ short look (sent).
+        rvh_ GBF GATE SCRIPT R4 GO (reviews/rvh_gbf_gate_script_r4_handback.md; 0 / 0 / 0, NIT R4-N1 Stop-Ours before
+        Exit-Slot in the 2 build finally blocks).
+        - [ ] BLOCKED BY ANTIVIRUS ~14:3x: coord ran ATN's rule line exactly: powershell -NoProfile -ExecutionPolicy Bypass
+        -File C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\gbf\gbf_gpu_gates.ps1 -DryRun -> 'This script
+        contains malicious content and has been blocked by your antivirus software' (ScriptContainedMaliciousContent, at
+        parse, line 1); nothing ran; both files still in place (not quarantined). Per ATN's rule: stopped, no rename / move /
+        rewrite to dodge; reported to ATN; only ATN adds an exception. Gates wait for ATN.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
