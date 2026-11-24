@@ -801,7 +801,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ ke ... | ?
 - ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); ... | ?
 - PK3 S1 follow-ups: SHOULD-1 source-text guard in test/tw_render_mt_defaults/run. ... | ?
-- drl_ (Opus xHigh, worktree): tw_draw_recording_loop part 7 FAILS 736x on atn-mod ... | ?
 - ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own buil ... | ?
 - ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; ... | ?
 - PK2 implementer (engine code: Fable Medium if p4i_'s trial isn't blocked, else S ... | ?
@@ -14567,9 +14566,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         (was: p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byte test 23zi + census;
         build gate (3 x .addon32 + twattila .addon64 + 5 test suites). -> short review (rv3_) -> merge ALONE to atn-mods
         before pk2_'s implementer. Overlap checked: fxi_ (tests.cpp / exit_drain.inc), sse_ (Bend SSS), s1a_ (none yet).)
-        - [ ] drl_ (Opus xHigh, worktree): tw_draw_recording_loop part 7 FAILS 736x on atn-mods (line 1772, colour B
+        - [x] drl_ DONE (render_mt/fca/designs/drl_draw_loop_handback.md): TEST bug, no player impact. Part 7 compared
+        eax / ecx / edx after the gather's FakeFree (CRT free = heap state, differs per process; flaky 0 / 143 / 736, since
+        13c1e6a59). Fix 104d8aa5e (6 lines, tests.cpp only: zero eax / ecx / edx when FREE ran, like frame +0x34);
+        run.ps1 PASS + 12 runs PASS, negative control (edx clobber) still FAILS. Merged 096bbe7ca (coord read the diff;
+        base differs from tip by HANDOFF only). PK2 gate cleared; PK2 still waits for PK1 stage 1.
+        (was: drl_ (Opus xHigh, worktree): tw_draw_recording_loop part 7 FAILS 736x on atn-mods (line 1772, colour B
         state blocks; same on 61c2ce70e; never in mrg_'s gate) - bisect, test vs ADD-ON bug, player impact; test-only
-        fix on draw_loop_fix, src changes proposed first. Gate for PK2's implementer.
+        fix on draw_loop_fix, src changes proposed first. Gate for PK2's implementer.)
         - [ ] ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own build in testbin, game DLL mapped
         read-only, process affinity, ~10 min a step + 40-60 min S4 sweep; idle PC only).
         fxi_ TEST FIX DONE (render_mt/fca/designs/fxi_test_fix_handback.md): ec_test_fix a8ee4640e (exit_drain.inc +
