@@ -820,7 +820,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- a64pi_ (Opus High) probe implementer STARTED (design section 12): site-table che ... | ?
+- a64pir_ (Opus xHigh) PROBE R1 REVIEW STARTED 00:5x -> probe\probe_review.md -> f ... | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - a64ab_ -ReShade pass SENT 00:3x (design 9 / 10 / 10.1, exact switch names, offli ... | ?
 - a64p1_ (Opus High, worktree, reset onto atn-mods) G1 + P1 STARTED 00:3x -> R1 re ... | ?
@@ -15287,9 +15287,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] ATN 11-25 ~00:1x: D15 'Yes drop it' (sent to a64plr_: review without it, list what loses its purpose);
         'I added the new rules' (window 3 round 1 + DryRun twin, tt8 -Probe full, -Arms base, Sol smoke -Exe64Sha *).
         ATN asleep; memory project_attila64.md corrected (step ~100 ms own vs ~135 ms beside, not 5-8x).
-        - [ ] a64pi_ (Opus High) probe implementer STARTED (design section 12): site-table check, renodx_a64probe.dll,
-        offline self-test, names_d0.py + analyze_d0.py, dry plan for a64ab_ -> R1 xHigh review -> a64ab_ switches ->
-        ATN's rule lines -> window 3.
+        - [x] a64pi_ PROBE DONE 00:5x (hand-back attila64/a64pi_probe_handback.md): sites_d0.py ALL ROWS MATCH (150 call
+        sites, 12 det, 13 GOT slots = 163 patches, 4 vtable pointers; callees <= 5 params); renodx_a64probe.dll sha256
+        131835965f6b3993..., selftest 112 / 0 (pre stub +19.7 ns, pre+post +28.4 ns, GOT +1.6 ns, QTCT 215 ns); zig cc
+        -Wall -Wextra clean, no float in the hot object; analyze_d0.py OK on a synthetic 3-start sample (WPR terms n/a,
+        the D0.5 route); design fix: env+0x64490 is a byte flag, replay pointer at env+0x64480. Dry plan
+        probe\a64ab_plan.md (-Probe det|full, perffix64: log-line equality, refusals, -Wpr via schtasks /Run once each
+        + Stop in finally). 10 E items (exception through a post-stub, CET, CPU Set Setter re-apply, QTCT units ...).
+        Window 3 lines exist (ATN 11-24); new optional lines for ATN: probe\build.ps1 (+ -NoTest).
+        - [ ] a64pir_ (Opus xHigh) PROBE R1 REVIEW STARTED 00:5x -> probe\probe_review.md -> fixes -> a64ab_ -Probe /
+        -Wpr pass (after its -ReShade pass) -> -DryRun -> window 3 round 1.
         - [x] a64bd_ BRING-UP DESIGN DONE (hand-back attila64/a64bd_design_handback.md; designs/bringup_design.md,
         PRIVATE): A2 required (Sol's RGBA8 picture never gets a clone -> black in HDR10 / scRGB / SDR); A2a copy_resource
         handler turns the clone on at the first copy into a swap buffer; A2b overlay rows -> halves; fixed loader's fix
