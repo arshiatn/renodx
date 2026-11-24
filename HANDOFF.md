@@ -796,7 +796,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ ... | ?
 - FRIDAY 11-27: pk4_ (Fable) the 4 NITs in 7.2 / 7.3 / 4.7 (rv4_'s list) + the fli ... | ?
 - Coord: real gbf gates (gbf_gpu_gates.ps1, no switch) in the first quiet GPU wind ... | ?
-- rvg_ 13.9 light re-check (sent; '## Re-check of 13.9' in rvg_g24_design_review.m ... | ?
+- g24_ 13.10 (sent): MUST-F, apply_rules fail-closed, apply the shadow rule to Exp ... | ?
 - rv5_ light re-check of Rev 1.2 (sent; '## Re-check of Rev 1.2'); fixes wait for ... | ?
 - ATN (pk5_ q7): bench env vars RENODX_TW_DRAW_COPY / RENODX_TW_POSE_COPY / RENODX ... | ?
 - Tell ATN: A2 is one-way per start (Uninstall leaves the bytes; off works from th ... | ?
@@ -14838,9 +14838,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         exit 3 (svpos control has no level-A positive until the tracer writes the view line, F4); Tales settled 1361, exit 1.
         Shadow rule dry check: Expeditions 792 open mv cells would fill, NOT applied. Not done: NIT-1, closure tool, the
         dumpers' census_stages.txt (dump run).
-        - [ ] rvg_ 13.9 light re-check (sent; '## Re-check of 13.9' in rvg_g24_design_review.md) + GO / NOT GO for applying
-        the shadow rule to Expeditions. Coord's view sent: keep the svpos control (no games scope); C4 stays fail-closed
-        until the dump run.
+        - [x] rvg_ 13.9 RE-CHECK = GO (handoff_plan/handbacks/rvg_g24_139_handback.md; ~10 min): stamp holds (8 hashes),
+        no claim loosened, ledgers reproduced, counts exact (Expeditions 308 reopened, Tales 1 + 832 seeded). New MUST-F:
+        the rule: branch ignores its rule's controls -> 94 svpos cells still count as settled (Expeditions should read
+        1220 / 17567). Shadow rule for Expeditions GO only with apply_rules skipping failing-control rules + check_cell
+        refusals (else ue-svpos-ps-b refills the 5 SHOULD-2 PS). C4: the pak-carve tool writes census_stages.txt too; the
+        record names producer + version. ATN's mv GAP block: ~463 of 1,627 cells become shadow-depth VS settled by rule.
+        NIT-3: count traced TW SCALED cells SHOULD-2 fail-closes (for S8).
+        - [ ] g24_ 13.10 (sent): MUST-F, apply_rules fail-closed, apply the shadow rule to Expeditions + verify, the
+        census_stages.txt format (trc_ follows it), ATN's mv GAP block numbers, NIT-3 count -> rvg_ re-check.
+        (was: rvg_ 13.9 light re-check + GO / NOT GO for applying the shadow rule to Expeditions.)
         ATN 11-24 (Tue) ~17:2x CHANGE OF ORDER (supersedes 17:0x): the Fable-heavy CPU work runs on FRIDAY 11-27 (ATN's
         weekly reset). Until then: running agents finish their current job + Opus review loops -> coord recap of done / left
         -> GPU plan (plan_1117, Opus 5.5 only). No new Fable implementer / design fix-up before Friday. Memory
