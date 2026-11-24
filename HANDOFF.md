@@ -744,6 +744,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - After rvl_ GO: t4i_ makes ebo_check / ebo_final_eval parse the A line before the ... | ?
 - Helper end: active upscaler / reconstruction / generation owners not released at ... | ?
 - Cleanup for ATN's yes (agents' leftovers): C:\Users\arshi\AppData\Local\Temp\add ... | ?
+- GPU WINDOW (harness, not in-game; after fcx_ ends, CPU quiet): ho_gbf S4a + jobs ... | ?
+- gbf_ (after G23): main.cpp end-release change, gate T4 once per active owner (DL ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13810,6 +13812,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] Cleanup for ATN's yes (agents' leftovers): C:\Users\arshi\AppData\Local\Temp\addon-cef401.cpp / .sh (clang
         crash repro from an OOM build 11-24 11:26). rt_reference.cs_6_5.hlsl shows modified with an empty diff in gbf_'s
         worktree (stat only).
+        rvh_ G23 CODE REVIEW 2 GO for the code (reviews/rvh_g23_code_review2_handback.md; 1 MUST / 1 SHOULD): H1-H8b match r3;
+        bridge ABI safe both ways without a VERSION bump (2f-2's dlss_refused write behind version >= 30). R2-S1: check the
+        rescue's ResumeThread (dlaa_bridge.hpp:624) -> gbf_ small commit. R2-M1 MERGE PLAN: ho_gbf_g23 AND ho_g23 (merged
+        da368bdba) carry ho_gbf's 14 un-gated NRD / ReSTIR / reflections commits -> G23 merges WITH or AFTER ho_gbf once S4a +
+        jobs 1-8 pass; ONE GPU window runs S4a + jobs 1-8 + G23 T3 / T4 (+ GT-VBAO V1 / V2 timing, render_pass x86).
+        - [ ] GPU WINDOW (harness, not in-game; after fcx_ ends, CPU quiet): ho_gbf S4a + jobs 1-8, G23 H9 T3 / T4 (T4: exit
+        DONE + no Event 1000 / dump), GT-VBAO V1 / V2 5090 timing, G10 render_pass x86 -> then ho_gbf + G23 merge. Ask ATN.
+        - [ ] gbf_ (after G23): main.cpp end-release change, gate T4 once per active owner (DLSS, RR, FSR, XeSS, DLSS-G,
+        FSR FG).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
