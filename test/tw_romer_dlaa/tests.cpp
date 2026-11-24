@@ -122,6 +122,25 @@ static mock::Device mock_device;
 static ComPtr<ID3D11Device> device;
 static ComPtr<ID3D11DeviceContext> context;
 
+// The present event's queue: the immediate context of the mocked device (OnPresent's texture LOD bias reads its device).
+struct TestQueue : reshade::api::command_queue {
+  mock::CommandList* list = nullptr;
+  uint64_t get_native() const override { return list->get_native(); }
+  void get_private_data(const uint8_t[16], uint64_t* data) const override { *data = 0; }
+  void set_private_data(const uint8_t[16], const uint64_t) override {}
+  reshade::api::device* get_device() override { return list->owner; }
+  reshade::api::command_queue_type get_type() const override { return reshade::api::command_queue_type::graphics; }
+  void wait_idle() const override {}
+  void flush_immediate_command_list() const override {}
+  reshade::api::command_list* get_immediate_command_list() override { return list; }
+  void begin_debug_event(const char*, const float[4]) override {}
+  void end_debug_event() override {}
+  void insert_debug_marker(const char*, const float[4]) override {}
+  bool wait(reshade::api::fence, uint64_t) override { return false; }
+  bool signal(reshade::api::fence, uint64_t) override { return false; }
+  uint64_t get_timestamp_frequency() const override { return 0; }
+};
+
 static ComPtr<ID3D11Buffer> MakeBuffer(UINT bytes, D3D11_USAGE usage) {
   const D3D11_BUFFER_DESC desc = {.ByteWidth = bytes, .Usage = usage, .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
                                   .CPUAccessFlags = (usage == D3D11_USAGE_DYNAMIC ? D3D11_CPU_ACCESS_WRITE : 0u)};
@@ -289,20 +308,25 @@ int main(int argc, char** argv) {
 
   // 3. The jitter.
   {
+    mock::CommandList immediate;
+    immediate.owner = &mock_device;
+    immediate.native = context;
+    TestQueue queue;
+    queue.list = &immediate;
     state.evaluated_frame = 0;
-    dlaa::internal::OnPresent(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
+    dlaa::internal::OnPresent(&queue, nullptr, nullptr, nullptr, 0, nullptr);
     CHECK(state.jitter[0] == 0.f && state.jitter[1] == 0.f);
     std::vector<std::array<float, 2>> seen;
     for (int frame = 0; frame < 8; ++frame) {
       state.evaluated_frame = state.frame;
-      dlaa::internal::OnPresent(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
+      dlaa::internal::OnPresent(&queue, nullptr, nullptr, nullptr, 0, nullptr);
       CHECK(std::abs(state.jitter[0]) < 0.5f && std::abs(state.jitter[1]) < 0.5f);
       CHECK(std::ranges::find(seen, state.jitter) == seen.end());
       seen.push_back(state.jitter);
     }
     dlaa::sliders.method = 0.f;
     state.evaluated_frame = state.frame;
-    dlaa::internal::OnPresent(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
+    dlaa::internal::OnPresent(&queue, nullptr, nullptr, nullptr, 0, nullptr);
     CHECK(state.jitter[0] == 0.f && state.jitter[1] == 0.f);
     dlaa::sliders.method = 5.f;
   }
