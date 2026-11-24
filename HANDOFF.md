@@ -14367,6 +14367,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         / exit crash; item-1 U / room / workers / L1 bins + pool checks (lowcore U, 4 CPUs room 0, 8 -> 3, 16 -> 7 / 3);
         gates.json b1_big_table INFO. run_all green (lib 660, check 237, leg 260, analyze 230); old final eval text
         identical. Backups *.pre_drainA / *.pre_item1. -> t4i_ pk6 started (env-variant arms, rule lines listed for ATN).
+        g24_ STEP1 R2 + SIZING DONE (handoff_plan/handbacks/g24_step1_r2_sizing_handback.md; ho_g24 13b45a3e5): checker
+        191fc689f1c5, games.py 9294603a30f8 (ue4 / fixtures same); MUST-1 / MUST-2 / SHOULD 1-4 / NITs in, only new
+        refusals; selftest 65 / 65; mutation 21 / 24 (M14 / M15 wait for the first post / ui rule; M17 claimed
+        uncatchable); ledgers unchanged. S8 SIZING (Expeditions, 18,633 open): 941 settle free; 1,829 mv cells only as GAP
+        from facts:vtf / bones = 33 family decisions; hand controls optimistic ~260 / MIDDLE ~890 / pessimistic ~2,000 vs
+        the 1,600 stop line -> no explosion; risk = scale axis (one SV_Position signature 4,866 cells / 28 families).
+        -> rvg_ light re-check of r2 + fill order advice (rvg_g24_step1_r2_recheck.md) -> then the fill (3).
+        Note: 4 zombie Attila.exe (0 threads, ~400 KB each, since 05:28-07:33) still held by some parent; harmless; not
+        ours to kill - a reboot clears them (only when ATN asks).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
