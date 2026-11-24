@@ -818,6 +818,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
 - a64p_ (Opus xHigh, planning only: no builds / game runs / downloads, never copie ... | ?
+- gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GP ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
@@ -15136,6 +15137,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         round_notes\attila64\port_plan.md (+ port_plan_work\progress.md): verdicts, delivery architecture (64-bit add-on +
         helper, our engine patches as own plugin vs add-on, perffix64 / Sol updates), workstreams A-G, the 249 s estimate,
         decisions for ATN, first wave -> save hand-back -> coord review -> ATN decides -> first wave.
+        - [x] ATN (11-24): the Nsight 2026.4 MCP items (shader profiler with SASS, 64-bit game captures, Aftermath for helper
+        resets) were only in a64p_'s brief -> coord added 'NEW TOOLS 11-24' to plan_1117\plan.md.
+        ATN (11-24): GPU plan in parallel at LOW priority; ORDER: new features first (PT DI -> vMF -> unified PT), speed /
+        Nsight rounds (G2, X, settings sweep, capture round 2) after them; Nsight inside each step = one cost trace a side +
+        hang dumps. Helper-only steps run now offline (player + recordings); add-on steps (PT DI game-side shading /
+        composite, O1 census) wait for the 64-bit add-on (a 64-bit capture may answer O1).
+        - [ ] gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GPU item, design drift (PT DI
+        Rev 1 / vMF / unified PT v2.7 vs today's helper), helper-now vs 64-bit-add-on split, bridge bump coordination with
+        the port, first low-priority wave, open ATN questions -> save hand-back -> coord -> ATN -> implementers (Opus High).
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
         --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
         removed). New for us: GPU Trace shader profiler (hot lines / stalls / SASS), Graphics Debugger capture + replay
