@@ -802,6 +802,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); ... | ?
 - p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byt ... | ?
 - ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own buil ... | ?
+- p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + ... | ?
+- ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14557,6 +14559,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         _COUNT absence checks -> rva == 0 || count == 1 (build 64A47C87 matches once, rva 0). Thrones full -Quick PASS,
         Attila -Quick PASS, Rome II / Thrones -Only exit PASS. -> rvl_ short look (sent) -> mrg_ merge; then PK5 S0 may
         start (tests.cpp free).
+        MERGED ec_test_fix into atn-mods (2443b5de1, rvl_ GO: rvl_fxi_test_fix_look.md; tests only). tests.cpp free again.
+        pk3_ REV 2 DONE + ticked by coord (pk3_rev2_handback.md): band = 2.6 x RMS of >= 5 ABBA rounds per metric, > 3 %
+        invalid; std::exit(3) after 'TIMING ONLY'; animation_timing.ps1 waits for ATN's rule (S2-S5 land on part 23,
+        timing later in one batch); +0x60 control layout fixed; R ceiling -0.9.
+        rv4_ PK4 REVIEW (rv4_pk4_review.md + _handback.md; 0 / 6 MUST / 10 SHOULD / 5 NIT): core confirmed by disassembly;
+        S1 GO (+ MUST-6 engine_probe.hpp), S2 / S3 / S5 / S6 GO, S4 NO-GO until Rev 1, G3 NO-GO as written. MUST-1 rule H
+        reads 7 addresses; MUST-2 ATN's heapfix setup can never pass the gates -> Q6 required; MUST-3 second writer
+        +0x1832CB0 frees records with no wait; MUST-4 stuck-pass guard; MUST-5 mode off before site removal. -> pk4_ Rev 1
+        (sent) -> rv4_ re-check.
+        - [ ] p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + engine_probe.hpp, cover
+        assert, three pages; 3 x .addon32 + -Probe / -DrawRecording; tw_engine_code on 3 DLLs. Report trial result to ATN.
+        Then PK5 S0 (tests.cpp after p4i_), then PK5 S2+ on PK4 S1.
+        - [ ] ATN (pk4_ / rv4_): Q6 arms WITHOUT heapfix now REQUIRED before any default flip; Q4b mode-on response to the
+        +0x1832CB0 clear (advice: wait on the task, then trip); G1 go + RENODX_TW_SORT_CHECK rule.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
