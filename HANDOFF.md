@@ -819,6 +819,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-po ... | ?
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
+- ATN: add the window-1 rule lines (a64ab_window1_rules.md) + trim yes / no; then ... | ?
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
@@ -15222,6 +15223,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         main thread', default on after the gate; or a patch offer to Sol; or a README line) + accept a small periodic p99
         frame bump (one inline step every ~6 frames)?; D16 the real-time metric (rec: slow-motion share + window seconds
         + one later window); the history rewrite for the Linux name (rec: leave it, the name is one function name).
+        - [x] a64p_ Rev 2 DONE (hand-back attila64/a64p_rev2_handback.md): all 7 Musts / 15 Shoulds / 7 Nits applied
+        (Rev 1 kept in port_plan_work); L0 = the game's inline model first; targets ~119 ms a step for 180 s, 'no slow
+        steps' ~153-160 s + a later window s 200..400; three game windows (1 config arms, 2 A3 Smoke + B1, 3 probe + WPR +
+        placement); C8 Graphics 2 of 2 code-backed rows; C4 Flag Wave per a64c_; IA slot 15 in every C brief;
+        determinism route 2 (unit hash) with 4 equality checks; 32-bit freeze = tags + runtime gating, x86 + x64 + one
+        consumer per loop, 16 x 2 before merge; F9 public-text grep for ELF names. Estimate: if L0 passes (~50 %)
+        ~155-165 s; if not 215-235 s central.
+        - [x] a64ab_ WINDOW 1 SWITCHES DONE (hand-back attila64/study_1124/a64ab_window1_handback.md; rules file
+        a64ab_window1_rules.md): -AB -Arms window1 (11 starts) or a comma list; arms base / inline (test-home
+        preferences copy only, window shifted by the opening steps / 10 because the loader's clock starts differently
+        inline) / cap30 / cap45 / all32 (byte-equal exe copy attila64_all32.exe = no CPU Set Setter rule; ATN's rule
+        untouched) / tt8 / measure / spinoff / finetimer; Sol's ATTILA_TEST_SHOTS=201 picture per start (no Print
+        Screen); summary 'WINDOW 1 ARMS' (window s, delta vs base, A/A spread, steps / s, slow-motion share, p99,
+        beside / own totals, CPU rule) + a proxy determinism line; affinity left alone when ATN's rule exists. Dry runs
+        all exit 0. Coord asked for named stages (A = base, inline, base, inline; B = cap30, all32, tt8, measure only if
+        needed): pending a64ab_'s answer; a comma list already runs stage A.
+        - [ ] ATN: add the window-1 rule lines (a64ab_window1_rules.md) + trim yes / no; then window 1 (no game of ATN's
+        running, fresh backups).
         - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
         arms; a64ab_ window-1 switches (prefs-override arm, caps 30 / 45, all-32, TASK_THREADS, measuring start, spin
         off, fine timer, fixed-second screenshot, slow-motion share, real CPU Set Setter status) -> rule lines for ATN;
