@@ -845,6 +845,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
+- GATE RUN 2 STARTED 00:4x (coord, ATN's plain line, ~20 min GPU + builds) -> clea ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
@@ -15590,6 +15591,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         e5bbe261b4c3a85a (file, not a commit; diff testbin\scratch\g23_\harness\h9_rev2.diff); builds vs both bridges,
         0 errors, 112 baseline header warnings; nothing run on a GPU. Script needs no change; new hash for SOURCES.txt;
         3 optional checks sent to gbf_.
+        - [x] gbf_ RESCUE-IN-JOB + GATE UPDATE DONE (hand-back handoff_plan/handbacks/gbf_rescue_job_handback.md):
+        ho_gbf_g23 21b62486a (dlaa_bridge.hpp + tw_helper_lifetime tests; rescue created with STARTUPINFOEXW +
+        PROC_THREAD_ATTRIBUTE_JOB_LIST, no CREATE_SUSPENDED / assign / resume; refused list -> outside the job + one log
+        line). addon64 + addon32 + helper exit 0; tw_helper_lifetime x86 / amd64 25 PASS each. Script: $GbfRev 21b62486a,
+        $G23HarnessHash E5BBE261B4C3...; all 3 optional checks taken (frame-0 no-answer = setup FAIL, NUMBER lines,
+        leftover helpers / rescues after T3 = FAIL). Dry run dryrun_20261125_003308_31884.txt clean. rt_reference
+        .cs_6_5.hlsl left uncommitted in its worktree.
+        - [ ] GATE RUN 2 STARTED 00:4x (coord, ATN's plain line, ~20 min GPU + builds) -> clean: one ho_gbf_g23 merge ->
+        pds2_ (PT DI step 2); FAIL: root-cause first, no merge.
         ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
         continue?' -> YES: no new agents except a64ab_'s fix round for a64abr_'s review; running ones (s3fr_, a64abr_,
         a64p0r_, a64bd_, a64pl_) finish; then window 1 stage A on a quiet CPU (no builds); then the G23 gate, s3f_'s
