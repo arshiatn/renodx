@@ -63,6 +63,9 @@ static float particle_smear_row = 0.f;
 static float rr_particle_layer_row = 0.f;
 static float rr_color_before_row = 0.f;
 static float rr_dof_guide_row = 0.f;
+// FSR Reactive Particles (Experimental): FSR's own generator compares the colour before the particles with the colour into its
+// reactive mask, so smoke and fire keep less history. At a 100% render scale only for now.
+static float fsr_reactive_row = 0.f;
 // Both particle rows on: the colour before is not written, by design. With the layer the upscaler's colour is already the picture
 // without particles (rr_extra_scaled writes the same texel to both: warp_tests/rr_scaled_wh3, check D), so the second copy says nothing
 // and its memory is not asked for. The two log lines say so (the run of 2026-11-10 read `001` with both rows on as a fault).
@@ -319,12 +322,19 @@ inline bool MakeRrColorCopy(const D3D11_TEXTURE2D_DESC& source, bool render_targ
   return true;
 }
 
-// Whether a colour texture is the main view's, as Ray Reconstruction's inputs need: at 100% render scale, or with `below_100` at any
-// (state.mutex held).
+// FSR Reactive Particles with FSR: its reactive mask asks for the colour before the particles (at 100% only for now).
+inline bool FsrReactive() {
+  return fsr_reactive_row != 0.f && state.settings.method == twattila::anti_aliasing::Method::FSR;
+}
+
+// Whether a colour texture is the main view's, as Ray Reconstruction's inputs (and FSR's reactive mask at 100%) need: at 100% render
+// scale, or with `below_100` at any (state.mutex held).
 inline bool IsRrColor(const D3D11_TEXTURE2D_DESC& desc, bool below_100) {
   const auto& bridge = twattila::dlaa_bridge::bridge;
-  return state.settings.ray_reconstruction && state.objects.device && (below_100 || state.scale_proof != ScaleProof::GOOD) && bridge.guides
-         && state.guides_frame == state.frame && desc.Width == bridge.width && desc.Height == bridge.height && desc.SampleDesc.Count == 1
+  const bool reconstruction = state.settings.ray_reconstruction && bridge.guides && state.guides_frame == state.frame;
+  const bool fsr_reactive = FsrReactive() && state.scale_proof != ScaleProof::GOOD;
+  return (reconstruction || fsr_reactive) && state.objects.device && (below_100 || state.scale_proof != ScaleProof::GOOD)
+         && desc.Width == bridge.width && desc.Height == bridge.height && desc.SampleDesc.Count == 1
          && desc.MipLevels == 1 && (desc.Format == DXGI_FORMAT_R16G16B16A16_FLOAT || desc.Format == DXGI_FORMAT_R16G16B16A16_TYPELESS);
 }
 
@@ -523,6 +533,8 @@ inline void Resolve(ID3D11DeviceContext* native) {
       rr_extra |= 1u << RR_EXTRA_DOF_GUIDE;
     }
   }
+  // FSR's reactive mask: the colour before the particles, at 100% only for now (below 100% it needs rr_extra_scaled's path).
+  if (FsrReactive() && !scaled) rr_extra |= 1u << twattila::dlaa_bridge::RR_EXTRA_COLOR_BEFORE;
   // Below 100% either particle row reads both copies (rr_extra_scaled).
   constexpr uint32_t PARTICLE_ROWS = (1u << twattila::dlaa_bridge::RR_EXTRA_PARTICLE_LAYER) | (1u << twattila::dlaa_bridge::RR_EXTRA_COLOR_BEFORE);
   const bool both_copies = scaled && (rr_extra & PARTICLE_ROWS) != 0u;
@@ -614,7 +626,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
     context1->Dispatch((render_width + 7) / 8, (render_height + 7) / 8, 1);
     context1->ClearState();
     uint32_t rr_extra_written = 0u;
-    if (reconstruct && !scaled && rr_extra != 0u) {
+    if ((reconstruct || FsrReactive()) && !scaled && rr_extra != 0u) {
       using namespace twattila::dlaa_bridge;
       const auto bit_if = [&](RrExtraInput input, bool written) { return (written && (rr_extra & (1u << input)) != 0u) ? (1u << input) : 0u; };
       rr_extra_written = bit_if(RR_EXTRA_PARTICLE_LAYER, state.rr_particles_frame == state.frame)
@@ -634,12 +646,15 @@ inline void Resolve(ID3D11DeviceContext* native) {
         context1->CSSetShader(state.objects.rr_extra_inputs.Get(), nullptr, 0);
         context1->CSSetShaderResources(0, static_cast<UINT>(extra_sources.size()), extra_sources.data());
         context1->CSSetUnorderedAccessViews(0, static_cast<UINT>(extra_destinations.size()), extra_destinations.data(), nullptr);
+        // The colour's square-root flag: the colour before is encoded as the colour (Ray Reconstruction's square root, FSR's light).
+        context1->CSSetConstantBuffers(0, 1, state.objects.shader_settings.GetAddressOf());
         context1->Dispatch((render_width + 7) / 8, (render_height + 7) / 8, 1);
         context1->ClearState();
       }
       if (state.rr_extra_logged != rr_extra_written) {
         state.rr_extra_logged = rr_extra_written;
-        renodx::utils::log::i(std::format("[Warhammer III] Ray Reconstruction's optional inputs written: {:03b} (depth of field, colour before, particle layer).{}", rr_extra_written, ColorBeforeNote()));
+        renodx::utils::log::i(std::format("[Warhammer III] {}'s optional inputs written: {:03b} (depth of field, colour before, particle layer).{}",
+                                          (reconstruct ? "Ray Reconstruction" : "FSR"), rr_extra_written, ColorBeforeNote()));
       }
     }
     if (!scaled) evaluated = EvaluateInputs(context1.Get(), render_width, render_height, jitter, reset, reconstruct, c, rr_extra_written);
@@ -979,10 +994,11 @@ namespace internal {
 
 // The particles' composite (43606BB8, trace bm_siege lines 1305-1315; two targets, t0-t4 its layers): the colour as it was before
 // for Colour Before Particles; for the particle layer the same draw into a texture of the addon's without blending (o0: the light,
-// and in alpha the transmittance), which leaves the colour without particles for the depth of field and the upscaler. Only while
-// the last evaluation was Ray Reconstruction's: nothing else would put them back.
+// and in alpha the transmittance), which leaves the colour without particles for the depth of field and the upscaler. The layer only
+// while the last evaluation was Ray Reconstruction's: nothing else would put them back. The colour before also for FSR's reactive
+// mask (FSR Reactive Particles, at 100%).
 constexpr auto OnParticleComposite = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (rr_particle_layer_row == 0.f && rr_color_before_row == 0.f) return {};
+  if (rr_particle_layer_row == 0.f && rr_color_before_row == 0.f && fsr_reactive_row == 0.f) return {};
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
