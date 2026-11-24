@@ -13660,6 +13660,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] 5090 timing of GT-VBAO V1 / V2 (on by default once they pass) in the GPU window; V3 only if ATN wants it.
         - [ ] ATN (later, with numbers): Faster GT-VBAO (V3) is 10.3 % worse with Auto Thickness on (8.7 % off) -> stays
         reverted unless 5090 timing shows a large gain (g20_ + coord recommend: keep it out).
+        gtp_ STAGE25b (plan_1117/gtp_r25b_handback.md): ONLY R25-1 fixed (gate_hook.py 793-800: any-files name -> <folder>/*
+        protection + <folder>/*.cpp code; only /*.cpp dropped for harness) + 8 must-refuse rows. gate_hook.py sha256
+        3ed0213acbd6 (168773 B, LF), tests/run_tests.py 71ff6eec9694. Probes 167 ok, replay window 1566 -> 1565 (one
+        heapfix harness tree copy freed: fine), mirror 1506 / 1506. gpr_ r25b GO (plan_1117/gpr_r25b_recheck_handback.md;
+        also blocks one-level tree copies / unpacks into .claude / tools). gtw_ r25b GO (plan_1117/gtw_r25b_recheck_handback.md;
+        speed price + web 0.033 s, pre_shell 0.224 s). Live still stage24 a6b12f1ebeef shadow. -> ATN's chat OK for the
+        CHANGED stage (golive bak30 + copy + sha 3ed0213acbd6 + smoke; tests copy into TW\gates\tests).
+        fxr_ waits on a PowerShell permission prompt (ATN told).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
