@@ -14483,6 +14483,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         gives T0 on both); PK3 S1 merges alone first, pk2_ only includes it. animation_rows.hpp compiles into Attila /
         Rome II / Thrones x86 (stub on x64); draw_recording.hpp Attila-only. Start split corrected: animation 0.148 /
         0.928 / 0.046 ms/f. -> pk3_ Rev 1 (sent) -> rv3_ re-check 8.1 / 8.3 / 9 / 10; pk2_ told the B3 form + split.
+        pk5_ REV 1.1 DONE (pk5_design.md 'Changes from Rev 1'; pk5_rev11_handback.md): R-MUST-1 confirmed in the LOD job
+        (narrow stores at +0x04 / +0x48 / +0xC4 / +0xD0 / +0x90..0x98 into its copy) -> P33 = destination-only; new
+        source-safe P40 (40 pairs); S0 picks among game / P33 / P40 / A1.1b with a job-shaped chain case; gate 1.25x in
+        the chain + no slower in any consumer case; WPR kill -20 %. Gains A1.1 P40 -0.3..-0.45 volley (P33 -0.4..-0.6 only
+        if no source stall); designed parts -0.7..-1.45 / c9 -1.75..-4.35 / D1 -0.25..-0.4. S1 = PK4's S1 (PK5 stubs on
+        code page 1 after PK4's 38 bytes); A2 suspend-all write for Rev 2; A3 K sweep beyond the 96 MB L3. No further
+        review needed (MUST touched S0 only). ATN Q7 = one run rule for DRAW_COPY / POSE_COPY / LIST_PREFETCH / SORT_CHECK.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
