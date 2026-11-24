@@ -14235,6 +14235,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         core', 3 two-group cases. tw_render_mt_defaults all match on both tips; 9 / 9 suites + gated builds exit 0. Hashes
         addon32 2da29b64b597, addon64 be76ad6e06fc. NIT-2 = t4i_. -> rvj_ short re-check (rvj_fi1_recheck_r2.md) -> merge
         with fca_exit_drain once fxi_ r2 (+ 30f WU-on) is GO.
+        rvj_ FI1 R2 GO FOR THE MERGE (render_mt/fca/designs/rvj_fi1_recheck_r2.md + _handback.md): every r1 point closed;
+        ResetRule changes only logging; group logic right (GetProcessGroupAffinity failure = 'all'; single-group machines
+        unchanged). 0b9ce965c merges cleanly with atn-mods + fca_exit_drain (origin 6802ab234 and fxi_'s local 0b69647a5).
+        Merge condition (SHOULD-1b): on the merged tree x86 tw_engine_code -Quick + -Only effect_update, then
+        tw_render_mt_defaults. Merge waits only for fxi_ r2 -> rvl_ GO.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
