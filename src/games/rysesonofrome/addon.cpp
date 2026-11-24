@@ -227,7 +227,7 @@ renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
 
 // RT/PT's value of `key` (twattila/rays_preset.hpp): the traced Light Bounce's and the paths' sliders start and Reset at it
-// (ATN 2026-11-22). 0 for a key the list lacks.
+// (ATN 2026-11-22). 0 for a key the list lacks. Not during static initialization: the list may be empty then.
 float RtPtValue(std::string_view key) {
   const auto value = std::ranges::find(twattila::graphics_page::RAYS_PRESET, key, &twattila::graphics_page::Values::value_type::first);
   return (value != twattila::graphics_page::RAYS_PRESET.end()) ? value->second : 0.f;
@@ -247,10 +247,11 @@ struct RtSliders {
   float reflection_samples = 1.f;
   float specular_occlusion = 0.f;  // without the traced reflections: merged into the game's screen-space ones
   float light_bounce = 0.f;
-  float rays = RtPtValue("RayTracedLightBounceRays");
-  float range = RtPtValue("RayTracedLightBounceRange");  // metres
+  // rays, range, bounces and light_bounce_resolution: their rows' defaults (RT/PT's) when the settings load.
+  float rays = 0.f;
+  float range = 0.f;  // metres
   float path_tracing = 0.f;
-  float bounces = RtPtValue("PathTracingBounces");
+  float bounces = 0.f;
   float path_ambient = 0.f;  // Path-Traced Ambient (ray_tracing.hpp): the paths' sky for the game's probes' ambient
   float path_sky_apart = 1.f;
   float path_kept_cube = 0.f;
@@ -267,7 +268,7 @@ struct RtSliders {
   float rays_paths = 1.f;
   float debug_log = 0.f;
   float ambient_rays = 2.f;
-  float light_bounce_resolution = RtPtValue("RayTracedLightBounceResolution");  // the ray-traced Light Bounce's: 0 full, 1 half, 2 quarter
+  float light_bounce_resolution = 0.f;  // the ray-traced Light Bounce's: 0 full, 1 half, 2 quarter
   float reflection_reuse = 0.f;         // 0 off, 1 from ReSTIR GI (with path tracing), 2 Own ReSTIR
   float ao_reblur = 0.f;                // AO under Ray Reconstruction: 0 Light History, 1 REBLUR
   float debug_view = 0.f;               // rt_core's Debug View value (the row's parse)
@@ -301,9 +302,9 @@ bool RaysBesideSpecularOcclusion() {
          || (shader_injection.light_bounce > 0.f && (rt_sliders.light_bounce != 0.f || rt_sliders.path_tracing != 0.f));
 }
 
-// The Ray Tracing presets: RT/PT writes RAYS_RESET, then the one list every game's RT/PT writes
+// The Ray Tracing presets: RT/PT writes RaysReset(), then the one list every game's RT/PT writes
 // (twattila/rays_preset.hpp; the keys this section lacks are skipped), then RAYS_OWN_KEYS; No RT/PT RAYS_OFF and the
-// screen-space methods; Reset RAYS_OFF and RAYS_RESET.
+// screen-space methods; Reset RAYS_OFF and RaysReset().
 using PresetValues = twattila::graphics_page::Values;
 const PresetValues RAYS_OFF = {
     {"RayTracedSunShadows", 0.f}, {"RayTracedAmbientOcclusion", 0.f}, {"RayTracedReflections", 0.f},
@@ -316,38 +317,42 @@ const PresetValues RAYS_OWN_KEYS = {
     {"RayTracedLightBounce", 1.f}, {"PathTracing", 1.f}, {"light_bounce", 1.f}, {"RayTracedAmbientOcclusion", 1.f}, {"ssao_mode", 0.f},
     {"RayTracedPathAmbient", 0.f},
 };
-const PresetValues RAYS_RESET = {
-    {"RayTracedShadowSoftness", 0.5f},
-    {"RayTracedReplaceShadowMaps", 0.f},
-    {"RayTracedUnitsOutOfView", 0.f},
-    {"RayTracedSkipSunShadowMaps", 0.f},
-    {"RayTracedAmbientRange", 2.f},
-    {"RayTracedAOQuarter", 0.f},
-    {"RayTracedReflectionSamples", 1.f},
-    {"RayTracedLightBounceRays", RtPtValue("RayTracedLightBounceRays")},
-    {"RayTracedLightBounceRange", RtPtValue("RayTracedLightBounceRange")},
-    {"PathTracingBounces", RtPtValue("PathTracingBounces")},
-    {"RayTracedPathSkyApart", 1.f},
-    {"RayTracedPathKeptCube", 0.f},
-    {"RayTracingDenoiser", 0.f},
-    {"RayTracedSharc", 0.f},
-    {"RayTracedReuseLean", 1.f},
-    {"RayTracedReuseNear", 1.f},
-    {"RayTracedPathSer", 0.f},
-    {"RayTracingOutputResolution", 0.f},
-    {"RayTracingRaysShadows", 1.f},
-    {"RayTracingRaysAmbient", 1.f},
-    {"RayTracingRaysReflections", 1.f},
-    {"RayTracingRaysPaths", 1.f},
-    {"RayTracedDebugLog", 0.f},
-    {"RayTracedAORays", 2.f},
-    {"RayTracedLightBounceResolution", RtPtValue("RayTracedLightBounceResolution")},
-    {"RayTracedReflectionReuse", 0.f},
-    {"RayTracedAoReblur", 0.f},
-    {"RayTracedDebugView", 0.f},
-    {"RayTracedSceneTest", 0.f},
-    {"RayTracedUnitsRange", 0.f},
-};
+// Built at its first use, after static initialization (RtPtValue).
+const PresetValues& RaysReset() {
+  static const PresetValues RAYS_RESET = {
+      {"RayTracedShadowSoftness", 0.5f},
+      {"RayTracedReplaceShadowMaps", 0.f},
+      {"RayTracedUnitsOutOfView", 0.f},
+      {"RayTracedSkipSunShadowMaps", 0.f},
+      {"RayTracedAmbientRange", 2.f},
+      {"RayTracedAOQuarter", 0.f},
+      {"RayTracedReflectionSamples", 1.f},
+      {"RayTracedLightBounceRays", RtPtValue("RayTracedLightBounceRays")},
+      {"RayTracedLightBounceRange", RtPtValue("RayTracedLightBounceRange")},
+      {"PathTracingBounces", RtPtValue("PathTracingBounces")},
+      {"RayTracedPathSkyApart", 1.f},
+      {"RayTracedPathKeptCube", 0.f},
+      {"RayTracingDenoiser", 0.f},
+      {"RayTracedSharc", 0.f},
+      {"RayTracedReuseLean", 1.f},
+      {"RayTracedReuseNear", 1.f},
+      {"RayTracedPathSer", 0.f},
+      {"RayTracingOutputResolution", 0.f},
+      {"RayTracingRaysShadows", 1.f},
+      {"RayTracingRaysAmbient", 1.f},
+      {"RayTracingRaysReflections", 1.f},
+      {"RayTracingRaysPaths", 1.f},
+      {"RayTracedDebugLog", 0.f},
+      {"RayTracedAORays", 2.f},
+      {"RayTracedLightBounceResolution", RtPtValue("RayTracedLightBounceResolution")},
+      {"RayTracedReflectionReuse", 0.f},
+      {"RayTracedAoReblur", 0.f},
+      {"RayTracedDebugView", 0.f},
+      {"RayTracedSceneTest", 0.f},
+      {"RayTracedUnitsRange", 0.f},
+  };
+  return RAYS_RESET;
+}
 
 void BuildRuntimeData() {
   custom_shaders = {
@@ -483,7 +488,7 @@ void BuildRuntimeData() {
   };
   custom_shaders[0x3BA5B162] = {.crc32 = 0x3BA5B162, .on_replace = keep_shader, .on_drawn = keep_color};
 
-  // Ray Tracing's preset buttons and Attila's rows (an off / on or a list, default 0 or as RAYS_RESET's), with the helper
+  // Ray Tracing's preset buttons and Attila's rows (an off / on or a list, default 0 or as RaysReset()'s), with the helper
   // and a ray-traced effect on; `enabled`: when they act.
   const auto ray_button = [](const std::string& label, const std::string& tooltip, std::function<void()> on_change) {
     return new renodx::utils::settings::Setting{
@@ -504,12 +509,12 @@ void BuildRuntimeData() {
   };
   const auto ray_choice = [](const std::string& key, float* binding, const std::string& label, std::vector<std::string> labels,
                              const std::string& tooltip, std::function<bool()> enabled = [] { return true; }) {
-    const auto reset = std::ranges::find(RAYS_RESET, key, &PresetValues::value_type::first);
+    const auto reset = std::ranges::find(RaysReset(), key, &PresetValues::value_type::first);
     return new renodx::utils::settings::Setting{
         .key = key,
         .binding = binding,
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = (reset != RAYS_RESET.end()) ? reset->second : 0.f,
+        .default_value = (reset != RaysReset().end()) ? reset->second : 0.f,
         .label = label,
         .section = "Ray Tracing (Experimental)",
         .tooltip = tooltip,
@@ -1180,7 +1185,7 @@ void BuildRuntimeData() {
                  "Every ray-traced effect and path tracing on, the rest of this section at its default (restart the\n"
                  "game). Turns the Light Bounce on, and Ray Reconstruction where DLSS runs without it.",
                  [] {
-                   renodx::utils::settings::UpdateSettings(RAYS_RESET);
+                   renodx::utils::settings::UpdateSettings(RaysReset());
                    renodx::utils::settings::UpdateSettings(twattila::graphics_page::RAYS_PRESET);
                    renodx::utils::settings::UpdateSettings(RAYS_OWN_KEYS);
                    // Without Ray Reconstruction the rays have only the built-in denoisers (Attila's preset: F).
@@ -1199,7 +1204,7 @@ void BuildRuntimeData() {
                  }),
       ray_button("Reset", "Every ray-traced effect off, this section's sliders at their defaults (restart the game).", [] {
         renodx::utils::settings::UpdateSettings(RAYS_OFF);
-        renodx::utils::settings::UpdateSettings(RAYS_RESET);
+        renodx::utils::settings::UpdateSettings(RaysReset());
       }),
       new renodx::utils::settings::Setting{
           .key = "RayTracedSunShadows",
