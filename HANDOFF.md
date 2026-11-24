@@ -781,6 +781,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - mrg_ merges mem_fix 03137a2f5 after the FCA batch (sent; clean vs atn-mods + fca ... | ?
 - ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups ... | ?
 - ATN (pk1_): A FDW always on (advice) vs per-battle latch; B FDW NVIDIA only + FC ... | ?
+- ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace wi ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14335,6 +14336,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         denoise,apply}.hlsli, light_bounce.h / .hpp, lighting_settings.hpp, shared.h, graphics_page.hpp (unmerged ho_g23
         also edits graphics_page.hpp -> merge note). No running writer overlaps. S1a-S2 ~58-85 h.
         -> rvs_ light re-check (plan_1117/rvs_shg_recheck_r11.md) -> S1a implementer (Opus xHigh, worktree).
+        pk2_ DESIGN Rev 0 DONE (render_mt/fca/designs/pk2_design.md 401 lines + _handback.md): C1 streamed replay (chunk
+        claims, render thread replays while later chunks record; stop -> today's joined loop) -2.0..-3.6 W3 / -1.2..-2.0 D1;
+        C2 op merging -0.4..-1.0 after C1; C3 cut search -0.6..-1.5 after C1 (0 alone); P1 chained wake -0.1..-0.3; X1
+        render thread off interrupt cores -0.3..-0.5 (may be 0); B3 2 sites; V2 measure first. Package -3.0..-5.5 /
+        -1.7..-2.9 (medium-low). No pool thread touches the immediate context (sec 4.6 + test StreamReplayThread + bench
+        gate on PK1 unwind lines). Files: draw_recording.hpp, worker_pool.hpp, cpu_sets.hpp + 3 tests; no addon.cpp in
+        stage 1. New bench env vars RENODX_TW_RECORDING_PARTS / _POOL_CHAIN / _RENDER_CPUS need ATN's run rules.
+        Critic corrections: P1 = wake only; C3 alone 0; X1 evidence one-sided; D1 decal-seed misses ~0.2 not covered.
+        -> rv2_ (Opus xHigh) review (rv2_pk2_review.md).
+        - [ ] ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace windows + bench arms); Q-C
+        Colour A hidden default Off if its net <= 0; Q-D V2 stack reserve 1 MB -> 256 KB + best-fit op arena; Q-E C2 may
+        advance the game's two dirty counters when its constants cache is off.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
