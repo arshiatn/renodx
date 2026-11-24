@@ -14552,6 +14552,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         before pk2_'s implementer. Overlap checked: fxi_ (tests.cpp / exit_drain.inc), sse_ (Bend SSS), s1a_ (none yet).
         - [ ] ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own build in testbin, game DLL mapped
         read-only, process affinity, ~10 min a step + 40-60 min S4 sweep; idle PC only).
+        fxi_ TEST FIX DONE (render_mt/fca/designs/fxi_test_fix_handback.md): ec_test_fix a8ee4640e (exit_drain.inc +
+        tests.cpp only; no production change). 30f waits bounded 10 s (FAIL, not hang); Thrones' stale PARTICLE_EPOCH /
+        _COUNT absence checks -> rva == 0 || count == 1 (build 64A47C87 matches once, rva 0). Thrones full -Quick PASS,
+        Attila -Quick PASS, Rome II / Thrones -Only exit PASS. -> rvl_ short look (sent) -> mrg_ merge; then PK5 S0 may
+        start (tests.cpp free).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
