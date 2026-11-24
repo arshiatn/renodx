@@ -15411,6 +15411,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         CPU -start GPU -filemode', RenoDX_WPR_Stop = 'wpr.exe -stop C:\...\nsight\attila_run\attila_wpr.etl' (coord
         never edits them) -> asked ATN to add -recordtempto D:\RenoDX_WPR to Start and stop into D:\RenoDX_WPR (folder
         made by coord); a64ab_'s -Wpr reads the etl from there. No restart needed (zombies are kernel-stuck, harmless).
+        -> DONE by ATN, checked: Start '-start CPU -start GPU -filemode -recordtempto D:\RenoDX_WPR', Stop '-stop
+        D:\RenoDX_WPR\attila_wpr.etl' (RunLevel Highest). a64ab_ / a64pi_: the etl is D:\RenoDX_WPR\attila_wpr.etl.
         - [x] ATN 11-24: WH3 gets the Experimental vMF slider too (Forge: PT looks better with vMF) -> sent to pdd2_;
         SHaRC depth 4 plan: 'Good idea'.
         - [ ] vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree-agent-aa2f659ee853ca432
