@@ -1302,7 +1302,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     resolved = dlaa_bridge::Evaluate(
         native, input_width, input_height, runtime.jitter[0], -runtime.jitter[1], !continued, runtime.settings.dlaa_preset,
         reconstruct ? &reconstruction : nullptr, (method != Method::DLAA ? &reconstruction.view_to_clip : nullptr),
-        {.exposure = (exposure_test && method == Method::DLAA && !reconstruct && runtime.settings.dlaa_preset == 11u) ? 1.f : 0.f,
+        {.exposure = ((exposure_test && method == Method::DLAA && !reconstruct && runtime.settings.dlaa_preset == 11u) ? 1.f : 0.f),
          .fsr_sharpness = runtime.settings.fsr_sharpness});
     // The Debug View's Warp Error: last frame's input, its copy made at the view's first frame (that frame compares with
     // nothing) and let go when it is turned off.
@@ -1358,7 +1358,9 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   }
   bind(nullptr, {}, {});
   // This frame's input (the target still holds it) for the next frame's Warp Error.
-  if (objects.warp_history) native->CopyResource(objects.warp_history.Get(), target);
+  if (objects.warp_history) {
+    native->CopyResource(objects.warp_history.Get(), target);
+  }
   if (resolved) native->CopyResource(target, objects.result.Get());
   if (generation) {
     frame_generation::KeepFrame(native, target, *generation);

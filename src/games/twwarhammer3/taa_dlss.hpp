@@ -535,7 +535,9 @@ inline void Resolve(ID3D11DeviceContext* native) {
     }
   }
   // FSR's reactive mask: the colour before the particles, at 100% only for now (below 100% it needs rr_extra_scaled's path).
-  if (FsrReactive() && !scaled) rr_extra |= 1u << twattila::dlaa_bridge::RR_EXTRA_COLOR_BEFORE;
+  if (FsrReactive() && !scaled) {
+    rr_extra |= 1u << twattila::dlaa_bridge::RR_EXTRA_COLOR_BEFORE;
+  }
   // Below 100% either particle row reads both copies (rr_extra_scaled).
   constexpr uint32_t PARTICLE_ROWS = (1u << twattila::dlaa_bridge::RR_EXTRA_PARTICLE_LAYER) | (1u << twattila::dlaa_bridge::RR_EXTRA_COLOR_BEFORE);
   const bool both_copies = scaled && (rr_extra & PARTICLE_ROWS) != 0u;
@@ -546,7 +548,7 @@ inline void Resolve(ID3D11DeviceContext* native) {
       || !twattila::dlaa_bridge::Prepare(device.Get(), output_desc.Width, output_desc.Height,
                                          state.settings.ray_reconstruction || state.settings.ray_traced_guides,
                                          state.settings.ray_tracing, twattila::frame_generation::Format(), state.settings.ray_traced_reflections,
-                                         static_cast<uint32_t>(method) - static_cast<uint32_t>(twattila::anti_aliasing::Method::DLAA),
+                                         twattila::anti_aliasing::UpscalerOf(method),
                                          state.settings.frame_backend, rr_extra)) {
     release();
     return;
@@ -1019,7 +1021,7 @@ constexpr auto OnParticleComposite = []<typename Context>(Context& command) -> r
   using namespace twattila::dlaa_bridge;
   if (!state.rr_composite_logged) {
     state.rr_composite_logged = true;
-    renodx::utils::log::i("[Warhammer III] First run: the particles' composite, for Ray Reconstruction's optional inputs.");
+    renodx::utils::log::i("[Warhammer III] First run: the particles' composite, for Ray Reconstruction's optional inputs or FSR's reactive mask.");
   }
   // Below 100% the particles stay in the game's picture (its bloom, depth of field and tone mapper take them as ever) and the upscaler's
   // inputs are made after the tone mapper (rr_extra_scaled) from two copies: the colour before this draw, and this draw once more

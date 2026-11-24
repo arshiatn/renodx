@@ -360,6 +360,7 @@ inline int ChosenUpscaler() {
              ? static_cast<int>(twattila::dlaa_bridge::UPSCALER_FSR)
              : chosen;
 }
+
 // Frame generation (Experimental; the helper presents: twattila/frame_generation.hpp) with Tales' keys: FrameGeneration,
 // FrameGenerationMultiplier (2-6; 0 Dynamic; 1 off, Reflex only), FrameGenerationFrameLimit (Reflex's or Xe Low
 // Latency's; ReflexBoost, before the Reflex row, read once as its On + Boost).
