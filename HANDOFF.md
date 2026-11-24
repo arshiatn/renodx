@@ -14246,6 +14246,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         3 controls (margin-0 swapped for a negative margin) + harness-only block counter; est. @ 240 4K: plain -0.25..-0.4,
         extended_find -0.4..-0.7, light mode -0.4..-0.8 ms (hypotheses until --time). E1 gated, E6 deferred, R1 / R2 ATN-
         ask only, R3 rejected. -> rvn_ light re-check of sec 4 + 9 (plan_1117/rvn_sbr_recheck.md) -> E2 implementer.
+        rvs_ SHG REV1 RE-CHECK GO FOR S1a (plan_1117/rvs_shg_recheck.md + _handback.md; 0 MUST / 6 SHOULD / 6 NIT): M1-M6
+        answered; courtyard gate, w rewrite, B2 cost, Toru MIT (12 blob SHAs match) accepted. SHOULDs: ZH3 refit with a
+        zero at sqrt(3)/2 (uniform fields -0.3..-2.6% darker today) on a held-out seed; proxy darkening check into S1a V1
+        (B2 at r4 fails the 1% gate); wording; After Blur = post-draw callback + ratio cap + 2x multiply + upsample +
+        release on destroy / resize; AO histories RGBA16F + R16F + convergence test; Toru lines only in svgf/*.hlsli.
+        -> shg_ Rev 1.1 (sent, incl. S1a's file set) -> S1a implementer (Opus xHigh) after a one-writer check.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
