@@ -14676,6 +14676,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         C / N types, WARP on every candidate, C5 strict, C4 counted (Expeditions 0, Tales' 33 wait), tool controls known
         without the tool; A0-A4 / Q1-Q5 recorded; new C7 tool cross-check (g24_ told: mechanism in 13.9 if cheap); NOSCREEN
         verdict counted in S8. Coverage 7,603 = upper bound. Tool code waits for 13.9 + ATN's dump run.
+        rv4_ PK4 S1 CODE REVIEW (rv4_pk4_s1_code_review.md + _handback.md): GO to merge, no MUST, 0 production defects;
+        SHOULD-1 three 32-bit literal complements in tests.cpp (:3777 / :3788 / :3868) would hide sites 32-34; SHOULD-2
+        -Quick on the merge commit (animation_rows.inc = PK3 23zi + S1 layout checks); full 2^32 run not needed for S1.
+        FABLE 5.2 MEDIUM TRIAL PASSED: no stop of any kind, review 'fewer findings than Sonnet's usual' (weak evidence).
+        -> Fable Medium now builds EVERY engine-specific implementation (memory updated). p4i_ continues: SHOULD-1 + NITs,
+        merge atn-mods in + -Quick x5, then S2 + S3 -> rv4_ code review -> S4; S5 after p1i_'s P4.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
