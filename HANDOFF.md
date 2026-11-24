@@ -807,6 +807,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), obj ... | ?
 - GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -Bloc ... | ?
 - ATN (gsr_): approve the dumper change (src/utils/shader_dump.hpp, 3 switch cases ... | ?
+- rvn_ light re-check of r2 (sent; rvn_sss_e2_r2_recheck.md): GO for the GPU run, ... | ?
 - trc_ (Opus xHigh, worktree, branch trc_tracer) Expeditions tracer prep: 4.23 Vie ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
@@ -14665,6 +14666,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         Coloured), MUST-2 -BlockSkipGpu takes gpu_job.lock, MUST-3 merge atn-mods in + tw_romer_dlaa PASS; SHOULD-1..6.
         -> sse_ r2 (sent; test / run-list only; README line given to coord, added at merge). Then GPU window, merge if
         the default pass shows no slowdown beyond noise.
+        sse_ R2 DONE (plan_1117/sse_e2_r2_handback.md): origin/sss_e2 f5b60184f (atn-mods merged in; tw_romer_dlaa PASS)
+        + 96ee0934e (r2; shaders: test hooks only, default bytes unchanged). MUST-1 default-pass timing rows (box + dense,
+        100 / 58 %), MUST-2 -BlockSkipGpu / -Time need -Gate + take gpu_job.lock (-Busy), SHOULD-1..6, NIT-2..5; NIT-1
+        NOT done (clamp = +76 bytes in every default pass). WARP x86 / amd64 PASS. WARP timing smoke: Length 60 / 120 and
+        Shogun 2 at 120 samples slower (sss01 +2.7, sss00 +1.0 ms WARP), 240+ faster; Shogun 2 sss00 / sss01 groupshared
+        15,872 -> 17,856 B (6 -> 5 groups per SM). Fallback if the 5090 shows a slowdown: Bend's own loop below K groups
+        (shader change -> ATN). Changelog line at merge: 'New: faster screen-space shadows: Bend's march skips sample
+        blocks that cannot reach the shadow and pixels the far fade hides fully; same picture (every add-on with
+        twattila's Bend core, Shogun 2 included).'
+        - [ ] rvn_ light re-check of r2 (sent; rvn_sss_e2_r2_recheck.md): GO for the GPU run, NIT-1, block-vs-fallback
+        line for the 5090 -> coord GPU window (worktree run.ps1 -Architecture amd64 -BlockSkipGpu -Gate <id>, CPU quiet)
+        -> merge sss_e2 + changelog line if the default pass shows no slowdown beyond noise.
         pk4_ REV 1.1 DONE = PK4 DESIGN FINAL (pk4_design.md 949 lines; pk4_rev11_handback.md): clear guard 66 bytes with
         rv4_'s exact bytes (no S3 re-check needed); game bytes re-read and match; parts 31-33 extended (output size 0
         after a late clear); G3a = 14 no-heapfix starts (10 only if A/A noise allows); main = present thread stated.
