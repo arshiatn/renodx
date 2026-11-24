@@ -767,6 +767,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK6 tooling -> t4i_ (after its parsers): sec 6 items 2-8; item 1 (WPR tasks' foc ... | ?
 - fxi_ r2 + 30f WU-on case (J1 flips only after that + an ABBA bench). | ?
 - ATN QUESTIONS (critic sec 7): Q2 release timing, Q3 FDW D1 cost vs per-battle la ... | ?
+- rvg_ review of step 1 (handoff_plan/reviews/rvg_g24_step1_review.md) -> then g24 ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14195,6 +14196,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> rvm_ re-check r3 (handoff_plan/reviews/rvm_mem_fix_recheck_r3.md) -> then ask ATN for the confirm run. Left:
         test_hooks.hpp:198 bench memory key walks every 60 s (owner decides); fbm_ n2 / n3 helper side; Rome II / Thrones
         scene_release only after the confirm run.
+        g24_ STEP1 CORE EXTENSION DONE (handoff_plan/handbacks/g24_step1_extension_handback.md; ho_g24 a017c0ed0 pushed;
+        selftest 58/58): trace claims fullscreen / after-ui / after-upscale read the frame from its own lines (frame_marks);
+        new rt N/A/post + N/A/ui matrix lines (trace-settled, not a no-geometry extension), View-projected tripwire, 12
+        fixture cases; nothing loosened. New hashes: checker 8df9f55b884c, games.py d65ac54b4d1a (ue4.py / fixtures same).
+        Real traces: Tales 11 VS + 70 PS fullscreen, 3 + 14 after-ui, 2 + 10 after-upscale; Expeditions 15 + 42 / 1 + 2 /
+        none (no readable scale -> fails closed). Ledgers unchanged (Tales 527, Expeditions 156).
+        - [ ] rvg_ review of step 1 (handoff_plan/reviews/rvg_g24_step1_review.md) -> then g24_ (2) S8 sizing gate on
+        Expeditions -> (3) the fill. Carried: n-r3-1 primitive_data offset at the next extractor bump; Divinity 2 N/A/dead
+        from the bytes.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
