@@ -808,6 +808,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - p1i_ (Opus xHigh, worktree) PK1 P1-P5 on fca_pk1: buffer_pool.hpp (P1 / P2), obj ... | ?
 - GPU window (coord, when builds are quiet): SSS run.ps1 -Architecture amd64 -Bloc ... | ?
 - ATN (gsr_): approve the dumper change (src/utils/shader_dump.hpp, 3 switch cases ... | ?
+- trc_ (Opus xHigh, worktree, branch trc_tracer) Expeditions tracer prep: 4.23 Vie ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14682,6 +14683,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         FABLE 5.2 MEDIUM TRIAL PASSED: no stop of any kind, review 'fewer findings than Sonnet's usual' (weak evidence).
         -> Fable Medium now builds EVERY engine-specific implementation (memory updated). p4i_ continues: SHOULD-1 + NITs,
         merge atn-mods in + -Quick x5, then S2 + S3 -> rv4_ code review -> S4; S5 after p1i_'s P4.
+        ATN 11-24 evening (on the way home): 'You are allowed to run your traces (which don't need cpu or gpu lock,
+        correct?)' + asked for the questions' address. Coord: ALL open 11-24 questions in one file with advice
+        (handoff_plan/atn_questions_1124.md, sent). Correction told: the G24 traces are Expeditions GAME runs (GPU + CPU +
+        screen, only while ATN isn't playing) and each needs a tracer change first; no run rule exists to launch the game.
+        - [ ] trc_ (Opus xHigh, worktree, branch trc_tracer) Expeditions tracer prep: 4.23 View rows in
+        talesofarise_dlss/frame_trace.hpp (Tales unchanged), twin: logging for the bones families, the GPU-scene mv need;
+        tests + a run sheet for ATN; no game run. Dumper change (src/utils/shader_dump.hpp) waits for ATN's OK.
+        -> rvg_ review -> coord merges -> trace runs when ATN says the PC is free (he starts the game or gives a rule).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
