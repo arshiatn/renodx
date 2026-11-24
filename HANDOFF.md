@@ -14216,6 +14216,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         RENODX_TW_SCENE_RELEASE=0 arm falls as before, cut-outs render, no helper restart warning).
         - [ ] Rome II / Thrones keep the 32-bit leak until host.scene_release is set for them (owner: coord, after the
         Attila confirm run; then one confirm run each, ATN's go).
+        rvn_ SBR REVIEW (plan_1117/rvn_sbr_review.md + _handback.md; 0 BLOCKER / 9 MUST / 8 SHOULD / 6 NIT): GO for E2 (+E4)
+        after Rev 1; E1 only behind an Nsight occupancy gate after E2; E6 NOT GO as written; R1 / R2 only if ATN asks.
+        MUSTs: M1 sign-free interval test (depth_scale <= 0 at the light point), M2 margin floor + DXBC / 5090 A/B, M3
+        64-thread build before returns, M4 unrounded count + lane-fade rotation, M5 old-vs-new matrix + controls + skip
+        counter, M6 skewed LDS reads, M7 ms re-grounded (E2 -0.25..-0.4 @ 240; ATN's defaults = extended_find 1.408 ms;
+        no 480 number until measured), M8 E1 pick points / clamp, M9 E6 padding + audit. -> sbr_ Rev 1 (sent) -> rvn_
+        light re-check -> implementer. Note: on the 5090 Attila is CPU-limited, so the gain shows as GPU busy, not fps.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
