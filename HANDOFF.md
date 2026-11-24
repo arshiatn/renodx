@@ -820,7 +820,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - a64p0r_ (Opus xHigh) reviews the Phase 0 design (arms, probe sites, determinism, ... | ?
-- ATN: add the window-1 rule lines (a64ab_window1_rules.md: -Arms stageA / -Arms s ... | ?
+- Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab ... | ?
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
@@ -15256,8 +15256,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         inline starts' slow-motion share; inline arm must show beside 0 (proves the option); picture at s 201 base vs
         base (A/A) and base vs inline = proxy only. All dry runs exit 0. Not proven: option = setting 0x5f, 1748
         opening steps in every start, all32 runs like the original.
-        - [ ] ATN: add the window-1 rule lines (a64ab_window1_rules.md: -Arms stageA / -Arms stageB) + trim yes / no;
-        then window 1 (no game of ATN's running, fresh backups).
+        - [x] ATN 11-24: rule lines added (-Arms stageA, -Arms stageB + the two older comma lists); trim YES and more:
+        '32 threads is not smart. It is 100% going to be slower. Only test 16 vs 8 with same exe honestly, if you really
+        really need too' + 'the fps cap is really really not needed' -> stageB = measure, tt8 only (when stage A says
+        so); cap30 / cap45 / all32 arms removed (sent to a64ab_ with the -Smoke -Package request); window 3 / Phase 0
+        loses ALL32 + cap arms (sent to a64p0r_; H2 / H4a / H4b need probe / WPR / measure or are dropped). Memory
+        feedback_no_all32_cap_arms.md. ATN's git email is the template placeholder (global .gitconfig) -> explained;
+        he decides; s3f_ regenerates the Sol patch after.
+        - [ ] Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab_'s trim + the xHigh
+        arm-code review are in; no game of ATN's running, fresh backups.
         - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
         arms; a64ab_ window-1 switches (prefs-override arm, caps 30 / 45, all-32, TASK_THREADS, measuring start, spin
         off, fine timer, fixed-second screenshot, slow-motion share, real CPU Set Setter status) -> rule lines for ATN;
