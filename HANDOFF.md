@@ -15171,7 +15171,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         thread on a core of its own vs sharing with the drawing / task workers; for players without CPU Set Setter the
         V-cache part matters too. Sent to a64p0d_ (L2 arms: 0-15 baseline as ATN plays, step alone on one core, SMT
         sibling free or not). Default by the numbers. ATN to add the same CPU Set Setter rule for attila64.exe (coord
-        asked 11-24).
+        asked 11-24). ATN 11-24: the rule EXISTS (run_1320\attila64.exe, CacheAFFINITY); phase.log shows it from the A/B
+        (20:34) on, Smoke / Gate R ran without it. a64_ab.ps1:541's note 'attila64.exe has no CPU Set Setter rule' is a
+        hard-coded stale text and the bench set affinity 0xFFFF on top -> a64ab_ (with the Phase 0 switches): log the
+        real rule status, no affinity override when the rule exists. ATN doubts the option ('I still don't see the
+        point', old / new / Intel CPUs): coord: a scheduling hint can't crash a CPU, risk is speed only (few cores, Intel
+        E-cores) -> TEST ARM ONLY in D0; a player option only with a big measured gain + CPU detection. ATN asked if the
+        drawing should get more threads instead: D0 shows whether the drawing blocks the step (lock / tasks / pacing);
+        if so, spreading the drawing becomes a lever. All sent to a64p0d_.
         - [x] a64c_ DONE (hand-back attila64/a64c_census_handback.md; tools/tw/attila64/census: README, 4 scripts incl.
         log_check.py, out\ tables): all 350 twattila shader hashes in Attila's names.tsv, 0 unknown; Sol passes the game's
         DXBC unchanged (same CRC32), SM5 permutations as 32-bit, 90 / 90 fxc names known (53 ours); 32-bit baseline = the
