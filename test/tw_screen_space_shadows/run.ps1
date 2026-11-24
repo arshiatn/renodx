@@ -124,13 +124,28 @@ if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
 if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
 & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect -Fo (Join-Path $beforeShaders 'sss_lights_f6408aa1.cso') (Join-Path $lightsBefore 'src\games\twattila\sss_lights.cs_5_0.hlsl') | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'fxc failed: f6408aa1 sss_lights' }
+# Case 12 (Resolution at Full): the module as 352a9b785 (the commit before the row) had it; these tests built on its
+# headers (SSS_ROW_BEFORE) write their Full outputs next to the shaders (--resolution-dump) for this tree's to compare.
+$rowBefore = Join-Path $testBuild 'before_352a9b785'
+if (Test-Path -LiteralPath $rowBefore) { Remove-Item -LiteralPath $rowBefore -Recurse -Force -Confirm:$false }
+New-Item -ItemType Directory -Force -Path $rowBefore | Out-Null
+& git -C $repairRoot archive --output=$archive 352a9b785 src/games/twattila src/mods src/utils
+if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
+& (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $archive -C $rowBefore
+if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
 
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
-& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 -Wno-deprecated-declarations /I $repairRoot /I "$repairRoot\build32\twattila.include" /I "$repairRoot\external\reshade" /I "$repairRoot\external\frozen\include" /I "$repairRoot\external\Detours\include" /I "$repairRoot\external\gtl\include" "$testRoot\tests.cpp" /Fe:screen_space_shadows.exe /link /OPT:REF /OPT:ICF user32.lib d3d11.lib d3d12.lib dxgi.lib d3dcompiler.lib
-if ($LASTEXITCODE -ne 0) { throw 'Screen-space shadows test compile failed' }
+foreach ($build in @(@{ Exe = 'screen_space_shadows_row_before.exe'; Extra = @('/DSSS_ROW_BEFORE', '/I', $rowBefore) },
+                     @{ Exe = 'screen_space_shadows.exe'; Extra = @() })) {
+  $extra = $build.Extra
+  & 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /DWIN32=1 -Wno-deprecated-declarations @extra /I $repairRoot /I "$repairRoot\build32\twattila.include" /I "$repairRoot\external\reshade" /I "$repairRoot\external\frozen\include" /I "$repairRoot\external\Detours\include" /I "$repairRoot\external\gtl\include" "$testRoot\tests.cpp" "/Fe:$($build.Exe)" /link /OPT:REF /OPT:ICF user32.lib d3d11.lib d3d12.lib dxgi.lib d3dcompiler.lib
+  if ($LASTEXITCODE -ne 0) { throw "Screen-space shadows test compile failed: $($build.Exe)" }
+}
+& (Join-Path $testBuild 'screen_space_shadows_row_before.exe') $beforeShaders --resolution-dump
+if ($LASTEXITCODE -ne 0) { throw "352a9b785's Full outputs (case 12) not written" }
 $arguments = @($beforeShaders)
 if ($Time) { $arguments += '--time' }
 if ($BlockSkipGpu) { $arguments += '--block-skip-gpu' }

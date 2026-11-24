@@ -851,10 +851,10 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
       });
     }
     for (const auto* key : {"ScreenSpaceShadowsDistanceSoftness", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured",
-                            "ScreenSpaceShadowsTorches", "ScreenSpaceShadowsTorchRange", "ScreenSpaceShadowsContrast", "ScreenSpaceShadowsHardSamples",
-                            "ScreenSpaceShadowsFadeSamples", "ScreenSpaceShadowsEdgeThreshold", "ScreenSpaceShadowsIgnoreEdges",
-                            "ScreenSpaceShadowsPrecisionOffset", "ScreenSpaceShadowsAlongRay", "ScreenSpaceShadowsMirrorEdges",
-                            "ScreenSpaceShadowsDebugView"}) {
+                            "ScreenSpaceShadowsTorches", "ScreenSpaceShadowsTorchRange", "ScreenSpaceShadowsResolution", "ScreenSpaceShadowsContrast",
+                            "ScreenSpaceShadowsHardSamples", "ScreenSpaceShadowsFadeSamples", "ScreenSpaceShadowsEdgeThreshold",
+                            "ScreenSpaceShadowsIgnoreEdges", "ScreenSpaceShadowsPrecisionOffset", "ScreenSpaceShadowsAlongRay",
+                            "ScreenSpaceShadowsMirrorEdges", "ScreenSpaceShadowsDebugView"}) {
       page.Take({.match = key, .section = section, .shown = more_screen});
     }
     if (b.smoke_strength != nullptr) {

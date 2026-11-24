@@ -44,6 +44,7 @@ struct SssSliders {
   float coloured = 1.f;
   float torches = 0.f;
   float torch_range = 0.f;
+  float resolution = 0.f;  // Full, 3/4, 1/2, 1/4
 };
 
 struct AaSliders {
@@ -92,6 +93,7 @@ inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
       .coloured = (sliders.coloured != 0.f),
       .lights = std::array<uint32_t, 5>{0u, 4u, 8u, 16u, 32u}[std::clamp(static_cast<int>(sliders.torches), 0, 4)],
       .light_range = sliders.torch_range,
+      .resolution = std::array<float, 4>{1.f, 0.75f, 0.5f, 0.25f}[std::clamp(static_cast<int>(sliders.resolution), 0, 3)],
   };
 }
 
@@ -273,6 +275,19 @@ inline void AppendSss(std::vector<renodx::utils::settings::Setting*>* settings, 
                                             .format = "%.0f m",
                                             .is_enabled = [sliders] { return sliders->enabled != 0.f && sliders->torches != 0.f; },
                                             .is_visible = [] { return screen_space_lights::installed; },
+                                        },
+                                        new renodx::utils::settings::Setting{
+                                            .key = "ScreenSpaceShadowsResolution",
+                                            .binding = &sliders->resolution,
+                                            .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+                                            .default_value = 0.f,
+                                            .label = "Resolution (Experimental)",
+                                            .section = SSS_SECTION,
+                                            .tooltip = "Traces the sun's shadows at a lower resolution. Lower: faster, softer;\n"
+                                                       "grass and thin things may lose their shadows.",
+                                            .labels = {"Full", "3/4", "1/2", "1/4"},
+                                            .is_enabled = sss_enabled,
+                                            .is_visible = [] { return screen_space_shadows::installed; },
                                         },
                                         new renodx::utils::settings::Setting{
                                             .key = "ScreenSpaceShadowsContrast",

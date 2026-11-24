@@ -50,9 +50,10 @@
 // is too coarse far away for Bend's thickness test, whole areas came out shadowed in blocks (ATN debug4); it only without
 // one) into a single-channel texture (sss_depth; with the game's MSAA sample 0), the dispatch list for its camera and sun
 // (sss_setup, on the GPU: the constants stay there), then Bend's dispatches (sss_bend, indirect) into the occlusion mask
-// (with Softness smoothed along surfaces by sss_blur into a second one); every patched sun draw of the main view then
-// reads it at t49. Everything the compute binds is put back after. D3D11. Debug View (ATN: grass at the screen's
-// border gets none): after the tone mapper, the occlusion as the picture (sss_debug).
+// (Resolution below Full: over a centre pick of the render pixels, sss_downsample, brought up to them by Toru's joint
+// bilateral upsample, sss_upsample; with Softness smoothed along surfaces by sss_blur into a second one); every patched
+// sun draw of the main view then reads it at t49. Everything the compute binds is put back after. D3D11. Debug View
+// (ATN: grass at the screen's border gets none): after the tone mapper, the occlusion as the picture (sss_debug).
 namespace twattila::screen_space_shadows {
 
 using Microsoft::WRL::ComPtr;
@@ -82,6 +83,9 @@ struct Settings {
   bool coloured = false;
   uint32_t lights = 0;
   float light_range = 0.f;
+  // Resolution (Experimental): the sun's march over this share of the render pixels across and down (1 Full; 0.75, 0.5,
+  // 0.25: a centre pick of them, brought up to the render pixels after). The torches' march stays at Full.
+  float resolution = 1.f;
 };
 
 // A vertex shader whose main-view G-buffer draws are banners, flags, tents or sails (InstallThin; `row`: only while it is on).
@@ -92,6 +96,8 @@ struct ThinShader {
 
 // Light Through Banners' rows are shown where InstallThin knows the game's banners.
 static bool thin_installed = false;
+// Resolution's row is shown where this module marches (Install): not on the other games' hosts of Bend's march.
+static bool installed = false;
 // Light Through Foliage where the G-buffer marks foliage: the bit of its channel 3's alpha byte (the sun draws'
 // gbuffer_slot + 2; Warhammer III's 128, which its own contact shadows let the sun through), 0: none (Attila's
 // InstallFoliage instead).
@@ -674,6 +680,26 @@ struct LightObjects {
   ComPtr<ID3D11ShaderResourceView> mask_srv;
 };
 
+// A texture's views (MakeTexture's).
+struct TextureViews {
+  ComPtr<ID3D11UnorderedAccessView> uav;
+  ComPtr<ID3D11ShaderResourceView> srv;
+};
+
+// Resolution below Full: the march's size (all of it rendered) and its textures there, each made when first needed: the
+// depth, the banners' depth and the G-buffer's colour (sss_downsample's), the occlusion, the penumbra and the filter
+// (sss_upsample's input).
+struct LowObjects {
+  UINT width = 0;
+  UINT height = 0;
+  TextureViews depth;
+  TextureViews thin;
+  TextureViews colour;
+  TextureViews occlusion;
+  TextureViews penumbra;
+  TextureViews tint;
+};
+
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11ComputeShader> depth_copy;
@@ -738,6 +764,15 @@ struct DeviceObjects {
   std::unordered_map<ID3D11RasterizerState*, std::pair<ComPtr<ID3D11RasterizerState>, ComPtr<ID3D11RasterizerState>>> thin_rasterizers;
   bool logged_thin = false;
   LightObjects lights;
+  // Resolution below Full: its passes (sss_downsample, sss_upsample), the march's constants at its size (b2, b4; b3 of
+  // those passes) and its textures.
+  ComPtr<ID3D11ComputeShader> downsample;
+  ComPtr<ID3D11ComputeShader> upsample;
+  ComPtr<ID3D11Buffer> low_settings;
+  ShaderSettings uploaded_low = {};
+  ComPtr<ID3D11Buffer> low_extended_settings;
+  ExtendedSettings uploaded_low_extended = {};
+  LowObjects low;
 };
 
 struct Runtime {
@@ -849,10 +884,12 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
                 && compute(__sss_blur, &objects.blur) && compute(__sss_debug, &objects.debug)
                 && compute(__sss_bend_extended, &objects.bend_extended[0]) && compute(__sss_bend_extended_auto, &objects.bend_extended[1])
                 && compute(__sss_bend_extended_find, &objects.bend_extended[2]) && compute(__sss_bend_extended_auto_find, &objects.bend_extended[3])
-                && compute(__sss_soft, &objects.soft)
+                && compute(__sss_soft, &objects.soft) && compute(__sss_downsample, &objects.downsample) && compute(__sss_upsample, &objects.upsample)
                 && SUCCEEDED(device->CreatePixelShader(__sss_thin.data(), __sss_thin.size(), nullptr, objects.thin_pixel_shader.GetAddressOf()))
                 && SUCCEEDED(device->CreateBuffer(&settings_desc, nullptr, objects.settings.GetAddressOf()))
                 && SUCCEEDED(device->CreateBuffer(&extended_desc, nullptr, objects.extended_settings.GetAddressOf()))
+                && SUCCEEDED(device->CreateBuffer(&settings_desc, nullptr, objects.low_settings.GetAddressOf()))
+                && SUCCEEDED(device->CreateBuffer(&extended_desc, nullptr, objects.low_extended_settings.GetAddressOf()))
                 && SUCCEEDED(device->CreateBuffer(&arguments_desc, nullptr, objects.arguments.GetAddressOf()))
                 && SUCCEEDED(device->CreateUnorderedAccessView(objects.arguments.Get(), &arguments_view,
                                                                objects.arguments_uav.GetAddressOf()))
@@ -893,6 +930,7 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
   objects.tint_srv.Reset();
   objects.lights.mask_uav.Reset();
   objects.lights.mask_srv.Reset();
+  objects.low = {};
   if (!MakeTexture(device, width, height, DXGI_FORMAT_R32_FLOAT, &objects.depth_uav, &objects.depth_srv)
       || !MakeTexture(device, width, height, DXGI_FORMAT_R8_UNORM, &objects.occlusion_uav, &objects.occlusion_srv)
       || !MakeTexture(device, width, height, DXGI_FORMAT_R8_UNORM, &objects.soft_uav, &objects.soft_srv)) {
@@ -1028,35 +1066,47 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
   // Performance: combed fence shadows, striped hills).
   const auto render = frame_history::RenderSize(objects.width, objects.height);
   const float share = static_cast<float>(render[0]) / static_cast<float>(objects.width);
-  const float samples = std::max(std::round(runtime.settings.samples * share), runtime.settings.hard_samples + 4.f);
-  const ShaderSettings settings = {
-      .width = static_cast<float>(objects.width),
-      .height = static_cast<float>(objects.height),
-      .inverse_width = 1.f / static_cast<float>(objects.width),
-      .inverse_height = 1.f / static_cast<float>(objects.height),
-      .thickness = runtime.settings.thickness / share,
-      .samples = samples,
-      .contrast = runtime.settings.contrast,
-      .edge_threshold = runtime.settings.edge_threshold / share,
-      .hard_samples = runtime.settings.hard_samples,
-      // Within the samples left after the hard ones (Bend reads past them otherwise).
-      .fade_samples = std::min(runtime.settings.fade_samples, samples - runtime.settings.hard_samples),
-      .ignore_edges = (runtime.settings.ignore_edges ? 1.f : 0.f),
-      .precision_offset = (runtime.settings.precision_offset ? 1.f : 0.f),
-      .sample_along_ray = (runtime.settings.sample_along_ray ? 1.f : 0.f),
-      .softness = runtime.settings.softness,
-      .debug_view = static_cast<float>(runtime.settings.debug_view),
-      .mirror_edges = (runtime.settings.mirror_edges ? 1.f : 0.f),
-      .sun_direction = static_cast<float>(sun_direction),
-      .render_width = static_cast<float>(render[0]),
-      .render_height = static_cast<float>(render[1]),
-      .foliage_light = runtime.settings.foliage_light,
-      .foliage_bit = (material != nullptr) ? static_cast<float>(foliage_material_bit) : 0.f,
+  // Resolution below Full (Experimental): the sun's march over a centre pick of that share of the render pixels across and
+  // down (sss_downsample), as over a render scale's (its size all rendered, its samples and tolerances over that share
+  // too), brought up to the render pixels after (sss_upsample).
+  const float resolution = runtime.settings.resolution;
+  const std::array<UINT, 2> low_size = {static_cast<UINT>(std::ceil(static_cast<float>(render[0]) * resolution)),
+                                        static_cast<UINT>(std::ceil(static_cast<float>(render[1]) * resolution))};
+  // Bend's constants for a march over `size` (`rendered` of it) at `scale` of the screen's pixels across.
+  const auto march_settings = [&](float scale, std::array<UINT, 2> size, std::array<UINT, 2> rendered) {
+    const float samples = std::max(std::round(runtime.settings.samples * scale), runtime.settings.hard_samples + 4.f);
+    return ShaderSettings{
+        .width = static_cast<float>(size[0]),
+        .height = static_cast<float>(size[1]),
+        .inverse_width = 1.f / static_cast<float>(size[0]),
+        .inverse_height = 1.f / static_cast<float>(size[1]),
+        .thickness = runtime.settings.thickness / scale,
+        .samples = samples,
+        .contrast = runtime.settings.contrast,
+        .edge_threshold = runtime.settings.edge_threshold / scale,
+        .hard_samples = runtime.settings.hard_samples,
+        // Within the samples left after the hard ones (Bend reads past them otherwise).
+        .fade_samples = std::min(runtime.settings.fade_samples, samples - runtime.settings.hard_samples),
+        .ignore_edges = (runtime.settings.ignore_edges ? 1.f : 0.f),
+        .precision_offset = (runtime.settings.precision_offset ? 1.f : 0.f),
+        .sample_along_ray = (runtime.settings.sample_along_ray ? 1.f : 0.f),
+        .softness = runtime.settings.softness,
+        .debug_view = static_cast<float>(runtime.settings.debug_view),
+        .mirror_edges = (runtime.settings.mirror_edges ? 1.f : 0.f),
+        .sun_direction = static_cast<float>(sun_direction),
+        .render_width = static_cast<float>(rendered[0]),
+        .render_height = static_cast<float>(rendered[1]),
+        .foliage_light = runtime.settings.foliage_light,
+        .foliage_bit = (material != nullptr) ? static_cast<float>(foliage_material_bit) : 0.f,
+    };
   };
-  if (std::memcmp(&settings, &objects.uploaded, sizeof(ShaderSettings)) != 0) {
-    native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &settings, 0, 0);
-    objects.uploaded = settings;
-  }
+  // A constant buffer's content where it changed.
+  const auto upload = [native](ID3D11Buffer* buffer, const auto& value, auto* uploaded) {
+    if (std::memcmp(&value, uploaded, sizeof(value)) == 0) return;
+    native->UpdateSubresource(buffer, 0, nullptr, &value, 0, 0);
+    *uploaded = value;
+  };
+  upload(objects.settings.Get(), march_settings(share, {objects.width, objects.height}, render), &objects.uploaded);
   // The extended march where one of its rows asks for it: the banners' depth drawn this frame (their draws come before
   // the sun's) at this size, their colour with the G-buffer's; the textures it writes made when first needed.
   ComPtr<ID3D11Device> device;
@@ -1074,7 +1124,7 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
                         && (objects.tint_uav
                             || MakeTexture(device.Get(), objects.width, objects.height, DXGI_FORMAT_R8G8B8A8_UNORM, &objects.tint_uav, &objects.tint_srv));
   const bool extended = runtime.settings.auto_thickness || soft || thin;
-  const ExtendedSettings extended_settings = {
+  ExtendedSettings extended_settings = {
       .auto_thickness = (runtime.settings.auto_thickness ? 1.f : 0.f),
       .sun_tangent = (soft ? std::tan(runtime.settings.sun_disk * (3.14159265f / 360.f)) : 0.f),
       .thin_light = (thin ? runtime.settings.thin_light : 0.f),
@@ -1082,10 +1132,42 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
       .albedo_power = runtime.albedo_power,
       .soft_radius = SOFT_RADIUS_2160 * static_cast<float>(render[1]) / 2160.f,
   };
-  if (std::memcmp(&extended_settings, &objects.uploaded_extended, sizeof(ExtendedSettings)) != 0) {
-    native->UpdateSubresource(objects.extended_settings.Get(), 0, nullptr, &extended_settings, 0, 0);
-    objects.uploaded_extended = extended_settings;
+  upload(objects.extended_settings.Get(), extended_settings, &objects.uploaded_extended);
+
+  // Resolution below Full: its textures (made again at another size), its constants; else (or without them) the march
+  // at the render pixels.
+  if (resolution < 1.f && (objects.low.width != low_size[0] || objects.low.height != low_size[1])) {
+    objects.low = {.width = low_size[0], .height = low_size[1]};
   }
+  const auto low_texture = [&](TextureViews* views, DXGI_FORMAT format) {
+    return views->uav || MakeTexture(device.Get(), low_size[0], low_size[1], format, &views->uav, &views->srv);
+  };
+  const bool low = resolution < 1.f && low_texture(&objects.low.depth, DXGI_FORMAT_R32_FLOAT)
+                   && low_texture(&objects.low.occlusion, DXGI_FORMAT_R8_UNORM) && (!thin || low_texture(&objects.low.thin, DXGI_FORMAT_R32_FLOAT))
+                   && (!soft || low_texture(&objects.low.penumbra, DXGI_FORMAT_R16_FLOAT))
+                   && (!coloured
+                       || (low_texture(&objects.low.colour, DXGI_FORMAT_R8G8B8A8_UNORM) && low_texture(&objects.low.tint, DXGI_FORMAT_R8G8B8A8_UNORM)));
+  if (low) {
+    upload(objects.low_settings.Get(), march_settings(share * resolution, low_size, low_size), &objects.uploaded_low);
+    extended_settings.soft_radius = SOFT_RADIUS_2160 * static_cast<float>(low_size[1]) / 2160.f;
+    upload(objects.low_extended_settings.Get(), extended_settings, &objects.uploaded_low_extended);
+  }
+  // The march's inputs, outputs and constants: the screen's, or at Resolution below Full the low ones.
+  struct March {
+    ID3D11ShaderResourceView* depth;
+    ID3D11ShaderResourceView* thin;
+    ID3D11ShaderResourceView* colour;
+    ID3D11UnorderedAccessView* occlusion;
+    ID3D11UnorderedAccessView* penumbra;
+    ID3D11UnorderedAccessView* tint;
+    ID3D11Buffer* settings;
+    ID3D11Buffer* extended_settings;
+  };
+  const March march = low ? March{objects.low.depth.srv.Get(), objects.low.thin.srv.Get(), objects.low.colour.srv.Get(),
+                                  objects.low.occlusion.uav.Get(), objects.low.penumbra.uav.Get(), objects.low.tint.uav.Get(),
+                                  objects.low_settings.Get(), objects.low_extended_settings.Get()}
+                          : March{objects.depth_srv.Get(), objects.thin_srv.Get(), colour, objects.occlusion_uav.Get(), objects.penumbra_uav.Get(),
+                                  objects.tint_uav.Get(), objects.settings.Get(), objects.extended_settings.Get()};
 
   // Torch and Fire Shadows (screen_space_lights.hpp): this camera kept for the light draws.
   if (runtime.settings.lights != 0) {
@@ -1106,30 +1188,50 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
                       msaa ? nullptr : material},
                      {objects.depth_uav.Get()}, {nullptr, nullptr, objects.settings.Get()});
   native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
-  ComputeState::Bind(native, objects.setup.Get(), {}, {objects.arguments_uav.Get(), objects.parameters_uav.Get()}, {camera, lighting, objects.settings.Get()});
-  native->Dispatch(1, 1, 1);
+  if (low) {
+    ComputeState::Bind(native, objects.downsample.Get(), {objects.depth_srv.Get(), thin ? objects.thin_srv.Get() : nullptr, coloured ? colour : nullptr},
+                       {objects.low.depth.uav.Get(), thin ? objects.low.thin.uav.Get() : nullptr, coloured ? objects.low.colour.uav.Get() : nullptr},
+                       {nullptr, nullptr, objects.settings.Get(), objects.low_settings.Get(), objects.extended_settings.Get()});
+    native->Dispatch((low_size[0] + 7) / 8, (low_size[1] + 7) / 8, 1);
+  }
+  // The dispatch list and the light's point for a march with `constants` (sss_setup).
+  const auto list_dispatches = [&](ID3D11Buffer* constants) {
+    ComputeState::Bind(native, objects.setup.Get(), {}, {objects.arguments_uav.Get(), objects.parameters_uav.Get()}, {camera, lighting, constants});
+    native->Dispatch(1, 1, 1);
+  };
+  list_dispatches(march.settings);
   constexpr std::array<FLOAT, 4> ZEROS = {};
-  native->ClearUnorderedAccessViewFloat(objects.occlusion_uav.Get(), ZEROS.data());
+  native->ClearUnorderedAccessViewFloat(march.occlusion, ZEROS.data());
   if (extended) {
     // Bend leaves the pixels it skips (the sky) as they were.
     if (soft) {
-      native->ClearUnorderedAccessViewFloat(objects.penumbra_uav.Get(), ZEROS.data());
+      native->ClearUnorderedAccessViewFloat(march.penumbra, ZEROS.data());
     }
     if (coloured) {
-      native->ClearUnorderedAccessViewFloat(objects.tint_uav.Get(), ZEROS.data());
+      native->ClearUnorderedAccessViewFloat(march.tint, ZEROS.data());
     }
     ComputeState::Bind(native, objects.bend_extended[ExtendedVariant(runtime.settings.auto_thickness, soft || coloured)].Get(),
-                       {objects.depth_srv.Get(), objects.parameters_srv.Get(), thin ? objects.thin_srv.Get() : nullptr, coloured ? colour : nullptr},
-                       {objects.occlusion_uav.Get(), soft ? objects.penumbra_uav.Get() : nullptr, coloured ? objects.tint_uav.Get() : nullptr},
-                       {camera, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
+                       {march.depth, objects.parameters_srv.Get(), thin ? march.thin : nullptr, coloured ? march.colour : nullptr},
+                       {march.occlusion, soft ? march.penumbra : nullptr, coloured ? march.tint : nullptr},
+                       {camera, nullptr, march.settings, nullptr, march.extended_settings});
   } else {
-    ComputeState::Bind(native, objects.bend.Get(), {objects.depth_srv.Get(), objects.parameters_srv.Get()}, {objects.occlusion_uav.Get()},
-                       {nullptr, nullptr, objects.settings.Get()});
+    ComputeState::Bind(native, objects.bend.Get(), {march.depth, objects.parameters_srv.Get()}, {march.occlusion}, {nullptr, nullptr, march.settings});
   }
   native->CSSetSamplers(0, 1, objects.border.GetAddressOf());
   for (UINT index = 0; index < DISPATCH_COUNT; ++index) {
     native->CSSetConstantBuffers(3, 1, objects.dispatch_indexes[index].GetAddressOf());
     native->DispatchIndirect(objects.arguments.Get(), index * 12);
+  }
+  if (low) {
+    // Every render pixel written (the sky 0), so the screen's textures need no clear.
+    ComputeState::Bind(native, objects.upsample.Get(),
+                       {objects.depth_srv.Get(), objects.low.occlusion.srv.Get(), soft ? objects.low.penumbra.srv.Get() : nullptr,
+                        coloured ? objects.low.tint.srv.Get() : nullptr},
+                       {objects.occlusion_uav.Get(), soft ? objects.penumbra_uav.Get() : nullptr, coloured ? objects.tint_uav.Get() : nullptr},
+                       {camera, nullptr, objects.settings.Get(), objects.low_settings.Get(), objects.extended_settings.Get()});
+    native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
+    // The Debug View's Screen Edge reads the light's point in render pixels.
+    if (runtime.settings.debug_view >= 2) list_dispatches(objects.settings.Get());
   }
   // Softer Away from the Caster (sss_soft), else Softness (sss_blur).
   if (soft || runtime.settings.softness > 0.f) {
@@ -1565,14 +1667,21 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
     objects.thin_srv.Reset();
     objects.thin_depth_state.Reset();
     objects.thin_rasterizers.clear();
+    objects.low.thin = {};
   }
   if (settings.thin_light <= 0.f || !settings.coloured) {
     objects.tint_uav.Reset();
     objects.tint_srv.Reset();
+    objects.low.colour = {};
+    objects.low.tint = {};
   }
   if (settings.sun_disk <= 0.f) {
     objects.penumbra_uav.Reset();
     objects.penumbra_srv.Reset();
+    objects.low.penumbra = {};
+  }
+  if (settings.resolution >= 1.f) {
+    objects.low = {};
   }
   if (settings.lights == 0) {
     objects.lights = {};
@@ -1705,6 +1814,7 @@ inline void Install(std::span<const light_bounce::SunDraw> draws) {
         OnSunDraw, {.shader_hash = draw.shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW},
         &draw);
   }
+  installed = true;
 }
 
 // The game's device is going away: the addon's objects on it with it.
@@ -1735,6 +1845,7 @@ inline void Uninstall() {
   renodx::utils::command_action::Unregister(OnFoliageOrder);
   renodx::utils::command_action::Unregister(OnThinDraw);
   thin_installed = false;
+  installed = false;
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.objects = {};
 }

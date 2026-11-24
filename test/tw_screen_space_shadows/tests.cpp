@@ -48,8 +48,12 @@
 //     sss_foliage* / sss_distance* at 120 and 3840 samples too. The counter builds (BEND_SSS_TEST_COUNTERS): no sample
 //     within the shadow window in a skipped block. CONTROLS (must fail): Rev 0's sign-blind test, margins -1e-3 and
 //     -0.25, every block skipped.
-// --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, the CPU
-// time of a later light draw, and a battle's light draws with today's sss_lights and f6408aa1's. --time-only: that alone.
+// 12. Resolution (Experimental): at Full every output as 352a9b785's (the commit before the row; run.ps1 builds these
+//     tests on its header, SSS_ROW_BEFORE, whose --resolution-dump writes them), as case 1; 3/4, 1/2 and 1/4 against
+//     Full, their pictures side by side in the build folder (TestResolution).
+// --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames; Resolution 3/4, 1/2 and 1/4 of
+// rows off, Coloured Shadows and Softer too), torches near and far, the CPU time of a later light draw, and a battle's
+// light draws with today's sss_lights and f6408aa1's. --time-only: that alone.
 // --block-skip: case 11 alone on WARP. --block-skip-gpu: case 11 on the hardware GPU and its times (db99b716b's Bend
 // passes against this tree's) at 3840 x 2160; --block-skip-time-warp: those rows' code on WARP at 480 x 270 (a smoke run).
 #include <windows.h>
@@ -511,14 +515,16 @@ static const Vector BOX_SUN = {0.6f, -0.5f, 0.6f};
 // a pixel is apart when no run of one gives a value a run of the other gave, varying when not every run of both gives
 // the same. `same` false: the sides must differ (more than 20 pixels apart). Texels of any type (case 11: the penumbra's
 // halves, the filter, the lights' bits); "over half" counts the stable ones over `half` (an R8's 127), more than `least`
-// of them; under one in 500 pixels may vary. `allowed` (case 11) instead: the pixels that may vary or be apart, every
-// other one the same in all runs (a race shows as one varying): those Bend's waves wrote more than once (the writes
-// builds' sums, the same on both sides to the bit: whichever write lands last, apart when the sides' groups take
-// different times), or near the ones that varied (the smoothed occlusion's). Returns the varying pixels.
+// of them; under `most_varying` of the pixels (one in 500) may vary. `allowed` (case 11) instead: the pixels that may
+// vary or be apart, every other one the same in all runs (a race shows as one varying): those Bend's waves wrote more
+// than once (the writes builds' sums, the same on both sides to the bit: whichever write lands last, apart when the
+// sides' groups take different times), or near the ones that varied (the smoothed occlusion's). Returns the varying
+// pixels.
 constexpr int RUNS = 8;
 template <typename T>
 static std::vector<uint8_t> CompareRuns(const char* what, const std::vector<std::vector<T>>& ours, const std::vector<std::vector<T>>& theirs,
-                                        bool same = true, T half = 127, int least = 100, std::span<const uint8_t> allowed = {}) {
+                                        bool same = true, T half = 127, int least = 100, std::span<const uint8_t> allowed = {},
+                                        double most_varying = 1.0 / 500) {
   std::vector<uint8_t> varying(ours[0].size());
   int apart = 0;
   int outside = 0;
@@ -545,7 +551,7 @@ static std::vector<uint8_t> CompareRuns(const char* what, const std::vector<std:
     CHECK(apart > 20);
   } else if (allowed.empty()) {
     CHECK(apart == 0);
-    CHECK(over_half > least && varied < static_cast<std::ptrdiff_t>(ours[0].size() / 500));
+    CHECK(over_half > least && static_cast<double>(varied) < static_cast<double>(ours[0].size()) * most_varying);
   } else {
     CHECK(outside == 0 && over_half > least);
   }
@@ -836,6 +842,17 @@ static void TestBanner() {
   CHECK(std::fabs(decoy_means.occlusion - attila.occlusion) > 0.1);
 }
 
+// A half float's value (the penumbra's R16F; no infinities or NaNs there).
+static float HalfToFloat(uint16_t half) {
+  const uint32_t sign = (half & 0x8000u) << 16;
+  const uint32_t exponent = (half >> 10) & 0x1Fu;
+  const uint32_t mantissa = half & 0x3FFu;
+  const uint32_t bits = (exponent == 0) ? sign : (sign | ((exponent + 112u) << 23) | (mantissa << 13));
+  float value = 0.f;
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
 // The device's CreateTexture2D (TestSofter puts this in its vtable for a frame): R16_FLOAT, the penumbra's format, failing.
 using CreateTexture2D = HRESULT(STDMETHODCALLTYPE*)(ID3D11Device*, const D3D11_TEXTURE2D_DESC*, const D3D11_SUBRESOURCE_DATA*, ID3D11Texture2D**);
 static CreateTexture2D create_texture_2d = nullptr;
@@ -856,15 +873,6 @@ static void TestSofter() {
   settings.sun_disk = 2.f;
   const auto soft = ReadView<uint8_t>(RunFrame(frame, settings));
   const auto penumbra = ReadView<uint16_t>(sss::internal::runtime.objects.penumbra_srv.Get());
-  const auto half_to_float = [](uint16_t half) {
-    const uint32_t sign = (half & 0x8000u) << 16;
-    const uint32_t exponent = (half >> 10) & 0x1Fu;
-    const uint32_t mantissa = half & 0x3FFu;
-    const uint32_t bits = (exponent == 0) ? sign : (sign | ((exponent + 112u) << 23) | (mantissa << 13));
-    float value = 0.f;
-    std::memcpy(&value, &bits, sizeof(value));
-    return value;
-  };
   const Vector to_sun = {-frame.sun[0], -frame.sun[1], -frame.sun[2]};
   const float tangent = std::tan(1.f * 3.14159265f / 180.f);
   std::vector<float> ratios;
@@ -875,7 +883,7 @@ static void TestSofter() {
   for (size_t pixel = 0; pixel < penumbra.size(); ++pixel) {
     float distance = 0.f;
     if (frame.picture.hit[pixel] != -1 || Occluder(boxes, frame.picture.position[pixel], to_sun, 1e30f, &distance) < 0) continue;
-    const float radius = half_to_float(penumbra[pixel]);
+    const float radius = HalfToFloat(penumbra[pixel]);
     if (radius <= 0.f) continue;
     const Vector& p = frame.picture.position[pixel];
     const float view_z = (p[1] * frame.camera.view[1][2]) + (p[2] * frame.camera.view[2][2]);
@@ -2436,6 +2444,275 @@ static void TestBlockSkipShogun2(const std::string& before_folder, D3D_DRIVER_TY
   CHECK(total_shipped.false_skips == 0 && total_shipped.skipped > 0 && total_shipped.bend_loop > 0);
 }
 
+// Case 12's outputs at Full, each RUNS times: FullOutputs' order; `texel` its texels' bytes (0: a buffer, the same bytes in
+// every run).
+struct FullOutput {
+  const char* name;
+  size_t texel;
+};
+static constexpr std::array<FullOutput, 9> FULL_OUTPUTS = {{
+    {"rows off: the occlusion", 1},
+    {"rows off: sss_setup's parameters", 0},
+    {"rows off: sss_setup's arguments", 0},
+    {"Softness 2 px: the softened occlusion", 1},
+    {"banner, Light Through Banners + Coloured Shadows + Softer: the softened occlusion", 1},
+    {"banner: the occlusion", 1},
+    {"banner: the penumbra", 2},
+    {"banner: the filter", 4},
+    {"Torch and Fire Shadows 4 beside the box: the lit bits", 4},
+}};
+
+// Case 12's Full frames, in this build and in run.ps1's on 352a9b785's header (SSS_ROW_BEFORE, --resolution-dump): the box
+// scene with the rows off and Softness 2 px, case 3's banner with Light Through Banners, Coloured Shadows and Softer Away
+// from the Caster, a torch beside the box; output i's run r at i x RUNS + r, its bytes.
+static std::vector<std::vector<uint8_t>> FullOutputs() {
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  auto& objects = sss::internal::runtime.objects;
+  sss::internal::runtime.albedo_power = 2.f;
+  const Frame box = MakeFrame(480, 270, BOX_SCENE, BOX_SUN);
+  const std::array<Box, 1> banner_scene = {{{.low = {-1.f, -0.6f, 12.f}, .high = {1.f, 1.4f, 12.05f}, .kind = Kind::THIN, .albedo = {0.8f, 0.1f, 0.1f}}}};
+  const Frame banner = MakeFrame(480, 270, banner_scene, {0.2f, -0.6f, -0.77f});
+  sss::Settings softness = Defaults();
+  softness.softness = 2.f;
+  sss::Settings extended = Defaults();
+  extended.thin_light = 0.35f;
+  extended.coloured = true;
+  extended.sun_disk = 2.f;
+  const LightInstance torch = {.colour = {4.f, 2.f, 0.5f, 0.f}, .light = {2.f, -1.2f, 10.f, 6.f}};
+  const auto bytes = [](const auto& texels) {
+    std::vector<uint8_t> copied(texels.size() * sizeof(texels[0]));
+    std::memcpy(copied.data(), texels.data(), copied.size());
+    return copied;
+  };
+  std::vector<std::vector<uint8_t>> outputs(FULL_OUTPUTS.size() * RUNS);
+  for (int run = 0; run < RUNS; ++run) {
+    size_t output = 0;
+    const auto keep = [&](std::vector<uint8_t> kept) { outputs[(output++ * RUNS) + run] = std::move(kept); };
+    keep(ReadView<uint8_t>(RunFrame(box, Defaults())));
+    keep(ReadBuffer<uint8_t>(objects.parameters.Get()));
+    keep(ReadBuffer<uint8_t>(objects.arguments.Get()));
+    keep(ReadView<uint8_t>(RunFrame(box, softness)));
+    keep(ReadView<uint8_t>(RunFrame(banner, extended, true)));
+    keep(ReadView<uint8_t>(objects.occlusion_srv.Get()));
+    keep(bytes(ReadView<uint16_t>(objects.penumbra_srv.Get())));
+    keep(bytes(ReadView<uint32_t>(objects.tint_srv.Get())));
+    REQUIRE(LightFrames(box, std::span(&torch, 1), 4));
+    keep(bytes(ReadView<uint32_t>(objects.lights.mask_uav.Get())));
+    REQUIRE(output == FULL_OUTPUTS.size());
+  }
+  return outputs;
+}
+
+#ifndef SSS_ROW_BEFORE
+// Pictures (each `width` x `height`, what the sun draws read: 255 in the shadow) side by side as a PGM, the sun's light white.
+static void WriteStrip(const std::filesystem::path& path, UINT width, UINT height, std::span<const std::vector<uint8_t>> pictures) {
+  std::ofstream file(path, std::ios::binary);
+  file << "P5\n" << (width * pictures.size()) << ' ' << height << "\n255\n";
+  for (UINT y = 0; y < height; ++y) {
+    for (const auto& picture : pictures) {
+      for (UINT x = 0; x < width; ++x) file.put(static_cast<char>(255 - picture[(y * width) + x]));
+    }
+  }
+  REQUIRE(file.good());
+}
+
+// 12. Resolution (Experimental): at Full the module's outputs (FullOutputs) as 352a9b785's (the commit before the row:
+//     run.ps1's build of these tests on its header dumped them); 3/4, 1/2 and 1/4 against Full: the march's size the
+//     render's share rounded up and its samples that share, ground pixels wrong against the reference (under Full's
+//     + 25%), the banner's filter (no red, green over 0.5) and its occlusion (Full's within 25%), the penumbra in render
+//     pixels (Full's within 30%: median), the torches' bits Full's (their march stays there), Debug View 2's dispatch list
+//     Full's, Full (sss::Update) letting the low textures go. CONTROLS (must differ): 1/2's occlusion and its dispatch
+//     list without Debug View against Full's. The pictures side by side (Full, 3/4, 1/2, 1/4) into the test's build
+//     folder: resolution_box.pgm, _banner.pgm, _pole.pgm.
+static void TestResolution(const std::string& before_folder) {
+  std::printf("12. Resolution\n");
+  const auto dumped = ReadFile(before_folder + "\\resolution_full.bin");
+  REQUIRE(!dumped.empty());
+  std::vector<std::vector<uint8_t>> theirs;
+  for (size_t at = 0; at < dumped.size();) {
+    uint64_t size = 0;
+    REQUIRE(at + sizeof(size) <= dumped.size());
+    std::memcpy(&size, dumped.data() + at, sizeof(size));
+    at += sizeof(size);
+    REQUIRE(at + size <= dumped.size());
+    theirs.emplace_back(dumped.begin() + static_cast<ptrdiff_t>(at), dumped.begin() + static_cast<ptrdiff_t>(at + size));
+    at += size;
+  }
+  const auto ours = FullOutputs();
+  REQUIRE(theirs.size() == ours.size());
+  // Output `index` on both sides as `T` texels, compared as case 1 (`half`: CompareRuns'), up to one in 250 pixels varying
+  // (the same code on both sides; Softer's penumbra on the banner varies in about one in 500).
+  const auto compare = [&]<typename T>(size_t index, T half) {
+    std::array<std::vector<std::vector<T>>, 2> sides;
+    for (int run = 0; run < RUNS; ++run) {
+      for (size_t side = 0; side < 2; ++side) {
+        const auto& kept = ((side == 0) ? ours : theirs)[(index * RUNS) + run];
+        auto& texels = sides[side].emplace_back(kept.size() / sizeof(T));
+        std::memcpy(texels.data(), kept.data(), kept.size());
+      }
+    }
+    CompareRuns(FULL_OUTPUTS[index].name, sides[0], sides[1], true, half, 100, {}, 1.0 / 250);
+  };
+  std::printf("   Full against 352a9b785's:\n");
+  for (size_t index = 0; index < FULL_OUTPUTS.size(); ++index) {
+    if (FULL_OUTPUTS[index].texel == 0) {
+      bool same = true;
+      for (int run = 0; run < RUNS; ++run) same = same && ours[(index * RUNS) + run] == theirs[(index * RUNS) + run];
+      std::printf("   %s: %s\n", FULL_OUTPUTS[index].name, same ? "the same bytes in every run" : "APART");
+      CHECK(same);
+    } else if (FULL_OUTPUTS[index].texel == 1) {
+      compare(index, uint8_t{127});
+    } else if (FULL_OUTPUTS[index].texel == 2) {
+      compare(index, uint16_t{0});
+    } else {
+      compare(index, uint32_t{0});
+    }
+  }
+
+  constexpr std::array<float, 4> RESOLUTIONS = {1.f, 0.75f, 0.5f, 0.25f};
+  constexpr std::array<const char*, 4> LABELS = {"Full", "3/4", "1/2", "1/4"};
+  const auto folder = std::filesystem::path(before_folder).parent_path();
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  auto& objects = sss::internal::runtime.objects;
+  sss::internal::runtime.albedo_power = 2.f;
+  const auto at = [](sss::Settings settings, float resolution) {
+    settings.resolution = resolution;
+    return settings;
+  };
+  // The box, rows off.
+  const Frame box = MakeFrame(480, 270, BOX_SCENE, BOX_SUN);
+  std::array<std::vector<uint8_t>, 4> plain;
+  std::array<int, 4> wrong = {};
+  for (size_t index = 0; index < RESOLUTIONS.size(); ++index) {
+    plain[index] = ReadView<uint8_t>(RunFrame(box, at(Defaults(), RESOLUTIONS[index])));
+    wrong[index] = WrongPixels(box, BOX_SCENE, plain[index]);
+    const auto width = static_cast<UINT>(std::ceil(480.f * RESOLUTIONS[index]));
+    const auto height = static_cast<UINT>(std::ceil(270.f * RESOLUTIONS[index]));
+    const float samples = std::max(std::round(Defaults().samples * RESOLUTIONS[index]), Defaults().hard_samples + 4.f);
+    int apart = 0;
+    for (size_t pixel = 0; pixel < plain[index].size(); ++pixel) apart += (std::abs(plain[index][pixel] - plain[0][pixel]) > 64) ? 1 : 0;
+    std::printf("   the box, rows off, %s: march %u x %u, %.0f samples; %d ground pixels wrong against the reference, %d apart from Full\n",
+                LABELS[index], (index == 0) ? 480u : objects.low.width, (index == 0) ? 270u : objects.low.height,
+                (index == 0) ? objects.uploaded.samples : objects.uploaded_low.samples, wrong[index], apart);
+    if (index == 0) {
+      CHECK(!objects.low.depth.uav);
+    } else {
+      CHECK(objects.low.width == width && objects.low.height == height && objects.uploaded_low.width == static_cast<float>(width)
+            && objects.uploaded_low.render_height == static_cast<float>(height) && objects.uploaded_low.samples == samples);
+      CHECK(wrong[index] < wrong[0] * 5 / 4);
+    }
+    if (index == 2) CHECK(apart > 20);  // CONTROL
+  }
+  WriteStrip(folder / "resolution_box.pgm", 480, 270, plain);
+
+  // Case 3's banner: Light Through Banners + Coloured Shadows.
+  const std::array<Box, 1> banner_scene = {{{.low = {-1.f, -0.6f, 12.f}, .high = {1.f, 1.4f, 12.05f}, .kind = Kind::THIN, .albedo = {0.8f, 0.1f, 0.1f}}}};
+  const Frame banner = MakeFrame(480, 270, banner_scene, {0.2f, -0.6f, -0.77f});
+  std::vector<uint8_t> banner_shadow(480 * 270, 0);
+  const Vector to_sun = {-banner.sun[0], -banner.sun[1], -banner.sun[2]};
+  for (size_t pixel = 0; pixel < banner_shadow.size(); ++pixel) {
+    float distance = 0.f;
+    banner_shadow[pixel] = (banner.picture.hit[pixel] == -1 && Occluder(banner_scene, banner.picture.position[pixel], to_sun, 1e30f, &distance) >= 0) ? 1 : 0;
+  }
+  sss::Settings coloured = Defaults();
+  coloured.thin_light = 0.35f;
+  coloured.coloured = true;
+  std::array<std::vector<uint8_t>, 4> banners;
+  double full_occlusion = 0.0;
+  for (size_t index = 0; index < RESOLUTIONS.size(); ++index) {
+    banners[index] = ReadView<uint8_t>(RunFrame(banner, at(coloured, RESOLUTIONS[index]), true));
+    const auto tint = ReadView<uint32_t>(objects.tint_srv.Get());
+    double occlusion = 0.0;
+    double green = 0.0;
+    uint32_t red = 0;
+    int shadowed = 0;
+    for (size_t pixel = 0; pixel < tint.size(); ++pixel) {
+      red = std::max(red, tint[pixel] & 0xFFu);
+      if (banner_shadow[pixel] == 0) continue;
+      occlusion += banners[index][pixel] / 255.0;
+      green += ((tint[pixel] >> 8) & 0xFFu) / 255.0;
+      ++shadowed;
+    }
+    REQUIRE(shadowed > 100);
+    occlusion /= shadowed;
+    green /= shadowed;
+    if (index == 0) full_occlusion = occlusion;
+    std::printf("   the banner, %s: occlusion %.3f in its shadow (Full's x %.3f), filter green %.3f there, red at most %.3f\n", LABELS[index], occlusion,
+                occlusion / full_occlusion, green, red / 255.0);
+    CHECK(red < 26 && green > 0.5 && std::fabs((occlusion / full_occlusion) - 1.0) < 0.25);
+  }
+  WriteStrip(folder / "resolution_banner.pgm", 480, 270, banners);
+
+  // Case 4's pole: Softer Away from the Caster.
+  const std::array<Box, 1> pole_scene = {{{.low = {-0.1f, -2.f, 14.9f}, .high = {0.1f, 2.f, 15.1f}}}};
+  const Frame pole = MakeFrame(960, 540, pole_scene, {0.8f, -0.6f, 0.f});
+  sss::Settings softer = Defaults();
+  softer.sun_disk = 2.f;
+  std::array<std::vector<uint8_t>, 4> soft;
+  std::vector<uint16_t> full_penumbra;
+  for (size_t index = 0; index < RESOLUTIONS.size(); ++index) {
+    soft[index] = ReadView<uint8_t>(RunFrame(pole, at(softer, RESOLUTIONS[index])));
+    const auto penumbra = ReadView<uint16_t>(objects.penumbra_srv.Get());
+    if (index == 0) {
+      full_penumbra = penumbra;
+      continue;
+    }
+    std::vector<float> ratios;
+    for (size_t pixel = 0; pixel < penumbra.size(); ++pixel) {
+      const float full_radius = HalfToFloat(full_penumbra[pixel]);
+      const float radius = HalfToFloat(penumbra[pixel]);
+      if (full_radius > 0.f && radius > 0.f) ratios.push_back(radius / full_radius);
+    }
+    REQUIRE(ratios.size() > 50);
+    std::ranges::nth_element(ratios, ratios.begin() + static_cast<ptrdiff_t>(ratios.size() / 2));
+    const float median = ratios[ratios.size() / 2];
+    std::printf("   the pole, Softer 2, %s: penumbra over Full's median %.3f (%zu pixels)\n", LABELS[index], median, ratios.size());
+    CHECK(median > 0.7f && median < 1.3f);
+  }
+  WriteStrip(folder / "resolution_pole.pgm", 960, 540, soft);
+
+  // A torch beside the box at 1/2: its march at Full.
+  const LightInstance torch = {.colour = {4.f, 2.f, 0.5f, 0.f}, .light = {2.f, -1.2f, 10.f, 6.f}};
+  std::array<std::vector<uint32_t>, 2> masks;
+  for (size_t index = 0; index < 2; ++index) {
+    REQUIRE(LightFrames(box, std::span(&torch, 1), 4, 0.f, 0, at(Defaults(), RESOLUTIONS[index * 2])));
+    masks[index] = ReadView<uint32_t>(objects.lights.mask_uav.Get());
+  }
+  size_t lights_apart = 0;
+  for (size_t pixel = 0; pixel < masks[0].size(); ++pixel) lights_apart += (masks[0][pixel] != masks[1][pixel]) ? 1 : 0;
+  std::printf("   Torch and Fire Shadows 4 at 1/2: %zu of %zu pixels' bits apart from Full's\n", lights_apart, masks[0].size());
+  CHECK(lights_apart * 500 < masks[0].size());
+
+  // Debug View 2 (its Screen Edge reads the light's point in render pixels) at 1/2: the dispatch list Full's.
+  sss::Settings debug = Defaults();
+  debug.debug_view = 2;
+  RunFrame(box, debug);
+  const auto full_parameters = ReadBuffer<uint8_t>(objects.parameters.Get());
+  RunFrame(box, at(debug, 0.5f));
+  const auto debug_parameters = ReadBuffer<uint8_t>(objects.parameters.Get());
+  RunFrame(box, at(Defaults(), 0.5f));
+  const auto low_parameters = ReadBuffer<uint8_t>(objects.parameters.Get());
+  std::printf("   Debug View 2 at 1/2: the dispatch list %s Full's (CONTROL without it: %s)\n", (debug_parameters == full_parameters) ? "the same as" : "NOT",
+              (low_parameters == full_parameters) ? "THE SAME" : "another");
+  CHECK(debug_parameters == full_parameters && low_parameters != full_parameters);
+
+  // Full again (sss::Update): the low textures let go.
+  mock::Device mock_device;
+  mock_device.native = device;
+  mock_device.back_buffer.type = reshade::api::resource_type::texture_2d;
+  mock_device.back_buffer.texture.width = 480;
+  mock_device.back_buffer.texture.height = 270;
+  mock::Swapchain swapchain;
+  swapchain.owner = &mock_device;
+  REQUIRE(objects.low.depth.uav && objects.low.occlusion.uav);
+  sss::Update(&swapchain, at(Defaults(), 0.5f));
+  CHECK(objects.low.depth.uav);
+  sss::Update(&swapchain, Defaults());
+  std::printf("   Full again: the low textures %s\n", (!objects.low.depth.uav && !objects.low.occlusion.uav && objects.low.width == 0) ? "let go" : "KEPT");
+  CHECK(!objects.low.depth.uav && !objects.low.occlusion.uav && objects.low.width == 0);
+}
+#endif
+
 // ---- --time -----------------------------------------------------------------------------------------------------------
 
 // The median GPU time (ms) of `work` over 30 frames, after 5 to warm up.
@@ -2483,9 +2760,10 @@ static void Time(const std::string& before) {
   const Frame frame = MakeFrame(3840, 2160, boxes, {0.25f, -0.55f, -0.8f});
   sss::internal::runtime.albedo_power = 2.f;
   struct Row {
-    const char* name;
+    std::string name;
     sss::Settings settings;
     bool thin;
+    size_t full;  // its row at Full Resolution
   };
   sss::Settings base = Defaults();
   sss::Settings auto_thickness = base;
@@ -2498,17 +2776,29 @@ static void Time(const std::string& before) {
   softer.sun_disk = 0.5f;
   sss::Settings softness = base;
   softness.softness = 2.f;
-  const std::array<Row, 6> rows = {{{"rows off", base, false},
-                                    {"Softness 2 px (today's blur)", softness, false},
-                                    {"Auto Thickness", auto_thickness, false},
-                                    {"Light Through Banners", banners, true},
-                                    {"+ Coloured Shadows", coloured, true},
-                                    {"Softer Away from the Caster 0.5", softer, false}}};
-  double off = 0.0;
+  std::vector<Row> rows = {{"rows off", base, false, 0},
+                           {"Softness 2 px (today's blur)", softness, false, 1},
+                           {"Auto Thickness", auto_thickness, false, 2},
+                           {"Light Through Banners", banners, true, 3},
+                           {"+ Coloured Shadows", coloured, true, 4},
+                           {"Softer Away from the Caster 0.5", softer, false, 5}};
+#ifndef SSS_ROW_BEFORE
+  // Resolution (Experimental) below Full: rows off, + Coloured Shadows and Softer, each also against its row at Full.
+  for (const auto& [label, resolution] : {std::pair{"3/4", 0.75f}, std::pair{"1/2", 0.5f}, std::pair{"1/4", 0.25f}}) {
+    for (const size_t full : {0u, 4u, 5u}) {
+      Row row = rows[full];
+      row.name = "Resolution " + std::string(label) + ": " + rows[full].name;
+      row.settings.resolution = resolution;
+      rows.push_back(row);
+    }
+  }
+#endif
+  std::vector<double> times;
   for (const auto& row : rows) {
-    const double milliseconds = GpuMilliseconds([&] { RunFrame(frame, row.settings, row.thin); });
-    if (&row == &rows[0]) off = milliseconds;
-    std::printf("   %-34s %.3f ms (%+.3f)\n", row.name, milliseconds, milliseconds - off);
+    times.push_back(GpuMilliseconds([&] { RunFrame(frame, row.settings, row.thin); }));
+    std::printf("   %-52s %.3f ms (%+.3f)", row.name.c_str(), times.back(), times.back() - times[0]);
+    if (row.full + 1 != times.size()) std::printf(", %+.3f against Full", times.back() - times[row.full]);
+    std::printf("\n");
   }
   // Torches: the frame's first light draw (the pick and the march over last frame's 16 lights), near (9 to 11 m: each
   // one's reach covers most of the screen) and at a battle's distance (40 to 60 m).
@@ -2718,6 +3008,18 @@ int main(int argc, char** argv) {
     return 2;
   }
   const std::string mode = (argc > 2) ? argv[2] : "";
+#ifdef SSS_ROW_BEFORE
+  // run.ps1's build on 352a9b785's header: case 12's Full outputs alone, next to the shaders.
+  if (mode != "--resolution-dump") return 2;
+  std::ofstream file(std::string(argv[1]) + "\\resolution_full.bin", std::ios::binary);
+  for (const auto& output : FullOutputs()) {
+    const uint64_t size = output.size();
+    file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+    file.write(reinterpret_cast<const char*>(output.data()), static_cast<std::streamsize>(output.size()));
+  }
+  std::printf("case 12's Full outputs on 352a9b785's header: %s\n", file.good() ? "written" : "NOT WRITTEN");
+  return file.good() ? 0 : 1;
+#else
   if (mode == "--block-skip-gpu") {
     TestBlockSkip(argv[1], D3D_DRIVER_TYPE_HARDWARE);
     TestBlockSkipShogun2(argv[1], D3D_DRIVER_TYPE_HARDWARE);
@@ -2749,8 +3051,10 @@ int main(int argc, char** argv) {
     TestShogun2Banners(argv[1]);
     TestBlockSkip(argv[1], D3D_DRIVER_TYPE_WARP);
     TestBlockSkipShogun2(argv[1], D3D_DRIVER_TYPE_WARP);
+    TestResolution(argv[1]);
   }
   if (mode == "--time" || mode == "--time-only") Time(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
   return failures == 0 ? 0 : 1;
+#endif
 }
