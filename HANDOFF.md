@@ -817,6 +817,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
 - Runtime files (SDL2 2.24.1, steam_api64.dll, GCC 4.9 libstdc++ / libgcc_s, packs ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
+- PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -15028,6 +15029,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         + 3 x86 add-ons build, port suites PASS. Changelog lines in the hand-back.
         - [ ] PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; lines in the hand-back) -> merge
         sss_e2 + changelog.
+        s64a_ LOADER STUDY DONE (attila64/study_1124/s64a_loader.md + s64a_handback.md, PRIVATE; 17:55-18:17): as shipped
+        NOT the next big perf step (W3 est. ~70-100 ms vs 104.7 on 32-bit: one draw thread, immediate context, serial logic;
+        Sol's numbers have no 32-bit A/B); a good platform later (MIT, game's own shaders, a D3D11 device we could fork).
+        Blockers / notes for Sol: repo = 1.3.7 but perffix64 (PerfFix 7.4) targets loader 1.3.13; plugin trampoline broken
+        for hook lengths 12-15 (interface.inc:95-103 + plugins.inc:23); first-chance handler ends the process on any foreign
+        exception (loader.c:845-882); installer edits Steam's launch options (never run it). Offline test switches:
+        ATTILA_TEST_NO_LOBBY=1, ATTILA_NO_DISCORD_BUTTON=1, ATTILA_TEST_HOME, ATTILA_NO_SETTINGS_COPY=1 (+ perffix64
+        update_off.txt). Runtime: ELF in depot_325624 (758,951,919 B) + steam_api64 8.2.21.95 (WH3 / Pharaoh / WH2 twmm)
+        here; missing SDL2 2.24.1, Debian 8 libstdc++6 / libgcc1 4.9.2 amd64. Gate R first (one 32-bit + one 64-bit start of
+        stress_test_log2, losses per side must match, ~16 min); then A32 / B64P / C64 x3 interleaved, PresentMon 180 s,
+        ~2.5 h. ATN's hands: launch option (or direct starts), moving dxgi.dll / add-on aside, game-run go.
+        s1a_ D DONE (plan_1117/s1a_d_handback.md; origin/sh_s1a 82a6aa9f4, NOT merged): NaN guard sh.weight > 1e-12f, rvs_
+        N1 reverted (worse), k_self term (DIRECTIONAL_SELF_LIGHT = 0 until item d fits it), R1 / R2 / braces, R3 design row,
+        item d in test/tw_bounce_sh. 19 targets link; V1 WARP all PASS (203/203 hashes). Look-risk numbers for ATN: item 4
+        b4 m0.35 SH -1.33% / 0.063 / 0.885; item 6 Quarter SH -28.25% (scaled 0.773, detail 0.864); SH not closer than
+        scalar at any resolution; beta stays 0.
+        - [ ] PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the hand-back) -> k_self commit
+        -> merge sh_s1a.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
