@@ -13503,6 +13503,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         6900, execute)', then 'Exit Job Drain: gave up after 3839 ms, 0 of 15 running' (cap 1000 ms?); heapfix.log
         EXCEPTION / FREEZE; re-ran clean (budget used). -> fcr_ (Opus xHigh, read-only) root cause:
         render_mt/reports/fcr_f31_exit_crash.md. Must be root-caused before the release.
+        t4i_ ROUND 5 DONE (render_mt/reports/t4i_final_round5_handback.md): ebo_check n-th value per (second, key) -> the 7
+        ALLpOLD6 starts FAIL -> PASS offline (check.pre_r5.json kept); ebr_ SHOULD 1 / 2 in eval; run_all green (check 230,
+        analyze 226). Due: reruns; row_by_row decided after reruns' eval; day1_three / l1 / melee_pair2 not due.
+        overrides final_followup = reruns; fu_reruns 10 starts. COORD: follow-up DRY RUN CLEAN 08:58 (C: 64.5 GB free) ->
+        REAL reruns session started ~09:0x (~77 min). ebr_ quick round-5 re-check sent (read-only, no scripts).
+        NOTE: 4 Attila.exe zombies (0 threads; created 05:28 / 07:08 / 07:16:35 / 07:33, parents gone; handle holder likely
+        Steam) did not block the pre-flight; the 07:16:35 one is 1 s after the F31 crash -> fcr_ checks it. Never killed.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
