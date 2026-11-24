@@ -1,4 +1,5 @@
-# Directional Light Bounce's V1 (tests.cpp: shg_ design 8, items 1-6). WARP, amd64.
+# Directional Light Bounce's V1 (tests.cpp: shg_ design 8, items 1-6). WARP, amd64 only: the shaders are the same on
+# x86, and item 1 reads the x86 builds' (build32) shaders too.
 # -Before: a folder of copies of the add-ons' embed folders before the change (<Before>\<game>\*.cso, the x86 ones from
 # build32). Reads build\ and build32\ of this repository. Holds tools/tw's GPU job lock while it runs when -Lock names it.
 # -Items: which items (e.g. 24; all: 123456; t alone: the passes' time on the hardware GPU, under the GPU job lock).

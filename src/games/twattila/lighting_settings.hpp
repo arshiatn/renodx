@@ -27,7 +27,7 @@ namespace twattila::lighting_settings {
 template <typename ShaderInjection>
 constexpr bool HAS_MSAA = requires(const ShaderInjection& data) { data.light_bounce_msaa_pixel; };
 
-// Directional Light Bounce: the games whose light_bounce.hlsli builds its shader code have its setting (light_bounce.h).
+// Directional Light Bounce: the games with its builds of the passes have its setting (light_bounce.hpp's Passes).
 template <typename ShaderInjection>
 constexpr bool HAS_DIRECTIONAL = requires(const ShaderInjection& data) { data.light_bounce_directional; };
 

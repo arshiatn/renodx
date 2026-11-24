@@ -43,9 +43,9 @@ cbuffer light_bounce : register(b12) {
   LightBounceConstants LB;
 }
 
-// Directional Light Bounce's shader code: only where the host's light_bounce.hlsli defines LIGHT_BOUNCE_DIRECTIONAL
-// first (its registers stay out of every other add-on's passes, shg_ design 4.7); elsewhere false, and every pass
-// compiles as without it.
+// Directional Light Bounce's shader code: only in the passes' _sh entries, which define LIGHT_BOUNCE_DIRECTIONAL first
+// (Attila's light_bounce_*_sh.ps_5_0.hlsl, light_bounce.hpp's Passes: its registers stay out of every other build, shg_
+// design 4.7); elsewhere false, and every pass compiles as without it.
 #if defined(LIGHT_BOUNCE_DIRECTIONAL)
 #define BOUNCE_DIRECTIONAL (LB.directional > 0.f)
 #else

@@ -144,7 +144,8 @@ void main(float4 v0 : SV_Position0,
     const float sharp = y0 - g_w.w + dot(g_w.xyz, facing) + sh.zonal_at_pixel / sh.weight;
     const BitmaskShLight pinned = BitmaskShPinned(g_w.xyz, sh.zonal / sh.weight, normalize(sh.trace_normal));
     const float smooth = BitmaskShEvaluate(y0, float4(pinned.g, pinned.w), pinned.zonal, facing);
-    bounce *= clamp(lerp(smooth, sharp, LB.transport) / max(dot(bounce, BITMASK_SH_LUMINANCE), 0.01f * sh.brightest + 1e-6f), 0.f, 4.f);
+    // Against their own Y0 (the same weights: Y(n) / Y0, the design's gain), on the window's light.
+    bounce *= clamp(lerp(smooth, sharp, LB.transport) / max(y0, 0.01f * sh.brightest + 1e-6f), 0.f, 4.f);
   }
   const float share = t_bounce_share.Load(int3(5, 0, 0)).w;
   o0 = float4(BounceDiffuseAlbedo(texel) * bounce * LB.strength * ((share > 0.f) ? share : 1.f), 0.f);

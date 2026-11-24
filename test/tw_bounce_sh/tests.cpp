@@ -1,10 +1,10 @@
 // Directional Light Bounce (S1a: twattila/bitmask_sh.hlsli and the light_bounce_*.hlsli passes): shg_ design section 8's
-// V1, items 1-6, on WARP. Attila's passes built as its light_bounce.hlsli builds them with Directional Light Bounce
+// V1, items 1-6, on WARP. Attila's passes built as its _sh entries build them with Directional Light Bounce
 // (LIGHT_BOUNCE_DIRECTIONAL: "on" below), drawn as light_bounce.hpp draws them, on a synthetic G-buffer and camera (view
 // space = world space, the camera at the origin looking along +z; depth buffer value 1 / z):
 //   1 row off: every add-on's built Light Bounce shaders against the builds before (their code; dcl_temps before / after
-//     and with the define); Attila's chain with the define and the row off against the build before: every target's
-//     bits; the row on: they differ (CONTROL).
+//     and with the define), the _sh builds Attila's 8 alone, each the define's code; Attila's chain with the define and
+//     the row off against the build before: every target's bits; the row on: they differ (CONTROL).
 //   2 a flat room (a lit side wall, a floor, a back wall) through prepare -> levels -> trace -> resolve -> denoise ->
 //     apply at Quarter: on = off within ~1e-3 where each pixel's block lies on one plane.
 //   3 the uniform sky injected (c0 0.5, c1 n0 / 2, Y0 1): the apply's light at normals tilted 15-75 degrees off the
@@ -962,8 +962,8 @@ Passes MakePasses(const std::array<std::vector<char>, 9>& code) {
   return passes;
 }
 
-// Item 1: the built add-ons' shaders that include Light Bounce files against the builds before; Attila's chain with
-// the define.
+// Item 1: the built add-ons' shaders that include Light Bounce files against the builds before, the _sh builds; Attila's
+// chain with the define.
 void RowOff(const Passes& before, const Passes& on, const std::array<std::vector<char>, 9>& on_code) {
   std::printf("\n== 1. Row off: every add-on's shaders that include Light Bounce files: the same code as the build before\n");
   std::printf("     (Attila's passes' dcl_temps before / built / with the define)\n");
@@ -990,8 +990,21 @@ void RowOff(const Passes& before, const Passes& on, const std::array<std::vector
           }
         }
       }
-      Verdict(files > 0 && same == files, "  %-31s %-7s %2zu shaders, %2zu the same code%s%s", game.name, build + 1, files, same,
-              temps.empty() ? "" : " |", temps.c_str());
+      // Directional Light Bounce's _sh builds (light_bounce.hpp's Passes): Attila's 8 alone, each the define's code.
+      size_t sh_files = 0;
+      size_t sh_same = 0;
+      for (const auto& entry : std::filesystem::directory_iterator(embed, error)) {
+        const std::string name = entry.path().filename().string();
+        if (!name.starts_with("light_bounce_") || !name.ends_with("_sh.cso")) continue;
+        ++sh_files;
+        for (size_t i = 0; i < PASS_NAMES.size(); ++i) {
+          if (name == std::string(PASS_NAMES[i]) + "_sh.cso") sh_same += (Code(ReadFile(entry.path().string())) == Code(on_code[i])) ? 1 : 0;
+        }
+      }
+      const size_t sh_expected = (std::strcmp(game.name, "twattila") == 0) ? 8 : 0;
+      Verdict(files > 0 && same == files && sh_files == sh_expected && sh_same == sh_expected,
+              "  %-31s %-7s %2zu shaders, %2zu the same code, %zu _sh (%zu the define's)%s%s", game.name, build + 1, files, same,
+              sh_files, sh_same, temps.empty() ? "" : " |", temps.c_str());
     }
   }
 
