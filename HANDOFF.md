@@ -15511,6 +15511,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         the helper release check fails a player helper built without it.
         - [ ] coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_runs) in a GPU window when
         no game run is planned -> merge ho_gbf_g23 (one merge, rvh_'s G-M1) -> pds2_ can start.
+        GATE RUN 11-24 23:47 (gbf\runs\20261124_234742_40628\summary.txt) EXIT 3: PASS s4a debug / release (+3 MiB),
+        job1 bias + masks, job2 ambient a / b + c bounce, job3, job4, job5, job6, job7; FAIL job2-a / b bounce (s4 vs s1
+        differ, byte-equal expected), g23-t3 (harness exit 2; DLSS 240 / 390, FSR 30 / 90), g23-t4a / b (setup: no
+        harness exit / line / helper log, helper alive 10 s after); OPEN job4 water checks (base fails too). Leftover
+        renodx-tw-dlaa64.exe pid 8576 (00:00:30, 1 thread, 0 handles, no path, parent gone = stuck in kernel at exit;
+        left alone). -> gbf_ resumed to root-cause each FAIL (regression / bar / runner) from logs; NO MERGE until a
+        clean re-run.
         ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
         continue?' -> YES: no new agents except a64ab_'s fix round for a64abr_'s review; running ones (s3fr_, a64abr_,
         a64p0r_, a64bd_, a64pl_) finish; then window 1 stage A on a quiet CPU (no builds); then the G23 gate, s3f_'s
