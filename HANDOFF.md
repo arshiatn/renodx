@@ -830,6 +830,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
+- Sol SMOKE STARTED 00:2x (-Smoke -Package ...sol_fixes_1124\build -Exe64Sha a75c1 ... | ?
 - ATN 11-25 ~00:0x: WPR traces on D: (C: 82 GB free, D: 327 GB). His tasks RenoDX_ ... | ?
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
 - vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows). | ?
@@ -15301,6 +15302,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         ([Attila64Plugin] BattleStep, restart-only, default 0 until the bit-exact gate, then fastest); versioned POD
         block + export. Wave 1: G1 generator -> P1 plugin folder -> A1 add-on side -> R1 review. E items have owner
         checks (section 17).
+        - [x] a64plr_ PLUGIN REVIEW = GO WITH CHANGES (hand-back attila64/a64plr_review_handback.md): init writes safe,
+        sites clean, musttail + Dekker sound, IA slot 15 proved (Sol binds once at device creation). M1 D15 removal list;
+        M2 seam with bring-up (port return before shadow_pass::Update, Install skipped before the block, compile-time
+        rows) -> block lookup before the port return, Install / Update when READY, runtime rows, one status note row.
+        S2 hooks_wanted bits (~0.1 ms / frame otherwise), S3 measurement on the hook stack, S9 C8-only fields wait (all
+        before P1 freezes plugin_block.h), S1 catch-handler gate, S4 Shadow refresh 2-4, S5 bone hook = 8 int args +
+        bool. -> a64pl_ fix round sent; a64bdr_ told about M2.
         - [ ] AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> designs/plugin_design_review.md)
         + C8 census agent (read-only Opus xHigh, brief section 15 -> census/c8_rows.tsv + c8_notes.md).
         - [ ] gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j 3, blind to build_slots
@@ -15407,6 +15415,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         logged fallback, overlay right on all formats, patch byte-exact, From: = ATN's real noreply. R2-1 one message line
         (overlay stays in the picture until the next frame), R2-2 Sol's dx11_device.inc:355-356 comment, nits (sha label,
         near-game page in in_own_code) -> s3f_ last round sent -> coord runs the Sol smoke -> ATN sends.
+        - [x] s3f_ ROUND 3 DONE (hand-back attila64/s3f_round3_handback.md): 1ada3bb (overlay + Sol's comment), dc073f7
+        (near-game page counted as own code; new near_av case + control); suite 40 cases OK; exe sha256 a75c1b8a63a267d6...
+        (verified), zip 8ac2c30a..., patch 4 commits e471d79c...; message + TESTS_for_sol updated.
+        - [ ] Sol SMOKE STARTED 00:2x (-Smoke -Package ...sol_fixes_1124\build -Exe64Sha a75c1b8a63a267d6, ATN's
+        wildcard line) -> PASS -> ATN sends message_for_sol.md + patch + zip + TESTS_for_sol.md.
         - [ ] ATN 11-25 ~00:0x: WPR traces on D: (C: 82 GB free, D: 327 GB). His tasks RenoDX_WPR_Start = 'wpr.exe -start
         CPU -start GPU -filemode', RenoDX_WPR_Stop = 'wpr.exe -stop C:\...\nsight\attila_run\attila_wpr.etl' (coord
         never edits them) -> asked ATN to add -recordtempto D:\RenoDX_WPR to Start and stop into D:\RenoDX_WPR (folder
