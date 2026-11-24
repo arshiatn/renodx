@@ -14476,6 +14476,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         only; A2 study only; M4 study GO. -> pk5_ Rev 1.1 (sent, text only).
         - [ ] PK5 S0 implementer (tests only: part 34 copy_bench.inc) after fxi_'s ec_test_fix lands (tests.cpp one
         writer); timing only on an idle PC. Fable 5.2 Medium TRIAL stays on the first engine_code.hpp step (PK4 S1).
+        rv3_ PK3 REVIEW (render_mt/fca/designs/rv3_pk3_review.md + _handback.md; 0 / 6 MUST / 9 SHOULD / 8 NIT): B1 / B2
+        bit-exact by construction (checked vs +0x182E080 / +0x182E20E) GO with fixes; volley model holds, c9 outside it
+        (c9 package ~-1.3, B1 c9 -0.55..-0.86); MUST-4 B's record / texel stores (55 % of B in late melee) need an option
+        or a rejection. B3 DECIDED: pk3_'s twattila::PrefetchRead in prefetch.hpp (MSVC presets + CI exist; no literal
+        gives T0 on both); PK3 S1 merges alone first, pk2_ only includes it. animation_rows.hpp compiles into Attila /
+        Rome II / Thrones x86 (stub on x64); draw_recording.hpp Attila-only. Start split corrected: animation 0.148 /
+        0.928 / 0.046 ms/f. -> pk3_ Rev 1 (sent) -> rv3_ re-check 8.1 / 8.3 / 9 / 10; pk2_ told the B3 form + split.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
