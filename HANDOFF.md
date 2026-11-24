@@ -14086,6 +14086,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         contradictions (fa4_ vs fa8_ dlmalloc owner, fa6_ 'EJOB' vs fa5_ WU existing row, S8-2 on dropped B2, prefetch hint,
         trap bundle), de-dup, overlap-adjusted RANKED list, design packages (one writer per file), the ONE verify bench plan,
         ATN questions with numbers -> render_mt/fca/fca_critic_ranked.md. Then Fable xHigh designs per package.
+        rvh_ GBF GATE SCRIPT REVIEW NOT GO (reviews/rvh_gbf_gate_script_review.md + _handback.md): B1 g23 tree lacks 11
+        headers the f176f3ece bridge includes (8 twattila + 3 mods/swapchain*) -> -M fails after ~15 min; M1 check.py:122
+        same() compares the wrong file (a / b + job7 can never FAIL); M2 crash mask misses 0xC0000409; M3 CL / LINK env not
+        scrubbed; 3 SHOULD, 8 NIT. Verified OK: ATN's rules, deletes, junctions, kill guard, slots, revisions, bars, PS 5.1.
+        -> gbf_ r3 (sent) -> rvh_ re-check -> first run in a GPU window.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
