@@ -1283,10 +1283,15 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
         }
       }
     }
+    // DLSS preset K (NVSDK_NGX_DLSS_Hint_Render_Preset_K, 11) reads an exposure: 1 for this input, the tone mapper's output
+    // (NVIDIA's guide 3.10 prefers it to AutoExposure). An A/B behind RENODX_TW_TEST_DLSS_EXPOSURE until it is measured;
+    // 0: AutoExposure, as before.
+    static const bool exposure_test = GetEnvironmentVariableW(L"RENODX_TW_TEST_DLSS_EXPOSURE", nullptr, 0) != 0;
     // The camera's jitter (y up) as it moves the picture (y down), as TAA's.
-    resolved = dlaa_bridge::Evaluate(native, input_width, input_height, runtime.jitter[0], -runtime.jitter[1], !continued,
-                                     runtime.settings.dlaa_preset, reconstruct ? &reconstruction : nullptr,
-                                     (method != Method::DLAA ? &reconstruction.view_to_clip : nullptr));
+    resolved = dlaa_bridge::Evaluate(
+        native, input_width, input_height, runtime.jitter[0], -runtime.jitter[1], !continued, runtime.settings.dlaa_preset,
+        reconstruct ? &reconstruction : nullptr, (method != Method::DLAA ? &reconstruction.view_to_clip : nullptr),
+        {.exposure = (exposure_test && method == Method::DLAA && !reconstruct && runtime.settings.dlaa_preset == 11u) ? 1.f : 0.f});
     if (resolved) {
       bind(objects.dlaa_finish.Get(),
            {dlaa_bridge::bridge.output.srv.Get(), frame_view, dlaa_bridge::bridge.motion.srv.Get(),
