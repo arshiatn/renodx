@@ -182,7 +182,7 @@ class RayReconstruction12 {
   // Its commands done, the textures let go (the game's GPU can be frames behind: releasing them under a request still
   // waiting for its value removed the device, 2026-11-03).
   void Close() {
-    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "Ray Reconstruction");
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, GPU_WAIT_TIMEOUT, "Ray Reconstruction");
     inputs_ = {};
     hit_distance_.Reset();
     extra_ = {};
@@ -216,7 +216,7 @@ class RayReconstruction12 {
   // Its feature freed (Super Resolution runs instead); the next request makes it again.
   void ReleaseFeature() {
     if (feature_ == nullptr) return;
-    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "Ray Reconstruction");
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, GPU_WAIT_TIMEOUT, "Ray Reconstruction");
     NVSDK_NGX_D3D12_ReleaseFeature(feature_);
     feature_ = nullptr;
   }
@@ -228,7 +228,7 @@ class RayReconstruction12 {
   [[nodiscard]] const std::string& Status() const { return status_; }
 
   ~RayReconstruction12() {
-    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "Ray Reconstruction");
+    WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, GPU_WAIT_TIMEOUT, "Ray Reconstruction");
     if (feature_ != nullptr) NVSDK_NGX_D3D12_ReleaseFeature(feature_);
     if (parameters_ != nullptr) NVSDK_NGX_D3D12_DestroyParameters(parameters_);
     if (initialized_) NVSDK_NGX_D3D12_Shutdown1(device_.Get());
@@ -248,9 +248,6 @@ class RayReconstruction12 {
     return false;
   }
 
-  // The CPU's longest wait for this queue (a slot's last use is SLOTS requests back, normally long done).
-  static constexpr DWORD FENCE_TIMEOUT = 5000;
-
   // The request's commands into the slot's list (the feature made again when its size, mode or preset changes); false:
   // nothing recorded.
   bool Record(const Request& request, Slot* slot) {
@@ -261,7 +258,7 @@ class RayReconstruction12 {
       first_frame_ = true;
       return false;
     };
-    if (!WaitForGpu(own_fence_.Get(), event_, slot->value, FENCE_TIMEOUT)) return unfinished();
+    if (!WaitForGpu(own_fence_.Get(), event_, slot->value, GPU_WAIT_TIMEOUT)) return unfinished();
     ID3D12GraphicsCommandList* list = slot->list.Get();
     HRESULT list_reset = slot->allocator->Reset();
     if (SUCCEEDED(list_reset)) list_reset = list->Reset(slot->allocator.Get(), nullptr);
@@ -270,7 +267,7 @@ class RayReconstruction12 {
     if (feature_ == nullptr || width_ != request.width || height_ != request.height || output_width_ != request.output_width
         || output_height_ != request.output_height || preset_ != request.preset || create_flags_ != request.create_flags) {
       if (feature_ != nullptr) {
-        if (!WaitForGpu(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT)) {
+        if (!WaitForGpu(own_fence_.Get(), event_, own_value_, GPU_WAIT_TIMEOUT)) {
           list->Close();
           return unfinished();
         }

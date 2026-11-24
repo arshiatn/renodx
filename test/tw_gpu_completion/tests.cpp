@@ -8,6 +8,7 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 #include "src/games/twattila/dlaa_helper/gpu_completion.hpp"
 using namespace twattila::dlaa_helper;
 using Microsoft::WRL::ComPtr;
@@ -15,9 +16,38 @@ using Microsoft::WRL::ComPtr;
 struct FenceControl {
   uint64_t completed = 0;
   HRESULT registration = E_FAIL;
+  HRESULT signal_result = S_OK;
+  int signals = 0;
   uint64_t GetCompletedValue() { return completed; }
   HRESULT SetEventOnCompletion(uint64_t, HANDLE) { return registration; }
+  HRESULT Signal(uint64_t value) {
+    ++signals;
+    if (SUCCEEDED(signal_result)) completed = value;
+    return signal_result;
+  }
 };
+// A real fence whose registrations are counted (the rescue's wait must not spin on a stale wake).
+struct CountingFence {
+  ID3D12Fence* fence = nullptr;
+  int registrations = 0;
+  uint64_t GetCompletedValue() { return fence->GetCompletedValue(); }
+  HRESULT SetEventOnCompletion(uint64_t value, HANDLE event) {
+    ++registrations;
+    return fence->SetEventOnCompletion(value, event);
+  }
+  HRESULT Signal(uint64_t value) { return fence->Signal(value); }
+};
+// CONTROL: the rescue's signalling before G23 2a (2 s for the whole set, polled, timed by the tick count).
+template <typename Fence>
+bool OldSignalAbandoned(Fence* fence, uint64_t value, DWORD timeout) {
+  const ULONGLONG started = GetTickCount64();
+  for (uint64_t completed = fence->GetCompletedValue(); completed < value; completed = fence->GetCompletedValue()) {
+    if (GetTickCount64() - started >= timeout) return false;
+    if ((completed & 1u) != 0 && FAILED(fence->Signal(completed + 1))) return false;
+    Sleep(1);
+  }
+  return true;
+}
 // What the helper exe installs (main.cpp), with the line in a file of the test's.
 static const wchar_t* stop_log = nullptr;
 static int unproven_calls = 0;
@@ -125,6 +155,103 @@ int wmain(int argc, wchar_t** argv) {
   WaitForGpuBeforeRelease(marker.Get(), event, 2, 30, "DLSS");
   CHECK(unproven_calls == 1 && unproven_owner == "live");
 
+  // The rescue (G23 2a): the game on a fence of its own, waiting for each of the rescue's even values and signalling the next
+  // odd one `gaps[i]` ms later, until `stop`.
+  std::atomic<bool> stop_game = false;
+  const auto late_game = [&](ID3D12Fence* chain, std::vector<DWORD> gaps) {
+    return std::thread([&stop_game, chain, gaps = std::move(gaps)] {
+      const HANDLE reached = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+      for (size_t step = 0; step < gaps.size(); ++step) {
+        const uint64_t even = step * 2;
+        if (FAILED(chain->SetEventOnCompletion(even, reached))) break;
+        while (!stop_game.load() && chain->GetCompletedValue() < even) WaitForSingleObject(reached, 20);
+        if (stop_game.load()) break;
+        Sleep(gaps[step]);
+        chain->Signal(even + 1);
+      }
+      CloseHandle(reached);
+    });
+  };
+  const auto new_chain = [&] {
+    ComPtr<ID3D12Fence> chain;
+    device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&chain));
+    return chain;
+  };
+  const HANDLE moved = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  const HANDLE game_alive = CreateEventW(nullptr, TRUE, FALSE, nullptr);  // stands in for the game's process handle
+  CHECK(moved != nullptr && game_alive != nullptr);
+  HRESULT error = E_FAIL;
+  int lates = 0;
+  const auto late = [&](uint64_t) { ++lates; };
+  {
+    // A GPU that moves every 500 ms (10 pairs, about 5 s) is never late; today's 2 s for the whole set gave up on it.
+    ComPtr<ID3D12Fence> chain = new_chain();
+    std::thread game = late_game(chain.Get(), std::vector<DWORD>(10, 500));
+    started = GetTickCount64();
+    CHECK(RescueSet(chain.Get(), moved, game_alive, 20, true, late, &error) && error == S_OK && lates == 0);
+    CHECK(GetTickCount64() - started >= 4500);
+    game.join();
+    ComPtr<ID3D12Fence> control_chain = new_chain();
+    std::thread control_game = late_game(control_chain.Get(), std::vector<DWORD>(10, 500));
+    started = GetTickCount64();
+    const bool control_freed = OldSignalAbandoned(control_chain.Get(), 20, 2000);
+    const ULONGLONG control_ms = GetTickCount64() - started;
+    stop_game = true;
+    control_game.join();
+    stop_game = false;
+    CHECK(!control_freed && control_ms >= 2000 && control_ms < 3000);  // CONTROL
+  }
+  {
+    // A GPU 3 s behind, then moving: with every set before it freed one late line and no limit; else the 2 s.
+    ComPtr<ID3D12Fence> chain = new_chain();
+    std::thread game = late_game(chain.Get(), {3000, 500, 500, 500});
+    CHECK(RescueSet(chain.Get(), moved, game_alive, 8, true, late, &error) && error == S_OK && lates == 1);
+    game.join();
+    ComPtr<ID3D12Fence> bounded_chain = new_chain();
+    std::thread bounded_game = late_game(bounded_chain.Get(), {3000, 500, 500, 500});
+    started = GetTickCount64();
+    const bool bounded_freed = RescueSet(bounded_chain.Get(), moved, game_alive, 8, false, late, &error);
+    const ULONGLONG bounded_ms = GetTickCount64() - started;
+    stop_game = true;
+    bounded_game.join();
+    stop_game = false;
+    CHECK(!bounded_freed && error == HRESULT_FROM_WIN32(ERROR_TIMEOUT) && lates == 1 && bounded_ms >= 2000 && bounded_ms < 2900);
+  }
+  {
+    // The game ends during the wait: false with S_OK at its end, not a timeout.
+    ComPtr<ID3D12Fence> chain = new_chain();
+    std::thread ending([&] {
+      Sleep(300);
+      SetEvent(game_alive);
+    });
+    started = GetTickCount64();
+    CHECK(!SignalAbandoned(chain.Get(), moved, game_alive, 2, INFINITE, &error) && error == S_OK);
+    const ULONGLONG ended_ms = GetTickCount64() - started;
+    ending.join();
+    CHECK(ended_ms >= 290 && ended_ms < 1000);
+    ResetEvent(game_alive);
+  }
+  {
+    // Failures: a fence at all ones needs no call; a failed registration and a failed Signal end the set with their error.
+    FenceControl removed = {.completed = UINT64_MAX, .registration = S_OK};
+    CHECK(SignalAbandoned(&removed, moved, game_alive, 2, INFINITE, &error) && error == S_OK && removed.signals == 0);
+    FenceControl unregistered = {.completed = 0, .registration = E_FAIL};
+    CHECK(!SignalAbandoned(&unregistered, moved, game_alive, 2, INFINITE, &error) && error == E_FAIL);
+    FenceControl lost = {.completed = 1, .registration = S_OK, .signal_result = DXGI_ERROR_DEVICE_REMOVED};
+    CHECK(!SignalAbandoned(&lost, moved, game_alive, 2, INFINITE, &error) && error == DXGI_ERROR_DEVICE_REMOVED && lost.signals == 1);
+  }
+  {
+    // A stale wake (the event already set) costs one more registration at most: no spin.
+    ComPtr<ID3D12Fence> chain = new_chain();
+    CountingFence counted = {.fence = chain.Get()};
+    std::thread game = late_game(chain.Get(), {100});
+    SetEvent(moved);
+    CHECK(SignalAbandoned(&counted, moved, game_alive, 2, INFINITE, &error) && error == S_OK && counted.registrations <= 2);
+    game.join();
+  }
+  CloseHandle(game_alive);
+  CloseHandle(moved);
+
   // A removed device (a GPU reset: its fence reads all ones) leaves nothing to wait for: every wait returns at once, also
   // for values never signalled, and the handler stays out of it, so the owner can make a new device.
   control.completed = UINT64_MAX;
@@ -176,5 +303,6 @@ int wmain(int argc, wchar_t** argv) {
   CloseHandle(event);
   std::puts("PASS: WARP completion, timeout, stale wake, failed registration, missing/invalid event, no fence, release wait "
             "without and with a handler, D3D11.4 fence (signal, value behind a gate's wait), removed device (control, late, "
-            "real WARP removal), logged terminal child exit");
+            "real WARP removal), logged terminal child exit; the rescue (a moving GPU never late, CONTROL the old 2 s; 3 s late:"
+            " one line and freed, bounded: ERROR_TIMEOUT; the game's end; failures; no spin)");
 }

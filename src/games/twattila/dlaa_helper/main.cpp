@@ -158,7 +158,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       failed_step = step;
       why = std::move(what);
     };
-    const HANDLE game = OpenProcess(PROCESS_DUP_HANDLE, FALSE, game_id);
+    // SYNCHRONIZE: a set's wait also ends with the game.
+    const HANDLE game = OpenProcess(PROCESS_DUP_HANDLE | SYNCHRONIZE, FALSE, game_id);
     if (game == nullptr) {
       fail(HELPER_EXIT_RESCUE_GAME, std::format("the game's process: error {}", GetLastError()));
     }
@@ -176,7 +177,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                FAILED(created)) {
       fail(HELPER_EXIT_RESCUE_DEVICE, std::format("D3D12 device 0x{:08X}", static_cast<uint32_t>(created)));
     }
-    for (int index = 5; device && index + 1 < argument_count; index += 2) {
+    // Woken by each move of a set's fence (auto-reset: RescueSet reads the fence again).
+    const HANDLE moved = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (moved == nullptr) {
+      fail(HELPER_EXIT_RESCUE_SIGNAL, std::format("its event, error {}", GetLastError()));
+    }
+    bool game_ended = false;
+    for (int index = 5; device && moved != nullptr && !game_ended && index + 1 < argument_count; index += 2) {
       const int set = (index - 5) / 2;
       ComPtr<ID3D12Fence> fence;
       HANDLE shared_fence = nullptr;
@@ -189,11 +196,27 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         fail(HELPER_EXIT_RESCUE_FENCE, std::format("set {}: its fence 0x{:08X}", set, static_cast<uint32_t>(opened)));
         continue;
       }
-      if (const uint64_t value = _wcstoui64(arguments[index + 1], nullptr, 10); !twattila::dlaa_helper::SignalAbandoned(fence.Get(), value, 2000)) {
-        fail(HELPER_EXIT_RESCUE_SIGNAL, std::format("set {}: its fence at {} after 2 s, wanted {}", set, fence->GetCompletedValue(), value));
+      const uint64_t value = _wcstoui64(arguments[index + 1], nullptr, 10);
+      HRESULT error = S_OK;
+      if (twattila::dlaa_helper::RescueSet(fence.Get(), moved, game, value, failed_step == HELPER_EXIT_DONE,
+                                           [&](uint64_t completed) {
+                                             LogWithTime(std::format("[TW DLAA helper] Rescue: set {}: the game's GPU did not move for 2 s (its fence at {}, "
+                                                                     "wanted {}); waiting until it gets there or the game ends.",
+                                                                     set, completed, value)
+                                                             .c_str());
+                                           },
+                                           &error)) {
+        continue;
+      }
+      game_ended = (error == S_OK);
+      if (!game_ended) {
+        fail(HELPER_EXIT_RESCUE_SIGNAL, std::format("set {}: its fence at {}, wanted {} (0x{:08X})", set, fence->GetCompletedValue(), value,
+                                                    static_cast<uint32_t>(error)));
       }
     }
-    if (failed_step == HELPER_EXIT_DONE) {
+    if (game_ended) {
+      LogWithTime("[TW DLAA helper] The helper had stopped: the game ended before its GPU got to what it waited for.");
+    } else if (failed_step == HELPER_EXIT_DONE) {
       LogWithTime("[TW DLAA helper] The helper had stopped: what the game's GPU waited for from it is signalled.");
     } else {
       LogWithTime(std::format("[TW DLAA helper] The helper had stopped: what the game's GPU waited for from it could not be signalled ({}; exit code {}).",
@@ -1390,7 +1413,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   for (auto& parked : parked_generations) {
     parked.release();
   }
-  // Its work can only finish with the game's GPU, which is gone: no wait for it.
+  // Their work can only finish with the game's GPU, which is gone: no wait for it.
   stalled_scene.release();
+  backend.Abandon();
   return static_cast<int>(exit_code);
 }
