@@ -22,8 +22,8 @@
 // Screen-space shadows (Experimental): Bend Studio's screen-space shadows (Apache 2.0, Copyright 2023 Sony Interactive
 // Entertainment; the Total War games' passes twattila/sss_bend.cs_5_0.hlsl and sss_blur.cs_5_0.hlsl as they are, their
 // core twshogun2completeedition/shaders/bend_sss_gpu.hlsli) on an Unreal game's sun, in place of the game's own contact
-// shadows, before the game's sun reads its shadowing: the scene depth as 1 - device Z (ue_sss_depth: the standard depth,
-// far 1, those passes take), the dispatch list for the View's camera and the game's sun (each game's ue_sss_setup, on the
+// shadows, before the game's sun reads its shadowing: the scene depth as 1 - device Z (host_sss_depth: the standard depth,
+// far 1, those passes take), the dispatch list for the View's camera and the game's sun (each game's host_sss_setup, on the
 // GPU as the game's constants are; it also writes the View's render size into the settings, copied into the constant
 // buffer sss_bend and sss_blur read), Bend's dispatches (indirect) into the occlusion (1 - the shadow term), with Softness
 // smoothed along surfaces (sss_blur). The game's adapter puts 1 - the occlusion into its sun's shadowing. In the add-on's
@@ -34,7 +34,7 @@ using Microsoft::WRL::ComPtr;
 
 struct Inputs {
   ID3D11ShaderResourceView* depth = nullptr;  // the scene depth (device Z, reversed: the sky 0)
-  dlss::ConstantBinding sun;                  // the game's ue_sss_setup's b0: where it finds the sun
+  dlss::ConstantBinding sun;                  // the game's host_sss_setup's b0: where it finds the sun
   dlss::ConstantBinding view;                 // the View uniform buffer (its b1)
   float render_share = 1.f;                   // the render size over the output's (DLSS below 100%: below 1)
 };
@@ -52,7 +52,7 @@ struct Objects {
   ComPtr<ID3D11ComputeShader> setup;
   ComPtr<ID3D11ComputeShader> bend;
   ComPtr<ID3D11ComputeShader> blur;
-  // sss.hlsli's sss_settings: the add-on's (render size 0, ue_sss_setup's b3), the setup's with the render size (raw)
+  // sss.hlsli's sss_settings: the add-on's (render size 0, host_sss_setup's b3), the setup's with the render size (raw)
   // and its copy (sss_bend's and sss_blur's b2).
   ComPtr<ID3D11Buffer> base_settings;
   ComPtr<ID3D11Buffer> written_settings;
@@ -145,7 +145,7 @@ inline ID3D11ShaderResourceView* Compute(ID3D11DeviceContext* context, const Inp
         .MaxLOD = D3D11_FLOAT32_MAX,
     };
     objects.failed = !dlss::MakeContextState(device.Get(), &objects.private_state)
-                     || !compute(__ue_sss_depth, &objects.depth) || !compute(__ue_sss_setup, &objects.setup)
+                     || !compute(__host_sss_depth, &objects.depth) || !compute(__host_sss_setup, &objects.setup)
                      || !compute(__sss_bend, &objects.bend) || !compute(__sss_blur, &objects.blur)
                      || FAILED(device->CreateBuffer(&settings_desc, nullptr, objects.base_settings.GetAddressOf()))
                      || FAILED(device->CreateBuffer(&settings_desc, nullptr, objects.settings.GetAddressOf()))

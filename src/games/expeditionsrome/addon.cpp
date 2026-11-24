@@ -71,6 +71,14 @@ bool IsHdrOutput() {
 // Hue Clip Emulation's default (test/tw_psychov35's hue report: closest to the game's SDR picture; part 5, UE's film curve).
 constexpr float HUE_CLIP_DEFAULT = 70.f;
 
+// PsychoV35's defaults that follow the game's response (shared.h): the film curve's shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", EXR_V35_CONTRAST},
+    {"v35_shadows", EXR_V35_SHADOWS},
+    {"v35_saturation", EXR_V35_SATURATION},
+    {"v35_highlight_contrast", EXR_V35_HIGHLIGHT_CONTRAST},
+};
+
 void ApplyResetPreset() {
   // Peak / Paper White / UI, Settings Mode and output are kept.
   renodx::utils::settings::UpdateSettings({
@@ -98,6 +106,7 @@ void ApplyResetPreset() {
       {"volumetric_fog", 1.f},
   });
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 // SDR: the game's own tonemapper and look; the game's and the UI's white are the monitor's own.
@@ -417,7 +426,15 @@ void BuildRuntimeData() {
              "Extra (Probably not used)", "Multiplier on the game's chromatic aberration (where the game uses it).",
              IsHDRMode),
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
   // Ambient Occlusion: GT-VBAO in the game's last AO level (talesofarise/ue_bitmask_ao.hlsli; the graphics page takes them).
   const auto ambient_occlusion = talesofarise::hdr_only::AmbientOcclusionRows({
       .mode = &ssao_mode_row,

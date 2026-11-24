@@ -377,7 +377,7 @@ void main(uint3 vThreadID: SV_DispatchThreadID) {
     r4.z = r4.w ? r4.z : 0;
     r3.w = r3.w * r4.x + r4.z;
     r4.x = cmp(r2.w < -r2.w);
-    r4.x = r4.x ? -3.141593 : 0;
+    r4.x = r4.x ? -3.14159274 : 0;
     r3.w = r4.x + r3.w;
     r4.x = min(r2.w, r1.w);
     r1.w = max(r2.w, r1.w);
@@ -598,7 +598,7 @@ void main(uint3 vThreadID: SV_DispatchThreadID) {
         r8.z = r8.w ? r8.z : 0;
         r6.w = r6.w * r8.x + r8.z;
         r8.x = cmp(r5.w < -r5.w);
-        r8.x = r8.x ? -3.141593 : 0;
+        r8.x = r8.x ? -3.14159274 : 0;
         r6.w = r8.x + r6.w;
         r8.x = min(r5.w, r4.w);
         r4.w = max(r5.w, r4.w);
@@ -1053,7 +1053,7 @@ void main(uint3 vThreadID: SV_DispatchThreadID) {
           r8.z = r8.w ? r8.z : 0;
           r6.w = r6.w * r8.x + r8.z;
           r8.x = cmp(r5.w < -r5.w);
-          r8.x = r8.x ? -3.141593 : 0;
+          r8.x = r8.x ? -3.14159274 : 0;
           r6.w = r8.x + r6.w;
           r8.x = min(r5.w, r4.w);
           r4.w = max(r5.w, r4.w);

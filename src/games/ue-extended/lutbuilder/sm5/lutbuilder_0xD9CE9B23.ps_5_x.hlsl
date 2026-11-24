@@ -358,7 +358,7 @@ void main(linear noperspective float2 v0 : TEXCOORD0, float4 v1 : SV_POSITION0,
   r4.z = r4.w ? r4.z : 0;
   r4.x = r4.x * r4.y + r4.z;
   r4.y = cmp(r2.w < -r2.w);
-  r4.y = r4.y ? -3.141593 : 0;
+  r4.y = r4.y ? -3.14159274 : 0;
   r4.x = r4.x + r4.y;
   r4.y = min(r2.z, r2.w);
   r2.z = max(r2.z, r2.w);
@@ -631,7 +631,7 @@ void main(linear noperspective float2 v0 : TEXCOORD0, float4 v1 : SV_POSITION0,
         r8.x = r8.z ? r8.x : 0;
         r5.w = r5.w * r6.w + r8.x;
         r6.w = cmp(r4.w < -r4.w);
-        r6.w = r6.w ? -3.141593 : 0;
+        r6.w = r6.w ? -3.14159274 : 0;
         r5.w = r6.w + r5.w;
         r6.w = min(r4.w, r3.w);
         r3.w = max(r4.w, r3.w);
@@ -1090,7 +1090,7 @@ void main(linear noperspective float2 v0 : TEXCOORD0, float4 v1 : SV_POSITION0,
           r8.x = r8.z ? r8.x : 0;
           r5.w = r5.w * r6.w + r8.x;
           r6.w = cmp(r4.w < -r4.w);
-          r6.w = r6.w ? -3.141593 : 0;
+          r6.w = r6.w ? -3.14159274 : 0;
           r5.w = r6.w + r5.w;
           r6.w = min(r4.w, r3.w);
           r3.w = max(r4.w, r3.w);
