@@ -718,6 +718,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - At the release after the bench's Go: drop '(Experimental)' from the two default- ... | ?
 - sym_build_head.ps1: a real clean-tree check that works with junctions (after the ... | ?
 - Before the RELEASE (after the bench's Go; exit-path / test only, no re-bench): l ... | ?
+- ebr_ SHOULD 1 (before the noheapfix follow-up's eval): the address-space Go coun ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13480,6 +13481,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         load's 'Exit Job Drain: off' = kind 'off' + NOTE, log vs plan mismatch = resumable stop. run_all green (lib 657,
         make 131, check 227, leg 260, analyze 221); the final main run + all 7 follow-ups pre-flight / dry-run CLEAN in the
         offline tests. ebr_ DELTA RE-REVIEW sent (rounds 2-4, -Affinity / -NoHeapfix close read) -> ebr_t4i_delta_review.md.
+        ebr_ DELTA RE-REVIEW GO 05:0x (render_mt/reports/ebr_t4i_delta_review.md + _handback.md): no MUST; MUST 1-5 / SHOULD
+        1-7 / NIT 1-7 fixed; -Affinity / -NoHeapfix can't leave the game folder changed (dinput8.dll back first in finally +
+        backup restore; affinity per process); BENCH-1 / XD / exit record right vs bd46d12fd; manifest values checked; C:
+        75.9 GB free (not 83). COORD: REAL -Final -DryRun CLEAN 05:12 (40 starts, 0 problems / warnings, ETLs ~9.6 GB, leg
+        ~344 min with hold margins) -> FINAL BENCH STARTED by coord ~05:1x (ATN's OK 11-24, no restart; Steam up, no other
+        runs). Nothing runs beside it (no harness / GPU / tests / builds) until it ends.
+        - [ ] ebr_ SHOULD 1 (before the noheapfix follow-up's eval): the address-space Go counts only the main run, its
+        re-runs and the warm-ups (eval:290-293), so a guard close in noheapfix can't turn the main verdict NOT GO. SHOULD 2:
+        the noheapfix smoke also fails on the game's exit line (no heapfix.log EXCEPTION line without heapfix,
+        eval:368-385). -> t4i_, after the main run ends (no tests beside the bench).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
