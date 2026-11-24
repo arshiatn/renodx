@@ -796,6 +796,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Stub-page growth owner: PK5 S1 unless pk4_'s design already grows it (decide whe ... | ?
 - Data-run additions (pk5_ sec 8): VirtualQueryEx both ends, +0x17c8180 ns per cal ... | ?
 - ATN (pk4_): 1 route a / b-w / both (advice: send the note now, build b-w up to t ... | ?
+- PK5 S0 implementer (tests only: part 34 copy_bench.inc) after fxi_'s ec_test_fix ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14468,6 +14469,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         his answer); 2 probe start OK + ride the data run; 3 default off + Experimental until G1-G3; 4 one-frame skip +
         session-off fail-safe OK?; 5 heapfix loaded: off until the author answers, or a bench-only override; 6 one N /
         N-S pair WITHOUT heapfix for the players' number; run rule for RENODX_TW_SORT_CHECK.
+        rv5_ PK5 REV 1 RE-CHECK (render_mt/fca/designs/rv5_pk5_recheck.md + _handback.md): 7 MUSTs folded right; NEW
+        R-MUST-1 A1.1 source side (the LOD job's fresh narrow stores into its copy can't forward to our qword loads ->
+        S0 job-shaped chain case + a source-safe 40-pair form ~-0.3..-0.5 volley; S0 picks). Steps: S0 GO (+ R-MUST-1,
+        idle PC); S1 dropped (PK4's S1 owns masks + 3 pages); S2 / S3 / S5 gated GO; S4 after Q6; S6 read-back + K sweep
+        only; A2 study only; M4 study GO. -> pk5_ Rev 1.1 (sent, text only).
+        - [ ] PK5 S0 implementer (tests only: part 34 copy_bench.inc) after fxi_'s ec_test_fix lands (tests.cpp one
+        writer); timing only on an idle PC. Fable 5.2 Medium TRIAL stays on the first engine_code.hpp step (PK4 S1).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
