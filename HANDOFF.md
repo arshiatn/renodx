@@ -834,7 +834,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU WAVE 1 (low priority, resume_1124.md section 4): pdd2_ (Opus xHigh) PT DI + ... | ?
 - ATN: vMF Q4 WH3 sunlight row: ATN asked 'why last?'. Coord: WH3's sun already us ... | ?
 - SHARC DEPTH 4 (ATN 11-24: 'can you not fix and test it in nsight? ... if you can ... | ?
-- pdd2_ fix round sent (M1-M4 + Shoulds + nits); vms1_ got M3 / M4 / M2 numbers fo ... | ?
+- VMF RHO SKY TEST (pdd2_): the rho-histogram sky fix goes to vMF S2's implementer ... | ?
+- RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
@@ -15323,6 +15324,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         static const arrays); Eq. 4 via exp(-2 / a2), alpha floor 1e-6; denominator gate >= 0.5 (min 0.6209); seams no
         blend, per-seam gate <= 0.03 at u >= 0.2 (0.0190 / 0.0250); DOI + CC BY 4.0 link; cs_6_9 clean. -> R2.2 c
         control (planted negative denominator must fail) asked, then coord merges into atn-mods.
+        - [x] vms1_ control e636628fe (sigma(-u_v) - 0.001 -> min -8.97 vs >= 0.5, fails as required; suite ALL OK;
+        hand-back plan_1117/designs/vms1_control_handback.md) -> vMF S1 MERGED into atn-mods 0c2e48c03 (778cc494c +
+        ed20a628d + e636628fe). Worktree agent-aa2f659ee853ca432 left in place (cleanup on ATN's yes).
         - [ ] vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows).
         - [ ] a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the logs, other explanations of
         the fast stretches, estimates, architecture, completeness, rules, decisions, first wave) -> port_plan_review.md.
@@ -15396,9 +15400,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         same picture + faster. Shoulds: ContactShade rescale (G23 rt_path.hlsli:1110-1112) into ReuseTarget, remake E4
         refs after the G23 merge, RTXDI build block detect only, T2 all 8 includers + ONION + RIS_BUFFER, unified
         wording, N1 step-0 captures, v32 lift invariant, T4 1e-4 relative, S3 8 weights a slice.
-        - [ ] pdd2_ fix round sent (M1-M4 + Shoulds + nits); vms1_ got M3 / M4 / M2 numbers for its S1 fix round.
+        - [x] pdd2_ fix round DONE (hand-back plan_1117/designs/pdd2_fix_handback.md): pt_di_rtxdi.md + vmf_diffuse.md
+        Revision 2 updated for every pdr2_ point (credits.hpp in step 2, detect-only RTXDI block, 8 includers + ONION +
+        RIS_BUFFER + RAB set, lift invariant, ContactShade fold, E4 remake, no seam blend, header plain arrays, T12
+        three arms, fast form ON where same picture + faster); step 2 ~21 h, step 3 ~15 h, PT DI ~95 h; vMF Attila
+        left ~17-23 h. No disagreements. Designs FINAL for pds2_ / vMF S2.
+        - [ ] VMF RHO SKY TEST (pdd2_): the rho-histogram sky fix goes to vMF S2's implementer.
+        - [ ] RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether it found the RTXDI copy;
+        the helper release check fails a player helper built without it.
         - [ ] coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_runs) in a GPU window when
         no game run is planned -> merge ho_gbf_g23 (one merge, rvh_'s G-M1) -> pds2_ can start.
+        ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
+        continue?' -> YES: no new agents except a64ab_'s fix round for a64abr_'s review; running ones (s3fr_, a64abr_,
+        a64p0r_, a64bd_, a64pl_) finish; then window 1 stage A on a quiet CPU (no builds); then the G23 gate, s3f_'s
+        fix round + Sol smoke, a64p0d_ fixes, a64b_ / plugin reviews, pds2_.
         NSIGHT MCP (ATN asked 19:3x): Nsight 2026.4 ships ngfx-mcp.exe; ATN added it as ngfx-native (local scope, stdio,
         --profile native; Claude Code starts it per session, `claude mcp list` = Connected; the HTTP Workflow profile was
         removed). New for us: GPU Trace shader profiler (hot lines / stalls / SASS), Graphics Debugger capture + replay
