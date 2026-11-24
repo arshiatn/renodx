@@ -29,9 +29,12 @@ struct LightBounceConstants {
   // Where in its scale x scale block the bounce's texel was taken, in pixels from the block's top-left (the apply weighs it
   // there): 0 the screen-space trace's (its geometry's top-left pixel), scale / 2 the rays' (rt_path.hlsli TexelSurface).
   float texel_centre;
-  float padding_0;  // to a multiple of 16 bytes (a constant buffer's size)
-  float padding_1;
-  float padding_2;
+  // Directional Light Bounce (Experimental, bitmask_sh.hlsli; 0: off, every pass as without it): the prepare's normal
+  // the mean of its block's, the trace's light with its direction beside it, the resolve and the denoiser keep it, the
+  // apply each pixel's at its own normal.
+  float directional;
+  float directional_form;  // 0: ZH3 with the memo's step; 1: ZH3 alone (S2's A/B)
+  float transport;         // the denoiser's half transport (0-1): each tap's light moved that far toward the texel's normal
 };
 
 
@@ -39,6 +42,15 @@ struct LightBounceConstants {
 cbuffer light_bounce : register(b12) {
   LightBounceConstants LB;
 }
+
+// Directional Light Bounce's shader code: only in the passes' _sh entries, which define LIGHT_BOUNCE_DIRECTIONAL first
+// (Attila's light_bounce_*_sh.ps_5_0.hlsl, light_bounce.hpp's Passes: its registers stay out of every other build, shg_
+// design 4.7); elsewhere false, and every pass compiles as without it.
+#if defined(LIGHT_BOUNCE_DIRECTIONAL)
+#define BOUNCE_DIRECTIONAL (LB.directional > 0.f)
+#else
+#define BOUNCE_DIRECTIONAL false
+#endif
 #endif
 
 #ifndef __cplusplus

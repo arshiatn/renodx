@@ -27,6 +27,10 @@ namespace twattila::lighting_settings {
 template <typename ShaderInjection>
 constexpr bool HAS_MSAA = requires(const ShaderInjection& data) { data.light_bounce_msaa_pixel; };
 
+// Directional Light Bounce: the games with its builds of the passes have its setting (light_bounce.hpp's Passes).
+template <typename ShaderInjection>
+constexpr bool HAS_DIRECTIONAL = requires(const ShaderInjection& data) { data.light_bounce_directional; };
+
 // GT-VBAO's Exact Depth Samples row (twattila/bitmask.hlsli BitmaskPlaneDepth): its tooltip (Shogun 2's row too).
 constexpr const char* EXACT_DEPTH_TOOLTIP =
     "Each sample takes the depth at its own spot between pixels:\n"
@@ -51,6 +55,9 @@ light_bounce::Sliders LightBounceSliders(const ShaderInjection& data) {
   };
   if constexpr (HAS_MSAA<ShaderInjection>) {
     sliders.msaa_pixel = data.light_bounce_msaa_pixel;
+  }
+  if constexpr (HAS_DIRECTIONAL<ShaderInjection>) {
+    sliders.directional = data.light_bounce_directional;
   }
   return sliders;
 }
@@ -115,6 +122,9 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
   };
   if constexpr (HAS_MSAA<ShaderInjection>) {
     gi_defaults.emplace_back("light_bounce_msaa_pixel", 1.f);
+  }
+  if constexpr (HAS_DIRECTIONAL<ShaderInjection>) {
+    gi_defaults.emplace_back("light_bounce_directional", 0.f);
   }
   // Each setting's default from its section's list.
   const auto default_of = [&](const std::string& key) {
@@ -407,6 +417,11 @@ void Append(std::vector<renodx::utils::settings::Setting*>* settings, ShaderInje
              "spears stay thin, walls and hills block fully.",
              search_enabled),
   });
+  if constexpr (HAS_DIRECTIONAL<ShaderInjection>) {
+    settings->push_back(toggle("light_bounce_directional", &data->light_bounce_directional,
+                               "Directional Light Bounce (Experimental)", GI_SECTION,
+                               "Light Bounce follows bumps and surface detail at lower resolutions.", search_enabled));
+  }
   if constexpr (HAS_MSAA<ShaderInjection>) {
     settings->push_back(toggle("light_bounce_msaa_pixel", &data->light_bounce_msaa_pixel, "Fast MSAA (Once per Pixel)",
                                GI_SECTION,
