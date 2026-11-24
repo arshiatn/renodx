@@ -14003,6 +14003,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         coord checked the diff (out-param, callers pass fresh locals).
         - [ ] merge ho_g03_comptr with the next mrg_ batch (ho_gbf + G23 after the gates); shared twattila header -> the
         merge's all-36 build covers every TW add-on.
+        fa1_ FCA MAIN THREAD DONE (render_mt/fca/analysis/fa1_main_thread.md + fa1_handback.md; 11 items, 12 ruled out):
+        phases A fork-join / B serial effect walk / C main idles on prepare-sort chain / D fill + recording / E draws.
+        #1 presort-early (S8-2): main idles 11.8 / 15.1 W3, 4.3 D1 -> gain ~8-11 W3 / 3-4 D1 (heapfix sort_by_keys single
+        thread on the critical path; eba_ revive rule met; heapfix = author package via ATN). #3 L1 effect walk (fci_) overlaps
+        #1 on the volley (gains don't add). #5 game job wakes ~1,050-1,560 SetEvent / f (grain values via engine_tweaks,
+        census + A/B). WARNINGS for all analysts / the critic: subtract WPR stack-walk overhead (4.7 F03 / 12.1 c9 / 3.8 D1
+        ms/f on main); skip non-battle frames (WAW3 0-48, WAD1 0-85, F03_wpr 0-45, F04 0-128).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
