@@ -820,10 +820,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - a64p0r_ (Opus xHigh) reviews the Phase 0 design (arms, probe sites, determinism, ... | ?
-- ATN: add the window-1 rule lines (a64ab_window1_rules.md) + trim yes / no; then ... | ?
+- ATN: add the window-1 rule lines (a64ab_window1_rules.md: -Arms stageA / -Arms s ... | ?
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
+- s3fr_ (Opus xHigh) reviews the Sol fixes (correctness, per-exception cost of the ... | ?
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
 - vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows). | ?
 - a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the l ... | ?
@@ -15249,8 +15250,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         only; window 3 ~75 min + 15 spare (probe + WPR + placement), rule lines in design section 10.
         - [ ] a64p0r_ (Opus xHigh) reviews the Phase 0 design (arms, probe sites, determinism, CPU sets, ATTILA_POKE arm,
         trimmed arm lists) -> p0/design_review.md -> a64p0d_ fixes -> probe implementer (Opus High) for window 3.
-        - [ ] ATN: add the window-1 rule lines (a64ab_window1_rules.md) + trim yes / no; then window 1 (no game of ATN's
-        running, fresh backups).
+        - [x] a64ab_ STAGES DONE (hand-back attila64/study_1124/a64ab_stages_handback.md): -AB -Arms stageA (base,
+        inline, base, inline ~27 min) / stageB (cap30, all32, tt8, measure ~27 min) / a comma list; 'window1' removed
+        (exit 1); cap45 / spinoff / finetimer only from a list; summary prints 'STAGE B: run it / not needed' from the
+        inline starts' slow-motion share; inline arm must show beside 0 (proves the option); picture at s 201 base vs
+        base (A/A) and base vs inline = proxy only. All dry runs exit 0. Not proven: option = setting 0x5f, 1748
+        opening steps in every start, all32 runs like the original.
+        - [ ] ATN: add the window-1 rule lines (a64ab_window1_rules.md: -Arms stageA / -Arms stageB) + trim yes / no;
+        then window 1 (no game of ATN's running, fresh backups).
         - [ ] a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S1 / S4 / S5 + the window-1
         arms; a64ab_ window-1 switches (prefs-override arm, caps 30 / 45, all-32, TASK_THREADS, measuring start, spin
         off, fine timer, fixed-second screenshot, slow-motion share, real CPU Set Setter status) -> rule lines for ATN;
@@ -15264,6 +15271,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         testbin\attila64_1124\sol_fixes_1124 (git, one commit per fix, offline tests incl. the original failing, patch +
         test build + TESTS.md + message_for_sol.md with ATN's credit request) -> xHigh review -> ATN sends. No game run
         without ATN's rule line.
+        - [x] s3f_ DONE (hand-back attila64/s3f_sol_fixes_handback.md): commits ba6201f (untouched copy) / 4646fff crash
+        filter (game / exe Rip = crash; else an unwind walk decides if a handler may catch; c0000374 always reported;
+        thread-local guard) / d298541 hook layout (way in +0, trampoline +12, 32 bytes) / b9bf638 dx_present draws
+        the fps number + Discord button only on R8G8B8A8_UNORM + settings.txt discord_button=off. Offline tests: the
+        original fails hook len 12-15, the caught-in-DLL cases and HDR-format garbage pixels; the fix passes all; Sol's
+        Rip-only rule lost CRASH lines (experiment only). Test exe sha256 af1f8c9b...; out\ patch + zip + TESTS.md +
+        message_for_sol.md. Open: game smoke (needs a64_ab -Smoke -Package / -Exe64Sha + ATN's rule line, rides in
+        window 2); patch From: lines carry ATN's git placeholder email (YOUR_ID+...) -> ATN decides before sending.
+        Slot slip: s3f_ overwrote then deleted a slot lock -> shared no-clobber take_slot.sh + README rule (coord).
+        - [ ] s3fr_ (Opus xHigh) reviews the Sol fixes (correctness, per-exception cost of the walk, HDR swap chain
+        formats with our add-on, tests, message, no private names) -> attila64/s3f_review.md -> s3f_ fixes -> ATN.
         - [x] ATN 11-24: WH3 gets the Experimental vMF slider too (Forge: PT looks better with vMF) -> sent to pdd2_;
         SHaRC depth 4 plan: 'Good idea'.
         - [ ] vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree-agent-aa2f659ee853ca432
