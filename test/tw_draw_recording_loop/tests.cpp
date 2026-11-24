@@ -1755,6 +1755,7 @@ void TestStateBlocks() {
         run_in[ESI] = reinterpret_cast<uint32_t>(tracker);
         run_entry = reinterpret_cast<uint32_t>(image + info.rva);
         game_log.clear();
+        const uint32_t frees_before = colour_calls[FREE].load(std::memory_order_relaxed);
         harness.run();
         BlockRun result = {.log = game_log, .cell = block_cell, .out = run_out};
         std::memcpy(result.tracker.data(), tracker, dr::TRACKER_SIZE);
@@ -1762,6 +1763,11 @@ void TestStateBlocks() {
         // The gather's vector (a local of the wide variants, the ones that gather an item's faction colours) holds a heap address
         // that differs from run to run.
         if (operands.wide) std::memset(result.frame.data() + 0x34, 0, 4);
+        // When the gather's free runs it is the block's last call: eax, ecx and edx at the block's end are what the CRT's free left
+        // in them, the heap's state, which differs from run to run as well (none of the registers the code after it relies on).
+        if (colour_calls[FREE].load(std::memory_order_relaxed) != frees_before) {
+          result.out[EAX] = result.out[ECX] = result.out[EDX] = 0;
+        }
         return result;
       };
       std::memcpy(tracker_plain, tracker_initial, sizeof(tracker_plain));
