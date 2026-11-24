@@ -811,6 +811,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - s1a_ FOUND (note in s1a_m1_handback.md): with the row ON, m1's apply can write N ... | ?
 - Coord GPU window: s1a_ item t (5090, gpu_job.lock): powershell -NoProfile -Execu ... | ?
 - rvg_ trc review (sent; reviews/rvg_trc_tracer_review.md): code, shared-code buil ... | ?
+- s64a_ (Opus xHigh, read-only) 64-bit loader study -> round_notes/attila64/study_ ... | ?
+- s64c_ (Opus xHigh, read-only) PerfFix 7.5 vs ours + ATN's notes taken in + RULE ... | ?
+- After s64a_: port map of OUR Attila work onto 64-bit (carry over / re-port / moo ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14955,6 +14958,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] rvg_ trc review (sent; reviews/rvg_trc_tracer_review.md): code, shared-code builds (devkit / ue-extended / ryse /
         divinity2), run sheet vs ATN's rules, can steps 3-4 be scripted, which save G1 used -> trc_ fixes -> merge ->
         ATN's rule line for the session script -> coord runs the ONE session (no ask needed for trace / dump runs).
+        ATN 11-24 ~18:0x NEW DIRECTION + HOLD: running agents FINISH their current job, but NO next steps of their plans
+        (no review loops, merges of new rounds, GPU gates / GPU items, Friday wave stays parked) until ATN says. Instead:
+        check Sol Invictus's 64-bit Attila (github.com/Sol-Invictus2/64-bit-Attila, MIT, v1.3.7, loader of the Linux ELF,
+        renders with D3D11 + the game's own DX11 shaders, plugin API) + JSa25's AttilaCPUPerfFix 7.5 (NOT open source:
+        read / review / own builds only; 64bit\ plugin perffix64.dll for the port). ATN contacts the port's author (collab).
+        Building / running the port needs ATN's explicit go (standing never-run-the-Workshop-exe rule). Clones (untrusted,
+        read only): D:\Dev\ext_review\attila64_sol_1124\repo, D:\Dev\ext_review\perffix_jsa25_1124\repo. Memory
+        project_attila64 updated.
+        First facts (coord): PerfFix 7.2 took ATN's loopfetch animation site +0x182E0DA (i+8); the sort prefetch is NOT in
+        7.5; memfast stays <= 64 B. 7.1-7.5 add unit detail cull (look change, on 'light'), battle UI card cache, sound
+        guard, F8 panel, waving banners, 64-bit plugin (mimalloc). Stress = 11.4 fps / 87.4 ms render-thread bound; maxed
+        vs Reset sliders 104.7 vs 24.0 ms (fa4o_: 2/3 follows Unit Detail x4 + animation sliders; +14.2 sort-chain wait,
+        +16.7 driver GPU-sync waits).
+        - [ ] s64a_ (Opus xHigh, read-only) 64-bit loader study -> round_notes/attila64/study_1124/s64a_loader.md.
+        - [ ] s64c_ (Opus xHigh, read-only) PerfFix 7.5 vs ours + ATN's notes taken in + RULE H impact of 7.5's new sites ->
+        study_1124/s64c_perffix75.md.
+        - [ ] After s64a_: port map of OUR Attila work onto 64-bit (carry over / re-port / moot / new: in-process DLSS + RT,
+        multi-thread recording in his D3D11 backend), effort + order -> coord synthesis for ATN.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
