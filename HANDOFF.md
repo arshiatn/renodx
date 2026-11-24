@@ -821,10 +821,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
 - a64pi_ (Opus High) probe implementer STARTED (design section 12): site-table che ... | ?
-- AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer. | ?
+- a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
+- a64ab_ -ReShade pass SENT 00:3x (design 9 / 10 / 10.1, exact switch names, offli ... | ?
 - a64p1_ (Opus High, worktree, reset onto atn-mods) G1 + P1 STARTED 00:3x -> R1 re ... | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
-- gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j ... | ?
 - a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
 - AFTER WINDOW 1 (started 23:5x): gbf gates (gbf_gpu_gates.ps1, coord, quiet GPU w ... | ?
 - Window 1 (stage A, 4 starts ~27 min; stage B 2 starts only if needed) once a64ab ... | ?
@@ -15303,7 +15303,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         required, tone-mapper no-upgrade log, TAA pin, stale -Package sha. Seam S12 OK under 3 conditions (lookup after
         the non-D3D11 return, all new lines in if constexpr (ATTILA64), x86 Update call stays at :1774). -> a64bd_ fix
         round sent (seam section cites plugin_design.md's).
-        - [ ] AFTER WINDOW 1: xHigh review of bringup_design.md -> a64b_ implementer.
+        - [x] a64bd_ REV 2 DONE (hand-back attila64/a64bd_rev2_handback.md; Rev 1 kept in designs\bringup_work): every
+        M / S / N applied; 3.6 plugin seam (a64b_ builds only the slot, plugin_ready false; PA1 after the merge); 10.1
+        = what a64ab_'s -ReShade starts write (own run folder, TutorialProgress=4, no LoadFromDllMain, ATTILA_SHOW_FPS=1,
+        AntiAliasing=0); steps 0 F7 -> 1 A1a -> 2 A1b -> 3 A1c -> 4 A2a (keep as C5 control) -> 5 A2b -> 6 README + sweep.
+        Proposed rule lines: -Smoke -ReShade (A3 a, gate for B1), -ReShade -PerfFix, -ReShade -Warp, -ReShade -Package
+        ... -Exe64Sha a75c1b8a63a267d6 (or -Package * wildcard) - ATN adds them when A3 is near.
+        - [ ] a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00:3x: steps 0-6 -> R1 xHigh
+        review -> merge -> PA1 plugin add-on lane -> A3 Smoke (ATN's -ReShade lines).
+        - [ ] a64ab_ -ReShade pass SENT 00:3x (design 9 / 10 / 10.1, exact switch names, offline self-tests only); the
+        -Probe det|full / -Wpr pass after a64pi_ lands.
         - [x] a64pl_ PLUGIN DESIGN DONE (hand-back attila64/a64pl_design_handback.md; designs/plugin_design.md, PRIVATE):
         load order Sol -> perffix64 -> probe -> renodx_attila64.dll -> ctors -> game_started; all writes once at init
         (no thread pausing); identity = build-id note + api_version >= 1; each site checks bytes +-16 vs offline ELF
@@ -15328,9 +15337,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] a64p1_ (Opus High, worktree, reset onto atn-mods) G1 + P1 STARTED 00:3x -> R1 review.
         - [ ] AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> designs/plugin_design_review.md)
         + C8 census agent (read-only Opus xHigh, brief section 15 -> census/c8_rows.tsv + c8_notes.md).
-        - [ ] gated_build.ps1 has its OWN 2 slots (build_job.lock / _2) + 45 GB committed + -j 3, blind to build_slots
-        slot1-4 -> unify after window 1 (one slot set, >= 12 GB free for TW, -j 4; review). take_slot.sh now waits
-        while quiet_run.lock exists (coord 11-24).
+        - [x] gated_build.ps1 UNIFIED 00:3x (coord): takes testbin\scratch\build_slots\slot1-4.lock as gpu_lock v1
+        records, Available MBytes >= 12288, -j 4, skips text slots (take_slot.sh / New-Item) and never takes them over
+        (the old 3 h takeover is gone), quiet_run.lock wait kept, RENODX_LAB_LOCKS test path kept. Dry runs: test folder
+        with a text slot1 -> took slot2; real folder with 3 agents' text slots -> took slot4; both freed. Backup
+        round_notes\gated_build.pre_slots1125.ps1; README.txt line added.
         - [x] a64ab_ STAGES DONE (hand-back attila64/study_1124/a64ab_stages_handback.md): -AB -Arms stageA (base,
         inline, base, inline ~27 min) / stageB (cap30, all32, tt8, measure ~27 min) / a comma list; 'window1' removed
         (exit 1); cap45 / spinoff / finetimer only from a list; summary prints 'STAGE B: run it / not needed' from the
@@ -15573,6 +15584,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         kill at the end, h9_t3_t4.txt bars) + gbf_ bridge hardening on ho_gbf_g23 (rescue created inside the job via
         PROC_THREAD_ATTRIBUTE_JOB_LIST, no CREATE_SUSPENDED) -> gbf_ updates the script's fixed revisions + dry run ->
         coord re-runs the gate.
+        - [x] g23_ HARNESS REV 2 DONE (hand-back handoff_plan/handbacks/g23_harness_rev2_handback.md): start-up wait in
+        switch mode (<= 10 s, :3240-3318), FSR counted from its step's first 'active' (+ bar 5 needs one active step),
+        end_helper stops the watcher before the kill (switch + pedestal ends), T4 at frame 45. tw_rt_harness.cpp sha256
+        e5bbe261b4c3a85a (file, not a commit; diff testbin\scratch\g23_\harness\h9_rev2.diff); builds vs both bridges,
+        0 errors, 112 baseline header warnings; nothing run on a GPU. Script needs no change; new hash for SOURCES.txt;
+        3 optional checks sent to gbf_.
         ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
         continue?' -> YES: no new agents except a64ab_'s fix round for a64abr_'s review; running ones (s3fr_, a64abr_,
         a64p0r_, a64bd_, a64pl_) finish; then window 1 stage A on a quiet CPU (no builds); then the G23 gate, s3f_'s
