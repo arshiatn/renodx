@@ -754,8 +754,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Rome II Specular Occlusion: the commit that later hooks it (traced reflections) ... | ?
 - static_checks comptr: 5 findings in twattila/water_reflections.hpp :117 :187 :18 ... | ?
 - g24_ boxes: pair: claims need constant-logging traces; Expeditions tracer 'view ... | ?
-- ATN QUESTION (asked 11-24 ~12:50): census sources - add the already-extracted pa ... | ?
-- g03_ build NOT done: its slot step (a Bash loop mkdir build_slots/slot1..4 + own ... | ?
+- g24_: add dump_shader_ruse_pack / dump_shader_divinity1_pack / dump_shader_divin ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13967,18 +13966,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         4.22+ GPU Scene PrimitiveId (ATTRIBUTE13) makes 70 Expeditions static VS 'skinned'; 3 deviations accepted; Q1 mesh-uv
         vertex-id widening YES, Q2 small-cb screen-space NO; S1 CAMERA tripwire, S2 per-engine screen_space, S3 tracer;
         3 NITs. -> g24_ step0 r3 (sent) -> rvg_ re-check.
-        - [ ] ATN QUESTION (asked 11-24 ~12:50): census sources - add the already-extracted pack shaders (blood packs, Rome
+        - [x] ATN QUESTION (asked 11-24 ~12:50): census sources - add the already-extracted pack shaders (blood packs, Rome
         Remastered .fxo, Ryse ShaderCache.pak set) or keep the 02:3x dump-only census and list them as holes? One manifest
         change either way; the freeze doesn't wait on it.
         g03_ COMPTR (handbacks/g03_comptr_handback.md): all 5 water_reflections sites harmless (fresh locals; TextureOf only
         As()-writes); fix = texture->Reset() first in TextureOf, ho_g03_comptr c715c6a9c (not pushed), static_checks comptr 0.
-        - [ ] g03_ build NOT done: its slot step (a Bash loop mkdir build_slots/slot1..4 + owner.txt) was DENIED by the
+        - [x] g03_ build NOT done: its slot step (a Bash loop mkdir build_slots/slot1..4 + owner.txt) was DENIED by the
         auto-mode classifier; g03_ stopped, no retry. Reported to ATN; waits for ATN's go.
         shd_ R.U.S.E. dump still running (pid 34420 since 12:35); shd_ resumed to wait, check, publish, hand back.
         gbf_ GATE SCRIPT R2 (handbacks/gbf_gate_script_r2_handback.md): $G23HarnessArgs filled (:94, merged tree via
         -I {tree}/src/games) + -M bridge check STOPs if the main checkout's bridge is picked (:543-564); slots 1-4 + free
         RAM >= 12288 MB (:427-447), GTP_JOB_MB 16384 on every build; 827 lines, parser 0, NOT run. -> rvh_ review sent
         (reviews/rvh_gbf_gate_script_review.md) -> GO -> first run in a GPU window.
+        ATN 11-24 ~13:0x: (1) g03_ may take ONE free slot the normal way (one slotN.lock, RAM check) -> g03_ 'g03_ comptr
+        build' sent (Troy + Pharaoh amd64, push ho_g03_comptr). (2) 'include every shader so later for the dlss, rt shadows,
+        mv, scaling, we got everything' -> census includes the already-extracted pack shaders (replaces the 02:3x dump-only
+        rule; still no pak opened at audit time) -> g24_ lands the source change in step0 r3; shd_'s R.U.S.E. / D1 / D2
+        pack folders join when published.
+        - [ ] g24_: add dump_shader_ruse_pack / dump_shader_divinity1_pack / dump_shader_divinity2_pack to the census after
+        shd_'s hand-back (coord sends counts).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
