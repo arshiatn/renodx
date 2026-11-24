@@ -14097,6 +14097,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         implementation (replaces Sonnet xHigh). Trial = the first engine_code implementer after the FCA designs; fxi_ stays
         Sonnet (fixes its own review). A stop = report the exact action + Sonnet xHigh for that item.
         - [ ] report the Fable Medium trial result to ATN (blocked y/n, review counts, time) after its first review.
+        fxi_ EXIT DRAIN A DONE (render_mt/fca/designs/fxi_impl_handback.md): fca_exit_drain d1c217424 + 6802ab234 (test
+        rename) PUSHED; engine_code.hpp site 30 'exit teardown drain' (E8 call stub at +0xD5D74 -> DrainJobPool, limit
+        1000 ms, R2-N1..N6 in), B at +0xC9AC1 kept; tests x86 -Only exit part 30 (30a+..30f) PASS + full -Quick PASS;
+        build32 attila 4d976609..., amd64 8a78f6e3... (A inactive on 64-bit); 7 small deviations; exact log lines for the
+        parser. -> rvl_ code review (sent, rvl_fxi_code_review.md) + t4i_ drain A parser (sent). Not run in game.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
