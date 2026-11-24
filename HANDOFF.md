@@ -815,7 +815,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - az2_ (Opus xHigh) author package against 7.5 (started ~18:16): rebased patches ( ... | ?
 - ATN: rule lines (a64_ab.ps1 -Smoke / -GateR -A32Plain / -AB -A32Plain [+ -DryRun ... | ?
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
-- ATN: the plan's 14 decisions (port_plan.md section 4; coord sent them with the r ... | ?
+- REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-po ... | ?
+- decision 7 explained to ATN: 'Keep Battle Core Free' = keep the battle step's co ... | ?
+- s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
+- vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
 - a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the l ... | ?
 - PORT WAVE 1 started 11-24 (read-only, decision-independent): a64p0d_ (Opus xHigh ... | ?
 - gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GP ... | ?
@@ -15150,7 +15153,32 @@ heading text are in HANDOFF_ARCHIVE.md)
         medium-high (hooks re-found for SysV); tooling feasible. Architecture: add-on64 D3D11-only from the same twattila
         folder; game-code work in our own Sol-loader plugin renodx_attila64.dll (after perffix64, byte-checked sites,
         ELF identity check, overlap table, versioned exported block); helper kept.
-        - [ ] ATN: the plan's 14 decisions (port_plan.md section 4; coord sent them with the recommendations).
+        - [x] ATN 11-24 ANSWERED the 14 decisions: 1 own Sol-loader plugin YES (ATN asks Sol for credit when our game-code
+        fixes go into his code); 2 same twattila folder YES; 3 plugin source in the repo, numbers only YES; 4 convert the
+        8-bit overlay rows YES; 5 crash-filter stopgap YES (and Sol's 3 items: we fix them ourselves, see s3f_); 6 JSa25
+        Flag Wave contract: REMIND ATN LATER (box below); 7 'Keep Battle Core Free': ATN asked what it is (coord explained);
+        8 bit-exact battles YES; 9 offer Sol patches YES + credit; 10 rule lines: coord gives them when a64ab_ wrote the
+        switches; 11 park the 32-bit FCA branches YES; 12 package cost to the sim = gate item YES; 13 offer Sol the GPU
+        line-of-sight fix YES + credit; 14 keep the shared helper YES (ATN: the same helper as his other 64-bit games =
+        yes, the one dlaa_helper for every TW game).
+        - [ ] REMIND ATN (decision 6): ask JSa25 for a Flag Wave interop contract (previous-position / velocity buffer,
+        slot, version) when the Flag Wave MV work starts (after a64c_'s census); the fallback (his 4 shaders mapped to
+        their families, rows-only MVs) ships first.
+        - [ ] decision 7 explained to ATN: 'Keep Battle Core Free' = keep the battle step's core (and its SMT sibling) on
+        the V-cache CCD free of the drawing / helper / background threads; default on only after the a64_ab gate + a
+        6-core check. ATN's yes / no pending.
+        - [ ] s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 source as a TEST VERSION (Sol
+        11-24 on Discord: 'Can you not do it yourself and test it ... If you want. As a test version'):
+        testbin\attila64_1124\sol_fixes_1124 (git, one commit per fix, offline tests incl. the original failing, patch +
+        test build + TESTS.md + message_for_sol.md with ATN's credit request) -> xHigh review -> ATN sends. No game run
+        without ATN's rule line.
+        - [x] ATN 11-24: WH3 gets the Experimental vMF slider too (Forge: PT looks better with vMF) -> sent to pdd2_;
+        SHaRC depth 4 plan: 'Good idea'.
+        - [ ] vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree-agent-aa2f659ee853ca432
+        778cc494c (vmf_diffuse.hlsli + test/tw_vmf_diffuse; all gates pass on the CPU twin + fxc / dxc WARP, all controls
+        fail; ~400 fxc slots per VmfLobe vs the 150-300 estimate; tables twice (DRY?); credits later). NOTE: the Agent
+        worktree was cut from main, vms1_ reset it onto atn-mods: tell every worktree agent to check its base. -> vmr1_
+        (Opus xHigh) review -> vms1_ fixes -> coord merges.
         - [ ] a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the logs, other explanations of
         the fast stretches, estimates, architecture, completeness, rules, decisions, first wave) -> port_plan_review.md.
         - [ ] PORT WAVE 1 started 11-24 (read-only, decision-independent): a64p0d_ (Opus xHigh) Phase 0 design ->
