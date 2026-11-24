@@ -760,6 +760,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CRITIC: fa4_ #2 calls the large-block cache a heapfix author note, fa8_ M3 says ... | ?
 - eval: trap-seconds line in the bench eval + WPR tasks that don't take focus (fa3 ... | ?
 - game runs proposed (ATN's go, after the ranked list): G1 W3 ALL vs ALL+FDW+FCU 8 ... | ?
+- report the Fable Medium trial result to ATN (blocked y/n, review counts, time) a ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14091,6 +14092,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         same() compares the wrong file (a / b + job7 can never FAIL); M2 crash mask misses 0xC0000409; M3 CL / LINK env not
         scrubbed; 3 SHOULD, 8 NIT. Verified OK: ATN's rules, deletes, junctions, kill guard, slots, revisions, bars, PS 5.1.
         -> gbf_ r3 (sent) -> rvh_ re-check -> first run in a GPU window.
+        ATN 11-24 ~14:xx: TRIAL Fable 5.2 MEDIUM for ONE engine-specific implementation; if not blocked (no safety /
+        classifier stop) and the Opus xHigh review is no worse than Sonnet's usual, Fable Medium for EVERY engine-specific
+        implementation (replaces Sonnet xHigh). Trial = the first engine_code implementer after the FCA designs; fxi_ stays
+        Sonnet (fixes its own review). A stop = report the exact action + Sonnet xHigh for that item.
+        - [ ] report the Fable Medium trial result to ATN (blocked y/n, review counts, time) after its first review.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
