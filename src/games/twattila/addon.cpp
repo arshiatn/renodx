@@ -15,12 +15,14 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <charconv>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <format>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -1367,6 +1369,19 @@ const bool exit_job_drain_on = [] {
   std::array<char, 2> value = {};
   return !(GetEnvironmentVariableA("RENODX_TW_EXIT_DRAIN", value.data(), static_cast<DWORD>(value.size())) == 1 && value[0] == '0');
 }();
+// The CPUs the game may use (cpu_sets.hpp), the worker pool's budget (worker_pool.hpp's BudgetWorkers; a bug fix: no row): a
+// bench's RENODX_TW_GAME_CPUS=N, read once at the start, sets them (0: not known, no limit: knob studies above K8, the pool as
+// before); never a player's. A value that does not parse is said at the attach and ignored.
+const std::optional<uint32_t> game_cpus_env = []() -> std::optional<uint32_t> {
+  std::array<char, 16> value = {};
+  const DWORD length = GetEnvironmentVariableA("RENODX_TW_GAME_CPUS", value.data(), static_cast<DWORD>(value.size()));
+  if (length == 0 || length >= value.size()) return std::nullopt;
+  uint32_t cpus = 0;
+  if (const auto [end, error] = std::from_chars(value.data(), value.data() + length, cpus); error != std::errc() || end != value.data() + length) {
+    return std::nullopt;
+  }
+  return cpus;
+}();
 // A bench's RENODX_TW_COUNT_CHECK (set at all), read again when the env generation changes: Cached Particle Count also runs the game's
 // sum on every call and compares it with its cache; never a player's.
 bool particle_count_check_env = false;
@@ -1602,7 +1617,9 @@ void OnInitDevice(reshade::api::device*) {
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
-  twattila::cpu_sets::Update(keep_render_core_row != 0.f, GAME_THREAD_MODULES);
+  // The bench's RENODX_TW_GAME_CPUS, else the count cpu_sets reads. value_or always evaluates its argument, so cpu_sets::Update
+  // (Keep Render Core Free and the count's reads) runs every present either way: never move it into a branch that may skip it.
+  const uint32_t game_cpus = game_cpus_env.value_or(twattila::cpu_sets::Update(keep_render_core_row != 0.f, GAME_THREAD_MODULES));
   renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads_row != 0.f, std::memory_order_relaxed);
   // A traced frame's full-ring line waits (its own work fills the ring).
   if (queue->get_device()->get_api() == reshade::api::device_api::d3d11) {
@@ -1658,9 +1675,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
+  // Too few CPUs for the game leave no room for workers: every pool user's stage that wakes workers is off (the game's own
+  // code runs, as with the rows off), and the pool stops.
+  const bool pool_room = (twattila::worker_pool::BudgetWorkers(game_cpus) != 0);
+  const bool effect_update_on = (pool_room && effect_update_row != 0.f);
   uint32_t recording_groups = 0;
   // Any user of the worker pool is in a stage that wakes workers.
-  bool pool_in_use = (effect_update_row != 0.f);
+  bool pool_in_use = effect_update_on;
   bool instance_fill_on = false;
   bool fill_fold_on = false;
 #if defined(TWATTILA_DRAW_RECORDING)
@@ -1675,12 +1696,17 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   for (size_t group = 0; group < draw_recording_group_rows.size(); ++group) {
     recording.loops |= (draw_recording_group_rows[group] != 0.f ? 1u << group : 0u);
   }
+  const bool recording_wakes_workers = (recording.stage == twattila::draw_recording::Stage::TOUCH_AHEAD
+                                        || recording.stage == twattila::draw_recording::Stage::ONE_WORKER
+                                        || recording.stage == twattila::draw_recording::Stage::WORKERS);
+  // Before SiteGroups: no room takes the sites out (the stages that need no worker stay as set).
+  if (recording_wakes_workers && !pool_room) {
+    recording.stage = twattila::draw_recording::Stage::OFF;
+  }
   recording_groups = twattila::draw_recording::SiteGroups(recording.stage, recording.loops);
-  pool_in_use |= (recording.stage == twattila::draw_recording::Stage::TOUCH_AHEAD
-                  || recording.stage == twattila::draw_recording::Stage::ONE_WORKER
-                  || recording.stage == twattila::draw_recording::Stage::WORKERS);
-  instance_fill_on = (instance_fill_row != 0.f);
-  fill_fold_on = (fill_fold_row != 0.f);
+  pool_in_use |= (recording_wakes_workers && pool_room);
+  instance_fill_on = (pool_room && instance_fill_row != 0.f);
+  fill_fold_on = (pool_room && fill_fold_row != 0.f);
   pool_in_use |= instance_fill_on;
   // A fold still open here (a path that did not close it) would make the pool's Update wait for workers parked on its publish.
   twattila::draw_recording::CloseFoldAtPresent();
@@ -1692,11 +1718,15 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     animation_check_env = (GetEnvironmentVariableA("RENODX_TW_ANIMATION_CHECK", nullptr, 0) != 0);
   }
   const twattila::animation_rows::Stage animation_stage =
-      (animation_rows_row == 0.f ? twattila::animation_rows::Stage::OFF
-                                 : (animation_check_env ? twattila::animation_rows::Stage::CHECK : twattila::animation_rows::Stage::ON));
+      ((animation_rows_row == 0.f || !pool_room)
+           ? twattila::animation_rows::Stage::OFF
+           : (animation_check_env ? twattila::animation_rows::Stage::CHECK : twattila::animation_rows::Stage::ON));
   pool_in_use |= (animation_stage != twattila::animation_rows::Stage::OFF);
   // Before the users' own Updates.
-  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row), .in_use = pool_in_use, .env_generation = env_generation});
+  twattila::worker_pool::Update({.threads = static_cast<uint32_t>(worker_threads_row),
+                                 .in_use = pool_in_use,
+                                 .env_generation = env_generation,
+                                 .game_cpus = game_cpus});
   // Before the engine code's: its site goes out after the stage is off, and goes in after the stage is on.
   twattila::animation_rows::Update(animation_stage, env_generation);
   twattila::engine_code::Update(engine_code_row != 0.f, twattila::engine_code::Game::ATTILA, render_lists_row != 0.f,
@@ -1704,14 +1734,14 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                 particle_prefetch_row != 0.f, sweep_prefetch_row != 0.f, object_detail.scale, recording_groups,
                                 {.animation = animation_stage,
                                  .pending_sweep_trace = worker_trace_env,
-                                 .effect_update = (effect_update_row != 0.f),
+                                 .effect_update = effect_update_on,
                                  .particle_count = (particle_count_row != 0.f),
                                  .particle_count_check = particle_count_check_env,
                                  .instance_fill = instance_fill_on,
                                  .fill_fold = fill_fold_on,
                                  .exit_job_drain = exit_job_drain_on});
   // After the engine code's Update (the sites are in or out for this present) and the pool's.
-  twattila::effect_update::Update(effect_update_row != 0.f, effect_spawns_row != 0.f);
+  twattila::effect_update::Update(effect_update_on, effect_spawns_row != 0.f, env_generation);
 #if defined(TWATTILA_DRAW_RECORDING)
   // After the engine code's Update: the sites are in or out for this present, and only the groups whose sites all are
   // in run.
@@ -2200,7 +2230,8 @@ void ConfigureAddon() {
           .default_value = 1.f,
           .label = "Worker Threads (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "How many threads the multi-threaded engine options may use, the render thread included.",
+          .tooltip = "How many threads the multi-threaded engine options may use, the render thread included.\n"
+                     "With fewer than 8 CPU threads for the game they stay off, and they use at most half of them.",
           .labels = {"2", "4", "6", "8", "12", "16"},
           .parse = [](float value) { return std::array<float, 6>{2.f, 4.f, 6.f, 8.f, 12.f, 16.f}[static_cast<size_t>(value)]; },
       },
@@ -2221,7 +2252,7 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Parallel Effect Update (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "Updates the game's effects on several threads. Same picture.",
+          .tooltip = "Updates the game's effects on several threads while a battle has many of them (arrow volleys). Same picture.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
@@ -2577,6 +2608,11 @@ bool AttachAddon() {
 
   if (!exit_job_drain_on) {
     renodx::utils::log::i("[Total War] Exit Job Drain: off (RENODX_TW_EXIT_DRAIN=0)");
+  }
+  if (game_cpus_env) {
+    renodx::utils::log::i(std::format("[Total War] CPUs for the game: {} from RENODX_TW_GAME_CPUS (bench only).", *game_cpus_env));
+  } else if (GetEnvironmentVariableA("RENODX_TW_GAME_CPUS", nullptr, 0) != 0) {
+    renodx::utils::log::w("[Total War] RENODX_TW_GAME_CPUS does not parse; ignored.");
   }
 
   // The at-start tests (audio memory, read once as the game's audio starts): written as soon as the game has set its own

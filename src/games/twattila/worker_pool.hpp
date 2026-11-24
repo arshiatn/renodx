@@ -80,10 +80,26 @@
 // one line says what was applied, and an entry that does not parse is said once. ArmTrace(frames) opens one trace window with
 // a header line (time and the pool's values) for a bench trace. No CPU pinning of our own: each pool thread gets the sets
 // cpu_sets published (Keep Render Core Free) and nothing else. x86 only: on x64 everything is an empty stub.
+//
+// The budget: the row's workers, at most BudgetWorkers of the CPUs the game may use (Settings::game_cpus, cpu_sets::Update's
+// count). Below MIN_GAME_CPUS it is 0 and the add-on turns every user's stage off (the pool stops); from there about half of
+// them, the rest the game's own job threads'. One line says the budget at each change of the count or the row; a trace window's
+// header ends with both.
 namespace twattila::worker_pool {
 
 // Plus the render thread = 16 threads.
 constexpr uint32_t MAX_WORKERS = 15;
+
+// Fewer CPUs for the game than this: no workers (3 workers on 4 CPUs cost +13.4 ms; 1 or 2 workers lose even on 16).
+constexpr uint32_t MIN_GAME_CPUS = 8;
+
+// The workers `game_cpus` leave room for (0: not known, no limit).
+constexpr uint32_t BudgetWorkers(uint32_t game_cpus) {
+  if (game_cpus == 0) return MAX_WORKERS;
+  if (game_cpus < MIN_GAME_CPUS) return 0;
+  // game_cpus >= 8 here: no wrap.
+  return std::min(MAX_WORKERS, game_cpus / 2 - 1);
+}
 
 enum class User : uint8_t { DRAW_RECORDING, EFFECT_UPDATE, ANIMATION_ROWS, PENDING_SWEEP, RING_FILL, COUNT };
 enum class JoinRule : uint8_t { ALL, ENTERED };
@@ -112,6 +128,8 @@ struct Settings {
   bool in_use = false;
   // The add-on's env generation: the limits and the spin are read again when it changes.
   uint32_t env_generation = 0;
+  // The CPUs the game may use (cpu_sets::Update; 0: not known): the workers stay within BudgetWorkers of them.
+  uint32_t game_cpus = 0;
 };
 
 #if !defined(_WIN64)
@@ -220,6 +238,9 @@ static uint64_t first_update_ticks = 0;
 static bool open_logged = false;
 static bool other_open_logged = false;
 static bool pinned = false;
+// The CPUs for the game and the row the budget line was said for (all ones: none yet).
+static uint32_t budget_said_cpus = ~0u;
+static uint32_t budget_said_threads = ~0u;
 // The most threads, the render thread included, each user may use.
 static std::array<uint32_t, USER_COUNT> limits = {};
 // QPC ticks an idle worker spins: one 32-bit word, so a read on a worker is never torn by an Update that changes it.
@@ -538,7 +559,7 @@ inline void Stop() {
 }
 
 // Every present on the owner thread, outside jobs, before the users' own Updates: prints what the traced jobs left, grows the
-// pool to the row's size (never shrinks it while in use: extra threads sleep and are not offered), gives each thread cpu_sets'
+// pool to the row's size within the budget (never shrinks it while in use: extra threads sleep and are not offered), gives each thread cpu_sets'
 // published sets, stops it when no user is on. A job still open here is joined (said once).
 inline void Update(const Settings& settings) {
   using namespace internal;
@@ -660,12 +681,24 @@ inline void Update(const Settings& settings) {
     for (size_t user = 0; user < USER_COUNT; ++user) {
       header += std::format(" {} {}", USER_KEYS[user], limits[user]);
     }
-    renodx::utils::log::i(header);
+    renodx::utils::log::i(header + std::format(", CPUs {}, room {}", settings.game_cpus, BudgetWorkers(settings.game_cpus)));
   } else if (trace_frames.load(std::memory_order_relaxed) != 0) {
     trace_frames.fetch_sub(1, std::memory_order_relaxed);
   }
   counting.store(trace_frames.load(std::memory_order_relaxed) != 0, std::memory_order_relaxed);
 
+  // The row's workers within the budget (BudgetWorkers is at most MAX_WORKERS), said at each change of the CPUs or the row, also
+  // when no user is on (budget 0: every user's stage is off).
+  const uint32_t budget = BudgetWorkers(settings.game_cpus);
+  const uint32_t row_workers = std::min(std::max<uint32_t>(settings.threads, 1) - 1, budget);
+  if (settings.game_cpus != budget_said_cpus || settings.threads != budget_said_threads) {
+    budget_said_cpus = settings.game_cpus;
+    budget_said_threads = settings.threads;
+    const std::string room = (settings.game_cpus == 0 ? std::string("CPUs for the game not known: no limit")
+                                                      : std::format("{} CPUs for the game leave room for {} workers", settings.game_cpus, budget));
+    renodx::utils::log::i(std::format("[Total War] Worker pool: {}; Worker Threads {}: {} workers{}.", room, settings.threads, row_workers,
+                                      (budget == 0 ? " (the multi-threaded options are off)" : "")));
+  }
   if (!settings.in_use) {
     Stop();
     return;
@@ -673,7 +706,7 @@ inline void Update(const Settings& settings) {
   // Growth and the CPU sets change `created` and the threads' handles, which Stop (another thread, at detach) also changes: only
   // with `busy`, else this present is skipped.
   if (busy.exchange(true, std::memory_order_acquire)) return;
-  target = std::min(std::max<uint32_t>(settings.threads, 1) - 1, MAX_WORKERS);
+  target = row_workers;
   if (target != failed_target) {
     failed_target = ~0u;
   }
