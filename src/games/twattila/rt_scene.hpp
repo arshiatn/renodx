@@ -71,6 +71,13 @@ inline AmbientProbe ambient_probe;
 
 using Microsoft::WRL::ComPtr;
 
+// The traced Light Bounce's defaults (Reset, a first start): the RT/PT preset's (rays_preset.hpp RAYS_PRESET, ATN
+// 2026-11-22: the paths 6.50 -> 2.82 ms). The rows below, graphics_page.hpp and add-ons with their own rows (Ryse) read these.
+constexpr float LIGHT_BOUNCE_RAYS_DEFAULT = 1.f;
+constexpr float LIGHT_BOUNCE_RESOLUTION_DEFAULT = 0.f;  // full
+constexpr float LIGHT_BOUNCE_RANGE_DEFAULT = 50.f;
+constexpr float PATH_BOUNCES_DEFAULT = 1.f;
+
 // The settings as the addon's sliders hold them (in the anti-aliasing section: with DLAA / DLSS).
 struct Sliders {
   float sun_shadows = 0.f;
@@ -125,10 +132,10 @@ struct Sliders {
   float start_past = 0.f;  // Rays Start Past Hidden Shapes (Bindings::rays_start_past)
   float sheets_unselfed = 1.f;  // Smooth Banner Shadows (Bindings::rays_sheets_unselfed): on (DEBUG44's steps on sails)
   float light_bounce = 0.f;  // the Light Bounce's tracer: 0 its own (screen space), 1 rays, 2 paths
-  float light_bounce_rays = 4.f;
-  float light_bounce_range = 10.f;
-  float light_bounce_resolution = 1.f;  // 0 full, 1 half, 2 quarter
-  float path_bounces = 2.f;
+  float light_bounce_rays = LIGHT_BOUNCE_RAYS_DEFAULT;
+  float light_bounce_range = LIGHT_BOUNCE_RANGE_DEFAULT;
+  float light_bounce_resolution = LIGHT_BOUNCE_RESOLUTION_DEFAULT;  // 0 full, 1 half, 2 quarter
+  float path_bounces = PATH_BOUNCES_DEFAULT;
   float path_ambient = 0.f;  // Path-Traced Ambient (games InstallSunDraws gives the ambient cube's place)
   float path_sky_apart = 1.f;
   float path_kept_cube = 0.f;  // Path-Traced AO: the bounces' stand-in light from the game's cube
@@ -622,8 +629,12 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(Context& command) ->
       native->PSGetConstantBuffers(draw.camera_slot, 1, camera.GetAddressOf());
       internal::Trace(native, depth.Get(), camera.Get());
     }
+    // This frame's trace or the last's (bridge.rt_ambient keeps it): the hosts that skip the game's SSAO skip it in the same
+    // window (SkipGameSsao, GameAmbientReplaced) and clear its target to open, so a trace that fails right after a traced
+    // frame left the sun draws without AO.
     ComPtr<ID3D11ShaderResourceView> game_ao;
-    if (runtime.settings.ambient_occlusion && runtime.traced_frame == runtime.frame && draw.ao_slot != UINT_MAX) {
+    if (runtime.settings.ambient_occlusion && runtime.traced_frame != UINT64_MAX && runtime.traced_frame + 1 >= runtime.frame
+        && draw.ao_slot != UINT_MAX) {
       native->PSGetShaderResources(draw.ao_slot, 1, game_ao.GetAddressOf());
     }
     if (game_ao && runtime.combined_frame != runtime.frame) {
@@ -2221,7 +2232,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .is_visible = [] { return internal::far_tree_shadows_installed; },
       },
       new renodx::utils::settings::Setting{
-          .key = "RayTracedDebugLog",
+          .key = internal::LOG_DETAILS_KEY,
           .binding = &sliders->debug_log,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
           .default_value = 0.f,
@@ -2598,7 +2609,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .key = "RayTracedLightBounceRays",
           .binding = &sliders->light_bounce_rays,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 4.f,
+          .default_value = LIGHT_BOUNCE_RAYS_DEFAULT,
           .label = "Ray-Traced Light Bounce Rays",
           .section = section,
           .tooltip = "More rays: less noise. Heavier.",
@@ -2611,7 +2622,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .key = "RayTracedLightBounceResolution",
           .binding = &sliders->light_bounce_resolution,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 1.f,
+          .default_value = LIGHT_BOUNCE_RESOLUTION_DEFAULT,
           .label = "Ray-Traced Light Bounce Resolution",
           .section = section,
           .tooltip = "Its own resolution (the screen-space Light Bounce's settings no longer apply to it).\n"
@@ -2622,7 +2633,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
       new renodx::utils::settings::Setting{
           .key = "RayTracedLightBounceRange",
           .binding = &sliders->light_bounce_range,
-          .default_value = 10.f,
+          .default_value = LIGHT_BOUNCE_RANGE_DEFAULT,
           .label = "Ray-Traced Light Bounce Range",
           .section = section,
           .tooltip = "How far its rays look for light.",
@@ -2644,7 +2655,7 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .key = "PathTracingBounces",
           .binding = &sliders->path_bounces,
           .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-          .default_value = 2.f,
+          .default_value = PATH_BOUNCES_DEFAULT,
           .label = "Path Tracing Bounces",
           .section = section,
           .tooltip = "How many more surfaces a light path follows where the camera sees nothing (behind you, behind walls).\n"

@@ -430,7 +430,7 @@ inline ID3D11Buffer* GetBuffer(ID3D11Device* device, ID3D11DeviceContext* contex
   // Outside the mirrors' lock (rt_core takes its own).
   if (rewritten && result != nullptr) {
     twattila::rt_scene::internal::OnIndexWrite(renodx::utils::device_proxy::proxy_device_reshade, {reinterpret_cast<uint64_t>(result)}, 0,
-                                               UINT64_MAX);
+                                               UINT64_MAX, twattila::rt_scene::internal::INDEX_HOST_UPLOAD);
   }
   return result;
 }

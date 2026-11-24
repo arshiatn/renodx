@@ -2,20 +2,20 @@
 # a call; rt_scene.hpp's constant-buffer point lights (Rome II's), read and cost a call; the instanced light draws' lights in
 # v160's order, to the bit, and the cost of a frame's sort; Trace's light pick against the old one, to the bit, and its
 # cost; on WARP. Needs the Attila addon built in build32 (rt_scene.hpp includes its embedded shaders:
-# build32\twattila.include). Run as x86 (the game's) and amd64.
-param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86')
+# build32\twattila.include). Run as x86 (the game's) and amd64. -OutDir: where the test program is built and run (test
+# programs only in the maintainer's excluded folder: testbin by default).
+param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86',
+      [string]$OutDir = (Join-Path $env:USERPROFILE ".claude\projects\D--Dev-renodx\tools\tw\testbin\tw_native_context_$Architecture"))
 $ErrorActionPreference = 'Stop'
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_native_context'
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
 & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch $Architecture -HostArch amd64 -SkipAutomaticLocation
-# Test programs only in the maintainer's excluded folder.
-$testBuild = Join-Path $env:USERPROFILE ".claude\projects\D--Dev-renodx\tools\tw\testbin\tw_native_context_$Architecture"
-New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
-Set-Location -LiteralPath $testBuild
+New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+Set-Location -LiteralPath $OutDir
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
 $detoursArch = if ($Architecture -eq 'x86') { 'X86' } else { 'X64' }
 & 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /bigobj /DNOMINMAX /DWIN32=1 -Wno-deprecated-declarations /I $repairRoot /I "$repairRoot\build32\twattila.include" /I "$repairRoot\external\reshade" /I "$repairRoot\external\frozen\include" /I "$repairRoot\external\Detours\include" /I "$repairRoot\external\gtl\include" "$testRoot\tests.cpp" /Fe:native_context.exe /link /OPT:REF /OPT:ICF "$repairRoot\external\Detours\lib.$detoursArch\detours.lib" user32.lib advapi32.lib d3d11.lib d3d12.lib dxgi.lib d3dcompiler.lib dxguid.lib
 if ($LASTEXITCODE -ne 0) { throw 'Native context test compile failed' }
-& (Join-Path $testBuild 'native_context.exe')
+& (Join-Path $OutDir 'native_context.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Native context test failed' }

@@ -43,6 +43,7 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/hash.hpp"
 #include "../../utils/platform.hpp"
+#include "../../utils/settings.hpp"
 #include "../../utils/state.hpp"
 #include "./dlaa_bridge.hpp"
 #include "./dxbc.hpp"
@@ -389,7 +390,9 @@ struct SceneShader {
 };
 
 // The main view's camera as ray tracing needs it: its view-projection and inverse (rows acting on column vectors; with
-// the jitter, as its depth was drawn) and its position.
+// the jitter, as its depth was drawn) and its position. rt_positions unprojects the depth at D3D11's texel centres, so a
+// host gives the matrices the depth was drawn with: the draws' jitter in them, and a game with other pixel centres moved
+// onto D3D11's (D3D9's lie half a pixel left of and above them: R.U.S.E.'s rays started under the ground without it).
 struct Camera {
   std::array<float, 16> view_projection = {};
   std::array<float, 16> inverse_view_projection = {};
@@ -972,6 +975,8 @@ struct Runtime {
   std::array<std::array<uint32_t, 2>, 2> rows_reads = {};
   std::unordered_set<uint32_t> left_out_logged;  // shaders whose draws the capture can't take, each said once
   std::unordered_set<std::string> thin_sheets_logged;  // Log Details: each kind of the banners' row's dynamic draws, said once
+  // OnIndexWrite's lines said (a session): two bits a kind of write (IndexWrite), one without a cluster set marked, one with.
+  uint32_t index_writes_logged = 0;
   // The local lights the light draws had this frame and last; those this frame's trace took (their positions also in
   // objects.light_constants, b12) and whether it did.
   std::vector<LocalLight> lights_drawn;
@@ -1111,6 +1116,12 @@ static std::atomic_bool active = false;
 static std::atomic_uint64_t light_frame = 0;
 // A cluster mesh holds one of the game's index buffers (runtime.index_buffer_sets not empty): else OnIndexWrite returns.
 static std::atomic_bool index_buffers_held = false;
+// Log Details on and no index buffer's Map logged yet (Update): else OnMapIndices returns (a Map a draw in some games).
+static std::atomic_bool index_maps_logging = false;
+// Log Details' saved row (rt_scene.hpp): OnMapIndices registered only when it was saved on at InstallScene (no callback a
+// Map otherwise, for a line said once).
+constexpr const char* LOG_DETAILS_KEY = "RayTracedDebugLog";
+static bool index_maps_registered = false;
 // Batched unit draws wait for their flush (runtime.batch_draws not empty): else FlushUnitCaptures and OnBatchTextureWritten return.
 static std::atomic_bool batch_pending = false;
 // rt_scene::AmbientReplaced's answer (AmbientReplacedNow), stored under runtime.mutex by every writer of what it reads
@@ -3567,17 +3578,16 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
     if (lights_in_bounce) std::erase_if(candidates, [](const LocalLight& light) { return light.shadows_only; });
     // The shadow ratio covers the lights the bounce samples: the first 32.
     const size_t count = std::min<size_t>({candidates.size(), runtime.settings.light_count, light_ratio ? dlaa_bridge::RT_MAX_LIGHTS : dlaa_bridge::RT_ALL_LIGHTS});
-    // Each light scored once, with its place (scoring both sides of every comparison cost 0.23 ms a frame, day1
-    // 2026-11-18). partial_sort's moves follow its comparisons alone, so the same lights land in the same places, ties
-    // and NaN too (the scores SSE floats, the same bits each time; std::max({...}) kept: the STL's vectorized max_element
-    // picks among NaN and -0 / +0 otherwise than std::max of std::max). lights_last takes that whole order only when the
-    // helper does not take the trace (below): it is tried again this frame from there.
+    // Each light scored once, with its place. partial_sort's moves follow its comparisons alone, so the same lights land
+    // in the same places, ties and NaN too (the scores SSE floats, the same bits each time; std::max({...}) kept: the
+    // STL's vectorized max_element picks among NaN and -0 / +0 otherwise than std::max of std::max). lights_last takes
+    // that whole order only when the helper does not take the trace (below): it is tried again this frame from there.
     auto& ranks = runtime.light_ranks;
     ranks.resize(candidates.size());
     for (uint32_t index = 0; index < ranks.size(); ++index) {
       const LocalLight& light = candidates[index];
-      ranks[index] = {.score = std::max({light.colour[0], light.colour[1], light.colour[2]}) * light.light[3] * light.light[3]
-                               / std::max(distance_squared(light), 1.f),
+      ranks[index] = {.score = std::max({light.colour[0], light.colour[1], light.colour[2]}) * light.light[3]
+                               * light.light[3] / std::max(distance_squared(light), 1.f),
                       .index = index};
     }
     std::partial_sort(ranks.begin(), ranks.begin() + static_cast<ptrdiff_t>(count), ranks.end(),
@@ -3694,10 +3704,14 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
   }
   if (!traced) NotTraced("the helper did not trace: " + dlaa_bridge::TraceStatus());
   // Not taken: lights_last in the pick's whole order, as partial_sort of the lights themselves left it before (a trace
-  // again this frame starts from there; a taken trace's lights_last goes at the frame's end). No lights picked: in its order.
+  // again this frame starts from there). Taken: left filtered, not reordered, which is exact only because nothing reads
+  // it before Update swaps in the next frame's lights (both Trace overloads return once traced_frame is this frame).
+  // No lights picked: in its order.
   if (!traced && lights) {
     runtime.lights_ranked.clear();
-    for (const Runtime::LightRank& rank : runtime.light_ranks) runtime.lights_ranked.push_back(runtime.lights_last[rank.index]);
+    for (const Runtime::LightRank& rank : runtime.light_ranks) {
+      runtime.lights_ranked.push_back(runtime.lights_last[rank.index]);
+    }
     std::swap(runtime.lights_last, runtime.lights_ranked);
   }
   runtime.lights_traced = traced && lights;
@@ -3958,12 +3972,18 @@ inline void OnInitPipeline(reshade::api::device* device, reshade::api::pipeline_
   }
 }
 
+// The sources of the game's index-buffer writes OnIndexWrite sees: ReShade's events, and a host's own upload (R.U.S.E.'s replay).
+enum IndexWrite : uint32_t { INDEX_UPDATE, INDEX_UPDATE_COMMAND, INDEX_COPY_REGION, INDEX_COPY, INDEX_MAP, INDEX_HOST_UPLOAD };
+
 // The game wrote bytes `offset` to `offset + size` of `dest` (UpdateSubresource or a copy, on any context). A cluster set is
 // keyed by its index buffer and range, which stay when the game writes other indices into them: kept, the set laid the old
 // triangles over the new vertices, stretched triangles across the scene (traces of 100 ms and more, as suspect 2's wrong
 // vertices; Rome Remastered's battle resets, suspect 3). Each set whose range the write touches is made again
 // (PrepareClusterSet), its triangles captured meanwhile. Only a D3D11 device's handles are ID3D11Resource pointers.
-inline void OnIndexWrite(reshade::api::device* device, reshade::api::resource dest, uint64_t offset, uint64_t size) {
+// While a cluster set is held (else it returns at once, and logs nothing): the first write of each `kind` into any index
+// buffer, and the first of each kind that marks a set, get a line (whether and how the game rewrites its index buffers:
+// the Rome Remastered trace).
+inline void OnIndexWrite(reshade::api::device* device, reshade::api::resource dest, uint64_t offset, uint64_t size, IndexWrite kind) {
   if (!index_buffers_held.load(std::memory_order_relaxed) || dest.handle == 0) return;
   if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* resource = reinterpret_cast<ID3D11Resource*>(dest.handle);
@@ -3974,15 +3994,30 @@ inline void OnIndexWrite(reshade::api::device* device, reshade::api::resource de
   static_cast<ID3D11Buffer*>(resource)->GetDesc(&desc);
   if ((desc.BindFlags & D3D11_BIND_INDEX_BUFFER) == 0) return;
   const uint64_t end_byte = (size > UINT64_MAX - offset) ? UINT64_MAX : offset + size;
-  const std::unique_lock lock(runtime.mutex);
-  const auto keys = runtime.index_buffer_sets.find(dest.handle);
-  if (keys == runtime.index_buffer_sets.end()) return;
-  for (const uint64_t set_key : keys->second) {
-    if (const auto mesh = runtime.cluster_meshes.find(set_key);
-        mesh != runtime.cluster_meshes.end() && mesh->second.indices.Get() == resource && mesh->second.first_byte < end_byte && offset < mesh->second.end_byte) {
-      mesh->second.rewritten_frame = std::max<uint64_t>(runtime.frame, 1);
+  uint32_t marked = 0;
+  {
+    const std::unique_lock lock(runtime.mutex);
+    if (const auto keys = runtime.index_buffer_sets.find(dest.handle); keys != runtime.index_buffer_sets.end()) {
+      for (const uint64_t set_key : keys->second) {
+        if (const auto mesh = runtime.cluster_meshes.find(set_key);
+            mesh != runtime.cluster_meshes.end() && mesh->second.indices.Get() == resource && mesh->second.first_byte < end_byte
+            && offset < mesh->second.end_byte) {
+          mesh->second.rewritten_frame = std::max<uint64_t>(runtime.frame, 1);
+          ++marked;
+        }
+      }
     }
+    const uint32_t logged_bit = 1u << ((kind * 2) + (marked != 0 ? 1 : 0));
+    if ((runtime.index_writes_logged & logged_bit) != 0) return;
+    runtime.index_writes_logged |= logged_bit;
   }
+  constexpr std::array<std::string_view, 6> KINDS = {"update_buffer_region", "update_buffer_region_command", "copy_buffer_region",
+                                                     "copy_resource", "map_buffer_region", "the host's upload"};
+  constexpr std::array<std::string_view, 4> USAGES = {"default", "immutable", "dynamic", "staging"};
+  const std::string range = (size == UINT64_MAX) ? std::string("all of it") : std::format("bytes {} to {}", offset, end_byte);
+  renodx::utils::log::i(std::format("[Total War] Ray tracing: the game wrote an index buffer ({} usage, {} bytes) by {}, {}: {} cluster "
+                                    "sets made again (the first such write, said once).",
+                                    USAGES[std::min<size_t>(desc.Usage, USAGES.size() - 1)], desc.ByteWidth, KINDS[kind], range, marked));
 }
 
 // The game writes a texture (any thread, after its Map): a batched draw's bones there are another soldier's from now on, its
@@ -4007,23 +4042,31 @@ inline bool OnBatchUpdateTexture(reshade::api::device*, const reshade::api::subr
 }
 
 inline bool OnUpdateIndices(reshade::api::device* device, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
-  OnIndexWrite(device, dest, offset, size);
+  OnIndexWrite(device, dest, offset, size, INDEX_UPDATE);
   return false;
 }
 
 inline bool OnUpdateIndicesCommand(reshade::api::command_list* cmd_list, const void*, reshade::api::resource dest, uint64_t offset, uint64_t size) {
-  OnIndexWrite(cmd_list->get_device(), dest, offset, size);
+  OnIndexWrite(cmd_list->get_device(), dest, offset, size, INDEX_UPDATE_COMMAND);
   return false;
 }
 
 inline bool OnCopyIndices(reshade::api::command_list* cmd_list, reshade::api::resource, uint64_t, reshade::api::resource dest, uint64_t offset, uint64_t size) {
-  OnIndexWrite(cmd_list->get_device(), dest, offset, size);
+  OnIndexWrite(cmd_list->get_device(), dest, offset, size, INDEX_COPY_REGION);
   return false;
 }
 
 inline bool OnCopyIndexBuffer(reshade::api::command_list* cmd_list, reshade::api::resource, reshade::api::resource dest) {
-  OnIndexWrite(cmd_list->get_device(), dest, 0, UINT64_MAX);
+  OnIndexWrite(cmd_list->get_device(), dest, 0, UINT64_MAX, INDEX_COPY);
   return false;
+}
+
+// A Map for writing: for the log alone (only dynamic and staging buffers map, and neither holds a cluster set:
+// PrepareClusterSet); D3D11's always the whole buffer.
+inline void OnMapIndices(reshade::api::device* device, reshade::api::resource resource, uint64_t offset, uint64_t size,
+                         reshade::api::map_access access, void**) {
+  if (!index_maps_logging.load(std::memory_order_relaxed) || access == reshade::api::map_access::read_only) return;
+  OnIndexWrite(device, resource, offset, size, INDEX_MAP);
 }
 
 }  // namespace internal
@@ -4364,6 +4407,8 @@ inline void Update(const Settings& settings) {
     runtime.particles = 0;
   }
   dlaa_bridge::bridge.details = settings.debug_log;
+  internal::index_maps_logging.store(settings.debug_log && (runtime.index_writes_logged & (1u << (2 * internal::INDEX_MAP))) == 0,
+                                     std::memory_order_relaxed);
   internal::active.store(internal::Enabled(), std::memory_order_relaxed);
   const uint64_t tick = GetTickCount64();
   if (runtime.traced_frame == runtime.frame) runtime.traced_tick = tick;
@@ -4970,6 +5015,12 @@ inline void InstallScene(std::span<const SceneShader> shaders, const Host& host)
   reshade::register_event<reshade::addon_event::update_buffer_region_command>(internal::OnUpdateIndicesCommand);
   reshade::register_event<reshade::addon_event::copy_buffer_region>(internal::OnCopyIndices);
   reshade::register_event<reshade::addon_event::copy_resource>(internal::OnCopyIndexBuffer);
+  float log_details_saved = 0.f;
+  reshade::get_config_value(nullptr, (renodx::utils::settings::global_name + "-preset1").c_str(), internal::LOG_DETAILS_KEY, log_details_saved);
+  internal::index_maps_registered = log_details_saved != 0.f;
+  if (internal::index_maps_registered) {
+    reshade::register_event<reshade::addon_event::map_buffer_region>(internal::OnMapIndices);
+  }
   if (internal::BatchInScene()) {
     reshade::register_event<reshade::addon_event::map_texture_region>(internal::OnBatchMapTexture);
     reshade::register_event<reshade::addon_event::update_texture_region>(internal::OnBatchUpdateTexture);
@@ -4994,6 +5045,9 @@ inline void UninstallScene() {
   reshade::unregister_event<reshade::addon_event::update_buffer_region_command>(internal::OnUpdateIndicesCommand);
   reshade::unregister_event<reshade::addon_event::copy_buffer_region>(internal::OnCopyIndices);
   reshade::unregister_event<reshade::addon_event::copy_resource>(internal::OnCopyIndexBuffer);
+  if (std::exchange(internal::index_maps_registered, false)) {
+    reshade::unregister_event<reshade::addon_event::map_buffer_region>(internal::OnMapIndices);
+  }
   if (internal::BatchInScene()) {
     reshade::unregister_event<reshade::addon_event::map_texture_region>(internal::OnBatchMapTexture);
     reshade::unregister_event<reshade::addon_event::update_texture_region>(internal::OnBatchUpdateTexture);
