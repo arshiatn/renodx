@@ -830,7 +830,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
-- Sol SMOKE STARTED 00:2x (-Smoke -Package ...sol_fixes_1124\build -Exe64Sha a75c1 ... | ?
+- ATN: send Sol the Downloads\Sol_fixes_1125 package when he wants (credit request ... | ?
 - ATN 11-25 ~00:0x: WPR traces on D: (C: 82 GB free, D: 327 GB). His tasks RenoDX_ ... | ?
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
 - vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows). | ?
@@ -15426,8 +15426,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] s3f_ ROUND 3 DONE (hand-back attila64/s3f_round3_handback.md): 1ada3bb (overlay + Sol's comment), dc073f7
         (near-game page counted as own code; new near_av case + control); suite 40 cases OK; exe sha256 a75c1b8a63a267d6...
         (verified), zip 8ac2c30a..., patch 4 commits e471d79c...; message + TESTS_for_sol updated.
-        - [ ] Sol SMOKE STARTED 00:2x (-Smoke -Package ...sol_fixes_1124\build -Exe64Sha a75c1b8a63a267d6, ATN's
-        wildcard line) -> PASS -> ATN sends message_for_sol.md + patch + zip + TESTS_for_sol.md.
+        - [x] Sol SMOKE PASS 00:12-00:16 (ab_runs\20261125_001241_Smoke): clean exit 0, 0 CRASH / FATAL, 0 extra 'patch
+        skipped', Discord button drawn on the menu (480x80, zoom 2.00), 0 'left to its own handler', 0 'not 8-bit'
+        (no add-on), run folder run_pkg_a75c1b8a63a267d6. Package copied to C:\Users\arshi\Downloads\Sol_fixes_1125
+        (message_for_sol.md, sol_fixes_1124.patch (From: ATN's real noreply), zip, TESTS_for_sol.md; grep-clean of user
+        paths / agent names).
+        - [ ] ATN: send Sol the Downloads\Sol_fixes_1125 package when he wants (credit request inside).
         - [ ] ATN 11-25 ~00:0x: WPR traces on D: (C: 82 GB free, D: 327 GB). His tasks RenoDX_WPR_Start = 'wpr.exe -start
         CPU -start GPU -filemode', RenoDX_WPR_Stop = 'wpr.exe -stop C:\...\nsight\attila_run\attila_wpr.etl' (coord
         never edits them) -> asked ATN to add -recordtempto D:\RenoDX_WPR to Start and stop into D:\RenoDX_WPR (folder
