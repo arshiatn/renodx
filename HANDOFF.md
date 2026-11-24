@@ -800,6 +800,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (g24_ step 6): 33 mv gap families, 1,627 cells (VTF 1,279 in 13; bones 348 i ... | ?
 - ATN (pk1_ sec 10): A FDW always on; B FDW NVIDIA only; C rows C1 / C2 / C3 (+ ke ... | ?
 - ATN (pk2_ sec 17): Q-A X1 row default On?; Q-B runs with N-C1 arm (coord: yes); ... | ?
+- PK3 S1 follow-ups: SHOULD-1 source-text guard in test/tw_render_mt_defaults/run. ... | ?
 - drl_ (Opus xHigh, worktree): tw_draw_recording_loop part 7 FAILS 736x on atn-mod ... | ?
 - ATN: run rule for test/tw_engine_code/animation_timing.ps1 (PK3 timing; own buil ... | ?
 - p4i_ (FABLE 5.2 MEDIUM TRIAL, worktree) PK4 S1 infra on fca_pk4: 64-bit masks + ... | ?
@@ -14556,7 +14557,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] p3i_ DONE (p3i_s1_handback.md): fca_pk3_s1 = b4a7a441e (0294d40cf helper + 8 sites, b4a7a441e 23zi); census
         0 prefetcht2 / 31 prefetcht0 in all three .addon32 (before / after .text: 31 ModRM bytes + 3 line digits); part 23
         both schedules PASS, 23zi negative control fails as it should; gates PASS except tw_draw_recording_loop (pre-existing).
-        -> rv3_ short look (sent; rv3_pk3_s1_look.md) -> coord merges ALONE.
+        -> rv3_ GO (rv3_pk3_s1_look.md) -> MERGED ALONE into atn-mods c2859c971. Correction: the 3 non-prefetch differing
+        bytes are the build's __TIME__ string (addon.cpp:78 BUILD_TIME), not line digits. Gate record: all PASS except
+        tw_draw_recording_loop part 7, identical on the parent (drl_). Census tool for S6: testbin/scratch/p3i_/census.py.
+        - [ ] PK3 S1 follow-ups: SHOULD-1 source-text guard in test/tw_render_mt_defaults/run.ps1 (prefetch.hpp clang
+        branch = __builtin_prefetch(address, 0, 3); no _mm_prefetch( / _MM_HINT_T in animation_rows.hpp, later
+        draw_recording.hpp) - writer AFTER p1i_'s P4 (p1i_ owns that file now), by PK3 S6; NIT: 23zi comment 'catches
+        level edits only' with S0's .inc commit. pk2_'s implementer now bases on c2859c971.
         (was: p3i_ (Sonnet xHigh, worktree) PK3 S1 on fca_pk3_s1: prefetch.hpp + 8 sites + byte test 23zi + census;
         build gate (3 x .addon32 + twattila .addon64 + 5 test suites). -> short review (rv3_) -> merge ALONE to atn-mods
         before pk2_'s implementer. Overlap checked: fxi_ (tests.cpp / exit_drain.inc), sse_ (Bend SSS), s1a_ (none yet).)
