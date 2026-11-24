@@ -123,9 +123,11 @@
 //    another mod's bytes going in (the group stands down, found 0) and over our call going out (that site stays, the rest out, the module pinned), a page that cannot be made writable
 //    (the control: going in none is written, going out only that site stays; the protection as it was), a parked thread at each byte of each site, the dispatcher's count above 0 and stuck at
 //    Uninstall, both tables of one window, Uninstall; `tests.exe <dll> quick fill` runs it alone.
-// 30. Exit Job Drain (src/games/twattila/engine_code.hpp 21.; exit_drain.inc; Attila only): the site (+0xC9AC1) and its signature in the game's code, the E8 callers of the app's delete, the four
-//    cases that leave it alone (signature, app delete, no accessor, pool pointer outside the image), in and out, the drain on a fake job pool (workers running or woken are waited for, the
-//    cap of 1000 ms, no pool, a worker of another pool, the drain once only, the game's own delete after); `tests.exe <dll> quick exit` runs it alone.
+// 30. Exit Job Drain (src/games/twattila/engine_code.hpp 21.; exit_drain.inc; Attila only): the two sites (+0xC9AC1, the app destruction's call; +0xD5D74, the outer loop's call of the root
+//    teardown +0xC9800) and their signatures in the game's code, the E8 callers of the app's delete and of the root teardown (no E9, no relocated address of it), the cases that leave a site or both
+//    alone (each signature, app delete, root teardown head, no accessor, pool pointer outside the image), in and out, the drain on a fake job pool at each site (workers running or woken are waited
+//    for and named in the line, the caps, no pool, a worker of another pool, the drain once only, the game's own call after, the loop object passed through), the race with its control (a battle job
+//    that reads the battle while the fake teardown frees it); `tests.exe <dll> quick exit` runs it alone.
 // Thrones of Britannia's and Rome II's DLLs the same way (engine_code's BUILDS, each picked by its truncation's pattern):
 // their RVAs, their CRT's state, their truncation's stack slots; Rome II has no ready check (its pattern found 0 times).
 // tests.exe [empire.retail.dll] [quick]  (quick: 2^28 instead of 2^32 in 2 and 3)
@@ -2499,7 +2501,7 @@ int RunSumTests(const TestBuild& build, uint8_t* game, uint8_t* patched, bool qu
 // Parallel Instance Fill's hook-up (part 29): its 4 sites in PausedWrite's fourth table, Update's bookkeeping, another mod's bytes, a page that cannot be made writable, a parked thread, the dispatcher's count, Uninstall.
 #include "instance_fill.inc"
 
-// Exit Job Drain (part 30): its site in the game's code, the four no-patch cases, in and out, the drain on a fake job pool, the cap.
+// Exit Job Drain (part 30): its two sites in the game's code, the no-patch cases, in and out, the drain on a fake job pool at each site, the cap, the race.
 #include "exit_drain.inc"
 
 #if defined(TWATTILA_ENGINE_PROBE)
@@ -2588,7 +2590,7 @@ int main(int argc, char** argv) {
   }
   CHECK(std::memcmp(unpatched.data(), patched + text_rva, text_size) == 0);
   twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true, false, true, true, true, true);
-  CHECK(ec::written == (ec::found & ~ec::JOB_SITES & ~ec::MODEL_DETAIL_BIT & ~ec::WORKER_SITES & ~ec::PARTICLE_COUNT_SITES & ~ec::EXIT_DRAIN_BIT)  // the LOD pick's row is asked for by the slider (part 22), the worker rows by part 23, Cached Particle Count by part 28
+  CHECK(ec::written == (ec::found & ~ec::JOB_SITES & ~ec::MODEL_DETAIL_BIT & ~ec::WORKER_SITES & ~ec::PARTICLE_COUNT_SITES & ~ec::EXIT_DRAIN_SITES)  // the LOD pick's row is asked for by the slider (part 22), the worker rows by part 23, Cached Particle Count by part 28
         && ec::found == (ec::MODEL_DETAIL_BIT | 0b00111u | (build.list_push_function_rva != 0 ? 0b01000u : 0u) | (build.ready_check_rva != 0 ? 0b10000u : 0u)
                          | (build.code->job_wake_all_rva != 0 ? ec::JOB_SITES : 0u) | (build.code->half_rows_rva != 0 ? 0b100000000u : 0u)
                          | (build.code->child_sum_rva != 0 ? ec::CHILD_SUM_BIT : 0u) | (build.code->particle_loop_rva != 0 ? ec::PARTICLE_PREFETCH_BIT : 0u)
@@ -2599,7 +2601,7 @@ int main(int argc, char** argv) {
                          | (build.code->fill_call_rva != 0 ? ec::WORKER_FILL_BIT : 0u)
                          | (build.code->float4_reload_rva != 0 ? ec::FLOAT4_RELOAD_SITES : 0u) | ec::SOLDIER_ROWS_SITES | ec::MATRIX_PRODUCT_SITES
                          | (build.code->particle_count_rva != 0 ? ec::PARTICLE_COUNT_SITES : 0u)
-                         | (build.code->exit_destroy_rva != 0 ? ec::EXIT_DRAIN_BIT : 0u)));  // found, not asked for here: Exit Job Drain is asked for by part 30
+                         | (build.code->exit_destroy_rva != 0 ? ec::EXIT_DRAIN_BIT : 0u) | (build.code->exit_teardown_rva != 0 ? ec::EXIT_TEARDOWN_BIT : 0u)));  // found, not asked for here: Exit Job Drain is asked for by part 30
   size_t differing = 0;
   for (uint32_t at = text_rva; at < text_rva + text_size; ++at) {
     if (unpatched[at - text_rva] == patched[at]) continue;
@@ -3129,7 +3131,7 @@ int main(int argc, char** argv) {
   // 8. The render lists' push.
   if (build.list_push_function_rva != 0) {
     twattila::engine_code::Update(true, twattila::engine_code::Game::ATTILA, true);
-    CHECK(ec::written == (ec::found & ~(ec::JOB_SITES | ec::PREFETCH_SITES | ec::EMITTER_PREFETCH_BIT | ec::ENTRY_PREFETCH_BIT | ec::SWEEP_PREFETCH_BIT | ec::MODEL_DETAIL_BIT | ec::WORKER_SITES | ec::PARTICLE_COUNT_SITES | ec::EXIT_DRAIN_BIT)));
+    CHECK(ec::written == (ec::found & ~(ec::JOB_SITES | ec::PREFETCH_SITES | ec::EMITTER_PREFETCH_BIT | ec::ENTRY_PREFETCH_BIT | ec::SWEEP_PREFETCH_BIT | ec::MODEL_DETAIL_BIT | ec::WORKER_SITES | ec::PARTICLE_COUNT_SITES | ec::EXIT_DRAIN_SITES)));
     const uint32_t game_push = Address(game + build.list_push_function_rva);
     const uint32_t patched_push = Address(patched + build.list_push_function_rva);
     const auto start = std::chrono::steady_clock::now();
@@ -3757,7 +3759,7 @@ int main(int argc, char** argv) {
       // (a) the job sleeps changed before the jobs go in
       foreign(6, hook);
       on();
-      CHECK(ec::found == (all & ~ec::JOB_SITES) && ec::written == (ec::found & ~ec::EXIT_DRAIN_BIT) && holds(6, hook) && game_bytes(ec::JOB_SITES & ~0b01000000u));
+      CHECK(ec::found == (all & ~ec::JOB_SITES) && ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && holds(6, hook) && game_bytes(ec::JOB_SITES & ~0b01000000u));
       CHECK(log_lines.back().find("left alone") != std::string::npos && log_lines.back().find("job stops") != std::string::npos);
       foreign(6, ec::sites[6].game);
       off();
@@ -3765,7 +3767,7 @@ int main(int argc, char** argv) {
       prepare_again();
       // (b) the job destructor's call of Stop changed while the jobs are on: switching off leaves it (a foreign call), restores the other two
       on();
-      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
       foreign(7, hook);
       off();
       CHECK(ec::written == 0 && holds(7, hook) && game_bytes(all & ~0b10000000u) && (ec::found & 0b10000000u) == 0);
@@ -3782,14 +3784,14 @@ int main(int argc, char** argv) {
       foreign(1, hook);
       on();
       CHECK((ec::found & (ec::HALF_ROWS_BIT | ec::HALF_FUNCTION_BIT)) == 0 && (ec::written & (ec::HALF_ROWS_BIT | ec::HALF_FUNCTION_BIT)) == 0
-            && ec::written == (ec::found & ~ec::EXIT_DRAIN_BIT) && holds(1, hook));
+            && ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && holds(1, hook));
       foreign(1, ec::sites[1].game);
       off();
       CHECK(ec::written == 0 && game_bytes(all));
       prepare_again();
       // the half function changed while the half rows are on: switching off leaves it (a foreign hook) and takes the half rows out; switched on again the half rows do not go in alone
       on();
-      CHECK((ec::written & ec::HALF_ROWS_BIT) != 0 && ec::written == (all & ~ec::EXIT_DRAIN_BIT));
+      CHECK((ec::written & ec::HALF_ROWS_BIT) != 0 && ec::written == (all & ~ec::EXIT_DRAIN_SITES));
       foreign(1, hook);
       off();
       CHECK(ec::written == 0 && holds(1, hook) && game_bytes(all & ~ec::HALF_FUNCTION_BIT) && (ec::found & ec::HALF_FUNCTION_BIT) == 0);
@@ -3807,7 +3809,7 @@ int main(int argc, char** argv) {
       constexpr size_t COUNT = ec::PARTICLE_COUNT_INDEX;
       foreign(EPOCH, hook);
       on();
-      CHECK((ec::found & ec::PARTICLE_COUNT_SITES) == 0 && (ec::written & ec::PARTICLE_COUNT_SITES) == 0 && ec::written == (ec::found & ~ec::EXIT_DRAIN_BIT) && holds(EPOCH, hook)
+      CHECK((ec::found & ec::PARTICLE_COUNT_SITES) == 0 && (ec::written & ec::PARTICLE_COUNT_SITES) == 0 && ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && holds(EPOCH, hook)
             && game_bytes(ec::PARTICLE_COUNT_BIT));
       foreign(EPOCH, ec::sites[EPOCH].game);
       off();
@@ -3815,14 +3817,14 @@ int main(int argc, char** argv) {
       prepare_again();
       foreign(COUNT, hook);  // the sum's bytes changed before the row goes in
       on();
-      CHECK((ec::found & ec::PARTICLE_COUNT_SITES) == 0 && (ec::written & ec::PARTICLE_COUNT_SITES) == 0 && ec::written == (ec::found & ~ec::EXIT_DRAIN_BIT) && holds(COUNT, hook)
+      CHECK((ec::found & ec::PARTICLE_COUNT_SITES) == 0 && (ec::written & ec::PARTICLE_COUNT_SITES) == 0 && ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && holds(COUNT, hook)
             && game_bytes(ec::PARTICLE_EPOCH_BIT));
       foreign(COUNT, ec::sites[COUNT].game);
       off();
       CHECK(ec::written == 0 && game_bytes(all));
       prepare_again();
       on();
-      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT) && holds(EPOCH, ec::sites[EPOCH].jump) && holds(COUNT, ec::sites[COUNT].jump));
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES) && holds(EPOCH, ec::sites[EPOCH].jump) && holds(COUNT, ec::sites[COUNT].jump));
       foreign(COUNT, hook);
       off();
       // like every site that stands down on the way out, both count as another mod's now (written 0, found without them); the epoch's jump is still in the game's code
@@ -3833,7 +3835,7 @@ int main(int argc, char** argv) {
       // the epoch's jump overwritten (the game's bytes back, no chain) while the row is on: switching off leaves the epoch out of found, and switching on again does not put the
       // sum in alone (it would answer the first value of each node for the session)
       on();
-      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
       foreign(EPOCH, ec::sites[EPOCH].game);
       off();
       CHECK(ec::written == 0 && (ec::found & ec::PARTICLE_COUNT_SITES) == ec::PARTICLE_COUNT_BIT && game_bytes(all));
@@ -3845,7 +3847,7 @@ int main(int argc, char** argv) {
     }
     // (d) the soldier rounding site changed while the rows are on: switching off leaves it, restores the others
     on();
-    CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
+    CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
     foreign(0, hook);
     off();
     CHECK(ec::written == 0 && holds(0, hook) && game_bytes(all & ~1u));
@@ -3858,7 +3860,7 @@ int main(int argc, char** argv) {
       constexpr size_t VECTOR = ec::FLOAT4_RELOAD_FIRST_SITE + 1;
       for (const size_t changed : {COLOUR, VECTOR}) {
         on();
-        CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
+        CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
         foreign(changed, hook);
         off();
         CHECK(ec::written == 0 && holds(changed, hook) && game_bytes(all & ~(1u << changed)) && (ec::found & (1u << changed)) == 0);
@@ -3892,7 +3894,7 @@ int main(int argc, char** argv) {
     if (build.code->particle_loop_rva != 0) {
       // (h) the particle loop's prefetch site changed while the rows are on: switching off leaves it, restores the others
       on();
-      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
       foreign(ec::PARTICLE_PREFETCH_INDEX, hook);
       off();
       CHECK(ec::written == 0 && holds(ec::PARTICLE_PREFETCH_INDEX, hook) && game_bytes(all & ~ec::PARTICLE_PREFETCH_BIT)
@@ -3912,7 +3914,7 @@ int main(int argc, char** argv) {
       CHECK(ec::sites[ec::PARTICLE_PREFETCH_INDEX].at == nullptr && ec::sites[ec::CHILD_SUM_INDEX].at != nullptr && ec::sites[ec::FLOAT4_RELOAD_FIRST_SITE].at != nullptr);
       ec::prefetch_logged = 0;
       on();
-      CHECK(ec::written == (ec::found & ~ec::EXIT_DRAIN_BIT) && (ec::written & ec::PARTICLE_PREFETCH_BIT) == 0);
+      CHECK(ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && (ec::written & ec::PARTICLE_PREFETCH_BIT) == 0);
       CHECK(std::ranges::any_of(log_lines, [](const std::string& line) { return line.ends_with("another mod or build): particle prefetch"); }));
       off();
       loop[10] ^= 1;
@@ -3922,7 +3924,7 @@ int main(int argc, char** argv) {
     if (build.code->emitter_loop_rva != 0) {
       // (j) the emitter loop's prefetch site changed while the rows are on: switching off leaves it, restores the others
       on();
-      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
       foreign(ec::EMITTER_PREFETCH_INDEX, hook);
       off();
       CHECK(ec::written == 0 && holds(ec::EMITTER_PREFETCH_INDEX, hook) && game_bytes(all & ~ec::EMITTER_PREFETCH_BIT)
@@ -3941,7 +3943,7 @@ int main(int argc, char** argv) {
       CHECK(ec::sites[ec::EMITTER_PREFETCH_INDEX].at == nullptr && ec::sites[ec::CHILD_SUM_INDEX].at != nullptr && ec::sites[ec::PARTICLE_PREFETCH_INDEX].at != nullptr);
       ec::prefetch_logged = 0;
       on();
-      CHECK(ec::written == (ec::found & ~ec::EXIT_DRAIN_BIT) && (ec::written & ec::EMITTER_PREFETCH_BIT) == 0);
+      CHECK(ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && (ec::written & ec::EMITTER_PREFETCH_BIT) == 0);
       CHECK(std::ranges::any_of(log_lines, [](const std::string& line) { return line.ends_with("another mod or build): emitter prefetch"); }));
       off();
       function[12] ^= 1;
@@ -3959,7 +3961,7 @@ int main(int argc, char** argv) {
         ec::prefetch_logged = 0;
         const size_t logged_before = log_lines.size();
         on();
-        CHECK(ec::written == (ec::found & ~ec::EXIT_DRAIN_BIT) && (ec::written & ec::CHILD_SUM_BIT) == 0);
+        CHECK(ec::written == (ec::found & ~ec::EXIT_DRAIN_SITES) && (ec::written & ec::CHILD_SUM_BIT) == 0);
         CHECK(std::any_of(log_lines.begin() + logged_before, log_lines.end(),
                           [](const std::string& line) { return line.ends_with("another mod or build): child prefetch"); }));
         off();
@@ -3972,7 +3974,7 @@ int main(int argc, char** argv) {
     // other five and the rest
     for (size_t changed = ec::SOLDIER_ROWS_FIRST_SITE; changed < ec::MATRIX_PRODUCT_FIRST_SITE + 3; ++changed) {
       on();
-      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_BIT));
+      CHECK(ec::written == (all & ~ec::EXIT_DRAIN_SITES));
       foreign(changed, hook);
       off();
       CHECK(ec::written == 0 && holds(changed, hook) && game_bytes(all & ~(1u << changed)) && (ec::found & (1u << changed)) == 0);
