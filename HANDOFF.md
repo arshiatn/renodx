@@ -778,6 +778,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - mrg_ merges fca_item1 + fca_exit_drain (sent): all 36 builds + merged-tree tw_en ... | ?
 - after the merge: test/tw_engine_code follow-up (owner fxi_): R3-N1 bound the spi ... | ?
 - ATN (pk5_): Q6 ERMSB row + our copy at 2-4 sites; S0 before the data run; other ... | ?
+- mrg_ merges mem_fix 03137a2f5 after the FCA batch (sent; clean vs atn-mods + fca ... | ?
+- ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups ... | ?
+- ATN (pk1_): A FDW always on (advice) vs per-battle latch; B FDW NVIDIA only + FC ... | ?
+- ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace wi ... | ?
+- B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk ... | ?
+- ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-dif ... | ?
+- s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 i ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14306,6 +14313,78 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN (pk5_): Q6 ERMSB row + our copy at 2-4 sites; S0 before the data run; other CPUs = fixed list or a 2-5 ms
         start self-timing; A2 worth medium-high risk for -0.3..-0.6?; A3 bench arm (prefetch + L1); Q7 + a 60 s late-melee
         sampler window.
+        rvm_ MEM R4 GO FOR THE CONFIRM RUN (handoff_plan/reviews/rvm_mem_fix_recheck_r4.md + _handback.md): the >= deferral
+        can't skip twice or double-log; 9j now fails on every wrong variant. Confirm run = r3 items 1-5 + the later line
+        reads '30 presents after' ('31' only next to an L3); note load vs play (m2).
+        - [ ] mrg_ merges mem_fix 03137a2f5 after the FCA batch (sent; clean vs atn-mods + fca_item1) -> newest Attila build
+        for the confirm run.
+        - [ ] ATN's go for the Attila 32-bit confirm run (asked 11-24 afternoon; fresh backups, install newest first).
+        pk1_ DESIGN Rev 0 DONE (render_mt/fca/designs/pk1_design.md 558 lines + _handback.md; base fca_item1 14be1b950):
+        T1 rings on (FCU everywhere, FDW NVIDIA only, rows hidden + ClearSavedRows(3)) + reclaim fix (retire half a ring
+        ahead, flush check before growing) + 100 ms cap wait + shrink; T1d drop the IASetVertexBuffers detour in ring-only
+        install; T2 RecordUnits via motion-ring slots (CSSetConstantBuffers1 offsets). Clean cost W3 +0.2..+0.8 / D1
+        +0.35..+0.5; trap 10 / 31 -> 0 expected. T3 nothing left with RT off; T4 not needed; U1a / U2 marginal; U1b needs a
+        census. Critic errors: detour gain 0.04-0.08 not 0.32; stage 2 ~0; U1 fast path exists; N-T must be an env start.
+        New bench-only env RENODX_TW_DRIVER_RINGS needs ATN's run rule. Rule slip: last wording fixes via a heredoc.
+        -> rv1_ (Opus xHigh) review (rv1_pk1_review.md). pk2_ told: no pool thread may touch the immediate context.
+        - [ ] ATN (pk1_): A FDW always on (advice) vs per-battle latch; B FDW NVIDIA only + FCU everywhere; C rows hidden;
+        D T2 / U2 grass may reach other TW add-ons at their next build; E RT on in the target (one RT-on trace for T3b);
+        plus a run rule for RENODX_TW_DRIVER_RINGS.
+        shg_ DESIGN REV 1.1 DONE (plan_1117/shg_sh_gi_upsample_design.md sec 10.2 = answers; S0 report sec 12;
+        shg_rev11_handback.md): curve b = (-1.052823, 0.518202, 0.805396) with a hard zero at sqrt(3)/2 (uniform sky exact;
+        held-out seed 2411 .033 / .054 / .063); w rewrite last + half-transport beta in the denoise (default 0.5, -0.8%);
+        chain check = S1a V1 item 4 (|shift| <= 1%), B2 / B4 conditional on it; After Blur post-draw + ratio cap + r/2
+        UNORM blend; AO histories RGBA16F + R16F (+30 B / texel); Toru lines only in svgf/*.hlsli with full headers.
+        S1a files (sec 9.1): new bitmask_sh.hlsli, test/tw_bounce_sh; edits light_bounce_{prepare,trace,history,resolve,
+        denoise,apply}.hlsli, light_bounce.h / .hpp, lighting_settings.hpp, shared.h, graphics_page.hpp (unmerged ho_g23
+        also edits graphics_page.hpp -> merge note). No running writer overlaps. S1a-S2 ~58-85 h.
+        -> rvs_ light re-check (plan_1117/rvs_shg_recheck_r11.md) -> S1a implementer (Opus xHigh, worktree).
+        pk2_ DESIGN Rev 0 DONE (render_mt/fca/designs/pk2_design.md 401 lines + _handback.md): C1 streamed replay (chunk
+        claims, render thread replays while later chunks record; stop -> today's joined loop) -2.0..-3.6 W3 / -1.2..-2.0 D1;
+        C2 op merging -0.4..-1.0 after C1; C3 cut search -0.6..-1.5 after C1 (0 alone); P1 chained wake -0.1..-0.3; X1
+        render thread off interrupt cores -0.3..-0.5 (may be 0); B3 2 sites; V2 measure first. Package -3.0..-5.5 /
+        -1.7..-2.9 (medium-low). No pool thread touches the immediate context (sec 4.6 + test StreamReplayThread + bench
+        gate on PK1 unwind lines). Files: draw_recording.hpp, worker_pool.hpp, cpu_sets.hpp + 3 tests; no addon.cpp in
+        stage 1. New bench env vars RENODX_TW_RECORDING_PARTS / _POOL_CHAIN / _RENDER_CPUS need ATN's run rules.
+        Critic corrections: P1 = wake only; C3 alone 0; X1 evidence one-sided; D1 decal-seed misses ~0.2 not covered.
+        -> rv2_ (Opus xHigh) review (rv2_pk2_review.md).
+        - [ ] ATN (pk2_): Q-A X1 row default On?; Q-B no PK2 run of its own (data-run trace windows + bench arms); Q-C
+        Colour A hidden default Off if its net <= 0; Q-D V2 stack reserve 1 MB -> 256 KB + best-fit op arena; Q-E C2 may
+        advance the game's two dirty counters when its constants cache is off.
+        pk3_ DESIGN Rev 0 DONE (render_mt/fca/designs/pk3_design.md 485 lines + _handback.md): B3 prefetch T0 at 8 sites
+        (bug fix, always on); B1 block-local allocate -0.2..-0.4 / c9 -1.0..-1.4 / D1 -0.2..-0.35; B2 gather without the
+        animation + slot streams + bounded look-ahead -0.8..-1.2 / -0.5..-1.0. Package W3 -1.0..-2.5, c9 -1.2..-3.0, D1
+        -0.2..-0.4; bit-exact (part 23 + 5 cases + 2 controls + one Check start), no new row. Files: animation_rows.hpp,
+        new prefetch.hpp, test/tw_engine_code/animation_rows.inc; branch fca_pk3 from atn-mods. Notes: game tail after our
+        calls 5.0 / 22.5 ms/f has no item yet (pk5_ / coord); pool Start 0.40 / 1.14 (pk2_).
+        - [ ] B3 interface conflict pk3_ (helper twattila::PrefetchRead in prefetch.hpp) vs pk2_ (__builtin_prefetch at each
+        site) -> rv3_ decides with the compiler facts; both implementers follow.
+        -> rv3_ (Opus xHigh) review (rv3_pk3_review.md).
+        - [ ] ATN (pk3_): A drop '(Experimental)' from Animation Rows on Workers after a 0-difference Check start; B stage-2
+        'carry' (-0.3..-0.5 / c9 -1.0..-2.0, needs a new premise) after the bench / now / never; C ~10 min CPU timing per
+        step x 6 while ATN isn't playing.
+        t4i_ DRAIN A + ITEM 1 + BIG_TABLE PARSERS DONE (render_mt/reports/t4i_drainA_item1_handback.md): ebo_check.ps1 A / B
+        parsed apart (end lines only; fixes the '2 lines' false count), R2-N6 note, pin / site NOTEs; eval per start A / B
+        / exit crash; item-1 U / room / workers / L1 bins + pool checks (lowcore U, 4 CPUs room 0, 8 -> 3, 16 -> 7 / 3);
+        gates.json b1_big_table INFO. run_all green (lib 660, check 237, leg 260, analyze 230); old final eval text
+        identical. Backups *.pre_drainA / *.pre_item1. -> t4i_ pk6 started (env-variant arms, rule lines listed for ATN).
+        g24_ STEP1 R2 + SIZING DONE (handoff_plan/handbacks/g24_step1_r2_sizing_handback.md; ho_g24 13b45a3e5): checker
+        191fc689f1c5, games.py 9294603a30f8 (ue4 / fixtures same); MUST-1 / MUST-2 / SHOULD 1-4 / NITs in, only new
+        refusals; selftest 65 / 65; mutation 21 / 24 (M14 / M15 wait for the first post / ui rule; M17 claimed
+        uncatchable); ledgers unchanged. S8 SIZING (Expeditions, 18,633 open): 941 settle free; 1,829 mv cells only as GAP
+        from facts:vtf / bones = 33 family decisions; hand controls optimistic ~260 / MIDDLE ~890 / pessimistic ~2,000 vs
+        the 1,600 stop line -> no explosion; risk = scale axis (one SV_Position signature 4,866 cells / 28 families).
+        -> rvg_ light re-check of r2 + fill order advice (rvg_g24_step1_r2_recheck.md) -> then the fill (3).
+        Note: 4 zombie Attila.exe (0 threads, ~400 KB each, since 05:28-07:33) still held by some parent; harmless; not
+        ours to kill - a reboot clears them (only when ATN asks).
+        rvs_ SHG REV 1.1 GO FOR THE S1a IMPLEMENTER (plan_1117/rvs_shg_recheck_r11.md + _handback.md; 1 MUST brief-only /
+        5 SHOULD / 4 NIT): curve, beta, w rewrite order, After Blur mechanics, AO storage, Toru, 9.1 all accepted; ho_g23
+        hunks in graphics_page.hpp don't overlap. M1: V1 item 4 at b = 2 / 4 / 8, beta picked at b = 4 (Quarter), beta 0
+        fallback + look-risk numbers, never blocks. S1 RT chain (NRD on: no beta) + apply-side contingency; S2 exact
+        per-texel inputs + error / detail; S3 clamp transport [0, 4]; S4 After Blur gated on AmbientReplaced + red-only
+        write mask (S1b); S5 page.Take last commit.
+        - [ ] s1a_ (Opus xHigh, worktree, branch sh_s1a) implements S1a with M1 + S1-S3 + S5 in its brief -> rvs_ code
+        review -> coord merge. GPU timing -> coord's GPU window.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
