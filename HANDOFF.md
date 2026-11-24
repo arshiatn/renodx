@@ -746,6 +746,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Cleanup for ATN's yes (agents' leftovers): C:\Users\arshi\AppData\Local\Temp\add ... | ?
 - GPU WINDOW (harness, not in-game; after fcx_ ends, CPU quiet): ho_gbf S4a + jobs ... | ?
 - gbf_ (after G23): main.cpp end-release change, gate T4 once per active owner (DL ... | ?
+- G05 box stays (MI3): after a proxy stop R.U.S.E.'s bridge / replay / rays still ... | ?
+- Helper owner (rvm_ n2 / n3): set re-sent under an old key while the pool is full ... | ?
+- Blood-pack shaders (Attila / Thrones 812 incl. 188 ps_4_1 gather shadow variants ... | ?
+- Stale comment twattila/rt_scene.hpp:633 names SkipGameSsao (G18 owner). WH1 :227 ... | ?
+- g14r_ r3 tool follow-up (report_check.py) still open. | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -13829,6 +13834,41 @@ heading text are in HANDOFF_ARCHIVE.md)
         MUST-3 no fallback. New: walk loop skips empty / deleted keys (node+0xD0 / +0xDC) -> instance sum uses the same key
         test (TABLE_SLOT_LIMIT 4096). RENODX_TW_GAME_CPUS bench env; pre-registered MIN_GAME_CPUS 9 if 0xFF fails; L1 own
         0xFF start; Opus xHigh implementer. ATN: L1 default = NOTICE (11-15 rule; a pass is unlikely). -> rvj_ re-check sent.
+        g23_ IMPL 2 DONE (handbacks/g23_impl2_handback.md): origin/ho_g23 d28dccdd5 (group 2: 2e-2 / 2f-1 step 1 / 2f-2 /
+        2f-3 / 2f-4 FSR Sharpening 0-1 default 0 / 2i-3 status row / 2i-4 Warp Error debug view; /Zs + fxc only) -> rvh_ code
+        review 3 sent (+ gbf_ f176f3ece); g23_ full builds requested; after builds: merge atn-mods + WH3 FSR Reactive row.
+        gbf_ R2-S1 DONE (handbacks/gbf_r2s1_handback.md): f176f3ece on ho_gbf_g23 (rescue ResumeThread check, 5th rescue case,
+        WARP x86 + amd64 PASS).
+        rvk_ G22 REVIEW: conditional GO (reviews/rvk_g22_review_handback.md; 0 B / 1 MAJOR / 5 MINOR / 6 NIT): helper +
+        device_proxy stop OK, Attila RC: no behaviour change. -> g22_ 4th commit (MA1 detach flag + MI2 real teardown test +
+        MI4 note + MI5 golden HandleIndex) -> rvk_ re-check -> mrg_ merges + builds ALL 36 on the merge result (MI1).
+        - [ ] G05 box stays (MI3): after a proxy stop R.U.S.E.'s bridge / replay / rays still write the removed proxy's output;
+        HDR modes may look wrong after the native fallback (HDR encode was in the proxy pass). Owner g05_ / G05.
+        rvj_ FCI RE-CHECK 1 GO (designs/rvj_fci_recheck1_handback.md; 2 NIT R1 / R2 folded into the implementer brief).
+        -> fi1_ (Opus xHigh) implements FCA item 1 on branch fca_item1 (Attila x86 + amd64 builds, offline tests).
+        mem_ R2 DONE (handbacks/mem_fix_r2_handback.md): origin/mem_fix a86b7e4f4 + 0128e89d3; 17 builds, tests PASS x86 +
+        amd64. -> rvm_ re-check + ONE-TIME Fable High review fbm_ (reviews/fbm_mem_fix_review.md) in parallel. Then the
+        game confirm run (ATN's go) BEFORE the FCA analyst wave.
+        - [ ] Helper owner (rvm_ n2 / n3): set re-sent under an old key while the pool is full is skipped but marked sent
+        (rt_d3d12.hpp:6224-6238); kept_frames = 1 releases only placed meshes (scene-gone static release would finish F4).
+        rvg_ G24 STEP 0: NOT GO to freeze (reviews/rvg_g24_step0_handback.md; 6 MUST / 7 SHOULD / 5 NIT) -> g24_ fixes all +
+        adds the missing shaders as census sources -> rvg_ light re-check.
+        g24_ DUMP COMPLETENESS (handbacks/g24_dump_completeness_handback.md, reported to ATN): missing = Attila / Thrones
+        blood.pack 812 each, Rome II blood 24, Rome Remastered .fxo 322 + exe 9, Ryse runtime dump 894 of 6421 shipped
+        (shipped set already in tools/nontw/shader_packs/ryse); Troy / Pharaoh / WH1-3 / Shogun 2 complete. Copies in
+        testbin/scratch/g24_/missing_<game>. Water ps_4_1 18FF7787 / 82C6EE8B / 5247E655 / 03E56410: never drawn in traces.
+        - [ ] Blood-pack shaders (Attila / Thrones 812 incl. 188 ps_4_1 gather shadow variants, Rome II 24) vs our
+        replacement / forward-reader lists (owner g24_ via the census, rvf_ list).
+        t4i_ ROUND 8 DONE (render_mt/reports/t4i_round8_handback.md): crash RECORDED rule, close-request window, FOR ATN
+        lines; run_all green; verdict text r8 unchanged (final_eval_FINAL_r8.txt).
+        mrg_ ROUND D DONE (handbacks/mrg_rD_handback.md): ho_g04 e5ff39f06, ho_g08 99040ea86, ho_g19_ryse 104b2f449, ho_g14
+        a202f5580, ho_g20 f7fad4192 (known conflict resolved; 16 add-ons built; tw_ao_skip + tw_gtvbao_variants PASS).
+        - [ ] Stale comment twattila/rt_scene.hpp:633 names SkipGameSsao (G18 owner). WH1 :2276 / WH2 :2591 '0: today's'.
+        - [ ] g14r_ r3 tool follow-up (report_check.py) still open.
+        g19_ F1 sent (branch ho_g19_f1 from f7fad4192) -> rvb_ glance.
+        ATN 11-24 NEW: SH (L1) GI downscaling / upsampling (Toru's world_svgf_upsample + David Matos's GI downscaling
+        article) for GT-VBGI / GT-VBAO / SSS / SSR -> shg_ (Opus xHigh, read only) extensive analysis + design
+        (plan_1117/shg_sh_gi_upsample_design.md) -> Opus xHigh review -> into the plan (Attila first).
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
