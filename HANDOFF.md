@@ -808,6 +808,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ after rv3_ GO: render_mt\ebo\gates.json + a LATCH gate 'an item changed bet ... | ?
 - Friday pk5_ fold-in: PK5 tail code writes only mapped rows (never instance +0x60 ... | ?
 - PK7 heapfix package: pk3_ 15.13 note (only ATN sends). | ?
+- rvs_ m1 light re-check on the merged tree (sent; item 1 + hash.ps1 in a fresh wo ... | ?
+- Coord GPU window: s1a_ item t (5090, gpu_job.lock): powershell -NoProfile -Execu ... | ?
 - coord QUIET RULE (from now): while a lab TIMING job measures, coord makes no com ... | ?
 - gtp_: report the classifier-blocked action (exact command, purpose, partial stat ... | ?
 - lg3_ (Sonnet High, worktree): logging group 3 -> lga_ review -> fixes -> merge ( ... | ?
@@ -14900,6 +14902,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         an applied-env gate on the 'carry (on|off)' line (pk3_ 15.10).
         - [ ] Friday pk5_ fold-in: PK5 tail code writes only mapped rows (never instance +0x60 / +0x70 or list entries).
         - [ ] PK7 heapfix package: pk3_ 15.13 note (only ATN sends).
+        s1a_ M1 DONE + MERGED (plan_1117/s1a_m1_handback.md, saved by coord from s1a_'s SendMessage): sh_s1a 99cf45b50 ->
+        atn-mods 3338f9289 (pushed). Attila: 8 light_bounce_<pass>_sh wrappers, picked by __has_include of Attila's embed;
+        row shown '(Experimental)', default off, Beta 0; S1 / N1-N4 / N6 done. Builds 16 x64 + 3 x86 OK; tw_bounce_sh item 1
+        (WARP) PASS; hash.ps1 203 / 203 .cso identical.
+        - [ ] rvs_ m1 light re-check on the merged tree (sent; item 1 + hash.ps1 in a fresh worktree).
+        - [ ] Coord GPU window: s1a_ item t (5090, gpu_job.lock): powershell -NoProfile -ExecutionPolicy Bypass -File
+        D:\Dev\renodx\.claude\worktrees\agent-a52ae84ccc5c1ca47\test\tw_bounce_sh\run.ps1 -Before
+        C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\testbin\scratch\s1a_\before -Items t -Lock
+        C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\gpu_job.lock ; then item d (S1a-D) when s1a_ hands it back.
         - [x] gtl_ STAGE3 (after part 2's sheet; landed by coord with no session): F2b dwm names + top GPU user per run,
         bursts --job filter, lab re-measures bursty blocks (Medium), + the queued conhost race / lab.rules caps / stale
         "proposed" mentions -> gtv_ re-checks.
