@@ -1,5 +1,46 @@
 # Total War: WARHAMMER II (RenoDX HDR, ATN)
 
+### Open-items round (2026-11-22; built only, not run in game)
+
+- New: **Path-Traced Reflection Occlusion** (0 - 1, default 1, under Path-Traced Ambient without Specular Occlusion or
+  the rays' reflections), Attila's row: reflections darken where something blocks the sky, from the traced specular
+  occlusion in place of the game's screen-space AO (ours replaces the game's). 0: the game's AO as before. With the
+  rays' reflections on nothing changes. WARP (test/tw_warhammer_shaders part 32): strength 1 bit-identical
+  to the resolve before the row in 32768 of 32768 texels (8 runs), 0 the same as t46 alone, 0.5 the mean.
+- Fixed: **DLAA / DLSS and CMAA2** work in the frame's own curve (2.2 with Gamma Correction on), as Attila and Pharaoh.
+- Changed: **Ray Reconstruction's specular guide** is the view-dependent albedo (Attila's Fresnel, RrSpecularAlbedo);
+  water keeps its bare colour. WARP (part 33): 24 of 24 within 1e-4 (largest 7e-06), other guides bit-identical.
+- Fixed: **FXAA** (fxaa00 CE9EA4E8) is the game's again: the end-of-edge offset (an int-cast decompile bug cut it
+  to 0) and its luma gathers (green, the decompile read red), as Troy's. WARP (scratch fxaa_check, 96 x 96 edges):
+  0 apart from the game's bytes (before 517 texels apart, worst 0.125).
+- Changed: **PsychoV35 follows the game's own shadows and colour per map**: the game's Extended Reinhard depends on the
+  map's burn (each weather\battle and campaign lighting .environment's tone_mapping, read from the packs: 280 files,
+  burn 0 - 0.83; 0.05 in 78, 0.1 in 89, 0.5 in 16). The add-on copies t00's tone_mapping on the GPU to hdr_to_screen
+  (b4, PsychoV35 only, nothing read back), which interpolates shared.h's per-burn table (11 burns) and multiplies
+  Contrast / Shadows / Saturation / Highlight Contrast by it; the rows are back at 1 (= the game's response; Musa's own
+  where no copy is bound). No map list, no trace. WARP fit per burn (the V35 recipe, its highlight guard ladder) against
+  Rendering Mode SDR through t00 2333E142 -> t01 187C9C6D, 1000 / 203 nits, worst error below white (Musa's own before):
+  - burn 0 - 0.15: 3.9 - 4.8 % (110 - 165 %); burn 0.3 - 0.6: 2.9 - 4.3 % (25 - 58 %); burn 0.5 is Musa's own (0.3 %);
+  - burn 0.16 - 0.25 (20 files, around the 0.2 knot: its best 5.7 %, no slider set nearer): 5.4 - 8.5 % (75 - 106 %);
+    burn 0.8 / 0.83 (2 files): 11.9 / 13.3 % (63 / 68 %), no slider set nearer at 0.83;
+  - the packs' 35 burns: 26 of them under 5 %, every one nearer the game than Musa's own;
+  - PsychoV35's highlights within 9.9 % of Musa's own at 1000 / 203, 13.0 % at 2500 / 275 (bound 20 %);
+  - burn 0.1 grey 0.05 - 1 nits x1.50..x2.27 -> x0.96..x1.04, 1 - 15 nits x1.05..x1.44 -> x0.96..x0.97.
+  Controls: Rendering Mode SDR is the game's bytes at every burn (0.00 %), HDR (Extended) the game's grey (0.00 %),
+  the copy bound with the table at 1 gives Musa's own exactly.
+- Fixed: **Bend Screen-Space Shadows and the rays' sun shadows now reach the software / hardware pcf shadow builds**
+  (with the screen-space shadows' patch of them, f7fb7a901): under the rays' sun shadows those builds take the rays'
+  shadow alone (their 12 sun shaders on Warhammer's far-plane route at the atlas's t1: the ALWAYS sampler at s1 does
+  not reach their sample_l / sample), not the rays' times the game's shadow maps.
+- Fixed: **the gather 4.1 shadow builds** (6 sun shaders, A03688A3 among them) join the same route (they take the rays'
+  shadow alone once the screen-space shadows' patch reaches them; until then they keep the game's maps). On the route
+  every build gets our point CLAMP sampler at s1 during the sun draw (the game's address mode was never checked: a zero
+  border would have shadowed everything); the gather 5.0 builds stay on the ALWAYS sampler as before.
+- Corrected: **Smooth Banner Shadows** has been on by default since 2026-11-17 (the lines below that say Experimental /
+  off are history).
+- In game: under Path-Traced Ambient a dark doorway or forest edge (no bright sky in it; at 0 as before); Gamma Correction
+  on with DLAA and CMAA2 (no darker or brighter edges than off); FXAA on a sharp roof line (as the game's own).
+
 ### Specular Occlusion with other rays (2026-11-18; built only, not run in game)
 
 - Changed: **Ray-Traced Specular Occlusion** works only with another ray-traced effect on, as Attila's; alone it is off
@@ -54,7 +95,8 @@
 - In game: a river or lava with RT/PT (reflections from the surface, not the bed); a city's wet stone with Specular Occlusion
   (reflections darker only once); Modded Auto Exposure on a sunny map; Time Each Pass with GT-VBAO and with the rays'
   reflections (the skipped passes' time).
-- Not done: Rays Replace Shadow Maps stays Experimental (no offline proof of the replace path yet).
+- Not done then: Rays Replace Shadow Maps was Experimental (no offline proof of the replace path yet). Since 2026-11-16 the
+  rays always replace the shadow maps' sun shadow (one method, no row; WARP test/tw_warhammer_shaders part 29).
 
 ### Ray-Traced AO in place of the game's (2026-11-16; built only, not run in game)
 
@@ -104,7 +146,8 @@ The first round's doable leftovers (table: `tools/tw/wh2/parity_1114.md`).
   `twattila/rt_core.hpp` (`SceneShader::held_row`, null as before).
 - **New: Depth of Field (Extra, 0-2, 1 = the game's, 0 off)** on its circle of confusion (C337D8E3, 91B4F89A).
 - **New: Fog & Sky Smoothing (Extra, Off-High + Strength)**, as Warhammer's and Attila's, on the legacy battle fog's sky.
-- **New: Smooth Banner Shadows (Experimental)**, Attila's row, now that sails are in the rays (on in RT/PT as Attila's).
+- **New: Smooth Banner Shadows (Experimental then; on by default since 2026-11-17)**, Attila's row, now that sails are in
+  the rays (on in RT/PT as Attila's).
 - **Every graphics level** (ATN: not everyone plays at highest settings): Fog Strength also on the fog's low-quality, PCF and
   shader model 4.1 permutations and the legacy fog; Grass Height Distance on the MSAA pre-pass, the clipped and MSAA
   G-buffer and the grass's shadow; Indicator Brightness on the indicators' forward, overlay and grid-border shaders. Each

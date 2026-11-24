@@ -50,6 +50,7 @@
 #include "./more_tests.h"
 #include "./rt_particle_quads_gs.h"
 #include "../twrome2/engine_tweaks.hpp"
+#include "../twwarhammer2/atlas_far_plane.hpp"
 #include "../twwarhammer2/line_sweep_ao.hpp"
 #include "../twwarhammer2/modded_auto_exposure.hpp"
 #include "../twwarhammer2/particle_smoothing.hpp"
@@ -57,6 +58,7 @@
 #include "../twwarhammer2/sun_ambient.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
+#include "../twattila/frame_gamma.hlsli"
 #include "./trace_reads.hpp"
 
 constexpr char BUILD_DATE[] = __DATE__;
@@ -92,6 +94,14 @@ bool IsPsychoV35Mode() {
 // Hue Clip Emulation's default: Attila's 40, ATN's choice (2026-11-14). WH1's own tone mappers measured closest to the
 // game's SDR picture at 80-90 (test/tw_psychov35 part 5 curve 7).
 constexpr float HUE_CLIP_DEFAULT = 40.f;
+
+// PsychoV35's defaults that follow the game's response (shared.h): the tone mapper's shadows and its colour.
+const std::vector<std::pair<std::string, float>> V35_GAME_RESPONSE = {
+    {"v35_contrast", WH1_V35_CONTRAST},
+    {"v35_shadows", WH1_V35_SHADOWS},
+    {"v35_saturation", WH1_V35_SATURATION},
+    {"v35_highlight_contrast", WH1_V35_HIGHLIGHT_CONTRAST},
+};
 
 bool IsModdedAutoExposureEnabled() {
   return shader_injection.auto_exposure_highlight_protection == 1.f;
@@ -191,6 +201,7 @@ void ApplyResetPreset() {
   // No Extended mode here: Reset in PsychoV35 (ATN 2026-11-12).
   renodx::utils::settings::UpdateSettings({{"tonemapper", 3.f}, {"video_autohdr", 0.f}});
   renodx::utils::settings::UpdateSettings(twattila::psycho35::Defaults(HUE_CLIP_DEFAULT));
+  renodx::utils::settings::UpdateSettings(V35_GAME_RESPONSE);
 }
 
 // Recommended (ATN 2026-11-12: every recommended preset in PsychoV35): Reset, PsychoV35, Video AutoHDR 0.20.
@@ -283,15 +294,21 @@ using LinearPointLightRays = RaysShader<0x5D1695BC, 42>;
 
 // The rays replace the shadow maps' sun shadow, always (one method: ATN 2026-11-16, no Rays Replace Shadow Maps row; WARP
 // test/tw_warhammer_shaders part 29):
-// of the 18 sun shaders that read the sun's atlas (g_tShadowBuffer, t1 in each; tools/tw/wh1/wh1_atlas_reads.py) the 6
-// hardware gather 5.0 builds read it through gather4_c at s1 (CF0C5118 among them), which the screen-space shadows' patch
-// multiplies by the rays' visibility. Where the rays' shadow is bound at t49 a 1 x 1 texture of 1 (the far plane, a cleared
-// map's value) at t1 makes every comparison lit, so their patched shadows give the rays' shadow alone; cloud shadows stay
-// the game's, the maps are still drawn (their forward readers: water, forward units). The game's view is bound again after
-// the draw (finalize: the Light Bounce draws the sun draw itself and bypasses). Not the 12 Shader Model 4.1 builds
-// (software: sample_l and their own `lt receiver, stored`; hardware pcf: the read itself as the lit share): the patch finds
-// no comparison in them, so the rays never reach their shadow and they keep the game's maps.
-constexpr std::array<uint32_t, 6> ATLAS_SUN_SHADERS = {0xCF0C5118, 0xB8F4B964, 0x41365626, 0xD9DDB44A, 0x34FEF0FF, 0xA1AF2AEC};
+// the 24 sun shaders that read the sun's atlas (t1 in each; tools/tw/wh1/wh1_atlas_reads.py, the RDEF census), each
+// multiplied by the rays' visibility by the screen-space shadows' patch (screen_space_shadows.hpp Patch): the 6 hardware
+// gather 5.0 builds read it through gather4_c at s1 (g_tShadowBuffer_SM50; CF0C5118 among them), the 12 software / hardware
+// pcf Shader Model 4.1 builds (g_tShadowBuffer: software, sample_l and their own `lt receiver, stored`; hardware pcf, the
+// read itself as the lit share) through sample_l / sample, the 6 gather 4.1 builds (g_tHardShadowBuffer_SM41) through
+// gather4 and their own test. Where the rays' shadow is bound at t49 a 1 x 1 texture of 1 (the far plane, a cleared map's
+// value) at t1 makes every kind lit (the plain-sampler builds with our point CLAMP sampler at s1: s1 reads t1 alone in every
+// sun build), so their patched shadows give the rays' shadow alone; cloud shadows stay the game's, the maps are still drawn
+// (their forward readers: water, forward units). A build Patch leaves as it is gets no t49 and keeps the game's maps. The
+// game's view and sampler are bound again after the draw (finalize: the Light Bounce draws the sun draw itself and
+// bypasses).
+constexpr std::array<uint32_t, 6> ATLAS_GATHER_SUN_SHADERS = {0xCF0C5118, 0xB8F4B964, 0x41365626, 0xD9DDB44A, 0x34FEF0FF, 0xA1AF2AEC};
+constexpr std::array<uint32_t, 18> ATLAS_SAMPLED_SUN_SHADERS = {
+    0x230F2241, 0x4324BBE8, 0x42114392, 0xD56D16EA, 0x7BA77953, 0x9AA0E558, 0xC601C862, 0xA14D4C74, 0xA8D2616A,
+    0xD0F4F425, 0xB1AFBCF1, 0xCAD9815A, 0x27AF3D62, 0xA359A234, 0x7BC58986, 0x8A72EA4D, 0x0EADBE7E, 0x110884BF};
 constexpr UINT ATLAS_SLOT = 1;
 // Skip the Shadow Maps (Experimental, off; under the rays' sun shadows): rt_scene's Ray-Traced Shadows Only skips the
 // atlas's casters. Its other readers in ATN's traces (tools/tw/wh1/atlas_readers_wh1.txt: battle and campaign water,
@@ -356,6 +373,7 @@ twattila::rt_scene::Sliders rt_sliders;
 // copy, the first of them, for the frame.
 float rays_skip_reflection_passes_row = 1.f;
 bool reflection_passes_skipped = false;
+float path_reflection_occlusion = 1.f;  // Path-Traced Reflection Occlusion (ssr00's reflection_game_ao: 1 - this)
 // The rays' AO in place of the game's SSAO and GT-VBAO, never on top of them (ATN 2026-11-16; Warhammer III's way, no row: a
 // saved RayTracedAOAlone is ignored). The SSAO's one reader is the sun draws' t_ssao red (the census; rt_ambient_combine
 // multiplies the rays' in): while the rays feed it (this frame's trace or the last: these passes come before it), its four
@@ -381,70 +399,10 @@ constexpr std::array<twattila::screen_space_shadows::ThinShader, 4> THIN_SHADERS
     {.hash = 0xE7F0D71A, .row = &rays_banner_light_row},
 }};
 constexpr std::array<uint32_t, 7> SHADOW_READER_SHADERS = {0x44B4A2F0, 0x0BF2DB7F, 0xBCB9B1D6, 0x7865CDC9, 0x122F218C, 0x1A3FE75F, 0x0FDF70BF};
-struct AtlasLit {
-  std::shared_mutex mutex;
-  ID3D11Device* device = nullptr;  // the stand-in's (compared only)
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> far_plane;
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> game_view;  // bound again after the draw
-  bool logged = false;
-};
-AtlasLit atlas_lit;
-constexpr auto OnSunReplaceMaps = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
-  if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return {};
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> rays;
-  native->PSGetShaderResources(twattila::screen_space_shadows::internal::MASK_SLOT, 1, rays.GetAddressOf());
-  // With the rays' sun shadows on, t49 holds theirs alone (Bend's are off under them: OnPresent).
-  if (!rays || !twattila::rt_scene::SunShadowsTraced()) return {};
-  Microsoft::WRL::ComPtr<ID3D11Device> device;
-  native->GetDevice(device.GetAddressOf());
-  auto& state = atlas_lit;
-  const std::unique_lock lock(state.mutex);
-  if (state.device != device.Get()) {
-    state.far_plane.Reset();
-    state.device = nullptr;
-    const float far_plane = 1.f;
-    const D3D11_TEXTURE2D_DESC desc = {.Width = 1, .Height = 1, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
-                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_IMMUTABLE, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
-    const D3D11_SUBRESOURCE_DATA data = {.pSysMem = &far_plane, .SysMemPitch = 4};
-    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-    if (FAILED(device->CreateTexture2D(&desc, &data, texture.GetAddressOf()))
-        || FAILED(device->CreateShaderResourceView(texture.Get(), nullptr, state.far_plane.GetAddressOf()))) {
-      return {};
-    }
-    state.device = device.Get();
-  }
-  native->PSGetShaderResources(ATLAS_SLOT, 1, state.game_view.ReleaseAndGetAddressOf());
-  native->PSSetShaderResources(ATLAS_SLOT, 1, state.far_plane.GetAddressOf());
-  if (!std::exchange(state.logged, true)) {
-    renodx::utils::log::i("[Total War] First run: the rays replace the shadow maps: the sun draws' shadow atlas read as lit (the rays shadow).");
-  }
-  return {.finalize_callback = [](Context& drawn, const void*) {
-    auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
-    renodx::utils::directx::TryNativeFromReShadeProxy(&drawn_native);
-    auto& drawn_state = atlas_lit;
-    const std::unique_lock drawn_lock(drawn_state.mutex);
-    if (drawn_native != nullptr) drawn_native->PSSetShaderResources(ATLAS_SLOT, 1, drawn_state.game_view.GetAddressOf());
-    drawn_state.game_view.Reset();
-  }};
-};
-
 // One occlusion a reflection (shaders/ssr00): the AO the sun draws read (twwarhammer2/sun_ambient.hpp) at the resolve's t45 /
 // s5, under Ray-Traced Specular Occlusion or the rays' reflections (test/tw_warhammer_shaders part 30).
 constexpr UINT SUN_AMBIENT_SLOT = 45;
 constexpr UINT SUN_AMBIENT_SAMPLER_SLOT = 5;
-
-// Only our stand-in's device (nullptr: the addon's end, DetachAddon).
-void OnDestroyAtlasLitDevice(reshade::api::device* device) {
-  if (device != nullptr && device->get_api() != reshade::api::device_api::d3d11) return;
-  auto& state = atlas_lit;
-  const std::unique_lock lock(state.mutex);
-  if (device != nullptr && state.device != reinterpret_cast<ID3D11Device*>(device->get_native())) return;
-  state.far_plane.Reset();
-  state.device = nullptr;
-}
 
 renodx::mods::shader::CustomShaders custom_shaders;
 renodx::utils::settings::Settings settings;
@@ -1517,7 +1475,15 @@ void BuildRuntimeData() {
     //     },
     // },
   };
-  twattila::psycho35::InsertBefore(&settings, "PsychoV31", twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT));
+  auto v35_rows = twattila::psycho35::Rows(&shader_injection, IsPsychoV35Mode, HUE_CLIP_DEFAULT);
+  for (auto* row : v35_rows) {
+    for (const auto& [key, value] : V35_GAME_RESPONSE) {
+      if (row->key == key) {
+        row->default_value = value;
+      }
+    }
+  }
+  twattila::psycho35::InsertBefore(&settings, "PsychoV31", v35_rows);
 }
 
 
@@ -1864,9 +1830,17 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   twattila::smoke_map::Update(smoke_map_settings);
   rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
+  // Path-Traced Reflection Occlusion: the specular occlusion traced for the reflections under Path-Traced Ambient, in place
+  // of the game's AO (its own row keeps it whole); not with the rays' reflections (ssr00 keeps the game's AO for their misses).
+  const bool reflections_occluded = rt_settings.path_ambient && !rt_settings.specular_occlusion && !rt_settings.reflections
+                                    && path_reflection_occlusion > 0.f;
+  rt_settings.specular_occlusion = rt_settings.specular_occlusion || reflections_occluded;
+  shader_injection.reflection_game_ao = reflections_occluded ? (1.f - path_reflection_occlusion) : 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = !IsHdrOutput();
+  // DLAA's and CMAA2's passes in the frame's own curve (2.2 with Gamma Correction on: the swap chain proxy's decode).
+  aa_settings.frame_gamma = TW_FRAME_GAMMA;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   // After the at-start tests' thread (one writer at a time).
@@ -1881,7 +1855,8 @@ extern "C" __declspec(dllexport) constexpr const char* DESCRIPTION = "RenoDX - T
 namespace {
 
 // Graphics 1 of 2's (twattila/graphics_page.hpp): what is true here (as Warhammer II's). The rays' sun shadows replace the
-// game's shadow maps (always: no Rays Replace Shadow Maps row; the 12 Shader Model 4.1 sun builds keep the game's maps),
+// game's shadow maps (always: no Rays Replace Shadow Maps row; the gather 5.0, software / hardware pcf and gather 4.1 sun
+// builds alike),
 // ray-traced AO in place of the game's SSAO (its line sweeps);
 // reflections on the game's SSR resolve; point lights, the battle fog, the battle water and the lit particles hooked.
 constexpr twattila::graphics_page::Texts PAGE_TEXTS = {
@@ -2304,6 +2279,24 @@ void ConfigureAddon() {
       .tooltip = "Leaves out the game's screen-space reflection passes the rays' reflections replace: the same picture,\n"
                  "a little faster.",
   });
+  // Path-Traced Reflection Occlusion (Attila's row, on: ours in place of the game's AO): under Path-Traced Ambient ssr00's
+  // reflections take the traced specular occlusion at this strength in place of the game's screen-space AO (0: today's,
+  // nothing traced for it). The page shows it under Path-Traced Ambient (twattila/graphics_page.hpp).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "PathTracedReflectionOcclusion",
+      .binding = &path_reflection_occlusion,
+      .default_value = 1.f,
+      .label = "Path-Traced Reflection Occlusion",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Reflections darken where something blocks the sky: no bright sky in dark corners.\n"
+                 "0: off.",
+      .max = 1.f,
+      .format = "%.2f",
+      .is_visible = [] {
+        return rt_sliders.light_bounce == 2.f && rt_sliders.path_ambient != 0.f && rt_sliders.specular_occlusion == 0.f
+               && rt_sliders.reflections == 0.f && twattila::feature_settings::Upscaling(aa_sliders);
+      },
+  });
 
   // Appended Settings (HDR10)
   {
@@ -2545,12 +2538,8 @@ bool AttachAddon() {
   // Light Through Banners' Coloured Shadows: the G-buffer's colour is linear (the sun shaders' diffuse, part 10).
   twattila::screen_space_shadows::InstallThin(THIN_SHADERS, 1.f);
   // The rays replace the atlas's sun shadow: after the screen-space shadows' and before the Light Bounce's.
-  reshade::register_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
   reshade::register_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
-  for (const uint32_t shader_hash : ATLAS_SUN_SHADERS) {
-    renodx::utils::command_action::Register(
-        OnSunReplaceMaps, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
-  }
+  twwarhammer2::atlas_far_plane::Install(ATLAS_GATHER_SUN_SHADERS, ATLAS_SAMPLED_SUN_SHADERS, ATLAS_SLOT);
   // The data run's frame traces (tools\tw\wh1\plan_1114.md; twattila/frame_trace.hpp): on demand (renodx_trace_now next to the
   // exe) and at 100% too. The camera's g_screen_size / g_viewport_dimensions at c27 / c29 as Attila's (the sun PS's camera RDEF,
   // 230F2241: offsets 432 / 464). Constants once each (the sun PS bind cb0-cb6): the 11 single-sampled sun PS (directionallight
@@ -2639,10 +2628,8 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::destroy_device>(twwarhammer::grass_height::OnDestroyDevice);
   renodx::utils::command_action::Unregister(PointLightRays::OnDraw);
   renodx::utils::command_action::Unregister(LinearPointLightRays::OnDraw);
-  renodx::utils::command_action::Unregister(OnSunReplaceMaps);
   twwarhammer2::sun_ambient::Uninstall();
-  reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyAtlasLitDevice);
-  OnDestroyAtlasLitDevice(nullptr);
+  twwarhammer2::atlas_far_plane::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(tw::modded_auto_exposure::OnDestroyDevice);
   tw::modded_auto_exposure::OnDestroyDevice(nullptr);
   reshade::unregister_event<reshade::addon_event::destroy_device>(PointLightRays::OnDestroyDevice);

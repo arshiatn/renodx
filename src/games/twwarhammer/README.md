@@ -1,5 +1,35 @@
 # Total War: WARHAMMER (RenoDX HDR, ATN)
 
+### Open-items round (2026-11-22; built only, not run in game)
+
+- New: **Path-Traced Reflection Occlusion** (0 - 1, default 1, under Path-Traced Ambient without Specular Occlusion or
+  the rays' reflections), Attila's row: reflections darken where something blocks the sky, from the traced specular
+  occlusion in place of the game's screen-space AO (ours replaces the game's). 0: the game's AO as before. With the
+  rays' reflections on nothing changes. WARP (test/tw_warhammer_shaders part 32): strength 1 bit-identical
+  to the resolve before the row in 28672 of 28672 texels (7 runs), 0 / 0.5 as expected.
+- Fixed: **DLAA / DLSS and CMAA2** work in the frame's own curve (2.2 with Gamma Correction on), as Attila and Pharaoh.
+- Changed: **Ray Reconstruction's specular guide** is the view-dependent albedo (Attila's Fresnel, RrSpecularAlbedo);
+  water keeps its bare colour. WARP (part 33): 24 of 24 within 1e-4 (largest 7e-06), other guides bit-identical.
+- PsychoV35's sliders start from the game's response (V35_GAME_RESPONSE, shared.h WH1_V35_*). The WARP fit (the V35
+  recipe, minimax of Contrast / Shadows / Saturation / Highlight Contrast against Rendering Mode SDR through t00 D275C403
+  -> t01 10759AE3; level B: identity S-curve, black 0 / white 1, whiteout 0 / 10) finds Musa's own the best: grey within
+  0.3 % (0.21 - 1 nits x0.997..x1.003, 1 - 15 x0.999..x1.002, 15 - 100 x1.000), colour 1 - 30 nits x1.000; an S-shaped
+  S-curve the same (within 3 % up to 100 nits). They stay 1 (no change). Upper mid colour (30 - 150 nits) x1.27, not fitted.
+  The comparison's control: a known-wrong set (1.01 / 0.57 / 0.91 / 0.93) misses by 33.1 % (must miss 5 %).
+- Fixed: **Bend Screen-Space Shadows and the rays' sun shadows now reach the software / hardware pcf shadow builds**
+  (with the screen-space shadows' patch of them, f7fb7a901): under the rays' sun shadows those builds take the rays'
+  shadow alone (the 12 Shader Model 4.1 sun shaders join the far-plane route at the atlas's t1), not the rays' times the
+  game's shadow maps.
+- Fixed: **the gather 4.1 shadow builds** (6 sun shaders, 27AF3D62 among them) join the same route (they take the rays'
+  shadow alone once the screen-space shadows' patch reaches them; until then they keep the game's maps).
+- Fixed: on that route every build that reads the atlas through a plain sampler (software / pcf, gather 4.1) gets our
+  point CLAMP sampler at s1 during the sun draw (the game's address mode was never checked: a zero border would have
+  shadowed everything). The gather 5.0 builds keep the game's comparison sampler.
+- Corrected: **Smooth Banner Shadows** has been on by default since 2026-11-17 (the lines below that say Experimental /
+  off are history).
+- In game: under Path-Traced Ambient a dark doorway or forest edge (no bright sky in it; at 0 as before); Gamma Correction
+  on with DLAA and CMAA2 (no darker or brighter edges than off).
+
 ### Specular Occlusion with other rays (2026-11-18; built only, not run in game)
 
 - Changed: **Ray-Traced Specular Occlusion** works only with another ray-traced effect on, as Attila's; alone it is off
@@ -22,8 +52,8 @@
 - **The rays always replace the shadow maps** (ATN: ours replaces the game's; "If it is on by default, then get rid of
   that slider"): under ray-traced sun shadows the hardware gather 5.0 sun shaders take the rays' shadow alone, not the
   rays' times the game's shadow maps; the Rays Replace Shadow Maps row is gone (a saved value is cleared once and never
-  read). The Shader Model 4.1 builds (software / hardware pcf shadows) keep the game's maps: the rays' shadow never
-  reaches them yet. WARP part 29: t49 0 / 1 bit for bit the game's lit / shadowing atlas; CONTROL the multiply differs.
+  read). The Shader Model 4.1 builds (software / hardware pcf and gather 4.1 shadows) kept the game's maps then; since
+  2026-11-22 they take the rays' shadow alone too (Open-items round). WARP part 29: t49 0 / 1 bit for bit the game's lit / shadowing atlas; CONTROL the multiply differs.
 - **One occlusion a reflection** under Ray-Traced Specular Occlusion and the rays' reflections (as Attila's 6c6c7559): the
   SSR resolve now gets the AO the sun draws read (t45), so the scene's share of the cubes' light comes off as the sun
   draws put it in. WARP part 30: 4096 of 4096 as expected in every case; CONTROLS the resolve as it was 4096.
@@ -155,7 +185,7 @@ needs a trace 7, won't get 14, each with its proof).
 - **Fog Shadows (Experimental, off)**: the battle fog's sun-lit colour x the rays' sun visibility along the view, plus the
   torches' and fires' light in it (Attila's rt_fog, test part 16). Off by default, on with RT/PT as Attila's.
 - **Depth of Field** (Extra): the blur size x the row in the four hdr_to_screen shaders with depth of field.
-- **Smooth Banner Shadows (Experimental, off)**: Attila's row (rays_sheets_unselfed).
+- **Smooth Banner Shadows (Experimental, off then; on by default since 2026-11-17)**: Attila's row (rays_sheets_unselfed).
 - **Smoke Shadows (Experimental, off, left out of RT/PT)**: the lit particles (ps_main_high_quality 122F218C with
   vs50_main_instancing 9FD3EC63, drawn in 34 of 36 traces) streamed out for the rays: Warhammer II's quad shader at
   122F218C's slots (its disassembly line for line Warhammer II's with the three slots renamed).

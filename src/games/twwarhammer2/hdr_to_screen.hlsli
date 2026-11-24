@@ -9,6 +9,38 @@
 #include "../twattila/psycho_test31.hlsli"
 #include "../twattila/psycho35.hlsli"
 
+// t00's tone_mapping (2333E142's b1), copied by the add-on at t00's draw and bound here at t01 - t08's (addon.cpp
+// OnToneMapper / OnHdrToScreen). Its brightness is never 0 in the game's files: 0 means no copy (Musa's own).
+cbuffer wh2_tone_mapping_copy : register(b4)
+{
+  float wh2_copied_brightness : packoffset(c0);
+  float wh2_copied_burn : packoffset(c0.y);
+}
+
+// PsychoV35's game response at the bound burn: shared.h's per-burn fit, linear between its burns, clamped at both ends.
+float4 Wh2V35Response()
+{
+  static const float burns[WH2_V35_KNOTS] = {WH2_V35_BURNS};
+  static const float contrasts[WH2_V35_KNOTS] = {WH2_V35_CONTRASTS};
+  static const float shadows[WH2_V35_KNOTS] = {WH2_V35_SHADOWS};
+  static const float saturations[WH2_V35_KNOTS] = {WH2_V35_SATURATIONS};
+  static const float highlight_contrasts[WH2_V35_KNOTS] = {WH2_V35_HIGHLIGHT_CONTRASTS};
+  [branch]
+  if (wh2_copied_brightness == 0.f) return 1.f;
+  const float burn = clamp(wh2_copied_burn, burns[0], burns[WH2_V35_KNOTS - 1]);
+  float4 response = float4(contrasts[0], shadows[0], saturations[0], highlight_contrasts[0]);
+  [unroll]
+  for (int i = 1; i < WH2_V35_KNOTS; ++i) {
+    const float t = saturate((burn - burns[i - 1]) / (burns[i] - burns[i - 1]));
+    [flatten]
+    if (burn > burns[i - 1]) {
+      response = lerp(float4(contrasts[i - 1], shadows[i - 1], saturations[i - 1], highlight_contrasts[i - 1]),
+                      float4(contrasts[i], shadows[i], saturations[i], highlight_contrasts[i]), t);
+    }
+  }
+  return response;
+}
+
 float3 ApplyHDR1UserGrading(float3 color)
 {
   const float3 kLuminance = float3(0.212599993f, 0.715200007f, 0.0722000003f);
@@ -122,6 +154,7 @@ float3 ApplyWarhammer2Psycho(float3 color)
 {
   [branch]
   if (HDR >= 3.5f) {
+    wh2_v35_response = Wh2V35Response();
     return ApplyPsychoV35(color, TW_TONE_MAP_PEAK, SI.swap_chain_encoding == 2.f);
   }
   [branch]

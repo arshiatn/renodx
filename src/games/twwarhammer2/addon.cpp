@@ -9,6 +9,7 @@
 #define DEBUG_LEVEL_0
 
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <mutex>
 #include <shared_mutex>
 #include <cmath>
@@ -51,6 +52,7 @@
 #include "../twattila/screen_space_shadows.hpp"
 #include "../twattila/smoke_map.hpp"
 #include "../twattila/sun_replace_maps.hpp"
+#include "./atlas_far_plane.hpp"
 #include "../twattila/test_hooks.hpp"
 #include "../twattila/water_effects.hpp"
 #include "./more_tests.h"
@@ -68,6 +70,7 @@
 #include "./trace_reads.hpp"
 #include "../twattila/psycho35_settings.hpp"
 #include "./shared.h"
+#include "../twattila/frame_gamma.hlsli"
 
 constexpr char BUILD_DATE[] = __DATE__;
 constexpr char BUILD_TIME[] = __TIME__;
@@ -432,6 +435,98 @@ constexpr std::array<twattila::rt_scene::SmokePixelShader, 3> SMOKE_PIXEL_SHADER
 // R32 map).
 constexpr std::array<uint32_t, 6> ATLAS_SUN_SHADERS = {0x1AB80044, 0x37237EC7, 0x060623DD, 0xD7990748, 0xCEEE8017, 0xDF071F9D};
 constexpr UINT ATLAS_SAMPLER_SLOT = 1;
+// The 12 software / hardware pcf builds (Shader Model 5.0, Warhammer's 4.1 builds' shape; g_tShadowBuffer) and the 6
+// gather 4.1 builds (ps_4_1, g_tHardShadowBuffer_SM41), patched by screen_space_shadows.hpp Patch's pcf rule: sample_l /
+// sample / gather4 and their own `lt receiver, stored` or the read itself as the lit share, which an ALWAYS sampler does not
+// reach: Warhammer's far plane at the atlas's t1 instead, with our point CLAMP sampler at s1 (atlas_far_plane.hpp; s1 reads
+// t1 alone in every sun build; WARP part 29's far-plane route: t49 0 / 1 bit for bit the game's lit / shadowing atlas in
+// the 12 pcf builds).
+constexpr std::array<uint32_t, 18> ATLAS_SAMPLED_SUN_SHADERS = {
+    0x2DCA8E30, 0xC960A275, 0x1494188B, 0x3115B6D3, 0x1ECDE63F, 0x53224BCB, 0xDE50CFAD, 0xEB90E28A, 0x049A86C2,
+    0xB9663621, 0xB9FC954D, 0xC7D72E8C, 0xA03688A3, 0xDF7EA1A3, 0x488C845F, 0x6257DF22, 0x8D1F7560, 0xCBA032CA};
+constexpr UINT ATLAS_SLOT = 1;
+
+// PsychoV35 at the game's response per map (shared.h WH2_V35_*, hdr_to_screen.hlsli): t00's tone_mapping (b1: the
+// map's brightness and burn) copied on the GPU at t00's draw into a 16-byte buffer of ours, bound at hdr_to_screen's b4
+// at t01 - t08's draws (the game's b4 bound again after). Only in Rendering Mode PsychoV35; nothing read back.
+struct ToneMappingCopy {
+  static constexpr uint32_t TONE_MAPPER = 0x2333E142;
+  static constexpr std::array<uint32_t, 8> HDR_TO_SCREEN = {0x187C9C6D, 0x4B738F1E, 0xF4B4EBD5, 0x76357B37,
+                                                            0x6122F5DA, 0x0B975FC2, 0xACA23A57, 0x100DB7F6};
+  static constexpr UINT GAME_SLOT = 1;
+  static constexpr UINT COPY_SLOT = 4;
+  static inline Microsoft::WRL::ComPtr<ID3D11Buffer> copy;  // zeros until t00's first copy (brightness 0: Musa's own)
+  static inline Microsoft::WRL::ComPtr<ID3D11Buffer> game_b4;
+
+  static ID3D11DeviceContext* Native(reshade::api::command_list* cmd_list) {
+    if (!IsPsychoV35Mode() || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return nullptr;
+    auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+    renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+    if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return nullptr;
+    if (!copy) {
+      Microsoft::WRL::ComPtr<ID3D11Device> device;
+      native->GetDevice(device.GetAddressOf());
+      const std::array<float, 4> zeros = {};
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = sizeof(zeros), .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      const D3D11_SUBRESOURCE_DATA data = {.pSysMem = zeros.data()};
+      if (FAILED(device->CreateBuffer(&desc, &data, copy.GetAddressOf()))) return nullptr;
+      renodx::utils::log::i("[Total War] First run: PsychoV35 at the map's tone mapping (t00's burn copied to hdr_to_screen).");
+    }
+    return native;
+  }
+
+  static constexpr auto OnToneMapper = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+    auto* native = Native(command.cmd_list);
+    if (native == nullptr) return {};
+    // The game's b1 and where it starts (a D3D11.1 offset binding, else 0).
+    Microsoft::WRL::ComPtr<ID3D11Buffer> game;
+    UINT first = 0;
+    UINT count = 0;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext1> native1;
+    if (SUCCEEDED(native->QueryInterface(IID_PPV_ARGS(native1.GetAddressOf())))) {
+      native1->PSGetConstantBuffers1(GAME_SLOT, 1, game.GetAddressOf(), &first, &count);
+    } else {
+      native->PSGetConstantBuffers(GAME_SLOT, 1, game.GetAddressOf());
+    }
+    if (!game) return {};
+    const D3D11_BOX box = {.left = first * 16, .top = 0, .front = 0, .right = (first * 16) + 16, .bottom = 1, .back = 1};
+    native->CopySubresourceRegion(copy.Get(), 0, 0, 0, 0, game.Get(), 0, &box);
+    return {};
+  };
+
+  static constexpr auto OnHdrToScreen = []<typename Context>(Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
+    auto* native = Native(command.cmd_list);
+    if (native == nullptr) return {};
+    native->PSGetConstantBuffers(COPY_SLOT, 1, game_b4.ReleaseAndGetAddressOf());
+    native->PSSetConstantBuffers(COPY_SLOT, 1, copy.GetAddressOf());
+    return {.finalize_callback = [](Context& drawn, const void*) {
+      auto* drawn_native = reinterpret_cast<ID3D11DeviceContext*>(drawn.cmd_list->get_native());
+      renodx::utils::directx::TryNativeFromReShadeProxy(&drawn_native);
+      if (drawn_native != nullptr) drawn_native->PSSetConstantBuffers(COPY_SLOT, 1, game_b4.GetAddressOf());
+      game_b4.Reset();
+    }};
+  };
+
+  static void Install() {
+    renodx::utils::command_action::Register(
+        OnToneMapper, {.shader_hash = TONE_MAPPER, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+    for (const uint32_t shader_hash : HDR_TO_SCREEN) {
+      renodx::utils::command_action::Register(
+          OnHdrToScreen, {.shader_hash = shader_hash, .command_types = renodx::utils::command_action::COMMAND_TYPE_DIRECT_DRAW});
+    }
+  }
+
+  static void Uninstall() {
+    renodx::utils::command_action::Unregister(OnToneMapper);
+    renodx::utils::command_action::Unregister(OnHdrToScreen);
+    OnDestroyDevice(nullptr);
+  }
+
+  static void OnDestroyDevice(reshade::api::device*) {
+    copy.Reset();
+    game_b4.Reset();
+  }
+};
 constexpr float RAYS_REPLACE_MAPS = 1.f;  // sun_replace_maps' row, always on
 float rays_skip_cascades_row = 0.f;
 // The shadow pass's casters in the rays' scene (SCENE_SHADERS' cascade_keep entries): Shadow Casters Out of View, and Hills Out of
@@ -512,6 +607,7 @@ twattila::rt_scene::Sliders rt_sliders;
 // Skip the Game's Reflection Passes (on by default): decided at the hierarchical depth's copy for the frame (BuildRuntimeData).
 float rays_skip_reflection_passes_row = 1.f;
 bool reflection_passes_skipped = false;
+float path_reflection_occlusion = 1.f;  // Path-Traced Reflection Occlusion (ssr00's reflection_game_ao: 1 - this)
 
 void BuildRuntimeData() {
   custom_shaders = {
@@ -2035,9 +2131,17 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   twattila::smoke_map::Update(smoke_map_settings);
   rt_settings.stream_particles = smoke_map_settings.strength > 0.f;
+  // Path-Traced Reflection Occlusion: the specular occlusion traced for the reflections under Path-Traced Ambient, in place
+  // of the game's AO (its own row keeps it whole); not with the rays' reflections (ssr00 keeps the game's AO for their misses).
+  const bool reflections_occluded = rt_settings.path_ambient && !rt_settings.specular_occlusion && !rt_settings.reflections
+                                    && path_reflection_occlusion > 0.f;
+  rt_settings.specular_occlusion = rt_settings.specular_occlusion || reflections_occluded;
+  shader_injection.reflection_game_ao = reflections_occluded ? (1.f - path_reflection_occlusion) : 0.f;
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = !IsHdrOutput();
+  // DLAA's and CMAA2's passes in the frame's own curve (2.2 with Gamma Correction on: the swap chain proxy's decode).
+  aa_settings.frame_gamma = TW_FRAME_GAMMA;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   // After the at-start tests' thread (one writer at a time).
@@ -2493,6 +2597,24 @@ void ConfigureAddon() {
       .tooltip = "Leaves out the game's screen-space reflection passes the rays' reflections replace: the same picture,\n"
                  "a little faster.",
   });
+  // Path-Traced Reflection Occlusion (Attila's row, on: ours in place of the game's AO): under Path-Traced Ambient ssr00's
+  // reflections take the traced specular occlusion at this strength in place of the game's screen-space AO (0: today's,
+  // nothing traced for it). The page shows it under Path-Traced Ambient (twattila/graphics_page.hpp).
+  settings.push_back(new renodx::utils::settings::Setting{
+      .key = "PathTracedReflectionOcclusion",
+      .binding = &path_reflection_occlusion,
+      .default_value = 1.f,
+      .label = "Path-Traced Reflection Occlusion",
+      .section = twattila::feature_settings::AA_SECTION,
+      .tooltip = "Reflections darken where something blocks the sky: no bright sky in dark corners.\n"
+                 "0: off.",
+      .max = 1.f,
+      .format = "%.2f",
+      .is_visible = [] {
+        return rt_sliders.light_bounce == 2.f && rt_sliders.path_ambient != 0.f && rt_sliders.specular_occlusion == 0.f
+               && rt_sliders.reflections == 0.f && twattila::feature_settings::Upscaling(aa_sliders);
+      },
+  });
 
   // Appended Settings (HDR10)
   {
@@ -2763,6 +2885,9 @@ bool AttachAddon() {
   // The rays replace the atlas's sun shadow: after the screen-space shadows' and before the Light Bounce's. Skip the Shadow
   // Maps through Ray-Traced Shadows Only (rt_settings.shadows_only, OnPresent).
   twattila::sun_replace_maps::Install(ATLAS_SUN_SHADERS, &RAYS_REPLACE_MAPS, ATLAS_SAMPLER_SLOT);
+  twwarhammer2::atlas_far_plane::Install({}, ATLAS_SAMPLED_SUN_SHADERS, ATLAS_SLOT);
+  reshade::register_event<reshade::addon_event::destroy_device>(ToneMappingCopy::OnDestroyDevice);
+  ToneMappingCopy::Install();
   twattila::rt_scene::InstallShadowsOnly();
   // The data run's frame traces (tools\tw\wh2\plan_1114.md; twattila/frame_trace.hpp): on demand (renodx_trace_now next to the
   // exe) and at 100% too. The camera's g_screen_size / g_viewport_dimensions at c27 / c29 as Attila's (the sun PS's camera RDEF).
@@ -2853,6 +2978,9 @@ void DetachAddon() {
   renodx::utils::command_action::Unregister(GoboSpotLightRays::OnDraw);
   renodx::utils::command_action::Unregister(FogRays::OnDraw);
   twattila::sun_replace_maps::Uninstall();
+  twwarhammer2::atlas_far_plane::Uninstall();
+  reshade::unregister_event<reshade::addon_event::destroy_device>(ToneMappingCopy::OnDestroyDevice);
+  ToneMappingCopy::Uninstall();
   twwarhammer2::sun_ambient::Uninstall();
   reshade::unregister_event<reshade::addon_event::destroy_device>(PointLightRays::OnDestroyDevice);
   reshade::unregister_event<reshade::addon_event::destroy_device>(SpotLightRays::OnDestroyDevice);

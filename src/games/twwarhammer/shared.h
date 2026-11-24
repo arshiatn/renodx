@@ -138,6 +138,7 @@ struct ShaderInjectData {
   float auto_exposure_highlight_protection;
   float auto_exposure_highlight_headroom_stops;
   float ssao_exact_depth;  // GT-VBAO: 1 Exact Depth Samples (twattila/bitmask.hlsli BitmaskPlaneDepth, Experimental)
+  float reflection_game_ao;  // ssr00: the game's AO's share beside t46 (Path-Traced Reflection Occlusion: 1 - its strength; 0: t46 whole)
 };
 
 #define SI shader_injection
@@ -162,6 +163,14 @@ struct ShaderInjectData {
 // Modded Auto Exposure
 #define AutoExposureHighlightProtection     SI.auto_exposure_highlight_protection
 #define AutoExposureHighlightHeadroomStops  SI.auto_exposure_highlight_headroom_stops
+
+// PsychoV35's slider defaults here: the game's own response below white. The WARP fit against the game's SDR through t00
+// D275C403 -> t01 10759AE3 (the V35 fit recipe; level B: no trace holds the S-curve texture) finds Musa's own the best
+// (within 0.3 %, the identity and an S-shaped S-curve; a known-wrong set misses by more than 5 %): they stay 1.
+#define WH1_V35_CONTRAST           1.f
+#define WH1_V35_SHADOWS            1.f
+#define WH1_V35_SATURATION         1.f
+#define WH1_V35_HIGHLIGHT_CONTRAST 1.f
 
 // FOR VFX AND EXTRA STUFF
 #define HDR                       SI.hdr

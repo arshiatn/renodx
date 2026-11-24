@@ -87,6 +87,7 @@ Texture2D<float4> t_hit : register(t7);
 Texture2D<float4> t_in_radiance : register(t8);
 RWTexture2D<float3> t_out_radiance : register(u0);
 
+#include "../shared.h"
 
 // 3Dmigoto declarations
 #define cmp -
@@ -388,12 +389,20 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
       t_rt_specular_occlusion.GetDimensions(rt_occlusion_width, rt_occlusion_height);
       const bool rt_occlusion = rt_occlusion_width != 0u;
       const float3 rt_environment = r0.yzw;
-      if (!rt_reflected) r0.yzw = RtOccludedEnvironment(rt_texel, rt_occlusion ? rt_unoccluded : r0.yzw);
+      // Path-Traced Reflection Occlusion (addon.cpp): under Path-Traced Ambient t46 is traced for these reflections alone and
+      // taken at the row's strength, the game's AO keeping the rest of the cubes' and the march's light (SI 0: t46 alone and
+      // the march's light no AO, as Ray-Traced Specular Occlusion's own). Precise: a share of 0 keeps t46's bits.
+      const precise float3 rt_traced_occluded =
+          rt_environment * SI.reflection_game_ao
+          + RtOccludedEnvironment(rt_texel, rt_occlusion ? rt_unoccluded : r0.yzw) * (1.f - SI.reflection_game_ao);
+      if (!rt_reflected) r0.yzw = rt_traced_occluded;
       const float3 rt_occluded = r0.yzw;
       r1.xyz = r9.xyz * r1.xyz;
       r0.x = -1 + r0.x;
       r0.x = r3.z * r0.x + 1;
+      const precise float rt_march_occlusion = r0.x * SI.reflection_game_ao + (1.f - SI.reflection_game_ao);
       if (rt_reflected || rt_occlusion) r0.x = 1;
+      if (rt_occlusion && !rt_reflected) r0.x = rt_march_occlusion;
       r1.w = 16.666666 * r5.w;
       r2.w = saturate(0.125 * r6.x);
       r1.w = r2.w * r1.w;
@@ -412,7 +421,9 @@ void main(uint3 vThreadID : SV_DispatchThreadID)
         r1.xyz = r3.xyz * g_environment_weights[(uint)r1.w] + r1.xyz;
         r0.w = 1 + r0.w;
       }
-      if (!rt_reflected) r1.xyz = RtOccludedEnvironment(rt_texel, r1.xyz);
+      const precise float3 rt_water_occluded =
+          r1.xyz * SI.reflection_game_ao + RtOccludedEnvironment(rt_texel, r1.xyz) * (1.f - SI.reflection_game_ao);
+      if (!rt_reflected) r1.xyz = rt_water_occluded;
       r0.w = rt_reflected ? rt_traced.a : min(1, r6.y);
       r3.xyz = r9.xyz + -r1.xyz;
       r1.xyz = r0.www * r3.xyz + r1.xyz;
