@@ -3,9 +3,11 @@
 # this tree and from fc24dbce (the last commit before round v42's phase D) with the build's flags must be the same, but
 # sss_setup (its dispatch list moved into sss_dispatch.hlsli), whose output case 1 compares on WARP with fc24dbce's.
 # Run as x86 and amd64; -Time also times the rows on the hardware GPU at 4K. -BlockSkipGpu: case 11 on the hardware GPU
-# alone (db99b716b's Bend passes against this tree's) and their times at 4K (a GPU window).
-param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$Time, [switch]$BlockSkipGpu)
+# alone (db99b716b's Bend passes against this tree's) and their times at 4K. Both need the gate id (-Gate): the test runs
+# under tools\tw\gpu_job.lock (lab\GpuLock.psm1, the gate id in its note), waiting while a TW game or another harness runs.
+param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$Time, [switch]$BlockSkipGpu, [string]$Gate = '')
 $ErrorActionPreference = 'Stop'
+if (($Time -or $BlockSkipGpu) -and $Gate -eq '') { throw '-Time and -BlockSkipGpu run on the hardware GPU: give their gate id (-Gate)' }
 $repairRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repairRoot 'test\tw_screen_space_shadows'
 $testBuild = Join-Path $repairRoot "build\tw_screen_space_shadows_test_$Architecture"
@@ -55,7 +57,7 @@ if (($changed | Where-Object { $_ -notin $allowed }).Count -ne 0) { throw "Plain
 # from this tree (new_), Auto Thickness's the same bytes (both skips compiled out there); this tree's with both skips
 # compiled out (noskip_: BEND_SSS_TEST_NO_SKIP) db99b716b's bytes, every pass; this tree's test builds: each pixel's
 # writes summed with the skips (wnew_: BEND_SSS_TEST_WRITES, u7) and without (wref_), the skips counted (count_:
-# BEND_SSS_TEST_COUNTERS), Rev 0's sign-blind block test (signed_), margins -1e-3 (margin3_) and -0.25 (margin25_), every
+# BEND_SSS_TEST_COUNTERS), Rev 0's sign-blind block test (signed_), margins -1e-3 (margin3_) and -0.25 (wmargin25_), every
 # block skipped (skipall_, wskipall_).
 $e2Before = Join-Path $testBuild 'before_db99b716b'
 if (Test-Path -LiteralPath $e2Before) { Remove-Item -LiteralPath $e2Before -Recurse -Force -Confirm:$false }
@@ -88,7 +90,7 @@ $builds = @(
   @{ Prefix = 'count_'; Root = $repairRoot; Names = $skipping; Defines = $counters },
   @{ Prefix = 'signed_'; Root = $repairRoot; Names = $attila; Defines = $counters + @('/D', 'BEND_SSS_TEST_SIGNED') },
   @{ Prefix = 'margin3_'; Root = $repairRoot; Names = $attila; Defines = $counters + @('/D', 'BEND_SSS_TEST_MARGIN=-1e-3') },
-  @{ Prefix = 'margin25_'; Root = $repairRoot; Names = $attila; Defines = @('/D', 'BEND_SSS_TEST_MARGIN=-0.25') },
+  @{ Prefix = 'wmargin25_'; Root = $repairRoot; Names = $attila; Defines = $writes + @('/D', 'BEND_SSS_TEST_MARGIN=-0.25') },
   @{ Prefix = 'skipall_'; Root = $repairRoot; Names = $attila; Defines = @('/D', 'BEND_SSS_TEST_SKIP_ALL') }
 )
 foreach ($build in $builds) {
@@ -128,5 +130,15 @@ if ($LASTEXITCODE -ne 0) { throw 'Screen-space shadows test compile failed' }
 $arguments = @($beforeShaders)
 if ($Time) { $arguments += '--time' }
 if ($BlockSkipGpu) { $arguments += '--block-skip-gpu' }
-& (Join-Path $testBuild 'screen_space_shadows.exe') @arguments
-if ($LASTEXITCODE -ne 0) { throw 'Screen-space shadows test failed' }
+$record = $null
+if ($Time -or $BlockSkipGpu) {
+  Import-Module 'C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\lab\GpuLock.psm1' -Force
+  $record = Enter-GpuLock -Script $PSCommandPath -Note "tw_screen_space_shadows gate $Gate $Architecture $($arguments[1..($arguments.Count - 1)] -join ' ')" -Busy
+}
+try {
+  & (Join-Path $testBuild 'screen_space_shadows.exe') @arguments
+  $exitCode = $LASTEXITCODE
+} finally {
+  if ($record) { Exit-GpuLock -Record $record }
+}
+if ($exitCode -ne 0) { throw 'Screen-space shadows test failed' }

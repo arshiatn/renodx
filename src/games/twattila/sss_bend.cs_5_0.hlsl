@@ -171,6 +171,9 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
     const uint waves_y = (uint)dispatch.y;
     group_id = int3(local % WAVE_SIZE, (local / WAVE_SIZE) % waves_y, local / (WAVE_SIZE * waves_y));
     light_index = (uint)dispatch.w;
+#ifdef BEND_SSS_TEST_WRITES
+    BendTestPass = 1u;  // test harness only (test/tw_screen_space_shadows case 11)
+#endif
     dp.LightCoordinate = t_sss_light_coordinates[dispatch.w];
     dp.WaveOffset = t_sss_light_dispatches[2 + 2 * low].xy;
     dp.FarFade = 0.f;

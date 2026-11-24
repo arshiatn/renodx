@@ -350,6 +350,10 @@ struct DispatchParameters
 	// writes.
 	RWByteAddressBuffer BendTestCounters : register(u7);
 #endif
+#ifdef BEND_SSS_TEST_WRITES
+	// The pass whose writes these are (the caller's: 1 its light mode), each pass's pixels apart.
+	static uint BendTestPass = 0;
+#endif
 
 #ifdef BEND_SSS_EXTENDED
 	// RenoDX extended: what the loops carry between samples. Auto Thickness's run (its first sample, the depth and step of
@@ -936,13 +940,17 @@ struct DispatchParameters
 				result = frac(inGroupID.x / (float)WAVE_SIZE);
 #ifdef BEND_SSS_TEST_WRITES
 			{
-				// Test harness only (case 11): each pixel's writes summed past the counters, the same sums in any order (waves
-				// can write a pixel twice): their count, the shadow term's bits; extended, what WriteExtended reads: the first
-				// shadowing sample where the term is under 1, the banner sample and its weight where it counts.
-				const uint slot = 64 + 16 * ((uint)write_xy.y * (uint)inParameters.FullSize.x + (uint)write_xy.x);
+				// Test harness only (case 11): each pass's pixel's writes past the counters, 6 words the same in any order (waves
+				// can write a pixel twice): their count, the sum and the largest of the shadow term's bits and of their
+				// complement (its least: the term is never negative); extended, the sums of what WriteExtended reads: the
+				// first shadowing sample where the term is under 1, the banner sample and its weight where it counts.
+				const uint slot = 64 + 24 * ((BendTestPass * (uint)inParameters.FullSize.y + (uint)write_xy.y) * (uint)inParameters.FullSize.x
+				                             + (uint)write_xy.x);
 				uint written;
 				BendTestCounters.InterlockedAdd(slot, 1, written);
 				BendTestCounters.InterlockedAdd(slot + 4, asuint(result), written);
+				BendTestCounters.InterlockedMax(slot + 16, asuint(result), written);
+				BendTestCounters.InterlockedMax(slot + 20, ~asuint(result), written);
 #ifdef BEND_SSS_EXTENDED
 				BendTestCounters.InterlockedAdd(slot + 8, (result < 1) ? (uint)(hit + 2) * 0x9E3779B1u : 0, written);
 				BendTestCounters.InterlockedAdd(slot + 12, (thin_hit >= 0 && thin_weight > 0) ? (uint)(thin_hit + 2) * 0x9E3779B1u + asuint(thin_weight) : 0,
