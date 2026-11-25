@@ -30,6 +30,7 @@
 
 #include "../../utils/log.hpp"
 #include "./context_hooks.hpp"
+#include "./module_version.hpp"
 
 // Fewer Driver Waits (the constant buffer ring): the game's dynamic constant buffers go to the GPU through one ring of
 // 256 KB pieces mapped NO_OVERWRITE and bound with D3D11.1 offsets, instead of a driver rename at each DISCARD map (the
@@ -1228,19 +1229,8 @@ inline void Update(ID3D11DeviceContext* context, bool on, bool quiet) {
   if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                          static_cast<LPCWSTR>(hooks::state.bodies.front()), &d3d11)
       != FALSE) {
-    // Type 16: RT_VERSION.
-    if (const HRSRC resource = FindResourceW(d3d11, MAKEINTRESOURCEW(VS_VERSION_INFO), MAKEINTRESOURCEW(16));
-        resource != nullptr) {
-      const auto* bytes = static_cast<const uint8_t*>(LockResource(LoadResource(d3d11, resource)));
-      const DWORD size = SizeofResource(d3d11, resource);
-      for (DWORD offset = 0; bytes != nullptr && offset + sizeof(VS_FIXEDFILEINFO) <= size; offset += 4) {
-        VS_FIXEDFILEINFO info = {};
-        std::memcpy(&info, bytes + offset, sizeof(info));
-        if (info.dwSignature != VS_FFI_SIGNATURE) continue;
-        version = std::format("{}.{}.{}.{}", HIWORD(info.dwFileVersionMS), LOWORD(info.dwFileVersionMS),
-                              HIWORD(info.dwFileVersionLS), LOWORD(info.dwFileVersionLS));
-        break;
-      }
+    if (const auto file_version = ModuleFileVersion(d3d11); file_version.has_value()) {
+      version = std::format("{}.{}.{}.{}", (*file_version)[0], (*file_version)[1], (*file_version)[2], (*file_version)[3]);
     }
   }
   renodx::utils::log::i("[Total War] Fewer Driver Waits: on (", internal::FIRST_PIECES, " pieces of 256 KB, up to ",
