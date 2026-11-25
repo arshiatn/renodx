@@ -42,10 +42,18 @@ static const uint DI_NO_SPATIAL = 16u;
 // trace's history).
 static const uint DI_INITIAL_ARRAY = 0u;
 static const uint DI_TEMPORAL_ARRAY = 1u;
+#if defined(DI_FUSED)
+// The fused variant (rt_di_spatiotemporal; -D DI_FUSED in every DI pass build of it): it reads the last trace's shading
+// reservoirs while it writes this trace's, so the two take arrays 1 and 2 in turns by the light history's parity
+// (DiParity flips every trace; the history is read only after a flip: DI_HISTORY needs the trace the frame before).
+#define DI_SHADE_ARRAY (1u + DiParity())
+#define DI_HISTORY_ARRAY (2u - DiParity())
+#else
 static const uint DI_SHADE_ARRAY = 2u;
 // The last trace's shading reservoirs, the temporal reuse's history: the split passes' the same array (the temporal pass
-// reads it before the spatial pass writes it); the fused variant's own pair in turns (scratch pdi4c_ fused_variant.py).
+// reads it before the spatial pass writes it).
 static const uint DI_HISTORY_ARRAY = DI_SHADE_ARRAY;
+#endif
 
 // The light history's set this trace writes (rt_lights' parity_written); the last trace's is the other.
 uint DiParity() {
@@ -93,7 +101,25 @@ bool DiVisible(float3 origin, float3 light_point) {
   const float3 to_light = light_point - origin;
   const float light_distance = length(to_light);
   if (!(light_distance > 1.0003098e-3f)) return false;
+#if defined(DI_CONSERVATIVE)
+  // Source: RTXDI RtxdiApplicationBridge.md, RAB_GetConservativeVisibility ("conservative visibility can skip
+  // alpha-tested or translucent surfaces"; the initial samples' kept or discarded "computed in the same way").
+  // Deviation (the NV1 variant, nvs_ nv_speedups.md N1; -D DI_CONSERVATIVE only in its rt_di_initial and reuse builds):
+  // the solid surfaces alone (OccludedSolid's first query, without its alpha-tested CUT_OUTS one), so a leaf or cut-out
+  // never blocks these rays: visibility only ever over-counted, the mean kept (RTXDI's rule), more noise where leaves
+  // shadow torches. rt_di_shade's final ray and T1 stay exact (nvs_ C1): built without it.
+  RayDesc ray;
+  ray.Origin = origin;
+  ray.Direction = to_light / light_distance;
+  ray.TMin = 0.f;
+  ray.TMax = light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance);
+  SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query;
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, ray);
+  query.Proceed();
+  return query.CommittedStatus() != COMMITTED_TRIANGLE_HIT;
+#else
   return !Occluded(origin, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_GRASS_SMOKE);
+#endif
 }
 
 // Light `light`'s place in the last trace's list (b4's light_previous; NO_LIGHT: new).
