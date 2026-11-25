@@ -913,7 +913,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
-- ATN Q (pdi4c_ [Q-]): DI is off under mode 1 (Torch / Fire Light carried by the L ... | ?
+- pdm1_ DESIGN (Opus xHigh, read-only, STARTED 23:3x, est 30 / deadline 60): pt_di ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
@@ -16894,9 +16894,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         _torch DXIL byte-identical, h0i_test 72 / 72, static_checks same 5 old findings; committed rt_d3d12.hpp LF
         only (coord checked). Not done: N3, N7 (GPU init log), light_previous decode DRY (touches player sources).
         WAITS: pdi3_'s FINAL step-3 head -> rebase to _r3; then 'pdi4c_ GPU go' (adds a mode 3 DI run). Owner: pdi4c_
-        - [ ] ATN Q (pdi4c_ [Q-]): DI is off under mode 1 (Torch / Fire Light carried by the Light Bounce, no ratio).
-        Accept, or a step-3 change so the paths skip DI pixels' torches and DI runs under mode 1 too? Coord: the
-        step-3 change after step 3 merges ('every setting'). Owner: ATN, coord
+        - [x] ATN Q (pdi4c_ [Q-]): DI is off under mode 1 (Torch / Fire Light carried by the Light Bounce, no ratio).
+        ATN 11-25 ~23:3x: 'DI shouldn't count lights twice, no? And DI should be on otherwise it makes no sense.' ->
+        DI ON under mode 1 too, no double light. A DESIGN GAP: design 2.9 named only the ratio row (mode 3); 4c turned
+        DI off for both, the review flagged only mode 3. Mode 1 = torches' DIRECT light at the primary surface sampled
+        into the bounce texture (rt_path.hlsli bounce-light block, bounce resolution) -> with DI it doubles.
+        - [ ] pdm1_ DESIGN (Opus xHigh, read-only, STARTED 23:3x, est 30 / deadline 60): pt_di_rtxdi.md '### 2.9a Mode
+        1 with DI': per pixel class who gives the direct torch light + mask word, mixed bounce texels, what mode 1 means
+        with DI on (rows / tooltips), code sites + owners (step 3 rt_path vs 4c), cost, tests (energy DI on vs off at 3
+        / 29 / 128 lights + controls for double and missing light), risks. -> pdi4c_ implements on _r3 AFTER its rebase,
+        BEFORE its GPU turn; its GPU turn adds mode 1 runs. Owner: pdm1_, then pdi4c_
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
