@@ -15851,6 +15851,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         S3 S-C replaces PK8's batch (0 extra starts), S5 W-A0 DEFERRED to Stage B (l2b section 8 item 4, map 3.3
         updated), S6 T-A2 may need a Bitdefender exception (ATN only), S9 bounds (id >= 65536, p >= count). Stage B
         design-only until its proofs. -> p8d_ FIX ROUND STARTED 15:0x (+ an F1 section for C8 B0).
+        p8d_ FIX ROUND DONE 16:2x (hand-back p8d_fix_round_handback.md; pk8_battle_step_64.md 999 lines): M1 fingerprint
+        27126785e1b2538d at init + game start; M2 P3 hard gate with the widened store census (id, vptr, indirect sites,
+        +0xa88 target, ctor call 0x79615c, nested flag); M3 STEP + GUEST only, guest passes the engine's child-thread
+        test. F1 (offset 84 engine_status lanes, EngineState, CORE_STEP / CORE_SPLIT) APPLIED to c8_wave2_plan.md B0
+        by coord; F2 kinds match PK6's. NEW 6.1 'Stage B handover for Friday's designer' (12 open proofs, data, 9
+        risks; main risk: the step thread runs queue tasks while it waits for the join). ATN questions: Q1 Stage A
+        default + row text, Q3 init / README wording, Q4 Stage B Friday, Q5 offer to Sol, Q6 Bitdefender exception
+        for battle_step_test.exe (ATN only). -> p8r_ RE-CHECK STARTED 16:2x; p2d_ fixes PK2P's members[4] text.
         - [x] p9d_ PK9 EFFECTS DESIGN DONE 13:3x (designs\pk9_effects_64.md 515 lines, hand-back p9d_design_handback.md):
         ROUTE A recommended = keep Sol's own parallel effect update, no hook / patch: A1 note to Sol (race census N1-N12,
         C10, soak list, ask for a settings.txt key where 0 = off: today any value even 0 turns it on; credit RenoDX /
