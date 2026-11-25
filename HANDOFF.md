@@ -985,6 +985,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa7_ BUG-7 NVAPI Reflex Off = no Sleep and no markers (reflex.hpp:79 / 98); NVID ... | ?
 - fa7_ BUG-8 UE infinite-far depth gets far = 1e5 every frame via the fallback (up ... | ?
 - fa7_ UNKNOWNs: U1 ATN'S WORD: Attila's DLSS default preset L at every scale vs N ... | ?
+- fa8_ B1 ATN'S WORD: SDR DISPLAY + RENDERING MODE SDR, 8 games (Attila, Thrones, ... | ?
+- fa8_ B2 ToneMapperHdr 'Y > 0 ? n / Y : 1': luminance <= 0 passes unexposed (stoc ... | ?
+- fa8_ B3 Divinity 2 proxy scRGB branch lacks BT.2020 -> BT.709 (unreachable: Outp ... | ?
+- fa8_ B4 upstream colorcorrect GammaSafe float4 overload calls Gamma (not sign-sa ... | ?
+- fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | ?
+- fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -17437,6 +17443,34 @@ heading text are in HANDOFF_ARCHIVE.md)
         independent flip (PresentMon); U5 FSR FG gets no HDR metadata; U6 Shogun 2's own jitter count at 100 %; U7
         sl.log warnings (out-of-order frame x4, async-present mutex x4, GetState sync, invalid back-buffer extent); U8 SL's
         eOnlyValidNow copies' cost. Owner: critic -> owners; U1 -> ATN (morning)
+        fa8_ DONE (26 min; fidelity\hdr_output_colour.md; atn-mods 71620c94d, no colour-path file changed since
+        fcf71fc1e, no open branch touches it): src/shaders = upstream bfdb52d3c byte-identical; PQ, sRGB, gamma pairs,
+        all 12 matrices (recomputed from primaries, 10 digits; 709 -> 2020 = BT.2087), ACES white + Bradford, RRT
+        constants (aces-dev v1.3, tools\refcode\aces_dev_1126) SAME. RenoDRT / SwapChainPass / lut::Sample / ACES ODT in
+        none of our 16 games; UE Extended (Tales, Expeditions) uses the RRT front half (UE smoothstep^2 hue weight within
+        1 % of aces-dev) + UE film curve term by term. No game sends HDR10 metadata (= upstream). 16 guards classified.
+        - [ ] fa8_ B1 ATN'S WORD: SDR DISPLAY + RENDERING MODE SDR, 8 games (Attila, Thrones, Rome II, WH, WH2, WH3, Troy,
+        Pharaoh): frame_gamma.hlsli TW_FRAME_GAMMA flips, so Gamma Correction on (every preset writes it, SDR preset too)
+        shows stock as x^2.0 = lighter darks than the game on a 2.2 display; the 11-01 rejected look, and the opposite of
+        the tooltip ('deeper shadows, in every Rendering Mode'). Fix A: drop the flip; fix B: tooltip + Gamma Correction 0
+        in the SDR preset. Owner: ATN picks -> TW HDR owner
+        - [ ] fa8_ B2 ToneMapperHdr 'Y > 0 ? n / Y : 1': luminance <= 0 passes unexposed (stock t00 -> black); use the
+        stock ': n'. Latent. Owner: TW HDR owner
+        - [ ] fa8_ B3 Divinity 2 proxy scRGB branch lacks BT.2020 -> BT.709 (unreachable: Output offers HDR10 only).
+        Owner: D2 port
+        - [ ] fa8_ B4 upstream colorcorrect GammaSafe float4 overload calls Gamma (not sign-safe); no game of ours calls
+        it. Owner: upstream note only
+        - [ ] fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. 5 uncited: ToneMapperHdr
+        max(range, 1e-6), B2's ': 1', 14 games Output Auto = scRGB vs the skill's HDR10 (only reason: FG), Shogun 2
+        tangent vs Attila pure power for 2.0-on-2.2, Rome R proxy gamut + Peak clamps commented out. Owner: critic
+        - [ ] fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone upstream; nearest copy 492
+        lines off); U2 Tales / Expeditions LUT behind UE's 14-stop shaper saturates at ~43.7 linear (offline V35 eval at
+        Peak 1000 / 2000 / 4000); U3 Hue Clip ranks a negative channel by size, stock floors at 0 (sign census of t00
+        input, one dump); U4 PT fallback light (last frame's colour) in RT games other than Attila (upscaler input vs
+        the RT add buffer); U5 our 3 V35 drifts (black-pixel guard, footroom clamp, negative cones 0) vs the 11-26 rule:
+        Musa's containment assumes an interior mean, human_gamut_conditioning never tried -> rerun tw_psychov35 edge
+        cases on his unmodified copy with conditioning, or guard only in ApplyPsychoV35; U6 which passes make the NaN /
+        Inf ApplyPsychoV35's guard catches (one-frame census = the inert check). Owner: critic -> owners
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
