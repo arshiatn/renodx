@@ -2614,9 +2614,8 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 0.f,
           .label = "Balanced ReSTIR Light (Experimental)",
           .section = section,
-          .tooltip = "ReSTIR GI shares its neighbours' light more evenly: units and corners closer in brightness
-"
-                     "to full path tracing. A slightly different look.",
+          .tooltip = "ReSTIR GI shares its neighbours' light more evenly: units closer in brightness\n"
+                     "to full path tracing, inside corners a little brighter.",
           .labels = {"Off", "On"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
       },
