@@ -823,7 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
-- a64ab3_ (Opus High) STARTED 06:1x: a64_ab.ps1 -EnginePlugin for -Smoke -ReShade ... | ?
+- ATN: add the A3 + T1 rule lines (study_1124\a64ab_window1_rules.md: -Smoke -ReSh ... | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
@@ -15497,11 +15497,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] MERGED 35b5e715a (Merge a64a1_lane) + coord build check on the merged tree: twattila addon64 + addon32,
         twrome2 addon32, twthronesofbritannia addon32, twwarhammer3 addon64 exit 0 (61 / 61 / 62 / 61 / 61 warnings =
         before). Pushed 06:0x.
-        - [ ] a64ab3_ (Opus High) STARTED 06:1x: a64_ab.ps1 -EnginePlugin for -Smoke -ReShade (T1) + the C2 hook trace
-        (RT shadows + shadow row, shadow_refresh=2, limb MVs) + -Analyze checks + DryRun self-tests + ATN's exact rule
-        lines in study_1124\a64ab_window1_rules.md (drops '-ReShade -Warp'). 10.1 item 3 bans renodx_attila64.dll in
-        every other -ReShade folder. ONE WRITER: the prepared L2B patch (attila64\ab\a64_ab_l2b_patch.py) applies only
-        after a64ab3_ is done (re-dry-test it then).
+        - [x] a64ab3_ T1 SWITCH DONE (hand-back attila64/study_1124/a64ab3_t1_switch_handback.md; backup
+        a64_ab.pre_t1_1125.ps1; now 2056 lines): -EnginePlugin (only with -Smoke -ReShade; copies
+        D:\Dev\renodx\build\attila64_plugin\renodx_attila64.dll checked against its .sha256 sidecar right before the
+        launch, removed in finally) + -C2 (2 starts: E64-sr2 = ATTILA_SHADOW_EVERY=2 + skip row; E64-mv = TAA + object
+        MVs -> bone flush 0x1). -Analyze E0-E13 (incl. forbidden lines, rows offered 0x3, first-call thread = present
+        thread, WER Event 1000 / CrashDumps). FIX: $RS_FILES dxgi source = a3_smoke\dxgi.dll (every -ReShade dry run
+        failed before). Old lines' DryRun identical (11 lines; -Wpr not dry-run: schtasks). Bad mixes exit 1; synthetic
+        -Analyze good / bad as built. Plugin DLL built at 44c7bc334: afb253572154e12f (154,112 B); build.ps1 writes NO
+        sidecar -> written by hand; whoever rebuilds must rewrite it. C2 CAN'T cover RT shadows / the rotation on the
+        port (needs the helper; 10.1 keeps it out; RT capture = C3); E12 may fail if the replay camera never stops.
+        L2B patch anchors still match once each.
+        - [x] coord STAGED the linked add-on 06:3x: a3_smoke\renodx-twattila.addon64 = 3d47031a0cddf3a5 (merged tree
+        35b5e715a build, has the link text); previous f37a8c6d kept in a3_smoke_prev_f37a8c6d\.
+        - [ ] ATN: add the A3 + T1 rule lines (study_1124\a64ab_window1_rules.md: -Smoke -ReShade, -ReShade -PerfFix,
+        -ReShade -Package ...; NEW -Smoke -ReShade -EnginePlugin, -EnginePlugin -C2, optional -EnginePlugin -PerfFix;
+        each with -DryRun) -> coord: DryRun -> A3 Smoke -> T1 -> C2.
         - [ ] COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-on in the 64-bit port; only
         -Smoke without ReShade exists). The 32-bit S4-rotation trace gates the next 32-bit Attila / Thrones / Rome II
         release (none planned now). T1 ReShade.log must NOT contain the RENODX_TW_PLUGIN_WANT line. Checks: 32-bit S4-rotation trace
