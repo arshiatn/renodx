@@ -1,5 +1,29 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, 64-bit Attila engine plugin link (2026-11-25; built only, not stamped, not installed, not run in game)
+
+- New: the 64-bit add-on finds the engine plugin's block (`renodx_attila64.dll` in `attila64\plugins\`,
+  `attila64_plugin_link.hpp`) at the game's device, else at the first present, and logs once `[Total War] 64-bit
+  Attila: engine plugin ready, rows offered 3` (or `not installed`, `off (ReShade.ini)`, `off (another game build)`,
+  `off (another loader or file name)`, `of another version`).
+- With the plugin ready, **Skip the Game's Shadow Map Work** is back on the port: the plugin hooks the pass draw and calls
+  shadow_pass's PassBegin / PassEnd (the 32-bit hook calls the same two). Before each bone pack it calls the add-on's
+  unit-record flush while limb motion vectors or Batched Unit Capture are on. The callbacks are registered while a
+  feature wants them (`engine plugin callbacks registered`), and unregistered with a bounded drain when none does and at
+  the add-on's detach.
+- The note in Graphics (Experimental) has one line per lookup result (not installed; off: ReShade.ini, another game
+  version, another loader, another version), and "could not change all of the game's code" when a hook was refused.
+- Fixed (Attila, Thrones, Rome II): Skip the Game's Shadow Map Work's kept call turns with the frames that drew each pass
+  kind, not with the present count; the 64-bit loader's shadow refresh rests the shadow view on some frames, which kept
+  the same call (one cascade) every time. On 32-bit every frame draws its shadow kinds: the rotation is as before.
+- Fixed (port): shadow_pass's install could still run while a present on another thread ran its Update; the lookup now
+  installs first and publishes the plugin as ready after.
+- Checked in `test/tw_attila64_present`: six plugin cases with a fake block (`fake_plugin.cpp`): ready, a row changed
+  after the plugin's init, off, another game, another loader, a block still loading.
+- Verification in game: `attila64_log.txt` shows the plugin's init lines, both sites applied and `game started: 2 sites
+  unchanged`; ReShade.log `engine plugin ready, rows offered 3`; with the row on under ray-traced shadows, `pass kind N
+  draws only into the sun's map` lines.
+
 ## Dev, 64-bit Attila bring-up (2026-11-25; built only, not stamped, not installed, not run in game)
 
 - New: the 64-bit add-on (`renodx-twattila.addon64`) runs under the 64-bit port of Attila (`attila64.exe`), HDR only.
@@ -11,8 +35,8 @@
   (both reachable on any device).
 - Every row whose reader is the 32-bit game's code (engine tweaks, the presets, Faster / Parallel CPU rows, Shadow Map
   Size and its UI 4K lock, the cascades, the grass trace / dump, the at-start tests) is hidden on the port, keys kept; a
-  note says "Engine options: the 64-bit engine plugin is not installed.". The engine plugin's slot (shadow_pass's install
-  and update) is in place; nothing fills it yet.
+  note says "Engine options: the 64-bit engine plugin is not installed." until the engine plugin (section above) offers
+  a row.
 - The first present reads the game's image (build id, code ranges: `game code mapped, ...`) for the map trace's callers
   (`frame_trace::SetGameCode`, test `tw_map_trace` part 15).
 - HDR output: the loader draws into its own RGBA8 picture and copies it into buffer 0; the picture's clone turns on at its
