@@ -28,9 +28,10 @@ if ($rtxdi_found) { "RTXDI b67f61cd: found ($rtxdi)" } else { "RTXDI b67f61cd: N
 # With it Torch Light in Path-Traced GI's T1 and T2 (PT DI step 3, PATH_REGIR: rt_rtxdi_bridge.hlsli's ReGIR) in every
 # includer of rt_path.hlsli (their every function body compiled) and rt_lights' twins (TORCH_IRRADIANCE: its torch light at
 # each pixel, in builds of their own: in rt_lights it took registers from every rt_lights); its ReGIR
-# build rt_regir_presample and its C++ (RTXDI's ReGIR.cpp, RISBufferSegmentAllocator.cpp beside main.cpp). Without it today's builds.
+# build rt_regir_presample and its C++ (RTXDI's ReGIR.cpp, RISBufferSegmentAllocator.cpp beside main.cpp; RtxdiUtils.cpp
+# for Path-Traced Torch Light's reservoir layout and neighbour offsets). Without it today's builds.
 $regir = if ($rtxdi_found) { @('-D', 'PATH_REGIR', '-I', "$rtxdi\Include") } else { @() }
-$regir_cpp = if ($rtxdi_found) { @("-imsvc$rtxdi\Include", "$rtxdi\Source\ReGIR.cpp", "$rtxdi\Source\RISBufferSegmentAllocator.cpp") } else { @() }
+$regir_cpp = if ($rtxdi_found) { @("-imsvc$rtxdi\Include", "$rtxdi\Source\ReGIR.cpp", "$rtxdi\Source\RISBufferSegmentAllocator.cpp", "$rtxdi\Source\RtxdiUtils.cpp") } else { @() }
 Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_trace.h" -Vn RT_TRACE "$PSScriptRoot\rt_trace.cs_6_5.hlsl"
 Dxc -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_trace_omm.h" -Vn RT_TRACE_OMM "$PSScriptRoot\rt_trace.cs_6_5.hlsl"
 Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_lights.h" -Vn RT_LIGHTS "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
@@ -139,6 +140,18 @@ if ($rtxdi_found) {
   Dxc -nologo -T cs_6_9 -E main -O3 @regir -D TORCH_IRRADIANCE -D OPACITY_MICROMAPS -Fh "$out\rt_lights_torch_omm.h" -Vn RT_LIGHTS_TORCH_OMM "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
   Dxc -nologo -T cs_6_5 -E main -O3 @regir -D TORCH_IRRADIANCE -D TORCHES_IN_BOUNCE -Fh "$out\rt_lights_bounce_torch.h" -Vn RT_LIGHTS_BOUNCE_TORCH "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
   Dxc -nologo -T cs_6_9 -E main -O3 @regir -D TORCH_IRRADIANCE -D TORCHES_IN_BOUNCE -D OPACITY_MICROMAPS -Fh "$out\rt_lights_bounce_torch_omm.h" -Vn RT_LIGHTS_BOUNCE_TORCH_OMM "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
+}
+# Path-Traced Torch Light (PT DI step 4c): rt_lights' LIGHTS_DI build (the tiles' members, the DI pixels' words) and the
+# DI passes (PATH_DI: rt_di_initial, rt_di_temporal, rt_di_spatial, rt_di_shade), each with its OMM twin.
+$di_builds = @(@('rt_lights', 'LIGHTS_DI', 'rt_lights_di', 'RT_LIGHTS_DI'), @('rt_di_initial', 'PATH_DI', 'rt_di_initial', 'RT_DI_INITIAL'),
+               @('rt_di_temporal', 'PATH_DI', 'rt_di_temporal', 'RT_DI_TEMPORAL'), @('rt_di_spatial', 'PATH_DI', 'rt_di_spatial', 'RT_DI_SPATIAL'),
+               @('rt_di_shade', 'PATH_DI', 'rt_di_shade', 'RT_DI_SHADE'))
+foreach ($di in $di_builds) { Remove-Item "$out\$($di[2]).h", "$out\$($di[2])_omm.h" -ErrorAction SilentlyContinue }
+if ($rtxdi_found) {
+  foreach ($di in $di_builds) {
+    Dxc -nologo -T cs_6_5 -E main -O3 @regir -D $di[1] -Fh "$out\$($di[2]).h" -Vn $di[3] "$PSScriptRoot\$($di[0]).cs_6_5.hlsl"
+    Dxc -nologo -T cs_6_9 -E main -O3 @regir -D $di[1] -D OPACITY_MICROMAPS -Fh "$out\$($di[2])_omm.h" -Vn "$($di[3])_OMM" "$PSScriptRoot\$($di[0]).cs_6_5.hlsl"
+  }
 }
 # The reference build's RTXDI GI contest (RENODX_TW_REUSE_RTXDI; rt_path.hlsli RtxdiPackTexel, ReuseTexel with REUSE_RTXDI).
 Remove-Item "$out\rt_reuse_rtxdi_pack.h", "$out\rt_reuse_rtxdi.h", "$out\rt_reuse_rtxdi_omm.h" -ErrorAction SilentlyContinue
