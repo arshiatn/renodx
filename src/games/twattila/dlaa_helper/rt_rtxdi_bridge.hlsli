@@ -144,6 +144,9 @@ RTXDI_LightBufferRegion RegirLights() {
 }
 
 #if defined(PATH_DI)
+// Every bias correction for both passes (RTXDI defaults it only in SpatialResampling.hlsli: without it the temporal pass
+// compiles its 1/M normalization alone, dark where the last trace's reservoir could not produce this pixel's lights).
+#define RTXDI_ALLOWED_BIAS_CORRECTION RTXDI_BIAS_CORRECTION_RAY_TRACED
 // Path-Traced Torch Light's RAB (PT DI step 4c; the DI passes, rt_di_surface.hlsli before this file): RTXDI's DI
 // reservoirs (three arrays, rt_di_surface.hlsli DI_*_ARRAY), its spatial neighbours' offsets (RTXDI's
 // FillNeighborOffsetBuffer, stratified, as floats) and the two lights the shading writes (rt_di_shade).
