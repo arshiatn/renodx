@@ -827,6 +827,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate ... | ?
 - LEFTOVER pds2_ FOLDERS (ATN decides, not deleted): ra39a 51.0 GB, rs4 47.6 GB, r ... | ?
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
+- vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
@@ -15721,6 +15722,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         CORE_BATTLE / CORE_RENDER, one enum (sent to c8f_). Map 3.2 writer chains updated. ATN questions (held for the
         round's list): when to decide (pick (c) one arm after L2B S2), row text / default rule, battle-only v1, 2 rule
         lines. -> p2r_ REVIEW (Opus xHigh) STARTED 11:4x -> designs\pk2p_design_review.md.
+        - [ ] vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md R2.9), before vMF S2:
+        Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
+        Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
+        fit after ATN's download yes + MERL / RGL licence check. Numbers to ATN = gate for S2. Owner: coordinator
+        (waits for ATN's message to Forge).
         - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
         09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
