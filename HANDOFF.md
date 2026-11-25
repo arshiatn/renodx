@@ -826,12 +826,18 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate ... | ?
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
 - LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_f ... | ?
+- REFLECTION REUSE 'FROM ReSTIR GI' FIX (rt_path.hlsli ReflectPixel, PATH_REFLECT_ ... | ?
+- G1 RAYTRACED: +1.1 / +2.9 ms for box tops 0.95 -> 0.99. Coord pick: keep Basic i ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ... | ?
 - UNIFIED U4b (in-lobe ESS report, sizes route (c); scratch only): u4b_ (Opus xHig ... | ?
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
+- D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
+- PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in | ?
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
+- CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
+- CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ?
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's lo ... | ?
@@ -15795,6 +15801,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_flags@bounce), so a lab arm
         cannot change one bounce bit while keeping the recording's other requests (pds2_ used scratch recorder
         builds). Add after PT DI step 3 merges (pdi3_ owns rt_serve.h now). Owner: coord (after pdi3_ merge)
+        pds2_ FOGREUSE + G1 COST DONE 18:xx (hand-back handoff_plan\handbacks\pds2_fogreuse_g1cost_handback.md); pds2_
+        FINISHED (worktree clean on pds2_nits, builds kept). 3a: the reference suite has no reflected-light reference
+        (REF_REFLECT sums only the lobe share), but the harness known answer shows Reflection Reuse 'From ReSTIR GI'
+        (512, Squared Lobe only) is the WRONG side: fog is not the cause; with the light copy the reused candidate
+        carries bounce.light (Light Bounce's light) instead of the reflection's light (red vs green test); plus a
+        second bias without the copy (-22 % image, rough patches 1.41x; suspects: occluded pick keeps 0.5 * total;
+        LobeDensity * W not normalised like G2 / G1). The preset (Own ReSTIR) and ATN's recordings don't hit it.
+        3b: G1 Raytraced vs Basic, row On, preset config: reuse +1.11 ms day (G-1125-41), +2.87 ms night
+        (G-1125-52) for cfg 49 box tops 0.9514 -> 0.9889. G-1125-30 void.
+        - [ ] REFLECTION REUSE 'FROM ReSTIR GI' FIX (rt_path.hlsli ReflectPixel, PATH_REFLECT_REUSE block): re-read the
+        reused bounce sample's light through HitLight when PATH_LIGHT_FINAL is set; then the weighting bias with its
+        own check (a reflected-light reference, or the 4-sample no-reuse average as target). Non-default mode only.
+        Owner: next helper fixer after steps 3 + 5 merge (ReflectPixel is in neither owner map)
+        - [ ] G1 RAYTRACED: +1.1 / +2.9 ms for box tops 0.95 -> 0.99. Coord pick: keep Basic in the Balanced row,
+        Raytraced stays a test switch. Owner: ATN
         - [x] Nit (brr_): rt_d3d12.hpp:757 conditional initializer without parentheses (CXX_STYLE) -> pds2_'s next branch.
         Owner: pds2_
         MERGED e52ec9e28 (pds2_nits 268b687f8; helper exit 0, 5,859,328 B), pushed.
@@ -15825,11 +15846,33 @@ heading text are in HANDOFF_ARCHIVE.md)
         buffers / dispatches, a slot range from coord, harness gates) after steps 3 + 5 merge. Owner: u6f_
         Still waiting: U1-U3 / U5 (need PT DI), U6p (bridge + rt_lights), U12a / U12d (add-on files Friday's CPU builders
         use), U11 / U11h (AMD only), SHaRC depth 4 (hang risk: quiet GPU + ATN home).
+        - [ ] D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record it in game, then
+        optimize'): d11s_ (Opus xHigh, text only) STARTED -> designs\d3d11_pass_speed.md (Nsight 64-bit capture vs
+        our own pass-input dump + replay harness, GPU sharing via gpu_job.lock, per-pass targets, same-picture
+        gates, lanes per pass family, the exact capture run for ATN's OK). Owner: d11s_
+        - [ ] PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in
+        tools\tw\round_notes\proposed_rules_1125.md; ATN pastes them himself. Owner: ATN
         - [ ] CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on the vMF paper: 'just
         diffuse; Callisto full still beats it' (diffuse, smooth terminator, retro-reflection, Fresnel). cal_ (Opus
         xHigh, text only) STARTED: design plan_1117\designs\callisto_diffuse.md as the candidate to replace vMF
         S1b / S2 (fixed knobs, where it applies, energy vs the game's specular, cost, gates, row, files after
         step 3) -> design review -> ATN decides. Owner: cal_, then ATN
+        cal_ DONE 18:xx (designs\callisto_diffuse.md, hand-back handoff_plan\handbacks\cal_design_handback.md): pick
+        REPLACE vMF S2 (keep S2's wiring, Callisto's lobe instead). Diffuse = Lambert x c1 (diffuse Fresnel x retro) x
+        c2 (smooth terminator); the game keeps its specular; Proxima out. The talk's defaults = exactly Lambert, so
+        fixed knobs must come from fits: Forge scores sets A (talk's rough medians) / V16 / V40 (c1 fit to vMF) + a
+        joint fit with the game's GGX held. Callisto vs vMF rms 1.42 % (r 0.16) / 1.17 % (r 0.40), ~20-40 ALU vs
+        1011 DXIL for vMF. Applies to PT DI target / shade first, then GI receivers / ambient / sky; path hits +
+        SHaRC stay Lambert; raster later. Row 'Callisto Diffuse (Experimental)', default Off, no slider. Order C0
+        Forge message -> C1 new files now (callisto_diffuse.h / .hlsli, test/tw_callisto_diffuse) -> C2 receivers
+        after step 3 -> C3 in / after 4c -> C4 64-bit rows -> C5 raster. Own fit only on RGL (CC0); MERL research-only.
+        -> cdr_ REVIEW (Opus xHigh) STARTED 18:xx -> designs\callisto_diffuse_review.md.
+        - [ ] CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.05) / V40 + a joint fit with
+        the game's specular held fixed; and what his 'Callisto full' included, his error metric, the smooth-terminator
+        mask's unit. Owner: ATN
+        - [ ] CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one row, no slider; reuse
+        rt_diffuse_roughness (dlaa_bridge.h:589, never written) if vMF is dropped, else a v33 field via the port;
+        Proxima out; raster only after ATN sees PT. Owner: ATN after cdr_'s review
         - [ ] SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills as port rows, no ports
         yet; important lessons since the last content update 11-22): sku_ (Opus xHigh, worktree, branch
         sku_1125) STARTED -> review -> merge. The full skills double-check (11-17 step 9) comes after Attila +
@@ -16318,6 +16361,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         fit after ATN's download yes + MERL / RGL licence check. Numbers to ATN = gate for S2. Owner: coordinator
         (waits for ATN's message to Forge). ATN 12:1x: HE ASKED FORGE to add vMF; if Forge says no, ATN says whether we
         fit it ourselves. Callisto as an extra diffuse option: maybe, ATN decides after the vMF result.
+        11-25 evening: Forge answered 'Callisto full still beats it'; cal_'s design adds Callisto rows to this request
+        (sets A / V16 / V40 + joint fit, see CALLISTO C0). Owner: ATN (the Forge message)
         - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
         09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
