@@ -388,6 +388,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
 - GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job ... | gtl_ (lab), next tooling slot pdi5_ GPU DONE 21:14 (last ses
 - GPU CHECK SPEED (ATN 11-25 ~21:5x: 'for nsight we check why x took y time; what ... | gsi_, coord
+- FIX 15 SHARED LOCK MODE (ATN 11-25 ~23:0x 'run multiple recordings?'). Coord mea ... | ?
 - WORKTREE BUILDS NEED slangc (pdi5_ 22:1x): gated_build twattila configure fails ... | coord (next tooling slot)
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
 - Caesar's test build (Flag Wave export + heapfix.ini key append) -> ATN relays -> ... | ?
@@ -3718,6 +3719,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         E4 chunk runner, calibration keep, 50 ms poll, alive.json, meta hashes, ref_cache audit, gated_build memory
         rule), backward compatible, CPU tests only -> swap by the coord between two GPU turns. Helper-side 2 / 3 / QW3
         after steps 3 / 5 / 4c merge (rt_d3d12.hpp / rt_serve.h owners); 5 / 6 later. Owner: gsi_, coord
+        - [ ] FIX 15 SHARED LOCK MODE (ATN 11-25 ~23:0x 'run multiple recordings?'). Coord measured live: lab
+        resident 12.9-14.0 GB VRAM + GPU full while timing -> stays exclusive (Nsight too); E4 helper 4.7-10.3 GB VRAM
+        + harness 0.6 GB, host ~5.8 GB, GPU busy ~1 s of 3.9 s -> 2 correctness jobs at once fit (32.6 GB VRAM, 31.7
+        GB RAM). Ticket kind exclusive / shared, max 2 shared, admission free VRAM >= 11 GB + RAM >= 8 GB, exclusive head
+        drains shared, TDR = both rerun; gate = 16 E4 + 1 all_modes serial vs 2-wide byte-equal. ~100 min/day today,
+        ~45-60 after fixes 1 / 3 / 9. gpu_check_speed.md addendum; gsi_ told 23:1x (design the ticket field now; code
+        if it fits its deadline, else next item). Owner: gsi_, coord
       - [ ] WORKTREE BUILDS NEED slangc (pdi5_ 22:1x): gated_build twattila configure fails in a worktree ('Could not find
         SLANGC_BIN'): CMake looks only in <tree>in and worktrees never link bin. Coord: copy slangc.exe + its DLLs as
         plain files (never a bin junction). Fix tooling: gated_build copies the bin tools CMake needs into a worktree's
