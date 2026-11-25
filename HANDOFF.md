@@ -15746,6 +15746,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         8 old reuse builds; 8 path headers +5 / +3 instructions only); bridge append-only, no version change; twins in
         plain + OMM; Ryse / Shogun 2 / R.U.S.E. get no row, Tales hides it; exe +2.2 %. -> pds2_ FIX ROUND sent 15:2x
         (before fog reuse) -> brr_ re-check -> merge + Attila 64 / 32 build in the main tree before the push.
+        pds2_ BRIGHT FIXES DONE 16:2x (hand-back handoff_plan\handbacks\pds2_bright_fixes_handback.md; head 109a6fa6f):
+        989689840 M1 + S2 (tooltip one literal, 'inside corners a little brighter'; clang-cl /Zs exit 0 for twattila x64 +
+        i686, WH3, Tales, Ryse; control with the old header exit 1), 109a6fa6f S3 + nits (twins all-or-none + one ready
+        line, `balanced` decided once; +70 ms once at helper start). S1 WITH NEAR (what players run), Off -> On, boxes:
+        day 36913 0.99221 -> 1.00100, cfg 49 0.98570 -> 0.99180, night3 0.99562 -> 1.00069, night40 0.99695 -> 1.00213;
+        inside corners 2-5 % brighter (e.g. night40 1.01986 -> 1.05309). Cost with Near, row On: -0.09 ms day / -0.16 ms
+        night total [G-1125-24 / -27] (lab: 'FASTER, not for on by default'). S4 dynamic (red -> green wall light): row
+        On reaches 10-16 % less of the change at 4 frames, 3-4 % less at 8, none by 16. -> brr_ RE-CHECK sent 16:2x.
         pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
         scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
         R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
