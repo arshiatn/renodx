@@ -836,6 +836,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
 - PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in | ?
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
+- CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | ?
 - CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
 - CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ?
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
@@ -15893,11 +15894,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         Forge message -> C1 new files now (callisto_diffuse.h / .hlsli, test/tw_callisto_diffuse) -> C2 receivers
         after step 3 -> C3 in / after 4c -> C4 64-bit rows -> C5 raster. Own fit only on RGL (CC0); MERL research-only.
         -> cdr_ REVIEW (Opus xHigh) STARTED 18:xx -> designs\callisto_diffuse_review.md.
+        cdr_ DONE (evening): GO WITH CHANGES (designs\callisto_diffuse_review.md, hand-back handoff_plan\handbacks\
+        cdr_review_handback.md; scripts testbin\scratch\cdr_). Model + all numbers reproduce (talk defaults = Lambert,
+        10 fits, set A E(v) 0.988-1.072, c1 reciprocal, vMF 1.42 / 1.17 %, V16 refit rho_f >= 0.05 1.47 %, ~20 ALU).
+        MUSTs (text): M1 C2 touches ReuseTarget / reuse merge = pdi5_'s -> C2a after step 3, C2b after step 5, owner
+        rows vs 4c; M2 TwPointLight: scale diffuse only, Attila's (1 - max(spec, reflectance)) split -> rho_f = 1 there,
+        skin R = 1, C3 files + tw_point_light.hlsli (W1 rerun) + rt_d3d12.hpp; M3 C0 message: Attila is not Schlick
+        GGX -> ask a joint fit with rho_f = 1, new request, own-fit fallback trigger + owner; M4 C3 control -> 'shade
+        without the lobe reads BIAS'. SHOULDs S1-S8 (S1: MERL official record = CC BY-SA 4.0, Zenodo 8101680, not
+        research-only -> to verify; S5 C3 right after 4c; S7 NaN at knob bounds), 12 nits. Forge's class route (its
+        section 5): record z bits 21-31 free, classes from capture flags, but receivers have no record (a lookup =
+        a ray a texel, maybe the whole 0.03 ms); raster knows only skin (Attila stencil; WH3 G-buffer foliage /
+        water); only cloth has fit data. Pick: Lambert / one fixed set in C1-C3, free exclusions now (skin R = 1),
+        C6 per-class amount later after cost + mismatch, per-class sets need ATN's OK.
+        - [ ] CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the new C0 message for ATN,
+        the MERL licence check (ShareAlike on fitted constants?), C1's implementer brief. Then C1 (new files only).
+        Owner: cal_
         FORGE (via ATN, evening) on the fixed set: old games (and UE 5.3.2's default lit) have no material class /
         ID (Lambert + GGX for all); Callisto's engine looks up per-material classes; 'AC Shadows does the same: you
         can do instanceData -> materialID'. No numbers for A / V16 / V40. cdr_ told: weigh a per-class route (class
         from our capture's shader hashes into instance data, knob set per class; fit source RGL only), one fixed set
         stays default / fallback, class table maybe a later step. Owner: cdr_
+        (C0 TEXT CHANGES per cdr_ M3: wait for cal_'s Revision 1 message before ATN sends.)
         - [ ] CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.05) / V40 + a joint fit with
         the game's specular held fixed; and what his 'Callisto full' included, his error metric, the smooth-terminator
         mask's unit. Owner: ATN
