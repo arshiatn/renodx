@@ -64,5 +64,8 @@ RT_REUSE_BIT REUSE_BIAS_PAIRWISE = 16777216u;
 #if defined(__cplusplus)
 }  // namespace twattila::dlaa_helper
 #endif
+// PT DI step 5's G4 (a build option, 0: off): ReSTIR GI's and Own ReSTIR's reservoirs in 24 bytes a texel, not 32 (the
+// hit's position and sqrt(W) as f16 | M as R32G32B32A32_UINT; the light RGB9E5 and both normals 8 + 8 octahedral as R32G32_UINT).
+#define RT_RESERVOIR_COMPACT 0
 
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_REUSE_BITS_H_

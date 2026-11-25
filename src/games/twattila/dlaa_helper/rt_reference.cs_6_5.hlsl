@@ -105,8 +105,8 @@ void main(uint3 id : SV_DispatchThreadID) {
     case REF_OUT_REUSE:
     case REF_OUT_REUSE + 1u: {
       const uint set = ref_word - REF_OUT_REUSE;
-      const uint4 packed = reuse_data[set][id.xy];
-      Count(ref_word, id.xy, float4(f16tof32(packed.x), f16tof32(packed.x >> 16), f16tof32(packed.y), reuse_samples[set][id.xy].w), false);
+      const Reservoir reservoir = LoadReservoir(reuse_samples[set], reuse_data[set], id.xy);
+      Count(ref_word, id.xy, float4(reservoir.light, reservoir.weight), false);
       break;
     }
     case REF_OUT_FOG_LIGHTS:

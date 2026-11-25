@@ -56,8 +56,17 @@ RWTexture2D<float4> nrd_reflection : register(u50);        // out (PATH_NRD, the
 // writes the bounce). Two sets, this frame's at PATH_REUSE_PARITY. As kajiya's ReSTIR GI (Embark Studios, MIT / Apache
 // 2.0; compared, not copied): W clamped against fireflies, last frame's reservoir only on a surface facing the same way,
 // and every third frame its sample re-checked (still in view, its light now): changed light shortens the history.
-RWTexture2D<float4> reuse_samples[2] : register(u23);  // the surface's position, W (its unbiased contribution weight)
-RWTexture2D<uint4> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal, the texel's (octahedral)
+#include "./rt_reuse_bits.h"  // RT_RESERVOIR_COMPACT
+// RT_RESERVOIR_COMPACT (G4): the position's bits, f16 sqrt(W) (W past f16's 65504 kept) | M; the light RGB9E5, its normal | the texel's (8 + 8 octahedral).
+#if RT_RESERVOIR_COMPACT
+#define ReservoirPoint uint4
+#define ReservoirData uint2
+#else
+#define ReservoirPoint float4
+#define ReservoirData uint4
+#endif
+RWTexture2D<ReservoirPoint> reuse_samples[2] : register(u23);  // the surface's position, W (its unbiased contribution weight)
+RWTexture2D<ReservoirData> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal, the texel's (octahedral)
 // This frame's surface of each bounce texel as PathTraceTexel found it (TexelSurface's), for ReuseTexel: its rays' origin
 // (w: its depth; 0: the sky) and its normal. Found again there for itself and five neighbours (StartPast's ray, the
 // normal's and planarity's fetches each), they cost more than the reuse's own work (Nsight at 4K: 2.5 -> 1.5 ms).
@@ -68,8 +77,8 @@ RWTexture2D<float4> surface_origin : register(u58);
 RWTexture2D<float4> surface_normal : register(u59);
 // Own ReSTIR (Reflection Reuse): the reflections' own reservoirs at half the render pixels (ReflectReservoirTexel), laid
 // out as ReSTIR GI's; two sets, this frame's at PATH_REFLECT_PARITY.
-RWTexture2D<float4> reflect_samples[2] : register(u36);
-RWTexture2D<uint4> reflect_data[2] : register(u38);
+RWTexture2D<ReservoirPoint> reflect_samples[2] : register(u36);
+RWTexture2D<ReservoirData> reflect_data[2] : register(u38);
 // Path-Traced Ambient's own sky (helpers 107 on): the sky a bounce texel's paths brought (rgb, w 1; 0: none), two sets, the
 // paths' at PATH_SKY_PARITY, the other's the last paths' (PATH_SKY_HISTORY: valid at these texels).
 RWTexture2D<float4> own_sky[2] : register(u54);
@@ -933,13 +942,62 @@ uint F32ToF16Nearest(float value) {
   return (value - f16tof32(truncated) > f16tof32(truncated + 1u) - value) ? truncated + 1u : truncated;
 }
 
+#if RT_RESERVOIR_COMPACT
+// G4's 16-bit octahedral normal (8 + 8; 0: none, never a normal's: -z itself is 1).
+uint PackNormal16(float3 normal) {
+  if (!(dot(normal, normal) > 0.f)) return 0u;
+  normal /= abs(normal.x) + abs(normal.y) + abs(normal.z);
+  const float2 folded = (normal.z >= 0.f) ? normal.xy : (1.f - abs(normal.yx)) * select(normal.xy >= 0.f, 1.f, -1.f);
+  const uint2 quantized = (uint2)round(saturate(folded * 0.5f + 0.5f) * 255.f);
+  return max(quantized.x | (quantized.y << 8), 1u);
+}
+float3 UnpackNormal16(uint packed) {
+  if (packed == 0u) return 0.f;
+  float3 normal = float3(float2(packed & 255u, (packed >> 8) & 255u) / 255.f * 2.f - 1.f, 0.f);
+  normal.z = 1.f - abs(normal.x) - abs(normal.y);
+  normal.xy += select(normal.xy >= 0.f, -saturate(-normal.z), saturate(-normal.z));
+  return normalize(normal);
+}
+// G4's light: RGB9E5 (DXGI_FORMAT_R9G9B9E5_SHAREDEXP's layout, its rounding), 0 to 65408.
+uint PackRgb9e5(float3 light) {
+  light = clamp(light, 0.f, 65408.f);
+  const float largest = max(light.r, max(light.g, light.b));
+  int exponent = max(-16, (int)floor(log2(max(largest, 1e-30f)))) + 16;
+  float scale = exp2((float)(exponent - 24));
+  if ((uint)round(largest / scale) == 512u) {
+    scale *= 2.f;
+    ++exponent;
+  }
+  const uint3 mantissa = min((uint3)round(light / scale), 511u);
+  return mantissa.r | (mantissa.g << 9) | (mantissa.b << 18) | ((uint)exponent << 27);
+}
+float3 UnpackRgb9e5(uint packed) {
+  return float3(packed & 511u, (packed >> 9) & 511u, (packed >> 18) & 511u) * exp2((float)(packed >> 27) - 24.f);
+}
+#endif
+
 // The texel's own normal its reservoir was made for (0: none).
-float3 LoadReceiverNormal(RWTexture2D<uint4> data, uint2 texel) {
+float3 LoadReceiverNormal(RWTexture2D<ReservoirData> data, uint2 texel) {
+#if RT_RESERVOIR_COMPACT
+  return UnpackNormal16(data[texel].y >> 16);
+#else
   const uint packed = data[texel].w;
   return (packed != 0u) ? OctahedralDecode(packed) : 0.f;
+#endif
 }
 
-Reservoir LoadReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 texel) {
+Reservoir LoadReservoir(RWTexture2D<ReservoirPoint> samples, RWTexture2D<ReservoirData> data, uint2 texel) {
+#if RT_RESERVOIR_COMPACT
+  const uint4 sample_point = samples[texel];
+  const uint2 packed = data[texel];
+  Reservoir reservoir;
+  reservoir.hit = asfloat(sample_point.xyz);
+  reservoir.weight = f16tof32(sample_point.w) * f16tof32(sample_point.w);
+  reservoir.count = (float)(sample_point.w >> 16);
+  reservoir.light = UnpackRgb9e5(packed.x);
+  reservoir.hit_normal = UnpackNormal16(packed.y & 0xFFFFu);
+  return reservoir;
+#else
   const float4 sample_point = samples[texel];
   const uint4 packed = data[texel];
   Reservoir reservoir;
@@ -949,16 +1007,23 @@ Reservoir LoadReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, ui
   reservoir.count = (float)(packed.y >> 16);
   reservoir.hit_normal = (packed.z != 0u) ? OctahedralDecode(packed.z) : 0.f;
   return reservoir;
+#endif
 }
 
 // The normals packed never 0, the loads' "none": OctahedralEncode gives 0 for +z itself (ReSTIR GI took a hit facing +z
 // for a sky sample and dropped a receiver's history facing +z each frame); 1 is +z with x 1 / 32767.
-void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 texel, Reservoir reservoir, float3 receiver_normal) {
+void StoreReservoir(RWTexture2D<ReservoirPoint> samples, RWTexture2D<ReservoirData> data, uint2 texel, Reservoir reservoir,
+                    float3 receiver_normal) {
+#if RT_RESERVOIR_COMPACT
+  samples[texel] = uint4(asuint(reservoir.hit), F32ToF16Nearest(sqrt(min(reservoir.weight, 4.29e9f))) | (min((uint)reservoir.count, 65535u) << 16));
+  data[texel] = uint2(PackRgb9e5(reservoir.light), PackNormal16(reservoir.hit_normal) | (PackNormal16(receiver_normal) << 16));
+#else
   samples[texel] = float4(reservoir.hit, reservoir.weight);
   data[texel] = uint4(F32ToF16Nearest(reservoir.light.r) | (F32ToF16Nearest(reservoir.light.g) << 16),
                       F32ToF16Nearest(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
                       (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? max(OctahedralEncode(reservoir.hit_normal), 1u) : 0u,
                       (dot(receiver_normal, receiver_normal) > 0.f) ? max(OctahedralEncode(receiver_normal), 1u) : 0u);
+#endif
 }
 
 // Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
@@ -1247,12 +1312,20 @@ void BoilTexel(uint2 id, uint2 local) {
   if (inside) reservoir = LoadReservoir(reuse_samples[set], reuse_data[set], id);
   if ((reuse_tests & REUSE_TEST_BOIL_PLANT) != 0u && all(id == uint2(bounce_width, bounce_height) / 2u)) {
     reservoir.weight *= 100.f;
+#if RT_RESERVOIR_COMPACT
+    reuse_samples[set][id] = uint4(asuint(reservoir.hit), F32ToF16Nearest(sqrt(min(reservoir.weight, 4.29e9f))) | (reuse_samples[set][id].w & 0xFFFF0000u));
+#else
     reuse_samples[set][id] = float4(reservoir.hit, reservoir.weight);
+#endif
   }
   const bool drop = RTXDI_BoilingFilterInternal(local, BOIL_STRENGTH, Luminance(reservoir.light) * reservoir.weight);
   if (!inside || !drop || (reuse_tests & REUSE_TEST_BOIL) == 0u) return;
+#if RT_RESERVOIR_COMPACT
+  reuse_samples[set][id] = uint4(asuint(reservoir.hit), 0u);  // W 0, M 0
+#else
   reuse_samples[set][id] = float4(reservoir.hit, 0.f);
   reuse_data[set][id] = reuse_data[set][id] & uint4(~0u, 0xFFFFu, ~0u, ~0u);  // M 0
+#endif
 }
 #endif
 
