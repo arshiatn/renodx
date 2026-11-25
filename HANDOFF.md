@@ -882,7 +882,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - ATN NUMBERS (morning): Torch Light in PT GI (Experimental, off) = B12C2: +0.06 d ... | ?
 - pdi3_ OPEN: multi-ray builds (rt_path, rt_path_sharc, rt_path_ser) never reached ... | ?
-- pd3c_ RE-CHECK (Opus xHigh, read-only, STARTED 00:2x, est 20 / deadline 40) of t ... | ?
+- pd3c_ S1 (S4 half closed): the lab swaps stems right after LoadPlayback (rt_serv ... | ?
+- pd3c_ S2 (S3 measured, not fixed): reference's seen route uses each variant's T2 ... | ?
+- pd3c_ S3 BEFORE ATN CHOOSES B12C2: E4 night128 on ec96c503c with NO_VALIDATE and ... | ?
+- pd3c_ S4 MISSING BOXES: S5 probe gate still open (x1.07 at 29 / 128); pre-existi ... | ?
+- pd3c_ S5 SOURCE COMMENTS (Forge): Validate keep cites RTXDI; TORCH_CANDIDATES 2 ... | ?
 - ATN NUMBERS (if no step-3 variant meets total +0.05 / ReGIR 0.02 on the final he ... | ?
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_t ... | ?
@@ -958,6 +962,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa6_ UNKNOWN: DXR 1.2 OMM arrays passed to NVAPI cluster ops while the pipeline ... | ?
 - fa6_ LATER (spec v1.47): a PSO flag lets pre-6.9 shaders opt in to OMMs -> once ... | ?
 - fa6_ NEVER CONSIDERED (part D, 29 rows): RTXMU, DMM, LSS / spheres (smoke as sph ... | ?
+- fa5_ SR-B1 AMD's valid_hit = (i <= max_traversal_intersections) is always true ( ... | ?
+- fa5_ SS-B1 plain sss_bend sample count not a multiple of 4: up to 3 fade samples ... | ?
+- fa5_ SS-B4 torch exactly on the camera plane -> inf / NaN depth (sss_lights.cs:2 ... | ?
+- fa5_ SS-B5 Softness proxy 1/(1 - d) ignores projection A -> same-surface test ~4 ... | ?
+- fa5_ SS-B2 LICENCE: repack_game.py:84 misses Attila's in-folder Bend header (Apa ... | ?
+- ATN LICENCE CHECK (fa5_ U-VB5): our comments call Shadertoy XXGSDd (GT-VBAO), lf ... | ?
+- fa5_ UNKNOWNs U-VB1 (thickness along the sample's own ray: Salm's or ours?), U-V ... | ?
+- STRAY FOLDER (coord's brief path error): D:\Dev\renodx\tools\tw\testbin\scratch\ ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -16343,8 +16355,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         +0.05 budget; E4 at 128 lights ~1 % darker (inside the paired CI). Keep as is, or ask for more? Owner: ATN
         - [ ] pdi3_ OPEN: multi-ray builds (rt_path, rt_path_sharc, rt_path_ser) never reached by the harness, even at
         4 rays -> registers / lmem unmeasured. Owner: Nsight sweep (NSR1)
-        - [ ] pd3c_ RE-CHECK (Opus xHigh, read-only, STARTED 00:2x, est 20 / deadline 40) of the fix round
+        - [x] pd3c_ RE-CHECK (Opus xHigh, read-only, STARTED 00:2x, est 20 / deadline 40) of the fix round
         149e75363..ec96c503c -> pt_di_step3_review.md '## Re-check' -> MERGE step 3. Owner: pd3c_, coord
+        pd3c_ VERDICT MERGE 00:4x (14 min; no MUST): 149e75363 headers = ceecd4b84's; twin plain header SHA 67056ff2...;
+        B12C2 changes 6 DXIL instructions (T2 loop 8 -> 2, weight 0.125 -> 0.5, 3 inlined copies), nothing reaches row
+        off; measured tree = commit. S1 keep = RTXDI's own ReSTIR GI rule (GI/TemporalResampling.hlsli:172,
+        GI/Reservoir.hlsli:229): unbiased. Cuts / history shortening (rt_path.hlsli:961-965, ours) still compare a
+        fresh T2 draw -> likely cause of B12C2's ~1 % dark E4.
+        - [ ] pd3c_ S1 (S4 half closed): the lab swaps stems right after LoadPlayback (rt_serve.h:820-821) while
+        torch_irradiance_ is null -> refusal never fires; LoadPlayback notes whether any request asks the row, SwapStem
+        refuses on that too. Owner: step 3 follow-up (after 4c merges)
+        - [ ] pd3c_ S2 (S3 measured, not fixed): reference's seen route uses each variant's T2 -> E4 not paired across
+        ReGIR variants; give the reference's seen hits RefLights' exact sum (rt_reference.hlsli:500). Owner: same
+        - [ ] pd3c_ S3 BEFORE ATN CHOOSES B12C2: E4 night128 on ec96c503c with NO_VALIDATE and NO_CUTS; pd3r_'s
+        HARNESS_LIGHT_FLICKER numbers still owed. Owner: GPU queue (after pdi4c_)
+        - [ ] pd3c_ S4 MISSING BOXES: S5 probe gate still open (x1.07 at 29 / 128); pre-existing cache fill on the first
+        request; fa1_'s rows updated to 16 / 8 / 2. Owner: coord (critic pass)
+        - [ ] pd3c_ S5 SOURCE COMMENTS (Forge): Validate keep cites RTXDI; TORCH_CANDIDATES 2 + 16 lights / cell get
+        deviation comments (RTXDI 8, ReSTIRDI.cpp:49; 512, ReGIR.h:78). + 7 NITs in the file (stale rt_scene.hlsli
+        comments rt_d3d12.hpp:4783-4784, SHaRC update falls back to 32 lights without its twin). Owner: step 3
+        follow-up
+        STEP 3 MERGED LOCALLY 55ba8f107 (merge-tree clean). Helper build exit 0 (RTXDI found). ADD-ON BUILD FAILED:
+        the add-on's CMake glob (CMakeLists.txt:168 / 179) compiles every *.[pcv]s_N_N.hlsl incl. helper files, without
+        RTXDI's include path -> rt_regir_presample.cs_6_5.hlsl 'Rtxdi/Utils/RandomSamplerState.hlsli not found'. FIX on
+        atn-mods: plain name rt_regir_presample.hlsl (as rt_path_ser.lib_6_9.hlsl), build.ps1 + 2 comments; pdi4c_
+        told its rt_di_*.cs_6_5.hlsl break the same way + add the gated add-on build to its gate. Pitfall row: helper
+        shaders that include RTXDI need a plain name; helper-only builds never see it.
+        pdi4c_ 00:5x: origin/pdi4c_step4c_r3 009f56852 (2.9a) on ec96c503c, pd3c_'s list covered (SwapStem refuses
+        rt_lights while di_reservoirs_ held, 7cfc8ff2f); now the 2.9a harness parts, then B1 / B2 / parameters /
+        DiMotion.
         GPU 00:1x: gsi_ SWAP DONE at a safe moment (swap.ps1 sha ok, 20 files hash-checked, backups *.bak_gsi_1125;
         test_gpu_queue 29 / 29) -> 'pdi5_ GPU go' sent (+ the typed-R16F rounding fact for fa3_ B3 if <= 10 min);
         pdi4c_ told: rebase onto ec96c503c, 2.9a, then fa1_ B1 / B2 / parameters / DiMotion comment, builds beside
@@ -17287,6 +17326,37 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] fa6_ NEVER CONSIDERED (part D, 29 rows): RTXMU, DMM, LSS / spheres (smoke as spheres = the Attila fit),
         NRC, DDGI, Reflex 2 Frame Warp, cooperative vectors / neural shading, DXR 2.0 -> critic ranks; ATN decides
         any new feature. Owner: critic -> ATN
+        fa5_ DONE (38 min, 3 forks; fidelity\screen_space.md; atn-mods): ATN's SSS question: Bend's original is buggy in
+        ONE place only (L.w at exactly w == 0); every other change came from OUR side (standard Z, DLSS render rect,
+        depth source, UAV order; CA's SM5 copy dropped Bend's early-out = our sky skip; far fade; our render-scale bugs),
+        fixed at the source. SSSR: no change copes with our inputs; its one real bug is AMD's. GT-VBAO math SAME by our
+        own numbers (cosine CDF 1e-9, fast acos 6.4e-4 rad); Salm / Ottosson Shadertoys unreadable (403), checked
+        against Therrien's paper + page. vMF: only test/tw_vmf_diffuse compiles it, matches paper x2 (authors'
+        notebook), U-VM1-3 CPU-only.
+        - [ ] fa5_ SR-B1 AMD's valid_hit = (i <= max_traversal_intersections) is always true (SDK 1.1.4 too) -> rays
+        out of steps accepted by our 0.25 m + 2 % thickness = false / short reflections; marked change valid_hit =
+        (current_mip < most_detailed_mip). Owner: SSSR owner (d11 pass work)
+        - [ ] fa5_ SS-B1 plain sss_bend sample count not a multiple of 4: up to 3 fade samples unfaded + fade lanes
+        permuted below 100 % scale (only the extended variants were fixed). Owner: SSS owner
+        - [ ] fa5_ SS-B4 torch exactly on the camera plane -> inf / NaN depth (sss_lights.cs:203): restore Bend's w == 0
+        guard (inert in normal frames = allowed by ATN's rule). Owner: SSS owner
+        - [ ] fa5_ SS-B5 Softness proxy 1/(1 - d) ignores projection A -> same-surface test ~4x too strict in campaign
+        (rows off by default). U-SS1 near-light clamp at 0.5 x start distance unproven. Owner: SSS owner
+        - [ ] fa5_ SS-B2 LICENCE: repack_game.py:84 misses Attila's in-folder Bend header (Apache text reaches the zip
+        only from the old zip). VB-B2 CREDITS: Divinity 2 ships GT-VBAO + Auto Thickness, About page lacks Therrien /
+        Salm / Ottosson. VB-B1 BitmaskDenoise miscited as XeGTAO's 5x5 (XeGTAO = 3x3 edge-aware; ours). Owner: next
+        release round
+        - [ ] ATN LICENCE CHECK (fa5_ U-VB5): our comments call Shadertoy XXGSDd (GT-VBAO), lfdBWn (GT-VBGI), 3clGWB
+        (Auto Thickness) CC0, but Shadertoy's default licence is CC BY-NC-SA 3.0 unless the shader's header says
+        otherwise. WebFetch 403; the browser pane got Cloudflare's bot check (not bypassed). ATN reads the 3 headers in
+        his browser. Owner: ATN (morning)
+        - [ ] fa5_ UNKNOWNs U-VB1 (thickness along the sample's own ray: Salm's or ours?), U-VB2 (our Auto Thickness vs
+        Ottosson), U-VB3 (GT-VBGI has no reference test), U-VB4 (GT-VBGI reads the light buffer with camera-facing
+        specular, c592149c rule), U-SS2/4/5, U-SR1/2. Downloads to file: AMD SSSR in tools\refcode\ffx_sssr_1126\;
+        d'Eon's vMF notebook still in the session's tool-results (move under tools\refcode). Owner: critic -> owners
+        - [ ] STRAY FOLDER (coord's brief path error): D:\Dev\renodx\tools\tw\testbin\scratch\{fa6_, pd3c_} (dxc
+        listings, untracked) -> delete on ATN's yes; briefs use the C:\Users\...\tools\tw path (memory updated).
+        Owner: ATN
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
