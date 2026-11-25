@@ -823,7 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
-- a64b_ FOLLOW-UPS SENT 03:5x (R-S1, R-S2, 2 Nits) -> merge a64b_bringup -> build ... | ?
+- A1 add-on lane (Opus High) NEXT: brief = plugin wave 1 (block v1, plugin_block.h ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15444,9 +15444,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         D3D11 in the timed frame (crash with a 2nd D3D12 / Vulkan device); R-S2 run.ps1:116 control-crash rule must be
         C2_scrgb_1320 only; Nits braces addon.cpp:1823, ipc::ToNarrow repeat 2983-2985. For PA1: install flag claimed
         before Install finishes (Update may run during Install). For A3: check the 'N code ranges' line counts all PF_X.
-        - [ ] a64b_ FOLLOW-UPS SENT 03:5x (R-S1, R-S2, 2 Nits) -> merge a64b_bringup -> build check -> A1 add-on lane
-        (brief: the PA1 install race) -> A3 Smoke (brief: PF_X count). The proposed '-ReShade -Warp' A3 line is useless
-        (ReShade skips WARP devices): drop it.
+        - [x] a64b_ FOLLOW-UPS DONE (hand-back attila64/a64b_bringup_followups_handback.md): 9ec95a027 (R-S1
+        pass_timing ImmediateContext returns nullptr off d3d11; R-S2 control-crash rule = C2_scrgb_1320 only; braces;
+        ToNarrow not used: it is utils::ipc::internal in the named-pipe transport twattila doesn't include). twattila
+        amd64 + x86 exit 0; dumps x86 / a64 / a64r only Build Date; F7 GPU 23 / 23; tw_map_trace amd64 PASS;
+        static_checks known 5. a3_smoke addon64 now f37a8c6d61f13046 (dxgi 0cee63f9 / zz_capture fa2515d7 unchanged).
+        - [x] MERGED 27ad6f414 (Merge a64b_bringup; anti_aliasing.hpp auto-merged) + coord build check on the merged
+        tree: twattila addon64 + addon32 / twrome2 addon32 / twwarhammer3 addon64 exit 0 (61 / 61 / 62 / 61 warnings = before). Pushed.
+        - [ ] A1 add-on lane (Opus High) NEXT: brief = plugin wave 1 (block v1, plugin_block.h rules) + the bring-up's
+        hidden rows / plugin_ready + the PA1 install race (flag claimed before Install finishes) -> R1 -> T1 smoke + C2
+        trace (shadow_refresh=2). A3 Smoke: ATN's 4 -ReShade lines (drop '-ReShade -Warp': ReShade skips WARP) + check
+        the 'N code ranges' line counts all PF_X.
         - [ ] ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyResource (~2782-2790), and
         the same in OnResolveTextureRegion / OnCopyTextureRegion, use an existing clone even when that side's clone is
         DISABLED. In scRGB compatibility mode (default) a copy INTO the back buffer lands in the proxy pass's scratch ->
