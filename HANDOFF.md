@@ -386,6 +386,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
 - GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job ... | gtl_ (lab), next tooling slot pdi5_ GPU DONE 21:14 (last ses
 - GPU CHECK SPEED (ATN 11-25 ~21:5x: 'for nsight we check why x took y time; what ... | gsp_, then gtl_ / coord
+- WORKTREE BUILDS NEED slangc (pdi5_ 22:1x): gated_build twattila configure fails ... | coord (next tooling slot)
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
 - Caesar's test build (Flag Wave export + heapfix.ini key append) -> ATN relays -> ... | ?
 - 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20 ... | ?
@@ -3665,6 +3666,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         21:5x -> plan_1117\gpu_check_speed.md: ranked fixes with savings + validity gates (keep the recording loaded
         across arms with a proven reset, faster load, FIFO + automatic hand-over, E4 reference cache, sample counts,
         build / GPU scheduling); changes to tools in use only at a wave boundary. Owner: gsp_, then gtl_ / coord
+      - [ ] WORKTREE BUILDS NEED slangc (pdi5_ 22:1x): gated_build twattila configure fails in a worktree ('Could not find
+        SLANGC_BIN'): CMake looks only in <tree>in and worktrees never link bin. Coord: copy slangc.exe + its DLLs as
+        plain files (never a bin junction). Fix tooling: gated_build copies the bin tools CMake needs into a worktree's
+        bin before configure (or CMake gets a SLANGC_BIN cache path to the main tree). Owner: coord (next tooling slot)
       - [ ] CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO BUNDLING: 'don't bundle or
         repackage my mods with yours'; players get the engine fix / Flag Wave from his Steam / Nexus page (self-update).
         We don't: 32-bit heapfix = own use only; PerfFix 64 = optional, his package (port_plan.md install step 3); flag
