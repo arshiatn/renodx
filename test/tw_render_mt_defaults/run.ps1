@@ -24,26 +24,26 @@ function Read-Source([string]$name) { [System.IO.File]::ReadAllText((Join-Path $
 $define = $text.IndexOf("`n#define TWATTILA_DRAW_RECORDING 1", [StringComparison]::Ordinal)
 Check ($define -ge 0 -and $define -lt $text.IndexOf("`n#include", [StringComparison]::Ordinal)) 'TWATTILA_DRAW_RECORDING defined before the includes'
 
-# Key, default, binding, its start value, shown to players.
+# Key, default, binding, its start value (both as addon.cpp writes them), shown to players.
 $rows = @(
-  @('DrawRecordingStage', 6, 'draw_recording_stage_row', '6.f', $true),
-  @('DrawRecordingFamilies', 255, 'draw_recording_families_row', '255.f', $false),
-  @('AnimationRowsWorkers', 1, 'animation_rows_row', '1.f', $true),
-  @('ParallelInstanceFill', 0, 'instance_fill_row', '0.f', $false),
-  @('FillWithDrawRecording', 0, 'fill_fold_row', '0.f', $false),
-  @('ParallelEffectUpdate', 0, 'effect_update_row', '0.f', $true),
-  @('ParallelEffectSpawns', 0, 'effect_spawns_row', '0.f', $false),
-  @('CachedParticleCount', 0, 'particle_count_row', '0.f', $false),
-  @('WorkerThreads', 1, 'worker_threads_row', '4.f', $true),
-  @('KeepRenderCoreFree', 0, 'keep_render_core_row', '0.f', $true),
-  @('FasterJobWakeUps', 0, 'job_wakeups_row', '0.f', $true),
-  @('FasterRenderLists', 1, 'render_lists_row', '1.f', $true),
-  @('FasterEffectPrefetch', 0, 'effect_prefetch_row', '0.f', $true),
-  @('FasterEmitterPrefetch', 0, 'emitter_prefetch_row', '0.f', $true),
-  @('FasterParticlePrefetch', 0, 'particle_prefetch_row', '0.f', $true),
-  @('FasterSweepPrefetch', 0, 'sweep_prefetch_row', '0.f', $true),
-  @('FewerConstantUploads', 0, 'fewer_constant_uploads_row', '0.f', $true),
-  @('FewerDriverWaits', 0, 'fewer_driver_waits_row', '0.f', $true)
+  @('DrawRecordingStage', '6.f', 'draw_recording_stage_row', '6.f', $true),
+  @('DrawRecordingFamilies', '255.f', 'draw_recording_families_row', '255.f', $false),
+  @('AnimationRowsWorkers', '1.f', 'animation_rows_row', '1.f', $true),
+  @('ParallelInstanceFill', '0.f', 'instance_fill_row', '0.f', $false),
+  @('FillWithDrawRecording', '0.f', 'fill_fold_row', '0.f', $false),
+  @('ParallelEffectUpdate', '0.f', 'effect_update_row', '0.f', $true),
+  @('ParallelEffectSpawns', '0.f', 'effect_spawns_row', '0.f', $false),
+  @('CachedParticleCount', '0.f', 'particle_count_row', '0.f', $false),
+  @('WorkerThreads', '1.f', 'worker_threads_row', '4.f', $true),
+  @('KeepRenderCoreFree', '0.f', 'keep_render_core_row', '0.f', $true),
+  @('FasterJobWakeUps', '0.f', 'job_wakeups_row', '0.f', $true),
+  @('FasterRenderLists', '1.f', 'render_lists_row', '1.f', $true),
+  @('FasterEffectPrefetch', '0.f', 'effect_prefetch_row', '0.f', $true),
+  @('FasterEmitterPrefetch', '0.f', 'emitter_prefetch_row', '0.f', $true),
+  @('FasterParticlePrefetch', '0.f', 'particle_prefetch_row', '0.f', $true),
+  @('FasterSweepPrefetch', '0.f', 'sweep_prefetch_row', '0.f', $true),
+  @('FewerConstantUploads', '0.f', 'fewer_constant_uploads_row', '0.f', $true),
+  @('FewerDriverWaits', '0.f', 'fewer_driver_waits_row', '0.f', $true)
 )
 $hidden = '.is_visible = [] { return false; },'
 foreach ($row in $rows) {
@@ -51,7 +51,7 @@ foreach ($row in $rows) {
   $block = Block ".key = `"$key`"," "`n      },"
   if ($block -eq '') { Check $false "$key declared"; continue }
   Check ($block -match "\.binding = &$binding,") "$key binds $binding"
-  Check ($block -match "\.default_value = $default\.f,") "$key default $default"
+  Check ($block.Contains(".default_value = $default,")) "$key default $default"
   Check ($block.Contains($hidden) -ne $shown) "$key $(if ($shown) { 'shown' } else { 'hidden' })"
   Check ($text -match "(?m)^float $binding = $([regex]::Escape($start));") "$binding starts at $start"
 }
@@ -88,7 +88,7 @@ Check ((Read-Source 'animation_rows.hpp').Contains('(text == "bulk" ? Schedule::
 # FCA item 1 (a bug fix, no row): the CPUs the game may use (the bench's env, else cpu_sets::Update every present), the pool's
 # room from BudgetWorkers (none below 8 CPUs), every pool user's stage gated by it (L1 in its three places, C's worker stages
 # before SiteGroups, the fill, the fold, B3b) and the count passed to the pool last.
-Check ($text.Contains('const uint32_t game_cpus = game_cpus_env.value_or(twattila::cpu_sets::Update(keep_render_core_row != 0.f, GAME_THREAD_MODULES));')) 'game_cpus: the env, else cpu_sets::Update'
+Check ($text.Contains('const uint32_t game_cpus = game_cpus_env.value_or(twattila::cpu_sets::Update(!ATTILA64 && keep_render_core_row != 0.f, GAME_THREAD_MODULES));')) 'game_cpus: the env, else cpu_sets::Update (Keep Render Core Free never on the 64-bit port)'
 Check ($text.Contains('const bool pool_room = (twattila::worker_pool::BudgetWorkers(game_cpus) != 0);')) 'pool_room from BudgetWorkers(game_cpus)'
 Check ($text.Contains('const bool effect_update_on = (pool_room && effect_update_row != 0.f);') -and $text.Contains('bool pool_in_use = effect_update_on;') `
        -and $text.Contains('.effect_update = effect_update_on,') -and $text.Contains('twattila::effect_update::Update(effect_update_on,')) 'L1 gated by pool_room (pool, engine code, its Update)'
