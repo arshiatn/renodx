@@ -824,6 +824,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN 10:2x: ONE 'CPU' PAGE for 64-bit Attila (ours live / restart per row; PerfFi ... | ?
 - D: FULL 10:17 (0 bytes; C: 12.6 GB): pds2_'s HARNESS_DUMP verify dumps in its wo ... | ?
 - 64-BIT CPU DESIGNS STARTED 10:4x (Opus xHigh, read only, no builds; each -> Opus ... | ?
+- S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate ... | ?
+- LEFTOVER pds2_ FOLDERS (ATN decides, not deleted): ra39a 51.0 GB, rs4 47.6 GB, r ... | ?
+- pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
@@ -15671,6 +15674,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         static_checks known 5 only. Follow-ups: twattila's own scRGB copy now redundant (one full-frame copy to drop);
         F7 log key; game-only gaps (R.U.S.E. proxy clones, 64-bit Attila scRGB, swapchain_v1 users). -> ucr_ REVIEW
         (Opus xHigh, read only) STARTED 11:1x -> study_1124\ucf_clone_fix_review.md -> merge -> builds.
+        - [x] pds2_ S4 FIX DONE 11:1x (hand-back handoff_plan\handbacks\pds2_s4_fix_handback.md): origin/pds2_s4 on
+        3594927a7 = 2202523e6 (Own ReSTIR Validate: a normal-less reflection sample, !contact, is lit by
+        PixelNormal(seen_pixel, positions[seen_pixel]); no NaN / lost sun) + fdfdd56d9 (test bits as namespace constants,
+        review's 2 nits). Proofs: 37 player -Fc listings, only REFLECT_RESERVOIR changed (others order / numbering only),
+        no cost job; E4 12/12 bit-identical; HARNESS_DUMP 53 modes same (3 NRD bounce outputs differ base-vs-base too),
+        no NaN / Inf; 17 / 17 recordings byte-identical; h0i 67/67; static_checks known 5; builds plain / reference /
+        probe / recorder. -> s4r_ REVIEW (Opus xHigh, read only) STARTED 11:2x -> plan_1117\designs\pt_s4_fix_review.md
+        -> merge origin/pds2_s4 -> helper build check.
+        - [ ] S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate (own_reflect_4 ==
+        default_reuse byte-identical; 3 forced-probe builds changed nothing; gate guides && version >= 19 &&
+        RT_REFLECTIONS_OWN && EnsureHistory). So the bug case (no light copy: Troy / Pharaoh Dynasties) is not proven
+        offline. Owner: s4r_ finds the cause + smallest harness / recording change -> pds2_ implements after the
+        brightness row -> rerun the S4 proof.
+        - [x] pds2_ TOOLING 11:1x: testbin\scratch\pds2_\pds2_play_dd.ps1 (dump-and-drop: play, hash + rec_compare +
+        rec_scan to scratch\pds2_\dd\, floor only on a diff, deletes its own _dd dumps); pds2_verify.ps1 stops if
+        D: < 100 GB or C: < 5 GB free.
+        - [ ] LEFTOVER pds2_ FOLDERS (ATN decides, not deleted): ra39a 51.0 GB, rs4 47.6 GB, ra39c 0.0, _dd, probe
+        builds ~0.2 GB each. Ask after s4r_ + merge.
+        - [ ] pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + KEEP_LIGHT as ONE
+        Experimental player row, default OFF (look change: ATN decides from numbers), bits into the player shaders;
+        proofs: row OFF -Fc = fdfdd56d9, E4 ON vs OFF + luminance table, HARNESS_DUMP 53 modes, builds. If s4r_ asks
+        for S4 changes: pds2_ fixes S4 first, rebases pds2_bright.
         - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
         09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
