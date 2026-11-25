@@ -56,14 +56,16 @@ RWTexture2D<float4> nrd_reflection : register(u50);        // out (PATH_NRD, the
 // writes the bounce). Two sets, this frame's at PATH_REUSE_PARITY. As kajiya's ReSTIR GI (Embark Studios, MIT / Apache
 // 2.0; compared, not copied): W clamped against fireflies, last frame's reservoir only on a surface facing the same way,
 // and every third frame its sample re-checked (still in view, its light now): changed light shortens the history.
-#include "./rt_reuse_bits.h"  // RT_RESERVOIR_COMPACT
-// RT_RESERVOIR_COMPACT (G4): the position's bits, f16 sqrt(W) (W past f16's 65504 kept) | M; the light RGB9E5, its normal | the texel's (8 + 8 octahedral).
+#include "./rt_reuse_bits.h"  // RT_RESERVOIR_COMPACT; reuse_tests' bits (RENODX_TW_REUSE_*, rt_d3d12.hpp)
+// RT_RESERVOIR_COMPACT (G4): the position's bits, f16 sqrt(W) (W past f16's 65504 kept) | M; the light RGB9E5, its
+// normal | the texel's (8 + 8 octahedral, SNORM). A non-finite light or W is stored empty (W 0, M 0), never as a bright
+// or huge sample. rec_scan finds such values in a play of the 32-byte layout, where they reach the bounce.
 #if RT_RESERVOIR_COMPACT
-#define ReservoirPoint uint4
-#define ReservoirData uint2
+typedef uint4 ReservoirPoint;
+typedef uint2 ReservoirData;
 #else
-#define ReservoirPoint float4
-#define ReservoirData uint4
+typedef float4 ReservoirPoint;
+typedef uint4 ReservoirData;
 #endif
 RWTexture2D<ReservoirPoint> reuse_samples[2] : register(u23);  // the surface's position, W (its unbiased contribution weight)
 RWTexture2D<ReservoirData> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal, the texel's (octahedral)
@@ -120,7 +122,6 @@ static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this many times one ray's (kajiya's RESTIR_RESERVOIR_W_CLAMP; the bounce's: W x cos / pi)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
-#include "./rt_reuse_bits.h"  // reuse_tests' bits (RENODX_TW_REUSE_*, rt_d3d12.hpp)
 // The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set). Balanced ReSTIR Light (RT_PATH_REUSE_BALANCED): G1 Basic in the reuse's own builds
 // (REUSE_BALANCED: rt_reuse*_balanced, the host's choice with the row), Validate's kept light read in the paths (the host
@@ -848,10 +849,10 @@ bool Merge(inout Reservoir reservoir, Reservoir other, float weight, float rando
 // canonical one (the receiver's own reservoir), each counted M_i x `neighbours` (the neighbours streamed) and M_c
 // (`canonical_count`). The targets, in the receiver's domain: `targets` x = p_i(y_i), the neighbour's sample at its own
 // receiver; y = p_c(T(y_i)) |J|, at this one (0 where the shift is cut); z = p_i(T^-1(y_c)) |J^-1|, the canonical sample
-// at the neighbour (0 likewise); w = p_c(y_c). Adds the canonical sample's share against this neighbour (1 - its weight)
-// to `canonical_share`: the caller merges the canonical sample last with W x p_c(y_c) x that share, then takes W = the sum
-// over (the kept sample's target x the techniques streamed). The one form of the ReSTIR streams' pairwise MIS (ReuseTexel;
-// unified U3 / U5a call it). True: `neighbour`'s sample taken.
+// at the neighbour (0 likewise); w = p_c(y_c). Both shifts' Jacobians that ShiftCut keeps, a cut one's target 0
+// (y and z alike, so the two techniques' weights stay a partition of unity). Adds the canonical sample's share against
+// this neighbour (1 - its weight) to `canonical_share`; PairwiseFinish then merges the canonical sample and takes W. The
+// one form of the ReSTIR streams' pairwise MIS (ReuseTexel; unified U3 / U5a call it). True: `neighbour`'s sample taken.
 bool PairwiseMerge(inout Reservoir reservoir, inout float canonical_share, Reservoir neighbour, float4 targets, float neighbours,
                    float canonical_count, float random) {
   const float neighbour_count = neighbour.count * neighbours;
@@ -860,6 +861,22 @@ bool PairwiseMerge(inout Reservoir reservoir, inout float canonical_share, Reser
   canonical_share += (canonical_sum > 0.f) ? canonical_count * targets.w / canonical_sum : 1.f;
   const float weight = (neighbour_sum > 0.f) ? targets.y * neighbour.weight * neighbour_count * targets.x / neighbour_sum : 0.f;
   return Merge(reservoir, neighbour, weight, random);
+}
+
+// G2's last step after PairwiseMerge's (RTXDI's StreamCanonicalWithPairwiseStep and FinalizeResampling): the canonical
+// sample merged with W x p_c(y_c) (`canonical_target`) x its share (1 with no neighbour streamed), then W = the sum over
+// (the kept sample's target at this receiver x the techniques streamed).
+void PairwiseFinish(inout Reservoir combined, Reservoir canonical, float canonical_target, float canonical_share, uint streamed,
+                    float random, float3 receiver, float3 receiver_normal) {
+  Merge(combined, canonical, canonical_target * canonical.weight * ((streamed > 0u) ? canonical_share : 1.f), random);
+  const float target = ReuseTarget(receiver, receiver_normal, combined);
+  combined.weight = (target > 0.f) ? combined.weight / (target * (float)max(streamed, 1u)) : 0.f;
+}
+
+// A shift the spatial merges drop: its Jacobian outside 0.1-10 with `cut`, else outside the finite positive ones (G2's
+// two shifts; ReuseTexel's plain merge writes the same rule inline, where a call reorders the Lean build's DXIL).
+bool ShiftCut(float jacobian, bool cut) {
+  return !(jacobian > 0.1f && jacobian < 10.f) && (cut || !(jacobian > 0.f && jacobian < 1e30f));
 }
 
 // W = the weights' sum over M times `target` (the sample kept's at the receiver; 0: nothing to show).
@@ -874,20 +891,25 @@ void ClampWeight(inout Reservoir reservoir, float3 origin, float3 normal) {
 }
 
 #if RT_RESERVOIR_COMPACT
-// G4's 16-bit octahedral normal (8 + 8; 0: none, never a normal's: -z itself is 1).
+// G4's 16-bit octahedral normal: 8 + 8 SNORM (q - 128) / 127, the axes exact; codes 1-255 a component, so 0 is never a
+// normal's: none.
 uint PackNormal16(float3 normal) {
   if (!(dot(normal, normal) > 0.f)) return 0u;
   normal /= abs(normal.x) + abs(normal.y) + abs(normal.z);
   const float2 folded = (normal.z >= 0.f) ? normal.xy : (1.f - abs(normal.yx)) * select(normal.xy >= 0.f, 1.f, -1.f);
-  const uint2 quantized = (uint2)round(saturate(folded * 0.5f + 0.5f) * 255.f);
-  return max(quantized.x | (quantized.y << 8), 1u);
+  const uint2 quantized = uint2(round(clamp(folded, -1.f, 1.f) * 127.f) + 128.f);
+  return quantized.x | (quantized.y << 8);
 }
 float3 UnpackNormal16(uint packed) {
   if (packed == 0u) return 0.f;
-  float3 normal = float3(float2(packed & 255u, (packed >> 8) & 255u) / 255.f * 2.f - 1.f, 0.f);
+  float3 normal = float3((float2(packed & 255u, (packed >> 8) & 255u) - 128.f) / 127.f, 0.f);
   normal.z = 1.f - abs(normal.x) - abs(normal.y);
   normal.xy += select(normal.xy >= 0.f, -saturate(-normal.z), saturate(-normal.z));
   return normalize(normal);
+}
+// G4's sqrt(W) half, to nearest (its square keeps W up to 4.29e9).
+uint PackWeight(float weight) {
+  return F32ToF16Nearest(sqrt(min(weight, 4.29e9f)));
 }
 // G4's light: RGB9E5 (DXGI_FORMAT_R9G9B9E5_SHAREDEXP's layout, its rounding), 0 to 65408.
 uint PackRgb9e5(float3 light) {
@@ -901,9 +923,6 @@ uint PackRgb9e5(float3 light) {
   }
   const uint3 mantissa = min((uint3)round(light / scale), 511u);
   return mantissa.r | (mantissa.g << 9) | (mantissa.b << 18) | ((uint)exponent << 27);
-}
-float3 UnpackRgb9e5(uint packed) {
-  return float3(packed & 511u, (packed >> 9) & 511u, (packed >> 18) & 511u) * exp2((float)(packed >> 27) - 24.f);
 }
 #endif
 
@@ -925,7 +944,8 @@ Reservoir LoadReservoir(RWTexture2D<ReservoirPoint> samples, RWTexture2D<Reservo
   reservoir.hit = asfloat(sample_point.xyz);
   reservoir.weight = f16tof32(sample_point.w) * f16tof32(sample_point.w);
   reservoir.count = (float)(sample_point.w >> 16);
-  reservoir.light = UnpackRgb9e5(packed.x);
+  reservoir.light = float3(packed.x & 511u, (packed.x >> 9) & 511u, (packed.x >> 18) & 511u)  // RGB9E5
+                    * exp2((float)(packed.x >> 27) - 24.f);
   reservoir.hit_normal = UnpackNormal16(packed.y & 0xFFFFu);
   return reservoir;
 #else
@@ -946,7 +966,10 @@ Reservoir LoadReservoir(RWTexture2D<ReservoirPoint> samples, RWTexture2D<Reservo
 void StoreReservoir(RWTexture2D<ReservoirPoint> samples, RWTexture2D<ReservoirData> data, uint2 texel, Reservoir reservoir,
                     float3 receiver_normal) {
 #if RT_RESERVOIR_COMPACT
-  samples[texel] = uint4(asuint(reservoir.hit), F32ToF16Nearest(sqrt(min(reservoir.weight, 4.29e9f))) | (min((uint)reservoir.count, 65535u) << 16));
+  // A non-finite light or W: stored empty (the layout's comment).
+  const bool finite = all(isfinite(reservoir.light)) && isfinite(reservoir.weight);
+  const uint weight_count = PackWeight(reservoir.weight) | (min((uint)reservoir.count, 65535u) << 16);
+  samples[texel] = uint4(asuint(reservoir.hit), finite ? weight_count : 0u);
   data[texel] = uint2(PackRgb9e5(reservoir.light), PackNormal16(reservoir.hit_normal) | (PackNormal16(receiver_normal) << 16));
 #else
   samples[texel] = float4(reservoir.hit, reservoir.weight);
@@ -1242,7 +1265,7 @@ void BoilTexel(uint2 id, uint2 local) {
   if ((reuse_tests & REUSE_TEST_BOIL_PLANT) != 0u && all(id == uint2(bounce_width, bounce_height) / 2u)) {
     reservoir.weight *= 100.f;
 #if RT_RESERVOIR_COMPACT
-    reuse_samples[set][id] = uint4(asuint(reservoir.hit), F32ToF16Nearest(sqrt(min(reservoir.weight, 4.29e9f))) | (reuse_samples[set][id].w & 0xFFFF0000u));
+    reuse_samples[set][id] = uint4(asuint(reservoir.hit), PackWeight(reservoir.weight) | (reuse_samples[set][id].w & 0xFFFF0000u));
 #else
     reuse_samples[set][id] = float4(reservoir.hit, reservoir.weight);
 #endif
@@ -1427,6 +1450,7 @@ void ReuseTexel(uint2 id) {
   uint chosen = ~0u;  // the one whose sample was kept (~0: the texel's own)
   float canonical_share = 0.f;  // G2: the own sample's shares against the neighbours streamed
   uint streamed = 0u;           // G2: the neighbours streamed
+  const float own_target = pairwise ? ReuseTarget(origin, normal, own) : 0.f;  // G2: p_c(y_c)
 #if defined(REUSE_COMPATIBLE)
   // G5: COMPATIBLE_CANDIDATES texels within the reach, each scored by RTXDI's compatibility (normals alike, near in the
   // world for the depth), REUSE_NEIGHBOURS weighted reservoirs over them (each takes a candidate with its score over the
@@ -1445,6 +1469,8 @@ void ReuseTexel(uint2 id) {
     float3 candidate_origin;
     float candidate_depth;
     if (!RAB_GetNeighborSelectionSurface(texel, candidate_normal, candidate_origin, candidate_depth)) continue;
+    // The merge's own surface test first: every pick can then be merged, and "good" counts usable neighbours.
+    if (abs(candidate_depth - position.w) > 0.1f * position.w || dot(candidate_normal, normal) < 0.9f) continue;
     const float score = RTXDI_PTNeighborCompatibilityScore(normal, origin, position.w, candidate_normal, candidate_origin);
     if (!(score > 0.f)) continue;
     if (score >= 0.5f) ++good;
@@ -1494,10 +1520,10 @@ void ReuseTexel(uint2 id) {
       pair_targets.x = ReuseTarget(other_origin, other_normal, other);
       Reservoir own_there = own;
       const float own_jacobian = ReuseJacobian(own, origin, other_origin);
-      if ((own_jacobian > 0.1f && own_jacobian < 10.f) || (!jacobian_cut && own_jacobian > 0.f && own_jacobian < 1e30f)) {
+      if (!ShiftCut(own_jacobian, jacobian_cut)) {
         pair_targets.z = ReuseTarget(other_origin, other_normal, origin, own_there) * own_jacobian;
       }
-      pair_targets.w = ReuseTarget(origin, normal, own);
+      pair_targets.w = own_target;
     }
     float target = ReuseTarget(origin, normal, other_origin, other);
     if ((REUSE_SUSPECTS & REUSE_TEST_NEIGHBOUR_VISIBILITY) != 0u && target > 0.f) {
@@ -1506,20 +1532,17 @@ void ReuseTexel(uint2 id) {
     }
     merged |= 1u << neighbour;
     if (pairwise) {
-      if ((jacobian > 0.1f && jacobian < 10.f) || (!jacobian_cut && jacobian > 0.f && jacobian < 1e30f)) pair_targets.y = target * jacobian;
+      if (!ShiftCut(jacobian, jacobian_cut)) pair_targets.y = target * jacobian;
       ++streamed;
       PairwiseMerge(combined, canonical_share, other, pair_targets, (float)neighbours, own.count, random);
     } else if (Merge(combined, other, target * other.weight * other.count * jacobian, random)) {
       chosen = neighbour;
     }
   }
+  const float target = pairwise ? 0.f : ReuseTarget(origin, normal, combined);
   if (pairwise) {
-    Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * ((streamed > 0u) ? canonical_share : 1.f),
-          Random(uint4(id, frame, DIM_REUSE_OWN + 1u)));
-  }
-  const float target = ReuseTarget(origin, normal, combined);
-  if (pairwise) {
-    combined.weight = (target > 0.f) ? combined.weight / (target * (float)max(streamed, 1u)) : 0.f;
+    PairwiseFinish(combined, own, own_target, canonical_share, streamed, Random(uint4(id, frame, DIM_REUSE_OWN + 1u)),
+                   origin, normal);
   } else if ((REUSE_SUSPECTS & (REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED)) == 0u || !(target > 0.f)) {
     Finish(combined, target);
   } else {
