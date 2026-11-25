@@ -19,7 +19,7 @@ uint DiListLight(uint2 tile, uint slot) {
   return (light_mask[TileWord(tile, slot >> 2u)] >> ((slot & 3u) * 8u)) & 0xFFu;
 }
 
-// The reservoir of a DI pixel's surface (DiCentreSurface) at `pixel`, and its pick's sample.
+// The reservoir of a DI pixel's surface (its rays from its stored origin: rt_di_initial) at `pixel`, and its pick's sample.
 RTXDI_DIReservoir DiInitialSample(uint2 pixel, RAB_Surface surface, inout RTXDI_RandomSamplerState rng, out RAB_LightSample picked) {
   picked = RAB_EmptyLightSample();
   RTXDI_DIReservoir reservoir = RTXDI_EmptyDIReservoir();

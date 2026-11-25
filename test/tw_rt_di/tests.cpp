@@ -291,6 +291,8 @@ int main(int argc, char** argv) {
   std::array<ComPtr<ID3D12Resource>, 2> history_textures = {texture(SIDE, MASK_ROWS, DXGI_FORMAT_R32_UINT), texture(SIDE, MASK_ROWS, DXGI_FORMAT_R32_UINT)};
   ComPtr<ID3D12Resource> members_texture = texture(TILES, TILES, DXGI_FORMAT_R32G32B32A32_UINT);
   std::array<ComPtr<ID3D12Resource>, 2> light_textures = {texture(SIDE, SIDE, DXGI_FORMAT_R16G16B16A16_FLOAT), texture(SIDE, SIDE, DXGI_FORMAT_R16G16B16A16_FLOAT)};
+  // Each DI pixel's ray origin (rt_rtxdi_bridge.hlsli di_origin: rt_di_initial writes this trace's, by parity).
+  std::array<ComPtr<ID3D12Resource>, 2> origin_textures = {texture(SIDE, SIDE, DXGI_FORMAT_R16G16B16A16_FLOAT), texture(SIDE, SIDE, DXGI_FORMAT_R16G16B16A16_FLOAT)};
   const RTXDI_ReservoirBufferParameters layout = rtxdi::CalculateReservoirBufferParameters(SIDE, SIDE, rtxdi::CheckerboardMode::Off);
   ComPtr<ID3D12Resource> reservoirs = buffer(uint64_t{layout.reservoirArrayPitch} * 3 * sizeof(RTXDI_PackedDIReservoir), D3D12_HEAP_TYPE_DEFAULT,
                                              D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
@@ -523,6 +525,8 @@ int main(int argc, char** argv) {
         {"di_offsets", {offsets.Get(), DXGI_FORMAT_R32G32_FLOAT, OFFSETS}},
         {"di_light[0]", {light_textures[0].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT}},
         {"di_light[1]", {light_textures[1].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT}},
+        {"di_origin[0]", {origin_textures[0].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT}},
+        {"di_origin[1]", {origin_textures[1].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT}},
     };
     for (Pass& pass : passes) {
       bind_pass(&pass, bound);

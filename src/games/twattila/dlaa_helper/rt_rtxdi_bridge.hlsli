@@ -152,11 +152,15 @@ RWStructuredBuffer<RTXDI_PackedDIReservoir> di_reservoirs : register(u80);
 RWBuffer<float2> di_offsets : register(u81);
 #define RTXDI_DI_NEIGHBOR_OFFSETS_BUFFER di_offsets
 RWTexture2D<float4> di_light[2] : register(u82);  // the light SSAO dims (slm), the light it does not (skinlm)
+// Each DI pixel's ray origin from its position (rt_di_initial), this trace's at DiParity(), the last's at the other.
+RWTexture2D<float4> di_origin[2] : register(u84);
 
 // The DI pixel's surface at `pixel` (this trace's, or the last's: its position and light surface; this trace's camera
 // and tile members, a stated bias), else an empty one: off the screen, sky, no point-light model, or not a DI pixel in
-// that trace (its light history's word not DI_PIXEL_WORD: its reservoirs were not written). Its rays start off it
-// toward the camera, whose way is clear (DiCentreSurface: the pixel's own rays as rt_lights').
+// that trace (its light history's word not DI_PIXEL_WORD: its reservoirs were not written). Its rays start where that
+// pixel's own rays started (di_origin, written by that trace's rt_di_initial): RTXDI's "visibility computed in the same
+// way" for the spatial and fused neighbours' bias rays as for the pixel's own (RtxdiApplicationBridge.md,
+// RAB_GetConservativeVisibility; fa1_'s B1: they started toward the camera, never past a hidden shape).
 RAB_Surface RAB_GetGBufferSurface(int2 pixel, bool previous) {
   RAB_Surface surface = (RAB_Surface)0;
   // (No DI surface without the game's HDR state: an exact pixel's history word can be DI_PIXEL_WORD then.)
@@ -169,7 +173,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixel, bool previous) {
   const float3 normal = float3(texel.x & 0xFFu, (texel.x >> 8u) & 0xFFu, (texel.x >> 16u) & 0xFFu) * (2.f / 255.f) - 1.f;
   if ((model != TW_POINT_LIGHT_SLM && model != TW_POINT_LIGHT_SKIN) || !(dot(normal, normal) > 1e-6f)) return surface;
   surface.normal = normalize(normal);
-  surface.origin = RayOrigin(position, surface.normal, false);
+  surface.origin = position.xyz + di_origin[previous ? 1u - DiParity() : DiParity()][at].xyz;
   surface.position = position.xyz;
   surface.depth = position.w;
   surface.texel = texel;
@@ -180,18 +184,6 @@ RAB_Surface RAB_EmptySurface() { return (RAB_Surface)0; }
 bool RAB_IsSurfaceValid(RAB_Surface surface) { return surface.depth > 0.f; }
 float3 RAB_GetSurfaceNormal(RAB_Surface surface) { return surface.normal; }
 float RAB_GetSurfaceLinearDepth(RAB_Surface surface) { return surface.depth; }
-
-// A DI pass's own pixel: its rays from where rt_lights' start (off a planar surface along the normal from the depth,
-// else toward the camera; past a hidden shape with Rays Start Past Hidden Shapes).
-RAB_Surface DiCentreSurface(uint2 pixel) {
-  RAB_Surface surface = RAB_GetGBufferSurface(int2(pixel), false);
-  if (RAB_IsSurfaceValid(surface)) {
-    const float4 position = float4(surface.position, surface.depth);
-    const float3 normal = SurfaceNormal(int2(pixel), position);
-    surface.origin = StartPast(RayOrigin(position, normal, Planar(int2(pixel), position, normal)), position);
-  }
-  return surface;
-}
 
 // Alike for spatial reuse: the same light model, the gloss within 0.1.
 struct RAB_Material {

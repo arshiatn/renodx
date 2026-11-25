@@ -29,7 +29,7 @@ void DiStore(uint2 pixel, uint model, float3 light) {
 void main(uint3 id : SV_DispatchThreadID) {
   SceneRayFlags();
   if (id.x >= width || id.y >= height) return;
-  const RAB_Surface surface = DiCentreSurface(id.xy);
+  const RAB_Surface surface = RAB_GetGBufferSurface(int2(id.xy), false);
   float3 light = 0.f;
   if (RAB_IsSurfaceValid(surface)) {
     const RTXDI_DIReservoir reservoir = RTXDI_LoadDIReservoir(DiReservoirParameters(), id.xy, DI_SHADE_ARRAY);

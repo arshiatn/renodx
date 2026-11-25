@@ -26,7 +26,7 @@ void main(uint3 id : SV_DispatchThreadID, uint index : SV_GroupIndex) {
   GroupMemoryBarrierWithGroupSync();
   SceneRayFlags();
   if (id.x >= width || id.y >= height) return;
-  const RAB_Surface surface = DiCentreSurface(id.xy);
+  const RAB_Surface surface = RAB_GetGBufferSurface(int2(id.xy), false);
   if (!RAB_IsSurfaceValid(surface)) return;
   const RTXDI_ReservoirBufferParameters reservoirs = DiReservoirParameters();
   RTXDI_DIReservoir reservoir = RTXDI_LoadDIReservoir(reservoirs, id.xy, DI_INITIAL_ARRAY);
