@@ -383,6 +383,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
 - GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job ... | gtl_ (lab), next tooling slot
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
+- Caesar's test build (Flag Wave export + heapfix.ini key append) -> ATN relays -> ... | ?
 - 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20 ... | ?
 - ATN: are the stuttering cutscenes films or in-engine scenes? Optional quick A/B: ... | ?
 - coord: analyse the test files; draft b1 (+ b2) for Sol (credit RenoDX / ATN, MIT ... | ?
@@ -3592,6 +3593,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 11-25 20:3x: 'We agree to both' -> (3) Flag Wave export YES, (4) ini keys YES; ATN sends Caesar the text the
         coord wrote (asks for the export names / layout + a version number; we only read the buffers; no bundling,
         readmes link his pages). When his export lands: C4 reads it for flag MVs (port_plan.md addendum 11-25).
+        Caesar 11-25 20:03 (ATN relayed): he tells us when a build is ready to test; NO ETA (busy at work this time of
+        year). ATN: no hurry. Nothing on our side waits on it: flags keep today's MVs until the export lands.
+        - [ ] Caesar's test build (Flag Wave export + heapfix.ini key append) -> ATN relays -> C4 flag MVs + overlay
+        ini check. Owner: Caesar (via ATN), coord
         - [ ] 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20:2x (Opus xHigh, read-only:
         src_1320 + our add-on) -> attila64\designs\menu_stutter_1s.md: suspects with file:line, ours checked, one
         confirming menu + cutscene run (PresentMon + existing WPR scripts; goes in the run window after PT DI, ATN's
