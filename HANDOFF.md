@@ -820,7 +820,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 10:5x -> designs\l2b_des ... | ?
+- l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
+- CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
@@ -15566,19 +15567,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         C64 / package / E64 / E64-mv; NO (timing only, old quit) B64P + E64-sr2. NOT done: restage a3_smoke with the
         merged add-on (do it right before the next 64-bit game batch, which builds newer anyway); the close-units E64-mv
         start (fold into C8 wave 2's one batch); ~670 MB analysis copies in the session scratchpad (a3f_batches).
-        - [x] optc_ DONE 10:4x (study_1124\sol_perffix_options.md, 40 rows; hand-back optc_options_handback.md). Real
+        - [x] optc_ DONE 09:4x (study_1124\sol_perffix_options.md, 40 rows; hand-back optc_options_handback.md). Real
         clashes: 1.3.20 overlay (handled: converted buffer / picture); FrameBridge (PerfFix DLSS / FSR / FG) must never
         run with our helper (off: upscaling=0 / perf_fix=0); Flag Wave with a flag pack replaces our rigid-prop VS
         0x347F3DD9 / 0xD830AD9B (props lose MVs + RT capture; off: tick / flag_wave=0 / Ctrl+Shift+F); Sol's OpenGL
         safety net sticks after one early DX11 death (graphics=opengl_fallback; back via 'Use DirectX 11 again'); F8
         panel 'NOT available' under our HDR (Culling choice lost; heapfix.ini culling= instead). NO clean force-off
-        (PerfFix inits first, no API; Sol's loader API v1 has no options): detect + status notes (sent to c8p_ 10:5x).
+        (PerfFix inits first, no API; Sol's loader API v1 has no options): detect + status notes (sent to c8p_ 09:5x).
         Our 'not installed' note is wrong under ATTILA_NO_PLUGINS / ATTILA_PLAIN. Asks for the authors (ATN): Sol =
         options API or FrameBridge off with our helper, the sticky OpenGL fallback; JSa25 = Flag Wave vs our prop
-        shaders, the F8 panel under 10-bit / 16F back buffers.
+        shaders. ATN 10:0x: F8 panel (Culling choice + What's new) need NOT work with ours (heapfix.ini culling= is
+        enough; dropped from the JSa25 asks); he does NOT want FrameBridge's DLSS: our note tells players to switch it
+        off (tick / upscaling=0) when our helper runs.
         - [x] twattila amd64 build check of the merged tree (e85bd48f9 + HANDOFF commits) PASS 09:3x: exit 0, 61 warnings
         (= baseline), VC 14.44.35207 / SDK 10.0.28000.0 (log testbin\scratch\merge_pds2_twattila64.log).
-        - [x] l2bd_ DONE 10:4x (designs\l2b_product_design.md 432 lines; hand-back l2bd_design_handback.md): row
+        - [x] l2bd_ DONE 09:4x (designs\l2b_product_design.md 432 lines; hand-back l2bd_design_handback.md): row
         ROW_CPU_PLACEMENT (plugin_block.h:54) in renodx_attila64.dll, entry hook 0xbb4e00 (7 bytes, pre-hook + tail
         call), per-thread CPU sets only on thread change, default 16 -> 14 at the first step, 250 ms watchdog gives
         the core back after 2 s idle; core pick whole SMT core / best EfficiencyClass / biggest L3, never widens;
@@ -15586,10 +15589,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         -1.4 % fps not shown real; 2 cores / 4 threads cannot help (0 starts); L2C est. 0-3 %. S1 = ONE start
         '-AB -Arms l2c -Probe full' (<= 225.8 s -> L2C shape; >= 240 s -> L2B stays; between -> anchor 'l2b,l2c');
         S2 after code '-AB -Arms ep1 -EnginePlugin -Probe full' (<= 228 s, same final state). 10 ATN questions in
-        the hand-back. L2C kind APPLIED to a64_ab.ps1 10:4x (a64_ab_l2c_patch.py; backup a64_ab.pre_l2c_1125.ps1;
-        0 parse errors); DryRun waits for ATN's S1 rule lines.
-        - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 10:5x -> designs\l2b_design_review.md. c8p_ told
-        10:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
+        the hand-back. L2C kind APPLIED to a64_ab.ps1 09:4x (a64_ab_l2c_patch.py; backup a64_ab.pre_l2c_1125.ps1;
+        0 parse errors). ATN 10:0x: S1 rule lines ADDED; DryRun 09:57 ok (self-test ok; refused only 'other harness
+        running' = pds2_'s GPU job). ATN 10:0x: 'Default L2B, yeah. It is faster' = plugin row first, MIT offer to Sol
+        later, default ON, no extra starts (no 6-core emulation / light-battle start; 2-CCD unit tests only), Intel /
+        Win10 tester + main-sibling arm later (sent to l2br_). S1 start waits for pds2_ / ucf_ to go idle (both told
+        10:0x to hold new GPU jobs / builds until 'go on').
+        - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
+        09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
+        (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
+        - [ ] CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle core MT') reviewed + fixed
+        for the 64-bit port NOW by Opus 5.5 xHigh, NO builds. f64m_ (Opus xHigh, read only) MAP STARTED 10:0x ->
+        attila64\designs\cpu_plan_64_map.md (per item CARRIES / RE-FIND / MOOT / CHANGED / NEW CONFLICT, battle-step MT
+        answer, one-writer order with C8 wave 2 + L2B, fixer briefs) -> one Opus xHigh fixer + review per package.
+        FRIDAY 11-27 ONLY ON ATN's WORD: one last Fable 5.2 xHigh review + Fable 5.2 medium implementers.
         - [ ] COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-on in the 64-bit port; only
         -Smoke without ReShade exists). The 32-bit S4-rotation trace gates the next 32-bit Attila / Thrones / Rome II
         release (none planned now). T1 ReShade.log must NOT contain the RENODX_TW_PLUGIN_WANT line. Checks: 32-bit S4-rotation trace
