@@ -17050,6 +17050,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         read-only, est 50 / deadline 100): fa1_ pt_di_rtxdi.md, fa2_ restir_gi_sharc_fog.md, fa3_ rt_core.md, fa4_
         denoisers.md, fa5_ screen_space.md (ADDED by the coord: GT-VBAO / VBGI, XeGTAO, Bend SSS, SSSR, vMF design: 'all
         papers'). Then the critic. Owner: fa1_..fa5_, coord
+        fa6_ ADDED 01:1x (ATN: 'are you checking our DXR 1.0, 1.1 and 1.2 stuffs ... and even the rejected PTLAS and
+        the nvidia RT/PT stuffs (like Mega geometry and etc.)'): fa3_ already had DXR 1.1 RayQuery + 1.2 OMM / SER +
+        AS builds; the gaps go to fa6_ (Opus xHigh, read-only, est 60 / deadline 110) -> fidelity\
+        rt_dxr_mega_rejected.md: A DXR 1.0 pipeline (state objects, shader tables, payloads, recursion, the lib_6_9 SER
+        pipeline, tier / SM fallbacks); B Mega Geometry in depth (CLAS, templates, multi-indirect cluster ops, the
+        PARTITIONED TLAS code, memory growth; NVIDIA's nvpro samples allowed, own folders under tools\refcode); C EVERY
+        rejected / parked / capped RT-PT decision re-checked (REASON HOLDS / WRONG / STALE / CAUSE UNKNOWN; e.g. SHaRC
+        depth 2 cap = guard with an unknown cause); D NVIDIA RTX catalogue (in code / designed / rejected / never
+        considered). fa3_ told the split. Owner: fa6_
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
@@ -17062,7 +17071,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         changed estimator blocks in dlaa_helper HLSL / C++ must carry a source tag (key in a sources registry with the
         local path + section) or 'ours: why', departures a deviation tag; shadow first, then ATN installs. Design AFTER
         the audit (its tables backfill the tags for today's code). Owner: coord -> gate tool owner -> ATN (ATN
-        11-26 night: 'After the audit' -> the design starts when fa1_..fa5_ + the critic are done)
+        11-26 night: 'After the audit' -> the design starts when fa1_..fa6_ + the critic are done)
         pd4r_ CHECKS DONE 00:4x (22 min; pt_di_step4c_review.md '## 2.9a check' + '## Fused DI pass check'), both GO
         WITH CHANGES, no MUST. 2.9a: option C proof holds (lights < 32 always tile members; WH2 shadows_only dropped
         under mode 1 = one owner); handshake order right (trace then paths, same queue, shared.rt_frame); today's double
