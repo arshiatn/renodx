@@ -835,7 +835,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
 - PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; ... | ?
 - NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\rou ... | ?
-- tw_scene_coverage crashes at start (exit 139, nothing printed; last PASS 11-17; ... | ?
+- tw_scene_coverage crashes at start on atn-mods too (rvt_: 0xC0000005; since a98c ... | ?
+- Other tests that load rt_core without ReShade's config export may crash the same ... | ?
+- HELPER IGNORES THE PER-MATERIAL OPACITY FACTOR (rvt_ S2): 51 of Tales' 55 masks ... | ?
+- rvt_ nits outside ta_'s files: rt_core.hpp:425 comment says 0.333 (game clips at ... | ?
 - ta_ O6 waits for gpu_job.lock (pds2_): T7 short GPU runs rt_shadows_test / trace ... | ?
 - ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales mult ... | ?
 - ta_ QUESTIONS FOR ATN (ta_'s pick first): (1) Attila rows for Tales: Upscaling D ... | ?
@@ -16017,8 +16020,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         talesofarise build exit 0 (61 warnings = baseline), tw_tales_unit 5 / 5. tales.tsv: open 151 -> 0 (waiting 38,
         settled 233; started from g13_'s stage, not its draft). -> rvt_ REVIEW (Opus xHigh) STARTED 14:1x ->
         tools\nontw\round_1125\reviews\rvt_nt_ta1_review.md -> merge -> tick the scRGB box (in-game check stays open).
-        - [ ] tw_scene_coverage crashes at start (exit 139, nothing printed; last PASS 11-17; rt_core + test unchanged on
-        nt_ta1): rvt_ checks atn-mods vs nt_ta1, then owner = rt_core lane (pds2_ / next shared round). Owner: coord
+        rvt_ REVIEW DONE 14:4x (hand-back round_1125\handbacks\rvt_review_handback.md): MERGE AFTER FIXES, Must 1 / Should 3 /
+        Nit 7. M1: afd5da80a turns on only the capture's resource record; utils redirects a bound view only when the VIEW's
+        flag is on (resource_upgrade.hpp:734), so later binds still read the 8-bit original (no visible effect), and the
+        resource flag being on stops a later RTV hot-swap (:203, possible regression; HDR10 / SDR have had the same gap
+        since e92046f68). Fix = GetResourceClone(dest, require_enabled false, allow_create false, activate true) + a
+        view-before-copy test (prototype 8 / 8 + 6 / 6). dbe88a833 OK: 0.3333f is bit-exact the game's (399 / 448 depth-only
+        discard shaders clip at -0.333299994); only 'Ray Tracing in the Helper (Experimental)', off by default; bug fix.
+        -> ta_ FIX ROUND sent 14:4x (M1, S1 test export, S3 + nits) -> rvt_ re-check -> merge.
+        - [ ] tw_scene_coverage crashes at start on atn-mods too (rvt_: 0xC0000005; since a98ca9fb3 11-22 InstallScene calls
+        reshade::get_config_value and the test exports no ReShadeGetConfigValue, reshade.hpp:176-178 calls null): one-line
+        export in test/tw_scene_coverage/tests.cpp -> ta_ fix round (coord OK, test-only). With it parts 1-6 PASS. Owner: ta_
+        - [ ] Other tests that load rt_core without ReShade's config export may crash the same way since a98ca9fb3: grep
+        test/*/tests.cpp for ReShadeGetConfigValue vs rt_core.hpp includes (later shared round). Owner: coord
+        - [ ] HELPER IGNORES THE PER-MATERIAL OPACITY FACTOR (rvt_ S2): 51 of Tales' 55 masks multiply alpha by a material
+        constant before the 0.3333 clip; the helper scene does not, so those masks' coverage can differ from the game's
+        (helper route only, Experimental, off by default). Factor values from the next Tales data run's trace; then a
+        host field in rt_core / bridge (append-only). Owner: next shared round + Tales data run
+        - [ ] rvt_ nits outside ta_'s files: rt_core.hpp:425 comment says 0.333 (game clips at 0.3333, bit-exact
+        -0.333299994); 8 Tales depth-only shaders clip at other values (0.44, red channel): check in the next Tales round.
+        Owner: next shared round / next Tales round
         - [ ] ta_ O6 waits for gpu_job.lock (pds2_): T7 short GPU runs rt_shadows_test / trace_test / omm_test + the T6
         removal run (RENODX_TW_TEST_REMOVAL); resume ta_ when the lock is free. Owner: coord
         - [ ] ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales multiplies mask alpha by a
