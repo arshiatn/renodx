@@ -820,9 +820,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
-- WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
-- ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
 - ATN: add the A3 + T1 rule lines (study_1124\a64ab_window1_rules.md: -Smoke -ReSh ... | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
@@ -15370,15 +15367,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         P-L2B as designed (process default logical 0-13, step thread on 14+15 during the tick). Noise in the capture:
         two find scans 1.09 % of 16 CPUs; 24 leftover tail | grep monitor pairs -> coord stopped this session's 11-24
         ones (46 processes) at 02:4x.
-        - [ ] L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 has no l2b kind (review
+        - [x] L2B ARM RUN 08:42-08:54 (ATN's yes + his 2 rule lines; patch applied 07:5x, backup a64_ab.pre_l2b_1125.ps1;
+        DryRun 20261125_084209_AB_dryrun ok; batch ab_runs\20261125_084234_AB, exit 0, both starts valid, probe removed
+        after each, 162 / 162 intact, GOT 0x4bf0268 skipped as in window 3). RESULT: window 248.4 -> 220.2 s (-28.2 s,
+        -11.4 %), battle steps / s 7.25 -> 8.28 (+14.2 %), fps 63.5 -> 62.6 (-1.4 %), median frame 14.88 -> 15.06 ms,
+        p99 26.54 -> 26.30 ms, GPU busy 5.68 / 5.69. Probe (HANDOFF-safe block): step wall median 138.90 -> 121.64 ms
+        (-12.4 %), own code 154.06 -> 134.27; on-CPU 0.989 -> 0.998; migrations 3 -> 1; L1 5cb09a 122.79 -> 106.71,
+        L3 5dd5b8 50.40 -> 43.28 ms / step; DETERMINISM same state from tick 1 over 3749 ticks (scheduling only). E was
+        12-19 % / ~217 s (204-218): measured at the edge. Base A/A spread so far 247.0 / 247.5 / 248.4 s -> -28 s is far
+        outside it. CPU Set Setter rule 'CacheAFFINITY' on attila64.exe (ATN's 16 V-cache threads) in both starts.
+        NEXT (ATN): L2C now qualifies (gain > 3 % and > A/A; WPR E 0-3 % more) = needs his yes + a new kind + rule line;
+        and an L2B PRODUCT design (Opus xHigh): where it lives (our engine plugin vs a fix for Sol, MIT + credit), how it
+        picks the core on any CPU (no CPU Set Setter rule, 2 CCDs, Intel hybrid, no SMT), and the -1.4 % fps.
+        - [x] (was) L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 has no l2b kind (review
         Must 3) -> on ATN's yes coord backs up a64_ab.ps1 and applies attila64\ab\a64_ab_l2b_patch.py (PREPARED,
         dry-tested on a copy, 0 parse errors: kind l2b + PROBE_LINES base,l2b + refused without -Probe full) -> ATN adds `a64_ab.ps1 -AB -Arms base,l2b -Probe full` (+
         the same with -DryRun) -> DryRun -> drain -> run (~13 min) -> python -I p0\analyze_d0.py -> L2C only if L2B
         gains > 3 % and more than the A/A.
-        - [ ] WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling occupancy, CCD, clocks,
+        - [x] (done 11-25, attila64/wpr/a64wpr_handback.md: the SMT sibling) WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling occupancy, CCD, clocks,
         render-thread placement during s 100-160 -> decides what L2B should test.
-        - [ ] ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a new rule line); the
-        ETL analysis says which placement first.
+        - [x] ATN said yes to L2B 08:3x and added the rule lines; result in the L2B row above.
         - [x] a64ab_ -Probe / -Wpr PASS DONE (hand-back attila64/study_1124/a64ab_probe_pass_handback.md): ETL waits /
         refuses on D:\RenoDX_WPR\attila_wpr.etl, renamed in place to attila_wpr_<batch>_<n>_<arm>.etl (path + size in
         start.json), schtasks /Query + /Run only, Stop in start + batch finally, wpr_running.txt marker for a hard-
