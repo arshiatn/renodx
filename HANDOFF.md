@@ -915,7 +915,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
-- pdm1_ DESIGN (Opus xHigh, read-only, STARTED 23:3x, est 30 / deadline 60): pt_di ... | ?
+- ATN Q (pdm1_): while Path-Traced Torch Light is on with RR, 'Torch and Fire Ligh ... | ?
+- ATN Q (coord 23:5x): checkerboard as an Experimental test row? DLSS-RR Integrati ... | ?
 - FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a v ... | ?
 - nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guid ... | ?
 - rpg_ ReSTIR PG DESIGN (ATN 11-25 ~23:4x 'can we design it now or wait?'; coord: ... | ?
@@ -16937,13 +16938,42 @@ heading text are in HANDOFF_ARCHIVE.md)
         DI ON under mode 1 too, no double light. A DESIGN GAP: design 2.9 named only the ratio row (mode 3); 4c turned
         DI off for both, the review flagged only mode 3. Mode 1 = torches' DIRECT light at the primary surface sampled
         into the bounce texture (rt_path.hlsli bounce-light block, bounce resolution) -> with DI it doubles.
-        - [ ] pdm1_ DESIGN (Opus xHigh, read-only, STARTED 23:3x, est 30 / deadline 60): pt_di_rtxdi.md '### 2.9a Mode
+        - [x] pdm1_ DESIGN (Opus xHigh, read-only, STARTED 23:3x, est 30 / deadline 60): pt_di_rtxdi.md '### 2.9a Mode
         1 with DI': per pixel class who gives the direct torch light + mask word, mixed bounce texels, what mode 1 means
         with DI on (rows / tooltips), code sites + owners (step 3 rt_path vs 4c), cost, tests (energy DI on vs off at 3
         / 29 / 128 lights + controls for double and missing light), risks. -> pdi4c_ implements on _r3 AFTER its rebase,
         BEFORE its GPU turn; its GPU turn adds mode 1 runs. Owner: pdm1_, then pdi4c_
         pdm1_ told 23:4x: 2.9a must also hold in the UNIFIED mode (unified_pt.md sections 3, 4.4, 4.5; bounce = GI
         stream there) -> a 'unified' paragraph.
+        pdm1_ DONE 23:27 (17 min vs 30; pt_di_rtxdi.md 2.9a, line 721 on). OPTION C: while DI runs the bounce carries
+        NO direct torch light; non-DI pixels as mode 0 (exact bits, <= 4 reached listed lights) -> each (pixel, reached
+        listed light) has one owner (DI where word 0, else the game x a traced bit), bounce none; indirect torch light
+        (paths >= 3, T1 / T2) stays. A (skip per texel) doubles / loses in a band along DI / exact borders + needs rt_path;
+        B (per-pixel weight at the composite) exact but new texture + bridge field + 4b apply + rt_path for little value.
+        HANDSHAKE (also fixes TODAY's one-frame double on mode 1's first frame = bug fix, always on): trace
+        lights_dark = lights_in_bounce && !light_ratio && !di -> lights_dark_frame_ = frame; paths carried_mode = 0 when
+        mode 1 asked but lights_dark_frame_ != frame; reuse_lights_mode_ keeps the asked mode; mode 2 (measurement)
+        always carries = the double control. NO SHADER CHANGE; all 4c sites (rt_d3d12.hpp trace + paths + member,
+        dlaa_bridge.h bullet, harness di_mode.hpp outside git). Cost = mode 0 + DI's (bounce drops its torch pick). Tests:
+        M1-eq (mode 1 vs 0 with DI, 0 bytes), M1-energy (matte, 1.00 within A/A at 3 / 29 / 128), M1-trans; controls
+        that must fail: mode 2 + DI (~2.0), HARNESS_DI_DROP (~0), r3 before 2.9a (frame 1 double); lab 29-light pair;
+        look line: no rim at Half where crowded fires meet lone torches, no flash on toggles. UNIFIED: no conflict (the
+        mode forces both old rows off; its DI = paths of length 2, GI stream >= 3 = 2.9a's split; LightsInBounceTest()
+        must read 0 there). Risks: mode 1 baselines rerun (first-frame fix); lights_dark_frame_ not recorded (a
+        playback can miss one frame); WH2 shadows_only lights still dropped under mode 1.
+        Owner-map line (paste at merge): '4c: DI runs under both Light Bounce torch rows. Under Torch and Fire Light from
+        Path Tracing the bounce carries those torches only in a frame whose trace left them dark (a frame without DI);
+        design 2.9a.'
+        -> pd4r_ RESUMED 23:5x: 2.9a check (est 15 / deadline 30) -> pt_di_step4c_review.md '## 2.9a check'. pdi4c_ told:
+        2.9a = ONE commit on r3 after the rebase, before its GPU turn (+ section 5 runs). Owner: pd4r_, pdi4c_
+        - [ ] ATN Q (pdm1_): while Path-Traced Torch Light is on with RR, 'Torch and Fire Light from Path Tracing' does
+        nothing (DI lights those torches, with highlights, not following Light Bounce Strength): grey that row then,
+        tooltip 'Not used with Path-Traced Torch Light on: that lights these torches then.'? Coord: yes. 4b's row
+        lines. Owner: ATN, then 4b
+        - [ ] ATN Q (coord 23:5x): checkerboard as an Experimental test row? DLSS-RR Integration Guide 3.5 lists 'Use of
+        checkerboard rendering' first under 'practices to be avoided'; Shogun 2 Grass Fade showed DLSS smears per-frame
+        coverage changes; would save ~0.4-0.5 ms of DI + half the DI reservoirs (~430 -> ~215 MB 4K DLSS Q) but needs
+        a fill pass for the skipped half. Coord: skip. Owner: ATN
         - [ ] FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a variant build (text
         substitution, no new env var) with one rt_di_spatiotemporal pass (RTXDI_DISpatioTemporalResampling, same
         RAY_TRACED bias, neighbours, M cap, translation, previous surface; DRY setup) in place of temporal + spatial;
