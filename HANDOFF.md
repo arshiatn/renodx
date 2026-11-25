@@ -15962,6 +15962,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         c8_wave2_plan.md. INCIDENT (reported to ATN): one `grep -rln --include=*.py` over all of tools\tw also scanned
         the 6 .py files in testbin\attila64_1124\perffix_src\ for a word; no match there, nothing shown or used,
         stopped at once. Rule added to round_1125\brief.md + memory: never search tools\tw recursively as a whole.
+        - [x] PLAN OVERVIEW REFRESHED (ATN 11-25 ~14:0x 'Let's maybe refresh them?'): ov_ wrote
+        round_notes\plan_overview_1125.md (one page) + plan_overview_1125_facts.md (a source per claim; coord checked
+        it, added the C8 W0 result; hand-back handoff_plan\handbacks\ov_overview_handback.md). The 11-22 overview is
+        marked SUPERSEDED; plan_1117\plan.md's COMBINED ORDER got a STATUS line (history; the file stays the GPU
+        plan's home). Count: 807 indexed open boxes + 50 in OPEN FOR ATN; 524 name no owner (-> a later owner pass).
+        Stale 'merge set' boxes whose branches are merged: tick in a later cleanup. Sent to ATN.
         - [ ] NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\round_1125\brief.md): the
         11-15 plans are STALE (Ryse / Tales are one add-on each now, most plan steps in). ry_ (Opus High, worktree, branch
         nt_ry1) and ta_ (branch nt_ta1) each list every open HANDOFF box + ledger row of their game as OFFLINE-NOW / NEEDS A
