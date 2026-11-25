@@ -849,7 +849,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- pds2_ (Opus High, worktree, branch pds2_step2) PT DI STEP 2 STARTED 01:3x (resum ... | ?
+- pds2_ PART B RESUMED 03:1x (G0 suspects one switch at a time with controls, fixe ... | ?
 - 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for ... | ?
 - QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
@@ -15777,8 +15777,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         Divinity 1 / 2 32 / 64, Expeditions, R.U.S.E., Ryse, Tales 64; tales_dlss is header-only inside Tales);
         warnings = the pre-merge 61 (shared utils deprecations only); helper plain + PROBE / REFERENCE / RECORDER
         builds exit 0; tw_gpu_completion x86 / amd64 PASS, tw_helper_lifetime 25 / 0 each. Pushed atn-mods 01:3x.
-        - [ ] pds2_ (Opus High, worktree, branch pds2_step2) PT DI STEP 2 STARTED 01:3x (resume_1124.md task 2 + Rev 2;
-        checkpoint A = fresh E4 baseline + ContactShade fold + RTXDI copy / found line + credits line) -> coord.
+        - [x] pds2_ CHECKPOINT A DONE (hand-back handoff_plan/handbacks/pds2_step2_checkpointA_handback.md): branch
+        pds2_step2 = 41e0efffc (RTXDI-Library b67f61cd copied into build\downloads\rtxdi\extracted\, 68 files 0 hash
+        mismatches, newest upstream; build.ps1 found / NOT FOUND line; credits.hpp names RTXDI) + ccd0175b1 (ContactShade
+        re-scale folded into a 4-arg ReuseTarget overload). FOLD PROOF: HARNESS_DUMP 47 modes 0 outputs changed (3 NRD
+        bounce outputs differ base vs base = base nondeterminism); E4 rows off 32 runs bit-identical. E4 BASELINE at
+        047d5d86f (36 runs, R = 4): 36913 (ATN) all 0.99961 BIAS, open 0.99946 PASS, boxes 0.99447 BIAS, edge 0.99768
+        BIAS, concave 1.03860 NOISY; 49 all 1.00389, open 0.98527 BIAS, boxes 1.03619 BIAS; night3 lit_boxes 0.98949
+        BIAS, night40 lit_boxes 0.97460 BIAS; x1.03 control fails as it must. Open: h0i_test.py 4 fails that predate
+        this round (ho_gbf_g23's RR 1-ray cap + HitLight seed) -> fixtures in part B; static_checks = the known 5
+        water_reflections comptr; add-on not rebuilt for the credits string; NOT FOUND path not run.
+        - [ ] pds2_ PART B RESUMED 03:1x (G0 suspects one switch at a time with controls, fixes the reference proves,
+        G1 bias correction, REUSE_BOIL u73 / u74, RTXDI GI contest, h0i DIM kinds + the 4 old fixtures, lab cost a side
+        with gate ids, x64 build) -> per-fix merges via coord -> numbers for ATN. Holds build.ps1 / rt_d3d12.hpp (SHaRC
+        depth 4 waits).
         - [x] pdw1_ PT DI STEP 4a DONE (hand-back handoff_plan/handbacks/pdw1_step4a_handback.md; branch
         pdw1_step4a = 01010d235 + ba51ea59d, 6 new files: src/games/twattila/tw_point_light.hlsli +
         test/tw_point_light/*): W1 40 / 40 BIT-EXACT on WARP vs the game's DXBC under fxc AND dxc (98,304 rgba / 73,728
