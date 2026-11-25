@@ -851,7 +851,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- pds2_ PART C SENT 04:0x: find the bright bias that grows with the sample count ( ... | ?
+- pdsr_ (Opus xHigh) STEP 2 REVIEW STARTED 07:0x (branch pds2_step2, 6 commits, me ... | ?
+- ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0 ... | ?
 - 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for ... | ?
 - QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
@@ -15910,10 +15911,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         grows with samples (36913 all 1 ray 0.9996, 8 rays 1.0375, 16 rays 1.0527; HISTORY_PLAIN only halves it) ->
         likely the same cause as the bright residual. RTXDI-less build checked (NOT FOUND, exit 0). h0i 66 / 66 incl.
         the 4 old fixtures; static_checks known 5. No gate ids: the lab env allowlist doesn't pass RENODX_TW_REUSE_*.
-        - [ ] pds2_ PART C SENT 04:0x: find the bright bias that grows with the sample count (history / temporal
-        weight), with SCREEN_NORMAL on as the base; does it explain the edge regression? -> then the default-on fix
-        commits (bug fixes always on) + a candidate-compiled-on build for one lab cost job a side (existing gate lines;
-        no new env) -> review -> per-fix merges. Holds build.ps1 / rt_d3d12.hpp (SHaRC depth 4 waits).
+        - [x] pds2_ PART C DONE (hand-back handoff_plan/handbacks/pds2_step2_partC_handback.md): f01f1a95c (Validate's
+        parts as REUSE_TESTS switches; player DXIL = HEAD's by a WORKING -Fc compare, rt_path_ser.lib_6_9 not compared)
+        + 7d8256e24 SCREEN_NORMAL ON BY DEFAULT (Light Bounce paths only, may_relearn; reflections unchanged; switch
+        removed). E4 (047d5d86f -> fix): 36913 all 0.99961 -> 0.99924, boxes 0.99447 -> 1.00414, edge 0.99768 -> 0.99559,
+        concave 1.03860 -> 0.99500; cfg 49 all 1.00389 -> 0.99680, edge 0.99182 -> 0.97852 NOISY, concave 1.111 -> 1.064;
+        night3 boxes 0.98912 -> 0.99756; night40 boxes 0.97489 -> 1.00811; x1.03 control fails. HARNESS_DUMP: only
+        bounce.bin, only in the 39 ReSTIR GI modes; rec_compare: only bounce / reuse chunks above floor, 0 NaN / Inf; h0i
+        66 / 66; static_checks known 5. COST: G-1125-3 day1_wide total +0.04 ms (9.56 -> 9.60, trace pass +0.02 too =
+        drift?), G-1125-6 night1_low +0.003 ms NO CHANGE (calibrations G-1125-1 / -2 / -4 / -5 PASS). RAY-COUNT BIAS:
+        SCREEN_NORMAL cuts the 16-ray bias ~77 % (1.0527 -> 1.0122); the rest = the light COLOUR Validate writes into
+        the history (KEEP_LIGHT / KEEP_CHROMA / NO_VALIDATE / NO_TEMPORAL remove it; RESCALE / NO_DROP / NO_CUTS /
+        NO_INVALIDITY / NO_CACHE don't); mechanism not explained. KEEP_LIGHT / KEEP_CHROMA darken cfg 49 (~0.985) and
+        night40 boxes (0.987 / 0.983) -> not proven, test switches. G1 + KEEP_LIGHT lands on 36913 + night (boxes 0.998,
+        edge 1.002) but darkens cfg 49 (0.992) = the strongest row candidate for ATN. Edge regression NOT explained.
+        Not done: boil plant on a live texel; rt_path_ser DXIL compare.
+        - [ ] pdsr_ (Opus xHigh) STEP 2 REVIEW STARTED 07:0x (branch pds2_step2, 6 commits, merge-tree clean) ->
+        plan_1117/designs/pt_di_step2_review.md -> fixes -> merge pds2_step2 -> helper build check -> push. Then
+        build.ps1 / rt_d3d12.hpp free (SHaRC depth 4 may start).
+        - [ ] ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0.996, cfg 49 0.992 ->
+        0.979) and the optional row 'G1 + KEEP_LIGHT' (fixes 36913 + night, darkens Own-Sky-off ~1 %).
         - [x] pdw1_ PT DI STEP 4a DONE (hand-back handoff_plan/handbacks/pdw1_step4a_handback.md; branch
         pdw1_step4a = 01010d235 + ba51ea59d, 6 new files: src/games/twattila/tw_point_light.hlsli +
         test/tw_point_light/*): W1 40 / 40 BIT-EXACT on WARP vs the game's DXBC under fxc AND dxc (98,304 rgba / 73,728
