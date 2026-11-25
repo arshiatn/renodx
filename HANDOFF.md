@@ -15778,6 +15778,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         by the CPU page; S5 ep1 ini after the run_1320 snapshot + refusals; S6 battle clock wins; S7 multi-LLC rows.
         -> p2d_ FIX ROUND STARTED 13:5x; M1 / M2 written into l2b_product_design.md section 8 item 5 and sent to c8r_
         (C8 B0 takes them in a short C8 fix round 2).
+        p2d_ FIX ROUND DONE 14:2x (pk2p_main_core_64.md 925 lines; hand-back p2d_fix_round_handback.md): own render
+        state (NO_THREAD / NOT_RENDER / WITH_BATTLE), per-bit core_wanted, RenderCore absent / 0 / 1, identity guard,
+        gates fps +2 % AND window +1 % (+1..+2 % to ATN), census peak 1.29 vs 1.42 (fps E 0..+11 %, center +5 %), P1p
+        after L2B W2 / P1a after PK5-64, pick needs 4 whole cores below (NO_CORE on Zen 2 / Zen+ CCXs). F1 -> c8f_ (B0)
+        + l2b_product_design.md section 8 item 6 (W2 / W3); F2 (ep2 kind, run-folder ini, analyzer checks) -> PK6-64
+        (sent to p6r_). -> p2r_ RE-CHECK STARTED 14:2x. 4 ATN questions held (way A = S2 carries ep2).
         - [x] p6d_ PK6-64 TOOLING + PK4 CENSUS DONE 12:3x (designs\pk6_tooling_64.md, hand-back p6d_design_handback.md):
         PK4-64 MOOT (main waits ~0.26 ms / frame = 1.6 % of main; 32-bit was 11.83 ms); S1 done by Sol; NEW: memcpy
         10.43 % of main (~1.6 ms / frame) -> M2 reopened under PK5-64 (p5d_ told); C10 unpark met -> PK9 stage 2
