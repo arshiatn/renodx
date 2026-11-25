@@ -16144,6 +16144,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         compile-time twin rows into SCENE / MOTION / RENDER_SCALE_READS / flag lists / CAMPAIGN + grass_fade (no
         utils alias), ocean port + WARP equivalence vs TDD's VS, README / About credit (placeholder), x86 + amd64 +
         64-bit builds. addon.cpp reserved for Friday: push before 11-27. -> review -> merge. Owner: tddi_
+        tddi_ DONE (evening): origin/tddi_twins (from 365875500) def0f2609 TDD_TWINS 36 + consteval WithTwins (SCENE 19,
+        MOTION 8, RENDER_SCALE_READS 1, FLAG PS / MS 1 + 1, CAMPAIGN 1, grass_fade 13) + DistinctHashes static_asserts;
+        5c6f22765 ocean: 3 land-sink lines under #ifndef OCEAN_KEEP_OVER_LAND (#else passes the blended height),
+        motion_ocean_tdd / motion_draw_ocean_tdd wrappers, MOTION row 0xF80C6EEE; 236eeb00b About + README credit
+        ('The Dawnless Days (TDD) team: thanks for permission to build on their shaders.' ATN to confirm). Tests
+        (scratch tddi_): twins_check ALL PASS + swapped-twin control fails; helper_check compile controls fail as
+        they must; ocean WARP test TDD VS vs ours bit for bit (1024 land / sea / off-map, 2 times), vanilla bit for
+        bit, plain-twin control differs 1024 / 1024 land; vanilla .cso / .h byte-identical. Builds x86 + amd64
+        (ATTILA64) exit 0, 61 warnings = baseline. Open: make_wind_motion_vs.py would drop the hand guard on
+        regeneration; 0x702B83B7 (TDD MSAA shadow analysis) no render-scale row (never drawn in a trace). -> tddr_
+        REVIEW (Opus xHigh) STARTED -> mod_shaders\tddi_review.md -> fix -> merge before 11-27.
         - [ ] TDD RUN CHECKS (needs a TDD game run, ATN's OK): create-time patcher counts in ReShade.log on TDD's
         bytes; whether TDD's new values (rain gloss, near-leaf cull, billboard cull band) are ever set (named
         nowhere in empire.retail.dll / TDD packs); MSAA shadow-analysis PS 0x702B83B7 has no render-scale entry.
