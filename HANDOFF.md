@@ -374,6 +374,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, lin ... | ?
 - NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
 - gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
+- ATN: the deadline softening 'doesn't make sense' (a stop forces us to find the c ... | ?
 - (2) DEFAULT CAP: a command without a price history runs under budget.py watch's ... | gtb_
 - ATN: PROPOSED block rows: T16 (block -Stop until gtl_'s owner fix; coord's view: ... | ?
 - CRASHES CLOSED WITHOUT A PITFALL ROW (pfx_'s list): F31 / ecr_ exit race ('the d ... | ?
@@ -3521,6 +3522,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         rows). cxx / spec / shell / cite / web / price keep LOGGING, never refuse. gates.tsv has only on / off per gate
         (mode.txt global) -> gte_ told: stage26 adds a per-gate shadow value + tests + ATN's steps. Forge deadline
         rule softened the same night: past 2x the agent sends a status and KEEPS GOING unless the coord stops it.
+        ATN 11-25 ~20:3x: 'only do a strict gate for nsight only' -> gte_ told: ENFORCE = Nsight rows only (ngfx rules,
+        Nsight trace / capture / reference deletes, Nsight GPU-lock rows, Nsight rule-line rows); every other row incl.
+        the other block rows + protected files LOGS only. gte_ lists the exact row ids in its hand-back.
+        - [ ] ATN: the deadline softening 'doesn't make sense' (a stop forces us to find the cause). Coord's proposal:
+        at 2x the agent STOPS AT A SAFE POINT (finish the running command, free the GPU lock, commit / resume note,
+        hand back with the cause), never a kill; the coord resumes it (SendMessage keeps its context) only with a
+        written reason in agent_times.tsv; every overrun gets a cause (estimate -> new number, tool -> fix + pitfall
+        row, lock wait -> gtl_); GPU-lock waits counted apart; single commands get a hard timeout. Owner: ATN, coord
       - [x] FORGE'S 5 (ATN 11-25 21:xx 'Yes, all 5'): (1) briefs cite tools\tw\round_notes\agent_times.tsv (seeded:
         nsr_, cdr_, pdi3_, pdi5_, pdi4c_, bal3_) + a 2x deadline; past it the agent stops and reports; (2) no untimed
         commands; (3) a time per step in every hand-back; (4) a crash closes only with producer -> consumer chain +
@@ -16079,6 +16088,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         it merges; pds2_ is LAB-ONLY: Balanced numbers (running) -> 3a fog reuse reference -> 3b G1 Raytraced cost
         -> the affected-gate list; code fixes it finds become boxes.
         - [ ] PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twattila builds). Owner: pdi3_
+        pdi3_ HAND-BACK 11-25 20:2x (handoff_plan\handbacks\pdi3_handback.md; 200 min incl. GPU-lock waits): branch
+        pdi3_step3 = f23d665ca (T2 ReGIR + T1 traced torch light), 3cfde60e7 (RTXDI-less: #define TorchLight LocalLights
+        = byte for byte), ceecd4b84 (T1 in twins rt_lights_torch / rt_lights_bounce_torch + _omm under TORCH_IRRADIANCE,
+        all-or-none Init block + one SetPipelineState choice; plain rt_lights* now without PATH_REGIR). GATES DONE:
+        registers plain rt_lights_omm 56 = base (f23d665ca had 64 / occupancy 72 -> 64 %, fixed by the twins), twin 56 @
+        65 %; byte identity plain headers = e52ec9e28, RTXDI-less 60 + 73 lab identical; h0i_test 72 / 72; rec_compare
+        17 / 17 in floor. E4: 3 lights 0.997 = base, 29 0.996 = base, 128 lights 0.981 SHaRC off / 0.989 on vs base 0.996
+        (base measured vs a 32-light reference -> not directly comparable; possible 1-2 % dark bias; T1 stored RGBA16F
+        -> check against G16 f16 rounding). OPEN: rt_sharc_update local memory 42.5 vs 20.7 MB in one trace (A/A repeat
+        stopped for pdi5_'s window); seen-route T2 noise (position-only seed); probe does not exercise SHaRC; L2 lead
+        (prepared light may lack torch light without PT Ambient); report file write refused -> report_check exit 2,
+        the hand-back is the report. LEFT: testbin\scratch\pdi3_\pdi3_chain_final2.ps1 (offc control, E4 on ceecd4b84,
+        new2 plays, all_modes on e52ec9e28 + ceecd4b84, 8 lab cost jobs, Nsight A/A) after 'pdi3_ resume'. pdi4c_ must
+        rebase onto ceecd4b84 (its di arm joins the same SetPipelineState line).
         ATN 11-25 evening ('maybe they don't change the same lines / functions ... so we could speed up'): same file
         allowed when the FUNCTIONS don't overlap (owner map in both briefs; the second to merge rebases + reruns gates).
         - [ ] PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbours, G7 report): pdi5_ (Opus
