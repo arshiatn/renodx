@@ -15738,6 +15738,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         state + per-bit core_wanted in B0, R-S1 float bounds, R-S2 pending notes proven in F7 / PD, R-S3 one writer order,
         R-S4 page-3 assignment stays in addon.cpp, R-S5 Sol's exact comparisons in start_files. -> c8f_ FIX ROUND 2
         STARTED 14:0x.
+        c8f_ FIX ROUND 2 DONE 14:3x (c8_wave2_plan.md 929 lines; hand-back c8f_fix_round2_handback.md): all 3 Musts,
+        5 Shoulds, 4 nits + PK2P F1 in B0 (render word own error bits 24-31, 6 CoreState values, INI_RENDER_CORE,
+        CORE_WANTED_DEFAULT = CORE_BATTLE); T0 one time-order builder for :629-633 and :919; orders = map 3.3; page 3
+        assigned inside addon.cpp (settings_pages.hpp untouched). -> c8r_ RE-CHECK 2 STARTED 14:3x.
         - [x] BINDING WRITER ORDER 14:0x (coordinator): cpu_plan_64_map.md section 3.3 = one order for every design
         (plugin_block.h = C8 B0 only for v2; plugin main.cpp / hooks.hpp: B0 -> L2B W2 -> PK2P P1p -> C8 W1p..W4p -> PK5-64
         -> PK9 -> PK8; addon.cpp: C8 B0a -> L2B W3 -> C8 W1a..W4a -> PK1-64 -> PK5-64 -> PK2P P1a -> PK9 A3 -> PK8, CP
