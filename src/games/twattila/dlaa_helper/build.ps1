@@ -51,7 +51,8 @@ Dxc -nologo -T cs_6_9 -E main -O3 @regir -D REFLECT_RESERVOIR -D OPACITY_MICROMA
 # (TORCHES_IN_BOUNCE: the reuse with a local light's sample a bounce texel, the local lights' trace that leaves them to it)
 # Lean Reuse (REUSE_LEAN: the reuse's neighbours with fewer fetches), Near Reuse (REUSE_NEAR: fewer, nearer neighbours),
 # the reflections of one sample a pixel (REFLECT_ONE_SAMPLE) and the paths of one ray a texel (PATH_ONE_SAMPLE): the same
-# picture in fewer registers; Balanced ReSTIR Light's reuse (REUSE_BALANCED: G1 Basic) as each of the four reuse builds.
+# picture in fewer registers; Balanced ReSTIR Light's reuse (REUSE_BALANCED: G1 Basic, or Raytraced
+# by its constants) as each of the four reuse builds.
 # RENODX_TW_REFERENCE_BUILD set: ReSTIR GI's test switches' too (REUSE_TESTS: the paths and the
 # reuse with PT DI step 2's suspects and bias correction, rt_path.hlsli REUSE_SUSPECTS; tests only, a player's helper has none).
 $variants = @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'), @('rt_lights', 'TORCHES_IN_BOUNCE', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'),
