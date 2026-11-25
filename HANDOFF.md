@@ -15844,6 +15844,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         Stage 2: C06 0x34aceff parked (H24), C08 moot while parallel, C09 0x349bf7c, C10 to Sol, C01 9 / 12 not needed.
         Risk: PerfFix's sound crash guard vs sound calls from task threads. 6 ATN questions held for the list.
         -> p9r_ REVIEW (Opus xHigh) STARTED 13:3x -> designs\pk9_design_review.md.
+        p9r_ REVIEW 15:2x: GO WITH CHANGES (hand-back p9r_review_handback.md): route A right, no battle-state contact
+        holds. M1 Automatic L1 NOT done by Sol (ATN said yes): own line, per-frame write via the live slot (Sol's OK) or
+        an offer; M2 N5 = a CRASH (Sol's abort() box, exit 3), not a hang: fix in the census + Sol note; M3 start #2 on
+        S-A at probe full, no WPR. S1 gain terms missing (forks / joins, convoy, terrain lock), S3 C10 offer only, S6 CP
+        loader gate (added to c8_wave2_plan.md), S8 N13 nested wait deadlock + ATTILA_POKE bypass. -> p9d_ FIX ROUND
+        STARTED 15:2x.
         - [x] p1d_ PK1-64 UPLOADS DESIGN DONE 13:3x (designs\pk1_uploads_64.md, hand-back p1d_design_handback.md): FCU
         default On on the port only after an offline T-test (tw_injection_buffers case 8 -Hardware; bytes identical;
         E +0.35..+1 % fps; ~540 ReShade pushes / frame gone); FDW hidden + forced off on the port (Sol's device never
