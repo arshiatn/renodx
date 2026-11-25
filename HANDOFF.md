@@ -873,7 +873,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BALANCED RAYTRACED CHOICE: bal3_ (Opus High, worktree, branch bal3_raytraced) ST ... | ?
 - bal3_ route-b cost numbers (after 'bal3_ resume') -> review (Opus xHigh) -> merg ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
+- pd3r_ STEP 3 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step3 ... | ?
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
+- pd5r_ STEP 5 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step5 ... | ?
+- PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row ... | ?
 - PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
 - U6 PART 1 MERGE (origin/u6f_fog bc623e2d3) together with part 2. Owner: coord (a ... | coord (after steps 3 + 5)
@@ -3641,8 +3644,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         time stays (numbers must be measured alone). Owner: gtl_ (lab), next tooling slot
         pdi5_ GPU DONE 21:14 (last session closed itself, lock freed). GPU ORDER, one owner at a time, each sends
         '<prefix> GPU done' when its last GPU job ends (no contention = no 22.5 s give-ups): 1 pdi3_ chain_final2
-        (step 3 merge blocker, RESUMED 21:2x) -> 2 coord R2 -> R3 -> R4 Nsight smoke (~15 min) -> 3 pdi4c_ r2 chain
-        -> 4 bal3_ lab_b jobs 03-12 + all_modes_check -> 5 d11 replay self test on the 5090 (after d11v_).
+        (step 3 merge blocker, RESUMED 21:2x) -> 2 pdi5_ leftovers (f16 all_modes_check + rec_scan, G4 timing-total
+        row, G5 night3) -> 3 coord R2 -> R3 -> R4 Nsight smoke (~15 min) -> 4 pdi4c_ r2 chain -> 5 bal3_ lab_b jobs
+        03-12 + all_modes_check -> 6 d11 replay self test on the 5090 (after d11i_'s fix round).
       - [ ] CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO BUNDLING: 'don't bundle or
         repackage my mods with yours'; players get the engine fix / Flag Wave from his Steam / Nexus page (self-update).
         We don't: 32-bit heapfix = own use only; PerfFix 64 = optional, his package (port_plan.md install step 3); flag
@@ -16177,6 +16181,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         the hand-back is the report. LEFT: testbin\scratch\pdi3_\pdi3_chain_final2.ps1 (offc control, E4 on ceecd4b84,
         new2 plays, all_modes on e52ec9e28 + ceecd4b84, 8 lab cost jobs, Nsight A/A) after 'pdi3_ resume'. pdi4c_ must
         rebase onto ceecd4b84 (its di arm joins the same SetPipelineState line).
+        - [ ] pd3r_ STEP 3 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step3_review.md -> fix round
+        (with chain_final2's findings) -> merge first. Owner: pd3r_, pdi3_
         ATN 11-25 evening ('maybe they don't change the same lines / functions ... so we could speed up'): same file
         allowed when the FUNCTIONS don't overlap (owner map in both briefs; the second to merge rebases + reruns gates).
         - [ ] PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbours, G7 report): pdi5_ (Opus
@@ -16189,6 +16195,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner map addition 17:xx: rt_reference.hlsli RefRouteIncoming's light count -> pdi3_ ((T2 on) ? 128u : 32u, so
         E4 night40 is not biased by construction); the GI contest's RAB block (REUSE_RTXDI / _PACK) stays untouched
         (no T2 define in the contest builds).
+        pdi5_ DONE 11-25 21:3x (handoff_plan\handbacks\pdi5_handback.md; 272 min incl. 95 waiting): pdi5_step5 =
+        ab5432a79 G2 pairwise MIS (test switch RENODX_TW_REUSE_BIAS=3, REUSE_TESTS builds; DIM_REUSE_OWN + 1u), bbf51c3ff
+        v32 lift (lab), 0654684a2 rt_path_flags@<kind> lab field, ed3aed117 + 2b7124571 G5 Matched ReSTIR Neighbours
+        (RT_RESTIR_COMPATIBLE, own Balanced twin, reach 6 texels), 32fcc2f72 F16 BUG FIX (F32ToF16Nearest in rt_path.hlsli,
+        StoreReservoir GI + Reflection Reuse; D3D11.3 3.2.2: float conversion rounds toward zero -> stored-every-frame
+        light drifts darker; 12 / 47 DXIL change, h0i 67 / 67), d14e64525 G4 compact reservoirs 24 B / texel
+        (RT_RESERVOIR_COMPACT, committed 0; RGB9E5 light, sqrt W half to nearest, 8+8 oct normals; other-layout history
+        starts empty). E4: G2 worse than G1 on every row (day c49 0.9846 vs 0.9915) -> test switch only; G5 at 6
+        texels = Near or nearer (c83886129 0.98999 vs 0.98920), +0.11 ms reuse [G-1125-58 / -61] -> opt-in, not default;
+        f16 fix c49 0.98417 -> 0.98450; G4 nearest 0.98451 vs off 0.98417 (truncated controls fail darker), cost
+        -0.09 day / -0.17 night reuse [G-1125-81 / -84]. G7: no positive frame-to-frame feedback; knobs don't move
+        bounce stats. v32 lift controls PASS (B2 was a bad control; B5 / B3 used). report_check exit 0.
+        COORD CALLS: f16 fix ON (bug fix); G4 -> 1 by the 'faster + same picture = on' rule, AFTER a lab timing-total
+        row ('timing': 'total') confirms total <= off; G5 opt-in; G2 test only. LEFT (pdi5_'s GPU turn, item 2 of the
+        order): all_modes_check + rec_scan for 32fcc2f72, the G4 timing-total row, G5 6-texel night3. pdi5_ also ran
+        gpu_lab -Stop 7 times 19:03-19:35 (T16) -> removed from pdi5_lab_br.ps1.
+        - [ ] pd5r_ STEP 5 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step5_review.md -> fix round ->
+        merge after step 3. Owner: pd5r_, pdi5_
+        - [ ] PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row from 'suspected' + add
+        'run a rotation in the same session as its calibration' (next pitfall pass). Owner: coord
         - [x] PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ReGIR presample are
         pushed; then a 4c implementer starts on that commit (new DI pass files, LIGHTS_DI functions, the harness's
         synthetic light surface) and merges after step 3. Owner: coord (start at the checkpoint)
