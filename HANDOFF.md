@@ -881,7 +881,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
 - d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
 - FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | ?
-- d11v_ CODE + SCRIPT REVIEW (Opus xHigh) of d11i_lane_i + d11_capture64.ps1 -> fi ... | d11v_, coord
+- d11i_ FIX ROUND (RESUMED 21:2x): M-1, M-2, S-1..S-6, S-9, S-10 (bug fix, always ... | ?
 - 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU wi ... | coord
 - ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ?
 - CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | ?
@@ -16368,7 +16368,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         builds, needs < 32 GB). NOT DONE: 5090 replay self test (GPU-lock commit guard refused it during builds).
         Two stuck processes (replay.exe 36264, dump_s2_d11i.exe 22080; access denied, 0 CPU / 0 MB) hold scratch
         exes until a reboot: harmless.
-        - [ ] d11v_ CODE + SCRIPT REVIEW (Opus xHigh) of d11i_lane_i + d11_capture64.ps1 -> fix round -> merge. Owner: d11v_, coord
+        - [x] d11v_ CODE + SCRIPT REVIEW (Opus xHigh) of d11i_lane_i + d11_capture64.ps1 -> fix round -> merge. Owner: d11v_, coord
+        d11v_ 'GO after fixes' 11-25 21:20 (handoff_plan\handbacks\d11v_review_handback.md; 31 min, read-only):
+        player safety OK with the env unset (nothing registered, atomic loads only, shader bytes same). MUST (dump
+        only): M-1 exit crash (joinable std::thread in a static State, pass_dump.hpp:169 / :1081; addon.cpp:3417-3424
+        never detaches on the 64-bit port -> std::terminate -> WER) -> detach like dlaa_bridge.hpp:703; M-2 no camera
+        lines before C1 (SSS off in the fresh ini, day1 may have no SSR) -> wasted day1 start. SHOULD: S-1 free space
+        150 GB + dump size; S-2 errors still write done.txt; S-3 blob sizes; S-4 DEPTH_STENCIL created with initial
+        data -> ssr events skipped and --exact still passes; S-5 dump root by date only; S-6 two untimed waits; S-7 x86
+        BC readback (not 64-bit); S-8 no draw-hosted replay; S-9 race rule per channel vs design per pixel; S-10 three
+        light_bounce upload failures 'return {}' mid-pass (game draw runs again with our state half changed); S-11
+        uses.tsv misses VS SRVs + PS OM UAVs (dead_outputs could call a live resource DEAD); S-12 no 5090 self test;
+        S-13 Uninstall repeats Stop; NITs CXX_STYLE. ac542aaa9 NAME fix = right fix (settings.hpp:60).
+        - [ ] d11i_ FIX ROUND (RESUMED 21:2x): M-1, M-2, S-1..S-6, S-9, S-10 (bug fix, always on, check if player
+        code), S-11, S-13, NITs; later S-7 / S-8; S-12 = GPU order item 5 -> d11v_ diff re-check -> merge. Owner: d11i_, d11v_
         - [ ] 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU window. Owner: coord
         - [ ] ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set keys, folders, SendInput
         E / A / D + wheel only with the game in front) are in d11i_handback.md 'Rule lines' / 'OKs'. Owner: ATN
