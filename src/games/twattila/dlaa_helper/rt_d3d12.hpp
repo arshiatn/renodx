@@ -4035,15 +4035,15 @@ class RtScene12 {
         Mark(list, L"path tracing");
         // With Path Tracing SER (bridge v18) the paths' ray generation shaders.
         const bool ser = path_ser_ && version >= 18 && (requested & dlaa_bridge::RT_PATH_SER) != 0;
+        // ReSTIR GI's suspects or bias correction asked (tests): the compute paths' and the reuse's REUSE_TESTS builds (not
+        // with SHaRC; with SER the same picture). Declared before the probe's branch, which takes the chain below as its else.
+        const bool reuse_suspects = reuse && path_tests_pipeline_ && (reuse_tests & REUSE_SUSPECT_BITS) != 0;
 #if defined(RENODX_PATH_PROBE)
         if (path_traced && constants.probe_mode != 0) {
           list->SetPipelineState(path_probe_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
         } else
 #endif
-        // ReSTIR GI's suspects or bias correction asked (tests): the compute paths' and the reuse's REUSE_TESTS builds (not
-        // with SHaRC; with SER the same picture).
-        const bool reuse_suspects = reuse && path_tests_pipeline_ && (reuse_tests & REUSE_SUSPECT_BITS) != 0;
         if (path_traced && reuse_suspects && !sharc) {
           list->SetPipelineState(path_tests_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
