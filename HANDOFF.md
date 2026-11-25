@@ -375,7 +375,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
 - gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
 - gpr_ + gtw_ RE-CHECK stage26 (Opus xHigh, read-only + tests) -> GO / fixes. Owne ... | gpr_, gtw_
-- ATN: (a) T04 split (recordings log only) or keep recordings enforced under T04 ( ... | ?
 - gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a ... | ?
 - REVIEW ~12-09 (ATN: 'after a while we decide if we even need the 2x stop'): coun ... | ?
 - (2) DEFAULT CAP: a command without a price history runs under budget.py watch's ... | gtb_
@@ -3544,10 +3543,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         here-string fault. Tests 1557 / 1557 (live 1506 / 1506). Optional split: recordings out of T04 into T18
         (log only). ATN's steps = gte_handback.md section 5 (wave boundary, after gpr_ + gtw_ GO).
         - [ ] gpr_ + gtw_ RE-CHECK stage26 (Opus xHigh, read-only + tests) -> GO / fixes. Owner: gpr_, gtw_
-        - [ ] ATN: (a) T04 split (recordings log only) or keep recordings enforced under T04 (coord: KEEP, it is your
+        - [x] ATN: (a) T04 split (recordings log only) or keep recordings enforced under T04 (coord: KEEP, it is your
         32-bit backup and no real work deletes it); (b) 'files' + 'override' rows shadow or keep refusing (coord:
         KEEP refusing: in shadow an agent could edit the rows and lift the Nsight block; they only refuse edits of the
         gate's own files). Then section 5 at a wave boundary. Owner: ATN
+        ATN 11-25 ~21:0x: 'Yes, keep both' -> FINAL CONFIG: NO T04 / T18 split (skip the last two Copy-Items of
+        step 1: proposed block_rows.tsv + tooling.tsv), and step 3 WITHOUT the 'files' + 'override' shadow lines (they
+        keep refusing). Enforced: T01, T04 (incl. recordings), T09, files, override; all else logs. gpr_ + gtw_
+        (STARTED 20:5x, Opus xHigh) told to check this config; then the coord gives ATN the final step text.
+        d11v_ (lane I review, Opus xHigh) STARTED 20:5x.
         - [ ] gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a non-leading cd); spec
         gate on scratch files; web list gaps (44 research hosts); agent rules (gte_handback section 4) into briefs.
         Owner: gtp_, coord
