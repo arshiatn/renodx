@@ -846,6 +846,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
+- U6 PART 1 MERGE (origin/u6f_fog bc623e2d3) together with part 2. Owner: coord (a ... | coord (after steps 3 + 5)
 - U6 PART 2 MUSTS (u6f_part1_review.md): P1 FOG_HISTORY = shade ran last trace at ... | ?
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
 - d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
@@ -15940,6 +15941,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         fixed -0.29 % / 1.82 sigma, as-built control -39.99 % at 3550 sigma; N4 / N5). Define-off bytes identical;
         helper build exit 0, headers = baseline; run PASS. u6f_'s own correction: part 1's 'no alloca' used a wrong
         pattern. N6 (SetBit fold) waits for pdi4c_'s rt_light_tiles.hlsli. -> u6r_ RE-CHECK STARTED.
+        u6r_ RE-CHECK: MERGE (u6f_part1_review.md '## Re-check 11-25'; hand-back u6r_recheck_handback.md): M1 covers
+        every domain, S6's control = the as-built path, 0 allocas in all 4 builds (own compiles), define-off bytes =
+        066cfa2eb, run PASS, merge-tree clean vs atn-mods 4fe67c80d / pdi3 / pdi4c / pdi5 / bal3. Merge timing: WITH
+        PART 2 (plan order; early merge would be harmless). Part 2 also: gate S5's M-share control (now info only,
+        -13 % at 176 sigma); N6 SetBit fold after pdi4c_; a u84 filler if pdi4c_ leaves it unused.
+        - [ ] U6 PART 1 MERGE (origin/u6f_fog bc623e2d3) together with part 2. Owner: coord (after steps 3 + 5)
         SLOTS CLAIMED (coord): fog u85-u86 reservoirs, u87-u88 sun history (UAV table contiguous from u10; pdi3_
         u75-76, pdi4c_ u77-u84 with u84 reserved; part 2 adds one filler if u84 stays unused).
         - [ ] U6 PART 2 MUSTS (u6f_part1_review.md): P1 FOG_HISTORY = shade ran last trace at this size AND
