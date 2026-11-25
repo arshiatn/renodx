@@ -480,7 +480,7 @@ int main(int argc, char** argv) {
   };
 
   std::array<Pass, 4> passes;
-  const std::array<const wchar_t*, 4> files = {L"rt_di_initial.cs_6_5.hlsl", L"rt_di_temporal.cs_6_5.hlsl", L"rt_di_spatial.cs_6_5.hlsl", L"rt_di_shade.cs_6_5.hlsl"};
+  const std::array<const wchar_t*, 4> files = {L"rt_di_initial.hlsl", L"rt_di_temporal.hlsl", L"rt_di_spatial.hlsl", L"rt_di_shade.hlsl"};
   for (size_t pass = 0; pass < passes.size(); ++pass) CHECK(make_pass(files[pass], &passes[pass]));
   std::printf("compiled: rt_di_initial, rt_di_temporal, rt_di_spatial, rt_di_shade (PATH_DI, PATH_REGIR)\n");
   uint32_t bias_rays = 0;

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Path-Traced Torch Light's initial sampling (PT DI step 4c; rt_di_initial.cs_6_5.hlsl runs it a pixel a thread, unified
+// Path-Traced Torch Light's initial sampling (PT DI step 4c; rt_di_initial.hlsl runs it a pixel a thread, unified
 // PT's primary pass can call the same): RTXDI's streamed RIS over the pixel's tile's listed lights, uniform candidates
 // (min(listed, DI_CANDIDATES) of them, source pdf 1 / listed), the target the game's light (rt_di_surface.hlsli DiTarget),
 // then the pick's visibility ray (an invisible pick discarded, its M kept: RTXDI's enableInitialVisibility). After
