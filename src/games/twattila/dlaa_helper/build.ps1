@@ -166,10 +166,11 @@ foreach ($variant in $compatible) {
 # Path-Traced Torch Light (PT DI step 4c): rt_lights' LIGHTS_DI build (the tiles' members, the DI pixels' words), its
 # twin with T1 (rt_lights_di_torch), both with Torch and Fire Shadows from the Light Bounce (rt_lights_di_bounce,
 # rt_lights_di_bounce_torch), and the DI passes (PATH_DI: rt_di_initial, rt_di_temporal, rt_di_spatial, rt_di_shade),
-# each with its OMM twin.
-$di_builds = @(@('rt_lights', 'LIGHTS_DI', 'rt_lights_di', 'RT_LIGHTS_DI'), @('rt_lights', 'LIGHTS_DI TORCH_IRRADIANCE', 'rt_lights_di_torch', 'RT_LIGHTS_DI_TORCH'),
-               @('rt_lights', 'LIGHTS_DI TORCHES_IN_BOUNCE', 'rt_lights_di_bounce', 'RT_LIGHTS_DI_BOUNCE'),
-               @('rt_lights', 'LIGHTS_DI TORCHES_IN_BOUNCE TORCH_IRRADIANCE', 'rt_lights_di_bounce_torch', 'RT_LIGHTS_DI_BOUNCE_TORCH'),
+# each with its OMM twin. The passes' files are plain .hlsl: the add-on's CMake glob builds every *.cs_6_5.hlsl here,
+# without RTXDI's include path (rt_path_ser.lib_6_9.hlsl's way).
+$di_builds = @(@('rt_lights.cs_6_5', 'LIGHTS_DI', 'rt_lights_di', 'RT_LIGHTS_DI'), @('rt_lights.cs_6_5', 'LIGHTS_DI TORCH_IRRADIANCE', 'rt_lights_di_torch', 'RT_LIGHTS_DI_TORCH'),
+               @('rt_lights.cs_6_5', 'LIGHTS_DI TORCHES_IN_BOUNCE', 'rt_lights_di_bounce', 'RT_LIGHTS_DI_BOUNCE'),
+               @('rt_lights.cs_6_5', 'LIGHTS_DI TORCHES_IN_BOUNCE TORCH_IRRADIANCE', 'rt_lights_di_bounce_torch', 'RT_LIGHTS_DI_BOUNCE_TORCH'),
                @('rt_di_initial', 'PATH_DI', 'rt_di_initial', 'RT_DI_INITIAL'),
                @('rt_di_temporal', 'PATH_DI', 'rt_di_temporal', 'RT_DI_TEMPORAL'), @('rt_di_spatial', 'PATH_DI', 'rt_di_spatial', 'RT_DI_SPATIAL'),
                @('rt_di_shade', 'PATH_DI', 'rt_di_shade', 'RT_DI_SHADE'))
@@ -177,8 +178,8 @@ foreach ($di in $di_builds) { Remove-Item "$out\$($di[2]).h", "$out\$($di[2])_om
 if ($rtxdi_found) {
   foreach ($di in $di_builds) {
     $defines = $di[1].Split(' ') | ForEach-Object { '-D', $_ }
-    Dxc -nologo -T cs_6_5 -E main -O3 @regir @defines -Fh "$out\$($di[2]).h" -Vn $di[3] "$PSScriptRoot\$($di[0]).cs_6_5.hlsl"
-    Dxc -nologo -T cs_6_9 -E main -O3 @regir @defines -D OPACITY_MICROMAPS -Fh "$out\$($di[2])_omm.h" -Vn "$($di[3])_OMM" "$PSScriptRoot\$($di[0]).cs_6_5.hlsl"
+    Dxc -nologo -T cs_6_5 -E main -O3 @regir @defines -Fh "$out\$($di[2]).h" -Vn $di[3] "$PSScriptRoot\$($di[0]).hlsl"
+    Dxc -nologo -T cs_6_9 -E main -O3 @regir @defines -D OPACITY_MICROMAPS -Fh "$out\$($di[2])_omm.h" -Vn "$($di[3])_OMM" "$PSScriptRoot\$($di[0]).hlsl"
   }
 }
 # The reference build's RTXDI GI contest (RENODX_TW_REUSE_RTXDI; rt_path.hlsli RtxdiPackTexel, ReuseTexel with REUSE_RTXDI).
