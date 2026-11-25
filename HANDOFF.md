@@ -916,6 +916,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
 - pdm1_ DESIGN (Opus xHigh, read-only, STARTED 23:3x, est 30 / deadline 60): pt_di ... | ?
+- FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a v ... | ?
+- nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guid ... | ?
+- rpg_ ReSTIR PG DESIGN (ATN 11-25 ~23:4x 'can we design it now or wait?'; coord: ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
@@ -16939,6 +16942,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         with DI on (rows / tooltips), code sites + owners (step 3 rt_path vs 4c), cost, tests (energy DI on vs off at 3
         / 29 / 128 lights + controls for double and missing light), risks. -> pdi4c_ implements on _r3 AFTER its rebase,
         BEFORE its GPU turn; its GPU turn adds mode 1 runs. Owner: pdm1_, then pdi4c_
+        pdm1_ told 23:4x: 2.9a must also hold in the UNIFIED mode (unified_pt.md sections 3, 4.4, 4.5; bounce = GI
+        stream there) -> a 'unified' paragraph.
+        - [ ] FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a variant build (text
+        substitution, no new env var) with one rt_di_spatiotemporal pass (RTXDI_DISpatioTemporalResampling, same
+        RAY_TRACED bias, neighbours, M cap, translation, previous surface; DRY setup) in place of temporal + spatial;
+        code ~30 / 60 min on _r2 (moves with the rebase). GPU turn adds split vs fused: cost day + night 3 / 29 / 128
+        lights + DI passes' Nsight ms, E4 / E6 + per-texel noise; fused default only if cheaper with E4 in base CI and
+        noise no worse. Owner: pdi4c_
+        - [ ] nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guides and sdks for all of
+        our RT/PT stuffs? how do they work with our unified PT?'; Opus xHigh, read-only, STARTED 23:4x, est 45 /
+        deadline 90): plan_1117\nv_speedups.md = every NVIDIA-documented speed-up for RT shadows / AO / GI / PT bounce
+        / SHaRC / reflections / fog / DI / OMM / SER / AS builds / RR / NRD / D3D12: used or not (V / U), gain, look
+        risk, unified fit, owner; top 10 with gates; unified PT conflicts; 'NVIDIA says don't' list. Owner: nvs_, coord
+        - [ ] rpg_ ReSTIR PG DESIGN (ATN 11-25 ~23:4x 'can we design it now or wait?'; coord: design NOW, build after
+        unified U3, because PG's needs must go into U3's reservoir layout before U3 is built; Opus xHigh, STARTED
+        23:4x, est 60 / deadline 120): downloads zeng2025 into tools\refcode\papers\restir_pg_1125\ (untrusted, own
+        implementation unless a licence allows code) -> plan_1117\designs\restir_pg.md: streams guided, guide data +
+        VRAM, MIS with Lambert / vMF, RR temporal behaviour (no coverage flicker, no feedback boiling), U3 REQUIREMENTS
+        addendum (coord merges into unified_pt.md), cost + gates + row, build steps after U3, risks, <= 2 ATN Qs.
+        Then an Opus xHigh review. Owner: rpg_, coord
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
