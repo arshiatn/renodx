@@ -846,7 +846,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - src/games/backup.zip is TRACKED in atn-mods (rvs_): keep or remove? (deletion = ... | ATN
 - PARITY LEDGER LINES for the waiting rows (Directional Light Bounce; PT Reflectio ... | ?
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
-- rtp_ REVISION 1 (M1-M8 + SHOULDs) -> the exact rule-line list for ATN + the run ... | ?
+- RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
+- 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - TDD TWINS + OCEAN PORT: tddi_ (Opus High, worktree, branch tddi_twins) STARTED: ... | ?
@@ -16053,8 +16054,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         helper edit is in pdi3_'s rt_scene.hlsli); M7 the trace line can't answer 4b's stencil (no view formats /
         stencil func) + dyn_census ib; M8 Flag Wave / 1212: all rigidcommon props lost, run folders have no packs\ ->
         pin the loader line, C4 RT coverage gate, release note. -> rtp_ REVISION 1 (resumed) STARTED.
-        - [ ] rtp_ REVISION 1 (M1-M8 + SHOULDs) -> the exact rule-line list for ATN + the run list after PT DI.
+        - [x] rtp_ REVISION 1 (M1-M8 + SHOULDs) -> the exact rule-line list for ATN + the run list after PT DI.
         Owner: rtp_
+        rtp_ REV 1 DONE (evening; rt_port_64.md '## Revision 1', R1.9 steps / R1.10 runs replace sections 6-7;
+        hand-back designs\rtp_design_handback.md): all 8 MUST / 11 SHOULD / 9 NIT answered. S5a split (row + flush
+        ask vs batching = registered + last pack on the draw thread), truth-table test + rt_core applied line in
+        E64-rt / absent in E64-rtnb; R2's first start E64-dlaa = DLAA 100 %, FG + RR off, DLSS stop rule (else C1
+        first); clocks named (battle clock for markers / kill / quit at s 115; first-present for settings), no
+        mid-run switches; helper set staged per start + checked gone, by parent PID + path; trace line gains
+        stencil func / ops, dsv ro, view formats, ib, vb15; 1212 flag-pack line pinned, C4 RT coverage gate. Own
+        finds: PT DI row = RayTracedTorchDi; DLAA = AntiAliasingDlssMode=0; no lowdef point light in 326 32-bit
+        files. Runs: R1 (no helper, ~3 x 5 min), R2 (5 starts, ~26 GB), R2Kill (before release), R3 (after 4b).
+        COORD: cpu_plan_64_map 3.3a addendum written (slots: tddi_ before 11-27; rtp_ S5a / S5b / 4b S8 at the
+        chain's tail, no gap; a64_ab S1 after PK8 PROBE_LINES; rt_core / rt_scene after bal3_). Q3 decided: no DI
+        for lowdef lights, no v33 (pdi4c_ told). Q5 R2Kill before release: yes.
+        - [ ] RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryRun twins, dyn_census,
+        tw_attila64_present / tw_rays_captures run.ps1) in rtp_design_handback.md; ATN pastes them when the runs
+        come (after PT DI), or the a64_ab wildcard from proposed_rules_1125.md. Owner: ATN (at run time)
+        - [ ] 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt_di_light[0 / 1]) at
+        dlaa_helper/main.cpp ~:1112 (no other branch touches main.cpp), own commit + handle-leak test. Owner: pdi4c_
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
