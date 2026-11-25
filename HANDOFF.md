@@ -377,6 +377,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gpr_ + gtw_ RE-CHECK stage26 (Opus xHigh, read-only + tests) -> GO / fixes. Owne ... | gpr_, gtw_
 - STAGE26 FIX ROUND (gte_ resumed, after gtw_'s hand-back, both reviews in one rou ... | ?
 - BEFORE ENFORCE: the coord's 'ATN plays' hold moves to gpu_lock.py acquire --pid ... | ?
+- ATN: install stage26b (section 3) at the morning wave boundary. Owner: ATN, coor ... | ATN, coord
 - gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a ... | ?
 - REVIEW ~12-09 (ATN: 'after a while we decide if we even need the 2x stop'): coun ... | ?
 - (2) DEFAULT CAP: a command without a price history runs under budget.py watch's ... | gtb_
@@ -3617,8 +3618,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         lock) -> the coord's 'ATN plays' hold = a hidden keeper process as owner (proven: next taker waits, release
         --record works; commands in the appendix). S2: optional step-6 check (Terminal 'Write-Output step6check' ->
         Select-String in tool_times_<day>.tsv). NIT: gpu_lock.py has show, not status. Merged agent rules = appendix.
+        gpr_ stage26b RE-CHECK GO 22:16 (11 min; gpr_r26_recheck_handback.md '## Re-check stage26b'), no MUST: path_rows
+        only adds hits (text check first, after files, guarded); CHAIN closes x01-x03 / c01-c06; Terminal path refuses
+        deletes (incl. tab-cwd relative) + ngfx --platform; FULL replay of 63,987 shell calls since 11-24 (no sampling):
+        exactly 21 differ, all [] -> T09 on the hand-lock lines; files / override / T01 / T04 counts unchanged. Probes
+        100 / 109 (stage26 61); 187-probe set: 5 NEW false refusals R1-R5 (find -delete on a parent, globs past a target,
+        NS_API loop header path, $(basename) in rm path, Select-String '.Delete(') -> gtp_ round 26; rare gaps left
+        (Get-Item | Remove-Item, parent .Delete(), os.path.join, rsync --remove-source-files, 7z -sdel, open(lock,'w'),
+        ln -sf over the lock).
+        BOTH RE-CHECKS GO -> ATN's paste text = gte_r2_handback.md section 3 (+ optional step 6 matcher + gtw_'s S2 check).
+        WHEN: steps 1-4 (files in, mode still shadow) and step 5 (enforce) at a wave boundary, AFTER the coord's lock
+        hold moves to the keeper process + ta_ agility_probe fixed. Not tonight (agents + pdi3_'s GPU turn running);
+        the coord pastes the text to ATN at the morning boundary.
+        - [ ] ATN: install stage26b (section 3) at the morning wave boundary. Owner: ATN, coord
         d11v_ (lane I review, Opus xHigh) STARTED 20:5x.
-        - [ ] gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a non-leading cd); spec
+        - [ ] gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a non-leading cd; + gpr_'s
+        stage26b R1-R5 false refusals and rare gaps, gpr_ S3 l11-l18 / f06, gtw_ S5 suite vs installed state); spec
         gate on scratch files; web list gaps (44 research hosts); agent rules (gte_handback section 4) into briefs.
         Owner: gtp_, coord
         - [x] ATN: the deadline softening 'doesn't make sense' (a stop forces us to find the cause). Coord's proposal:
