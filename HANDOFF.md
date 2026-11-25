@@ -15879,6 +15879,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         table (ep1c control, ContactSplit key, narrow literal 'battle step'), R-S2 busy test first, R-S3 pool invariant
         row h, R-S4 one name -> hex, R-S5 handover access rules + the TASK_THREADS=8 control question (Friday), R-S6 map
         3.3 plugin_block.h row fixed by coord. -> p8d_ LAST TOUCH + p6d_ ContactSplit rename (text only).
+        p6d_ ContactSplit DONE: key renamed in pk6 (A2, A15), B5's PK8 pass -> pk8 section 10 vs the ep1c control.
         - [x] p9d_ PK9 EFFECTS DESIGN DONE 13:3x (designs\pk9_effects_64.md 515 lines, hand-back p9d_design_handback.md):
         ROUTE A recommended = keep Sol's own parallel effect update, no hook / patch: A1 note to Sol (race census N1-N12,
         C10, soak list, ask for a settings.txt key where 0 = off: today any value even 0 turns it on; credit RenoDX /
