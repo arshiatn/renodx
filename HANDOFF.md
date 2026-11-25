@@ -16323,6 +16323,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         while T1 held + nits; 69 recorder headers = ceecd4b84). pdi4c_'s 'di ?' arm now goes into lights_state's initializer.
         ATN 11-25 evening ('maybe they don't change the same lines / functions ... so we could speed up'): same file
         allowed when the FUNCTIONS don't overlap (owner map in both briefs; the second to merge rebases + reruns gates).
+        pdi3_ 23:2x: S1 CONFIRMED (E4 night128 Torch on, paired, 4 frozen frames): SHaRC off 0.9814 -> KEEP_LIGHT 0.9908
+        (+0.0094 +- 0.0002), NO_VALIDATE 0.9926, NO_CUTS 0.9859; SHaRC on 0.9889 -> 0.9944 / 0.9961; 29 lights +0.0010 /
+        +0.0002. FIX 0d4c64016 pushed: Validate keeps the stored light while TORCH_REGIR (8 paths headers only); its E4 +
+        Nsight queued (final5). ~0.3 % left at 128 = the reference's spread. Cuts / change-invalidity skip under
+        TORCH_REGIR: measured, DECLINED by coord (slows light-change response for every light). S2 (Nsight rows off,
+        base vs ceecd4b84): rt_path_one_omm / sharc_one / ser_one / cache_fill / rt_lights_omm equal; rt_sharc_update
+        lmem 42.4-42.5 MB 5 / 5 vs 20.7-20.8 6 / 6 base, regs 69 = 69, ~0.32 vs 0.31 ms (model) = spills from inlined T2
+        code on the common path (row on 18.9 MB). Multi-ray builds not selected by 'Rays 2' -> 4-ray traces queued
+        (final6). COORD GO 23:2x: rt_sharc_update TWIN (plain = no PATH_REGIR, DXIL byte-identical to base; _regir in the
+        RTXDI block; rt_d3d12.hpp = one Init line + one SetPipelineState choice, like lights_torch_pipelines_, one
+        commit; Nsight both). Variants B1 / B2 / C / B1C running (final4), B2C built. Then FINAL head -> pdi4c_ rebase.
+        Owner: pdi3_, coord
         - [ ] PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbours, G7 report): pdi5_ (Opus
         High, worktree, branch pdi5_step5) STARTED beside step 3: owns ReuseTarget, the GI reuse merge, Reservoir /
         Load / Store, the neighbour choice, reservoir formats, rt_restir_flags, G5's PT-header stubs; no new slots
