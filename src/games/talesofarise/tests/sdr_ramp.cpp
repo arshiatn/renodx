@@ -16,65 +16,18 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
-#include <iterator>
-#include <map>
-#include <memory>
 #include <stdexcept>
-#include <string>
-#include <utility>
 #include <vector>
 
-#include <d3d11.h>
-#include <d3dcompiler.h>
-#include <wrl/client.h>
-
 #include "../shared.h"
+#include "./warp.hpp"
 
 namespace {
 
-using Microsoft::WRL::ComPtr;
+using warp::Check;
+using warp::ComPtr;
 constexpr UINT WIDTH = 1024;
-
-void Check(HRESULT result) {
-  if (FAILED(result)) throw std::runtime_error("Direct3D failed: " + std::to_string(result));
-}
-
-// Includes relative to the including file's folder, as fxc's (the standard handler takes nested ones from the top file's).
-struct Includes : ID3DInclude {
-  std::filesystem::path top;
-  std::map<const void*, std::filesystem::path> folders;  // an opened file's text -> its folder
-  std::vector<std::unique_ptr<std::string>> owned;
-  HRESULT __stdcall Open(D3D_INCLUDE_TYPE, LPCSTR name, LPCVOID parent, LPCVOID* data, UINT* bytes) override {
-    const auto found = folders.find(parent);
-    const std::filesystem::path path = ((found != folders.end()) ? found->second : top) / name;
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return E_FAIL;
-    std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    auto stored = std::make_unique<std::string>(std::move(text));
-    *data = stored->data();
-    *bytes = static_cast<UINT>(stored->size());
-    folders[*data] = path.parent_path();
-    owned.push_back(std::move(stored));
-    return S_OK;
-  }
-  HRESULT __stdcall Close(LPCVOID) override { return S_OK; }
-};
-
-ComPtr<ID3DBlob> Compile(const std::filesystem::path& file, const char* target) {
-  std::ifstream input(file, std::ios::binary);
-  const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-  Includes includes;
-  includes.top = file.parent_path();
-  ComPtr<ID3DBlob> code;
-  ComPtr<ID3DBlob> errors;
-  const HRESULT compiled = D3DCompile(text.data(), text.size(), file.string().c_str(), nullptr, &includes, "main", target, 0, 0,
-                                      code.GetAddressOf(), errors.GetAddressOf());
-  if (errors) std::cerr << static_cast<const char*>(errors->GetBufferPointer());
-  Check(compiled);
-  return code;
-}
 
 // IEEE half to float (the ramp as the clone holds it).
 float HalfToFloat(uint16_t half) {
@@ -114,8 +67,8 @@ int wmain(int argc, wchar_t** argv) {
     ComPtr<ID3D11DeviceContext> context;
     Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
                             context.GetAddressOf()));
-    const auto vertex_code = Compile(source / "swap_chain_proxy_vertex_shader.vs_5_x.hlsl", "vs_5_0");
-    const auto pixel_code = Compile(source / "swap_chain_proxy_pixel_shader.ps_5_x.hlsl", "ps_5_0");
+    const auto vertex_code = warp::Compile(source / "swap_chain_proxy_vertex_shader.vs_5_x.hlsl", "vs_5_0");
+    const auto pixel_code = warp::Compile(source / "swap_chain_proxy_pixel_shader.ps_5_x.hlsl", "ps_5_0");
     ComPtr<ID3D11VertexShader> vertex_shader;
     ComPtr<ID3D11PixelShader> pixel_shader;
     Check(device->CreateVertexShader(vertex_code->GetBufferPointer(), vertex_code->GetBufferSize(), nullptr, vertex_shader.GetAddressOf()));
