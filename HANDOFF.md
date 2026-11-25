@@ -16337,6 +16337,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU window. Owner: coord
         - [ ] ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set keys, folders, SendInput
         E / A / D + wheel only with the game in front) are in d11i_handback.md 'Rule lines' / 'OKs'. Owner: ATN
+        ATN 11-25 ~21:1x STANDING GO for game runs, no ask: 'as long we don't waste tokens pausing/stopping agents +
+        you trim them everytime' (memory feedback_no_game_tests). -> the OKs above (env, set keys, folders, SendInput)
+        are covered; only the 4 rule lines stay ATN's paste. PLAN: ONE trimmed game session (d11 capture day1; sea1 /
+        stress_test_log2 only on the script's conditions; + the fresh 64-bit recordings once PT DI is merged) in a
+        natural GPU gap or before the next wave, never pausing agents; maybe tomorrow if the waves run fast. Before
+        it: d11v_ GO + fixes, the 5090 replay self test, commit < 32 GB, fresh backups. Owner: coord
         - [x] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
         auto_thickness, so the _auto Bend variants are dead in game (shared TW code). ATN 11-25 ~21:0x: 'SSS auto
         thickness should never be used. It is shit. Thickness should always stay at the current default' -> NOT a
