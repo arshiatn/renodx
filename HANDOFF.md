@@ -851,7 +851,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- pds2_ FIX ROUND SENT 07:0x: M1 (+ compile the probe build), S1 gate, S3 one SUN_ ... | ?
+- pdsr_ RE-CHECK SENT 07:4x (4 fix commits) -> merge pds2_step2 (merge message car ... | ?
+- S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner ... | ?
 - ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0 ... | ?
 - 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for ... | ?
 - QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes ... | ?
@@ -15936,10 +15937,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         back-facing samples RTXDI saturate()s away (leak through thin cards; not the edge cause). 10 nits. EDGE
         SPLIT: 36913 no real regression (concave 1.0386 -> 0.995, convex 0.99061 -> 0.99569); cfg 49 convex a REAL
         -0.75 % (0.97115 -> 0.96366), G1 Basic brings it back to 0.97013 -> 1/M at silhouettes, not a wrong normal.
-        - [ ] pds2_ FIX ROUND SENT 07:0x: M1 (+ compile the probe build), S1 gate, S3 one SUN_LIGHT E4 row (or the
-        gap written), S4 check the reflection flags, S5 test switch + one E4 row, nits -> pdsr_ re-check -> merge
-        pds2_step2 (merge message carries the f01f1a95c DXIL correction) -> helper build check -> push. Then
-        build.ps1 / rt_d3d12.hpp free (SHaRC depth 4 may start).
+        - [x] pds2_ FIX ROUND DONE 07:3x (hand-back handoff_plan/handbacks/pds2_step2_fix_handback.md): 51ce257b8 M1
+        (probe build builds CD4F66378C08; control 7d8256e24 probe fails C2065 at 4047 / 4130), b66e5632e S1 (REUSE_TESTS
+        shaders + PSOs only under RENODX_TW_REFERENCE_BUILD; player helper 5893120 -> 5727744 B), 33472cddd nits (new
+        dlaa_helper/rt_reuse_bits.h = one source for the REUSE_* bits; braces; plain if / else; rtxdi create-fail log;
+        dead REUSE_LEAN dropped; `random` local KEPT: inlining changed 8 listings), 5ffc44a6e S5 switch
+        RENODX_TW_REUSE_JACOBIAN_SATURATE (bit 4096, existing table, reference build only). HEAD builds: x64
+        0820E8048858, ref 0543F05A8859, probe 470023FD1D5C. Player DXIL = 7d8256e24 by a REAL -Fc compare, 37 listings
+        incl. rt_path_ser lib_6_9 + SHaRC (scratchpad\p_dxil_all.py). h0i 67 / 67 (new 'host RR samples 17' fixture);
+        static_checks known 5; no cost job (player shaders unchanged). S3: NO GAP: every E4 row already runs
+        PATH_SUN_LIGHT + KEEP_LIGHT with sun texel 6 w = 1 (quality_mode.hpp:813). S5 numbers (saturate vs abs): 36913
+        all 0.99924 -> 0.99953, edge 0.99559 -> 0.99724, concave 0.99500 -> 0.99870, boxes 1.00414 -> 1.00587; cfg 49
+        all 0.99680 -> 0.99700, edge 0.97852 -> 0.97986; default unchanged; no thin-card scene in E4. Not done:
+        BOIL_PLANT on a live texel.
+        - [ ] pdsr_ RE-CHECK SENT 07:4x (4 fix commits) -> merge pds2_step2 (merge message carries the f01f1a95c DXIL
+        correction paragraph from the fix hand-back) -> helper build check -> push. Then build.ps1 / rt_d3d12.hpp free
+        (SHaRC depth 4 may start).
+        - [ ] S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner coord, after the merge):
+        Attila / Thrones copy the t6 light -> RT_REFLECTIONS_LIGHT -> HitLight returns before the NaN route. Reached
+        only with no light copy (other format / MSAA / small, or water_reflections.hpp without a light buffer: Troy,
+        Pharaoh Dynasties) + Own ReSTIR on (WH3 hard-sets reflection_own, addon.cpp:3514) + PT Ambient
+        (RT_PATH_SUN_LIGHT) + PATH_LIGHT + sun texel 6 w != 0. FIRST: check whether WH3 copies the light. Smallest
+        fix: first_normal = normal at vertex 0 for every caller, OR Validate returns 0 on a zero hit_normal under
+        SunLightGiven(); prove with the reflection HARNESS_DUMP modes.
         - [ ] ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0.996, cfg 49 0.992 ->
         0.979) and the optional row 'G1 + KEEP_LIGHT' (fixes 36913 + night, darkens Own-Sky-off ~1 %).
         - [x] pdw1_ PT DI STEP 4a DONE (hand-back handoff_plan/handbacks/pdw1_step4a_handback.md; branch
