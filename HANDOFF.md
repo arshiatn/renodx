@@ -850,7 +850,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
 - pds2_ (Opus High, worktree, branch pds2_step2) PT DI STEP 2 STARTED 01:3x (resum ... | ?
-- pdwr_ (Opus xHigh) step 4a REVIEW -> designs/pt_di_4a_review.md -> fixes if any ... | ?
+- pdw1_ FIX ROUND SENT 02:5x (S1-S5 + Nits, docs + one control, API unchanged) -> ... | ?
 - QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
@@ -15776,8 +15776,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         <= 3 ulp = info); 64-bit hash census still needed (32-bit dump hashes); WARP only. QUIET RULE SLIP: one fxc
         compile of the probe ran while quiet_run.lock existed (window 3, 01:37:37); noticed at once, all later work
         waited until ~01:55. Window 3's numbers stand (base starts 247.0 / 247.5 = NOPROBE 247.5).
-        - [ ] pdwr_ (Opus xHigh) step 4a REVIEW -> designs/pt_di_4a_review.md -> fixes if any -> merge pdw1_step4a
-        alone -> push.
+        - [x] pdwr_ OPUS xHIGH R1 = GO WITH CHANGES, 0 Musts (hand-back handoff_plan/handbacks/
+        pdwr_step4a_review_handback.md; plan_1117/designs/pt_di_4a_review.md): transcription right (15 / 40 DXBC
+        disassembled op by op; x 0.9, no squared albedo, HDR 0.004 / 1 and 1 / 273, s_ssao only on slm, V placement all
+        match); the test runs the game's own DXBC; re-run in slot 3 = ALL OK, same log line for line; `precise` costs
+        ~4 % DXIL (338 vs 325), ~140 ops lose fast; merge clean. Shoulds: S1 lowdef saturates after the SSAO (helper
+        ssao = 1 + later composite = different; low_def has no v32 transport), S2 V comment + light centre, S3 texel 2
+        w = 0 = don't shade (else 250x / 273x in HDR), S4 a lowdef-swapped control, S5 'game's bits' = WARP only
+        (game DXBC refactoringAllowed). Nits: failed control draw counted as a pass, unchecked Create*, style.
+        - [ ] pdw1_ FIX ROUND SENT 02:5x (S1-S5 + Nits, docs + one control, API unchanged) -> merge pdw1_step4a alone
+        -> push. S1 / S3 also go into the 4b / 4c brief.
         - [ ] QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes while quiet_run.lock
         exists (window 3).
         ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
