@@ -513,6 +513,7 @@ static const uint DIM_SHARC_HIT = 31u << 12;         // a vertex's SharcUpdateHi
 static const uint DIM_SHARC_DIRECTION = 32u << 12;   // a vertex's next direction (vertex x 2 + 0 / 1)
 static const uint DIM_SHARC_LIGHTS = 33u << 12;      // a vertex's LocalLights picks (vertex x 2 + 0 / 1)
 static const uint DIM_CACHE_LIGHTS = 34u << 12;      // rt_cache_fill: a cell's SeenDiffuseLight picks (0 / 1)
+static const uint DIM_RTXDI_GI_SPATIAL = 35u << 12;  // ReuseTexel's RTXDI GI contest: its RTXDI sampler's seed (Pcg4d lane .y)
 
 // A number in [0, 1) of lanes (x, y, frame, dimension): pcg4d's lane .y (the reference's RefRandom reads lane .x, a
 // stream of its own).

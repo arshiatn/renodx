@@ -136,6 +136,14 @@
 #include "rt_reference_state.h"
 #define RENODX_REFERENCE 1
 #endif
+// The reference build's RTXDI GI contest (RENODX_TW_REUSE_RTXDI, tests; build.ps1 compiles these with RENODX_TW_REFERENCE_BUILD
+// set and the RTXDI copy found): rt_path.hlsli RtxdiPackTexel, ReuseTexel with RTXDI's spatial resampling.
+#if defined(RENODX_REFERENCE) && __has_include("rt_reuse_rtxdi.h")
+#include "rt_reuse_rtxdi.h"
+#include "rt_reuse_rtxdi_omm.h"
+#include "rt_reuse_rtxdi_pack.h"
+#define RENODX_RTXDI_GI 1
+#endif
 // The bridge recorder (tests only: build.ps1 writes rt_recorder_build.h with RENODX_TW_RECORDER_BUILD set): RENODX_TW_RECORD's
 // snapshot and recorded requests, the "play" command's player (main.cpp; rt_recording.h).
 #if __has_include("rt_recorder_build.h")
@@ -740,6 +748,15 @@ class RtScene12 {
     // ReSTIR GI's boiling filter (REUSE_BOIL: no ray tracing, one build; none: its switch does nothing).
     if (!pipeline(RT_REUSE_BOIL, sizeof(RT_REUSE_BOIL), &reuse_boil_pipeline_)) reuse_boil_pipeline_.Reset();
 #endif
+#if defined(RENODX_RTXDI_GI)
+    // The RTXDI GI contest's (REUSE_RTXDI_PACK: no ray tracing, one build; REUSE_RTXDI: the reuse's).
+    if (!(pipeline(RT_REUSE_RTXDI_PACK, sizeof(RT_REUSE_RTXDI_PACK), &reuse_rtxdi_pack_pipeline_)
+          && (dxr12_ ? pipeline(RT_REUSE_RTXDI_OMM, sizeof(RT_REUSE_RTXDI_OMM), &reuse_rtxdi_pipeline_)
+                     : pipeline(RT_REUSE_RTXDI, sizeof(RT_REUSE_RTXDI), &reuse_rtxdi_pipeline_)))) {
+      reuse_rtxdi_pack_pipeline_.Reset();
+      reuse_rtxdi_pipeline_.Reset();
+    }
+#endif
     // The reflections' build for one sample a pixel (REFLECT_ONE_SAMPLE) and the paths' for one ray a texel
     // (PATH_ONE_SAMPLE; none: the general build).
     if (!(dxr12_ ? pipeline(RT_REFLECT_ONE_OMM, sizeof(RT_REFLECT_ONE_OMM), &reflect_one_pipeline_)
@@ -1106,6 +1123,8 @@ class RtScene12 {
     light_ratio_ = {};
     reflect_samples_ = {};
     reflect_data_ = {};
+    rtxdi_reservoirs_.Reset();
+    rtxdi_offsets_.Reset();
     if (descriptors_) WriteNullPathDescriptors();
     fence_.Reset();
   }
@@ -3886,7 +3905,8 @@ class RtScene12 {
         // RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY / _NO_CONTACT / _SEEN_LIGHTS_FRAME (tests, read once): ReSTIR GI's
         // parts left out (the last two the raw paths' too); _SPATIAL_CLAMP / _SKY_DIRECTION / _NO_JACOBIAN_CUT / _HISTORY_PLAIN /
         // _NEIGHBOUR_VISIBILITY / _SCREEN_NORMAL its bias suspects (PT DI step 2's G0); RENODX_TW_REUSE_BIAS=1 / 2 the spatial
-        // merge's bias correction, Basic / Raytraced (G1); _BOIL the boiling filter's pass, _BOIL_PLANT its test texel
+        // merge's bias correction, Basic / Raytraced (G1); _BOIL the boiling filter's pass, _BOIL_PLANT its test texel;
+        // _RTXDI (the reference build) RTXDI's spatial resampling in the reuse's place, its bias correction RENODX_TW_REUSE_BIAS's
         // (rt_path.hlsli).
         static const uint32_t reuse_tests = [] {
           uint32_t tests = 0;
@@ -3897,7 +3917,8 @@ class RtScene12 {
                                           std::pair{L"RENODX_TW_REUSE_NO_JACOBIAN_CUT", REUSE_TEST_NO_JACOBIAN_CUT}, std::pair{L"RENODX_TW_REUSE_HISTORY_PLAIN", REUSE_TEST_HISTORY_PLAIN},
                                           std::pair{L"RENODX_TW_REUSE_NEIGHBOUR_VISIBILITY", REUSE_TEST_NEIGHBOUR_VISIBILITY},
                                           std::pair{L"RENODX_TW_REUSE_SCREEN_NORMAL", REUSE_TEST_SCREEN_NORMAL},
-                                          std::pair{L"RENODX_TW_REUSE_BOIL", REUSE_TEST_BOIL}, std::pair{L"RENODX_TW_REUSE_BOIL_PLANT", REUSE_TEST_BOIL_PLANT}}) {
+                                          std::pair{L"RENODX_TW_REUSE_BOIL", REUSE_TEST_BOIL}, std::pair{L"RENODX_TW_REUSE_BOIL_PLANT", REUSE_TEST_BOIL_PLANT},
+                                          std::pair{L"RENODX_TW_REUSE_RTXDI", REUSE_TEST_RTXDI}}) {
             if (GetEnvironmentVariableW(name, nullptr, 0) != 0) tests |= bit;
           }
           std::array<wchar_t, 8> bias = {};
@@ -4059,6 +4080,33 @@ class RtScene12 {
             list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
             list->ResourceBarrier(1, &uav_barrier);
           }
+          // The RTXDI GI contest (the reference build): this frame's reservoirs in RTXDI's format and its neighbour offsets
+          // (u73 / u74, rt_path.hlsli RtxdiPackTexel; made at the shared textures' size when first asked for), then RTXDI's
+          // spatial resampling in the reuse's place.
+          bool rtxdi = lights_mode == 0 && reuse_rtxdi_pipeline_ && (reuse_tests & REUSE_TEST_RTXDI) != 0;
+          if (rtxdi && !rtxdi_reservoirs_) {
+            const D3D12_RESOURCE_DESC positions = positions_->GetDesc();
+            const uint64_t reservoirs = ((positions.Width + 15) / 16) * ((positions.Height + 15) / 16) * 256;  // RTXDI's 16 x 16 blocks
+            rtxdi_reservoirs_ = Buffer(reservoirs * RTXDI_RESERVOIR_BYTES, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                                       D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            rtxdi_offsets_ = Buffer(uint64_t{RTXDI_OFFSET_COUNT} * 8, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
+                                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+          }
+          rtxdi = rtxdi && rtxdi_reservoirs_ && rtxdi_offsets_;
+          if (rtxdi) {
+            // Written each such frame (WriteNullPathDescriptors nulls them when the cache's pools fail).
+            const D3D12_UNORDERED_ACCESS_VIEW_DESC reservoirs_view = {
+                .Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                .Buffer = {.NumElements = static_cast<UINT>(rtxdi_reservoirs_->GetDesc().Width / RTXDI_RESERVOIR_BYTES), .StructureByteStride = RTXDI_RESERVOIR_BYTES}};
+            const D3D12_UNORDERED_ACCESS_VIEW_DESC offsets_view = {.Format = DXGI_FORMAT_R32G32_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                                                                   .Buffer = {.NumElements = RTXDI_OFFSET_COUNT}};
+            device_->CreateUnorderedAccessView(rtxdi_reservoirs_.Get(), nullptr, &reservoirs_view, Descriptor(RTXDI_GI_RESERVOIRS));
+            device_->CreateUnorderedAccessView(rtxdi_offsets_.Get(), nullptr, &offsets_view, Descriptor(RTXDI_OFFSETS));
+            Mark(list, L"RTXDI GI pack");
+            list->SetPipelineState(reuse_rtxdi_pack_pipeline_.Get());
+            list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+            list->ResourceBarrier(1, &uav_barrier);
+          }
           Mark(list, L"reuse");
           // Lean ReSTIR Reuse (RT_PATH_REUSE_LEAN, or RENODX_TW_REUSE_LEAN for the harness): the neighbours with fewer
           // fetches; Near ReSTIR Reuse (RT_PATH_REUSE_NEAR, RENODX_TW_REUSE_NEAR), before it: fewer, nearer ones
@@ -4069,10 +4117,12 @@ class RtScene12 {
           const bool nearer = reuse_near_pipeline_
                               && ((version >= 31 && (requested & dlaa_bridge::RT_PATH_REUSE_NEAR) != 0)
                                   || GetEnvironmentVariableW(L"RENODX_TW_REUSE_NEAR", nullptr, 0) != 0);
-          list->SetPipelineState((lights_mode != 0 ? reuse_lights_pipeline_
-                                                   : (reuse_suspects ? reuse_tests_pipeline_
-                                                                     : (nearer ? reuse_near_pipeline_ : (lean ? reuse_lean_pipeline_ : reuse_pipeline_))))
-                                     .Get());
+          list->SetPipelineState(
+              (lights_mode != 0 ? reuse_lights_pipeline_
+                                : (rtxdi ? reuse_rtxdi_pipeline_
+                                         : (reuse_suspects ? reuse_tests_pipeline_
+                                                           : (nearer ? reuse_near_pipeline_ : (lean ? reuse_lean_pipeline_ : reuse_pipeline_)))))
+                  .Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
           reuse_frame_ = frame;
           reuse_lights_mode_ = lights_mode;
@@ -4448,9 +4498,10 @@ class RtScene12 {
     LIGHT_RATIO = OWN_SKY + 2,  // u56-u57 (helpers 111 on): Torch and Fire Shadows from the Light Bounce's ratio, two sets
     SURFACE_ORIGIN = LIGHT_RATIO + 2,  // u58: ReSTIR GI's bounce texels' surfaces as this frame's paths found them
     SURFACE_NORMAL,                    // u59
-#if defined(RENODX_REFERENCE)
     // The reference build's (rt_reference.hlsli u60-u72): the candidate's batch sums, the reference's group sums, the
-    // run's state; the table twice in the heap (the second, the frozen copies', for the reference's slices).
+    // run's state; the table twice in the heap (the second, the frozen copies', for the reference's slices). The slot rule
+    // (PT DI step 2): one enum in both builds, every new slot after REF_STATE at a fixed register, null where unused
+    // (WriteNullPathDescriptors).
     REF_CANDIDATE_BATCH,
     REF_CANDIDATE_SHIFT,
     REF_CANDIDATE_MEAN,
@@ -4464,9 +4515,14 @@ class RtScene12 {
     REF_GROUPS,
     REF_AUX,
     REF_STATE,
-#endif
+    RTXDI_GI_RESERVOIRS,  // u73: the reference build's RTXDI GI contest's reservoirs (rt_path.hlsli rtxdi_gi_reservoirs)
+    RTXDI_OFFSETS,        // u74: its neighbour offsets
     DESCRIPTOR_COUNT,
   };
+  // The registers (the last UAV range starts at u10 with CACHE_KEYS).
+  static_assert(REF_CANDIDATE_BATCH - CACHE_KEYS + 10 == 60 && REF_STATE - CACHE_KEYS + 10 == 72);
+  static_assert(RTXDI_GI_RESERVOIRS - CACHE_KEYS + 10 == 73);
+  static_assert(RTXDI_OFFSETS - CACHE_KEYS + 10 == 74);
 #if defined(RENODX_REFERENCE)
   static constexpr UINT TABLES = 2;  // the live table, the reference's frozen one
 #else
@@ -4533,6 +4589,9 @@ class RtScene12 {
                                                  | REUSE_TEST_NEIGHBOUR_VISIBILITY | REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED | REUSE_TEST_SCREEN_NORMAL;
   static constexpr uint32_t REUSE_TEST_BOIL = 8192;
   static constexpr uint32_t REUSE_TEST_BOIL_PLANT = 16384;
+  static constexpr uint32_t REUSE_TEST_RTXDI = 32768;  // the host's only
+  static constexpr UINT RTXDI_RESERVOIR_BYTES = 32;  // RTXDI_PackedGIReservoir
+  static constexpr UINT RTXDI_OFFSET_COUNT = 1024;   // rt_path.hlsli RTXDI_NEIGHBOUR_OFFSETS
   static constexpr uint32_t LIGHTS_IN_PATHS = 128;  // rt_camera.hlsli (PathConstants::lights_in_bounce)
   static constexpr uint32_t LIGHTS_RATIO_BITS = 256;  // rt_camera.hlsli: a trace's, the addon reads flagged bits (RT_SCENE_LIGHT_BITS)
   static constexpr UINT LIGHT_KEPT_TEXELS = 5;  // rt_path.hlsli light_kept
@@ -5196,6 +5255,15 @@ class RtScene12 {
                                                              LIGHT_HISTORY + 1, FOG_LIGHTS, TINT, SURFACE_ORIGIN, SURFACE_NORMAL}) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
+    // The reference build's slots (its run writes u60-u72 there).
+#if defined(RENODX_REFERENCE)
+    constexpr UINT unused_from = RTXDI_GI_RESERVOIRS;
+#else
+    constexpr UINT unused_from = REF_CANDIDATE_BATCH;
+#endif
+    for (UINT descriptor = unused_from; descriptor < DESCRIPTOR_COUNT; ++descriptor) {
+      device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
+    }
     if (cache_keys_) return;
     const D3D12_UNORDERED_ACCESS_VIEW_DESC buffer_written = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
                                                              .Buffer = {.NumElements = 1}};
@@ -5552,7 +5620,8 @@ class RtScene12 {
                                                             .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
                                                             .Texture2D = {.MipLevels = 1}};
       const D3D12_UNORDERED_ACCESS_VIEW_DESC null_written = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
-      for (UINT slot = 0; slot < REF_CANDIDATE_BATCH; ++slot) {
+      for (UINT slot = 0; slot < DESCRIPTOR_COUNT; ++slot) {
+        if (slot >= REF_CANDIDATE_BATCH && slot <= REF_STATE) continue;  // the reference's own outputs (both tables, below)
         const bool written_slot = (slot >= SRV_COUNT && slot < LIGHT) || slot == BOUNCE || slot >= CACHE_KEYS;
         if (written_slot) {
           device_->CreateUnorderedAccessView(nullptr, nullptr, &null_written, Descriptor(DESCRIPTOR_COUNT + slot));
@@ -10355,6 +10424,10 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> path_tests_pipeline_;   // the paths' build with ReSTIR GI's test switches (REUSE_TESTS)
   ComPtr<ID3D12PipelineState> reuse_tests_pipeline_;  // the reuse's (REUSE_TESTS)
   ComPtr<ID3D12PipelineState> reuse_boil_pipeline_;  // its boiling filter (REUSE_BOIL; RTXDI builds)
+  ComPtr<ID3D12PipelineState> reuse_rtxdi_pack_pipeline_;  // the RTXDI GI contest's pack (REUSE_RTXDI_PACK; the reference build)
+  ComPtr<ID3D12PipelineState> reuse_rtxdi_pipeline_;       // its reuse (REUSE_RTXDI)
+  ComPtr<ID3D12Resource> rtxdi_reservoirs_;  // its reservoirs (RTXDI_GI_RESERVOIRS)
+  ComPtr<ID3D12Resource> rtxdi_offsets_;     // its neighbour offsets (RTXDI_OFFSETS)
   std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_surface_;  // the bounce texels' rays' origins and normals (SURFACE_ORIGIN, SURFACE_NORMAL)

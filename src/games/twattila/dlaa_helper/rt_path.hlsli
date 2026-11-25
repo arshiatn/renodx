@@ -1148,6 +1148,90 @@ void BoilTexel(uint2 id, uint2 local) {
 }
 #endif
 
+#if defined(REUSE_RTXDI) || defined(REUSE_RTXDI_PACK)
+// The RTXDI GI contest (the reference build's rt_reuse_rtxdi and rt_reuse_rtxdi_pack builds; RENODX_TW_REUSE_RTXDI, tests):
+// NVIDIA's RTXDI-Library 3.2 spatial resampling (NVIDIA RTX SDKs License; build.ps1 compiles its headers from the copy in
+// build\downloads\rtxdi: not part of this file; the helper's notices, credits.hpp, carry NVIDIA's sentence) in ReuseTexel's
+// place on the same reservoirs: RtxdiPackTexel writes this frame's in its format (u73) and its neighbour offsets (u74),
+// ReuseTexel then calls RTXDI_GISpatialResampling with our surfaces, target (without ContactShade's move: no sample origin
+// in its interface; REUSE_TEST_NO_CONTACT matches the two), Jacobian cut and visibility, its bias correction from
+// RENODX_TW_REUSE_BIAS (0 off, 1 Basic, 2 Raytraced), and shades its pick as ours.
+#include "Rtxdi/GI/ReSTIRGIParameters.h"
+RWStructuredBuffer<RTXDI_PackedGIReservoir> rtxdi_gi_reservoirs : register(u73);
+RWBuffer<float2> rtxdi_neighbour_offsets : register(u74);
+#define RTXDI_GI_RESERVOIR_BUFFER rtxdi_gi_reservoirs
+#define RTXDI_NEIGHBOR_OFFSETS_BUFFER rtxdi_neighbour_offsets
+static const uint RTXDI_NEIGHBOUR_OFFSETS = 1024u;  // u74's offsets (a power of two: RTXDI masks its index)
+
+// RTXDI's application bridge: a bounce texel's rays' start, normal and depth (PathTraceTexel's u58 / u59).
+struct RAB_Surface {
+  float3 origin;
+  float3 normal;
+  float depth;
+};
+struct RAB_Material {
+  uint unused;
+};
+RAB_Surface RAB_GetGBufferSurface(int2 texel, bool previous) {
+  RAB_Surface surface;
+  const float4 origin = surface_origin[uint2(texel)];
+  surface.origin = origin.xyz;
+  surface.normal = surface_normal[uint2(texel)].xyz;
+  surface.depth = origin.w;
+  return surface;
+}
+float3 RAB_GetSurfaceNormal(RAB_Surface surface) { return surface.normal; }
+float3 RAB_GetSurfaceWorldPos(RAB_Surface surface) { return surface.origin; }
+float RAB_GetSurfaceLinearDepth(RAB_Surface surface) { return surface.depth; }
+RAB_Material RAB_GetMaterial(RAB_Surface surface) { return (RAB_Material)0; }
+bool RAB_AreMaterialsSimilar(RAB_Material a, RAB_Material b) { return true; }
+int2 RAB_ClampSamplePositionIntoView(int2 texel, bool previous) { return clamp(texel, 0, int2(bounce_width, bounce_height) - 1); }
+float RAB_GetGISampleTargetPdfForSurface(float3 position, float3 radiance, RAB_Surface surface) {
+  return Luminance(radiance) * max(dot(surface.normal, normalize(position - surface.origin)), 0.f);
+}
+bool RAB_ValidateGISampleWithJacobian(inout float jacobian) {
+  return ((REUSE_SUSPECTS & REUSE_TEST_NO_JACOBIAN_CUT) != 0u) ? jacobian > 0.f : (jacobian > 0.1f && jacobian < 10.f);
+}
+bool RAB_GetConservativeVisibility(RAB_Surface surface, float3 position) {
+  const float3 to_sample = position - surface.origin;
+  return !Occluded(surface.origin, normalize(to_sample), length(to_sample) * 0.99f, NO_GRASS_SMOKE);
+}
+#include "Rtxdi/Utils/RandomSamplerState.hlsli"
+#include "Rtxdi/GI/SpatialResampling.hlsli"
+
+// The reservoirs' layout in u73 (RTXDI's 16 x 16 blocks; the host sizes the buffer the same).
+RTXDI_ReservoirBufferParameters RtxdiReservoirs() {
+  RTXDI_ReservoirBufferParameters reservoirs = (RTXDI_ReservoirBufferParameters)0;
+  reservoirs.reservoirBlockRowPitch = (bounce_width + RTXDI_RESERVOIR_BLOCK_SIZE - 1u) / RTXDI_RESERVOIR_BLOCK_SIZE * RTXDI_RESERVOIR_BLOCK_SIZE * RTXDI_RESERVOIR_BLOCK_SIZE;
+  reservoirs.reservoirArrayPitch = reservoirs.reservoirBlockRowPitch * ((bounce_height + RTXDI_RESERVOIR_BLOCK_SIZE - 1u) / RTXDI_RESERVOIR_BLOCK_SIZE);
+  return reservoirs;
+}
+
+// A texel's reservoir in RTXDI's format (its normal a unit vector: the sky's, no surface, and a screen hit's without
+// REUSE_TEST_SCREEN_NORMAL face the texel's rays' start); the first texels write the neighbour offsets too, our own disk
+// (SpotOf's R2 points, area-uniform: RTXDI walks them from a random start, consecutive ones spread).
+void RtxdiPackTexel(uint2 id) {
+  if (id.x >= bounce_width || id.y >= bounce_height) return;
+  const uint index = id.y * bounce_width + id.x;
+  if (index < RTXDI_NEIGHBOUR_OFFSETS) {
+    const float2 spot = SpotOf(index, 0.f) + 0.5f;
+    rtxdi_neighbour_offsets[index] = sqrt(spot.x) * float2(cos(6.2831853f * spot.y), sin(6.2831853f * spot.y));
+  }
+  const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
+  const Reservoir ours = LoadReservoir(reuse_samples[set], reuse_data[set], id);
+  RTXDI_GIReservoir packed = RTXDI_EmptyGIReservoir();
+  const float3 facing = surface_origin[id].xyz - ours.hit;
+  if (ours.count > 0.f && dot(facing, facing) > 0.f) {
+    packed.position = ours.hit;
+    packed.normal = any(ours.hit_normal != 0.f) ? ours.hit_normal : normalize(facing);
+    packed.radiance = ours.light;
+    packed.weightSum = ours.weight;
+    packed.M = (uint)ours.count;
+  }
+  RTXDI_StoreGIReservoir(packed, RtxdiReservoirs(), id, 0u);
+}
+#endif
+
 // ReuseTexel's neighbour `neighbour` of texel `id`: a texel within REUSE_RADIUS (it may fall off the texels or on `id`).
 int2 ReuseNeighbourTexel(uint2 id, uint neighbour) {
   const float angle = 6.2831853f * Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u));
@@ -1170,6 +1254,28 @@ void ReuseTexel(uint2 id) {
   }
   const float3 normal = surface_normal[id].xyz;
   const float3 origin = surface_origin[id].xyz;
+#if defined(REUSE_RTXDI)
+  RTXDI_RuntimeParameters runtime = (RTXDI_RuntimeParameters)0;
+  runtime.neighborOffsetMask = RTXDI_NEIGHBOUR_OFFSETS - 1u;
+  runtime.frameIndex = frame;
+  RTXDI_GISpatialResamplingParameters spatial = (RTXDI_GISpatialResamplingParameters)0;
+  spatial.depthThreshold = 0.1f;  // ours: 10 % of the depth
+  spatial.normalThreshold = 0.9f;
+  spatial.numSamples = ((reuse_tests & REUSE_TEST_NO_SPATIAL) != 0u) ? 0u : REUSE_NEIGHBOURS;
+  spatial.samplingRadius = REUSE_RADIUS;
+  spatial.biasCorrectionMode = ((reuse_tests & REUSE_BIAS_RAYTRACED) != 0u) ? RTXDI_BIAS_CORRECTION_RAY_TRACED
+                               : (((reuse_tests & REUSE_BIAS_BASIC) != 0u) ? RTXDI_BIAS_CORRECTION_BASIC : RTXDI_BIAS_CORRECTION_OFF);
+  RTXDI_RandomSamplerState rng = RTXDI_CreateRandomSamplerFromDirectSeed(Pcg4d(uint4(id, frame, DIM_RTXDI_GI_SPATIAL)).y, 0u);
+  const RTXDI_GIReservoir resampled = RTXDI_GISpatialResampling(id, RAB_GetGBufferSurface(int2(id), false), 0u,
+                                                                RTXDI_LoadGIReservoir(RtxdiReservoirs(), id, 0u), rng, runtime,
+                                                                RtxdiReservoirs(), spatial);
+  Reservoir combined;
+  combined.hit = resampled.position;
+  combined.hit_normal = resampled.normal;
+  combined.light = resampled.radiance;
+  combined.weight = resampled.weightSum;
+  combined.count = (float)resampled.M;
+#else
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
   const Reservoir own = LoadReservoir(reuse_samples[set], reuse_data[set], id);
   Reservoir combined = (Reservoir)0;
@@ -1245,6 +1351,7 @@ void ReuseTexel(uint2 id) {
     combined.weight = (targets > 0.f) ? combined.weight * chosen_target / (target * targets) : 0.f;
   }
   if ((REUSE_SUSPECTS & REUSE_TEST_SPATIAL_CLAMP) != 0u) ClampWeight(combined, origin, normal);
+#endif
   // The chosen surface in view of this one (no light through walls); the integrand over its density.
   const float3 to_hit = combined.hit - origin;
   const float hit_distance = length(to_hit);

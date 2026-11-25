@@ -118,6 +118,13 @@ Remove-Item "$out\rt_reuse_boil.h" -ErrorAction SilentlyContinue
 if ($rtxdi_found) {
   Dxc -nologo -T cs_6_5 -E main -O3 -D REUSE_BOIL -I "$rtxdi\Include" -Fh "$out\rt_reuse_boil.h" -Vn RT_REUSE_BOIL "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 }
+# The reference build's RTXDI GI contest (RENODX_TW_REUSE_RTXDI; rt_path.hlsli RtxdiPackTexel, ReuseTexel with REUSE_RTXDI).
+Remove-Item "$out\rt_reuse_rtxdi_pack.h", "$out\rt_reuse_rtxdi.h", "$out\rt_reuse_rtxdi_omm.h" -ErrorAction SilentlyContinue
+if ($rtxdi_found -and $env:RENODX_TW_REFERENCE_BUILD) {
+  Dxc -nologo -T cs_6_5 -E main -O3 -D REUSE_RTXDI_PACK -I "$rtxdi\Include" -Fh "$out\rt_reuse_rtxdi_pack.h" -Vn RT_REUSE_RTXDI_PACK "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_5 -E main -O3 -D REUSE -D REUSE_TESTS -D REUSE_RTXDI -I "$rtxdi\Include" -Fh "$out\rt_reuse_rtxdi.h" -Vn RT_REUSE_RTXDI "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_9 -E main -O3 -D REUSE -D REUSE_TESTS -D REUSE_RTXDI -D OPACITY_MICROMAPS -I "$rtxdi\Include" -Fh "$out\rt_reuse_rtxdi_omm.h" -Vn RT_REUSE_RTXDI_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+}
 foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA'), @('rt_compact', 'RT_COMPACT'), @('rt_place', 'RT_PLACE'),
                       @('rt_cache_fill', 'RT_CACHE_FILL'), @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'),
                       @('rt_omm_uvs', 'RT_OMM_UVS'), @('rt_sway', 'RT_SWAY'))) {
