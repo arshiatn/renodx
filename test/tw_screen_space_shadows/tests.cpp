@@ -65,6 +65,8 @@
 #include <vector>
 #include "src/games/twattila/screen_space_lights.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
+// The sites' pass_timing.hpp includes utils/settings.hpp (the add-on's NAME).
+extern "C" __declspec(dllexport) const char* const NAME = "Screen-space shadows test";
 
 // Shogun 2's shader_injection (case 8: a row's place in it).
 namespace shogun2 {

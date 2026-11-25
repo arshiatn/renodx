@@ -13,6 +13,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -239,9 +242,11 @@ static int RunSetFile(const std::string& mode) {
   path.resize(GetModuleFileNameA(nullptr, path.data(), static_cast<DWORD>(path.size())));
   path = path.substr(0, path.find_last_of('\\') + 1) + ((mode == "nofile") ? "missing_set_file.txt" : "set_file.txt");
   std::remove(path.c_str());
+  // A marker an earlier mode or run left would make the line read "over one not read yet".
+  std::filesystem::remove(std::filesystem::path(path).parent_path() / L"renodx_pass_dump_now");
   if (mode != "nofile") {
-    // Blanks after an entry's ';' are no second entry; line 805's second entry is warned about and not used.
-    std::string text = "0:bloom=0.5; \r\n0:env.RENODX_TEST_ENV=1:4,2:2;\r\n0:mt_trace=20;\r\n\r\n";
+    // Blanks after an entry's ';' are no second entry; line 806's second entry is warned about and not used.
+    std::string text = "0:bloom=0.5; \r\n0:env.RENODX_TEST_ENV=1:4,2:2;\r\n0:mt_trace=20;\r\n0:pass_dump=2 c1;\r\n\r\n";
     // Past RENODX_TW_SET's 8 KB: every line is read.
     for (int index = 0; index < 800; ++index) {
       text += "0:bloom=0.5;\r\n";
@@ -279,13 +284,22 @@ static int RunSetFile(const std::string& mode) {
   CHECK(registered_present == reinterpret_cast<void*>(&hooks::internal::OnReshadePresent));
   hooks::internal::OnReshadePresent(&runtime);
   if (mode == "setfile") {
-    CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " read (808 entries).") == 1);
-    CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " line 805 has text after its entry's ';', which is not used.") == 1);
+    CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " read (809 entries).") == 1);
+    CHECK(count("[Test] Test: RENODX_TW_SET_FILE " + path + " line 806 has text after its entry's ';', which is not used.") == 1);
     CHECK(std::count_if(logged.begin(), logged.end(), [](const std::string& line) { return line.find("has text after") != std::string::npos; }) == 1);
     CHECK(bloom == 0.5f && count("[Test] Test: bloom set to 0.5.") == 802);
     CHECK(env("RENODX_TEST_ENV") == "1:4,2:2" && count("[Test] Test: env RENODX_TEST_ENV set to 1:4,2:2 (generation 1).") == 1);
     CHECK(armed.size() == 1 && armed[0] == 20 && count("[Test] Test: mt_trace armed 20 frames.") == 1);
     CHECK(env_generation == 1);
+    // pass_dump: its value in renodx_pass_dump_now next to the exe (no temp file left).
+    {
+      std::ifstream marker(hooks::internal::exe_folder / L"renodx_pass_dump_now", std::ios::binary);
+      const std::string written((std::istreambuf_iterator<char>(marker)), std::istreambuf_iterator<char>());
+      marker.close();
+      CHECK(written == "2 c1" && count("[Test] Test: renodx_pass_dump_now written (2 c1).") == 1);
+      CHECK(!std::filesystem::exists(hooks::internal::exe_folder / L"renodx_pass_dump_now.tmp"));
+      std::filesystem::remove(hooks::internal::exe_folder / L"renodx_pass_dump_now");
+    }
     hooks::internal::clock_start.store(GetTickCount64() - 2000);
     hooks::internal::OnReshadePresent(&runtime);
     CHECK(env("RENODX_TEST_ENV") == "<unset>" && count("[Test] Test: env RENODX_TEST_ENV cleared (generation 2).") == 1);
@@ -312,6 +326,7 @@ static int RunSetFile(const std::string& mode) {
   hooks::Uninstall();
   CHECK(registered_present == nullptr);
   std::remove(path.c_str());
+  std::filesystem::remove(hooks::internal::exe_folder / L"renodx_pass_dump_now");
   for (const auto& line : logged) {
     if (line.find(" set to 0.5.") == std::string::npos) {
       std::printf("  log: %s\n", line.c_str());

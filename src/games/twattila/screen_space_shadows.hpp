@@ -38,6 +38,7 @@
 #include "./dxbc.hpp"
 #include "./frame_history.hpp"
 #include "./light_bounce.hpp"
+#include "./pass_timing.hpp"
 #include "./view_share.hpp"
 
 // Screen-space shadows (Experimental): Bend Studio's screen-space shadows (Apache 2.0, Copyright 2023 Sony Interactive
@@ -782,6 +783,9 @@ static Runtime runtime;
 // The extended march's variant (DeviceObjects::bend_extended) with Auto Thickness (`auto_thickness`) and with what Softer Away
 // from the Caster and Coloured Shadows need found (`find`).
 inline size_t ExtendedVariant(bool auto_thickness, bool find) { return (auto_thickness ? 1 : 0) + (find ? 2 : 0); }
+// Their shaders' embed names (Time Each Pass's marks, the pass dump's uses.tsv).
+constexpr std::array<const char*, 4> EXTENDED_NAMES = {"sss_bend_extended", "sss_bend_extended_auto", "sss_bend_extended_find",
+                                                       "sss_bend_extended_auto_find"};
 
 // A texture of the screen's `width` x `height` the compute writes and the draws read.
 inline bool MakeTexture(ID3D11Device* device, UINT width, UINT height, DXGI_FORMAT format, ComPtr<ID3D11UnorderedAccessView>* uav,
@@ -952,6 +956,7 @@ inline ID3D11ShaderResourceView* SceneDepth(ID3D11Device* device, ID3D11DeviceCo
                           ", ", desc.SampleDesc.Count, " samples) ", (made ? "copied for the shadows." : "unusable."));
   }
   if (!objects.scene_depth_srv) return nullptr;
+  const pass_timing::OwnPass mark(native, "sss_scene_depth_copy", pass_timing::Stage::NONE);
   native->CopyResource(objects.scene_depth_copy.Get(), texture.Get());
   return objects.scene_depth_srv.Get();
 }
@@ -1021,6 +1026,41 @@ class ComputeState {
 inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth_view, bool msaa, ID3D11Buffer* camera, ID3D11Buffer* lighting,
                     UINT sun_direction, ID3D11ShaderResourceView* colour, ID3D11ShaderResourceView* material) {
   auto& objects = runtime.objects;
+  // Pass dump (test only): the inputs, the outputs before (and at its end after) and the CPU state the replay sets.
+  const pass_dump::Pass dump(native, "sss.compute");
+  if (pass_dump::Recording()) {
+    pass_dump::Keep("sss.settings_cpu", &runtime.settings, sizeof(runtime.settings));
+    pass_dump::Value("sss.frame", runtime.frame);
+    pass_dump::Value("sss.thin_frame", runtime.thin_frame);
+    pass_dump::Value("sss.before_foliage_frame", runtime.before_foliage_frame);
+    pass_dump::Value("sss.after_foliage_frame", runtime.after_foliage_frame);
+    pass_dump::Value("sss.albedo_power", runtime.albedo_power);
+    pass_dump::Value("sss.foliage_material_bit", foliage_material_bit);
+    pass_dump::Value("sss.sun_direction", sun_direction);
+    pass_dump::Value("sss.msaa", msaa);
+    pass_dump::Value("sss.width", objects.width);
+    pass_dump::Value("sss.height", objects.height);
+    pass_dump::Value("frame_history.render_width", frame_history::render_width.load());
+    pass_dump::Value("frame_history.render_height", frame_history::render_height.load());
+    pass_dump::Value("frame_history.effect_share", frame_history::effect_share.load());
+    pass_dump::Camera(native, camera);
+    pass_dump::Resource(native, "sss.depth_view", depth_view);
+    pass_dump::Resource(native, "sss.camera", camera);
+    pass_dump::Resource(native, "sss.lighting", lighting);
+    pass_dump::Resource(native, "sss.colour", colour);
+    pass_dump::Resource(native, "sss.material", material);
+    pass_dump::Resource(native, "sss.before_foliage", objects.before_foliage.Get());
+    pass_dump::Resource(native, "sss.after_foliage", objects.after_foliage.Get());
+    pass_dump::Resource(native, "sss.thin", objects.thin_texture.Get());
+    pass_dump::Resource(native, "sss.depth", objects.depth_srv.Get());
+    pass_dump::Resource(native, "sss.arguments", objects.arguments.Get());
+    pass_dump::Resource(native, "sss.parameters", objects.parameters.Get());
+    pass_dump::Resource(native, "sss.occlusion", objects.occlusion_srv.Get());
+    pass_dump::Resource(native, "sss.penumbra", objects.penumbra_srv.Get());
+    pass_dump::Resource(native, "sss.tint", objects.tint_srv.Get());
+    pass_dump::Resource(native, "sss.soft", objects.soft_srv.Get());
+    pass_dump::Resource(native, "sss.lights_camera", objects.lights.camera.Get());
+  }
   // DLSS below 100%: the shadows' length (in pixels) x the render size's share, the same length on screen as at 100%;
   // Bend's per-pixel depth tolerances over it (a render pixel holds more of the scene: the depth steps between neighbours
   // and along the ray grow by 1 / share): its surface thickness, else thin occluders fall between the samples of every
@@ -1053,6 +1093,7 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
       .foliage_light = runtime.settings.foliage_light,
       .foliage_bit = (material != nullptr) ? static_cast<float>(foliage_material_bit) : 0.f,
   };
+  if (!pass_dump::Bytes("sss.shader_settings", &settings, sizeof(settings))) return;
   if (std::memcmp(&settings, &objects.uploaded, sizeof(ShaderSettings)) != 0) {
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &settings, 0, 0);
     objects.uploaded = settings;
@@ -1082,6 +1123,7 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
       .albedo_power = runtime.albedo_power,
       .soft_radius = SOFT_RADIUS_2160 * static_cast<float>(render[1]) / 2160.f,
   };
+  if (!pass_dump::Bytes("sss.extended_settings", &extended_settings, sizeof(extended_settings))) return;
   if (std::memcmp(&extended_settings, &objects.uploaded_extended, sizeof(ExtendedSettings)) != 0) {
     native->UpdateSubresource(objects.extended_settings.Get(), 0, nullptr, &extended_settings, 0, 0);
     objects.uploaded_extended = extended_settings;
@@ -1101,38 +1143,54 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
   // still bound for writing, Bend read null parameters and depth (ATN debug7: one corner fully shadowed).
   const ComPtr<ID3D11ComputeShader>& depth_copy = (msaa ? objects.depth_copy_ms : objects.depth_copy);
   const bool foliage_marked = runtime.before_foliage_frame == runtime.frame && runtime.after_foliage_frame == runtime.frame;
-  ComputeState::Bind(native, depth_copy.Get(),
-                     {depth_view, foliage_marked ? objects.before_foliage_srv.Get() : nullptr, foliage_marked ? objects.after_foliage_srv.Get() : nullptr,
-                      msaa ? nullptr : material},
-                     {objects.depth_uav.Get()}, {nullptr, nullptr, objects.settings.Get()});
-  native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
-  ComputeState::Bind(native, objects.setup.Get(), {}, {objects.arguments_uav.Get(), objects.parameters_uav.Get()}, {camera, lighting, objects.settings.Get()});
-  native->Dispatch(1, 1, 1);
-  constexpr std::array<FLOAT, 4> ZEROS = {};
-  native->ClearUnorderedAccessViewFloat(objects.occlusion_uav.Get(), ZEROS.data());
-  if (extended) {
+  // Time Each Pass: each pass its own line (its shader's name; the clears one).
+  {
+    const pass_timing::OwnPass mark(native, msaa ? "sss_depth_ms" : "sss_depth", pass_timing::Stage::COMPUTE);
+    ComputeState::Bind(native, depth_copy.Get(),
+                       {depth_view, foliage_marked ? objects.before_foliage_srv.Get() : nullptr, foliage_marked ? objects.after_foliage_srv.Get() : nullptr,
+                        msaa ? nullptr : material},
+                       {objects.depth_uav.Get()}, {nullptr, nullptr, objects.settings.Get()});
+    native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
+  }
+  {
+    const pass_timing::OwnPass mark(native, "sss_setup", pass_timing::Stage::COMPUTE);
+    ComputeState::Bind(native, objects.setup.Get(), {}, {objects.arguments_uav.Get(), objects.parameters_uav.Get()}, {camera, lighting, objects.settings.Get()});
+    native->Dispatch(1, 1, 1);
+  }
+  {
+    const pass_timing::OwnPass mark(native, "sss_clear", pass_timing::Stage::NONE);
+    constexpr std::array<FLOAT, 4> ZEROS = {};
+    native->ClearUnorderedAccessViewFloat(objects.occlusion_uav.Get(), ZEROS.data());
     // Bend leaves the pixels it skips (the sky) as they were.
-    if (soft) {
+    if (extended && soft) {
       native->ClearUnorderedAccessViewFloat(objects.penumbra_uav.Get(), ZEROS.data());
     }
-    if (coloured) {
+    if (extended && coloured) {
       native->ClearUnorderedAccessViewFloat(objects.tint_uav.Get(), ZEROS.data());
     }
-    ComputeState::Bind(native, objects.bend_extended[ExtendedVariant(runtime.settings.auto_thickness, soft || coloured)].Get(),
-                       {objects.depth_srv.Get(), objects.parameters_srv.Get(), thin ? objects.thin_srv.Get() : nullptr, coloured ? colour : nullptr},
-                       {objects.occlusion_uav.Get(), soft ? objects.penumbra_uav.Get() : nullptr, coloured ? objects.tint_uav.Get() : nullptr},
-                       {camera, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
-  } else {
-    ComputeState::Bind(native, objects.bend.Get(), {objects.depth_srv.Get(), objects.parameters_srv.Get()}, {objects.occlusion_uav.Get()},
-                       {nullptr, nullptr, objects.settings.Get()});
   }
-  native->CSSetSamplers(0, 1, objects.border.GetAddressOf());
-  for (UINT index = 0; index < DISPATCH_COUNT; ++index) {
-    native->CSSetConstantBuffers(3, 1, objects.dispatch_indexes[index].GetAddressOf());
-    native->DispatchIndirect(objects.arguments.Get(), index * 12);
+  {
+    const size_t variant = ExtendedVariant(runtime.settings.auto_thickness, soft || coloured);
+    pass_dump::Value("sss.extended_variant", extended ? variant : SIZE_MAX);
+    const pass_timing::OwnPass mark(native, extended ? EXTENDED_NAMES[variant] : "sss_bend", pass_timing::Stage::COMPUTE);
+    if (extended) {
+      ComputeState::Bind(native, objects.bend_extended[variant].Get(),
+                         {objects.depth_srv.Get(), objects.parameters_srv.Get(), thin ? objects.thin_srv.Get() : nullptr, coloured ? colour : nullptr},
+                         {objects.occlusion_uav.Get(), soft ? objects.penumbra_uav.Get() : nullptr, coloured ? objects.tint_uav.Get() : nullptr},
+                         {camera, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
+    } else {
+      ComputeState::Bind(native, objects.bend.Get(), {objects.depth_srv.Get(), objects.parameters_srv.Get()}, {objects.occlusion_uav.Get()},
+                         {nullptr, nullptr, objects.settings.Get()});
+    }
+    native->CSSetSamplers(0, 1, objects.border.GetAddressOf());
+    for (UINT index = 0; index < DISPATCH_COUNT; ++index) {
+      native->CSSetConstantBuffers(3, 1, objects.dispatch_indexes[index].GetAddressOf());
+      native->DispatchIndirect(objects.arguments.Get(), index * 12);
+    }
   }
   // Softer Away from the Caster (sss_soft), else Softness (sss_blur).
   if (soft || runtime.settings.softness > 0.f) {
+    const pass_timing::OwnPass mark(native, soft ? "sss_soft" : "sss_blur", pass_timing::Stage::COMPUTE);
     const ComPtr<ID3D11ComputeShader>& smooth = (soft ? objects.soft : objects.blur);
     ComputeState::Bind(native, smooth.Get(), {objects.depth_srv.Get(), objects.occlusion_srv.Get(), soft ? objects.penumbra_srv.Get() : nullptr},
                        {objects.soft_uav.Get()}, {nullptr, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
@@ -1353,7 +1411,10 @@ constexpr auto OnFoliageOrder = []<typename T, typename Context>(Context& comman
         && !internal::MakeDepthCopy(device.Get(), desc, &copy, &view)) {
       return {};
     }
-    native->CopyResource(copy.Get(), texture.Get());
+    {
+      const pass_timing::OwnPass mark(native, "sss_foliage_depth_copy", pass_timing::Stage::NONE);
+      native->CopyResource(copy.Get(), texture.Get());
+    }
     (after ? runtime.after_foliage_frame : runtime.before_foliage_frame) = runtime.frame;
     return {};
   }
@@ -1495,6 +1556,7 @@ constexpr auto OnThinDraw = []<typename T, typename Context>(Context& command) -
         }
       }
       if (runtime.thin_frame != runtime.frame) {
+        const pass_timing::OwnPass mark(native, "sss_thin_clear", pass_timing::Stage::NONE);
         constexpr std::array<FLOAT, 4> FAR_PLANE = {1.f, 1.f, 1.f, 1.f};
         native->ClearRenderTargetView(objects.thin_rtv.Get(), FAR_PLANE.data());
         runtime.thin_frame = runtime.frame;
@@ -1509,12 +1571,15 @@ constexpr auto OnThinDraw = []<typename T, typename Context>(Context& command) -
       UINT stencil_reference = 0;
       native->OMGetDepthStencilState(game_depth_state.GetAddressOf(), &stencil_reference);
 
-      native->OMSetRenderTargets(1, objects.thin_rtv.GetAddressOf(), depth_stencil.Get());
-      native->PSSetShader(objects.thin_pixel_shader.Get(), nullptr, 0);
-      native->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
-      native->OMSetDepthStencilState(objects.thin_depth_state.Get(), 0);
-      native->RSSetState(nearer.Get());
-      frame_history::DrawAgain(native, drawn.arguments);
+      {
+        const pass_timing::OwnPass mark(native, "sss_thin", pass_timing::Stage::PIXEL);
+        native->OMSetRenderTargets(1, objects.thin_rtv.GetAddressOf(), depth_stencil.Get());
+        native->PSSetShader(objects.thin_pixel_shader.Get(), nullptr, 0);
+        native->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+        native->OMSetDepthStencilState(objects.thin_depth_state.Get(), 0);
+        native->RSSetState(nearer.Get());
+        frame_history::DrawAgain(native, drawn.arguments);
+      }
 
       native->OMSetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), depth_stencil.Get());
       native->PSSetShader(game_pixel_shader.Get(), nullptr, 0);

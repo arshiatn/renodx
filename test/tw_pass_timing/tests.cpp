@@ -29,6 +29,7 @@ extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char*)
 #include "test/tw_sampler_lifetime/mock_reshade.hpp"
 
 namespace timing = twattila::pass_timing;
+using Microsoft::WRL::ComPtr;
 
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); std::fflush(stdout); ExitProcess(1); } } while (false)
 
@@ -140,6 +141,13 @@ static int Body() {
   Make(&second);
   Make(&third);
 
+  // 0. RENODX_TW_PASS_DUMP unset: pass_dump registers nothing (a register_event here would find no ReShade module).
+  {
+    CHECK(SetEnvironmentVariableW(L"RENODX_TW_PASS_DUMP", nullptr) || GetLastError() == ERROR_ENVVAR_NOT_FOUND);
+    twattila::pass_dump::Install();
+    std::printf("0 pass_dump without RENODX_TW_PASS_DUMP: enabled %d\n", static_cast<int>(twattila::pass_dump::internal::enabled.load()));
+    CHECK(!twattila::pass_dump::internal::enabled.load() && !twattila::pass_dump::internal::recording.load());
+  }
   // 1.
   {
     const int presents = Run(&first, 2500, 2500);
@@ -222,6 +230,72 @@ static int Body() {
     const auto [lines, header] = FileCommands();
     CHECK(lines == 1000 && header == 1000);
     std::printf("6 a run after it: %d presents, status \"%s\"\n", presents, timing::Status().c_str());
+  }
+  // 7. Own passes (OwnPass): 300 draws, each hosting two marks (one with a nested mark, which does nothing) and a native
+  //    clear: counted 300 + 4 x 300; timed 300 x 5 commands, the Add-on passes sections with both passes x 300 and the
+  //    300 hosts. A mark with no frame running or on a deferred context does nothing.
+  {
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11RenderTargetView> rtv;
+    const D3D11_TEXTURE2D_DESC desc = {.Width = 64, .Height = 64, .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R8G8B8A8_UNORM,
+                                       .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_RENDER_TARGET};
+    CHECK(SUCCEEDED(first.device.native->CreateTexture2D(&desc, nullptr, &texture)));
+    CHECK(SUCCEEDED(first.device.native->CreateRenderTargetView(texture.Get(), nullptr, &rtv)));
+    ComPtr<ID3D11DeviceContext> deferred;
+    CHECK(SUCCEEDED(first.device.native->CreateDeferredContext(0, &deferred)));
+    { const timing::OwnPass idle(first.commands.native.Get(), "idle", timing::Stage::PIXEL); }
+    constexpr float CLEAR[4] = {};
+    timing::Request();
+    int presents = 0;
+    uint32_t counted = 0;
+    while (Phase() != timing::internal::Phase::IDLE) {
+      CHECK(presents < 2000);
+      if (Phase() == timing::internal::Phase::READING) Sleep(1);
+      for (int draw = 0; draw < 300; ++draw) {
+        timing::internal::OnDraw(&first.commands, 3, 1, 0, 0);
+        {
+          const timing::OwnPass mark(first.commands.native.Get(), "own_a", timing::Stage::COMPUTE);
+          const timing::OwnPass nested(first.commands.native.Get(), "nested", timing::Stage::COMPUTE);
+          const timing::OwnPass other_context(deferred.Get(), "deferred", timing::Stage::COMPUTE);
+          first.commands.native->ClearRenderTargetView(rtv.Get(), CLEAR);
+        }
+        const timing::OwnPass mark(first.commands.native.Get(), "own_b", timing::Stage::COMPUTE);
+      }
+      if (Phase() == timing::internal::Phase::COUNTING) {
+        const std::lock_guard lock(timing::internal::state.mutex);
+        counted = timing::internal::state.counted;
+      }
+      timing::OnPresent(&first.queue, nullptr, nullptr, nullptr, 0, nullptr);
+      first.commands.native->Flush();
+      ++presents;
+    }
+    std::wstring exe(32768, L'\0');
+    exe.resize(GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size())));
+    std::ifstream file(std::filesystem::path(exe).parent_path() / "ia5_pass_timing_test_pass_timing.txt", std::ios::binary);
+    std::stringstream text;
+    text << file.rdbuf();
+    file.close();
+    const std::string content = text.str();
+    const auto section_lines = [&](std::string_view header) {
+      size_t lines = 0;
+      size_t at = content.find(header);
+      if (at == std::string::npos) return SIZE_MAX;
+      at = content.find('\n', content.find('\n', at + 1) + 1);  // past the column names
+      for (; at != std::string::npos && at + 1 < content.size() && content[at + 1] != '\n'; at = content.find('\n', at + 1)) ++lines;
+      return lines;
+    };
+    const size_t passes = section_lines("== Add-on passes: each own pass");
+    const size_t hosts = section_lines("== Add-on passes: each host command without them ==");
+    std::printf("7 own passes: counted %u, %d presents, %zu pass lines, %zu host lines, status \"%s\"\n", counted, presents, passes, hosts,
+                timing::Status().c_str());
+    CHECK(counted == 300 + 4 * 300);
+    CHECK(timing::Status().find(", 1500 commands, ") != std::string::npos);
+    CHECK(passes == 2 && hosts == 300);
+    CHECK(content.find("\t300\town_a\tcs 00000000\n") != std::string::npos);
+    CHECK(content.find("\t300\town_b\tcs 00000000\n") != std::string::npos);
+    CHECK(content.find("nested") == std::string::npos && content.find("deferred") == std::string::npos);
+    const auto [lines, header] = FileCommands();
+    CHECK(lines == 1500 && header == 1500);
   }
   timing::OnDestroyDevice(nullptr);
   std::printf("PASS\n");

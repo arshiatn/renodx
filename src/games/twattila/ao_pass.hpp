@@ -25,6 +25,7 @@
 #include "../../utils/directx.hpp"
 #include "./depth_levels.hpp"
 #include "./frame_history.hpp"
+#include "./pass_timing.hpp"
 
 // The visibility bitmask ambient occlusion in place of a game's AO pixel shader draw (Attila's, Thrones of Britannia's
 // and Rome II's ssao.hlsl ps_pixel_resolve, bitmask_ssao.hlsli; Troy's and Pharaoh's ssao2.hlsl HBAO,
@@ -225,8 +226,31 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
       }
     }
 
+    // Pass dump (test only): the game's draw with the inputs, the outputs before and, at the post callback, after (the
+    // game's target too: a draw-hosted pass) and the CPU state the replay sets.
+    pass_dump::Begin(native, "ao.draw");
+    if (pass_dump::Recording()) {
+      pass_dump::Value("ao.frame", runtime.frame);
+      pass_dump::Value("ao.drawn_frame", runtime.drawn_frame);
+      pass_dump::Value("ao.temporal", runtime.temporal);
+      pass_dump::Value("ao.denoise", runtime.denoise);
+      pass_dump::Value("ao.scale", runtime.scale);
+      pass_dump::Value("ao.history_index", objects.history_index);
+      pass_dump::Value("frame_history.effect_share", frame_history::effect_share.load());
+      pass_dump::Resource(native, "ao.target", target_resource.Get());
+      {
+        const std::unique_lock levels_lock(depth_levels::internal::runtime.mutex);
+        pass_dump::Resource(native, "ao.levels", depth_levels::internal::runtime.objects.texture.Get());
+      }
+      pass_dump::Resource(native, "ao.raw", objects.raw.srv.Get());
+      pass_dump::Resource(native, "ao.history_0", objects.history[0].srv.Get());
+      pass_dump::Resource(native, "ao.history_1", objects.history[1].srv.Get());
+      pass_dump::Resource(native, "ao.denoised", objects.denoised.srv.Get());
+      pass_dump::Resource(native, "ao.previous_camera", objects.previous_camera.Get());
+    }
     native->PSGetShader(runtime.game_shader.ReleaseAndGetAddressOf(), nullptr, nullptr);
     native->PSGetConstantBuffers(internal::SETTINGS_SLOT, 1, runtime.game_settings.ReleaseAndGetAddressOf());
+    if (!pass_dump::Bytes("ao.settings", runtime.settings, runtime.settings_size)) return {};
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, runtime.settings, 0, 0);
     native->PSSetShader(bitmask.Get(), nullptr, 0);
     native->PSSetConstantBuffers(internal::SETTINGS_SLOT, 1, objects.settings.GetAddressOf());
@@ -244,6 +268,8 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
     ComPtr<ID3D11ShaderResourceView> depth_view;
     native->PSGetShaderResources(internal::DEPTH_SLOT, 1, depth_view.GetAddressOf());
     if (depth_view) {
+      // depth_levels.hpp's dispatches, marked here (Build puts the compute bindings back: no uses.tsv rows).
+      const pass_timing::OwnPass mark(native, "depth_levels", pass_timing::Stage::NONE);
       const ComPtr<ID3D11ShaderResourceView> levels = depth_levels::Build(native, depth_view.Get());
       native->PSSetShaderResources(depth_levels::SLOT, 1, levels.GetAddressOf());
     }
@@ -266,15 +292,17 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
       };
       native->RSSetViewports(1, &viewport);
       native->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
-      const auto pass = [&](const frame_history::Target& target, ID3D11PixelShader* shader,
+      // Each pass a Time Each Pass line (`name`: its shader's).
+      const auto pass = [&](const char* name, const frame_history::Target& target, ID3D11PixelShader* shader,
                             ID3D11ShaderResourceView* input) {
+        const pass_timing::OwnPass mark(native, name, pass_timing::Stage::PIXEL);
         ID3D11RenderTargetView* targets[] = {target.rtv.Get()};
         native->OMSetRenderTargets(1, targets, nullptr);
         native->PSSetShaderResources(internal::INPUT_SLOT, 1, &input);
         native->PSSetShader(shader, nullptr, 0);
         frame_history::DrawAgain(native, command.arguments);
       };
-      pass(objects.raw, bitmask.Get(), nullptr);
+      pass("ao_bitmask", objects.raw, bitmask.Get(), nullptr);
       ID3D11ShaderResourceView* current = objects.raw.srv.Get();
       if (runtime.temporal && runtime.drawn_frame != runtime.frame) {
         const size_t previous_index = objects.history_index;
@@ -283,11 +311,11 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
         native->PSSetShaderResources(internal::HISTORY_SLOT, 1, history);
         ID3D11Buffer* previous_camera[] = {objects.previous_camera.Get()};
         native->PSSetConstantBuffers(internal::PREVIOUS_CAMERA_SLOT, 1, previous_camera);
-        pass(objects.history[objects.history_index], resolve.Get(), current);
+        pass("ao_resolve", objects.history[objects.history_index], resolve.Get(), current);
         current = objects.history[objects.history_index].srv.Get();
       }
       if (runtime.denoise) {
-        pass(objects.denoised, denoise.Get(), current);
+        pass("ao_denoise", objects.denoised, denoise.Get(), current);
         current = objects.denoised.srv.Get();
       }
 
@@ -305,6 +333,7 @@ constexpr auto OnAmbientOcclusionDraw = []<typename T, typename Context>(
         .post_callback = [](Context& post, const void*) {
           auto* post_native = internal::NativeContext(post.cmd_list);
           if (post_native == nullptr) return;
+          pass_dump::End(post_native);
           auto& post_runtime = internal::runtime;
           const std::unique_lock post_lock(post_runtime.mutex);
           auto& post_objects = post_runtime.objects;

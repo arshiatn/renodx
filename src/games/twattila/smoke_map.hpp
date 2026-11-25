@@ -24,6 +24,7 @@
 #include "../../utils/log.hpp"
 #include "./frame_history.hpp"
 #include "./light_bounce.hpp"
+#include "./pass_timing.hpp"
 #include "./rt_scene.hpp"
 #include "./screen_space_shadows.hpp"
 
@@ -229,6 +230,24 @@ inline ID3D11ShaderResourceView* Occlusion(ID3D11DeviceContext* native, ID3D11Sh
     objects.height = depth_desc.Height;
   }
 
+  // Pass dump (test only): the inputs and the outputs before (and after). Its list's order differs run to run
+  // (InterlockedAdd): the replay takes its result as an input.
+  const pass_dump::Pass dump(native, "smoke.map");
+  if (pass_dump::Recording()) {
+    pass_dump::Value("smoke.particle_count", particle_count);
+    pass_dump::Resource(native, "smoke.particles", particles.Get());
+    pass_dump::Resource(native, "smoke.behaviours", behaviours.Get());
+    pass_dump::Resource(native, "smoke.camera", game_camera.Get());
+    pass_dump::Resource(native, "smoke.lighting", lighting.Get());
+    pass_dump::Resource(native, "smoke.depth", depth);
+    pass_dump::Resource(native, "smoke.occlusion", occlusion);
+    pass_dump::Resource(native, "smoke.view", objects.view_srv.Get());
+    pass_dump::Resource(native, "smoke.anchor", objects.anchor_uav.Get());
+    pass_dump::Resource(native, "smoke.splats", objects.splats_srv.Get());
+    pass_dump::Resource(native, "smoke.arguments", objects.arguments.Get());
+    pass_dump::Resource(native, "smoke.map", objects.map_srv.Get());
+    pass_dump::Resource(native, "smoke.dimmed", objects.dimmed_srv.Get());
+  }
   const auto render = frame_history::RenderSize(depth_desc.Width, depth_desc.Height);
   const internal::ShaderSettings settings = {
       .sun_direction = static_cast<float>(draw.sun_direction),
@@ -238,6 +257,7 @@ inline ID3D11ShaderResourceView* Occlusion(ID3D11DeviceContext* native, ID3D11Sh
       .render_width = static_cast<float>(render[0]),
       .render_height = static_cast<float>(render[1]),
   };
+  if (!pass_dump::Bytes("smoke.settings", &settings, sizeof(settings))) return nullptr;
   native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &settings, 0, 0);
   // Six vertices a splat, none yet (smoke_map_list counts them).
   constexpr std::array<UINT, 4> NO_SPLATS = {6, 0, 0, 0};
@@ -252,39 +272,53 @@ inline ID3D11ShaderResourceView* Occlusion(ID3D11DeviceContext* native, ID3D11Sh
   const std::array<ID3D11Buffer*, 4> constants = {camera, lighting.Get(), objects.settings.Get(), behaviours.Get()};
   native->CSSetConstantBuffers(0, static_cast<UINT>(constants.size()), constants.data());
   native->CSSetSamplers(0, 1, objects.linear_clamp.GetAddressOf());
-  const auto run = [&](ID3D11ComputeShader* shader, std::array<ID3D11ShaderResourceView*, 4> views, std::array<ID3D11UnorderedAccessView*, 2> uavs,
-                       UINT groups_x, UINT groups_y) {
+  // Each pass a Time Each Pass line (`name`: its shader's).
+  const auto run = [&](const char* name, ID3D11ComputeShader* shader, std::array<ID3D11ShaderResourceView*, 4> views,
+                       std::array<ID3D11UnorderedAccessView*, 2> uavs, UINT groups_x, UINT groups_y) {
     constexpr std::array<UINT, 2> KEEP_COUNTS = {UINT_MAX, UINT_MAX};
     constexpr std::array<ID3D11ShaderResourceView*, 4> NO_VIEWS = {};
     constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_UAVS = {};
-    native->CSSetShader(shader, nullptr, 0);
-    native->CSSetUnorderedAccessViews(0, 2, uavs.data(), KEEP_COUNTS.data());
-    native->CSSetShaderResources(0, 4, views.data());
-    native->Dispatch(groups_x, groups_y, 1);
+    {
+      const pass_timing::OwnPass mark(native, name, pass_timing::Stage::COMPUTE);
+      native->CSSetShader(shader, nullptr, 0);
+      native->CSSetUnorderedAccessViews(0, 2, uavs.data(), KEEP_COUNTS.data());
+      native->CSSetShaderResources(0, 4, views.data());
+      native->Dispatch(groups_x, groups_y, 1);
+    }
     native->CSSetShaderResources(0, 4, NO_VIEWS.data());
     native->CSSetUnorderedAccessViews(0, 2, NO_UAVS.data(), KEEP_COUNTS.data());
   };
-  run(objects.setup.Get(), {}, {objects.view_uav.Get(), objects.anchor_uav.Get()}, 1, 1);
-  run(objects.list.Get(), {particles.Get(), objects.view_srv.Get()}, {objects.splats_uav.Get(), objects.arguments_uav.Get()}, (particle_count + 63) / 64, 1);
+  run("smoke_map_setup", objects.setup.Get(), {}, {objects.view_uav.Get(), objects.anchor_uav.Get()}, 1, 1);
+  run("smoke_map_list", objects.list.Get(), {particles.Get(), objects.view_srv.Get()}, {objects.splats_uav.Get(), objects.arguments_uav.Get()},
+      (particle_count + 63) / 64, 1);
 
   constexpr std::array<FLOAT, 4> NO_SMOKE = {};
   const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(internal::MAP_SIZE), .Height = static_cast<float>(internal::MAP_SIZE), .MaxDepth = 1.f};
   ID3D11RenderTargetView* map_target = objects.map_rtv.Get();
-  native->ClearRenderTargetView(map_target, NO_SMOKE.data());
-  native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-  native->VSSetShader(objects.splat_vertex_shader.Get(), nullptr, 0);
-  native->VSSetShaderResources(0, 1, objects.splats_srv.GetAddressOf());
-  native->PSSetShader(objects.splat_pixel_shader.Get(), nullptr, 0);
-  native->RSSetState(objects.rasterizer.Get());
-  native->RSSetViewports(1, &viewport);
-  native->OMSetBlendState(objects.additive.Get(), nullptr, 0xFFFFFFFF);
-  native->OMSetRenderTargets(1, &map_target, nullptr);
-  native->DrawInstancedIndirect(objects.arguments.Get(), 0);
+  {
+    const pass_timing::OwnPass mark(native, "smoke_map_splat", pass_timing::Stage::PIXEL);
+    native->ClearRenderTargetView(map_target, NO_SMOKE.data());
+    native->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    native->VSSetShader(objects.splat_vertex_shader.Get(), nullptr, 0);
+    native->VSSetShaderResources(0, 1, objects.splats_srv.GetAddressOf());
+    native->PSSetShader(objects.splat_pixel_shader.Get(), nullptr, 0);
+    native->RSSetState(objects.rasterizer.Get());
+    native->RSSetViewports(1, &viewport);
+    native->OMSetBlendState(objects.additive.Get(), nullptr, 0xFFFFFFFF);
+    native->OMSetRenderTargets(1, &map_target, nullptr);
+    native->DrawInstancedIndirect(objects.arguments.Get(), 0);
+  }
   native->OMSetRenderTargets(0, nullptr, nullptr);
   native->VSSetShaderResources(0, 1, &no_view);
 
-  const ComPtr<ID3D11ComputeShader>& apply = (depth_view.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2DMS ? objects.apply_ms : objects.apply);
-  run(apply.Get(), {objects.map_srv.Get(), depth, occlusion, objects.view_srv.Get()}, {objects.dimmed_uav.Get(), objects.anchor_uav.Get()},
+  const char* apply_name = "smoke_map_apply";
+  ID3D11ComputeShader* apply = objects.apply.Get();
+  if (depth_view.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2DMS) {
+    apply_name = "smoke_map_apply_ms";
+    apply = objects.apply_ms.Get();
+  }
+  run(apply_name, apply,
+      {objects.map_srv.Get(), depth, occlusion, objects.view_srv.Get()}, {objects.dimmed_uav.Get(), objects.anchor_uav.Get()},
       (objects.width + 7) / 8, (objects.height + 7) / 8);
   context1->SwapDeviceContextState(game_state.Get(), nullptr);
   runtime.dimmed = true;

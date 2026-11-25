@@ -28,6 +28,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/settings.hpp"
 #include "../../utils/state.hpp"
+#include "./pass_dump.hpp"
 
 // Time Each Pass (a button): one frame's GPU time of every draw and dispatch, from a timestamp at each, into
 // <prefix>_pass_timing.txt next to the exe, summed by pass (the same targets in a row) and by shader. Its events are the
@@ -39,6 +40,8 @@
 // or the device makes no more): then its first commands are saved.
 // In an add-on: Install("<prefix>") first in its AttachAddon, Button(<section>) among its settings (graphics_page.hpp
 // places it by its label), Uninstall() in its DetachAddon. Its own present event ends and reads the timed frame.
+// The add-on's own passes (native calls, which no event sees) are marked with OwnPass around them: the file's "Add-on
+// passes" sections give each pass and each host command without them.
 namespace twattila::pass_timing {
 
 namespace internal {
@@ -51,6 +54,10 @@ constexpr uint32_t MAX_COMMANDS = 40000;
 constexpr uint32_t STAMPS_A_PRESENT = 1000;
 constexpr uint32_t WAIT_PRESENTS = 120;
 
+// GAME: a draw or dispatch event; OWN: an add-on pass's native calls inside one (OwnPass); REST: that event's time
+// after the pass (its kind, shaders and target).
+enum class Role : uint8_t { GAME, OWN, REST };
+
 struct Command {
   const char* kind = "";
   uint32_t count = 0;
@@ -58,6 +65,8 @@ struct Command {
   uint32_t pixel_shader = 0;
   uint32_t compute_shader = 0;
   const void* target = nullptr;  // render target 0's resource, else the depth's, else UAV 0's (a dispatch)
+  Role role = Role::GAME;
+  size_t host = SIZE_MAX;  // OWN and REST: the game command's index
 };
 
 enum class Phase : uint8_t { IDLE, REQUESTED, COUNTING, PREPARING, TIMING, READING };
@@ -73,6 +82,7 @@ struct State {
   uint32_t unstamped = 0;      // the timed frame's commands after the stamps ran out
   uint32_t most_commands = 0;  // the most commands a counted or timed frame had on this device
   bool stamps_capped = false;  // the timed frame's stamps can't grow (MAX_COMMANDS, or CreateQuery failed)
+  bool own_open = false;       // an OwnPass is open (marks don't nest)
   std::vector<Command> commands;
   std::unordered_map<const void*, std::string> targets;  // described once, while they live
   uint32_t presents_waited = 0;
@@ -209,6 +219,31 @@ inline void Write(ID3D11DeviceContext* context, const D3D11_QUERY_DATA_TIMESTAMP
   std::ranges::sort(by_time, [](const auto& a, const auto& b) { return a.second.first > b.second.first; });
   text += "\n== Shaders, most time first ==\nms\tcommands\tshaders\n";
   for (const auto& [shader, sums] : by_time) text += std::format("{:.3f}\t{}\t{}\n", sums.first, sums.second, shader);
+  // Each own pass (OwnPass: its native calls) by name and host shaders, then each game command that hosted some: its
+  // time without them (its own interval and its REST ones) and theirs.
+  std::map<std::string, std::pair<double, uint32_t>> own_passes;
+  std::map<size_t, std::pair<double, double>> hosts;  // by the game command's index: its time without the passes, theirs
+  for (size_t index = 0; index < count; ++index) {
+    const auto& command = state.commands[index];
+    const double interval = ms(ticks[index], ticks[index + 1]);
+    if (command.role == Role::OWN) {
+      auto& [pass_ms, pass_count] = own_passes[std::format("{}\t{}", command.kind, Shaders(command))];
+      pass_ms += interval;
+      ++pass_count;
+      hosts[command.host].second += interval;
+    } else if (command.role == Role::REST) {
+      hosts[command.host].first += interval;
+    }
+  }
+  text += "\n== Add-on passes: each own pass (its native calls inside a game command) ==\nms\tcount\tpass\thost shaders\n";
+  for (const auto& [pass, sums] : own_passes) text += std::format("{:.3f}\t{}\t{}\n", sums.first, sums.second, pass);
+  text += "\n== Add-on passes: each host command without them ==\nindex\tms without\tms of the passes\tkind\tshaders\ttarget\n";
+  for (const auto& [host, sums] : hosts) {
+    const auto& command = state.commands[host];
+    const auto target = state.targets.find(command.target);
+    text += std::format("{}\t{:.4f}\t{:.4f}\t{}\t{}\t{} {}\n", host, sums.first + ms(ticks[host], ticks[host + 1]), sums.second, command.kind,
+                        Shaders(command), command.target, (target == state.targets.end() ? std::string("-") : target->second));
+  }
   text += "\n== Commands ==\nindex\tms\tkind\tcount\tshaders\ttarget\n";
   for (size_t index = 0; index < count; ++index) {
     const auto& command = state.commands[index];
@@ -227,6 +262,73 @@ inline void Write(ID3D11DeviceContext* context, const D3D11_QUERY_DATA_TIMESTAMP
 }
 
 }  // namespace internal
+
+// An add-on pass's native calls inside a game command (ReShade never sees them, so no event stamps them), around them:
+// in a timed frame two commands, the pass (kind `name`, the host's shaders and target: the Passes and Shaders sections
+// stay as without it) and the rest of the host command (REST, count 0), so the game's draw after the pass isn't booked
+// on it; in a counting frame 2. `name` must outlive the run (a literal): the pass's shader by its embed name (the pass
+// dump's uses.tsv stem), `stage` the one whose bindings its rows list (NONE: clears, copies, or a pass that puts its
+// bindings back itself: no rows). Marks don't nest (an inner one does nothing).
+enum class Stage : uint8_t { COMPUTE, PIXEL, NONE };
+
+class OwnPass {
+ public:
+  OwnPass(ID3D11DeviceContext* native, const char* name, Stage stage) : native_(native), name_(name), stage_(stage) {
+    auto& state = internal::state;
+    if (!state.in_frame.load(std::memory_order_relaxed)) return;
+    // The device's API: a native D3D11 context, the immediate one (as Stamp's ImmediateContext).
+    if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
+    const std::lock_guard lock(state.mutex);
+    if (state.own_open) return;
+    if (state.phase == internal::Phase::COUNTING) {
+      state.counted += 2;
+      state.own_open = true;
+      timed_ = true;
+      return;
+    }
+    if (state.phase != internal::Phase::TIMING || state.commands.empty()) return;
+    if (state.commands.size() + 2 >= state.stamps.size()) {
+      state.unstamped += 2;
+      return;
+    }
+    const internal::Command& last = state.commands.back();
+    const size_t host = (last.role == internal::Role::GAME ? state.commands.size() - 1 : last.host);
+    internal::Command own = state.commands[host];
+    own.kind = name;
+    own.count = 0;
+    own.role = internal::Role::OWN;
+    own.host = host;
+    native->End(state.stamps[state.commands.size()].Get());
+    state.commands.push_back(own);
+    state.own_open = true;
+    timed_ = true;
+    own_index_ = state.commands.size() - 1;
+  }
+  ~OwnPass() {
+    if (stage_ != Stage::NONE) pass_dump::OwnPassDone(native_, name_, stage_ == Stage::COMPUTE);
+    if (!timed_) return;
+    auto& state = internal::state;
+    const std::lock_guard lock(state.mutex);
+    state.own_open = false;
+    // A counting mark, or the frame ended meanwhile (it can't: one command's calls): no rest.
+    if (own_index_ == SIZE_MAX || state.phase != internal::Phase::TIMING || own_index_ + 1 != state.commands.size()) return;
+    internal::Command rest = state.commands[state.commands[own_index_].host];
+    rest.count = 0;
+    rest.role = internal::Role::REST;
+    rest.host = state.commands[own_index_].host;
+    native_->End(state.stamps[state.commands.size()].Get());
+    state.commands.push_back(rest);
+  }
+  OwnPass(const OwnPass&) = delete;
+  OwnPass& operator=(const OwnPass&) = delete;
+
+ private:
+  ID3D11DeviceContext* native_;
+  const char* name_;
+  Stage stage_;
+  bool timed_ = false;           // this mark is open in Time Each Pass
+  size_t own_index_ = SIZE_MAX;  // its OWN command (none in a counting frame)
+};
 
 // The button: counts the next frame's commands, makes their stamps, then times a whole frame.
 inline void Request() {
@@ -373,6 +475,7 @@ inline void OnDestroyDevice(reshade::api::device* destroyed) {
 // Before any other draw, dispatch or present hook of the addon (their run order is registration order). `prefix`: the
 // file's name before _pass_timing.txt.
 inline void Install(const std::string& prefix) {
+  pass_dump::Install();
   {
     const std::lock_guard lock(internal::state.mutex);
     internal::state.prefix = prefix;
@@ -393,6 +496,7 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
   OnDestroyDevice(nullptr);
+  pass_dump::Uninstall();
 }
 
 // The add-on's button in `section` (Graphics 1 of 2 moves it under Ray Tracing Extra Options by its label).

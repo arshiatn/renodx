@@ -19,6 +19,7 @@
 #include <embed/shaders.h>
 
 #include "../../utils/log.hpp"
+#include "./pass_timing.hpp"
 #include "./screen_space_shadows.hpp"
 
 // Torch and Fire Shadows (Experimental): the screen-space shadows' march (sss_bend_extended's light mode) from the game's
@@ -148,8 +149,30 @@ inline bool OnLightDraw(ID3D11DeviceContext* native, const Instances& instances)
                          || screen_space_shadows::internal::MakeTexture(device.Get(), objects.width, objects.height, DXGI_FORMAT_R32_UINT,
                                                                         &lights.mask_uav, &lights.mask_srv));
     if (lights.marched) {
+      // Pass dump (test only): the march's inputs, its outputs before (and after) and the CPU state the replay sets.
+      const pass_dump::Pass dump(native, "sss.lights");
+      if (pass_dump::Recording()) {
+        pass_dump::Keep("sss.settings_cpu", &runtime.settings, sizeof(runtime.settings));
+        pass_dump::Keep("sss.uploaded_extended", &objects.uploaded_extended, sizeof(objects.uploaded_extended));
+        pass_dump::Value("sss.frame", runtime.frame);
+        pass_dump::Value("sss.lights_current", lights.current);
+        pass_dump::Value("sss.lights_last_bytes", lights.bytes[last]);
+        pass_dump::Resource(native, "sss.lights_instances", lights.instances[last].Get());
+        pass_dump::Resource(native, "sss.lights_camera", lights.camera.Get());
+        pass_dump::Resource(native, "sss.settings", objects.settings.Get());
+        pass_dump::Resource(native, "sss.depth", objects.depth_srv.Get());
+        pass_dump::Resource(native, "sss.parameters", objects.parameters.Get());
+        pass_dump::Resource(native, "sss.thin", objects.thin_texture.Get());
+        pass_dump::Resource(native, "sss.lights_dispatches", lights.dispatches.Get());
+        pass_dump::Resource(native, "sss.lights_coordinates", lights.coordinates.Get());
+        pass_dump::Resource(native, "sss.lights_arguments", lights.arguments.Get());
+        pass_dump::Resource(native, "sss.lights_list", lights.list.Get());
+        pass_dump::Resource(native, "sss.lights_constants", lights.constants.Get());
+        pass_dump::Resource(native, "sss.lights_mask", lights.mask_srv.Get());
+      }
       std::array<std::array<uint32_t, 4>, internal::MAX_DRAWS> draws = {};
       std::ranges::copy(last_records, draws.begin());
+      if (!pass_dump::Bytes("sss.lights_draws", draws.data(), sizeof(draws))) return false;
       native->UpdateSubresource(lights.draws.Get(), 0, nullptr, draws.data(), 0, 0);
       // The sun's march as it ran this frame (Auto Thickness, the banners' share), with the lights' pick.
       screen_space_shadows::internal::ExtendedSettings settings = objects.uploaded_extended;
@@ -158,21 +181,30 @@ inline bool OnLightDraw(ID3D11DeviceContext* native, const Instances& instances)
       settings.lights_wanted = std::min(runtime.settings.lights, internal::MAX_LIGHTS);
       settings.light_draws = static_cast<uint32_t>(last_records.size());
       settings.light_range = runtime.settings.light_range;
+      if (!pass_dump::Bytes("sss.lights_settings", &settings, sizeof(settings))) return false;
       if (std::memcmp(&settings, &lights.uploaded_settings, sizeof(settings)) != 0) {
         native->UpdateSubresource(lights.settings.Get(), 0, nullptr, &settings, 0, 0);
         lights.uploaded_settings = settings;
       }
       const ComputeState game_state(native);
-      ComputeState::Bind(native, lights.shader.Get(), {lights.instances_srv[last].Get(), lights.draws_srv.Get()},
-                         {lights.dispatches_uav.Get(), lights.coordinates_uav.Get(), lights.arguments_uav.Get(), lights.list_uav.Get()},
-                         {lights.camera.Get(), nullptr, objects.settings.Get(), nullptr, lights.settings.Get()});
-      native->Dispatch(1, 1, 1);
-      const D3D11_BOX list = {.left = 0, .top = 0, .front = 0, .right = internal::LIGHT_LIST * 16, .bottom = 1, .back = 1};
-      native->CopySubresourceRegion(lights.constants.Get(), 0, 0, 0, 0, lights.list.Get(), 0, &list);
-      constexpr std::array<UINT, 4> ALL_LIT = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
-      native->ClearUnorderedAccessViewUint(lights.mask_uav.Get(), ALL_LIT.data());
+      {
+        const pass_timing::OwnPass mark(native, "sss_lights", pass_timing::Stage::COMPUTE);
+        ComputeState::Bind(native, lights.shader.Get(), {lights.instances_srv[last].Get(), lights.draws_srv.Get()},
+                           {lights.dispatches_uav.Get(), lights.coordinates_uav.Get(), lights.arguments_uav.Get(), lights.list_uav.Get()},
+                           {lights.camera.Get(), nullptr, objects.settings.Get(), nullptr, lights.settings.Get()});
+        native->Dispatch(1, 1, 1);
+      }
+      {
+        const pass_timing::OwnPass mark(native, "sss_lights_clear", pass_timing::Stage::NONE);
+        const D3D11_BOX list = {.left = 0, .top = 0, .front = 0, .right = internal::LIGHT_LIST * 16, .bottom = 1, .back = 1};
+        native->CopySubresourceRegion(lights.constants.Get(), 0, 0, 0, 0, lights.list.Get(), 0, &list);
+        constexpr std::array<UINT, 4> ALL_LIT = {UINT_MAX, UINT_MAX, UINT_MAX, UINT_MAX};
+        native->ClearUnorderedAccessViewUint(lights.mask_uav.Get(), ALL_LIT.data());
+      }
+      const size_t variant = screen_space_shadows::internal::ExtendedVariant(runtime.settings.auto_thickness, false);
+      const pass_timing::OwnPass mark(native, screen_space_shadows::internal::EXTENDED_NAMES[variant], pass_timing::Stage::COMPUTE);
       ID3D11ShaderResourceView* thin = (settings.thin_light > 0.f) ? objects.thin_srv.Get() : nullptr;
-      ComputeState::Bind(native, objects.bend_extended[screen_space_shadows::internal::ExtendedVariant(runtime.settings.auto_thickness, false)].Get(),
+      ComputeState::Bind(native, objects.bend_extended[variant].Get(),
                          {objects.depth_srv.Get(), objects.parameters_srv.Get(), thin, nullptr, lights.dispatches_srv.Get(), lights.coordinates_srv.Get()},
                          {nullptr, nullptr, nullptr, lights.mask_uav.Get()},
                          {lights.camera.Get(), nullptr, objects.settings.Get(), lights.mode.Get(), lights.settings.Get()});
@@ -186,6 +218,7 @@ inline bool OnLightDraw(ID3D11DeviceContext* native, const Instances& instances)
   const UINT count = (instances.stride == 0) ? 0 : std::min(instances.count, (internal::INSTANCE_BYTES - bytes) / instances.stride);
   if (instances.buffer != nullptr && count != 0 && records.size() < internal::MAX_DRAWS) {
     const D3D11_BOX box = {.left = instances.first, .top = 0, .front = 0, .right = instances.first + (count * instances.stride), .bottom = 1, .back = 1};
+    const pass_timing::OwnPass mark(native, "sss_lights_copy", pass_timing::Stage::NONE);
     native->CopySubresourceRegion(lights.instances[lights.current].Get(), 0, bytes, 0, 0, instances.buffer, 0, &box);
     records.push_back({bytes, count, instances.stride, instances.position | (instances.colour << 16)});
     bytes += count * instances.stride;

@@ -34,6 +34,7 @@
 #include "./dlaa_bridge.hpp"
 #include "./frame_history.hpp"
 #include "./light_bounce.h"
+#include "./pass_timing.hpp"
 
 // Light Bounce (Experimental): screen-space indirect light with the game's deferred sun light draws (each lighting
 // model draws its own pixels, by stencil), their camera and G-buffer, bound again at the addon's own slots (t42-t45,
@@ -477,16 +478,60 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     runtime.settings.diffuse_rule = sun_draw.diffuse_rule;
     runtime.settings.texel_centre = objects.texel_centre;
     runtime.settings.directional = (objects.sh_traced ? 1.f : 0.f);
-    const auto upload = [&]() {
+    // `name`: the pass dump's. Unlike the compute sites, this pass does not stop on a mismatch: the game's draw ran
+    // already and our state is half set, so it runs on to the normal end (restore + bypass).
+    const auto upload = [&](const char* name) {
+      if (!pass_dump::Bytes(name, &runtime.settings, sizeof(LightBounceConstants))) {
+        // No-op: Bytes lists the mismatch for the replay (bounce.sun_draw is not replayed).
+      }
       if (std::memcmp(&objects.uploaded, &runtime.settings, sizeof(LightBounceConstants)) != 0) {
         native->UpdateSubresource(objects.constants.Get(), 0, nullptr, &runtime.settings, 0, 0);
         objects.uploaded = runtime.settings;
       }
     };
-    upload();
 
     // The game's draw first.
     frame_history::DrawAgain(native, command.arguments);
+
+    // Pass dump (test only): from after the game's draw (the light buffer as it left it) to after the apply: the inputs,
+    // the outputs before and after, and the CPU state the replay sets.
+    const pass_dump::Pass dump(native, "bounce.sun_draw");
+    if (pass_dump::Recording()) {
+      pass_dump::Value("bounce.frame", runtime.frame);
+      pass_dump::Value("bounce.traced_frame", objects.traced_frame);
+      pass_dump::Value("bounce.history_index", objects.history_index);
+      pass_dump::Value("bounce.sh_traced", objects.sh_traced);
+      pass_dump::Value("bounce.texel_centre", objects.texel_centre);
+      pass_dump::Value("bounce.standard", sun_draw.standard);
+      pass_dump::Value("bounce.gbuffer_slot", sun_draw.gbuffer_slot);
+      pass_dump::Value("bounce.camera_slot", sun_draw.camera_slot);
+      pass_dump::Value("bounce.denoise", runtime.denoise);
+      pass_dump::Value("bounce.directional", runtime.directional);
+      pass_dump::Value("bounce.apply_per_pixel", runtime.apply_per_pixel);
+      pass_dump::Value("bounce.ray_traced", internal::ray_traced_trace.load() != nullptr);
+      pass_dump::Value("bridge.reconstructing", dlaa_bridge::bridge.reconstructing);
+      pass_dump::Value("bridge.nrd_bounce", dlaa_bridge::bridge.nrd_bounce);
+      pass_dump::Resource(native, "bounce.light", light_texture.Get());
+      pass_dump::Resource(native, "bounce.light_copy", objects.light_copy.Get());
+      pass_dump::Resource(native, "bounce.prepared_light", objects.prepared_light.texture.Get());
+      pass_dump::Resource(native, "bounce.prepared_geometry", objects.prepared_geometry.texture.Get());
+      pass_dump::Resource(native, "bounce.traced", objects.traced.texture.Get());
+      pass_dump::Resource(native, "bounce.history_0", objects.history[0].texture.Get());
+      pass_dump::Resource(native, "bounce.history_1", objects.history[1].texture.Get());
+      pass_dump::Resource(native, "bounce.history_frames_0", objects.history_frames[0].texture.Get());
+      pass_dump::Resource(native, "bounce.history_frames_1", objects.history_frames[1].texture.Get());
+      pass_dump::Resource(native, "bounce.denoised", objects.denoised.texture.Get());
+      pass_dump::Resource(native, "bounce.traced_sh_direction", objects.traced_sh.direction.texture.Get());
+      pass_dump::Resource(native, "bounce.traced_sh_zonal", objects.traced_sh.zonal.texture.Get());
+      pass_dump::Resource(native, "bounce.history_sh_0_direction", objects.history_sh[0].direction.texture.Get());
+      pass_dump::Resource(native, "bounce.history_sh_0_zonal", objects.history_sh[0].zonal.texture.Get());
+      pass_dump::Resource(native, "bounce.history_sh_1_direction", objects.history_sh[1].direction.texture.Get());
+      pass_dump::Resource(native, "bounce.history_sh_1_zonal", objects.history_sh[1].zonal.texture.Get());
+      pass_dump::Resource(native, "bounce.denoised_sh_direction", objects.denoised_sh.direction.texture.Get());
+      pass_dump::Resource(native, "bounce.denoised_sh_zonal", objects.denoised_sh.zonal.texture.Get());
+      pass_dump::Resource(native, "bounce.previous_camera", objects.previous_camera.Get());
+    }
+    upload("bounce.constants");
 
     ComPtr<ID3D11PixelShader> game_shader;
     native->PSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
@@ -515,6 +560,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     // The prepare and the trace, once a frame after the first standard draw, with the addon's full-screen triangle over
     // the game's viewport / scale (no depth / stencil: every texel). The game's vertex stage, input, viewports,
     // rasterizer, depth / stencil state and targets are put back after.
+    const bool sh = objects.directional;  // the passes' *_sh shaders (Time Each Pass's marks: their embed names)
     if (sun_draw.standard && objects.traced_frame != runtime.frame) {
       ComPtr<ID3D11VertexShader> game_vertex_shader;
       native->VSGetShader(game_vertex_shader.GetAddressOf(), nullptr, nullptr);
@@ -539,7 +585,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
           .Height = std::ceil(game_viewport.Height / scale),
           .MaxDepth = 1.f,
       };
-      if (msaa) {
+      if (const pass_timing::OwnPass mark(native, "light_bounce_light_copy", pass_timing::Stage::NONE); msaa) {
         native->ResolveSubresource(objects.light_copy.Get(), 0, light_texture.Get(), 0, light_view.Format);
       } else {
         // Only the texels the prepare reads: `scale` a side for each pixel of the trace's viewport (all of them at 100%; below it
@@ -564,7 +610,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       // read the prepared normals too; should they fail, the screen-space trace takes the top-left's, w pinned there).
       const internal::RayTracedTrace ray_traced = internal::ray_traced_trace.load(std::memory_order_relaxed);
       runtime.settings.directional = ((objects.directional && ray_traced == nullptr) ? 1.f : 0.f);
-      upload();
+      upload("bounce.constants_prepare");
       native->OMSetBlendState(objects.replace_blend.Get(), nullptr, 0xFFFFFFFF);
       native->OMSetDepthStencilState(objects.no_depth.Get(), 0);
       native->RSSetState(objects.rasterizer.Get());
@@ -582,7 +628,13 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       native->OMSetRenderTargets(2, prepared, nullptr);
       const ComPtr<ID3D11PixelShader>& prepare = (msaa ? objects.prepare_msaa : objects.prepare);
       native->PSSetShader(prepare.Get(), nullptr, 0);
-      native->Draw(3, 0);
+      {
+        const pass_timing::OwnPass mark(native,
+                                        msaa ? (sh ? "light_bounce_prepare_ms_sh" : "light_bounce_prepare_ms")
+                                             : (sh ? "light_bounce_prepare_sh" : "light_bounce_prepare"),
+                                        pass_timing::Stage::PIXEL);
+        native->Draw(3, 0);
+      }
 
       // The trace through rays when ray tracing has it (the prepared textures no longer targets; it reads their first level).
       native->OMSetRenderTargets(0, nullptr, nullptr);
@@ -597,9 +649,10 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       // Directional Light Bounce: the screen-space trace's (the rays' have none: the bounce as without it).
       objects.sh_traced = objects.directional && !rays;
       runtime.settings.directional = (objects.sh_traced ? 1.f : 0.f);
-      upload();
+      upload("bounce.constants_trace");
       // Else the prepared light and geometry's levels, each from the one above (that level only, at t46-t47).
       if (!rays) {
+        const pass_timing::OwnPass mark(native, "light_bounce_levels", pass_timing::Stage::PIXEL);
         native->PSSetShader(objects.levels.Get(), nullptr, 0);
         for (UINT level = 1; level < objects.prepared_levels; ++level) {
           ID3D11RenderTargetView* level_targets[] = {objects.prepared_light.level_rtvs[level].Get(),
@@ -624,7 +677,9 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       // (at t40) into the denoised target. Each target set before its input, so no texture is bound as both. Directional
       // Light Bounce's targets beside each (their SV_Target after the pass' own; none while it is off: those slots
       // unbound) and views at t56-t59.
-      const auto pass = [&](std::initializer_list<const frame_history::Target*> targets, ID3D11PixelShader* shader) {
+      // Each pass a Time Each Pass line (`name`: its shader's).
+      const auto pass = [&](const char* name, std::initializer_list<const frame_history::Target*> targets, ID3D11PixelShader* shader) {
+        const pass_timing::OwnPass mark(native, name, pass_timing::Stage::PIXEL);
         std::array<ID3D11RenderTargetView*, 4> rtvs = {};
         UINT count = 0;
         for (const frame_history::Target* target : targets) {
@@ -648,7 +703,8 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       inputs[internal::PREPARED_VIEW + 1] = objects.prepared_geometry.srv.Get();
       sh_inputs = {nullptr, nullptr, previous_sh.direction.srv.Get(), previous_sh.zonal.srv.Get()};
       if (!rays) {
-        pass({&objects.traced, &objects.traced_sh.direction, &objects.traced_sh.zonal}, objects.trace.Get());
+        pass(sh ? "light_bounce_trace_sh" : "light_bounce_trace", {&objects.traced, &objects.traced_sh.direction, &objects.traced_sh.zonal},
+             objects.trace.Get());
       }
       // The resolve over frames also under Ray Reconstruction (ATN's debug33: the rays' trace applied as traced, RR alone,
       // was noisier); the denoiser not (Update).
@@ -656,15 +712,16 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       inputs[internal::FRAMES_VIEW] = objects.history_frames[previous_index].srv.Get();
       sh_inputs[0] = objects.traced_sh.direction.srv.Get();
       sh_inputs[1] = objects.traced_sh.zonal.srv.Get();
-      pass({&objects.history[objects.history_index], &objects.history_frames[objects.history_index], &resolved_sh.direction,
-            &resolved_sh.zonal},
+      pass(sh ? "light_bounce_resolve_sh" : "light_bounce_resolve",
+           {&objects.history[objects.history_index], &objects.history_frames[objects.history_index], &resolved_sh.direction, &resolved_sh.zonal},
            objects.resolve.Get());
       inputs[internal::FRAMES_VIEW] = nullptr;
       if (runtime.denoise) {
         inputs[internal::LIGHT_VIEW] = objects.history[objects.history_index].srv.Get();
         inputs[internal::HISTORY_VIEW] = nullptr;
         sh_inputs = {resolved_sh.direction.srv.Get(), resolved_sh.zonal.srv.Get(), nullptr, nullptr};
-        pass({&objects.denoised, &objects.denoised_sh.direction, &objects.denoised_sh.zonal}, objects.denoise.Get());
+        pass(sh ? "light_bounce_denoise_sh" : "light_bounce_denoise", {&objects.denoised, &objects.denoised_sh.direction, &objects.denoised_sh.zonal},
+             objects.denoise.Get());
       }
 
       // This frame's camera for the next trace.
@@ -698,7 +755,13 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     const ComPtr<ID3D11PixelShader>& apply =
         (msaa ? (runtime.apply_per_pixel ? objects.apply_msaa_pixel : objects.apply_msaa) : objects.apply);
     native->PSSetShader(apply.Get(), nullptr, 0);
-    frame_history::DrawAgain(native, command.arguments);
+    {
+      constexpr std::array<std::array<const char*, 2>, 3> APPLY_NAMES = {{{"light_bounce_apply", "light_bounce_apply_sh"},
+                                                                          {"light_bounce_apply_ms", "light_bounce_apply_ms_sh"},
+                                                                          {"light_bounce_apply_ms_pixel", "light_bounce_apply_ms_pixel_sh"}}};
+      const pass_timing::OwnPass mark(native, APPLY_NAMES[msaa ? (runtime.apply_per_pixel ? 2 : 1) : 0][sh ? 1 : 0], pass_timing::Stage::PIXEL);
+      frame_history::DrawAgain(native, command.arguments);
+    }
 
     native->PSSetShader(game_shader.Get(), nullptr, 0);
     native->PSSetShaderResources(internal::VIEWS_SLOT, internal::VIEW_COUNT, game_views.data());
