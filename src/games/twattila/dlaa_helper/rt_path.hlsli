@@ -868,7 +868,15 @@ float Validate(inout Reservoir previous, float3 origin, bool contact) {
   float3 light_now;
   const bool cached = (REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_CACHE) == 0u && dot(previous.hit_normal, previous.hit_normal) > 0.f
                       && hit_distance >= CacheCellSize(previous.hit);
-  if (!HitLight(previous.hit, previous.hit_normal, light_now, cached)) return 0.f;
+  // Such a sample under Path-Traced Ambient's sun light (the reflections', `contact` false; the screen's answer lit by
+  // the normal, SeenDiffuseLight: without one no sun, and Attila's open sky NaN): the screen's normal where it shows it now.
+  float3 hit_normal = previous.hit_normal;
+  uint2 seen_pixel;
+  if (!contact && all(hit_normal == 0.f) && SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT
+      && SeenNow(previous.hit, hit_normal, seen_pixel)) {
+    hit_normal = PixelNormal(seen_pixel, positions[seen_pixel]);
+  }
+  if (!HitLight(previous.hit, hit_normal, light_now, cached)) return 0.f;
   if (contact) {
     light_now *= ContactShade(hit_distance);
   }
