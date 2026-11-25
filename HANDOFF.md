@@ -933,7 +933,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa4_ B7 rr_d3d12.hpp:32-33 cites the deleted talesofarise_dlss/rr_d3d12.hpp (ae8 ... | ?
 - fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered pen ... | ?
 - fa4_ RR PLACEMENT: RR runs after the tone mapper; DPG + RRG 3.1 say before. CHOS ... | ?
-- ATN Q AFTER THE CRITIC (fa4_ B3 + RRG p22): under RR / NRD, hide AO Quarter (rt_ ... | ?
 - fa3_ B1 TWO VISIBILITY KINDS IN ONE STREAM (bias): in OMM builds TRACE_SURFACE c ... | ?
 - fa3_ B2 LIGHT LEAKS THROUGH SOLID CUT-OUTS (thatch, fences) in GI / bounce / SHa ... | ?
 - fa3_ B3 F16 RUNNING AVERAGES DRIFT DARK (D3D11.3 3.2.2): ambient_history (-0.12. ... | ?
@@ -17144,6 +17143,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         NRD route owner
         - [ ] fa4_ B6 aa_dlaa_prepare:56 zeroes non-finite motion, cause unnamed (Forge lens): find the source. Owner:
         coord -> owner
+        GUARD ORIGINS (coord 11-26 for ATN's 'did we add them ourself ... crash or something?'):
+        - fa4_ B6 motion isfinite: added in the 10-27 checkpoint e92046f68 (no reason in the message), copied to every
+        TW / Tales / Expeditions / D1 / D2 prepare shader. LIKELY cause (unverified): before.w / now.w = 0 for sky /
+        far-plane points -> Inf; zero is then wrong while the camera turns (sky should get rotation-only motion).
+        - fa1_ B2 DiStore: new defensive code in 4c's first commit (159a83290, 11-25), no crash behind it.
+        - fa2_ G-2 / G-3 SHaRC bans: REAL GPU hangs 10-29 on SHaRC 1.6.5 (DXGI_ERROR_DEVICE_HUNG, no DRED fault;
+        memory reference_sharc_hang), root cause never found.
+        - fa3_ B8 PTLAS env-only: a real siege stall, cause never found; fa3_ found 2 likely bugs in our PTLAS code.
+        - fa2_ G-1 / fa1_ B3 W clamp: the design's own temporary guard for the open reuse bias (known reason).
+        - fa2_ B1 Validate occlusion drop: design choice, not a crash; fa2_ says it guards a non-bug.
         - [ ] fa4_ B7 rr_d3d12.hpp:32-33 cites the deleted talesofarise_dlss/rr_d3d12.hpp (ae86e8603): fix the comment
         (memory note fixed 11-26). Owner: next twattila writer
         - [ ] fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered penumbra 0.1 / 1.1 reads
@@ -17151,7 +17160,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         after pdi4c_
         - [ ] fa4_ RR PLACEMENT: RR runs after the tone mapper; DPG + RRG 3.1 say before. CHOSEN as architecture, no ATN
         cite found -> critic: find the decision or design the move. Owner: critic -> coord
-        - [ ] ATN Q AFTER THE CRITIC (fa4_ B3 + RRG p22): under RR / NRD, hide AO Quarter (rt_trace:388-417, one pixel of
+        - [x] ATN Q (ANSWERED 11-26 ~00:4x: 'Not for now'; rows stay as they are) (fa4_ B3 + RRG p22): under RR / NRD, hide AO Quarter (rt_trace:388-417, one pixel of
         each 2x2 a frame = checkerboard-like; NRD README:930) and the bounce's Half / Quarter, like checkerboard?
         Owner: ATN (morning)
         - B2 (IGN dither under RR) = NV9 -> numbers to ATN.
