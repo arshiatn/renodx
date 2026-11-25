@@ -10,10 +10,12 @@
 // SeenDiffuseLight picks keyed by the frame as well (_SEEN_LIGHTS_FRAME). PT DI step 2's suspects (G0, each its own switch):
 // _SPATIAL_CLAMP the receiver-unit W clamp after the spatial Finish too; _SKY_DIRECTION a neighbour's sky sample (a point at
 // its first ray's reach) moved as a direction; _NO_JACOBIAN_CUT no 0.1-10 cut; _HISTORY_PLAIN the history cap without the
-// rays; _NEIGHBOUR_VISIBILITY a neighbour's sample shadow-tested before its merge (its target 0 when blocked).
+// rays; _NEIGHBOUR_VISIBILITY a neighbour's sample shadow-tested before its merge (its target 0 when blocked);
+// _JACOBIAN_SATURATE ReuseJacobian's cosines saturated (RTXDI_CalculateJacobian's: a sample whose surface faces away from
+// the receiver 0, cut) instead of abs.
 // RENODX_TW_REUSE_BIAS=1 / 2 (G1): the spatial merge's MIS-like normalization over the neighbours that could have made the
-// chosen sample (Basic), they also seeing it (Raytraced, a ray each), instead of 1 / M (RTXDI's GI bias correction modes). Validate's parts (part C, the bias that grows with the rays): _VALIDATE_NO_DROP keeps a history whose sample's ray
-// is blocked, _VALIDATE_KEEP_LIGHT keeps its stored light, _VALIDATE_NO_CUTS its count and weight, _VALIDATE_RESCALE takes
+// chosen sample (Basic), they also seeing it (Raytraced, a ray each), instead of 1 / M (RTXDI's GI bias correction modes).
+// Validate's parts (part C, the bias that grows with the rays): _VALIDATE_NO_DROP keeps a history whose sample's ray is blocked, _VALIDATE_KEEP_LIGHT keeps its stored light, _VALIDATE_NO_CUTS its count and weight, _VALIDATE_RESCALE takes
 // the light now with its weight over the change (W x the target stays), _VALIDATE_NO_INVALIDITY returns no change (the
 // history cap stays whole), _VALIDATE_KEEP_CHROMA takes the light now's luminance in the stored light's colour,
 // _VALIDATE_NO_CACHE asks the screen only (no cache answer: the stored light stays); _NO_HISTORY_CLAMP: no ClampWeight after
@@ -39,6 +41,7 @@ RT_REUSE_BIT REUSE_TEST_HISTORY_PLAIN = 256u;
 RT_REUSE_BIT REUSE_TEST_NEIGHBOUR_VISIBILITY = 512u;
 RT_REUSE_BIT REUSE_BIAS_BASIC = 1024u;
 RT_REUSE_BIT REUSE_BIAS_RAYTRACED = 2048u;
+RT_REUSE_BIT REUSE_TEST_JACOBIAN_SATURATE = 4096u;
 RT_REUSE_BIT REUSE_TEST_BOIL = 8192u;
 RT_REUSE_BIT REUSE_TEST_BOIL_PLANT = 16384u;
 RT_REUSE_BIT REUSE_TEST_RTXDI = 32768u;

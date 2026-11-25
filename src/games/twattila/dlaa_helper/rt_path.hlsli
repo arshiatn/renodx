@@ -891,6 +891,10 @@ float ReuseJacobian(Reservoir other, float3 other_origin, float3 origin) {
   if (all(other.hit_normal == 0.f)) return 1.f;
   const float3 to_other = other_origin - other.hit;
   const float3 to_here = origin - other.hit;
+  if ((REUSE_SUSPECTS & REUSE_TEST_JACOBIAN_SATURATE) != 0u) {
+    return saturate(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
+           / max(saturate(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
+  }
   return abs(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
          / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
 }
