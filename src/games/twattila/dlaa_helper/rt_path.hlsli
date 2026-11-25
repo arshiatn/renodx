@@ -421,7 +421,7 @@ float3 LocalLights(float3 surface, float3 normal, uint4 seed) {
 #if defined(PATH_REGIR)
 #include "./rt_rtxdi_bridge.hlsli"
 #define TORCH_REGIR (TORCH_LIGHT_IN_PATHS && (lights_in_bounce & LIGHTS_REGIR) != 0u)
-static const uint TORCH_CANDIDATES = 8u;  // a surface's picks from its cell, resampled
+static const uint TORCH_CANDIDATES = 2u;  // a surface's picks from its cell, resampled
 #else
 #define TORCH_REGIR false
 #endif

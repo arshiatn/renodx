@@ -4865,11 +4865,11 @@ class RtScene12 {
   static constexpr UINT LIGHT_CONSTANT_BYTES = (REGIR_OFFSET + sizeof(ReGIR_Parameters) + 255) / 256 * 256;
   // RTXDI's onion with its default layers (5 detail, 10 coverage: ~2100 cells out to ~144 cells from the centre): cells of
   // REGIR_CELL_SIZE metres at the camera (~290 m out; past it every light picked uniformly), REGIR_LIGHTS_PER_CELL picks a
-  // cell (a group's 64 threads: no slot past the buffer) of REGIR_BUILD_SAMPLES uniform candidates each, no jitter (a
+  // cell (slots past the onion write nothing) of REGIR_BUILD_SAMPLES uniform candidates each (RTXDI's default), no jitter (a
   // surface takes the cell it lies in, which every light it gets light from reaches: RAB_GetLightTargetPdfForVolume).
   static constexpr float REGIR_CELL_SIZE = 2.f;
-  static constexpr uint32_t REGIR_LIGHTS_PER_CELL = 64;
-  static constexpr uint32_t REGIR_BUILD_SAMPLES = 32;
+  static constexpr uint32_t REGIR_LIGHTS_PER_CELL = 16;
+  static constexpr uint32_t REGIR_BUILD_SAMPLES = 8;
 #else
   static constexpr UINT LIGHT_CONSTANT_BYTES = (LIGHT_KINDS_OFFSET + dlaa_bridge::RT_ALL_LIGHTS + 255) / 256 * 256;
 #endif
