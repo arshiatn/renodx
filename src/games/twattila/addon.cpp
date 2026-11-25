@@ -1118,6 +1118,8 @@ int ui_mod_compatibility = 0;  // its slider: written to ReShade.ini, used from 
 // and detach the add-on before the game's device, and a kept image must not hand the next attach their values.
 // The APIs whose devices the add-on left alone, one log line each (bit: the API's value >> 12).
 std::atomic<uint32_t> stood_down_apis = 0;
+// The game's image read at the first present (once).
+std::atomic_bool identity_read = false;
 // The page dump's READY-forced variant (TWATTILA_PAGE_DUMP_PLUGIN_READY): the plugin ready, every game-code row offered.
 #if defined(TWATTILA_PAGE_DUMP_PLUGIN_READY)
 constexpr bool PLUGIN_READY_FORCED = true;
@@ -1798,6 +1800,72 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                                 shader_injection.ssao_temporal != 0.f,
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
   if constexpr (ATTILA64) {
+    // The game's ELF image, mapped by the loader's game thread before the first frame (the probe and test devices never
+    // present): its build id and code ranges for the map trace's callers, read inside its first page only.
+    if (!identity_read.exchange(true)) {
+      constexpr uintptr_t GAME_BASE = 0x400000;
+      constexpr size_t PAGE = 4096;
+      constexpr DWORD READABLE = PAGE_READONLY | PAGE_READWRITE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE;
+      MEMORY_BASIC_INFORMATION region = {};
+      const bool readable = VirtualQuery(reinterpret_cast<const void*>(GAME_BASE), &region, sizeof(region)) == sizeof(region)
+                            && region.State == MEM_COMMIT && (region.Protect & READABLE) != 0 && (region.Protect & PAGE_GUARD) == 0
+                            && region.RegionSize >= PAGE;
+      const auto* page = reinterpret_cast<const uint8_t*>(GAME_BASE);
+      // Elf64_Phdr.
+      struct ProgramHeader {
+        uint32_t type;
+        uint32_t flags;
+        uint64_t offset;
+        uint64_t address;
+        uint64_t physical_address;
+        uint64_t file_size;
+        uint64_t memory_size;
+        uint64_t align;
+      };
+      std::string build_id = "none";
+      std::vector<std::pair<uintptr_t, uintptr_t>> ranges;
+      // ELF magic, 64-bit, little endian; the program header table (e_phoff, e_phentsize, e_phnum) inside the page.
+      bool elf = readable && std::memcmp(page, "\x7F" "ELF\x02\x01", 6) == 0;
+      uint64_t table = 0;
+      uint16_t entry_size = 0;
+      uint16_t entries = 0;
+      if (elf) {
+        std::memcpy(&table, page + 32, sizeof(table));
+        std::memcpy(&entry_size, page + 54, sizeof(entry_size));
+        std::memcpy(&entries, page + 56, sizeof(entries));
+        elf = entry_size == sizeof(ProgramHeader) && table <= PAGE && entries <= (PAGE - table) / sizeof(ProgramHeader);
+      }
+      for (uint16_t index = 0; elf && index < entries; ++index) {
+        ProgramHeader header;
+        std::memcpy(&header, page + table + (index * sizeof(header)), sizeof(header));
+        // PT_LOAD with PF_X: game code.
+        if (header.type == 1 && (header.flags & 1u) != 0) ranges.emplace_back(header.address, header.address + header.memory_size);
+        // PT_NOTE inside the page: its notes (name size, description size, type, then the 4-aligned name and description).
+        if (header.type != 4 || header.offset > PAGE || header.file_size > PAGE - header.offset) continue;
+        const uint64_t notes_end = header.offset + header.file_size;
+        for (uint64_t at = header.offset; at + 12 <= notes_end;) {
+          std::array<uint32_t, 3> note;
+          std::memcpy(note.data(), page + at, sizeof(note));
+          const uint64_t name_at = at + 12;
+          const uint64_t description_at = name_at + ((note[0] + 3ull) & ~3ull);
+          const uint64_t next = description_at + ((note[1] + 3ull) & ~3ull);
+          if (next > notes_end) break;
+          // NT_GNU_BUILD_ID, owner "GNU".
+          if (note[2] == 3 && note[0] == 4 && std::memcmp(page + name_at, "GNU", 4) == 0) {
+            build_id.clear();
+            for (const uint8_t byte : std::span(page + description_at, note[1])) build_id += std::format("{:02x}", byte);
+          }
+          at = next;
+        }
+      }
+      if (elf && !ranges.empty()) {
+        renodx::utils::log::i("[Total War] 64-bit Attila: game code mapped, build id ", build_id, ", ", ranges.size(), " code ranges");
+        // Its offsets are the game's addresses (base 0).
+        twattila::frame_trace::SetGameCode("game_code_64bit", 0, std::move(ranges));
+      } else {
+        renodx::utils::log::w("[Total War] 64-bit Attila: game code not readable at the first present");
+      }
+    }
     // The 64-bit engine plugin's block lookup goes here (until found). Present runs on the loader's drawing thread between
     // frames: Install from here only when init_device did not (never from a bind or draw callback).
     if (plugin_ready.load()) {
@@ -2984,7 +3052,9 @@ void DetachAddon() {
 
   if constexpr (ATTILA64) {
     stood_down_apis = 0;
-    plugin_ready = false;
+    identity_read = false;
+    twattila::frame_trace::SetGameCode("", 0, {});
+    plugin_ready = PLUGIN_READY_FORCED;
     plugin_rows = 0;
     shadow_pass_installed = false;
   }

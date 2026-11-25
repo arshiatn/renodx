@@ -69,6 +69,8 @@
 // 14. A call in its frame's ending present's QPC tick (a draw given that present's time, as when both reads land in one
 //     100 ns tick): that frame's (frame=0, the next index), not the next frame's; the next frame's first draw index=0 and
 //     its map's draw=1 (the tie draw not counted in frame 1); the frame lines' draw counts 2 and 1.
+// 15. SetGameCode (game code that is no PE image, the 64-bit port's): its module and ranges merged at the window's start,
+//     its module line (name, base=0x0) in tw_map_trace.txt; set back to none, the next window lists the exe alone.
 #include <windows.h>
 #include <d3d11_1.h>
 #include <wrl/client.h>
@@ -1137,6 +1139,32 @@ int main() {
   const auto tie_maps = Lines(trace_path, "map");
   CHECK(tie_maps.size() == 1 && Field(tie_maps[0], "frame") == "1" && Field(tie_maps[0], "draw") == "1");
   std::printf("14. a draw in its frame's ending present's QPC tick: frame 0 index 1; frame 1's draw index 0, its map after draw 1\n");
+
+  // 15. Game code that is no PE image (SetGameCode, the 64-bit port's): one more module and its ranges from the window's
+  // start, its module line in the file; given back, the next window has the exe alone.
+  frame_trace::SetGameCode("game_code_64bit", 0, {{0x401000, 0x402000}, {0x500000, 0x5A0000}});
+  for (const size_t expected : {size_t{2}, size_t{1}}) {
+    SetEnvironmentVariableW(L"RENODX_TW_MAP_TRACE", L"0,1");
+    frame_trace::Install();
+    present_event();
+    frame_trace::OnPresent(false);
+    CHECK(map_trace.tracing.load() && map_trace.modules.size() == expected);
+    if (expected == 2) {
+      CHECK(map_trace.modules[1].name == "game_code_64bit" && map_trace.modules[1].base == 0);
+      const auto ranges = std::ranges::count_if(map_trace.code, [](const auto& code) { return code.module == 1; });
+      CHECK(ranges == 2 && map_trace.code.back().begin == 0x500000 && map_trace.code.back().end == 0x5A0000);
+    }
+    frame_trace::OnPresent(false);
+    CHECK(!map_trace.tracing.load());
+    frame_trace::Uninstall();
+    const auto code_modules = Lines(trace_path, "module");
+    CHECK(code_modules.size() == expected && Field(code_modules[0], "name") == exe_name);
+    if (expected == 2) {
+      CHECK(Field(code_modules[1], "name") == "game_code_64bit" && Field(code_modules[1], "base") == "0x0");
+    }
+    frame_trace::SetGameCode("", 0, {});
+  }
+  std::printf("15. game code without a PE image: module game_code_64bit base=0x0 with its 2 ranges; given back: the exe alone\n");
 
   // Part 2's trace back in its place for run.ps1.
   std::filesystem::remove(trace_path);
