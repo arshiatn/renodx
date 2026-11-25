@@ -991,6 +991,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa8_ B4 upstream colorcorrect GammaSafe float4 overload calls Gamma (not sign-sa ... | ?
 - fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | ?
 - fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
+- crit_ CRITIC (Opus xHigh, read-only, STARTED 02:0x, est 60 / deadline 120) over ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -17471,6 +17472,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         Musa's containment assumes an interior mean, human_gamut_conditioning never tried -> rerun tw_psychov35 edge
         cases on his unmodified copy with conditioning, or guard only in ApplyPsychoV35; U6 which passes make the NaN /
         Inf ApplyPsychoV35's guard catches (one-frame census = the inert check). Owner: critic -> owners
+        - [ ] crit_ CRITIC (Opus xHigh, read-only, STARTED 02:0x, est 60 / deadline 120) over all nine tables at
+        769ee4a15 -> fidelity\critic.md: A BUG verdicts (refute, merged ids), B contradictions, C open items + settle
+        step, D one guard table (inert / output-changing / hang cap), E licences + credits, F never-considered NVIDIA
+        ranking, G port propagation list (input for per-game agents), H fix order + open-branch overlap. Then: port
+        propagation agents, then the citation blocker design. Owner: crit_
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
