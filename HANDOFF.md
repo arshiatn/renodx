@@ -380,6 +380,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - pitfall_check.py report: line numbers drift on HANDOFF.md (4 lone CR bytes; file ... | ?
 - F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ c ... | coord (audit), each file's owner
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
+- GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job ... | gtl_ (lab), next tooling slot
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
 - 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20 ... | ?
 - ATN: are the stuttering cutscenes films or in-engine scenes? Optional quick A/B: ... | ?
@@ -865,6 +866,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_f ... | ?
 - REFLECTION REUSE 'FROM ReSTIR GI' FIX (rt_path.hlsli ReflectPixel, PATH_REFLECT_ ... | ?
 - BALANCED RAYTRACED CHOICE: bal3_ (Opus High, worktree, branch bal3_raytraced) ST ... | ?
+- bal3_ route-b cost numbers (after 'bal3_ resume') -> review (Opus xHigh) -> merg ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
@@ -3513,6 +3515,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         gate, agent, reason) + tool_times rows, so a slow agent can be traced to its blocks.
         - [ ] gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) at a wave boundary.
         Owner: gte_, coord, ATN
+        ATN 11-25 ~20:3x: 'is it possible to use it for only nsight stuffs? I don't want to risk stopping agents that
+        just need more time' -> SCOPED ENFORCE: only the safety rows (block rows: ngfx --platform, trace / reference /
+        recording deletes, *.addon32.* deletes, hand-cleared GPU lock, direct player starts; protected files; Nsight
+        rows). cxx / spec / shell / cite / web / price keep LOGGING, never refuse. gates.tsv has only on / off per gate
+        (mode.txt global) -> gte_ told: stage26 adds a per-gate shadow value + tests + ATN's steps. Forge deadline
+        rule softened the same night: past 2x the agent sends a status and KEEPS GOING unless the coord stops it.
       - [x] FORGE'S 5 (ATN 11-25 21:xx 'Yes, all 5'): (1) briefs cite tools\tw\round_notes\agent_times.tsv (seeded:
         nsr_, cdr_, pdi3_, pdi5_, pdi4c_, bal3_) + a 2x deadline; past it the agent stops and reports; (2) no untimed
         commands; (3) a time per step in every hand-back; (4) a crash closes only with producer -> consumer chain +
@@ -3549,6 +3557,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         pdi5_g7_cb01_dump; pdi5_'s old chain also called -Stop at ~19:03, 19:14, 19:15, 19:20, 19:25, 19:33,
         19:35:31). Fix: -Stop takes the owner tag and refuses another owner's session (pds2_lab_br.ps1 has the same
         pattern). Running agents told: no -Stop in chains; pdi5_ reruns its jobs. Owner: gtl_ (lab), next tooling slot
+      - [ ] GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job.lock while other owners'
+        batches wait as long as it takes, so pdi5_'s job 10 lost the lock 3 times (exit 7). Coord gave pdi5_ a GPU
+        WINDOW 20:3x (bal3_ chain paused after its current job; pdi3_ / pdi4c_ / the coord's R2 trace hold off until
+        'resume'). Fix: a FIFO queue in gpu_lock.py / GpuLock.psm1 (first come first served, same wait for all) +
+        jobs that measure no time (picture / dump checks) may share the GPU only if proven safe. ONE timing job at a
+        time stays (numbers must be measured alone). Owner: gtl_ (lab), next tooling slot
       - [ ] CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO BUNDLING: 'don't bundle or
         repackage my mods with yours'; players get the engine fix / Flag Wave from his Steam / Nexus page (self-update).
         We don't: 32-bit heapfix = own use only; PerfFix 64 = optional, his package (port_plan.md install step 3); flag
@@ -16039,6 +16053,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         rt_d3d12.hpp, the REUSE_BALANCED build.ps1 entries, rt_scene.hpp / rt_core.hpp / dlaa_bridge.h; not the G1
         merge (pdi5_), no rt_reuse_bits.h bits. -> review -> merge after steps 3 + 5; parity / skills row 'Off /
         Basic / Raytraced' after the sku_ merge. Owner: bal3_
+        bal3_ HAND-BACK 11-25 20:3x (handoff_plan\handbacks\bal3_handback.md): ROUTE (b) on origin/bal3_raytraced
+        (2ac14f78e add-on: RT_PATH_REUSE_BALANCED_RAYTRACED 1u<<29 path flags, INTEGER row Off / Basic / Raytraced,
+        same key, saved 1 = Basic; c339d0eb0 helper: 4 REUSE_BALANCED_RAYTRACED twins x DXR 1.1 / 1.2, all-or-none,
+        ready line + one log line per mode change; 0ca36271d route (a) kept in history, rejected: Basic +0.20 ms day,
+        G-1125-68). Gates: x64 + x86 add-ons exit 0; 61 player headers (75 reference) byte-identical to base + 8 new;
+        E4 Off + old-add-on Basic 0 words differ 16 / 16; Raytraced = tests BIAS=2 + KEEP_LIGHT luminance equal
+        (cfg 49 box tops Off 0.9514 / Basic 0.9582 / Raytraced 0.9903); route b = route a 0 words; controls PASS.
+        Helper +132,096 B (+2.3 %), 8 more PSOs at init. OPEN: route-b cost jobs (Off / Basic / Raytraced day +
+        night, rotations) still in its chain (testbin\scratch\bal3_\lab_b, paused for pdi5_'s GPU window);
+        all_modes_check not run (no Balanced row in its modes); rt_reuse_bits.h:24 comment 'Basic only' (pdi5_'s file);
+        merge after steps 3 + 5 -> rebase + rerun gates_e4b.txt + lab_b. Parity line in the hand-back.
+        - [ ] bal3_ route-b cost numbers (after 'bal3_ resume') -> review (Opus xHigh) -> merge after steps 3 + 5.
+        Owner: bal3_, coord
+        bal3_ PAUSED its chain 20:4x after job 02 bal3b_day_modes (day Off / Basic / Raytraced toggle, result in
+        lab_b\out_02_bal3b_day_modes.out); jobs 03-12 moved to lab_b\paused. RESUME (coord, after pdi5_'s window):
+        move them back into lab_b, then run_jobs.ps1 -First 3 (its own retry, no -Stop), output lab_b\chain2.log.
         - [x] Nit (brr_): rt_d3d12.hpp:757 conditional initializer without parentheses (CXX_STYLE) -> pds2_'s next branch.
         Owner: pds2_
         MERGED e52ec9e28 (pds2_nits 268b687f8; helper exit 0, 5,859,328 B), pushed.
