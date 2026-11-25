@@ -15966,6 +15966,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         c8_wave2_plan.md. INCIDENT (reported to ATN): one `grep -rln --include=*.py` over all of tools\tw also scanned
         the 6 .py files in testbin\attila64_1124\perffix_src\ for a word; no match there, nothing shown or used,
         stopped at once. Rule added to round_1125\brief.md + memory: never search tools\tw recursively as a whole.
+        p9v_ DONE 14:3x (hand-back designs\p9v_n13_handback.md, note designs\pk9_n13_virtual.md, hex only): N13 CLEAN on
+        every battle path (steady-state gated closure 614 functions, 461 indirect sites resolved, 0 waits M; whole
+        closure 4759, 0 E); the on-demand registration branch is dead in a battle (M); sound / file / rigid-add N4
+        answered. Addendum in pk9_effects_64.md. OPEN O1 for Friday's last review: PerfFix hooks at 2 places inside the
+        gated closure (height cache, part cull / skip target) were not read (licence); proposal: one yes / no question to
+        Caesar via ATN + the S-A sitting with PerfFix installed. O2-O4 bounded only (E). SEARCH NOTE 3 (reported to
+        ATN): before the rule reached it, p9v_ started one recursive find under tools\tw; it hung and was stopped
+        after ~120 s; nothing opened. ALL THREE PRE-FRIDAY CHECKS DONE.
         - [x] PLAN OVERVIEW REFRESHED (ATN 11-25 ~14:0x 'Let's maybe refresh them?'): ov_ wrote
         round_notes\plan_overview_1125.md (one page) + plan_overview_1125_facts.md (a source per claim; coord checked
         it, added the C8 W0 result; hand-back handoff_plan\handbacks\ov_overview_handback.md). The 11-22 overview is
