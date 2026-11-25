@@ -3609,6 +3609,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> gpr_ + gtw_ RE-CHECK of stage26b STARTED 22:1x.
         - [ ] BEFORE ENFORCE: the coord's 'ATN plays' hold moves to gpu_lock.py acquire --pid <game pid> --note (no
         Set-Content); ta_ O6 agility_probe script moves to GpuLock.psm1 (or is retired). Owner: coord
+        gtw_ stage26b RE-CHECK GO 22:14 (12 min; gtw_r26_recheck_handback.md '## Re-check stage26b'): ATN pastes
+        gte_r2_handback.md section 3 UNCHANGED. Walk of all 11 blocks verbatim in PS 5.1 (steps 1 + 3 twice, undo twice,
+        re-install): M1 / M2 / S1 / S2 hold, hashes True; 27 sample calls as expected, and the same 27 as Terminal-tool
+        calls (tab cwd counts); step 6 matcher line parses + matches; suite 1634 / 1634. S1 (before step 5): 'gpu_lock.py
+        acquire --pid $PID' from a tool call does NOT hold (the shell ends with the call, the next taker takes the stale
+        lock) -> the coord's 'ATN plays' hold = a hidden keeper process as owner (proven: next taker waits, release
+        --record works; commands in the appendix). S2: optional step-6 check (Terminal 'Write-Output step6check' ->
+        Select-String in tool_times_<day>.tsv). NIT: gpu_lock.py has show, not status. Merged agent rules = appendix.
         d11v_ (lane I review, Opus xHigh) STARTED 20:5x.
         - [ ] gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a non-leading cd); spec
         gate on scratch files; web list gaps (44 research hosts); agent rules (gte_handback section 4) into briefs.
