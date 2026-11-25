@@ -16229,6 +16229,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         no scratch path, notes name 0xF80C6EEE). -> tddi_ FIX ROUND STARTED (evening) -> tddr_ RE-CHECK -> merge
         before 11-27. N7 done by coord: game-port-method SKILL.md:65 'a credit unless they waive it'.
         Open (agreed, no change): 0x702B83B7 no render-scale row (never drawn; MSAA + render scale only).
+        tddi_ FIX ROUND DONE (hand-back handoff_plan\handbacks\tddi_fix_handback.md): c03ab7ba3 (M1 credit removed
+        from About + README; N1 DistinctHashes folded into WithTwins; N2-N5) + 15dccc93b (S1: make_wind_motion_vs.py
+        applies the OCEAN_KEEP_OVER_LAND block for 0xAB20418F in both modes, asserts the sink once; control fails;
+        backup .bak_tddi). 4 ocean shaders byte-identical; WARP ALL PASS (rebuilt exe), plain-twin control 1024 / 1024
+        land; twins_check + helper_check ALL PASS; x86 + amd64 exit 0, 61 warnings = baseline; diff --check clean.
+        Test copies in mod_shaders\tddi_tests\. -> tddr_ RE-CHECK STARTED -> merge before 11-27.
         - [x] TDD RUN CHECKS (ATN 11-25: NOT NEEDED, dropped) (needs a TDD game run, ATN's OK): create-time patcher counts in ReShade.log on TDD's
         bytes; whether TDD's new values (rain gloss, near-leaf cull, billboard cull band) are ever set (named
         nowhere in empire.retail.dll / TDD packs); MSAA shadow-analysis PS 0x702B83B7 has no render-scale entry.
