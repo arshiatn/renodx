@@ -1264,10 +1264,28 @@ inline void OwnPassDone(ID3D11DeviceContext* native, const char* name, bool comp
     std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets = {};
     ID3D11DepthStencilView* depth = nullptr;
     native->OMGetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), &depth);
+    // A blended target is read too (rtv_blend); the depth is read by the depth or stencil test (dsv), and written by
+    // the state (dsv_write). A null state is D3D11's default: no blending, depth test and write on.
+    ComPtr<ID3D11BlendState> blend;
+    native->OMGetBlendState(blend.GetAddressOf(), nullptr, nullptr);
+    D3D11_BLEND_DESC blend_desc = {};
+    if (blend) blend->GetDesc(&blend_desc);
     for (UINT slot = 0; slot < targets.size(); ++slot) {
-      if (targets[slot] != nullptr) row("rtv", std::format("o{}:0", slot), targets[slot]);
+      if (targets[slot] == nullptr) continue;
+      row(blend_desc.RenderTarget[blend_desc.IndependentBlendEnable ? slot : 0].BlendEnable ? "rtv_blend" : "rtv", std::format("o{}:0", slot), targets[slot]);
     }
-    if (depth != nullptr) row("dsv", "oDepth:0", depth);
+    ComPtr<ID3D11DepthStencilState> depth_state;
+    native->OMGetDepthStencilState(depth_state.GetAddressOf(), nullptr);
+    D3D11_DEPTH_STENCIL_DESC depth_desc = {.DepthEnable = TRUE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL};
+    if (depth_state) depth_state->GetDesc(&depth_desc);
+    const bool tested = depth_desc.DepthEnable || depth_desc.StencilEnable;
+    const bool written = (depth_desc.DepthEnable && depth_desc.DepthWriteMask == D3D11_DEPTH_WRITE_MASK_ALL)
+                         || (depth_desc.StencilEnable && depth_desc.StencilWriteMask != 0);
+    if (depth != nullptr && tested) {
+      row(written ? "dsv_write" : "dsv", "oDepth:0", depth);
+    } else if (depth != nullptr) {
+      depth->Release();
+    }
   }
   for (UINT slot = 0; slot < views.size(); ++slot) {
     if (views[slot] != nullptr) row("srv", std::format("t{}:0", slot), views[slot]);
