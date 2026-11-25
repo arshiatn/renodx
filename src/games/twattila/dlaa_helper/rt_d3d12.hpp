@@ -76,8 +76,6 @@
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
 #include "rt_path_one.h"          // dxc -Fh (build.ps1)
 #include "rt_path_one_omm.h"      // dxc -Fh (build.ps1)
-#include "rt_path_tests.h"        // dxc -Fh (build.ps1)
-#include "rt_path_tests_omm.h"    // dxc -Fh (build.ps1)
 #include "rt_path_ser.h"          // dxc -Fh (build.ps1)
 #include "rt_path_ser_one.h"      // dxc -Fh (build.ps1)
 #include "rt_place.h"             // dxc -Fh (build.ps1)
@@ -95,8 +93,6 @@
 #include "rt_reuse_lean_omm.h"    // dxc -Fh (build.ps1)
 #include "rt_reuse_near.h"        // dxc -Fh (build.ps1)
 #include "rt_reuse_near_omm.h"    // dxc -Fh (build.ps1)
-#include "rt_reuse_tests.h"       // dxc -Fh (build.ps1)
-#include "rt_reuse_tests_omm.h"   // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir.h"      // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir_omm.h"  // dxc -Fh (build.ps1)
 #include "rt_scene_data.h"        // dxc -Fh (build.ps1)
@@ -135,6 +131,15 @@
 #include "rt_reference_reflect.h"
 #include "rt_reference_state.h"
 #define RENODX_REFERENCE 1
+#endif
+// ReSTIR GI's test switches' builds (REUSE_TESTS, tests only: build.ps1 compiles these with RENODX_TW_REFERENCE_BUILD set;
+// without them those switches do nothing).
+#if defined(RENODX_REFERENCE) && __has_include("rt_path_tests.h")
+#include "rt_path_tests.h"
+#include "rt_path_tests_omm.h"
+#include "rt_reuse_tests.h"
+#include "rt_reuse_tests_omm.h"
+#define RENODX_REUSE_TESTS 1
 #endif
 // The reference build's RTXDI GI contest (RENODX_TW_REUSE_RTXDI, tests; build.ps1 compiles these with RENODX_TW_REFERENCE_BUILD
 // set and the RTXDI copy found): rt_path.hlsli RtxdiPackTexel, ReuseTexel with RTXDI's spatial resampling.
@@ -736,6 +741,7 @@ class RtScene12 {
                  : pipeline(RT_REUSE_NEAR, sizeof(RT_REUSE_NEAR), &reuse_near_pipeline_))) {
       reuse_near_pipeline_.Reset();
     }
+#if defined(RENODX_REUSE_TESTS)
     // ReSTIR GI's test switches' builds (REUSE_TESTS: the paths', the reuse's; none: those switches do nothing).
     if (!(dxr12_ ? pipeline(RT_PATH_TESTS_OMM, sizeof(RT_PATH_TESTS_OMM), &path_tests_pipeline_)
                        && pipeline(RT_REUSE_TESTS_OMM, sizeof(RT_REUSE_TESTS_OMM), &reuse_tests_pipeline_)
@@ -744,6 +750,7 @@ class RtScene12 {
       path_tests_pipeline_.Reset();
       reuse_tests_pipeline_.Reset();
     }
+#endif
 #if defined(RENODX_RTXDI)
     // ReSTIR GI's boiling filter (REUSE_BOIL: no ray tracing, one build; none: its switch does nothing).
     if (!pipeline(RT_REUSE_BOIL, sizeof(RT_REUSE_BOIL), &reuse_boil_pipeline_)) reuse_boil_pipeline_.Reset();
@@ -3908,6 +3915,10 @@ class RtScene12 {
         // merge's bias correction, Basic / Raytraced (G1); _BOIL the boiling filter's pass, _BOIL_PLANT its test texel;
         // _RTXDI (the reference build) RTXDI's spatial resampling in the reuse's place, its bias correction RENODX_TW_REUSE_BIAS's;
         // _VALIDATE_* Validate's parts and _NO_HISTORY_CLAMP the history's ClampWeight (part C's bisection) (rt_path.hlsli).
+        // The suspects', G1's and Validate's switches (REUSE_SUSPECT_BITS) run only in the reference build's REUSE_TESTS
+        // shaders, which take the place of Near / Lean Reuse. Without a log line: in any other build the usual shaders run;
+        // with SHaRC its paths do (the reuse is the tests'), with Torch and Fire Light in the Light Bounce its reuse does
+        // (the paths are the tests').
         static const uint32_t reuse_tests = [] {
           uint32_t tests = 0;
           for (const auto& [name, bit] : {std::pair{L"RENODX_TW_REUSE_NO_SPATIAL", REUSE_TEST_NO_SPATIAL}, std::pair{L"RENODX_TW_REUSE_NO_VALIDATE", REUSE_TEST_NO_VALIDATE},

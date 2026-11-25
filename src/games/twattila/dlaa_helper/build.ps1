@@ -38,12 +38,16 @@ Dxc -nologo -T cs_6_9 -E main -O3 -D REFLECT_RESERVOIR -D OPACITY_MICROMAPS -Fh 
 # (TORCHES_IN_BOUNCE: the reuse with a local light's sample a bounce texel, the local lights' trace that leaves them to it)
 # Lean Reuse (REUSE_LEAN: the reuse's neighbours with fewer fetches), Near Reuse (REUSE_NEAR: fewer, nearer neighbours),
 # the reflections of one sample a pixel (REFLECT_ONE_SAMPLE) and the paths of one ray a texel (PATH_ONE_SAMPLE): the same
-# picture in fewer registers; ReSTIR GI's test switches (REUSE_TESTS: the paths and the reuse with PT DI step 2's suspects
-# and bias correction, rt_path.hlsli REUSE_SUSPECTS).
-foreach ($variant in @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'), @('rt_lights', 'TORCHES_IN_BOUNCE', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'),
-                       @('rt_path', 'REUSE_LEAN REUSE', 'rt_reuse_lean', 'RT_REUSE_LEAN'), @('rt_path', 'REUSE_NEAR REUSE', 'rt_reuse_near', 'RT_REUSE_NEAR'),
-                       @('rt_path', 'REFLECT_ONE_SAMPLE REFLECT', 'rt_reflect_one', 'RT_REFLECT_ONE'), @('rt_path', 'PATH_ONE_SAMPLE', 'rt_path_one', 'RT_PATH_ONE'),
-                       @('rt_path', 'REUSE_TESTS', 'rt_path_tests', 'RT_PATH_TESTS'), @('rt_path', 'REUSE_TESTS REUSE', 'rt_reuse_tests', 'RT_REUSE_TESTS'))) {
+# picture in fewer registers. RENODX_TW_REFERENCE_BUILD set: ReSTIR GI's test switches' too (REUSE_TESTS: the paths and the
+# reuse with PT DI step 2's suspects and bias correction, rt_path.hlsli REUSE_SUSPECTS; tests only, a player's helper has none).
+$variants = @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'), @('rt_lights', 'TORCHES_IN_BOUNCE', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'),
+              @('rt_path', 'REUSE_LEAN REUSE', 'rt_reuse_lean', 'RT_REUSE_LEAN'), @('rt_path', 'REUSE_NEAR REUSE', 'rt_reuse_near', 'RT_REUSE_NEAR'),
+              @('rt_path', 'REFLECT_ONE_SAMPLE REFLECT', 'rt_reflect_one', 'RT_REFLECT_ONE'), @('rt_path', 'PATH_ONE_SAMPLE', 'rt_path_one', 'RT_PATH_ONE'))
+Remove-Item "$out\rt_path_tests.h", "$out\rt_path_tests_omm.h", "$out\rt_reuse_tests.h", "$out\rt_reuse_tests_omm.h" -ErrorAction SilentlyContinue
+if ($env:RENODX_TW_REFERENCE_BUILD) {
+  $variants += @(@('rt_path', 'REUSE_TESTS', 'rt_path_tests', 'RT_PATH_TESTS'), @('rt_path', 'REUSE_TESTS REUSE', 'rt_reuse_tests', 'RT_REUSE_TESTS'))
+}
+foreach ($variant in $variants) {
   $defines = $variant[1].Split(' ') | ForEach-Object { '-D', $_ }
   Dxc -nologo -T cs_6_5 -E main -O3 @defines -Fh "$out\$($variant[2]).h" -Vn $variant[3] "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
   Dxc -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -Fh "$out\$($variant[2])_omm.h" -Vn "$($variant[3])_OMM" "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
