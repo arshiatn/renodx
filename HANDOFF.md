@@ -15722,6 +15722,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         the preset in the games without the light copy: WH1, WH2, Rome II, Shogun 2, Ryse -> ships in their next
         release. MERGED 5884d1aba (helper build exit 0). Stale now: 7d8256e24's E4 table, the S5 tables, Balanced's
         pre-round-2 E4 numbers, the Part C conclusions.
+        pds2_ BRIGHTNESS ROW READY 14:2x (hand-back handoff_plan\handbacks\pds2_s4r2_bright_handback.md): origin/
+        pds2_bright_r2 94699ba4f (helper 9d8b2708c + add-on, on 69a7c672b) 'Balanced ReSTIR Light (Experimental)',
+        default Off. G1 is compiled into REUSE_BALANCED twins of the 4 reuse builds (+ _omm), picked by bit 28 (a runtime
+        bit cost +0.25 ms with the row OFF [G-1125-9], so redesigned); KEEP_LIGHT stays a runtime bit in the paths.
+        Row OFF = 69a7c672b: cost NO CHANGE day / night [G-1125-12 / -18], E4 16 / 16 bit-identical, 53 verify modes 0
+        changes. Row ON: +0.20 ms day / +0.23 ms night total [G-1125-15 / -21]; E4 boxes back to 0.99982 (day 36913) /
+        0.98746 (day 49) / 0.99822 (night40) from 0.98857 / 0.97905 / 0.98532. Add-on not compiled in the worktree (no
+        bin) -> coord builds after the merge. -> brr_ REVIEW (Opus xHigh) STARTED 14:3x ->
+        plan_1117\designs\bright_r2_review.md -> merge + add-on build -> ATN decides the default from these numbers.
         - [ ] S4 follow-ups (owner pds2_, helper lane, with / right after the brightness row): R1 `sun_4_lobe_copy`
         row (18432 + sun env; Own ReSTIR wall b/r 0.944 vs 1.106 without); R2 faces that see the sky stay dark with Own
         Sky Rays off (cfg 49 box tops 0.951; pre-existing, S1 uncovered it); R3 Part C cause tests re-run on round 2
