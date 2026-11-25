@@ -136,7 +136,21 @@ static const uint REUSE_BIAS_RAYTRACED = 2048u;
 static const uint REUSE_TEST_SCREEN_NORMAL = 4096u;  // _SCREEN_NORMAL (G0): a first hit the screen answers keeps its normal
 static const uint REUSE_TEST_BOIL = 8192u;        // RENODX_TW_REUSE_BOIL: the boiling filter's pass (BoilTexel)
 static const uint REUSE_TEST_BOIL_PLANT = 16384u; // RENODX_TW_REUSE_BOIL_PLANT: its pass plants a texel 100 x too bright first
-// The suspects' and G1's bits (32-4096) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
+// Validate's parts (part C, the bias that grows with the rays; REUSE_TESTS builds): _VALIDATE_NO_DROP keeps a history whose
+// sample's ray is blocked, _VALIDATE_KEEP_LIGHT keeps its stored light, _VALIDATE_NO_CUTS its count and weight,
+// _VALIDATE_RESCALE takes the light now with its weight over the change (W x the target stays), _VALIDATE_NO_INVALIDITY
+// returns no change (the history cap stays whole), _VALIDATE_KEEP_CHROMA takes the light now's luminance in the stored
+// light's colour, _VALIDATE_NO_CACHE asks the screen only (no cache answer: the stored light stays); REUSE_TEST_NO_HISTORY_
+// CLAMP: no ClampWeight after the history merge.
+static const uint REUSE_TEST_VALIDATE_NO_DROP = 65536u;
+static const uint REUSE_TEST_VALIDATE_KEEP_LIGHT = 131072u;
+static const uint REUSE_TEST_VALIDATE_NO_CUTS = 262144u;
+static const uint REUSE_TEST_VALIDATE_RESCALE = 524288u;
+static const uint REUSE_TEST_VALIDATE_NO_INVALIDITY = 1048576u;
+static const uint REUSE_TEST_VALIDATE_KEEP_CHROMA = 2097152u;
+static const uint REUSE_TEST_NO_HISTORY_CLAMP = 4194304u;
+static const uint REUSE_TEST_VALIDATE_NO_CACHE = 8388608u;
+// The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set): every other build is the shipped code to the byte (0: their code compiled out).
 #if defined(REUSE_TESTS)
 #define REUSE_SUSPECTS reuse_tests
@@ -882,23 +896,29 @@ void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 
 float Validate(inout Reservoir previous, float3 origin, bool contact) {
   const float3 to_hit = previous.hit - origin;
   const float hit_distance = length(to_hit);
-  if (hit_distance <= 1e-3f || Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
+  if (hit_distance <= 1e-3f || ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_DROP) == 0u && Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE))) {
     previous.count = 0.f;
     return 0.f;
   }
   // The cache's answer at the face of its stored normal, from a cell's size away at least (a sample the screen answered stored
   // none: no face to look up).
   float3 light_now;
-  const bool cached = dot(previous.hit_normal, previous.hit_normal) > 0.f && hit_distance >= CacheCellSize(previous.hit);
+  const bool cached = (REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_CACHE) == 0u && dot(previous.hit_normal, previous.hit_normal) > 0.f
+                      && hit_distance >= CacheCellSize(previous.hit);
   if (!HitLight(previous.hit, previous.hit_normal, light_now, cached)) return 0.f;
   if (contact) {
     light_now *= ContactShade(hit_distance);
   }
   const float3 change = abs(previous.light - light_now) / max(previous.light + light_now, 1e-3f);
   const float ratio = Luminance(previous.light) / max(Luminance(light_now), 1e-8f);
-  previous.count *= clamp(ratio, 0.03f, 1.f);
-  previous.weight *= clamp(ratio * 10.f, 0.01f, 1.f);
-  previous.light = light_now;
+  if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_CUTS) == 0u) {
+    previous.count *= clamp(ratio, 0.03f, 1.f);
+    previous.weight *= clamp(ratio * 10.f, 0.01f, 1.f);
+  }
+  if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_RESCALE) != 0u) previous.weight *= ratio;
+  if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_KEEP_CHROMA) != 0u) light_now = previous.light / max(ratio, 1e-8f);
+  if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_KEEP_LIGHT) == 0u) previous.light = light_now;
+  if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_INVALIDITY) != 0u) return 0.f;
   return smoothstep(0.1f, 0.5f, length(change) / 1.7320508f);
 }
 
@@ -1022,7 +1042,7 @@ void PathTraceTexel(uint2 id) {
           Random(uint4(id, frame, DIM_HISTORY_MERGE)));
   }
   Finish(reservoir, ReuseTarget(origin, normal, reservoir));
-  ClampWeight(reservoir, origin, normal);
+  if ((REUSE_SUSPECTS & REUSE_TEST_NO_HISTORY_CLAMP) == 0u) ClampWeight(reservoir, origin, normal);
   StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, normal);
   if (sky_apart) bounce[id] = float4(sky / samples, 0.f);
 }
