@@ -820,7 +820,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- twattila amd64 build check of the merged tree STARTED 09:2x (RAM free after the ... | ?
 - l2bd_ (Opus xHigh, read only) L2B PRODUCT DESIGN STARTED 09:2x on ATN's yes -> | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
@@ -849,7 +848,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- twattila amd64 add-on build check of the merged tree (only credits.hpp's string ... | ?
 - S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner ... | ?
 - ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0 ... | ?
 - 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for ... | ?
@@ -15544,7 +15542,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         E9 'present NOT FOUND' = ReShade.log pads the 4-digit thread '[ 7332]' (every add-on line + both first calls on
         7332); sr2 quit 145 s after the start, before the 2nd capture timer. Rotation / RT capture = C3 (helper).
         -> a3a_ gets the check artifacts too (one a64_ab.ps1 check-fix round after its analysis; ONE WRITER).
-        - [ ] twattila amd64 build check of the merged tree STARTED 09:2x (RAM free after the restart).
+        - [x] twattila amd64 build check of the merged tree (e85bd48f9 + HANDOFF commits) PASS 09:3x: exit 0, 61 warnings
+        (= baseline), VC 14.44.35207 / SDK 10.0.28000.0 (log testbin\scratch\merge_pds2_twattila64.log).
         - [ ] l2bd_ (Opus xHigh, read only) L2B PRODUCT DESIGN STARTED 09:2x on ATN's yes ->
         round_notes\attila64\designs\l2b_product_design.md (where: our plugin vs a fix for Sol; how to find the step
         thread; core pick on any CPU; the -1.4 % fps; row / default; test plan + ATN's rule lines; waves) -> review.
@@ -15992,7 +15991,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] coord MERGED e85bd48f9 (pds2_step2 --no-ff; the message carries the part B DXIL correction + S2 cost).
         Helper x64 from the merged tree builds (testbin\scratch\merge_pds2_helper: 5729280 B = pds2_'s size, e25b73e75839,
         0 tests headers). build.ps1 / rt_d3d12.hpp FREE (SHaRC depth 4 may start).
-        - [ ] twattila amd64 add-on build check of the merged tree (only credits.hpp's string changed: '..., SHaRC, RTXDI
+        - [x] (PASS 09:3x after the reboot, row below) twattila amd64 add-on build check of the merged tree (only credits.hpp's string changed: '..., SHaRC, RTXDI
         and NRD') WAITING: free RAM 11.5 GB < 12 GB (kernel pools 4.0 GB nonpaged + 5.9 GB paged = the zombie
         processes / GPU resets; needs ATN's reboot). gated_build waits on its own; it respects quiet_run.lock.
         - [ ] S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner coord, after the merge):
