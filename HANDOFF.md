@@ -828,6 +828,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
 - LEFTOVER pds2_ FOLDERS (ATN decides, not deleted): ra39a 51.0 GB, rs4 47.6 GB, r ... | ?
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
+- ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
@@ -15729,6 +15730,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         the 5 F7 cases (fix alone shows the picture); S3 Tales OnCopyResource (talesofarise/addon.cpp:938-942) needs
         !info->is_swap_chain (same black-frame mechanism, predates the fix); S4 F7 log key = handle + size (addon.cpp:1775).
         Upstream main still has the old ternary (2719 / 3608 / 3893): a merge conflict there resolves to ours.
+        - [ ] ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back
+        study_1124\ucf_follow_handback.md): 469efaf02 S1 twattila own scRGB copy only when another add-on's utils is the
+        handler (= a DevKit built before f3dc754dd; normal case drops ~66 MB / frame at 4K); 4ddd3130b S4
+        OnDestroyPresentPicture clears present_picture; 185ab5554 S3 Tales !info->is_swap_chain guard. F7 SAVED in
+        testbin\scratch\ucf_\f7_1125\: fix alone 5/5 PASS, old control 4 black FAIL, full set 31/31, S4 5 reruns PASS.
+        Builds twattila amd64 + x86, Tales amd64 exit 0 (61 warnings = before); static_checks known 5. Not covered: a
+        second RenoDX add-on as handler (no F7 case), Tales scRGB in game. -> ucr_ RE-CHECK 12:4x -> merge. Cleanup
+        later (ATN's yes): worktree agent-ae7cab13600fa530f holds its own real bin\ copy (not a link).
         - [x] p2d_ PK2P DESIGN DONE 11:4x (designs\pk2p_main_core_64.md 509 lines, hand-back p2d_design_handback.md):
         GO; render (main) thread = the game_started thread, own whole core (ATN's PC: step 14 + 15, render 12 + 13,
         0-11 for the rest), never an E-core / the LLC's lowest 2 cores, off where L2B is off; E fps +3..+8 % big
