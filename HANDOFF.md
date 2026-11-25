@@ -823,7 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
-- a64b_ FIX ROUND SENT 03:2x (M1, S1-S5, Nits; utils untouched) -> merge a64b_brin ... | ?
+- a64br_ RE-CHECK of a0bbdabff..4c20adaf6 SENT 03:4x -> merge a64b_bringup -> buil ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15429,8 +15429,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         S4 anti_aliasing buffer handlers need API checks; S5 no F7 case for a missing / corrupt image at 0x400000.
         Nits: inverted box, ?: invoke, braces, anon namespace, shadow_pass_installed atomic, 1u << row >= 32, GRASS
         fallback in if constexpr, PF_X ranges VirtualQuery-clamped, run.ps1 -Gpu default, tolerance comment, README.
-        - [ ] a64b_ FIX ROUND SENT 03:2x (M1, S1-S5, Nits; utils untouched) -> merge a64b_bringup -> build check -> A1
-        add-on lane -> A3 Smoke. The proposed '-ReShade -Warp' A3 line is useless (ReShade skips WARP devices): drop it.
+        - [x] a64b_ FIX ROUND DONE (report attila64/a64b_bringup_fix_handback.md): f9be443e7 (M1 pass_timing API
+        check after IDLE; S4 anti_aliasing map / update API checks; S1 dest r16g16b16a16_float + clone size; Nits incl.
+        VirtualQuery clamp of PF_X ranges, atomic shadow_pass_installed, bit < 32, CompareStringOrdinal + UTF-8 log,
+        functions into the anon namespace) + 4c20adaf6 (GPU default, -Warp throws; C2_scrgb_fixed; controlCrash = the
+        nvwgf2umx 0xC0000005 only; colorspace INFO line required + WARNING fails; image_none / badmagic / table cases).
+        F7 GPU 23 / 23 PASS (C2 controls BROKEN as expected, C2_scrgb_fixed black 918720 / 921600, no crash; image cases
+        warn, 0 AV, 0 px off); C2_scrgb_1320 not run (pid 32564 holds it). Dumps: x86 vs base + a64 / a64r vs s2 only
+        Build Date; suites PASS; static_checks known 5; sweep 17 / 17. a3_smoke addon64 now bb1cd423eca6a2bc (dxgi /
+        zz_capture unchanged). utils untouched.
+        - [ ] a64br_ RE-CHECK of a0bbdabff..4c20adaf6 SENT 03:4x -> merge a64b_bringup -> build check -> A1 add-on lane
+        -> A3 Smoke. The proposed '-ReShade -Warp' A3 line is useless (ReShade skips WARP devices): drop it.
         - [ ] ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyResource (~2782-2790), and
         the same in OnResolveTextureRegion / OnCopyTextureRegion, use an existing clone even when that side's clone is
         DISABLED. In scRGB compatibility mode (default) a copy INTO the back buffer lands in the proxy pass's scratch ->
