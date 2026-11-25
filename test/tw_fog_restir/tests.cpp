@@ -6,7 +6,9 @@
 // U6 part 1 gates (unified_pt.md 4.6): the fog local stream's reservoir math (rt_fog_reservoir.hlsli) in fog_probe.hlsl on
 // D3D12 WARP (dxc cs_6_5 -O3 as build.ps1; cs_6_9 compiled statically), its trial means against a double quadrature of
 // (1 / R) x the integral over the ray of every light's colour x falloff x visibility, and the one-light case against its
-// closed form. Every stage must be unbiased (within 4 standard errors) and both controls must be caught (beyond 6).
+// closed form. Every stage must be unbiased (within 4 standard errors) and each scenario's biased controls must be caught
+// (beyond 6). The four FOG_RESTIR builds of rt_fog.cs_6_5.hlsl (main / shade, cs_6_5 / cs_6_9 OMM, as build.ps1) must
+// compile without a local-memory array (no alloca in their DXIL).
 // Usage: tw_fog_restir.exe <repository root> <folder of dxcompiler.dll and dxil.dll>. Exit 0: every gate passed.
 #include <windows.h>
 
@@ -22,6 +24,8 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <string_view>
+#include <tuple>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
@@ -47,6 +51,10 @@ struct ProbeScenario {
   uint32_t occluder;
   float history_confidence;
   std::array<Float4, 4> view_projection;
+  std::array<uint32_t, 4> history_low;
+  std::array<uint32_t, 4> history_high;
+  uint32_t history_count;
+  uint32_t new_light;
 };
 
 struct ProbeOutput {
@@ -58,6 +66,7 @@ struct ProbeOutput {
   Float4 no_defensive;
   Float4 unit;
   Float4 camera;
+  Float4 as_built;
 };
 
 constexpr uint32_t TRIALS = 65536;  // 16 x 4096 (the probe's lanes), a multiple of 64
@@ -67,7 +76,9 @@ int failures = 0;
 
 void Gate(const std::string& name, bool passed, const std::string& detail) {
   std::printf("%s %s: %s\n", passed ? "PASS" : "FAIL", name.c_str(), detail.c_str());
-  if (!passed) ++failures;
+  if (!passed) {
+    ++failures;
+  }
 }
 
 struct Vec3 {
@@ -79,11 +90,8 @@ Vec3 operator*(Vec3 a, double s) { return {a.x * s, a.y * s, a.z * s}; }
 double Dot(Vec3 a, Vec3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 double Length(Vec3 a) { return std::sqrt(Dot(a, a)); }
 Vec3 Normalize(Vec3 a) { return a * (1.0 / Length(a)); }
-Vec3 Cross(Vec3 a, Vec3 b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
 Vec3 Of(Float4 v) { return {v.x, v.y, v.z}; }
 Float4 F4(Vec3 v, double w) { return {static_cast<float>(v.x), static_cast<float>(v.y), static_cast<float>(v.z), static_cast<float>(w)}; }
-
-double Luminance(Vec3 c) { return 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z; }
 
 double Falloff(const ProbeLight& light, Vec3 at) {
   const double f = std::clamp(1.0 - Length(Of(light.position_reach) - at) / std::max<double>(light.position_reach.w, 1e-3), 0.0, 1.0);
@@ -131,50 +139,11 @@ Vec3 ClosedForm(const ProbeScenario& scenario, const ProbeLight& light) {
   return Of(light.colour_linear) * (integral / range);
 }
 
-struct Stat {
-  double mean[3];
-  double error[3];
-};
-
-Stat Statistics(const std::vector<ProbeOutput>& outputs, Float4 ProbeOutput::*member, bool* finite) {
-  double sum[3] = {};
-  double square[3] = {};
-  for (const ProbeOutput& output : outputs) {
-    const float values[3] = {(output.*member).x, (output.*member).y, (output.*member).z};
-    for (int c = 0; c < 3; ++c) {
-      if (!std::isfinite(values[c])) *finite = false;
-      sum[c] += values[c];
-      square[c] += static_cast<double>(values[c]) * values[c];
-    }
-  }
-  Stat stat;
-  const double n = static_cast<double>(outputs.size());
-  for (int c = 0; c < 3; ++c) {
-    stat.mean[c] = sum[c] / n;
-    stat.error[c] = std::sqrt(std::max(square[c] / n - stat.mean[c] * stat.mean[c], 0.0) / (n - 1.0));
-  }
-  return stat;
-}
-
 template <typename... Values>
 std::string Format(const char* format, Values... values) {
   char text[256];
   std::snprintf(text, sizeof(text), format, values...);
   return text;
-}
-
-// The worst channel's |mean - reference| in standard errors (errors floored at 1e-9 of the reference: a zero-variance
-// stage has none).
-double Sigmas(const Stat& stat, Vec3 reference, double* relative) {
-  const double values[3] = {reference.x, reference.y, reference.z};
-  double worst = 0.0;
-  *relative = 0.0;
-  for (int c = 0; c < 3; ++c) {
-    const double floor = std::max(1e-9 * std::abs(values[c]), 1e-12);
-    worst = std::max(worst, std::abs(stat.mean[c] - values[c]) / std::max(stat.error[c], floor));
-    if (values[c] != 0.0) *relative = std::max(*relative, std::abs(stat.mean[c] - values[c]) / std::abs(values[c]));
-  }
-  return worst;
 }
 
 struct Warp {
@@ -236,19 +205,12 @@ struct Warp {
   }
 };
 
-// The words of a list of lights (a byte each, NO_LIGHT past the end).
-void SetList(ProbeScenario* scenario, const std::vector<uint32_t>& members) {
-  std::array<uint8_t, 32> bytes;
-  bytes.fill(NO_LIGHT);
-  for (size_t slot = 0; slot < members.size(); ++slot) bytes[slot] = static_cast<uint8_t>(members[slot]);
-  std::memcpy(scenario->list_low.data(), bytes.data(), 16);
-  std::memcpy(scenario->list_high.data(), bytes.data() + 16, 16);
-}
-
 // Registers of a camera at `camera`: rows 0, 1 and 3 vanish there (the rest arbitrary), CameraOf's check.
 void SetCamera(ProbeScenario* scenario, Vec3 camera) {
   const Vec3 rows[4] = {{0.9, 0.1, -0.3}, {-0.2, 1.1, 0.25}, {0.05, -0.1, 1.02}, {0.15, 0.2, 0.97}};
-  for (int row = 0; row < 4; ++row) scenario->view_projection[row] = F4(rows[row], (row == 2) ? 0.5 : -Dot(rows[row], camera));
+  for (int row = 0; row < 4; ++row) {
+    scenario->view_projection[row] = F4(rows[row], (row == 2) ? 0.5 : -Dot(rows[row], camera));
+  }
 }
 
 ProbeScenario Domains(Vec3 origin, const std::array<Vec3, 4>& directions, const std::array<double, 4>& ranges) {
@@ -264,10 +226,34 @@ ProbeLight Light(Vec3 position, double reach, Vec3 colour, bool linear) {
   return {F4(position, reach), F4(colour, linear ? 1.0 : 0.0)};
 }
 
-// One scenario's gates. `controls`: whether the list misses contributing lights (no_defensive biased) and a neighbour's
-// range is short (naive biased).
+// The words of a list of lights (a byte each, NO_LIGHT past the end), as this trace's and last frame's list.
+void SetLists(ProbeScenario* scenario, const std::vector<uint32_t>& members, uint32_t count, uint32_t new_light) {
+  std::array<uint8_t, 32> bytes;
+  std::array<uint8_t, 32> history;
+  bytes.fill(NO_LIGHT);
+  history.fill(NO_LIGHT);
+  size_t kept = 0;
+  for (size_t slot = 0; slot < members.size(); ++slot) {
+    bytes[slot] = static_cast<uint8_t>(members[slot]);
+    if (members[slot] != new_light) {
+      history[kept++] = static_cast<uint8_t>(members[slot]);
+    }
+  }
+  std::memcpy(scenario->list_low.data(), bytes.data(), 16);
+  std::memcpy(scenario->list_high.data(), bytes.data() + 16, 16);
+  std::memcpy(scenario->history_low.data(), history.data(), 16);
+  std::memcpy(scenario->history_high.data(), history.data() + 16, 16);
+  scenario->count = count;
+  // Last frame's lights: all but new_light, the last id (FogCandidates' defensive pick draws ids below its count).
+  scenario->history_count = (new_light == count - 1) ? count - 1 : count;
+  scenario->new_light = new_light;
+}
+
+// One scenario's gates. The controls: whether the list misses contributing lights (no_defensive biased), a neighbour's
+// range is short (naive biased) and a light is new this trace (as_built biased). Any control not expected biased is
+// printed as info.
 void Check(const char* name, ProbeScenario scenario, const std::vector<ProbeLight>& lights, uint32_t list_size, bool defensive_control,
-           bool naive_control, Warp* warp, const Vec3* closed_form) {
+           bool naive_control, bool as_built_control, Vec3 camera, Warp* warp, const Vec3* closed_form) {
   std::vector<ProbeOutput> outputs;
   if (!warp->Run(scenario, lights, &outputs)) {
     Gate(std::string(name) + " WARP run", false, "the dispatch failed");
@@ -289,12 +275,38 @@ void Check(const char* name, ProbeScenario scenario, const std::vector<ProbeLigh
                 {"spatial, 1 final", &ProbeOutput::spatial, false},
                 {"spatial, 2 finals", &ProbeOutput::spatial_two, false},
                 {"control: M-share weights", &ProbeOutput::naive, naive_control},
-                {"control: no defensive pick", &ProbeOutput::no_defensive, defensive_control}};
+                {"control: no defensive pick", &ProbeOutput::no_defensive, defensive_control},
+                {"control: history target for new lights", &ProbeOutput::as_built, as_built_control}};
+  const double references[3] = {reference.x, reference.y, reference.z};
   for (const auto& stage : stages) {
-    const Stat stat = Statistics(outputs, stage.member, &finite);
+    // Per channel: the trials' mean and standard error, then the worst |mean - reference| in standard errors (errors
+    // floored at 1e-9 of the reference: a zero-variance stage has none).
+    double sum[3] = {};
+    double square[3] = {};
+    for (const ProbeOutput& output : outputs) {
+      const float values[3] = {(output.*stage.member).x, (output.*stage.member).y, (output.*stage.member).z};
+      for (int c = 0; c < 3; ++c) {
+        finite = finite && std::isfinite(values[c]);
+        sum[c] += values[c];
+        square[c] += static_cast<double>(values[c]) * values[c];
+      }
+    }
+    const double n = static_cast<double>(outputs.size());
+    double mean[3];
+    double error[3];
+    double sigmas = 0.0;
     double relative = 0.0;
-    const double sigmas = Sigmas(stat, reference, &relative);
-    const std::string detail = Format("mean %.6g (err %.2g), %.2f sigma, relative %.3g", stat.mean[0], stat.error[0], sigmas, relative);
+    for (int c = 0; c < 3; ++c) {
+      mean[c] = sum[c] / n;
+      error[c] = std::sqrt(std::max(square[c] / n - mean[c] * mean[c], 0.0) / (n - 1.0));
+      const double floor = std::max(1e-9 * std::abs(references[c]), 1e-12);
+      sigmas = std::max(sigmas, std::abs(mean[c] - references[c]) / std::max(error[c], floor));
+      if (references[c] != 0.0) {
+        relative = std::max(relative, std::abs(mean[c] - references[c]) / std::abs(references[c]));
+      }
+    }
+    const double signed_relative = (reference.x != 0.0) ? (mean[0] - reference.x) / reference.x : 0.0;
+    const std::string detail = Format("mean %.6g (err %.2g), %.2f sigma, relative %.3g (r %+.2f%%)", mean[0], error[0], sigmas, relative, 100.0 * signed_relative);
     const bool is_control = std::strncmp(stage.stage, "control", 7) == 0;
     if (is_control && !stage.biased) {
       std::printf("  info %s %s: %s\n", name, stage.stage, detail.c_str());
@@ -305,7 +317,7 @@ void Check(const char* name, ProbeScenario scenario, const std::vector<ProbeLigh
     }
     if (!is_control && reference.x > 0.0) {
       // Power: a 4% bias is beyond 4 standard errors.
-      Gate(std::string(name) + " " + stage.stage + " error under 1%", stat.error[0] < 0.01 * reference.x, Format("err / ref %.3g", stat.error[0] / reference.x));
+      Gate(std::string(name) + " " + stage.stage + " error under 1%", error[0] < 0.01 * reference.x, Format("err / ref %.3g", error[0] / reference.x));
     }
   }
   Gate(std::string(name) + " finite outputs", finite, finite ? "all" : "NaN / Inf");
@@ -317,7 +329,8 @@ void Check(const char* name, ProbeScenario scenario, const std::vector<ProbeLigh
     const ProbeOutput& output = outputs[trial];
     const ProbeLight& light = lights[trial % scenario.count];
     const Vec3 at = Of(scenario.origin_range[0]) + Of(scenario.direction[0]) * output.unit.y;
-    const double expected = std::max(Luminance(Of(light.colour_linear)), 0.0) * Falloff(light, at);
+    const Vec3 colour = Of(light.colour_linear);
+    const double expected = std::max(0.2126 * colour.x + 0.7152 * colour.y + 0.0722 * colour.z, 0.0) * Falloff(light, at);
     target_error = std::max(target_error, std::abs(output.unit.x - expected) / std::max(expected, 1.0));
     packs = packs && output.unit.z == 1.f;
     sizes = sizes && output.unit.w == static_cast<float>(list_size);
@@ -325,6 +338,8 @@ void Check(const char* name, ProbeScenario scenario, const std::vector<ProbeLigh
   Gate(std::string(name) + " FogTarget vs double", target_error < 2e-5, Format("max error %.2g", target_error));
   Gate(std::string(name) + " pack round trip exact", packs, packs ? "all trials" : "a mismatch");
   Gate(std::string(name) + " FogListOf size", sizes, Format("expected %u, trial 0 %.0f", list_size, outputs[0].unit.w));
+  const double camera_error = Length(Of(outputs[0].camera) - camera) / std::max(Length(camera), 1.0);
+  Gate(std::string(name) + " CameraOf finds the camera", camera_error < 1e-5, Format("relative error %.2g", camera_error));
 }
 
 }  // namespace
@@ -376,6 +391,45 @@ int main(int argc, char** argv) {
   const ComPtr<IDxcBlob> object = compile(L"cs_6_5");
   if (object == nullptr) return setup_failed("dxc cs_6_5");
 
+  // The helper's FOG_RESTIR builds: compiled, disassembled, no alloca (a local-memory array).
+  {
+    const std::wstring fog_path = std::wstring(root.begin(), root.end()) + L"\\src\\games\\twattila\\dlaa_helper\\rt_fog.cs_6_5.hlsl";
+    ComPtr<IDxcBlobEncoding> fog_source;
+    if (FAILED(utils->LoadFile(fog_path.c_str(), nullptr, &fog_source))) return setup_failed("rt_fog.cs_6_5.hlsl");
+    const DxcBuffer fog_buffer = {.Ptr = fog_source->GetBufferPointer(), .Size = fog_source->GetBufferSize(), .Encoding = DXC_CP_ACP};
+    for (const auto& [entry, target, omm] : {std::tuple{L"main", L"cs_6_5", false}, std::tuple{L"main", L"cs_6_9", true},
+                                              std::tuple{L"shade", L"cs_6_5", false}, std::tuple{L"shade", L"cs_6_9", true}}) {
+      std::vector<LPCWSTR> arguments = {fog_path.c_str(), L"-T", target, L"-E", entry, L"-O3", L"-D", L"FOG_RESTIR"};
+      if (omm) {
+        arguments.insert(arguments.end(), {L"-D", L"OPACITY_MICROMAPS"});
+      }
+      const std::string label = Format("rt_fog %s %s", entry[0] == L'm' ? "main" : "shade", omm ? "cs_6_9 OMM" : "cs_6_5");
+      ComPtr<IDxcResult> result;
+      HRESULT status = E_FAIL;
+      ComPtr<IDxcBlob> fog_object;
+      ComPtr<IDxcResult> disassembly;
+      ComPtr<IDxcBlobUtf8> text;
+      if (FAILED(compiler->Compile(&fog_buffer, arguments.data(), static_cast<UINT32>(arguments.size()), includes.Get(), IID_PPV_ARGS(&result)))
+          || FAILED(result->GetStatus(&status)) || FAILED(status) || FAILED(result->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&fog_object), nullptr))) {
+        Gate(label + " compiles", false, "dxc failed");
+        continue;
+      }
+      const DxcBuffer object_buffer = {.Ptr = fog_object->GetBufferPointer(), .Size = fog_object->GetBufferSize(), .Encoding = 0};
+      if (FAILED(compiler->Disassemble(&object_buffer, IID_PPV_ARGS(&disassembly))) || FAILED(disassembly->GetOutput(DXC_OUT_DISASSEMBLY, IID_PPV_ARGS(&text), nullptr))
+          || text == nullptr) {
+        Gate(label + " disassembles", false, "dxc failed");
+        continue;
+      }
+      // An instruction "%x = alloca ..." (allocateRayQuery is not one).
+      const std::string_view listing(text->GetStringPointer(), text->GetStringLength());
+      int allocas = 0;
+      for (size_t at = listing.find("= alloca "); at != std::string_view::npos; at = listing.find("= alloca ", at + 1)) {
+        ++allocas;
+      }
+      Gate(label + " no local-memory arrays", allocas == 0, Format("%d alloca, %zu bytes", allocas, static_cast<size_t>(fog_object->GetBufferSize())));
+    }
+  }
+
   Warp warp;
   ComPtr<IDXGIFactory4> factory;
   ComPtr<IDXGIAdapter> adapter;
@@ -411,18 +465,13 @@ int main(int argc, char** argv) {
     const Vec3 direction = {0.1, 0.05, 1.0};
     ProbeScenario scenario = Domains({0, 1, 0}, {direction, direction, direction, direction}, {60, 60, 60, 60});
     const std::vector<ProbeLight> lights = {Light({3, 2, 20}, 8, {1.0, 0.6, 0.3}, true)};
-    SetList(&scenario, {0});
-    scenario.count = 1;
+    SetLists(&scenario, {0}, 1, NO_LIGHT);
     scenario.seed = 11;
     scenario.history_confidence = 4.f;
     const Vec3 camera = {0.5, 12.0, -3.25};
     SetCamera(&scenario, camera);
     const Vec3 closed = ClosedForm(scenario, lights[0]);
-    Check("S1 one light", scenario, lights, 1, false, false, &warp, &closed);
-    std::vector<ProbeOutput> outputs;
-    warp.Run(scenario, lights, &outputs);
-    const double camera_error = Length(Of(outputs[0].camera) - camera) / Length(camera);
-    Gate("CameraOf finds the camera", camera_error < 1e-5, Format("relative error %.2g", camera_error));
+    Check("S1 one light", scenario, lights, 1, false, false, false, camera, &warp, &closed);
   }
 
   // S2: 12 lights (both falloffs, both sides of the plane z = 0), a list of 5, neighbours on other rays (one far shorter,
@@ -437,13 +486,12 @@ int main(int argc, char** argv) {
       const Vec3 offset = {std::sin(light * 2.1) * 3.0, std::cos(light * 1.3) * 2.0, (light == 1) ? -6.0 : 0.0};
       lights.push_back(Light(along + offset, 4.0 + (light % 4) * 2.0, {0.5 + 0.1 * (light % 5), 0.3 + 0.07 * (light % 3), 0.2 + 0.15 * (light % 2)}, (light & 1) == 0));
     }
-    SetList(&scenario, {0, 3, 5, 7, 9});
-    scenario.count = 12;
+    SetLists(&scenario, {0, 3, 5, 7, 9}, 12, NO_LIGHT);
     scenario.seed = 23;
     scenario.occluder = 1;
     scenario.history_confidence = 4.f;
     SetCamera(&scenario, origin);
-    Check("S2 twelve lights", scenario, lights, 5, true, true, &warp, nullptr);
+    Check("S2 twelve lights", scenario, lights, 5, true, true, false, origin, &warp, nullptr);
   }
 
   // S3: 8 smooth lights all in the list (no defensive pick), a neighbour on another ray.
@@ -455,12 +503,11 @@ int main(int argc, char** argv) {
       const Vec3 along = origin + Normalize({-0.1, 0.1, 1}) * (2.0 + 4.0 * light);
       lights.push_back(Light(along + Vec3{1.5 * std::cos(light * 0.7), 1.0, 1.5 * std::sin(light * 0.7)}, 5.0, {0.9, 0.5 + 0.05 * light, 0.2}, false));
     }
-    SetList(&scenario, {0, 1, 2, 3, 4, 5, 6, 7});
-    scenario.count = 8;
+    SetLists(&scenario, {0, 1, 2, 3, 4, 5, 6, 7}, 8, NO_LIGHT);
     scenario.seed = 37;
     scenario.history_confidence = 2.f;
     SetCamera(&scenario, origin);
-    Check("S3 eight smooth lights", scenario, lights, 8, false, false, &warp, nullptr);
+    Check("S3 eight smooth lights", scenario, lights, 8, false, false, false, origin, &warp, nullptr);
   }
 
   // S4: no light reaches the ray: every stage exactly 0.
@@ -468,8 +515,7 @@ int main(int argc, char** argv) {
     const Vec3 direction = {0, 0, 1};
     ProbeScenario scenario = Domains({0, 0, 0}, {direction, direction, direction, direction}, {20, 20, 20, 20});
     const std::vector<ProbeLight> lights = {Light({100, 0, 10}, 5, {1, 1, 1}, true), Light({-100, 0, 10}, 5, {1, 1, 1}, false)};
-    SetList(&scenario, {1});
-    scenario.count = 2;
+    SetLists(&scenario, {1}, 2, NO_LIGHT);
     scenario.seed = 41;
     scenario.history_confidence = 4.f;
     SetCamera(&scenario, {0, 0, 0});
@@ -485,6 +531,50 @@ int main(int argc, char** argv) {
       }
       Gate("S4 nothing reaches: every stage 0", zero, zero ? "all trials" : "a non-zero trial");
     }
+  }
+
+  // S5: 128 lights, a full list of 32 (ids up to 127: every word of FogList.lights, list slots 16-31), the defensive pick
+  // over the 96 others (four dim ones reach the ray), neighbours on other rays.
+  {
+    const Vec3 origin = {1, 2, -2};
+    const Vec3 direction = Normalize({0.1, -0.03, 1});
+    ProbeScenario scenario = Domains(origin, {direction, Vec3{0.12, -0.02, 1}, Vec3{0.08, -0.04, 1}, Vec3{0.1, 0.0, 1}}, {60, 60, 30, 400});
+    std::vector<uint32_t> members;
+    for (uint32_t slot = 0; slot < 31; ++slot) {
+      members.push_back((3 + 37 * slot) % 128);
+    }
+    members.push_back(127);
+    std::vector<ProbeLight> lights(128, Light({300, 0, 0}, 4, {1, 1, 1}, true));
+    for (uint32_t slot = 0; slot < 32; ++slot) {
+      const Vec3 offset = {2.0 * std::sin(slot * 1.7), 1.5 * std::cos(slot * 0.9), 0.0};
+      lights[members[slot]] = Light(origin + direction * (1.5 + 1.8 * slot) + offset, 3.0 + (slot % 5), {0.4 + 0.1 * (slot % 4), 0.5, 0.2 + 0.05 * (slot % 3)},
+                                    (slot % 3) != 0);
+    }
+    uint32_t dim = 0;
+    for (uint32_t light = 0; light < 128 && dim < 4; ++light) {
+      if (std::find(members.begin(), members.end(), light) == members.end()) {
+        lights[light] = Light(origin + direction * (8.0 + 14.0 * dim) + Vec3{0.5, -1.0, 0.0}, 5.0, {0.12, 0.1, 0.08}, true);
+        ++dim;
+      }
+    }
+    SetLists(&scenario, members, 128, NO_LIGHT);
+    scenario.seed = 53;
+    scenario.history_confidence = 4.f;
+    SetCamera(&scenario, origin);
+    Check("S5 128 lights, full list", scenario, lights, 32, true, false, false, origin, &warp, nullptr);
+  }
+
+  // S6: a light new this trace (its light_previous byte 255): last frame's reservoirs hold only the old one, its domain
+  // gives the new one target 0 (else the new light's share drops to the candidates' M share: the as-built control).
+  {
+    const Vec3 direction = {0, 0, 1};
+    ProbeScenario scenario = Domains({0, 0, 0}, {direction, direction, direction, direction}, {50, 50, 50, 50});
+    const std::vector<ProbeLight> lights = {Light({2, 0, 20}, 8, {1, 1, 1}, true), Light({-2, 0, 30}, 8, {1, 1, 1}, true)};
+    SetLists(&scenario, {0, 1}, 2, 1);
+    scenario.seed = 61;
+    scenario.history_confidence = 4.f;
+    SetCamera(&scenario, {0, 0, 0});
+    Check("S6 new light", scenario, lights, 2, false, false, true, {0, 0, 0}, &warp, nullptr);
   }
 
   std::printf("RESULT tw_fog_restir %s (%d failed)\n", failures == 0 ? "PASS" : "FAIL", failures);

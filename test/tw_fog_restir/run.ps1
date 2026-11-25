@@ -19,8 +19,10 @@ if ($LASTEXITCODE -ne 0) { throw 'tw_fog_restir compile failed' }
 $record = & python -I (Join-Path $tw 'lab\gpu_lock.py') acquire --pid $PID --script $PSCommandPath --note 'tw_fog_restir WARP'
 if ($LASTEXITCODE -ne 0) { throw 'gpu_job.lock not taken' }
 try {
-  & (Join-Path $Out 'tw_fog_restir.exe') $repairRoot $Bin | Tee-Object -FilePath (Join-Path $Out 'last_run.txt')
+  # Tee-Object -FilePath writes UTF-16 in Windows PowerShell 5.1: the log is kept, then written as UTF-8.
+  & (Join-Path $Out 'tw_fog_restir.exe') $repairRoot $Bin | Tee-Object -Variable log
   $result = $LASTEXITCODE
+  $log | Out-File -Encoding utf8 -FilePath (Join-Path $Out 'last_run.txt')
 } finally {
   & python -I (Join-Path $tw 'lab\gpu_lock.py') release --record "$record" | Out-Null
 }
