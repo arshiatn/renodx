@@ -950,6 +950,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa2_ G-1 W CLAMP (ClampWeight) also hides our own bright biases (B1 / B2 / U1) - ... | ?
 - fa2_ G-2 / G-3 SHaRC BANS ('reflections hung at 4K', 'depth 4 hung'; 1.6.5, neve ... | ?
 - fa2_ U1 VALIDATE'S LIGHT SWAP = leading candidate for pds2_'s unexplained colour ... | ?
+- fa6_ BUG-3 rt_cache_fill built cs_6_5 only (4 plain allocateRayQuery, no OMM fla ... | ?
+- fa6_ BUG-1 / BUG-2 PTLAS: instanceMask 0xFF (:8012; nvapi.h:21436 = the D3D12 de ... | ?
+- fa6_ C2 PTLAS STALL LIKELY CAUSE: helper21 sent UPDATE_INSTANCE with a null BLAS ... | ?
+- fa6_ THREE 'CAUSE UNKNOWN' HANGS MAY BE OURS: GrowBuffer(&member) released in-fl ... | ?
+- fa6_ SER CAP: NVAPI's THREAD_REORDERING cap answers the 'SER ON OLDER RTX' box n ... | ?
+- fa6_ UNKNOWN: DXR 1.2 OMM arrays passed to NVAPI cluster ops while the pipeline ... | ?
+- fa6_ LATER (spec v1.47): a PSO flag lets pre-6.9 shaders opt in to OMMs -> once ... | ?
+- fa6_ NEVER CONSIDERED (part D, 29 rows): RTXMU, DMM, LSS / spheres (smoke as sph ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -17243,6 +17251,42 @@ heading text are in HANDOFF_ARCHIVE.md)
         xHigh, read-only, est 55-60 / deadline 110. After the critic: every confirmed BUG checked in each port's own
         copy (Tales rt_path, Ryse, Expeditions, Shogun 2, D1 / D2, other TW folders) + licences / credits for every
         source. Owner: fa7_, fa8_, fa9_, critic
+        fa6_ DONE (17 min; fidelity\rt_dxr_mega_rejected.md; atn-mods 6df99bc48, no branch changes these rows; no
+        download: tools\specs' DXR 2.0 spec + nvapi.h R620): DXR 1.0 pipeline matches the spec (payload 4, attributes 8,
+        recursion 1, 64-B raygen record, global RS = compute's); SER lib DXIL 0 TraceRay / 15 OMM RayQuery / 1 reorder.
+        PTLAS = TEST-ONLY (RENODX_TW_PTLAS + NVAPI cap, rt_d3d12.hpp:590-630; recorder refuses it :1567); CLAS,
+        templates, cluster BLAS on by default. PTLAS REJECTION STILL HOLDS after BUG-1 / BUG-2 (stall from 10-27 had
+        mask 0xFF + one cluster BLAS too; the 0.1-0.45 ms bound is our own TLAS build). 6 STALE: A18, C2, C5, C6, C7, C12.
+        - [ ] fa6_ BUG-3 rt_cache_fill built cs_6_5 only (4 plain allocateRayQuery, no OMM flag) traces the OMM TLAS
+        under dxr12_ (rt_d3d12.hpp:4033) = undefined (Raytracing.md:6588) -> add it to build.ps1's cs_6_9 OMM variant
+        loop (:57-58). Test: static DXIL check that no v1 allocateRayQuery runs on a dxr12_ device; today's headers
+        must fail. (fa3_'s rt_reference UNKNOWN is the same class.) Owner: next RT writer after the merges
+        - [ ] fa6_ BUG-1 / BUG-2 PTLAS: instanceMask 0xFF (:8012; nvapi.h:21436 = the D3D12 desc's mask) + cluster /
+        units / smoke BLAS all place MAX_INSTANCES folded into one slot (:7833-7848, :7976). Fix before U12b measures
+        anything (else it measures our bugs). Owner: U12b
+        - [ ] fa6_ C2 PTLAS STALL LIKELY CAUSE: helper21 sent UPDATE_INSTANCE with a null BLAS when an instance left;
+        DXR 2.0 (Raytracing2.md:2028-2058) calls that undefined, nvapi.h:21452 says inactive; helper22 changed 3 things
+        at once. Comment 'two PTLASes in turn ... as NVAPI asks' is a wrong cite (in-place builds allowed,
+        nvapi.h:21483). Owner: U12b
+        - [ ] fa6_ THREE 'CAUSE UNKNOWN' HANGS MAY BE OURS: GrowBuffer(&member) released in-flight buffers (sway 10-29 ->
+        11-13, SHaRC + GPU-bake 10-29 -> 11-17); the v118 trace-overlap reset (needs sway or GPU bakes), SHaRC depth 4 +
+        resampling and SHaRC reflections at 4K all fall in that window; none re-run since. SDK side: SHaRC 1.7.2 made
+        depth 2 NVIDIA's own default (the cap holds as a DEFAULT, the BAN doesn't), 1.8.2 fixed an end-of-grid OOB
+        read, 1.8.3 stops the update safely on hash-grid overflow (strongest SDK candidate). The trace wait
+        (WaitFor(trace_value_)) is now a guard row. Test: the one-minute repro without the wait on today's code;
+        control: re-inject GrowBuffer(&) -> must hang. HANG RISK -> only in the SHaRC depth 4 slot (quiet GPU, ATN
+        home); guards / caps stay until proven (ATN's rule). Owner: SHaRC depth 4 slot
+        - [ ] fa6_ SER CAP: NVAPI's THREAD_REORDERING cap answers the 'SER ON OLDER RTX' box now
+        (OPTIONS22.ShaderExecutionReorderingActuallyReorders not in our headers yet). Owner: SER on older RTX box
+        - [ ] fa6_ UNKNOWN: DXR 1.2 OMM arrays passed to NVAPI cluster ops while the pipeline sets cluster support
+        only; NVAPI silent -> ask / test. Stale comment rt_d3d12.hpp:269 (OMM CPU bake; GPU bake back since v117).
+        Owner: OMM owner
+        - [ ] fa6_ LATER (spec v1.47): a PSO flag lets pre-6.9 shaders opt in to OMMs -> once the Agility SDK ships it,
+        drop the duplicated cs_6_5 / _OMM builds (closes BUG-3 + fa3_ F6 by construction). DXR 2.0 native clusters +
+        PTLAS (preview) = the only Mega Geometry route on AMD / Intel (never considered). Owner: coord (watch)
+        - [ ] fa6_ NEVER CONSIDERED (part D, 29 rows): RTXMU, DMM, LSS / spheres (smoke as spheres = the Attila fit),
+        NRC, DDGI, Reflex 2 Frame Warp, cooperative vectors / neural shading, DXR 2.0 -> critic ranks; ATN decides
+        any new feature. Owner: critic -> ATN
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
