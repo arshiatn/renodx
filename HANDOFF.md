@@ -15595,6 +15595,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         later, default ON, no extra starts (no 6-core emulation / light-battle start; 2-CCD unit tests only), Intel /
         Win10 tester + main-sibling arm later (sent to l2br_). S1 start waits for pds2_ / ucf_ to go idle (both told
         10:0x to hold new GPU jobs / builds until 'go on').
+        - [x] S1 L2C MEASURED 10:02-10:09 (ab_runs\20261125_100253_AB, valid: arm=c, step id 271 alone, default 16 -> 15,
+        CPU sets 15, same final state X fnv de496970e53dddeb / x_hash 36c72e1b01f97d12 at tick 3749, 1 skipped probe
+        patch 4bf0268 = same as the base / l2b starts): window 248.8 s (base 247.0-248.4, L2B 220.2), steps/s 7.24,
+        step wall median 139.82 ms (base 138.90, L2B 121.64), on-CPU 0.998, fps 63.3, p99 26.5 ms -> band >= 240 s:
+        L2B STAYS the shape, NO anchor start (the drawing sibling costs exactly what base costs). pds2_ / ucf_ 'go on'.
+        - [x] l2br_ REVIEW DONE 10:0x (designs\l2b_design_review.md, hand-back l2br_review_handback.md): GO WITH CHANGES,
+        1 Must (row off must not write the CpuPlacement install key) + 8 Shoulds (cpu_sets.hpp departure written down,
+        never widen per thread, block v2 items for W0, RowsOffered mask test, drop dead switches, S2 fail branch,
+        offline live Win32 tests, honest fps wording) + 10 nits. -> l2bd_ FIX ROUND STARTED 10:1x (same agent, with
+        the L2C result + ATN's answers) -> recheck -> W0 with C8 wave 2.
         - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
         09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
