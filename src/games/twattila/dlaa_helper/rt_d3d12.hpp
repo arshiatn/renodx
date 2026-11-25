@@ -3981,8 +3981,11 @@ class RtScene12 {
           return tests;
         }();
         // Balanced ReSTIR Light (RT_PATH_REUSE_BALANCED, older addons never set it) where its twins were made: Validate's
-        // kept light in the paths' constants and the reuse's REUSE_BALANCED twin (G1 Basic), both or neither.
+        // kept light in the paths' constants and the reuse's REUSE_BALANCED twin (G1 Basic), both or neither; with
+        // RT_PATH_REUSE_BALANCED_RAYTRACED (older addons never set it) the twin's G1 Raytraced, REUSE_BIAS_RAYTRACED in the
+        // constants (RENODX_TW_REUSE_BIAS=2 alone gives a player build's twin that too, as _VALIDATE_KEEP_LIGHT its paths).
         const bool balanced = (requested & dlaa_bridge::RT_PATH_REUSE_BALANCED) != 0 && reuse_balanced_pipelines_[0];
+        const bool balanced_raytraced = balanced && (requested & dlaa_bridge::RT_PATH_REUSE_BALANCED_RAYTRACED) != 0;
         PathConstants constants = {
             .bounce_width = render_pixels ? width : shared.rt_bounce_width,
             .bounce_height = render_pixels ? height : shared.rt_bounce_height,
@@ -4004,9 +4007,9 @@ class RtScene12 {
                                 | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
                                 | (ratio_follows ? 64u : 0u)
                                 | ((path_traced && light_count != 0 && (requested & dlaa_bridge::RT_PATH_TORCH_LIGHT) != 0) ? LIGHTS_IN_PATHS : 0u),
-            // Balanced ReSTIR Light's kept light: the test bit the player's paths read (rt_path.hlsli REUSE_SUSPECTS; the
-            // tests pipelines' choice stays the environment's).
-            .reuse_tests = reuse_tests | (balanced ? REUSE_TEST_VALIDATE_KEEP_LIGHT : 0u),
+            // Balanced ReSTIR Light's kept light and Raytraced: the test bits the player's paths and twins read (rt_path.hlsli
+            // REUSE_SUSPECTS; the tests pipelines' choice stays the environment's).
+            .reuse_tests = reuse_tests | (balanced ? REUSE_TEST_VALIDATE_KEEP_LIGHT : 0u) | (balanced_raytraced ? REUSE_BIAS_RAYTRACED : 0u),
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -4193,14 +4196,21 @@ class RtScene12 {
           } else if (lean) {
             reuse_state = reuse_lean_pipeline_.Get();
           }
-          // Balanced ReSTIR Light: the usual reuse build's REUSE_BALANCED twin (G1 Basic; RTXDI's and the tests' have none).
-          // It also takes the place of a SwapStem("rt_reuse") swap: lab A/B jobs that swap rt_reuse keep bit 28 clear.
+          // Balanced ReSTIR Light: the usual reuse build's REUSE_BALANCED twin (G1 Basic or Raytraced; RTXDI's and the tests'
+          // have none). It also takes the place of a SwapStem("rt_reuse") swap: lab A/B jobs that swap rt_reuse keep bit 28 clear.
+          uint32_t balanced_mode = 0;  // the one that runs: 0 none, 1 Basic, 2 Raytraced
           if (balanced) {
             const std::array<BalancedTwin, 4> twins = BalancedTwins();
             const auto twin = std::ranges::find_if(twins, [&](const BalancedTwin& each) { return (this->*each.plain).Get() == reuse_state; });
             if (twin != twins.end()) {
               reuse_state = reuse_balanced_pipelines_[twin - twins.begin()].Get();
+              balanced_mode = balanced_raytraced ? 2u : 1u;
             }
+          }
+          if (balanced_mode != balanced_logged_) {
+            balanced_logged_ = balanced_mode;
+            constexpr std::array<const char*, 3> BALANCED_MODES = {"off", "Basic", "Raytraced"};
+            slow_report_ += std::format("{}[TW ray tracing] Balanced ReSTIR Light: {}.", (slow_report_.empty() ? "" : "\n"), BALANCED_MODES[balanced_mode]);
           }
           list->SetPipelineState(reuse_state);
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
@@ -10487,8 +10497,8 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> reuse_pipeline_;  // ReSTIR GI's spatial reuse
   ComPtr<ID3D12PipelineState> reuse_lean_pipeline_;  // its Lean Reuse build (REUSE_LEAN)
   ComPtr<ID3D12PipelineState> reuse_near_pipeline_;  // its Near Reuse build (REUSE_NEAR)
-  // Balanced ReSTIR Light's twins (REUSE_BALANCED: G1 Basic) of the usual reuse builds: each plain build and its twin's
-  // code (DXR 1.1, DXR 1.2), in reuse_balanced_pipelines_'s order.
+  // Balanced ReSTIR Light's twins (REUSE_BALANCED: G1 Basic, Raytraced by its constants' REUSE_BIAS_RAYTRACED) of the usual
+  // reuse builds: each plain build and its twin's code (DXR 1.1, DXR 1.2), in reuse_balanced_pipelines_'s order.
   struct BalancedTwin {
     ComPtr<ID3D12PipelineState> RtScene12::* plain;
     std::span<const unsigned char> code;
@@ -10503,6 +10513,7 @@ class RtScene12 {
     }};
   }
   std::array<ComPtr<ID3D12PipelineState>, 4> reuse_balanced_pipelines_;
+  uint32_t balanced_logged_ = 0;  // the Balanced ReSTIR Light mode at its last log line (0 none, 1 Basic, 2 Raytraced)
   ComPtr<ID3D12PipelineState> path_tests_pipeline_;   // the paths' build with ReSTIR GI's test switches (REUSE_TESTS)
   ComPtr<ID3D12PipelineState> reuse_tests_pipeline_;  // the reuse's (REUSE_TESTS)
   ComPtr<ID3D12PipelineState> reuse_boil_pipeline_;  // its boiling filter (REUSE_BOIL; RTXDI builds)

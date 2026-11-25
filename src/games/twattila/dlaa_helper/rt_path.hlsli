@@ -114,12 +114,13 @@ static const uint REUSE_VALIDATION_PERIOD = 3u;
 #include "./rt_reuse_bits.h"  // reuse_tests' bits (RENODX_TW_REUSE_*, rt_d3d12.hpp)
 // The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set). Balanced ReSTIR Light (RT_PATH_REUSE_BALANCED): G1 Basic in the reuse's own builds
-// (REUSE_BALANCED: rt_reuse*_balanced, the host's choice with the row), Validate's kept light read in the paths (the host
-// sets it with the row); the other builds read none (0: the bits' code compiled out, the shipped code to the byte).
+// (REUSE_BALANCED: rt_reuse*_balanced, the host's choice with the row), Raytraced where the host sets REUSE_BIAS_RAYTRACED
+// (RT_PATH_REUSE_BALANCED_RAYTRACED), Validate's kept light read in the paths (the host sets it with the row); the other
+// builds read none (0: the bits' code compiled out, the shipped code to the byte).
 #if defined(REUSE_TESTS)
 #define REUSE_SUSPECTS reuse_tests
 #elif defined(REUSE_BALANCED)
-#define REUSE_SUSPECTS REUSE_BIAS_BASIC
+#define REUSE_SUSPECTS (REUSE_BIAS_BASIC | (reuse_tests & REUSE_BIAS_RAYTRACED))
 #elif defined(REUSE) || defined(REFLECT_RESERVOIR)
 #define REUSE_SUSPECTS 0u
 #else
