@@ -384,7 +384,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - pitfall_check.py report: line numbers drift on HANDOFF.md (4 lone CR bytes; file ... | ?
 - F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ c ... | coord (audit), each file's owner
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
-- GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job ... | gtl_ (lab), next tooling slot
+- GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job ... | gtl_ (lab), next tooling slot pdi5_ GPU DONE 21:14 (last ses
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
 - Caesar's test build (Flag Wave export + heapfix.ini key append) -> ATN relays -> ... | ?
 - 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20 ... | ?
@@ -3639,6 +3639,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         'resume'). Fix: a FIFO queue in gpu_lock.py / GpuLock.psm1 (first come first served, same wait for all) +
         jobs that measure no time (picture / dump checks) may share the GPU only if proven safe. ONE timing job at a
         time stays (numbers must be measured alone). Owner: gtl_ (lab), next tooling slot
+        pdi5_ GPU DONE 21:14 (last session closed itself, lock freed). GPU ORDER, one owner at a time, each sends
+        '<prefix> GPU done' when its last GPU job ends (no contention = no 22.5 s give-ups): 1 pdi3_ chain_final2
+        (step 3 merge blocker, RESUMED 21:2x) -> 2 coord R2 -> R3 -> R4 Nsight smoke (~15 min) -> 3 pdi4c_ r2 chain
+        -> 4 bal3_ lab_b jobs 03-12 + all_modes_check -> 5 d11 replay self test on the 5090 (after d11v_).
       - [ ] CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO BUNDLING: 'don't bundle or
         repackage my mods with yours'; players get the engine fix / Flag Wave from his Steam / Nexus page (self-update).
         We don't: 32-bit heapfix = own use only; PerfFix 64 = optional, his package (port_plan.md install step 3); flag
