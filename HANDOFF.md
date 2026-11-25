@@ -836,6 +836,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
+- U6 PART 2 MUSTS (u6f_part1_review.md): P1 FOG_HISTORY = shade ran last trace at ... | ?
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
 - d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
 - FROZEN 32-BIT (only if ATN ever revives 32-bit): the 32-bit D3D11 pass capture ( ... | ?
@@ -15917,6 +15918,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         Open: vector weights not built (4 rays / texel); temporal target approx under motion (lag metric); 128-light
         remap loop (inverse table needs rt_scene.hlsli); FogLightThrough + list-bit copies (fold at M6 / U2).
         -> u6r_ REVIEW (Opus xHigh, read only) STARTED -> designs\u6f_part1_review.md -> fix -> merge with part 2.
+        u6r_ REVIEW: MERGE AFTER FIXES (designs\u6f_part1_review.md; hand-back u6r_handback.md; define-off bytes
+        re-verified, test re-run PASS, merge-tree clean vs atn-mods / pdi3 / pdi4c / pdi5 / bal3, no owner clash).
+        M1: temporal domain counts lights absent last trace -> new / moving lights (carried torches, burning
+        engines, fire arrows) ~5x too dim in fog (numpy -40.0 %, fixed -0.04 %): target 0 without a previous
+        index. S1 OMM cs_6_9 builds keep 4 allocas (rolled domain loop): float4 + dot, alloca check. S2 history
+        preconditions; S3 test with ~100 lights / ids >= 32 / list slots 16-31; N1-N7. -> u6f_ FIX ROUND STARTED ->
+        u6r_ RE-CHECK.
+        SLOTS CLAIMED (coord): fog u85-u86 reservoirs, u87-u88 sun history (UAV table contiguous from u10; pdi3_
+        u75-76, pdi4c_ u77-u84 with u84 reserved; part 2 adds one filler if u84 stays unused).
+        - [ ] U6 PART 2 MUSTS (u6f_part1_review.md): P1 FOG_HISTORY = shade ran last trace at this size AND
+        PATH_LIGHT_HISTORY's condition (rt_d3d12.hpp:8233); P2 FOG_SUN_VALID needs last_frame (b3's previous camera
+        updates only under ambient_kept, :8245 / :8301); P3 UAV barrier on light_mask_ between rt_lights and fog
+        main; P4 set b2 (ROOT_BOUNCE, shared) right before both fog dispatches; P5 measure FOG_TILES on vs off (sky
+        tiles / R7 far walls get only uniform picks); P6 shade's dispatch condition = main's glowing terms. Plus
+        H0 dimension table: kind 27 indices 8-20. Owner: u6f_ (part 2, after steps 3 + 5)
         Still waiting: U1-U3 / U5 (need PT DI), U6p (bridge + rt_lights), U12a / U12d (add-on files Friday's CPU builders
         use), U11 / U11h (AMD only), SHaRC depth 4 (hang risk: quiet GPU + ATN home).
         - [ ] D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record it in game, then
