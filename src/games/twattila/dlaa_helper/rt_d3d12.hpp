@@ -1326,6 +1326,7 @@ class RtScene12 {
     light_surface_previous_.Reset();
     di_light_ = {};
     di_members_.Reset();
+    di_origin_ = {};
     di_reservoirs_.Reset();
     di_offsets_.Reset();
     di_frame_ = UINT32_MAX;
@@ -4924,7 +4925,8 @@ class RtScene12 {
     DI_RESERVOIRS,           // u80: RTXDI's DI reservoirs, three arrays (rt_rtxdi_bridge.hlsli di_reservoirs)
     DI_OFFSETS,              // u81: RTXDI's spatial neighbour offsets
     DI_LIGHT,                // u82, u83: the addon's two DI textures (di_light)
-    DESCRIPTOR_COUNT = DI_LIGHT + 2,
+    DI_ORIGIN = DI_LIGHT + 2,  // u84, u85: each DI pixel's ray origin, this trace's and the last's by parity (di_origin)
+    DESCRIPTOR_COUNT = DI_ORIGIN + 2,
   };
   // The registers (the last UAV range starts at u10 with CACHE_KEYS).
   static_assert(REF_CANDIDATE_BATCH - CACHE_KEYS + 10 == 60 && REF_STATE - CACHE_KEYS + 10 == 72);
@@ -4937,7 +4939,7 @@ class RtScene12 {
   static_assert(LIGHT_SURFACE_PREVIOUS - CACHE_KEYS + 10 == 79);
   static_assert(DI_RESERVOIRS - CACHE_KEYS + 10 == 80);
   static_assert(DI_OFFSETS - CACHE_KEYS + 10 == 81);
-  static_assert(DI_LIGHT - CACHE_KEYS + 10 == 82 && DESCRIPTOR_COUNT - CACHE_KEYS + 10 == 84);
+  static_assert(DI_LIGHT - CACHE_KEYS + 10 == 82 && DI_ORIGIN - CACHE_KEYS + 10 == 84 && DESCRIPTOR_COUNT - CACHE_KEYS + 10 == 86);
 #if defined(RENODX_REFERENCE)
   static constexpr UINT TABLES = 2;  // the live table, the reference's frozen one
 #else
@@ -6602,8 +6604,9 @@ class RtScene12 {
     // Path-Traced Torch Light's own resources: its trace's frame (the addon's light surface and DI textures stay the set's).
     if (di_reservoirs_ && (di_frame_ == UINT32_MAX || di_frame_ + HISTORY_FRAMES < frame)) {
       release("Path-Traced Torch Light's",
-              {std::addressof(di_members_), std::addressof(light_surface_previous_), std::addressof(di_reservoirs_), std::addressof(di_offsets_)},
-              {DI_MEMBERS, LIGHT_SURFACE_PREVIOUS});
+              {std::addressof(di_members_), std::addressof(light_surface_previous_), std::addressof(di_reservoirs_), std::addressof(di_offsets_),
+               std::addressof(di_origin_[0]), std::addressof(di_origin_[1])},
+              {DI_MEMBERS, LIGHT_SURFACE_PREVIOUS, DI_ORIGIN, DI_ORIGIN + 1});
       device_->CreateUnorderedAccessView(nullptr, nullptr, &DI_RESERVOIRS_NULL, Descriptor(DI_RESERVOIRS));
       device_->CreateUnorderedAccessView(nullptr, nullptr, &DI_OFFSETS_NULL, Descriptor(DI_OFFSETS));
       di_frame_ = UINT32_MAX;
@@ -8689,6 +8692,8 @@ class RtScene12 {
         failed = "neighbour offsets' upload (Map)";
       } else if (!Texture(DXGI_FORMAT_R32G32B32A32_UINT, &di_members_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, dlaa_bridge::RT_LIGHT_TILE)) {
         failed = "tile members";
+      } else if (!Texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &di_origin_[0]) || !Texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &di_origin_[1])) {
+        failed = "ray origins";
       } else if (FAILED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &surface_desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
                                                          IID_PPV_ARGS(light_surface_previous_.GetAddressOf())))) {
         failed = "light surface's copy";
@@ -8699,6 +8704,7 @@ class RtScene12 {
         di_reservoirs_.Reset();
         di_offsets_.Reset();
         di_members_.Reset();
+        di_origin_ = {};
         light_surface_previous_.Reset();
         light_surface_.Reset();
       } else {
@@ -8730,6 +8736,8 @@ class RtScene12 {
       Written(light_surface_previous_.Get(), DXGI_FORMAT_R32G32B32A32_UINT, LIGHT_SURFACE_PREVIOUS);
       Written(di_light_[0].Get(), di_light_[0]->GetDesc().Format, DI_LIGHT);
       Written(di_light_[1].Get(), di_light_[1]->GetDesc().Format, DI_LIGHT + 1);
+      Written(di_origin_[0].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, DI_ORIGIN);
+      Written(di_origin_[1].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, DI_ORIGIN + 1);
     }
 #else
     constexpr bool di = false;
@@ -11124,6 +11132,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> light_surface_previous_;
   std::array<ComPtr<ID3D12Resource>, 2> di_light_;
   ComPtr<ID3D12Resource> di_members_;
+  std::array<ComPtr<ID3D12Resource>, 2> di_origin_;  // DI_ORIGIN (RGBA16F at the render pixels: 2 x 66 MB at 4K)
   ComPtr<ID3D12Resource> di_reservoirs_;
   ComPtr<ID3D12Resource> di_offsets_;
   uint32_t di_frame_ = UINT32_MAX;
