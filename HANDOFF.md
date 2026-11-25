@@ -820,7 +820,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- a3f_ (Opus High, worktree, branch a3f_warning) STARTED 09:5x: addon.cpp warning ... | ?
 - optc_ (Opus xHigh, read only) STARTED 09:5x on ATN's question: every Sol loader ... | ?
 - l2bd_ (Opus xHigh, read only) L2B PRODUCT DESIGN STARTED 09:2x on ATN's yes -> | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
@@ -15557,9 +15556,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         its D3D11 device at exit -> the game's add-on instance never unloads (design 9 item 2 expects it); uninit never
         runs on the port (recheck when the DLSS helper comes). Timer race table: quit at first present + 147.3 / 133.1 /
         142.7 / 145.8 s (C64 / B64P / sr2 / mv) vs pass +140, capture +145.
-        - [ ] a3f_ (Opus High, worktree, branch a3f_warning) STARTED 09:5x: addon.cpp warning fix (amd64 + x86 builds) +
-        a64_ab.ps1 check fixes (8 items; backup a64_ab.pre_a3f_1125.ps1; check logic only, no switch changes; offline
-        -Analyze over today's 5 batches + DryRuns) -> review -> merge -> restage a3_smoke addon64.
+        - [x] a3f_ DONE 10:3x (hand-back study_1124\a3f_fixes_handback.md): c073bd293 WarnToneMapperTarget counts an
+        R16G16B16A16F target as upgraded (amd64 6556F7C79474DDC9 / x86 1912A20F962AB4C3, exit 0, 61 warnings each;
+        configure needed CMAKE_PROGRAM_PATH=D:\Dev\renodx\bin for slangc since bin\ is never linked) -> coord read the
+        3-line diff + MERGED 86df2f58b (src = the branch's). a64_ab.ps1 (backup a64_ab.pre_a3f_1125.ps1; 0 parse errors;
+        16 / 16 DryRuns ok): never-line skips format 10; gather counts create-time 'patched'; drawn set = 21 deduped
+        same-replay 32-bit frames (59 -> 45 must, lost 21 -> 5 info + 'scene:' line); 4-bone 'not proven (no close
+        units)' = info; exit rule = earlier loads unloaded + no WARN from 'Exiting' on (E13 too); $RS_QUIT 90 + 'not
+        reached before the quit (timing)'; PerfFix regex 11 -> 0; padded thread id. Re-analysis on copies: PASS yes
+        C64 / package / E64 / E64-mv; NO (timing only, old quit) B64P + E64-sr2. NOT done: restage a3_smoke with the
+        merged add-on (do it right before the next 64-bit game batch, which builds newer anyway); the close-units E64-mv
+        start (fold into C8 wave 2's one batch); ~670 MB analysis copies in the session scratchpad (a3f_batches).
         - [ ] optc_ (Opus xHigh, read only) STARTED 09:5x on ATN's question: every Sol loader / PerfFix 64 option that
         could clash with ours (overlay, present, shaders, textures, shadows, AA) + how to force it off ->
         study_1124\sol_perffix_options.md. PerfFix: settings / logs / docs only, never its source.
