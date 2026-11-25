@@ -125,11 +125,15 @@
 #define RENODX_RTXDI 1
 #endif
 // Its ReGIR for Torch Light in Path-Traced GI (PT DI step 3, T2; build.ps1 adds the copy's C++ with the build): the cells'
-// build (rt_regir_presample) and the onion's parameters (ReGIR.cpp).
+// build (rt_regir_presample) and the onion's parameters (ReGIR.cpp); rt_lights' twins with T1 (TORCH_IRRADIANCE).
 #if __has_include("rt_regir_presample.h")
 #include <Rtxdi/LightSampling/RISBufferSegmentAllocator.h>
 #include <Rtxdi/ReGIR/ReGIR.h>
 
+#include "rt_lights_bounce_torch.h"
+#include "rt_lights_bounce_torch_omm.h"
+#include "rt_lights_torch.h"
+#include "rt_lights_torch_omm.h"
 #include "rt_regir_presample.h"
 #define RENODX_REGIR 1
 #endif
@@ -788,9 +792,18 @@ class RtScene12 {
     }
 #endif
 #if defined(RENODX_REGIR)
-    // Torch Light in Path-Traced GI's ReGIR build (no ray tracing; none: the paths' torch light stays LocalLights').
+    // Torch Light in Path-Traced GI's ReGIR build (no ray tracing; none: the paths' torch light stays LocalLights') and
+    // rt_lights' twins with its T1, both or none (none: the paths trace every hit's torch light).
     if (!pipeline(RT_REGIR_PRESAMPLE, sizeof(RT_REGIR_PRESAMPLE), &regir_pipeline_)) {
       regir_pipeline_.Reset();
+    }
+    if (!(dxr12_ ? pipeline(RT_LIGHTS_TORCH_OMM, sizeof(RT_LIGHTS_TORCH_OMM), &lights_torch_pipelines_[0])
+                       && pipeline(RT_LIGHTS_BOUNCE_TORCH_OMM, sizeof(RT_LIGHTS_BOUNCE_TORCH_OMM), &lights_torch_pipelines_[1])
+                 : pipeline(RT_LIGHTS_TORCH, sizeof(RT_LIGHTS_TORCH), &lights_torch_pipelines_[0])
+                       && pipeline(RT_LIGHTS_BOUNCE_TORCH, sizeof(RT_LIGHTS_BOUNCE_TORCH), &lights_torch_pipelines_[1]))) {
+      for (ComPtr<ID3D12PipelineState>& state : lights_torch_pipelines_) {
+        state.Reset();
+      }
     }
 #endif
 #if defined(RENODX_RTXDI_GI)
@@ -8342,7 +8355,7 @@ class RtScene12 {
 #if defined(RENODX_REGIR)
     // Torch Light in Path-Traced GI's T1 (PT DI step 3): rt_lights' torch light at the render pixels while the row's paths
     // asked within HISTORY_FRAMES (ExpireHistory gives it back after), for this frame's paths (torch_irradiance_frame_).
-    const bool torch_written = local_lights && torch_light_frame_ != UINT32_MAX && torch_light_frame_ + HISTORY_FRAMES >= frame
+    const bool torch_written = local_lights && lights_torch_pipelines_[0] && torch_light_frame_ != UINT32_MAX && torch_light_frame_ + HISTORY_FRAMES >= frame
                                && (torch_irradiance_ || Texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &torch_irradiance_));
     if (torch_written) {
       Written(torch_irradiance_.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, TORCH_IRRADIANCE);
@@ -8395,10 +8408,11 @@ class RtScene12 {
     } else {
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
     }
-    // The local lights' shadows (rt_lights: their own registers; before this trace's positions become the history).
+    // The local lights' shadows (rt_lights: their own registers; before this trace's positions become the history), its
+    // twin with T1 while torch_written.
     if (local_lights) {
       Mark(list, L"local lights");
-      list->SetPipelineState((lights_in_bounce ? lights_bounce_pipeline_ : lights_pipeline_).Get());
+      list->SetPipelineState((torch_written ? lights_torch_pipelines_[lights_in_bounce ? 1 : 0] : (lights_in_bounce ? lights_bounce_pipeline_ : lights_pipeline_)).Get());
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
     }
     if (ambient_kept) {
@@ -10638,6 +10652,7 @@ class RtScene12 {
   // the render pixels (u75, made while the row asked within NRD_RELEASE_FRAMES), the last paths request that asked and
   // the last trace that wrote it.
   ComPtr<ID3D12PipelineState> regir_pipeline_;
+  std::array<ComPtr<ID3D12PipelineState>, 2> lights_torch_pipelines_;  // rt_lights' and rt_lights_bounce's twins with T1
   ComPtr<ID3D12Resource> regir_cells_;
   ComPtr<ID3D12Resource> torch_irradiance_;
   uint32_t torch_light_frame_ = UINT32_MAX;
