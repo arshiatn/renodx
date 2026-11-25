@@ -834,6 +834,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-bit release: private release step, 64-bit map section 6 item 13 (before the f ... | ?
 - p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
 - ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
+- K0 test-only fix of test\tw_render_mt_defaults\run.ps1 (pk1 section 11.1 edits A ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
@@ -15845,7 +15846,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         for w3 only, per-start ini keep list, A8 Bitdefender processes, WPR data option on ep8. Plan unchanged.
         ATN adds a CPU Set Setter rule (16 V-cache threads) for run_rs_b64p\attila64.exe (his tool; question 14).
         - [ ] ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questions_1125.md, 18 rows with coord
-        picks: C8, L2B, PK2P, PK6, PK8). Part 2 (PK1-64, PK5-64, PK9) when their fix rounds are back. No rule lines /
+        picks: C8, L2B, PK2P, PK6, PK8). Part 2 (PK1-64 + PK9, rows 19-32) sent; part 3 PK5-64 after p5d_. No rule lines /
         exceptions needed today (lines given when the code exists). Owner: coord.
         - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
         p8d_design_handback.md): main win SERIAL: Stage A exact group index replaces the quadratic pair search at
@@ -15872,6 +15873,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         risks; main risk: the step thread runs queue tasks while it waits for the join). ATN questions: Q1 Stage A
         default + row text, Q3 init / README wording, Q4 Stage B Friday, Q5 offer to Sol, Q6 Bitdefender exception
         for battle_step_test.exe (ATN only). -> p8r_ RE-CHECK STARTED 16:2x; p2d_ fixed PK2P's members[4] text (DONE 16:3x).
+        p8r_ RE-CHECK: GO FOR STAGE A, no new Musts (hand-back p8r_recheck_handback.md): M1 fingerprint + 6 new ones +
+        11 vtable words recomputed equal; construction chain confirmed; Stage A 187.9 s (real time needs <= 108.28 ms
+        mean step; A + B 170-176 s E); F1 in C8 B0 matches (216 bytes). W-A1 (P3 census) may start. R-S1 F2 -> PK6's
+        table (ep1c control, ContactSplit key, narrow literal 'battle step'), R-S2 busy test first, R-S3 pool invariant
+        row h, R-S4 one name -> hex, R-S5 handover access rules + the TASK_THREADS=8 control question (Friday), R-S6 map
+        3.3 plugin_block.h row fixed by coord. -> p8d_ LAST TOUCH + p6d_ ContactSplit rename (text only).
         - [x] p9d_ PK9 EFFECTS DESIGN DONE 13:3x (designs\pk9_effects_64.md 515 lines, hand-back p9d_design_handback.md):
         ROUTE A recommended = keep Sol's own parallel effect update, no hook / patch: A1 note to Sol (race census N1-N12,
         C10, soak list, ask for a settings.txt key where 0 = off: today any value even 0 turns it on; credit RenoDX /
@@ -15887,6 +15894,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         S-A at probe full, no WPR. S1 gain terms missing (forks / joins, convoy, terrain lock), S3 C10 offer only, S6 CP
         loader gate (added to c8_wave2_plan.md), S8 N13 nested wait deadlock + ATTILA_POKE bypass. -> p9d_ FIX ROUND
         STARTED 15:2x.
+        p9d_ FIX ROUND DONE (hand-back p9d_fix_round_handback.md): 7.5 Automatic L1 two forms (ours: walk hook + live
+        slot + Sol's OK; or a per-type offer to Sol, recommended first); N5 = crash everywhere; S-A #2 = ep1,vfx at probe
+        full, no WPR; loader gate rule for C8's CP (Sol's key list, else a per-row min loader version from the exe's
+        version resource, else hidden); N13 closure clean (virtual paths -> offline test 9.3). 7 ATN questions.
+        -> p9r_ RE-CHECK STARTED.
         - [x] p1d_ PK1-64 UPLOADS DESIGN DONE 13:3x (designs\pk1_uploads_64.md, hand-back p1d_design_handback.md): FCU
         default On on the port only after an offline T-test (tw_injection_buffers case 8 -Hardware; bytes identical;
         E +0.35..+1 % fps; ~540 ReShade pushes / frame gone); FDW hidden + forced off on the port (Sol's device never
@@ -15902,6 +15914,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         entries before 140, S2 census + motion ring Maps, S3 PerfFix overlap (UI shader ~88 %), S4 10 s median-step
         rule, S5 TAA-on WPR gates can't fire, S6 N1 gate >= 400 uploads, S7 FCU=0 pin + revision key, S8 stale
         game_cpus check = test-only fix, S9 braces. -> p1d_ FIX ROUND STARTED 15:4x.
+        p1d_ FIX ROUND DONE (Rev 2, hand-back p1d_fix_round_handback.md): case 8 = no-regression gate (fix never Off),
+        N1 = Q7 over all 8 add-ons after F5 G18 / G20 (K4 9 targets), E64-mv entries 125 / 127 + MAP_TRACE 130,3 before
+        140, O8 / O9 census, 10 s median-step sub-rule, w3t TAA arm on ATN's yes, FCU=0 pin needs the revision key.
+        -> p1r_ RE-CHECK STARTED.
+        - [ ] K0 test-only fix of test\tw_render_mt_defaults\run.ps1 (pk1 section 11.1 edits A / B / C): apply after
+        p1r_'s re-check GO. Owner: coord.
         - [x] p5d_ PK5-64 GAME CODE DESIGN DONE 13:4x (designs\pk5_game_code_64.md 628 lines, hand-back
         p5d_design_handback.md): R = one SSE2 stub for the 20 calls to the half 0x3009b90 in the sprite row loop
         (site 0x32d9de5, held 0x32d9d60..0x32da032; denormal class / overlap -> the game's code), H = register-exact twin
