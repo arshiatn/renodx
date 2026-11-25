@@ -397,8 +397,8 @@ inline void ApplyLights(const LightFrame& frame, dlaa_bridge::Shared* block) {
   }
 }
 
-// config's fields: the numeric Shared fields a lab arm may set (rt_light_count: a cap on the recorded count). A name may end
-// in "@trace", "@bounce" or "@reflections": that request kind's alone. `version`: the block version that added it (an edit
+// config's fields: the numeric Shared fields a lab arm may set (rt_light_count: a cap on the recorded count; rt_path_flags:
+// over path_flags, e.g. one kind's). A name may end in "@trace", "@bounce" or "@reflections": that request kind's alone. `version`: the block version that added it (an edit
 // lifts an older recording's block to it, so the helper reads it; 0: older than any recording).
 using SharedMember = std::variant<uint32_t dlaa_bridge::Shared::*, float dlaa_bridge::Shared::*>;
 struct SharedField {
@@ -406,7 +406,7 @@ struct SharedField {
   SharedMember member;
   uint32_t version = 0;
 };
-inline constexpr std::array<SharedField, 16> SHARED_FIELDS = {{
+inline constexpr std::array<SharedField, 17> SHARED_FIELDS = {{
     {"rt_shadow_rays", &dlaa_bridge::Shared::rt_shadow_rays},
     {"rt_sun_softness", &dlaa_bridge::Shared::rt_sun_softness},
     {"rt_light_size", &dlaa_bridge::Shared::rt_light_size},
@@ -422,6 +422,7 @@ inline constexpr std::array<SharedField, 16> SHARED_FIELDS = {{
     {"rt_nrd_off", &dlaa_bridge::Shared::rt_nrd_off},
     {"rt_scene_flags", &dlaa_bridge::Shared::rt_scene_flags},
     {"rt_light_count", &dlaa_bridge::Shared::rt_light_count},
+    {"rt_path_flags", &dlaa_bridge::Shared::rt_path_flags},
     {"rt_restir_flags", &dlaa_bridge::Shared::rt_restir_flags, 32},
 }};
 inline constexpr std::array<std::string_view, 3> REQUEST_KINDS = {"trace", "bounce", "reflections"};  // rt_request 1, 2, 3
