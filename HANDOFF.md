@@ -830,6 +830,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
+- RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
+- 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's lo ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
 - ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the n ... | ATN
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
@@ -15794,6 +15796,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         yet; important lessons since the last content update 11-22): sku_ (Opus xHigh, worktree, branch
         sku_1125) STARTED -> review -> merge. The full skills double-check (11-17 step 9) comes after Attila +
         unified PT with every optimization is done, on ATN's word. Owner: sku_
+        - [ ] RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator corrected: PT DI 4b waits for
+        RT on the port + the shader hash census, NOT for Friday's Fable work, which is CPU only): rtp_ (Opus xHigh,
+        text only) STARTED: designs\rt_port_64.md (what works / breaks on Sol's port, helper vs in-process route,
+        bridge v33, everything 4b needs, 64-bit recordings, steps + gates, the exact game runs for ATN's OK). Owner: rtp_
+        - [ ] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
+        bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
+        designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
         pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
         scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
         R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
