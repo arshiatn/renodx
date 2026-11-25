@@ -26,19 +26,10 @@ void main(uint3 id : SV_DispatchThreadID) {
   const RTXDI_ReservoirBufferParameters reservoirs = DiReservoirParameters();
   RTXDI_DIReservoir reservoir = RTXDI_LoadDIReservoir(reservoirs, id.xy, DI_TEMPORAL_ARRAY);
   if ((di_flags & DI_NO_SPATIAL) == 0u) {
-    RTXDI_DISpatialResamplingParameters parameters = (RTXDI_DISpatialResamplingParameters)0;
-    parameters.numSamples = 2u;
-    parameters.numDisocclusionBoostSamples = 8u;
-    parameters.samplingRadius = 32.f;
-    parameters.biasCorrectionMode = DiBiasCorrection();
-    parameters.depthThreshold = 0.1f;
-    parameters.normalThreshold = 0.5f;
-    parameters.targetHistoryLength = 4u;
-    parameters.enableMaterialSimilarityTest = 1u;
-    parameters.neighborOffsetSamplingMode = RTXDI_DI_NEIGHBOR_OFFSET_SAMPLING_MODE_STRATIFIED_LOW_DISCREPANCY;
     RTXDI_RandomSamplerState rng = RabSampler(uint4(id.xy, frame, DIM_DI_SPATIAL));
     RAB_LightSample picked = RAB_EmptyLightSample();
-    reservoir = RTXDI_DISpatialResampling(id.xy, surface, reservoir, rng, DiRuntimeParameters(), reservoirs, DI_TEMPORAL_ARRAY, parameters, picked);
+    reservoir = RTXDI_DISpatialResampling(id.xy, surface, reservoir, rng, DiRuntimeParameters(), reservoirs, DI_TEMPORAL_ARRAY, DiSpatialParameters(),
+                                          picked);
   }
   RTXDI_StoreDIReservoir(reservoir, reservoirs, id.xy, DI_SHADE_ARRAY);
 }
