@@ -982,7 +982,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NV6 SMALL: RR packed normals + roughness (< 0.03 ms); thread-group size test + c ... | ?
 - NV7 ATN NUMBERS: RR preset D / E 1.83 vs 2.12 ms at 4K Performance on the 5090 ( ... | ?
 - NV9 NVIDIA-SAYS-DON'T (section 4): TLAS fast-build (rt_d3d12.hpp:8069) = U12c; s ... | ?
-- rpgc_ RECHECK (Opus xHigh, read-only, STARTED 01:1x, est 15 / deadline 30) -> de ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
@@ -17503,8 +17502,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         form = a measured arm, 'no W clamp on DI' holds (DI default RAY_TRACED, G22 5.6); fa2_'s defensive recipe did
         not sum to 1 (corrected form given); fa2_ B6 = marked deviation (Talbot = 1/M without visibility in the
         target). Eq. 38 glyphs still unverified (no PDF renderer; poppler would be a download).
-        - [ ] rpgc_ RECHECK (Opus xHigh, read-only, STARTED 01:1x, est 15 / deadline 30) -> designs\restir_pg_recheck.md.
+        - [x] rpgc_ RECHECK (Opus xHigh, read-only, STARTED 01:1x, est 15 / deadline 30) -> designs\restir_pg_recheck.md.
         Owner: rpgc_
+        rpgc_ OK WITH FIXES 01:3x (11 min): rpg2_'s math right (vMF stable form + series exact, (2-v)/(1-v), M3 bound,
+        B8 = G22 Eq. 37 = RTXDI's form, corrected defensive recipe sums to 1, U1 site 3601 verified: pd4r_'s first
+        reading was wrong, hours add up). 2 MUST = gates that can't decide: MA arm S judged at equal SETTINGS (variance
+        within PG-off seed CI on open ground + forest, Own Sky Rays on; control arm S off shows the rise), equal time
+        stays the row decision to ATN; MB gate 9 baseline = PG1a's parent. 4 SHOULD (vMF switch at kappa 0.02 + own
+        sampling series; gate 10 first-ray only, CI-low > 2x; gate 1b same-sign growth named; pt_di_rtxdi.md:219-220
+        stale cites) + 6 NIT. -> rpg2_ resumed (v2.1, est 10 / deadline 20; also nv_speedups.md C5 line). Owner: rpg2_
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
