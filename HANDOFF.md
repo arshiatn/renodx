@@ -823,7 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
-- a64br_ RE-CHECK of a0bbdabff..4c20adaf6 SENT 03:4x -> merge a64b_bringup -> buil ... | ?
+- a64b_ FOLLOW-UPS SENT 03:5x (R-S1, R-S2, 2 Nits) -> merge a64b_bringup -> build ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15438,8 +15438,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         warn, 0 AV, 0 px off); C2_scrgb_1320 not run (pid 32564 holds it). Dumps: x86 vs base + a64 / a64r vs s2 only
         Build Date; suites PASS; static_checks known 5; sweep 17 / 17. a3_smoke addon64 now bb1cd423eca6a2bc (dxgi /
         zz_capture unchanged). utils untouched.
-        - [ ] a64br_ RE-CHECK of a0bbdabff..4c20adaf6 SENT 03:4x -> merge a64b_bringup -> build check -> A1 add-on lane
-        -> A3 Smoke. The proposed '-ReShade -Warp' A3 line is useless (ReShade skips WARP devices): drop it.
+        - [x] a64br_ RE-CHECK = GO WITH CHANGES (hand-back attila64/a64br_bringup_recheck_handback.md; Re-check
+        section in designs/bringup_review.md): M1, S1-S5, R1 Nits all fixed, no new bug, D3D11 / x86 unchanged; the
+        new F7 checks can fail. New: R-S1 pass_timing.hpp:84-88 per-draw helper still treats every command list as
+        D3D11 in the timed frame (crash with a 2nd D3D12 / Vulkan device); R-S2 run.ps1:116 control-crash rule must be
+        C2_scrgb_1320 only; Nits braces addon.cpp:1823, ipc::ToNarrow repeat 2983-2985. For PA1: install flag claimed
+        before Install finishes (Update may run during Install). For A3: check the 'N code ranges' line counts all PF_X.
+        - [ ] a64b_ FOLLOW-UPS SENT 03:5x (R-S1, R-S2, 2 Nits) -> merge a64b_bringup -> build check -> A1 add-on lane
+        (brief: the PA1 install race) -> A3 Smoke (brief: PF_X count). The proposed '-ReShade -Warp' A3 line is useless
+        (ReShade skips WARP devices): drop it.
         - [ ] ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyResource (~2782-2790), and
         the same in OnResolveTextureRegion / OnCopyTextureRegion, use an existing clone even when that side's clone is
         DISABLED. In scRGB compatibility mode (default) a copy INTO the back buffer lands in the proxy pass's scratch ->
