@@ -820,7 +820,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- WINDOW 3 ROUND 1 STARTED 01:37:33 (drained in 21 s, CPU 11 %; the bench holds qu ... | ?
+- NOPROBE base start: coord drains (quiet_run.lock 01:56) -> `-AB -Arms base` -> p ... | ?
+- WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
+- ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15330,9 +15332,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] coord -DryRun of round 1 01:36 (ab_runs\20261125_013618_AB_dryrun): preconditions met, self-test ok for
         every arm, probe sha = sidecar, D: 324.7 GB free, ~26 min. New zombie attila64.exe 32564 (01:03, 0 threads /
         handles, parent gone) - ignored like the other 4.
-        - [ ] WINDOW 3 ROUND 1 STARTED 01:37:33 (drained in 21 s, CPU 11 %; the bench holds quiet_run.lock +
-        gpu_job.lock) -> analyze (python -I p0\analyze_d0.py <batch>; HANDOFF-safe block only) -> round 2 only on
-        triggers.
+        - [x] WINDOW 3 ROUND 1 DONE 01:37-01:55 (ab_runs\20261125_013733_AB, exit 0, all 3 starts valid): base 247.0 /
+        247.5 s (7.36 / 7.35 steps/s, 63.8 / 61.1 fps), inline 195.3 s (9.32 steps/s, 2.7 fps). Probe 162 / 163 patches
+        (GOT 0x4bf0268 skipped in every start), intact 162 / 162, removed after every start; PerfFix's 24 non-stats
+        lines equal; WPR start 3: ETL D:\RenoDX_WPR\attila_wpr_20261125_013733_AB_3_B64P-base.etl 4.63 GB, game in
+        front 40 / 40, refocus 4 / 4. ANALYZER (HANDOFF-safe block; full report private in the batch's
+        analyze_d0.txt): DETERMINISM = same state from tick 1 over 3749 ticks in all 3 pairs (inline = the same
+        battle; window 1's picture doubt closed). At 1486 common ticks beside 139.80 ms - inline 107.22 = +32.58 ms /
+        step; foreign 1 % (H1 refuted), waits ~0 (step-thread waits 0.004 ms), on-CPU 0.990; own-time ratio beside /
+        inline per segment median 1.29 (1.16..1.35, uniform) -> H3b: the same code runs ~29 % slower beside the
+        drawing while on CPU (hardware sharing: cache / memory / SMT sibling / clocks), not locks. Top own sites
+        (ms/step beside vs inline): L1 5cb09a 122.3 vs 77.8, 5cb046 30.9 vs 19.9; L3 5dd5b8 50.4 vs 30.9, 5dd5b0 35.3
+        vs 23.2, 5dd4e2 20.7 vs 13.6. Beside: migrations 3 / step, frames crossed 9 / step. Must-fire with 0 calls:
+        5cb10f, 5cb150 (L1 seg), b99cc3 (ptick) - data gaps to explain. TRIGGERS: TT8 no; L2B FIRES (migrations >= 3)
+        -> needs ATN's yes + a rule line; NOPROBE FIRES (247.0 vs 243.0 s, limit 3 s) -> one `-AB -Arms base` (ATN's
+        line) after a drain.
+        - [ ] NOPROBE base start: coord drains (quiet_run.lock 01:56) -> `-AB -Arms base` -> probe cost vs drift.
+        - [ ] WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling occupancy, CCD, clocks,
+        render-thread placement during s 100-160 -> decides what L2B should test.
+        - [ ] ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a new rule line); the
+        ETL analysis says which placement first.
         - [x] a64ab_ -Probe / -Wpr PASS DONE (hand-back attila64/study_1124/a64ab_probe_pass_handback.md): ETL waits /
         refuses on D:\RenoDX_WPR\attila_wpr.etl, renamed in place to attila_wpr_<batch>_<n>_<arm>.etl (path + size in
         start.json), schtasks /Query + /Run only, Stop in start + batch finally, wpr_running.txt marker for a hard-
