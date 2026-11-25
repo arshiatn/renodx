@@ -16111,6 +16111,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         normal rt_shadows_test (both), trace_test, omm_test PASS; talesofarise build exit 0 (61), tw_tales_unit 5 / 5.
         tools\toa\rt_tests\rt_shadows_test.cpp exports ReShadeLogMessage (backup .bak_ta_). tales.tsv device-loss DONE
         (parity ta 0 / 37 / 234). -> rvt_ REVIEW sent 16:0x -> merge.
+        rvt_ nt_ta2 REVIEW 16:3x (hand-back round_1125\handbacks\rvt_nt_ta2_handback.md): MERGE AFTER FIXES; detection
+        correct (FAILED(), REMOVED / HUNG / RESET / internal error all caught, Signal E_OUTOFMEMORY no longer deadlocks;
+        0.37 us a frame; recovery after Release + Retry proven on the 5090, Agility + singleton). M1: CaptureSceneColor has
+        no state.failed check (full-screen copy every frame after Fail, per-frame shared-texture rebuild + wrong status
+        after a resize, 10 s wait per frame after a failed Signal + resize). S1: row off / on does not recover (Retry keeps
+        the removed device). S2: the removal test must PASS only on detection (+ control). N1: HRESULT in the status.
+        -> ta_ FIX ROUND sent 16:3x -> rvt_ re-check -> merge. Older side issue (rvt_): without the Agility SDK a held
+        removed device could reach the frame-generation presenter on the same GPU (shared; see reference
+        d3d12_singleton_removed). Owner: ta_ (fixes) / next shared round (side issue)
         - [ ] ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales multiplies mask alpha by a
         material constant); step 5 equality harness (one Tales frame in-process vs helper) = GPU plan; 'needs box'
         lines in tales.tsv -> boxes (coord, later cleanup). Owner: coord
