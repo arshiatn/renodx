@@ -538,11 +538,10 @@ static const uint DIM_CACHE_LIGHTS = 34u << 12;      // rt_cache_fill: a cell's 
 static const uint DIM_RTXDI_GI_SPATIAL = 35u << 12;  // ReuseTexel's RTXDI GI contest: its RTXDI sampler's seed (Pcg4d lane .y)
 static const uint DIM_REGIR_BUILD = 36u << 12;       // rt_regir_presample: a ReGIR cell slot's RTXDI sampler (lanes the slot's)
 // Path-Traced Torch Light's RTXDI samplers (PT DI step 4c; Pcg4d lane .y, rt_rtxdi_bridge.hlsli RabSampler): a pixel's
-// in each of its passes.
+// in each of its passes (rt_di_shade draws none: its final ray goes to the reservoir's point).
 static const uint DIM_DI_INITIAL = 37u << 12;   // rt_di_initial: its candidates and the pick
 static const uint DIM_DI_TEMPORAL = 38u << 12;  // rt_di_temporal
 static const uint DIM_DI_SPATIAL = 39u << 12;   // rt_di_spatial
-static const uint DIM_DI_SHADE = 40u << 12;     // rt_di_shade: the final ray's disk point
 // Torch Light in Path-Traced GI's ReGIR picks (rt_path.hlsli TorchLight): its caller's seed with the kind moved up by this,
 // so each caller's kind k takes kind k + 64 of its own (every kind above stays below 64).
 static const uint TORCH_KIND_SHIFT = 64u << 12;
