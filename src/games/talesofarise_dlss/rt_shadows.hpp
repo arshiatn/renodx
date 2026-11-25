@@ -36,6 +36,7 @@
 #include <utility>
 #include <vector>
 
+#include "../../utils/log.hpp"
 #include "./native_state.hpp"
 
 // Ray tracing (Experimental): DXR on a D3D12 device beside the game's D3D11 one. The sharing follows Phantom FX by
@@ -1581,7 +1582,8 @@ inline bool Trace(ID3D11DeviceContext* context) {
   if (!internal::Initialize(device.Get())) return false;
   auto* device12 = gpu.device12.Get();
   // RENODX_TW_TEST_REMOVAL (a test switch, as the helper's): this device removed at the process's third trace, as a GPU
-  // hang removes it (its fences then read all ones, the next list reset fails: the ray tracing off, said).
+  // hang removes it (its fences then read all ones and the resets pass; each trace reads its removed reason: the ray
+  // tracing off, said).
   static uint32_t test_traces = 0;
   if (++test_traces == 3 && GetEnvironmentVariableW(L"RENODX_TW_TEST_REMOVAL", nullptr, 0) != 0) device12->RemoveDevice();
 
@@ -1713,9 +1715,9 @@ inline bool Trace(ID3D11DeviceContext* context) {
   const uint32_t slot = gpu.submissions % internal::FRAMES_IN_FLIGHT;
   const size_t ring = state.frame % internal::FRAMES_IN_FLIGHT;
   // The frame FRAMES_IN_FLIGHT back is done: its characters' records and pool ranges are free, its compacted sizes
-  // readable.
-  if (!internal::WaitFor(gpu.allocator_values[slot]) || !internal::WaitFor(gpu.frame_fences[ring])
-      || FAILED(gpu.allocators[slot]->Reset())
+  // readable. A removed device passes the waits (its fences read all ones) and the resets: its removed reason says it.
+  if (FAILED(gpu.device12->GetDeviceRemovedReason()) || !internal::WaitFor(gpu.allocator_values[slot])
+      || !internal::WaitFor(gpu.frame_fences[ring]) || FAILED(gpu.allocators[slot]->Reset())
       || FAILED(gpu.list->Reset(gpu.allocators[slot].Get(), nullptr))) {
     return internal::Fail("the D3D12 queue stopped.");
   }
@@ -2299,7 +2301,9 @@ inline bool Trace(ID3D11DeviceContext* context) {
   ID3D12CommandList* lists[] = {list};
   gpu.queue->Wait(gpu.fence12.Get(), inputs_ready);
   gpu.queue->ExecuteCommandLists(1, lists);
-  gpu.queue->Signal(gpu.fence12.Get(), ++gpu.fence_value);
+  if (FAILED(gpu.queue->Signal(gpu.fence12.Get(), ++gpu.fence_value))) {
+    return internal::Fail("the D3D12 queue stopped.");
+  }
   gpu.allocator_values[slot] = gpu.fence_value;
   gpu.frame_fences[ring] = gpu.fence_value;
   compaction.fence_value = gpu.fence_value;
@@ -2436,8 +2440,8 @@ inline LightingResult TraceLighting(ID3D11DeviceContext* context, const std::arr
   context->Flush();
 
   const uint32_t slot = gpu.submissions % internal::FRAMES_IN_FLIGHT;
-  if (!internal::WaitFor(gpu.allocator_values[slot]) || FAILED(gpu.allocators[slot]->Reset())
-      || FAILED(gpu.list->Reset(gpu.allocators[slot].Get(), nullptr))) {
+  if (FAILED(gpu.device12->GetDeviceRemovedReason()) || !internal::WaitFor(gpu.allocator_values[slot])
+      || FAILED(gpu.allocators[slot]->Reset()) || FAILED(gpu.list->Reset(gpu.allocators[slot].Get(), nullptr))) {
     internal::Fail("the D3D12 queue stopped.");
     return {};
   }
@@ -2521,7 +2525,10 @@ inline LightingResult TraceLighting(ID3D11DeviceContext* context, const std::arr
   ID3D12CommandList* lists[] = {list};
   gpu.queue->Wait(gpu.fence12.Get(), inputs_ready);
   gpu.queue->ExecuteCommandLists(1, lists);
-  gpu.queue->Signal(gpu.fence12.Get(), ++gpu.fence_value);
+  if (FAILED(gpu.queue->Signal(gpu.fence12.Get(), ++gpu.fence_value))) {
+    internal::Fail("the D3D12 queue stopped.");
+    return {};
+  }
   gpu.allocator_values[slot] = gpu.fence_value;
   gpu.frame_fences[state.frame % internal::FRAMES_IN_FLIGHT] = gpu.fence_value;
   ++gpu.submissions;
