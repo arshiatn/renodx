@@ -65,7 +65,7 @@ constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, FSR, XeSS, Frame Generation an
 // What ships with the Total War helper (renodx-tw-dlaa64.exe; Shogun 2's, Ryse's and Expeditions: Rome's ray tracing too).
 constexpr const char* HELPER =
     "NVIDIA DLSS (Super Resolution, Ray Reconstruction and Frame Generation), NVIDIA Reflex, Streamline, "
-    "NVAPI, the Opacity Micro-Map SDK, SHaRC and NRD: NVIDIA Corporation, under NVIDIA's licenses (this software "
+    "NVAPI, the Opacity Micro-Map SDK, SHaRC, RTXDI and NRD: NVIDIA Corporation, under NVIDIA's licenses (this software "
     "contains source code provided by NVIDIA Corporation). The Nsight Graphics SDK: NVIDIA Corporation (Apache "
     "License 2.0). NVIDIA, GeForce "
     "RTX, DLSS and Reflex are trademarks and/or registered trademarks of NVIDIA Corporation. DirectX "

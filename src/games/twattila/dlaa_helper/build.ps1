@@ -104,6 +104,13 @@ if (Test-Path "$sharc\include\SharcCommon.h") {
     Dxc @sharc_flags @defines -Fh "$out\$($sharc_shader[2]).h" -Vn $sharc_shader[3] "$PSScriptRoot\$($sharc_shader[0]).hlsl"
   }
 }
+# NVIDIA's RTXDI-Library 3.2 (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/RTXDI-Library: commit
+# b67f61cd0bfa6792acbf5429bb29a68ee5cdd808) for ReSTIR GI's boiling filter and PT DI when it sits unmodified in
+# build\downloads\rtxdi\extracted\RTXDI-Library-b67f61cd (a copy of that commit, never committed here; the build never
+# fetches it). Without it the helper builds without RTXDI. The line below says which: a player's helper has it.
+$rtxdi = Join-Path $root "build\downloads\rtxdi\extracted\RTXDI-Library-b67f61cd"
+$rtxdi_found = Test-Path "$rtxdi\Include\Rtxdi\DI\Reservoir.hlsli"
+if ($rtxdi_found) { "RTXDI b67f61cd: found ($rtxdi)" } else { "RTXDI b67f61cd: NOT FOUND ($rtxdi): the helper builds without RTXDI" }
 foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA'), @('rt_compact', 'RT_COMPACT'), @('rt_place', 'RT_PLACE'),
                       @('rt_cache_fill', 'RT_CACHE_FILL'), @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'),
                       @('rt_omm_uvs', 'RT_OMM_UVS'), @('rt_sway', 'RT_SWAY'))) {
