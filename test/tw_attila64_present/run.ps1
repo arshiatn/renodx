@@ -91,8 +91,12 @@ foreach ($name in $Cases) {
   if (-not $process.WaitForExit(240000)) { $process.Kill(); $failed += "${name}: timed out"; continue }
   $process.WaitForExit()
   $problems = @()
-  if ($process.ExitCode -ne 0) { $problems += "exit $($process.ExitCode)" }
   $log = if (Test-Path -LiteralPath (Join-Path $dir 'ReShade.log')) { Get-Content -LiteralPath (Join-Path $dir 'ReShade.log') -Raw } else { '' }
+  # The control add-on may also crash in the driver: its copy of the 8-bit picture into the 16-bit buffer reads past the
+  # picture (scRGB). That is the same bug.
+  $controlCrash = $case.addon -eq 'c2' -and $process.ExitCode -eq -1073741819 -and $log.Contains('Unhandled exception 0xC0000005')
+  if ($controlCrash) { "  ${name}: the control crashed (access violation): broken" }
+  elseif ($process.ExitCode -ne 0) { $problems += "exit $($process.ExitCode)" }
   # zz_capture's present callback must run after RenoDX's: it loaded after it (registration order = load order).
   $renodxAt = $log.LastIndexOf("renodx-twattila.addon64' ...")
   $captureAt = $log.LastIndexOf("zz_capture.addon64' ...")

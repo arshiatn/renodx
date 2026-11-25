@@ -79,6 +79,11 @@ constexpr char BUILD_TIME[] = __TIME__;
 
 namespace {
 
+// A 64-bit build of this add-on only ever runs under the 64-bit port of Attila (the retail game is 32-bit): there the
+// game's code is not empire.retail.dll, and every engine-code path stays off. Every port-only line sits inside
+// `if constexpr (ATTILA64)`, so the 32-bit add-on compiles none of it.
+constexpr bool ATTILA64 = sizeof(void*) == 8;
+
 ShaderInjectData shader_injection;
 // Settings Mode: 0 HDR & Effects, 1 Graphics 1 of 2 (lighting), 2 Graphics 2 of 2 (engine graphics).
 float current_settings_mode = 0.f;
@@ -1109,6 +1114,15 @@ bool graphics_hooks_installed = false;
 bool shadow_size_locked = true;
 int ui_mod_compatibility = 0;  // its slider: written to ReShade.ini, used from the next start
 
+// The 64-bit port's state (ATTILA64), reset at detach: the loader's probe device and a plugin's test device each attach
+// and detach the add-on before the game's device, and a kept image must not hand the next attach their values.
+// The APIs whose devices the add-on left alone, one log line each (bit: the API's value >> 12).
+std::atomic<uint32_t> stood_down_apis = 0;
+// The 64-bit engine plugin's block: ready, and the rows it offers (bit: PluginRow). Filled by its lookup.
+std::atomic_bool plugin_ready = false;
+std::atomic<uint32_t> plugin_rows = 0;
+bool shadow_pass_installed = false;
+
 
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
 // pass (whose replacement is the game's code only).
@@ -1589,7 +1603,31 @@ constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {
 
 // Lifecycle /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// The port's other renderers (its OpenGL fallback, a D3D12 route) are left alone: this add-on's handlers are D3D11-only
+// (OnPresent's casts would crash there). Logged once per API.
+inline bool StandsDown(reshade::api::device* device) {
+  const reshade::api::device_api api = device->get_api();
+  if (api == reshade::api::device_api::d3d11) return false;
+  const uint32_t bit = 1u << ((static_cast<uint32_t>(api) >> 12) & 31u);
+  if ((stood_down_apis.fetch_or(bit) & bit) == 0) {
+    const char* name = "unknown";
+    switch (api) {
+      case reshade::api::device_api::d3d9:   name = "d3d9"; break;
+      case reshade::api::device_api::d3d10:  name = "d3d10"; break;
+      case reshade::api::device_api::d3d12:  name = "d3d12"; break;
+      case reshade::api::device_api::opengl: name = "opengl"; break;
+      case reshade::api::device_api::vulkan: name = "vulkan"; break;
+      default:                               break;
+    }
+    renodx::utils::log::i("[Total War] 64-bit Attila: a ", name, " device: the add-on leaves it alone");
+  }
+  return true;
+}
+
 void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
+  if constexpr (ATTILA64) {
+    if (StandsDown(swapchain->get_device())) return;
+  }
   auto peak = renodx::utils::swapchain::GetPeakNits(swapchain);
   if (!peak.has_value()) {
     peak = 1000.f;
@@ -1608,7 +1646,18 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
 }
 
 // The shadow map size and cascades, before the game builds its shadows.
-void OnInitDevice(reshade::api::device*) {
+void OnInitDevice(reshade::api::device* device) {
+  if constexpr (ATTILA64) {
+    if (StandsDown(device)) return;
+    // The 64-bit engine plugin's block lookup goes here (until found). Its block is published before the game's device,
+    // so this is shadow_pass's normal install point; the first present is the fallback.
+    if (plugin_ready.load() && !shadow_pass_installed) {
+      twattila::shadow_pass::Install();
+      shadow_pass_installed = true;
+    }
+    // The shadow map size and cascades patch the 32-bit game's code: never on the port.
+    return;
+  }
   if (shadow_size_locked) return;
   twattila::graphics_hooks::shadow_map::Install(
       std::exp2(shadow_map_size),
@@ -1617,9 +1666,13 @@ void OnInitDevice(reshade::api::device*) {
 
 void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
+  if constexpr (ATTILA64) {
+    if (StandsDown(queue->get_device())) return;
+  }
   // The bench's RENODX_TW_GAME_CPUS, else the count cpu_sets reads. value_or always evaluates its argument, so cpu_sets::Update
   // (Keep Render Core Free and the count's reads) runs every present either way: never move it into a branch that may skip it.
-  const uint32_t game_cpus = game_cpus_env.value_or(twattila::cpu_sets::Update(keep_render_core_row != 0.f, GAME_THREAD_MODULES));
+  // The port: Keep Render Core Free off (it moves the 32-bit game's threads); the count's reads stay.
+  const uint32_t game_cpus = game_cpus_env.value_or(twattila::cpu_sets::Update(!ATTILA64 && keep_render_core_row != 0.f, GAME_THREAD_MODULES));
   renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads_row != 0.f, std::memory_order_relaxed);
   // A traced frame's full-ring line waits (its own work fills the ring).
   if (queue->get_device()->get_api() == reshade::api::device_api::d3d11) {
@@ -1673,6 +1726,20 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       twattila::ao_pass::Update(shader_injection.ssao_mode >= 1.f && shader_injection.rt_ambient_alone == 0.f,
                                 shader_injection.ssao_temporal != 0.f,
                                 shader_injection.ssao_scale, shader_injection.ssao_denoise != 0.f);
+  if constexpr (ATTILA64) {
+    // The 64-bit engine plugin's block lookup goes here (until found). Present runs on the loader's drawing thread between
+    // frames: Install from here only when init_device did not (never from a bind or draw callback).
+    if (plugin_ready.load()) {
+      if (!shadow_pass_installed) {
+        twattila::shadow_pass::Install();
+        shadow_pass_installed = true;
+      }
+      // Two sites of this call: the 32-bit one below waits for the at-start tests (one writer at a time); the port has none.
+      twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped());
+    }
+    // Everything below writes the 32-bit game's code or values.
+    return;
+  }
   // After the at-start tests' thread (one writer at a time).
   if (!at_start_done.load()) return;
   // Too few CPUs for the game leave no room for workers: every pool user's stage that wakes workers is off (the game's own
@@ -1850,8 +1917,11 @@ void ConfigureAddon() {
   };
   campaign_props.tweaks = {{.name = "campaign_props_max_distance"}};
 
-  // Graphics 2 of 2's tests (twattila/engine_tests.hpp).
-  engine_tests = twattila::engine_tests::Attila();
+  // Graphics 2 of 2's tests (twattila/engine_tests.hpp). The port: none (they write the 32-bit game's values). The empty
+  // list also ends the at-start poll at once and drops this add-on from [ADDON] LoadFromDllMain (SyncEarlyLoad).
+  if constexpr (!ATTILA64) {
+    engine_tests = twattila::engine_tests::Attila();
+  }
   graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   for (auto& test : engine_tests) {
     graphics_options.push_back(&test.option);
@@ -2577,6 +2647,40 @@ bool AttachAddon() {
 
   ConfigureAddon();
 
+  if constexpr (ATTILA64) {
+    // Who loaded the add-on: the exe's name and its version resource (kernel32 only). Nothing is read at the game's
+    // range here: the loader reserves it no-access until its game thread maps the game (the first present reads it).
+    std::array<wchar_t, MAX_PATH> exe_path = {};
+    GetModuleFileNameW(nullptr, exe_path.data(), static_cast<DWORD>(exe_path.size()));
+    const std::string exe_name = std::filesystem::path(exe_path.data()).filename().string();
+    std::string version = "unknown";
+    bool port_product = false;
+    // RT_VERSION is 16 (its macro is the ANSI form in this build).
+    if (HRSRC info = FindResourceW(nullptr, MAKEINTRESOURCEW(VS_VERSION_INFO), MAKEINTRESOURCEW(16)); info != nullptr) {
+      const auto* bytes = static_cast<const std::byte*>(LockResource(LoadResource(nullptr, info)));
+      const size_t size = SizeofResource(nullptr, info);
+      // VS_FIXEDFILEINFO is DWORD-aligned and starts with its signature; ProductName's value is UTF-16 text.
+      for (size_t at = 0; bytes != nullptr && at + sizeof(VS_FIXEDFILEINFO) <= size; at += 4) {
+        VS_FIXEDFILEINFO fixed;
+        std::memcpy(&fixed, bytes + at, sizeof(fixed));
+        if (fixed.dwSignature != VS_FFI_SIGNATURE) continue;
+        version = std::format("{}.{}.{}.{}", HIWORD(fixed.dwFileVersionMS), LOWORD(fixed.dwFileVersionMS), HIWORD(fixed.dwFileVersionLS),
+                              LOWORD(fixed.dwFileVersionLS));
+        break;
+      }
+      port_product = (bytes != nullptr && std::wstring_view(reinterpret_cast<const wchar_t*>(bytes), size / sizeof(wchar_t)).find(L"64-bit Attila") != std::wstring_view::npos);
+    }
+    renodx::utils::log::i("[Total War] 64-bit Attila: ", exe_name, ", loader ", version);
+    if (_stricmp(exe_name.c_str(), "attila64.exe") != 0 || !port_product) {
+      renodx::utils::log::w("[Total War] 64-bit Attila: not the port's exe or product name (", exe_name,
+                            "): the add-on runs as on the port");
+    }
+    // The port's other renderers: swapchain_v2 leaves their swap chains alone. Before swapchain::Use reads it.
+    renodx::mods::swapchain::ignored_device_apis = {reshade::api::device_api::d3d9, reshade::api::device_api::d3d10,
+                                                    reshade::api::device_api::d3d12, reshade::api::device_api::opengl,
+                                                    reshade::api::device_api::vulkan};
+  }
+
   twattila::device_loss::Install();
   // The game's constant buffers are known from their creation on (the row may come on later).
   twattila::buffer_pool::Use();
@@ -2679,7 +2783,10 @@ bool AttachAddon() {
   // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read); the forward passes that
   // read it (near grass, particles) take the rays' shadows instead.
   twattila::rt_scene::InstallShadowsOnly();
-  twattila::shadow_pass::Install();
+  // The port: at the first lookup that finds the 64-bit engine plugin ready (OnInitDevice, else OnPresent).
+  if constexpr (!ATTILA64) {
+    twattila::shadow_pass::Install();
+  }
   twattila::screen_space_shadows::PatchForwardShadows(twattila::rt_scene::SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::SHADOW_READER_SHADERS);
   twattila::rt_scene::InstallShadowReaders(twattila::rt_scene::PARTICLE_BUILD_READERS);
@@ -2766,6 +2873,13 @@ void DetachAddon() {
   renodx::mods::swapchain::Use(DLL_PROCESS_DETACH, &shader_injection);
 
   renodx::utils::settings::Use(DLL_PROCESS_DETACH, &settings, nullptr);
+
+  if constexpr (ATTILA64) {
+    stood_down_apis = 0;
+    plugin_ready = false;
+    plugin_rows = 0;
+    shadow_pass_installed = false;
+  }
 
   attached = false;
 }
