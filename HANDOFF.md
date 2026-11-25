@@ -970,6 +970,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN LICENCE CHECK (fa5_ U-VB5): our comments call Shadertoy XXGSDd (GT-VBAO), lf ... | ?
 - fa5_ UNKNOWNs U-VB1 (thickness along the sample's own ray: Salm's or ours?), U-V ... | ?
 - STRAY FOLDER (coord's brief path error): D:\Dev\renodx\tools\tw\testbin\scratch\ ... | ?
+- fa9_ B2 THE JUDGES' CODE-BREAK CONTROLS DON'T EXIST: none of reference_suite 2.6 ... | ?
+- fa9_ B6 '3 SIGMA' AT TINY DOF: ref_compare.py:403 3 SE at t(3 dof) = ~5.8 % fals ... | ?
+- fa9_ B1 JUDGE SHARES THE BACK-FACE FLIP: RefNearest uses HitNormal (flips every ... | ?
+- fa9_ B3 RR SPECULAR-ALBEDO F0 not the game's (aa_rr_guides:54 lerp(0.04, albedo, ... | ?
+- fa9_ B5 n.v CLAMP 1e-3 FIRES IN NORMAL FRAMES (ReflectPixel / ReflectReservoirTe ... | ?
+- fa9_ UNKNOWNs: U1 ReflectAlpha's fit criterion unrecorded (~sigma_R; 1.3-1.5x FW ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -17361,6 +17367,37 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] STRAY FOLDER (coord's brief path error): D:\Dev\renodx\tools\tw\testbin\scratch\{fa6_, pd3c_} (dxc
         listings, untracked) -> delete on ATN's yes; briefs use the C:\Users\...\tools\tw path (memory updated).
         Owner: ATN
+        fa9_ DONE (22 min; fidelity\materials_lights_reference.md; atn-mods fcf71fc1e, the step 3 merge changes no audited
+        function): 66 rows (27 SAME, 21 CHOSEN, 6 BUG, 8 UNKNOWN); SAME: Lambert / cosine, Dupuy-Benyoub VNDF + Heitz 2018
+        in the reference, G2/G1 forms equal, sky calibration (cube moments, 4M samples), sun + torch unit chains vs DXBC,
+        FLIP ppd 67.02 + HDR-FLIP exposures, delta-method CI / batch means / Holm. CHOSEN of note: the 0.5 sun slider is
+        used as a RADIUS (default sun 1.88x the real one; the label reads as a diameter); calibrated sky depends on the
+        receiver normal (reference_suite 1.1 '16 directions APPROX' stale). 12 uncited blocks.
+        - [ ] fa9_ B2 THE JUDGES' CODE-BREAK CONTROLS DON'T EXIST: none of reference_suite 2.6.1's nine (offset20,
+        onelight, range_half, nocal, no_g2g1, fog_flat, clearance0, stale_bits, cone2) is in src; gates use REF_SCALE
+        once -> G0 / G1 / E-tables prove ref_compare, not the effect. Gates whose control cannot fail: G1 furnace (blind
+        to the direction pdf), G0 SO on the bare plane (always 1), synthetic-only E-tables, Q- iq; E5 share / light has no
+        gate. Real ones: G5 game-like writer, SO slab, G1-WARP. Owner: gate tool owner (tools; gates folder = ATN installs)
+        - [ ] fa9_ B6 '3 SIGMA' AT TINY DOF: ref_compare.py:403 3 SE at t(3 dof) = ~5.8 % false BIAS per mask, Holm printed
+        not used; Q- iq gate (gpu_gate.py:600-618) 3 SE at 6 dof = 2.4 % per row, no Holm / positive control /
+        simulation. Owner: same
+        - [ ] fa9_ B1 JUDGE SHARES THE BACK-FACE FLIP: RefNearest uses HitNormal (flips every back face), aux counts no
+        back faces; reference_suite 1.1 says a solid back face = inside, no light, counted -> blind to the H0 / debug8
+        inside-start bias (pbrt-v4 is two-sided: matches pbrt, not our design). Owner: reference owner
+        - [ ] fa9_ B3 RR SPECULAR-ALBEDO F0 not the game's (aa_rr_guides:54 lerp(0.04, albedo, ch2.a) = metalness form;
+        game: refl = ch2.w -> sat(60 refl) x specular colour ch3.rgb, 0xC64DB947:668-669) + B4 RR ROUGHNESS GUIDE 1 - gloss
+        vs the traced lobe (NRD moved to sqrt(ReflectAlpha) in a8c251a14, RR not: 0.5 vs 0.16 at gloss 0.5) -> RR
+        over-blurs glossy specular. Input errors under fa4_'s R2 / R5 SAME. Owner: RR guide owner (with fa4_ B4)
+        - [ ] fa9_ B5 n.v CLAMP 1e-3 FIRES IN NORMAL FRAMES (ReflectPixel / ReflectReservoirTexel / LobeDensity) at grazing
+        normal-mapped pixels: by ATN's guard rule a bug -> pbrt-v4 flips wh (scattering.h:166), RTXPT / Falcor bend the
+        shading normal. Owner: reflections owner
+        - [ ] fa9_ UNKNOWNs: U1 ReflectAlpha's fit criterion unrecorded (~sigma_R; 1.3-1.5x FWHM at gloss 0.9-0.95; ATN's
+        eye); U2 LightArriving falls back to scale 1 when sun texel 2's w = 0 (250x torches, may enter the cache: one-frame
+        trace after a load + campaign); U3 light colours unclamped in TwPointLight / DI (LightArriving clamps) = the only
+        negative-light source -> sent to pdi4c_ for fa1_ B2; U4 no emissive term anywhere (t9?); U5 PT DI has no
+        brute-force judge; U6 E5 share / light not wired (REF_REFLECT sums weights only); U7 no paired 'same picture'
+        tool; U8 G0 open's cube uniform? Water: Schlick gives 0.051 / 0.34 / 0.60 at n.v 0.5 / 0.2 / 0.1 vs our 0.02.
+        Owner: critic -> owners
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
