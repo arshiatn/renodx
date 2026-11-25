@@ -942,6 +942,16 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa3_ B6 OMM BAKE vs ALPHA TEST AT THE CUTOFF (omm.h:406 '>' vs AlphaPasses '>=') ... | ?
 - fa3_ B7 stale comment rt_d3d12.hpp:9365-9368 ('Grass ... 2-state for every ray') ... | next twattila writer
 - fa3_ UNKNOWNs: rt_reference cs_6_5 RayQuery on an OMM TLAS without the opt-in (r ... | ?
+- fa2_ B1 VALIDATE OCCLUSION DROP M = 0 (rt_path.hlsli:875) breaks GRIS's partitio ... | ?
+- fa2_ B2 NO FirstRange CHECK in ReuseTarget / G1 / G2: with Own Sky Rays a neighb ... | ?
+- fa2_ B3 REFLECTION REUSE (:1662) is U2-type (diffuse bounce reservoir, constant ... | ?
+- fa2_ B4 TEMPORAL SHIFT WITHOUT THE RECONNECTION JACOBIAN (RTXDI applies one; pre ... | ?
+- fa2_ B5 TEMPORAL SURFACE TEST = receiver normal >= 0.8 only (no depth; PATH_PERM ... | ?
+- fa2_ B7 ReuseJacobian abs() where RTXDI saturates (pdsr_ S5; G0 bit 4096 already ... | ?
+- fa2_ B6 + B8 UNIFIED DESIGN: Talbot temporal MIS cited (4.3, G22 Eq. 36) but cod ... | ?
+- fa2_ G-1 W CLAMP (ClampWeight) also hides our own bright biases (B1 / B2 / U1) - ... | ?
+- fa2_ G-2 / G-3 SHaRC BANS ('reflections hung at 4K', 'depth 4 hung'; 1.6.5, neve ... | ?
+- fa2_ U1 VALIDATE'S LIGHT SWAP = leading candidate for pds2_'s unexplained colour ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -17175,6 +17185,44 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] fa3_ UNKNOWNs: rt_reference cs_6_5 RayQuery on an OMM TLAS without the opt-in (read or build cs_6_9);
         COMMON resting state (Nsight barrier / wait-for-idle count); IGN uniformity over 64 frames (CPU histogram).
         Owner: critic -> owners
+        fa2_ DONE (27 min; fidelity\restir_gi_sharc_fog.md; trees AM 9dc3b64dc, S3 ec96c503c, S5 f370cd3bd, FG
+        bc623e2d3): SAME = target Lum.cos, RIS weights, W, spatial merge + J, G1 = RTXDI Basic / Raytraced, M cap 20,
+        G2 term by term = RTXDI pairwise, G5 score = RTXDI = CGNS, SHaRC order / barriers / query rules, fog V21;
+        CHOSEN = G5 selection, G4 off, SHaRC sceneScale 40 / 2^21, fog temporal domain approx; 13 uncited blocks.
+        - [ ] fa2_ B1 VALIDATE OCCLUSION DROP M = 0 (rt_path.hlsli:875) breaks GRIS's partition of unity (bias ~1 +
+        q.m_h on validation frames); the final visibility ray already zeroes it = guard around a non-bug -> keep the
+        history or RTXDI's Raytraced temporal correction. Test E4 contact rows at REUSE_VALIDATION_PERIOD 1; control a
+        moving occluder. Owner: ReSTIR GI writer after steps 3 + 5 merge
+        - [ ] fa2_ B2 NO FirstRange CHECK in ReuseTarget / G1 / G2: with Own Sky Rays a neighbour's hit past the
+        receiver's FirstRange counts twice (surface + sky) -> p_hat = 0 past FirstRange (one line). Test sky_range 2 m.
+        Owner: same
+        - [ ] fa2_ B3 REFLECTION REUSE (:1662) is U2-type (diffuse bounce reservoir, constant 1/2 MIS over unequal
+        supports, no texel-to-pixel Jacobian, mean mixed with integral) -> generalized balance, p_hat_B = 0 outside B's
+        support. Owner: same (with pds2_'s 3a 'From ReSTIR GI' fix)
+        - [ ] fa2_ B4 TEMPORAL SHIFT WITHOUT THE RECONNECTION JACOBIAN (RTXDI applies one; previous origin not stored;
+        texel centre up to one texel away). Owner: same
+        - [ ] fa2_ B5 TEMPORAL SURFACE TEST = receiver normal >= 0.8 only (no depth; PATH_PERMUTE XOR texel normal only)
+        -> edge leaks. Owner: same
+        - [ ] fa2_ B7 ReuseJacobian abs() where RTXDI saturates (pdsr_ S5; G0 bit 4096 already builds saturate) ->
+        leaks through thin cards. Owner: same
+        - [ ] fa2_ B6 + B8 UNIFIED DESIGN: Talbot temporal MIS cited (4.3, G22 Eq. 36) but code 1/M; G2 cited as
+        defensive (Eq. 38, 'no W clamp on DI') but S5's G2 is uniform pairwise -> rpg2_ told (part (d) of its addendum).
+        Owner: rpg2_, then U3
+        - [ ] fa2_ G-1 W CLAMP (ClampWeight) also hides our own bright biases (B1 / B2 / U1) -> rework or drop after
+        those. Owner: same, last
+        - [ ] fa2_ G-2 / G-3 SHaRC BANS ('reflections hung at 4K', 'depth 4 hung'; 1.6.5, never re-tested on 1.8.3):
+        DRED + a headless Nsight trace. fa6_ cites them. Owner: SHaRC depth 4 slot (ATN home, quiet GPU)
+        - [ ] fa2_ U1 VALIDATE'S LIGHT SWAP = leading candidate for pds2_'s unexplained colour / ray-count bias: E4
+        16-ray rows with CACHE_RELEARN 0 and with a Validate route that matches the path. U3 SHaRC occupancy at 2^21
+        (HashGridDebugOccupancy); U4 SHaRC not cleared on a battle load; U5 SharcInput's 1024 cap near torches. Owner:
+        GPU queue after pdi4c_
+        MORE AUDITS (ATN 00:3x 'Do we need to fidelity check our SR + MFG DLSS, FSR, XeSS, Reflex ...' + 'Anything else
+        that I don't remember or have missed?'): fa7_ upscalers / FG / MFG / FSR / XeSS / Reflex, all games
+        (upscalers_fg_latency.md); fa8_ HDR output + colour, all games (hdr_output_colour.md); fa9_ materials / lights /
+        sky + the judges (rt_reference vs pbrt-v4, FLIP, E4 stats, A/A floors; materials_lights_reference.md). All Opus
+        xHigh, read-only, est 55-60 / deadline 110. After the critic: every confirmed BUG checked in each port's own
+        copy (Tales rt_path, Ryse, Expeditions, Shogun 2, D1 / D2, other TW folders) + licences / credits for every
+        source. Owner: fa7_, fa8_, fa9_, critic
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
@@ -17187,7 +17235,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         changed estimator blocks in dlaa_helper HLSL / C++ must carry a source tag (key in a sources registry with the
         local path + section) or 'ours: why', departures a deviation tag; shadow first, then ATN installs. Design AFTER
         the audit (its tables backfill the tags for today's code). Owner: coord -> gate tool owner -> ATN (ATN
-        11-26 night: 'After the audit' -> the design starts when fa1_..fa6_ + the critic are done)
+        11-26 night: 'After the audit' -> the design starts when fa1_..fa9_ + the critic are done)
         pd4r_ CHECKS DONE 00:4x (22 min; pt_di_step4c_review.md '## 2.9a check' + '## Fused DI pass check'), both GO
         WITH CHANGES, no MUST. 2.9a: option C proof holds (lights < 32 always tile members; WH2 shadows_only dropped
         under mode 1 = one owner); handshake order right (trace then paths, same queue, shared.rt_frame); today's double
