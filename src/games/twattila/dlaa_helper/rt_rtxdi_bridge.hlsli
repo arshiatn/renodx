@@ -4,7 +4,7 @@
  */
 
 // RTXDI's application bridge (RAB) for Torch Light in Path-Traced GI's ReGIR (PT DI step 3, T2; the PATH_REGIR builds:
-// every includer of rt_path.hlsli and rt_regir_presample.cs_6_5.hlsl). It calls NVIDIA's RTXDI-Library 3.2 (NVIDIA RTX
+// every includer of rt_path.hlsli and rt_regir_presample.hlsl). It calls NVIDIA's RTXDI-Library 3.2 (NVIDIA RTX
 // SDKs License; build.ps1 compiles its headers from the unmodified copy in build\downloads\rtxdi: not part of this file;
 // the helper's notices, credits.hpp, carry NVIDIA's sentence). This software contains source code provided by NVIDIA
 // Corporation.

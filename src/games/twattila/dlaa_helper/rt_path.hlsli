@@ -417,7 +417,7 @@ float3 LocalLights(float3 surface, float3 normal, uint4 seed) {
 }
 
 // Torch Light in Path-Traced GI's ReGIR (PT DI step 3, T2; the PATH_REGIR builds): the paths request built its cells
-// (rt_regir_presample.cs_6_5.hlsl, LIGHTS_REGIR).
+// (rt_regir_presample.hlsl, LIGHTS_REGIR).
 #if defined(PATH_REGIR)
 #include "./rt_rtxdi_bridge.hlsli"
 #define TORCH_REGIR (TORCH_LIGHT_IN_PATHS && (lights_in_bounce & LIGHTS_REGIR) != 0u)

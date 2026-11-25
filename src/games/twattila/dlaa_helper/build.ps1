@@ -136,7 +136,7 @@ if (Test-Path "$sharc\include\SharcCommon.h") {
 Remove-Item "$out\rt_reuse_boil.h", "$out\rt_regir_presample.h", "$out\rt_lights_torch*.h", "$out\rt_lights_bounce_torch*.h", "$out\rt_sharc_update_regir.h" -ErrorAction SilentlyContinue
 if ($rtxdi_found) {
   Dxc -nologo -T cs_6_5 -E main -O3 @regir -D REUSE_BOIL -Fh "$out\rt_reuse_boil.h" -Vn RT_REUSE_BOIL "$PSScriptRoot\rt_path.cs_6_5.hlsl"
-  Dxc -nologo -T cs_6_5 -E main -O3 @regir -Fh "$out\rt_regir_presample.h" -Vn RT_REGIR_PRESAMPLE "$PSScriptRoot\rt_regir_presample.cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_5 -E main -O3 @regir -Fh "$out\rt_regir_presample.h" -Vn RT_REGIR_PRESAMPLE "$PSScriptRoot\rt_regir_presample.hlsl"
   Dxc -nologo -T cs_6_5 -E main -O3 @regir -D TORCH_IRRADIANCE -Fh "$out\rt_lights_torch.h" -Vn RT_LIGHTS_TORCH "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
   Dxc -nologo -T cs_6_9 -E main -O3 @regir -D TORCH_IRRADIANCE -D OPACITY_MICROMAPS -Fh "$out\rt_lights_torch_omm.h" -Vn RT_LIGHTS_TORCH_OMM "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
   Dxc -nologo -T cs_6_5 -E main -O3 @regir -D TORCH_IRRADIANCE -D TORCHES_IN_BOUNCE -Fh "$out\rt_lights_bounce_torch.h" -Vn RT_LIGHTS_BOUNCE_TORCH "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
