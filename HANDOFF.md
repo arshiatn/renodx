@@ -15726,7 +15726,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
         Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
         fit after ATN's download yes + MERL / RGL licence check. Numbers to ATN = gate for S2. Owner: coordinator
-        (waits for ATN's message to Forge).
+        (waits for ATN's message to Forge). ATN 12:1x: HE ASKED FORGE to add vMF; if Forge says no, ATN says whether we
+        fit it ourselves. Callisto as an extra diffuse option: maybe, ATN decides after the vMF result.
         - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
         09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
