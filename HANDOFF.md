@@ -842,7 +842,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
 - PARITY LEDGER LINES for the waiting rows (Directional Light Bounce; PT Reflectio ... | ?
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
-- rtp_ QUESTIONS (rtp_'s pick first): R1 census trace now (yes); helper staged in ... | ?
+- rtp_ REVISION 1 (M1-M8 + SHOULDs) -> the exact rule-line list for ATN + the run ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - TDD TWINS + OCEAN PORT: tddi_ (Opus High, worktree, branch tddi_twins) STARTED: ... | ?
@@ -16000,10 +16000,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         tail of cpu_plan_64_map 3.3 (never during Friday's CPU work); rt_core / rt_scene after pdi3_ / pdi5_; a64_ab.ps1
         after PK6-64. RULE SLIP (reported to ATN): one recursive NAME listing over testbin\attila64_1124 (contains
         perffix_src\); names only, nothing opened. -> rtpr_ REVIEW (Opus xHigh) STARTED -> rt_port_64_review.md.
-        - [ ] rtp_ QUESTIONS (rtp_'s pick first): R1 census trace now (yes); helper staged in our test run folder (yes);
+        - [x] rtp_ QUESTIONS (rtp_'s pick first): R1 census trace now (yes); helper staged in our test run folder (yes);
         lowdef on R1's data; recordings on D: (yes); shadow refresh 2 pulsing: fix in the add-on. Owner: ATN after rtpr_
         ATN 11-25 evening: 'Sounds good'; game runs R1 -> R2 -> R3 one at a time, AFTER PT DI (steps 3 / 5 / 4c /
         4d). R1 is not needed sooner: it only feeds 4b, which waits for RT on the port (R2) anyway.
+        rtpr_ DONE (evening): GO WITH CHANGES, 8 MUST / 11 SHOULD / 9 NIT (designs\rt_port_64_review.md, hand-back
+        designs\rtpr_review_handback.md). Big choices hold (helper route: rt_d3d12.hpp 699,692 B + Sol's crash filter
+        ExitProcess(4); v33 only for lowdef; 4b stencil via X24_TYPELESS_G8_UINT; recordings ~6.7 GB, D: 859 GB free;
+        the C2 run already shows the bone flush on the draw thread). MUSTs: M1 S5a circular (object motion keeps the
+        flush on; control can't fail) -> split offered / registered, gate on rt_core's applied line + offline test;
+        M2 R2 = first DLSS start on the port, C1 not run -> DLAA 100 % + FG off + stop rule or C1 first; M3
+        RENODX_TW_SET counts from the first present (would fire in the menu), quit at s 90 before R1's trace at s 100;
+        M4 no exact rule lines; M5 helper + NVIDIA DLLs per start, removed after, STOP if found, helper by PID; M6
+        writer slots off the binding chain (a64_ab after PK6-64 not a 3.3 slot; S5b / S8 also write addon.cpp; v33's
+        helper edit is in pdi3_'s rt_scene.hlsli); M7 the trace line can't answer 4b's stencil (no view formats /
+        stencil func) + dyn_census ib; M8 Flag Wave / 1212: all rigidcommon props lost, run folders have no packs\ ->
+        pin the loader line, C4 RT coverage gate, release note. -> rtp_ REVISION 1 (resumed) STARTED.
+        - [ ] rtp_ REVISION 1 (M1-M8 + SHOULDs) -> the exact rule-line list for ATN + the run list after PT DI.
+        Owner: rtp_
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
