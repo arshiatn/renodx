@@ -829,6 +829,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ... | ?
+- UNIFIED U4b (in-lobe ESS report, sizes route (c); scratch only): u4b_ (Opus xHig ... | ?
+- UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
@@ -15815,6 +15817,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ReGIR presample are
         pushed; then a 4c implementer starts on that commit (new DI pass files, LIGHTS_DI functions, the harness's
         synthetic light surface) and merges after step 3. Owner: coord (start at the checkpoint)
+        ATN 11-25 evening 'Yes, start both' (unified PT pieces that need no PT DI):
+        - [ ] UNIFIED U4b (in-lobe ESS report, sizes route (c); scratch only): u4b_ (Opus xHigh) STARTED ->
+        designs\u4b_ess_report.md. Owner: u4b_
+        - [ ] UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; owns rt_fog.cs_6_5.hlsl +
+        the fog variant's build.ps1 lines): u6f_ (Opus High, worktree, branch u6f_fog) STARTED. PART 2 (rt_d3d12.hpp
+        buffers / dispatches, a slot range from coord, harness gates) after steps 3 + 5 merge. Owner: u6f_
+        Still waiting: U1-U3 / U5 (need PT DI), U6p (bridge + rt_lights), U12a / U12d (add-on files Friday's CPU builders
+        use), U11 / U11h (AMD only), SHaRC depth 4 (hang risk: quiet GPU + ATN home).
         - [ ] CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on the vMF paper: 'just
         diffuse; Callisto full still beats it' (diffuse, smooth terminator, retro-reflection, Fresnel). cal_ (Opus
         xHigh, text only) STARTED: design plan_1117\designs\callisto_diffuse.md as the candidate to replace vMF
