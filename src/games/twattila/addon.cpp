@@ -1118,10 +1118,81 @@ int ui_mod_compatibility = 0;  // its slider: written to ReShade.ini, used from 
 // and detach the add-on before the game's device, and a kept image must not hand the next attach their values.
 // The APIs whose devices the add-on left alone, one log line each (bit: the API's value >> 12).
 std::atomic<uint32_t> stood_down_apis = 0;
+// The page dump's READY-forced variant (TWATTILA_PAGE_DUMP_PLUGIN_READY): the plugin ready, every game-code row offered.
+#if defined(TWATTILA_PAGE_DUMP_PLUGIN_READY)
+constexpr bool PLUGIN_READY_FORCED = true;
+#else
+constexpr bool PLUGIN_READY_FORCED = false;
+#endif
 // The 64-bit engine plugin's block: ready, and the rows it offers (bit: PluginRow). Filled by its lookup.
-std::atomic_bool plugin_ready = false;
+std::atomic_bool plugin_ready = PLUGIN_READY_FORCED;
 std::atomic<uint32_t> plugin_rows = 0;
 bool shadow_pass_installed = false;
+
+// The rows the 64-bit engine plugin can bring back (none yet: its add-on side adds them). NONE: hidden on the port.
+enum class PluginRow : uint8_t {
+  NONE = 0xFF,
+};
+
+// A row whose reader is the 32-bit game's code (engine tweaks, graphics_hooks, engine_code, the worker pool's users,
+// shadow_pass, the shadow map hooks, cpu_sets' thread moves): by key, or by group for a group of buttons. The keyless
+// ones are taken by their pointers in ConfigureAddon.
+struct GameCodeRow {
+  const char* match = "";
+  PluginRow plugin_row = PluginRow::NONE;
+};
+
+constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
+    {.match = "GraphicsUnitDetailSmall"},
+    {.match = "GraphicsUnitDetailMedium"},
+    {.match = "GraphicsUnitDetailLarge"},
+    {.match = "GraphicsUnitDetailHuge"},
+    {.match = "GraphicsDeadUnits"},
+    {.match = "GraphicsUnitAnimation"},
+    {.match = "GraphicsFacialAnimation"},
+    {.match = "GraphicsHandAnimation"},
+    {.match = "GraphicsUnitVariety"},
+    {.match = "GraphicsFootstepEffects"},
+    {.match = "GraphicsObjectDetail"},
+    {.match = "GraphicsBuildingDetail"},
+    {.match = "GraphicsCampaignDetail"},
+    {.match = "GraphicsCampaignPlants"},
+    {.match = "GraphicsCampaignProps"},
+    {.match = "GraphicsGrassDistance"},
+    {.match = "GraphicsGrassDensity"},
+    {.match = "GraphicsShadowMapSize"},
+    {.match = "RayTracedShadowCascades"},
+    {.match = "GraphicsBigBattleFix"},
+    {.match = "GraphicsSmallSoldiersAsSprites"},
+    {.match = "GraphicsSpriteSize"},
+    {.match = "RayTracedSkipShadowPass"},
+    {.match = "FasterGameCpuCode"},
+    {.match = "FasterRenderLists"},
+    {.match = "FasterJobWakeUps"},
+    {.match = "FasterEffectPrefetch"},
+    {.match = "KeepRenderCoreFree"},
+    {.match = "FasterEmitterPrefetch"},
+    {.match = "FasterParticlePrefetch"},
+    {.match = "FasterSweepPrefetch"},
+    {.match = "WorkerThreads"},
+    {.match = "AnimationRowsWorkers"},
+    {.match = "ParallelEffectUpdate"},
+    {.match = "ParallelEffectSpawns"},
+    {.match = "CachedParticleCount"},
+    {.match = "DrawRecordingStage"},
+    {.match = "DrawRecordingFamilies"},
+    {.match = "ParallelInstanceFill"},
+    {.match = "FillWithDrawRecording"},
+    // The preset buttons: they write the hidden rows above.
+    {.match = "graphics-presets"},
+}};
+
+// A game-code row on the port: shown once the 64-bit engine plugin is ready and offers its row.
+inline bool GameCodeRowShown(PluginRow row) {
+  if constexpr (PLUGIN_READY_FORCED) return true;
+  return plugin_ready.load(std::memory_order_relaxed) && row != PluginRow::NONE
+         && (plugin_rows.load(std::memory_order_relaxed) & (1u << static_cast<uint32_t>(row))) != 0;
+}
 
 
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
@@ -2032,30 +2103,31 @@ void ConfigureAddon() {
         .section = "Graphics (Experimental)",
     };
   };
+  auto* ui_mod_row = new renodx::utils::settings::Setting{
+      .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+      .label = "UI 4K Mod Compatibility",  // the Graphics page takes it by this (graphics_page.hpp)
+      .section = "Graphics (Experimental)",
+      .on_draw = [] {
+        const char* state = (ui_mod_compatibility != 0) ? "On" : "Off";
+        if (ImGui::SliderInt("UI 4K Mod Compatibility", &ui_mod_compatibility, 0, 1, state,
+                             ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
+          reshade::set_config_value(nullptr, "Attila", "DisableGraphics", ui_mod_compatibility);
+        }
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("On (default): Shadow Map Size stays at the game's, for the UI 4K mod (it changes the\n"
+                            "same game code). Everything else on this page works either way.\n"
+                            "Takes effect after restarting the game. By hand: ReShade.ini, [Attila] DisableGraphics.");
+        }
+        ImGui::SameLine();
+        const bool restart_pending = (ui_mod_compatibility != 0) != shadow_size_locked;
+        ImGui::TextColored(ImVec4(1.f, 0.31f, 0.31f, 1.f), "%s",
+                           (restart_pending ? "Restart the game now to apply this!" : "Changing this needs a game restart."));
+        return false;
+      },
+  };
   settings.insert(settings.end(), {
       note,
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
-          .label = "UI 4K Mod Compatibility",  // the Graphics page takes it by this (graphics_page.hpp)
-          .section = "Graphics (Experimental)",
-          .on_draw = [] {
-            const char* state = (ui_mod_compatibility != 0) ? "On" : "Off";
-            if (ImGui::SliderInt("UI 4K Mod Compatibility", &ui_mod_compatibility, 0, 1, state,
-                                 ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput)) {
-              reshade::set_config_value(nullptr, "Attila", "DisableGraphics", ui_mod_compatibility);
-            }
-            if (ImGui::IsItemHovered()) {
-              ImGui::SetTooltip("On (default): Shadow Map Size stays at the game's, for the UI 4K mod (it changes the\n"
-                                "same game code). Everything else on this page works either way.\n"
-                                "Takes effect after restarting the game. By hand: ReShade.ini, [Attila] DisableGraphics.");
-            }
-            ImGui::SameLine();
-            const bool restart_pending = (ui_mod_compatibility != 0) != shadow_size_locked;
-            ImGui::TextColored(ImVec4(1.f, 0.31f, 0.31f, 1.f), "%s",
-                               (restart_pending ? "Restart the game now to apply this!" : "Changing this needs a game restart."));
-            return false;
-          },
-      },
+      ui_mod_row,
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::BUTTON,
           .label = "With my 4x / 8x unit sizes",
@@ -2467,6 +2539,7 @@ void ConfigureAddon() {
       .section = twattila::engine_tests::GRASS,
       .tint = 0xFFD23C,
   });
+  auto* grass_tests_note = settings.back();
   settings.push_back(new renodx::utils::settings::Setting{
       .key = "GrassHeightDistance",
       .binding = &shader_injection.grass_height_distance,
@@ -2500,6 +2573,7 @@ void ConfigureAddon() {
         renodx::utils::log::i("[Total War] Grass trace asked: Grass Height Distance ", shader_injection.grass_height_distance);
       },
   });
+  auto* grass_trace_row = settings.back();
   settings.push_back(new renodx::utils::settings::Setting{
       .value_type = renodx::utils::settings::SettingValueType::BUTTON,
       .label = "Grass Dump",
@@ -2508,6 +2582,7 @@ void ConfigureAddon() {
                  "(in a battle; a short pause while it writes).",
       .on_change = [] { twattila::graphics_hooks::DumpGrass(); },
   });
+  auto* grass_dump_row = settings.back();
   twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
 
   // Appended Settings (Ambient Occlusion, Global Illumination)
@@ -2619,6 +2694,10 @@ void ConfigureAddon() {
       engine_sections.push_back(test.section);
     }
   }
+  // Without tests (the 64-bit port) the grass rows' section is still Graphics 2 of 2's.
+  if (std::ranges::find(engine_sections, twattila::engine_tests::GRASS) == engine_sections.end()) {
+    engine_sections.push_back(twattila::engine_tests::GRASS);
+  }
   twattila::feature_settings::SetTints(
       {"General", "Psycho V30", "PsychoV31", "PsychoV35", "Extra", "Extra (Experimental)", "Output (Restart Required)", "About"},
       engine_sections);
@@ -2632,6 +2711,35 @@ void ConfigureAddon() {
                                              .rays_untraced_casters = &rays_untraced_casters_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
                                              .engine_code = &engine_code_row, .lights_in_bounce = &rt_sliders.lights_in_bounce,
                                              .light_ratio = &rt_sliders.light_ratio});
+  if constexpr (ATTILA64) {
+    // The game-code rows wait for the 64-bit engine plugin: wrapped (never replaced) before AssignPages wraps them in
+    // turn, so a row the plugin brings back lands on its own page. Their keys stay: saved values come back with the rows.
+    const std::array<const renodx::utils::settings::Setting*, 6> keyless_rows = {note, ui_mod_row, graphics_status,
+                                                                                 grass_trace_row, grass_dump_row, grass_tests_note};
+    for (auto* setting : settings) {
+      const auto entry = std::ranges::find_if(GAME_CODE_ROWS, [setting](const GameCodeRow& row) {
+        return (!setting->key.empty() && setting->key == row.match) || (!setting->group.empty() && setting->group == row.match);
+      });
+      if (entry == GAME_CODE_ROWS.end() && std::ranges::find(keyless_rows, setting) == keyless_rows.end()) continue;
+      setting->is_visible = [row = (entry != GAME_CODE_ROWS.end()) ? entry->plugin_row : PluginRow::NONE, own = setting->is_visible] {
+        return GameCodeRowShown(row) && (own == nullptr || own());
+      };
+    }
+    // One note in graphics_status's place (the engine values it reports are the 32-bit game's).
+    settings.insert(std::ranges::find(settings, graphics_status),
+                    new renodx::utils::settings::Setting{
+                        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                        .label = "Engine options: the 64-bit engine plugin is not installed.",
+                        .section = graphics_status->section,
+                        .tint = twattila::graphics_page::WARNING_TINT,
+                        .is_visible = [] {
+                          return !plugin_ready.load(std::memory_order_relaxed)
+                                 || std::ranges::any_of(GAME_CODE_ROWS, [](const GameCodeRow& row) {
+                                      return row.plugin_row != PluginRow::NONE && !GameCodeRowShown(row.plugin_row);
+                                    });
+                        },
+                    });
+  }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
