@@ -1,7 +1,7 @@
 // Attila wind motion (anti_aliasing.hpp): the game's 0xAB20418F with its wind at this frame's and last frame's time; outputs SV_Position as the game's, this frame's
 // and last frame's clip positions without the jitter.
-// Made by tools\tw\attila_motion\make_wind_motion_vs.py; its land sink guarded by hand after (OCEAN_KEEP_OVER_LAND:
-// The Dawnless Days' 0xF80C6EEE, the _tdd file).
+// Made by tools\tw\attila_motion\make_wind_motion_vs.py; its land sink under OCEAN_KEEP_OVER_LAND (The
+// Dawnless Days' 0xF80C6EEE: the _tdd file).
 
 cbuffer camera_VS_PS : register(b0)
 {
