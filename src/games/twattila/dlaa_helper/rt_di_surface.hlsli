@@ -43,6 +43,9 @@ static const uint DI_NO_SPATIAL = 16u;
 static const uint DI_INITIAL_ARRAY = 0u;
 static const uint DI_TEMPORAL_ARRAY = 1u;
 static const uint DI_SHADE_ARRAY = 2u;
+// The last trace's shading reservoirs, the temporal reuse's history: the split passes' the same array (the temporal pass
+// reads it before the spatial pass writes it); the fused variant's own pair in turns (scratch pdi4c_ fused_variant.py).
+static const uint DI_HISTORY_ARRAY = DI_SHADE_ARRAY;
 
 // The light history's set this trace writes (rt_lights' parity_written); the last trace's is the other.
 uint DiParity() {
