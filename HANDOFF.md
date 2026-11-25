@@ -820,6 +820,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
+- a3f_ (Opus High, worktree, branch a3f_warning) STARTED 09:5x: addon.cpp warning ... | ?
+- optc_ (Opus xHigh, read only) STARTED 09:5x on ATN's question: every Sol loader ... | ?
 - l2bd_ (Opus xHigh, read only) L2B PRODUCT DESIGN STARTED 09:2x on ATN's yes -> | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
@@ -15542,6 +15544,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         E9 'present NOT FOUND' = ReShade.log pads the 4-digit thread '[ 7332]' (every add-on line + both first calls on
         7332); sr2 quit 145 s after the start, before the 2nd capture timer. Rotation / RT capture = C3 (helper).
         -> a3a_ gets the check artifacts too (one a64_ab.ps1 check-fix round after its analysis; ONE WRITER).
+        - [x] a3a_ A3 ANALYSIS DONE 09:4x (study_1124\a3_smoke_analysis.md; hand-back a3a_smoke_analysis_handback.md):
+        ALL 3 ITEMS = ARTIFACTS. (1) the tone mapper's target is already R16G16B16A16F (32-bit too, 325 / 326 timing
+        files); HDR not clamped (battle top 278 / p99.9 221 nits > 203 paper white); the starts ran the add-on DEFAULTS
+        (fresh ini: PsychoV30, paper white 203, UI 203), not ATN's (V35, peak 2500, UI 80). Fix addon.cpp:101 (format
+        10 counts as upgraded). (2) drawn32.tsv skewed (258 / 326 = one backup file); 16 of 21 lost are drawn in 0 of
+        21 unique 32-bit frames of the same replay; 5 missing because the s~37 frame is a wide shot (7 unit draws vs
+        ~800; 32-bit frames later + unit detail 8). 4-bone VS + slot 15 under our redraws NOT PROVEN yet (E64-mv drew
+        no 4-bone): one E64-mv start with the camera close to the fighting would prove it. (3) the port never releases
+        its D3D11 device at exit -> the game's add-on instance never unloads (design 9 item 2 expects it); uninit never
+        runs on the port (recheck when the DLSS helper comes). Timer race table: quit at first present + 147.3 / 133.1 /
+        142.7 / 145.8 s (C64 / B64P / sr2 / mv) vs pass +140, capture +145.
+        - [ ] a3f_ (Opus High, worktree, branch a3f_warning) STARTED 09:5x: addon.cpp warning fix (amd64 + x86 builds) +
+        a64_ab.ps1 check fixes (8 items; backup a64_ab.pre_a3f_1125.ps1; check logic only, no switch changes; offline
+        -Analyze over today's 5 batches + DryRuns) -> review -> merge -> restage a3_smoke addon64.
+        - [ ] optc_ (Opus xHigh, read only) STARTED 09:5x on ATN's question: every Sol loader / PerfFix 64 option that
+        could clash with ours (overlay, present, shaders, textures, shadows, AA) + how to force it off ->
+        study_1124\sol_perffix_options.md. PerfFix: settings / logs / docs only, never its source.
         - [x] twattila amd64 build check of the merged tree (e85bd48f9 + HANDOFF commits) PASS 09:3x: exit 0, 61 warnings
         (= baseline), VC 14.44.35207 / SDK 10.0.28000.0 (log testbin\scratch\merge_pds2_twattila64.log).
         - [ ] l2bd_ (Opus xHigh, read only) L2B PRODUCT DESIGN STARTED 09:2x on ATN's yes ->
