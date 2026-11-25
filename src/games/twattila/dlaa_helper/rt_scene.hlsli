@@ -532,6 +532,7 @@ static const uint DIM_REGIR_BUILD = 36u << 12;       // rt_regir_presample: a Re
 static const uint DIM_DI_INITIAL = 37u << 12;   // rt_di_initial: its candidates and the pick
 static const uint DIM_DI_TEMPORAL = 38u << 12;  // rt_di_temporal
 static const uint DIM_DI_SPATIAL = 39u << 12;   // rt_di_spatial
+static const uint DIM_DI_SPATIOTEMPORAL = 40u << 12;  // rt_di_spatiotemporal (the fused variant: its temporal tries and neighbours)
 // Torch Light in Path-Traced GI's ReGIR picks (rt_path.hlsli TorchLight): its caller's seed with the kind moved up by this,
 // so each caller's kind k takes kind k + 64 of its own (every kind above stays below 64).
 static const uint TORCH_KIND_SHIFT = 64u << 12;
