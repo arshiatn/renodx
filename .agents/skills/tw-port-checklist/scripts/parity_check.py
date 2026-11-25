@@ -1,14 +1,16 @@
 """Parity check: for every Total War game, what of Attila's package it still lacks (the Nothing dropped rule's gate).
 
-Per game, three sources against one ledger:
+Per game, four sources against one ledger:
   page rows   the game's page dump against Attila's (rows by key, as the maintainer's page_dump/games_compare.py reads them):
               keys only in Attila (each needs a ledger line) and keys only in the game (rows that should go back to Attila:
               the Two ways rule; listed, not open)
   casters     caster_census.py --whole-dump over the game's decompiler dump: every NOT HELD vertex shader needs a ledger line
   ledger      <tools>/parity/<game>.tsv: key or hash <TAB> status <TAB> owner, scene or proof [<TAB> source]; '#' starts a comment.
-              The key column holds one or more page keys or 8-digit hashes (space-separated: one row of a parity table), a
-              glob (Audio*), section:<Attila section> (every Attila-only key of that section), or feature:<words> (a feature
-              without a row, checked on its own).
+              Ryse, Tales and Expeditions keep theirs beside their plans: <tools>/../nontw/<game>/<game>.tsv. The key column holds one or more page keys or 8-digit hashes (space-separated: one row of a parity table), a
+              glob (Audio*), section:<Attila section> (every Attila-only key of that section), feature:<words> (a feature
+              without a row, checked on its own), or skip:<key> (one of Attila's pass skips / CPU wins).
+  skips       <tools>/parity/skips.tsv, Attila's canonical skip list (key <TAB> kind <TAB> Attila file:line <TAB> default <TAB>
+              proof): every key needs a skip:<key> line in each game's ledger.
 Statuses: HAVE, DONE, AS ATTILA (Attila lacks it too), WON'T GET (needs its proof), NEEDS A TRACE (needs its scene), SHARED STEP
 (needs its owner), DO NOW (always open). Printed as
   OPEN     an Attila-only key or NOT HELD caster without a ledger line; DO NOW; NEEDS A TRACE without a scene, WON'T GET without
@@ -19,12 +21,13 @@ Statuses: HAVE, DONE, AS ATTILA (Attila lacks it too), WON'T GET (needs its proo
 Exit 1 if any game has an open line.
 
 usage:
-  python -I parity_check.py --tools <maintainer's tools/tw folder> --tree <repo checkout> [--games a th r2 t w w1 w2 p rr s2 | d1 d2 ru]
+  python -I parity_check.py --tools <maintainer's tools/tw folder> --tree <repo checkout> [--games a th r2 t w w1 w2 p rr s2 | d1 d2 ru ry ta exr]
                             [--dump-tag <tag>] [--tag <tag>] [--bin <folder holding cmd_Decompiler-1.3.16>]
                             [--scale <letter>=<scale census .tsv> ...] [--fxc <fxc.exe>] [--out <report.txt>]
 
   --dump-tag  take the existing page dumps <tools>/page_dump/page_<letter>_<tag>.txt instead of building them
-  --tag       build them with <tools>/page_dump/dump_any.py <letter> <tag> <tree> (default tag: parity); one compile at a time
+  --tag       build them with <tools>/page_dump/dump_any.py <letter> <tag> <tree> (default tag: parity; Ryse with --helper, a dump
+              taken by --dump-tag must be one too); one compile at a time
   --bin       default <tree>/bin (a worktree links it into the main checkout)
   --scale     print the BUG rows of a cached scale census table (scale_census.py --tsv); replays are not built here
 
@@ -60,9 +63,25 @@ GAMES = {  # letter: (ledger name, game folder, decompiler pack folder)
     'd2': ('divinity2', 'divinity2originalsindefinitive', 'nontw/divinity2/parity_dump'),
     # R.U.S.E. (D3D9; no cmd_Decompiler dump: its shaders are in its own census, tools/nontw/ruse/census).
     'ru': ('ruse', 'ruse', None),
+    # Ryse, Tales of Arise, Expeditions: Rome (2026-11-22): their rays capture draws of their own, not rt_scene's SCENE_SHADERS.
+    'ry': ('ryse', 'rysesonofrome', None),
+    'ta': ('tales', 'talesofarise', None),
+    'exr': ('expeditions', 'expeditionsrome', None),
 }
-# Checked only when named (--games d1 d2 ru): not Total War games, their ledgers held to Attila's page all the same.
-NOT_TOTAL_WAR = ('d1', 'd2', 'ru')
+# Why a game has no caster census here (pack None): its casters are ledger lines.
+NO_CENSUS = {
+    'ru': 'none (D3D9: no D3D11 casters)',
+    'ry': 'none (every opaque G-buffer draw by its shape: ray_tracing.hpp SceneDraw; caster lines in the ledger)',
+    'ta': 'none (the prepass by rt_shadows lists: ray_tracing.hpp SceneDraw; census tools/nontw/tales/census/census_t10_casters.txt)',
+    'exr': 'none (the depth prepass by its shape: ray_tracing.hpp SceneDraw; caster lines in the ledger)',
+}
+# Checked only when named (--games d1 d2 ru ry ta exr): not Total War games, their ledgers held to Attila's page all the same.
+NOT_TOTAL_WAR = ('d1', 'd2', 'ru', 'ry', 'ta', 'exr')
+# Pages dumped in the helper-present state (dump_any.py --helper): Ryse's hand-drawn Graphics 1 of 2 / 2 of 2 list their
+# anti-aliasing and frame-generation widgets only with the helper beside the add-on.
+HELPER_PAGE = ('ry',)
+# Ledgers kept beside the game's plan, <tools>/../nontw/<ledger name>/<ledger name>.tsv (one copy, the game's round writes it).
+PLAN_LEDGERS = ('ry', 'ta', 'exr')
 SETTLED = ('HAVE', 'DONE', 'AS ATTILA', "WON'T GET")
 WAITING = ('NEEDS A TRACE', 'SHARED STEP')
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -89,7 +108,7 @@ def read_ledger(path):
             continue
         cells = line.rstrip('\n').split('\t') + ['', '', '']
         key = cells[0].strip()
-        keys = [key] if key.startswith(('section:', 'feature:')) else key.replace(',', ' ').split()
+        keys = [key] if key.startswith(('section:', 'feature:', 'skip:')) else key.replace(',', ' ').split()
         lines.append({'key': key, 'keys': [k.upper() if re.fullmatch(r'[0-9A-Fa-f]{8}', k) else k for k in keys],
                       'status': cells[1].strip().upper(), 'note': cells[2].strip(), 'source': cells[3].strip(), 'line': number})
     return lines
@@ -98,8 +117,8 @@ def read_ledger(path):
 def census(args, letter, tools):
     """{vs hash: verdict} of caster_census.py --whole-dump for the game, and the census's summary line."""
     _, folder, pack = GAMES[letter]
-    if pack is None:  # a D3D9 game: no casters to hold (no stream-output capture there)
-        return {}, 'none (D3D9: no D3D11 casters)'
+    if pack is None:
+        return {}, NO_CENSUS[letter]
     root = os.path.join(args.bin, 'cmd_Decompiler-1.3.16')
     # A pack with a folder in its name lives in the maintainer's tools (beside tools/tw), not under bin.
     dump = os.path.join(os.path.dirname(tools), pack) if '/' in pack else os.path.join(root, pack)
@@ -132,8 +151,8 @@ def census(args, letter, tools):
 def page_dump(args, letter, tools):
     path = os.path.join(tools, 'page_dump', f'page_{letter}_{args.dump_tag or args.tag}.txt')
     if not args.dump_tag:
-        result = subprocess.run([sys.executable, '-I', os.path.join(tools, 'page_dump', 'dump_any.py'), letter, args.tag, args.tree],
-                                capture_output=True, text=True, errors='replace')
+        result = subprocess.run([sys.executable, '-I', os.path.join(tools, 'page_dump', 'dump_any.py'), letter, args.tag, args.tree]
+                                + (['--helper'] if letter in HELPER_PAGE else []), capture_output=True, text=True, errors='replace')
         if result.returncode != 0:
             return None, 'dump_any.py failed: ' + ' / '.join((result.stdout + result.stderr).strip().splitlines()[-3:])
     if not os.path.exists(path):
@@ -144,6 +163,8 @@ def page_dump(args, letter, tools):
 def match(line_key, key, attila_row):
     if line_key == key:
         return True
+    if key.startswith('skip:'):  # a skip line by its own key only, never a glob or section line
+        return False
     if line_key.startswith('section:'):
         return attila_row is not None and attila_row.get('section', '') == line_key[8:].strip()
     return '*' in line_key and fnmatch.fnmatchcase(key, line_key)
@@ -167,7 +188,8 @@ def check_line(line):
 
 def check_game(args, letter, tools, attila_rows, out):
     name = GAMES[letter][0]
-    ledger_path = os.path.join(tools, 'parity', f'{name}.tsv')
+    ledger_path = (os.path.join(os.path.dirname(tools), 'nontw', name, f'{name}.tsv') if letter in PLAN_LEDGERS
+                   else os.path.join(tools, 'parity', f'{name}.tsv'))
     ledger = read_ledger(ledger_path)
     used = set()
     opened, waiting, settled = [], [], collections.Counter()
@@ -229,14 +251,26 @@ def check_game(args, letter, tools, attila_rows, out):
         else:
             take(subject, line)
 
-    # Ledger lines nothing above used: features, and keys / hashes the tree may have made moot.
+    # Attila's skips (Attila's own record is skips.tsv itself).
+    skips_path = os.path.join(tools, 'parity', 'skips.tsv')
+    if letter != 'a' and os.path.exists(skips_path):
+        with open(skips_path, encoding='utf-8') as skips:
+            skip_keys = ['skip:' + skip.split('\t')[0].strip() for skip in skips if skip.strip() and not skip.startswith('#')]
+        for key in skip_keys:
+            line = find(key)
+            if line is None:
+                opened.append(f'{key}\tAttila skip without a ledger line')
+            else:
+                take(key, line)
+
+    # Ledger lines nothing above used: features, skips, and keys / hashes the tree may have made moot.
     for index, line in enumerate(ledger):
         if index in used:
             continue
         keys = line['keys']
         if all(key in rows or (key in verdicts and verdicts[key]['verdict'] != 'NOT HELD') for key in keys):
             settled['moot (on the page / held now)'] += 1
-        elif keys[0].startswith('feature:') or line['status'] in WAITING or line['status'] == 'DO NOW':
+        elif keys[0].startswith(('feature:', 'skip:')) or line['status'] in WAITING or line['status'] == 'DO NOW':
             take(line['key'][:80], line)
         else:
             settled['not in this tree\'s gaps'] += 1
