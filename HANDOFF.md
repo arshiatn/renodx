@@ -932,8 +932,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NV7 ATN NUMBERS: RR preset D / E 1.83 vs 2.12 ms at 4K Performance on the 5090 ( ... | ?
 - NV8 UNIFIED ADDENDUM (coord -> unified_pt.md): C1-C14 choices (C2 visibility reu ... | ?
 - NV9 NVIDIA-SAYS-DON'T (section 4): TLAS fast-build (rt_d3d12.hpp:8069) = U12c; s ... | ?
-- rpgr_ PG REVIEW (Opus xHigh, read-only, STARTED 00:2x, est 30 / deadline 60): re ... | ?
-- ATN Q (rpg_ Q1): Guided Light Bounce row in today's hybrid ReSTIR GI too, or onl ... | ?
+- rpg2_ PG REVISION + UNIFIED ADDENDA (Opus xHigh, design files only, est 30 / dea ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
@@ -17151,13 +17150,36 @@ heading text are in HANDOFF_ARCHIVE.md)
         COORD FINDING: A1's '0 MB in G4's 20 B form' is WRONG: G4 on origin/pdi5_step5 is 24 B and FULL (uint4 hit + f16
         sqrt W | M16, uint2 RGB9E5 + two 16-bit normals) -> A1 needs its own form; pdi5_'s G4 unchanged now (PG builds
         after U3).
-        - [ ] rpgr_ PG REVIEW (Opus xHigh, read-only, STARTED 00:2x, est 30 / deadline 60): restir_pg.md '## Review':
+        - [x] rpgr_ PG REVIEW (Opus xHigh, read-only, STARTED 00:2x, est 30 / deadline 60): restir_pg.md '## Review':
         A1 fix, a FIDELITY TABLE (paper claim -> ours: same / chosen / unknown; own E / M-step without the supplemental
         + its known-answer tests), MIS pdf normalisation, the claims (clamp, sqrt(2), gains, cost, 2nd SHaRC grid), RR
         temporal rules, A1-A10 vs unified v2.7, gates, steps, Q1 / Q2. Then the U3 addendum merged into unified_pt.md
         by the coord. Owner: rpgr_, coord
-        - [ ] ATN Q (rpg_ Q1): Guided Light Bounce row in today's hybrid ReSTIR GI too, or only in the Unified PT mode
-        (rpg_: the mode first)? Ask after rpgr_'s review. Owner: ATN
+        rpgr_ DONE 01:0x (16 min vs 30; restir_pg.md lines 350-579 '## Review (rpgr_, 11-26)'): GO WITH CHANGES, 7
+        MUST / 11 SHOULD / 6 NIT, fidelity table 29 claims (own: tetrahedron init, Banerjee + MAP M-step, level
+        fallback, arm S, each with its proof; E- / M-step formulas UNKNOWN without the supplemental). COORD FINDING
+        CONFIRMED (G4 24 B full). A1 FIX: PG1 reads no reservoir field; A1-A4 only feed PG2's x2 splat -> U3 / G4
+        untouched, PG0 = ~0.5 h U3 brief text (A5 as a literal 1.0f multiply, A6, A8, A9); PG2 gets its own
+        reuse_suffix[2] R32_UINT (PackNormal16 dir, 0 = not valid, bit 16 FOREIGN, bits 17-20 share; 29.5 MB DLSS Q /
+        66.4 MB native Full, 0 with PG2 off); M to 8 bits REJECTED (stored M reaches 336 at 16 rays). MUSTs: M2 Own Sky
+        Rays noise NOT 'up to sqrt(2)' ((2-v)/(1-v): 3x at v 0.5, 11x at 0.9) -> arm S required or the row hidden
+        under Own Sky Rays; M3 the 2x bound is the second moment; M4 clamp-off arm (REUSE_TEST_NO_HISTORY_CLAMP) +
+        x1.03 control; M5 row off = byte-equal (A2-A4 under PG2's define) + register gates row off; M6 controls that
+        fail a broken build (furnace, wall closed form, planted wrong guide, dropped w at sky); M7 sphere-normalised
+        vMF pdf, below-horizon = counted zero, stable form near kappa 0. SHOULDs: S1 gains = estimates (paper = MAPE at
+        equal spp, day1 may lose); S2 U3's footprint term (lin2026 Eq. 4a) stays on cos / pi; S3 BUFFER_AT_OFFSET
+        redefined around PG's include (2^19 vs 2^21); S4 Find before Insert; S5 re-seed empty lobes, one EM step a
+        frame; S6 rt_di_ok 64 OR'ed in the bounce request; S7 PG1 after U9 keep / drop + U5, before U13 + U8 (COORD:
+        ACCEPTED, off the mode's critical path); S8 GPU known-answer fit test; S9 G4 text '16-20 B' wrong in
+        pt_di_rtxdi.md section 5 + unified 4.2; S11 Q1 / Q2 answered by standing rules. Hours ~31.5 + 3 reviews +
+        3-5 GPU-h. Licence fine (API use of the fetched SHaRC header, credits.hpp covers it).
+        - [x] ATN Q (rpg_ Q1): CLOSED by standing rules (rpgr_ S11): the mode first; the hybrid row follows as its own
+        step (every-setting rule), hidden wherever not proven; Q2 = an Experimental row, off. Told ATN 11-26.
+        - [ ] rpg2_ PG REVISION + UNIFIED ADDENDA (Opus xHigh, design files only, est 30 / deadline 60): fold every MUST
+        / SHOULD into restir_pg.md (change list on top, rpgr_'s fidelity table kept); write the unified_pt.md addendum
+        = PG's U3 text (A5 / A6 / A8 / A9 + S2) + NV8 (C1-C14 choices, S11 permutation correction) + U1 (pd4r_: the
+        mode sets runtime.lights_in_bounce = 0, S12 checks both requests); S9 text fixes in pt_di_rtxdi.md section 5
+        + unified 4.2. One writer for those 3 files. Then a short Opus xHigh recheck. Owner: rpg2_, coord
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
