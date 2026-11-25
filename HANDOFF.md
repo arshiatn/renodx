@@ -820,7 +820,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- ATN: add the A3 + T1 rule lines (study_1124\a64ab_window1_rules.md: -Smoke -ReSh ... | ?
+- coord: A3 -ReShade -PerfFix (running 09:1x) -> -ReShade -Package sol_fixes_1124\ ... | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
@@ -15520,9 +15520,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         L2B patch anchors still match once each.
         - [x] coord STAGED the linked add-on 06:3x: a3_smoke\renodx-twattila.addon64 = 3d47031a0cddf3a5 (merged tree
         35b5e715a build, has the link text); previous f37a8c6d kept in a3_smoke_prev_f37a8c6d\.
-        - [ ] ATN: add the A3 + T1 rule lines (study_1124\a64ab_window1_rules.md: -Smoke -ReShade, -ReShade -PerfFix,
-        -ReShade -Package ...; NEW -Smoke -ReShade -EnginePlugin, -EnginePlugin -C2, optional -EnginePlugin -PerfFix;
-        each with -DryRun) -> coord: DryRun -> A3 Smoke -> T1 -> C2.
+        - [x] ATN added the A3 + T1 / C2 rule lines 09:0x (after the PC restart 08:58: free RAM 20.6 GB, kernel pools
+        1.2 / 1.6 GB, zombies gone).
+        - [x] coord A3 -Smoke -ReShade 09:06-09:09 (DryRun ok; ab_runs\20261125_090608_Smoke\1_C64): clean exit 0, no crash
+        / WER, HDR10 swap chain r10g10b10a2 hdr10_st2084, picture upgraded 3840x2160, overlay converted, 48 / 48 replaced
+        hashes, loader trouble 0, check_logs clean, Time Each Pass 15.024 ms / 1161 commands, zz_capture menu top 202.9 /
+        battle s~37 top 278.3 nits (JPEGs sent to ATN). Script PASS = NO on 3 items -> a3a_ (Opus xHigh, read only) ->
+        study_1124\a3_smoke_analysis.md: (1) never-line 'the tone mapper's target (format 10, 3840x2160) has no
+        upgrade'; (2) 21 of our 32-bit-drawn shaders not drawn (3 of 4 4-bone units 0x0ECFE74C 0xDAC80ECC 0xC2AA8FDA;
+        gather 0x00D1F51E 0x2BD86A89); (3) exit: unloaded 1 of 2 loads + 3 WARN after the last unload.
+        - [ ] coord: A3 -ReShade -PerfFix (running 09:1x) -> -ReShade -Package sol_fixes_1124\build -Exe64Sha
+        a75c1b8a63a267d6 -> T1 -EnginePlugin (DryRun first) -> C2 -EnginePlugin -C2 (DryRun first) -> twattila amd64
+        build check of the merged tree (RAM now free).
         - [ ] COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-on in the 64-bit port; only
         -Smoke without ReShade exists). The 32-bit S4-rotation trace gates the next 32-bit Attila / Thrones / Rome II
         release (none planned now). T1 ReShade.log must NOT contain the RENODX_TW_PLUGIN_WANT line. Checks: 32-bit S4-rotation trace
