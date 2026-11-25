@@ -3,6 +3,10 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] LATER (ATN 11-25 evening: 'check it out in a couple of weeks'): why lowdef point lights get NO PT DI on 64-bit
+  (decision: none drawn in 326 32-bit timing files, 4b's add-on leaves them to the game's shaders, no v33; R1 checks
+  64-bit). Revisit with R1's 64-bit data: are any lowdef lights drawn, and do they look wrong next to DI-lit ones?
+  (attila64\designs\cpu_plan_64_map.md 3.3a 'Decisions: lowdef'). Owner: ATN (~mid-December) -> coord
 - [ ] NEW 11-16 (from the AUDIT): B: RT AO in place of the game's AO (WH1-3, Troy, Pharaoh, Rome II, Rome Remastered,
   Shogun 2, Tales, Expeditions): look right?; B: after a window switch, still HDR in Attila / Thrones / WH1 / WH2 / Tales /
   Ryse / R.U.S.E.?; C: Rendering Mode SDR on an HDR display with Gamma Correction on is now the darker 2.2 picture (Rome
@@ -839,6 +843,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
 - CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | ?
 - CALLISTO C1: cal1_ (Opus High, worktree, branch cal1_c1) STARTED: new files only ... | ?
+- WARP HARNESS SHARED HELPER: ~190 lines copied from the vMF test into tw_callisto ... | ?
 - CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent ... | ?
 - CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mism ... | later
 - CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
@@ -15902,6 +15907,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; owns rt_fog.cs_6_5.hlsl +
         the fog variant's build.ps1 lines): u6f_ (Opus High, worktree, branch u6f_fog) STARTED. PART 2 (rt_d3d12.hpp
         buffers / dispatches, a slot range from coord, harness gates) after steps 3 + 5 merge. Owner: u6f_
+        u6f_ PART 1 DONE (evening; hand-back handoff_plan\handbacks\u6f_handback.md): origin/u6f_fog on 066cfa2eb,
+        aac6f646d (rt_fog FOG_RESTIR + rt_fog_reservoir.hlsli + 4 fog build lines), 37da61e39 (test/tw_fog_restir).
+        Define off = byte-identical (dxil + helper headers); WARP 65536 trials / scenario PASS (S1-S4, controls at
+        94 / 2544 sigma). Part 2 needs: u90-u93 placeholders -> 4 UAVs from coord's range; fog_reservoirs[2]
+        16 B / texel (8.3 MB each at native 4K), fog_sun_history[2]; RT_FOG_RESTIR(_OMM) + _SHADE pipelines; b2
+        flags; light_previous must be filled whenever fog lights run; previous_view_projection = last trace.
+        Open: vector weights not built (4 rays / texel); temporal target approx under motion (lag metric); 128-light
+        remap loop (inverse table needs rt_scene.hlsli); FogLightThrough + list-bit copies (fold at M6 / U2).
+        -> u6r_ REVIEW (Opus xHigh, read only) STARTED -> designs\u6f_part1_review.md -> fix -> merge with part 2.
         Still waiting: U1-U3 / U5 (need PT DI), U6p (bridge + rt_lights), U12a / U12d (add-on files Friday's CPU builders
         use), U11 / U11h (AMD only), SHaRC depth 4 (hang risk: quiet GPU + ATN home).
         - [ ] D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record it in game, then
@@ -15931,6 +15945,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] FROZEN 32-BIT (only if ATN ever revives 32-bit): the 32-bit D3D11 pass capture (d11s_'s original run);
         the 32-bit S4-rotation trace before any 32-bit release; 32-bit TDD twins ship only with a 32-bit release.
         Owner: none (frozen)
+        d11r_ REVIEW: GO WITH CHANGES (designs\d3d11_pass_speed_review.md; hand-back d11r_review_handback.md). MUST
+        M1 per-event copies on change; M2 CPU state dump + CB equality; M3 full own-state list; M4 Bend double-write
+        race map; M5 no pause; M6 64-bit capture; M7 pass_dump on 64-bit (complete frame folders, no shutdown
+        hook, VRAM budget); M8 other games' consumer lists (Shogun 2 3840 samples, 5 C++ hosts, Ryse; SSSR in 3;
+        BITMASK_VARIANT not before GT-VBGI's gate); M9 Bend LDS size by effective count + clamp, banner-skip init +
+        barrier; M10 Attila gains ship on 64-bit. 19 SHOULD / 8 NIT. Cost now ~0.4-0.8 ms No RT/PT 4K, < 0.1 ms
+        with RT/PT. Script: new tools\tw\attila64\d11\d11_capture64.ps1 (lane I; a64_ab safety rules; Opus xHigh
+        review before ATN's rule lines).
+        ATN 11-25 ~18:xx: '32-bit then port is fine if better' -> coord: 64-bit directly (same shader bytes, tools
+        build the same, gains ship there). Foliage camera: day1, zoom in, turn 90-135 deg LEFT so trees + grass
+        fill the view; grass + model detail sliders max (fresh backup of the settings, restored after); CPU-limited
+        is fine (offline replay). -> d11s_ REV 1 STARTED (evening) -> d11r_ RE-CHECK -> lane I implementer ->
+        capture (ATN's rule lines: 4 script lines + env / set key / D:\Dev\d11_dumps / replay tools OKs).
         - [ ] PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in
         tools\tw\round_notes\proposed_rules_1125.md; ATN pastes them himself. Owner: ATN
         - [ ] CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on the vMF paper: 'just
@@ -15998,6 +16025,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         DXIL per lobe (above the 25-40 estimate). Open: the cap acts on A+F (kept bond 0.9890; scoring-only set);
         T-vmf depends on vmf_diffuse.hlsli (freeze points if vMF's header is removed). -> cdr_ C1 CODE REVIEW
         STARTED -> designs\callisto_diffuse_c1_review.md -> merge (new files, no callers).
+        cdr_ C1 CODE REVIEW: MERGE AFTER FIXES, no MUST (rerun ALL OK 11 s; math = slide 85 / R1.8; every exponent vs
+        10 (1 - x) by hand; includers + fxc / dxc 6.5 / 6.9 clean). S1 independent gate (knob table in slide_points.h
+        + 1e-3 control); S2 T-bond fails on cap hits unless on a scoring-only list; S3 CALLISTO_SET_A_F -> tests.cpp;
+        S4 no third-party name / process notes in source; NITs (hlsli:28 wording, NaN control both NaN, c2 name
+        check, UTF-8 last_run). -> cal1_ FIX ROUND STARTED (evening) -> cdr_ RE-CHECK -> merge. Design cost note:
+        C1 measured 42-56 DXIL per lobe vs the 25-40 estimate (addendum in callisto_diffuse.md).
+        - [ ] WARP HARNESS SHARED HELPER: ~190 lines copied from the vMF test into tw_callisto_diffuse; fold into
+        one shared test helper when a third WARP test needs it. Owner: coord (later, not blocking)
         - [ ] CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent (Opus xHigh, scratch
         only) after ATN's download yes (MERL BRDFDatabase.zip 1.3 GB + RGL; pick MERL + RGL) . Owner: coord (date)
         - [ ] CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mismatch measured. Owner: later
@@ -16009,6 +16044,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         (C0 DROPPED: ATN 11-25 evening won't ask Forge ('he didn't want to test it'). -> C0b own fit now, after ATN's
         download yes; ATN asked whether donations are OK with MERL / RGL: yes (MERL CC BY-SA 4.0 allows commercial use
         with attribution; RGL CC0).)
+        ATN 11-25 ~18:xx: 'Download both if you need both' + 'credit MERL' (CC BY-SA vs MIT answered: both free
+        incl. commercial; BY-SA = credit + share-alike only for the data / adapted data, not our constants).
+        -> c0b_ (Opus xHigh, scratch testbin\scratch\c0b_, own dirs dl_merl / dl_rgl, checksum, RGL list + licence
+        notes first, cap 5 GB) STARTED -> designs\callisto_c0b_fit.md -> cdr_ reads it -> C1 merge with the winner
+        (or 'ship nothing'). MERL credit goes in credits.hpp + the header comment when fitted constants ship.
         - [ ] CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.05) / V40 + a joint fit with
         the game's specular held fixed; and what his 'Callisto full' included, his error metric, the smooth-terminator
         mask's unit. Owner: ATN
@@ -16181,6 +16221,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         (ATTILA64) exit 0, 61 warnings = baseline. Open: make_wind_motion_vs.py would drop the hand guard on
         regeneration; 0x702B83B7 (TDD MSAA shadow analysis) no render-scale row (never drawn in a trace). -> tddr_
         REVIEW (Opus xHigh) STARTED -> mod_shaders\tddi_review.md -> fix -> merge before 11-27.
+        tddr_ REVIEW: MERGE AFTER FIXES (mod_shaders\tddi_review.md; code correct; 36 pairs = tdd_37_names.tsv, the
+        ocean the only one out; of TDD's 887 changed hashes exactly these 37 appear in src; WARP sound; merge-tree
+        clean onto atn-mods / bal3_ / pdi3 / pdi4c / pdi5). M1 remove the TDD credit (About row + README bullet, ATN
+        'no credits'); S1 ocean guard into make_wind_motion_vs.py (both modes, exactly-once check, 4 shaders
+        byte-identical, WARP rerun); N1-N6 (WithTwins fold, comment, 120 cols, README v1.1.3 / no 'works with' /
+        no scratch path, notes name 0xF80C6EEE). -> tddi_ FIX ROUND STARTED (evening) -> tddr_ RE-CHECK -> merge
+        before 11-27. N7 done by coord: game-port-method SKILL.md:65 'a credit unless they waive it'.
+        Open (agreed, no change): 0x702B83B7 no render-scale row (never drawn; MSAA + render scale only).
         - [x] TDD RUN CHECKS (ATN 11-25: NOT NEEDED, dropped) (needs a TDD game run, ATN's OK): create-time patcher counts in ReShade.log on TDD's
         bytes; whether TDD's new values (rain gloss, near-leaf cull, billboard cull band) are ever set (named
         nowhere in empire.retail.dll / TDD packs); MSAA shadow-analysis PS 0x702B83B7 has no render-scale entry.
@@ -16287,6 +16335,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         later (ATN's yes): worktree agent-ae7cab13600fa530f holds its own real bin\ copy (not a link).
         ucr_ RE-CHECK 13:2x: MERGE (Re-check 11-25 in ucf_clone_fix_review.md; hand-back ucr_recheck_handback.md).
         MERGED 1cd236071 (ucf_follow) + twattila / Tales amd64 build check.
+        11-25 ~18:xx: ucf_'s leftover wait loop (a never-true condition, ~8 h) stopped by coord; ucf_ finished.
         - [x] FIXED ad85b2142, merged c8519a50b (ta_ 11-25; in-game check = box 'TALES CAPTURE FIX IN GAME') TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a source as cloned only when its
         clone is on (talesofarise/addon.cpp:935); in scRGB buffer 0 is real RGBA16F with its clone off, so a copy from it
         into an RGBA8 capture texture is dropped as mismatched and the capture stays stale. Matters only if Tales copies
