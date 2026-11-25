@@ -15851,6 +15851,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         no); PK5 builds BOTH H and R; Sol offers (rows 17 / 26 / 27 / 29 / 36) pending ATN (coord: Stage A not
         offered; one note = census + auto heads-up + upload tip); PK2P default rule explained (ATN may keep it on);
         ATN adds the run_rs_b64p CPU Set Setter rule; 'Caesar' asked. Map section 6 item 16.
+        ATN ROUND 2 (final): sim-read engine values = single player only, forced to the game's value in MP (C8
+        addendum; W0 finds an MP check); PK2P gate rule stands; campaign later; PK8 Stage A NOT offered; Sol note =
+        PK9 census + short automatic-mode line (we had it in 32-bit) + upload tip after C4, ATN sends; 'Caesar' =
+        PerfFix author -> restart-only rows. - [ ] Sol note text: p9d_ finalizes, coord gives it to ATN. Owner: coord.
         - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
         p8d_design_handback.md): main win SERIAL: Stage A exact group index replaces the quadratic pair search at
         0x79a690 (~89 % of seg 0), identical results by construction, fingerprint self-off, fallback; E -21..-24 ms /
