@@ -843,7 +843,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Other tests that load rt_core without ReShade's config export may crash the same ... | ?
 - HELPER IGNORES THE PER-MATERIAL OPACITY FACTOR (rvt_ S2): 51 of Tales' 55 masks ... | ?
 - rvt_ nits outside ta_'s files: rt_core.hpp:425 comment says 0.333 (game clips at ... | ?
-- TALES DEVICE REMOVAL NOT DETECTED (T6 removal run FAIL, DXR 1.2 + 1.1): after Re ... | ?
+- Nit N2 (rvt_, diagnostic only): the status can miss the error code in two rare c ... | ?
 - ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales mult ... | ?
 - ta_ QUESTIONS FOR ATN (ta_'s pick first): (1) Attila rows for Tales: Upscaling D ... | ?
 - ry_ QUESTIONS FOR ATN (ry_'s pick first): (1) Ryse's rays are sharper than the g ... | ?
@@ -16117,7 +16117,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: next shared round / next Tales round
         - [x] ta_ O6 DONE 15:3x (hand-back round_1125\handbacks\ta_o6_handback.md; ~6 s GPU over 9 short runs): trace_test,
         omm_test (Agility 1.619, 1024 micro-triangles, 0 mismatches), rt_shadows_test DXR 1.2 + DXR 1.1 all PASS.
-        - [ ] TALES DEVICE REMOVAL NOT DETECTED (T6 removal run FAIL, DXR 1.2 + 1.1): after RemoveDevice the fences read
+        - [x] TALES DEVICE REMOVAL NOT DETECTED (T6 removal run FAIL, DXR 1.2 + 1.1): after RemoveDevice the fences read
         all ones, so the fence wait passes and the list / allocator resets don't fail; status stays 'Running', 21 more
         frames trace stale results (character shadow 1.00 vs < 0.3, paths 0.107 vs 0.269, 0 / 4 BLAS compacted); no
         crash / hang. 264d1b51c's claim does not hold. Fix (Tales-only file: only talesofarise includes
@@ -16144,6 +16144,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         CaptureSceneColor, S1 Retry releases a removed device, N1 status carries the HRESULT, e.g. 0x887A0005); S2 removal
         test passes only on detection (DXR 1.2 / 1.1 PASS 515 / 457 ms; control with 6f2d93aa4's header FAILS point 1);
         normal GPU tests PASS; build exit 0 (61); tw_tales_unit PASS; ~6 s GPU. -> rvt_ RE-CHECK sent 16:5x.
+        rvt_ RE-CHECK 17:0x: MERGE (## nt_ta2 re-check in reviews\rvt_nt_ta1_review.md; hand-back round_1125\handbacks\
+        rvt_nt_ta2_recheck_handback.md): M1 / S1 / N1 / S2 all fixed; reproduced on the 5090 (removal DXR 1.2 / 1.1 exit 0,
+        522 / 463 ms; 'the D3D12 queue stopped (0x887A0005).' at frames 2-3, nothing traced, one Failed line; Retry() alone
+        at frame 4 makes a new device that traces to the end). MERGED ef46ba05f (pushed) + talesofarise amd64 build exit 0
+        (61 = baseline). In-game check of a real device loss stays with ATN's next Tales run (no game test asked).
+        - [ ] Nit N2 (rvt_, diagnostic only): the status can miss the error code in two rare cases: Trace / TraceLighting
+        read the removed reason before the waits and resets (rt_shadows.hpp ~:1725, ~:2449), so re-read it at the
+        failure site; an out-of-memory Signal on a healthy device shows no code, so pass Signal's own HRESULT.
+        Owner: ta_ (next Tales branch)
         - [ ] ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales multiplies mask alpha by a
         material constant); step 5 equality harness (one Tales frame in-process vs helper) = GPU plan; 'needs box'
         lines in tales.tsv -> boxes (coord, later cleanup). Owner: coord
