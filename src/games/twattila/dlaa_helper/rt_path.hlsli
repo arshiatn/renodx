@@ -114,12 +114,35 @@ static const uint REUSE_VALIDATION_PERIOD = 3u;
 // reuse_tests (RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY / _NO_CONTACT / _SEEN_LIGHTS_FRAME, rt_d3d12.hpp; the
 // bisection of ReSTIR GI's bias rising with the rays): ReuseTexel merges no neighbours; PathTraceTexel validates no history;
 // ReuseTexel leaves Own Sky Rays' sky out; ContactShade 1 (CONTACT_RANGE 0, the raw paths' too); HitLight's
-// SeenDiffuseLight picks keyed by the frame as well.
+// SeenDiffuseLight picks keyed by the frame as well. PT DI step 2's suspects (G0, each its own switch): _SPATIAL_CLAMP the
+// receiver-unit W clamp after the spatial Finish too; _SKY_DIRECTION a neighbour's sky sample (a point at its first ray's
+// reach) moved as a direction; _NO_JACOBIAN_CUT no 0.1-10 cut; _HISTORY_PLAIN the history cap without the rays; _NEIGHBOUR_
+// VISIBILITY a neighbour's sample shadow-tested before its merge (its target 0 when blocked); _SCREEN_NORMAL a first hit the
+// screen answered keeps its normal (its Jacobian and ContactShade's re-scale as any surface's). RENODX_TW_REUSE_BIAS=1 / 2
+// (G1): the spatial merge's MIS-like normalization over the neighbours that could have made the chosen sample (Basic), they
+// also seeing it (Raytraced, a ray each), instead of 1 / M (RTXDI's GI bias correction modes).
 static const uint REUSE_TEST_NO_SPATIAL = 1u;
 static const uint REUSE_TEST_NO_VALIDATE = 2u;
 static const uint REUSE_TEST_NO_SKY = 4u;
 static const uint REUSE_TEST_NO_CONTACT = 8u;
 static const uint REUSE_TEST_SEEN_LIGHTS_FRAME = 16u;
+static const uint REUSE_TEST_SPATIAL_CLAMP = 32u;
+static const uint REUSE_TEST_SKY_DIRECTION = 64u;
+static const uint REUSE_TEST_NO_JACOBIAN_CUT = 128u;
+static const uint REUSE_TEST_HISTORY_PLAIN = 256u;
+static const uint REUSE_TEST_NEIGHBOUR_VISIBILITY = 512u;
+static const uint REUSE_BIAS_BASIC = 1024u;
+static const uint REUSE_BIAS_RAYTRACED = 2048u;
+static const uint REUSE_TEST_SCREEN_NORMAL = 4096u;  // _SCREEN_NORMAL (G0): a first hit the screen answers keeps its normal
+static const uint REUSE_TEST_BOIL = 8192u;        // RENODX_TW_REUSE_BOIL: the boiling filter's pass (BoilTexel)
+static const uint REUSE_TEST_BOIL_PLANT = 16384u; // RENODX_TW_REUSE_BOIL_PLANT: its pass plants a texel 100 x too bright first
+// The suspects' and G1's bits (32-4096) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
+// host takes them while one is set): every other build is the shipped code to the byte (0: their code compiled out).
+#if defined(REUSE_TESTS)
+#define REUSE_SUSPECTS reuse_tests
+#else
+#define REUSE_SUSPECTS 0u
+#endif
 #if defined(REUSE_NEAR)
 // Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
 // scored better, its pass about half the cost).
@@ -672,6 +695,9 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     // ray a frame, no history, no filter, showed each re-rolled hit as a warm dot jumping about a paused picture (ATN: water).
     const bool relearn = may_relearn && Random(uint4(seed, frame, DIM_PATH_RELEARN + path * 32u + vertex * 2u)) < CACHE_RELEARN;
     // No cached answer for a ray shorter than its cell (as SHaRC's): the cell may be the ray's own start's.
+    // REUSE_TEST_SCREEN_NORMAL (G0): a first surface the screen answers keeps its normal too (else none: ReSTIR GI moved its
+    // sample with a Jacobian of 1 and without ContactShade's re-scale).
+    if (vertex == 0u && (REUSE_SUSPECTS & REUSE_TEST_SCREEN_NORMAL) != 0u) first_normal = normal;
     if (PROBE_SCREEN(vertex) && HitLight(position, normal, light_there, PROBE_CACHE() && !relearn && query.CommittedRayT() >= CacheCellSize(position))) {
       radiance += throughput * light_there;
 #if defined(PATH_PROBE)
@@ -759,6 +785,13 @@ struct Reservoir {
   float count;    // M: the samples it stands for
 };
 
+// A bounce texel's first rays' reach: Path-Traced Ambient's sky blocked as Ray-Traced AO's (within its reach, grass within
+// GRASS_AMBIENT_RANGE): past it the sky (ATN 2026-10-30: the Light Bounce's 50 m made it far darker than RT AO's 6 m); the
+// light bounced within it stays.
+float FirstRange() {
+  return ((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range;
+}
+
 // What a camera ray meets right beside its start lies in that start's own shade, which the light it brings back does not
 // know: the underside of a dead body saw the ground under it as lit as the open ground, the body's lower edges glowed in
 // the shade and no contact shadow showed (ATN's debug36 list).
@@ -777,8 +810,13 @@ float ReuseTarget(float3 receiver, float3 receiver_normal, Reservoir reservoir) 
 // to this receiver's ContactShade, kept in `reservoir` so the merge and the shading use the target's integrand: its light
 // carried ContactShade at the neighbour's distance to the hit (a sample beside the neighbour's start, far from this one,
 // stayed dark here; one beside this start lit it as if far). A surface's only (the sky's carried none); not in Lean Reuse,
-// whose neighbour origin is its position, not its rays' start.
+// whose neighbour origin is its position, not its rays' start. REUSE_TEST_SKY_DIRECTION (G0): a sky sample (no surface, at
+// its first ray's reach) moves too, as the same direction from this receiver (a point seen at another angle from here).
 float ReuseTarget(float3 receiver, float3 receiver_normal, float3 sample_origin, inout Reservoir reservoir) {
+  if ((REUSE_SUSPECTS & REUSE_TEST_SKY_DIRECTION) != 0u && all(reservoir.hit_normal == 0.f)
+      && distance(reservoir.hit, sample_origin) >= 0.999f * FirstRange()) {
+    reservoir.hit = receiver + (reservoir.hit - sample_origin);
+  }
 #if !defined(REUSE_LEAN)
   const float contact_there = ContactShade(distance(reservoir.hit, sample_origin));
   if (any(reservoir.hit_normal != 0.f) && contact_there > 1e-3f) {
@@ -788,20 +826,28 @@ float ReuseTarget(float3 receiver, float3 receiver_normal, float3 sample_origin,
   return ReuseTarget(receiver, receiver_normal, reservoir);
 }
 
-// Takes `other`'s sample with probability `weight` over the sum so far; M adds up.
-void Merge(inout Reservoir reservoir, Reservoir other, float weight, float random) {
+// Takes `other`'s sample with probability `weight` over the sum so far (true: taken); M adds up.
+bool Merge(inout Reservoir reservoir, Reservoir other, float weight, float random) {
   reservoir.weight += weight;
   reservoir.count += other.count;
   if (weight > 0.f && random * reservoir.weight < weight) {
     reservoir.hit = other.hit;
     reservoir.hit_normal = other.hit_normal;
     reservoir.light = other.light;
+    return true;
   }
+  return false;
 }
 
 // W = the weights' sum over M times `target` (the sample kept's at the receiver; 0: nothing to show).
 void Finish(inout Reservoir reservoir, float target) {
   reservoir.weight = (reservoir.count > 0.f && target > 0.f) ? reservoir.weight / (reservoir.count * target) : 0.f;
+}
+
+// REUSE_W_CLAMP in this receiver's units (W x cos / pi): a cosine ray's own W is pi / cos, so W <= 10 alone cut every
+// sample past 72 degrees and darkened the shade beside boxes and walls (the reference harness: ATN's boxes -3.0 %).
+void ClampWeight(inout Reservoir reservoir, float3 origin, float3 normal) {
+  reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP * 3.14159265f / max(dot(normal, normalize(reservoir.hit - origin)), 1e-3f));
 }
 
 // The texel's own normal its reservoir was made for (0: none).
@@ -913,9 +959,7 @@ void PathTraceTexel(uint2 id) {
   const uint samples = max(path_samples, 1u);
 #endif
   const float3 sky_calibration = SkyCalibration(normal);
-  // Path-Traced Ambient's sky blocked as Ray-Traced AO's (within its reach, grass within GRASS_AMBIENT_RANGE): past it the
-  // sky (ATN 2026-10-30: the Light Bounce's 50 m made it far darker than RT AO's 6 m); the light bounced within it stays.
-  const float first_range = ((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range;
+  const float first_range = FirstRange();
   // Path-Traced Ambient: the sky's samples too (ATN's debug29-30: without them its ambient was the ground's bounce alone,
   // darker and warmer over the reservoirs' 1-2 s).
   // Own Sky Rays: a reservoir shows one sample, whatever the rays, and a neighbour sees a sky sample (a point at the AO
@@ -972,14 +1016,13 @@ void PathTraceTexel(uint2 id) {
     if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u && (reuse_tests & REUSE_TEST_NO_VALIDATE) == 0u) {
       invalidity = Validate(previous, origin, true);
     }
-    previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)) * samples);
+    // REUSE_TEST_HISTORY_PLAIN (G0): the cap without the rays.
+    previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)) * (((REUSE_SUSPECTS & REUSE_TEST_HISTORY_PLAIN) != 0u) ? 1u : samples));
     Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count,
           Random(uint4(id, frame, DIM_HISTORY_MERGE)));
   }
   Finish(reservoir, ReuseTarget(origin, normal, reservoir));
-  // REUSE_W_CLAMP in this receiver's units (W x cos / pi): a cosine ray's own W is pi / cos, so W <= 10 alone cut every
-  // sample past 72 degrees and darkened the shade beside boxes and walls (the reference harness: ATN's boxes -3.0 %).
-  reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP * 3.14159265f / max(dot(normal, normalize(reservoir.hit - origin)), 1e-3f));
+  ClampWeight(reservoir, origin, normal);
   StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, normal);
   if (sky_apart) bounce[id] = float4(sky / samples, 0.f);
 }
@@ -1041,7 +1084,7 @@ void ProbeTexel(uint2 id) {
   probe_running = true;
   const bool camera_rays = kind >= PROBE_ESTIMATOR;
   const float3 sky_calibration = SkyCalibration(normal);
-  const float first_range = ((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range;
+  const float first_range = FirstRange();
   float3 sum = 0.f;
   float valid = 0.f;
   [loop]
@@ -1075,6 +1118,43 @@ void ProbeTexel(uint2 id) {
 }
 #endif
 
+#if defined(REUSE_BOIL)
+// The boiling filter (its rt_reuse_boil build only; RENODX_TW_REUSE_BOIL, tests): NVIDIA's RTXDI-Library 3.2 boiling filter
+// (NVIDIA RTX SDKs License; build.ps1 compiles its header from the copy in build\downloads\rtxdi: not part of this file; the
+// helper's notices, credits.hpp, carry NVIDIA's sentence) on this frame's reservoirs between the paths and ReuseTexel, in
+// place: a texel whose light x W stands far above its 8 x 8 group's mean (RTXDI's GI weight) is emptied, so neither its
+// neighbours, its own bounce, next frame's history nor Reflection Reuse see it. Its groupshared sums are sized for waves of
+// 32 lanes or more (RTXDI_BOILING_FILTER_MIN_LANE_COUNT, unchecked inside): narrower waves (Intel at 8 / 16, WARP) skip
+// it, a uniform test before its barriers. REUSE_TEST_BOIL_PLANT (tests): the middle texel's W x 100 first.
+#define RTXDI_ENABLE_BOILING_FILTER
+#define RTXDI_BOILING_FILTER_GROUP_SIZE 8
+#include "Rtxdi/Utils/BoilingFilter.hlsli"
+static const float BOIL_STRENGTH = 0.2f;  // RTXDI's (0, 1]: a texel above (10 / 0.2 - 9 =) 41 x its group's mean
+
+void BoilTexel(uint2 id, uint2 local) {
+  if (WaveGetLaneCount() < RTXDI_BOILING_FILTER_MIN_LANE_COUNT) return;
+  const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
+  const bool inside = id.x < bounce_width && id.y < bounce_height;
+  Reservoir reservoir = (Reservoir)0;
+  if (inside) reservoir = LoadReservoir(reuse_samples[set], reuse_data[set], id);
+  if ((reuse_tests & REUSE_TEST_BOIL_PLANT) != 0u && all(id == uint2(bounce_width, bounce_height) / 2u)) {
+    reservoir.weight *= 100.f;
+    reuse_samples[set][id] = float4(reservoir.hit, reservoir.weight);
+  }
+  const bool drop = RTXDI_BoilingFilterInternal(local, BOIL_STRENGTH, Luminance(reservoir.light) * reservoir.weight);
+  if (!inside || !drop || (reuse_tests & REUSE_TEST_BOIL) == 0u) return;
+  reuse_samples[set][id] = float4(reservoir.hit, 0.f);
+  reuse_data[set][id] = reuse_data[set][id] & uint4(~0u, 0xFFFFu, ~0u, ~0u);  // M 0
+}
+#endif
+
+// ReuseTexel's neighbour `neighbour` of texel `id`: a texel within REUSE_RADIUS (it may fall off the texels or on `id`).
+int2 ReuseNeighbourTexel(uint2 id, uint neighbour) {
+  const float angle = 6.2831853f * Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u));
+  const float radius = REUSE_RADIUS * sqrt(Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u + 1u)));
+  return int2(id) + int2(round(float2(cos(angle), sin(angle)) * radius));
+}
+
 // ReSTIR GI's spatial reuse: a texel's reservoir merged with neighbours' on the same surface (their samples' density
 // moved to this texel: the Jacobian of their surfaces' solid angles); the chosen surface's light, if in view, is the
 // bounce.
@@ -1095,11 +1175,12 @@ void ReuseTexel(uint2 id) {
   Reservoir combined = (Reservoir)0;
   Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * own.count, Random(uint4(id, frame, DIM_REUSE_OWN)));
   const uint neighbours = ((reuse_tests & REUSE_TEST_NO_SPATIAL) != 0u) ? 0u : REUSE_NEIGHBOURS;
+  const bool jacobian_cut = (REUSE_SUSPECTS & REUSE_TEST_NO_JACOBIAN_CUT) == 0u;
+  uint merged = 0u;   // the neighbours merged (bits), for the bias correction's second walk
+  uint chosen = ~0u;  // the one whose sample was kept (~0: the texel's own)
   [loop]
   for (uint neighbour = 0u; neighbour < neighbours; ++neighbour) {
-    const float angle = 6.2831853f * Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u));
-    const float radius = REUSE_RADIUS * sqrt(Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u + 1u)));
-    const int2 texel = int2(id) + int2(round(float2(cos(angle), sin(angle)) * radius));
+    const int2 texel = ReuseNeighbourTexel(id, neighbour);
     if (any(texel < 0) || texel.x >= (int)bounce_width || texel.y >= (int)bounce_height || all(texel == int2(id))) continue;
 #if defined(REUSE_LEAN)
     // Lean Reuse (only its rt_reuse_lean build): the neighbour's surface from its position and the normal its reservoir was
@@ -1118,14 +1199,52 @@ void ReuseTexel(uint2 id) {
     Reservoir other = LoadReservoir(reuse_samples[set], reuse_data[set], uint2(texel));
     if (other.count <= 0.f) continue;
     const float jacobian = ReuseJacobian(other, other_origin, origin);
-    if (!(jacobian > 0.1f && jacobian < 10.f)) continue;
+    if (!(jacobian > 0.1f && jacobian < 10.f) && (jacobian_cut || !(jacobian > 0.f && jacobian < 1e30f))) continue;
     // The target moves `other`'s light to this receiver's ContactShade before the merge, which keeps that light (the random
     // number first: the order the merge's arguments had before, so the compiled shader stays the same).
     const float random = Random(uint4(id, frame, DIM_REUSE_MERGE + neighbour));
-    const float target = ReuseTarget(origin, normal, other_origin, other);
-    Merge(combined, other, target * other.weight * other.count * jacobian, random);
+    float target = ReuseTarget(origin, normal, other_origin, other);
+    if ((REUSE_SUSPECTS & REUSE_TEST_NEIGHBOUR_VISIBILITY) != 0u && target > 0.f) {
+      const float3 to_other = other.hit - origin;
+      if (Occluded(origin, normalize(to_other), length(to_other) * 0.99f, NO_GRASS_SMOKE)) target = 0.f;
+    }
+    merged |= 1u << neighbour;
+    if (Merge(combined, other, target * other.weight * other.count * jacobian, random)) chosen = neighbour;
   }
-  Finish(combined, ReuseTarget(origin, normal, combined));
+  const float target = ReuseTarget(origin, normal, combined);
+  if ((REUSE_SUSPECTS & (REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED)) == 0u || !(target > 0.f)) {
+    Finish(combined, target);
+  } else {
+    // G1 (RTXDI's GI bias correction, our Jacobian rule): W = the weights' sum x p_chosen / (target x the sum of M_k p_k),
+    // p_k the chosen sample's target at each merged texel (moved there as the merge moved it here), 0 where that texel
+    // could not have made it: our 0.1-10 Jacobian cut from here to there, and with Raytraced where it does not see it.
+    float chosen_target = target;
+    float targets = target * own.count;
+    [loop]
+    for (uint neighbour = 0u; neighbour < neighbours; ++neighbour) {
+      if ((merged & (1u << neighbour)) == 0u) continue;
+      const uint2 texel = uint2(ReuseNeighbourTexel(id, neighbour));
+#if defined(REUSE_LEAN)
+      const float3 other_origin = positions[min(texel * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u)].xyz;
+      const float3 other_normal = LoadReceiverNormal(reuse_data[set], texel);
+#else
+      const float3 other_origin = surface_origin[texel].xyz;
+      const float3 other_normal = surface_normal[texel].xyz;
+#endif
+      Reservoir there = combined;
+      float target_there = ReuseTarget(other_origin, other_normal, origin, there);
+      const float jacobian = ReuseJacobian(combined, origin, other_origin);
+      if (jacobian_cut && !(jacobian > 0.1f && jacobian < 10.f)) target_there = 0.f;
+      if ((REUSE_SUSPECTS & REUSE_BIAS_RAYTRACED) != 0u && target_there > 0.f) {
+        const float3 to_hit = there.hit - other_origin;
+        if (Occluded(other_origin, normalize(to_hit), length(to_hit) * 0.99f, NO_GRASS_SMOKE)) target_there = 0.f;
+      }
+      if (chosen == neighbour) chosen_target = target_there;
+      targets += target_there * LoadReservoir(reuse_samples[set], reuse_data[set], texel).count;
+    }
+    combined.weight = (targets > 0.f) ? combined.weight * chosen_target / (target * targets) : 0.f;
+  }
+  if ((REUSE_SUSPECTS & REUSE_TEST_SPATIAL_CLAMP) != 0u) ClampWeight(combined, origin, normal);
   // The chosen surface in view of this one (no light through walls); the integrand over its density.
   const float3 to_hit = combined.hit - origin;
   const float hit_distance = length(to_hit);

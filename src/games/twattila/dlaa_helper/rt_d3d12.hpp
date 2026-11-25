@@ -76,6 +76,8 @@
 #include "rt_path_omm.h"          // dxc -Fh (build.ps1)
 #include "rt_path_one.h"          // dxc -Fh (build.ps1)
 #include "rt_path_one_omm.h"      // dxc -Fh (build.ps1)
+#include "rt_path_tests.h"        // dxc -Fh (build.ps1)
+#include "rt_path_tests_omm.h"    // dxc -Fh (build.ps1)
 #include "rt_path_ser.h"          // dxc -Fh (build.ps1)
 #include "rt_path_ser_one.h"      // dxc -Fh (build.ps1)
 #include "rt_place.h"             // dxc -Fh (build.ps1)
@@ -93,6 +95,8 @@
 #include "rt_reuse_lean_omm.h"    // dxc -Fh (build.ps1)
 #include "rt_reuse_near.h"        // dxc -Fh (build.ps1)
 #include "rt_reuse_near_omm.h"    // dxc -Fh (build.ps1)
+#include "rt_reuse_tests.h"       // dxc -Fh (build.ps1)
+#include "rt_reuse_tests_omm.h"   // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir.h"      // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir_omm.h"  // dxc -Fh (build.ps1)
 #include "rt_scene_data.h"        // dxc -Fh (build.ps1)
@@ -108,6 +112,12 @@
 #include "rt_sharc_resolve.h"
 #include "rt_sharc_update.h"
 #define RENODX_SHARC 1
+#endif
+// NVIDIA's RTXDI-Library 3.2 (NVIDIA RTX SDKs License; build.ps1 compiles its headers into these when build\downloads\rtxdi
+// holds its copy): ReSTIR GI's boiling filter (RENODX_TW_REUSE_BOIL, tests).
+#if __has_include("rt_reuse_boil.h")
+#include "rt_reuse_boil.h"
+#define RENODX_RTXDI 1
 #endif
 // RENODX_TW_PATH_PROBE (tests only: build.ps1 compiles these with RENODX_TW_PATH_PROBE_BUILD set): rt_path.hlsli ProbeTexel.
 #if __has_include("rt_path_probe.h")
@@ -718,6 +728,18 @@ class RtScene12 {
                  : pipeline(RT_REUSE_NEAR, sizeof(RT_REUSE_NEAR), &reuse_near_pipeline_))) {
       reuse_near_pipeline_.Reset();
     }
+    // ReSTIR GI's test switches' builds (REUSE_TESTS: the paths', the reuse's; none: those switches do nothing).
+    if (!(dxr12_ ? pipeline(RT_PATH_TESTS_OMM, sizeof(RT_PATH_TESTS_OMM), &path_tests_pipeline_)
+                       && pipeline(RT_REUSE_TESTS_OMM, sizeof(RT_REUSE_TESTS_OMM), &reuse_tests_pipeline_)
+                 : pipeline(RT_PATH_TESTS, sizeof(RT_PATH_TESTS), &path_tests_pipeline_)
+                       && pipeline(RT_REUSE_TESTS, sizeof(RT_REUSE_TESTS), &reuse_tests_pipeline_))) {
+      path_tests_pipeline_.Reset();
+      reuse_tests_pipeline_.Reset();
+    }
+#if defined(RENODX_RTXDI)
+    // ReSTIR GI's boiling filter (REUSE_BOIL: no ray tracing, one build; none: its switch does nothing).
+    if (!pipeline(RT_REUSE_BOIL, sizeof(RT_REUSE_BOIL), &reuse_boil_pipeline_)) reuse_boil_pipeline_.Reset();
+#endif
     // The reflections' build for one sample a pixel (REFLECT_ONE_SAMPLE) and the paths' for one ray a texel
     // (PATH_ONE_SAMPLE; none: the general build).
     if (!(dxr12_ ? pipeline(RT_REFLECT_ONE_OMM, sizeof(RT_REFLECT_ONE_OMM), &reflect_one_pipeline_)
@@ -3862,12 +3884,30 @@ class RtScene12 {
           return false;
         }();
         // RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY / _NO_CONTACT / _SEEN_LIGHTS_FRAME (tests, read once): ReSTIR GI's
-        // parts left out (the last two the raw paths' too).
-        static const uint32_t reuse_tests = (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_SPATIAL", nullptr, 0) != 0 ? REUSE_TEST_NO_SPATIAL : 0u)
-                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_VALIDATE", nullptr, 0) != 0 ? REUSE_TEST_NO_VALIDATE : 0u)
-                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_SKY", nullptr, 0) != 0 ? REUSE_TEST_NO_SKY : 0u)
-                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_CONTACT", nullptr, 0) != 0 ? REUSE_TEST_NO_CONTACT : 0u)
-                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_SEEN_LIGHTS_FRAME", nullptr, 0) != 0 ? REUSE_TEST_SEEN_LIGHTS_FRAME : 0u);
+        // parts left out (the last two the raw paths' too); _SPATIAL_CLAMP / _SKY_DIRECTION / _NO_JACOBIAN_CUT / _HISTORY_PLAIN /
+        // _NEIGHBOUR_VISIBILITY / _SCREEN_NORMAL its bias suspects (PT DI step 2's G0); RENODX_TW_REUSE_BIAS=1 / 2 the spatial
+        // merge's bias correction, Basic / Raytraced (G1); _BOIL the boiling filter's pass, _BOIL_PLANT its test texel
+        // (rt_path.hlsli).
+        static const uint32_t reuse_tests = [] {
+          uint32_t tests = 0;
+          for (const auto& [name, bit] : {std::pair{L"RENODX_TW_REUSE_NO_SPATIAL", REUSE_TEST_NO_SPATIAL}, std::pair{L"RENODX_TW_REUSE_NO_VALIDATE", REUSE_TEST_NO_VALIDATE},
+                                          std::pair{L"RENODX_TW_REUSE_NO_SKY", REUSE_TEST_NO_SKY}, std::pair{L"RENODX_TW_REUSE_NO_CONTACT", REUSE_TEST_NO_CONTACT},
+                                          std::pair{L"RENODX_TW_REUSE_SEEN_LIGHTS_FRAME", REUSE_TEST_SEEN_LIGHTS_FRAME},
+                                          std::pair{L"RENODX_TW_REUSE_SPATIAL_CLAMP", REUSE_TEST_SPATIAL_CLAMP}, std::pair{L"RENODX_TW_REUSE_SKY_DIRECTION", REUSE_TEST_SKY_DIRECTION},
+                                          std::pair{L"RENODX_TW_REUSE_NO_JACOBIAN_CUT", REUSE_TEST_NO_JACOBIAN_CUT}, std::pair{L"RENODX_TW_REUSE_HISTORY_PLAIN", REUSE_TEST_HISTORY_PLAIN},
+                                          std::pair{L"RENODX_TW_REUSE_NEIGHBOUR_VISIBILITY", REUSE_TEST_NEIGHBOUR_VISIBILITY},
+                                          std::pair{L"RENODX_TW_REUSE_SCREEN_NORMAL", REUSE_TEST_SCREEN_NORMAL},
+                                          std::pair{L"RENODX_TW_REUSE_BOIL", REUSE_TEST_BOIL}, std::pair{L"RENODX_TW_REUSE_BOIL_PLANT", REUSE_TEST_BOIL_PLANT}}) {
+            if (GetEnvironmentVariableW(name, nullptr, 0) != 0) tests |= bit;
+          }
+          std::array<wchar_t, 8> bias = {};
+          if (GetEnvironmentVariableW(L"RENODX_TW_REUSE_BIAS", bias.data(), static_cast<DWORD>(bias.size())) != 0) {
+            const auto mode = std::wcstoul(bias.data(), nullptr, 10);
+            if (mode == 1) tests |= REUSE_BIAS_BASIC;
+            if (mode >= 2) tests |= REUSE_BIAS_RAYTRACED;
+          }
+          return tests;
+        }();
         PathConstants constants = {
             .bounce_width = render_pixels ? width : shared.rt_bounce_width,
             .bounce_height = render_pixels ? height : shared.rt_bounce_height,
@@ -3973,7 +4013,13 @@ class RtScene12 {
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
         } else
 #endif
-        if (path_traced && sharc) {
+        // ReSTIR GI's suspects or bias correction asked (tests): the compute paths' and the reuse's REUSE_TESTS builds (not
+        // with SHaRC; with SER the same picture).
+        const bool reuse_suspects = reuse && path_tests_pipeline_ && (reuse_tests & REUSE_SUSPECT_BITS) != 0;
+        if (path_traced && reuse_suspects && !sharc) {
+          list->SetPipelineState(path_tests_pipeline_.Get());
+          list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+        } else if (path_traced && sharc) {
           // One ray a texel: its own build, as without SHaRC.
           list->SetPipelineState((constants.samples == 1) ? sharc_path_one_pipeline_.Get() : sharc_path_pipeline_.Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
@@ -4006,6 +4052,13 @@ class RtScene12 {
         ProfileStamp(list, slot_index, 1);
         if (reuse) {
           list->ResourceBarrier(1, &uav_barrier);
+          // The boiling filter on this frame's reservoirs before their reuse (rt_path.hlsli BoilTexel; 8 x 8 groups, RTXDI's).
+          if (reuse_boil_pipeline_ && (reuse_tests & (REUSE_TEST_BOIL | REUSE_TEST_BOIL_PLANT)) != 0) {
+            Mark(list, L"boiling filter");
+            list->SetPipelineState(reuse_boil_pipeline_.Get());
+            list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
+            list->ResourceBarrier(1, &uav_barrier);
+          }
           Mark(list, L"reuse");
           // Lean ReSTIR Reuse (RT_PATH_REUSE_LEAN, or RENODX_TW_REUSE_LEAN for the harness): the neighbours with fewer
           // fetches; Near ReSTIR Reuse (RT_PATH_REUSE_NEAR, RENODX_TW_REUSE_NEAR), before it: fewer, nearer ones
@@ -4016,8 +4069,10 @@ class RtScene12 {
           const bool nearer = reuse_near_pipeline_
                               && ((version >= 31 && (requested & dlaa_bridge::RT_PATH_REUSE_NEAR) != 0)
                                   || GetEnvironmentVariableW(L"RENODX_TW_REUSE_NEAR", nullptr, 0) != 0);
-          list->SetPipelineState(
-              (lights_mode != 0 ? reuse_lights_pipeline_ : (nearer ? reuse_near_pipeline_ : (lean ? reuse_lean_pipeline_ : reuse_pipeline_))).Get());
+          list->SetPipelineState((lights_mode != 0 ? reuse_lights_pipeline_
+                                                   : (reuse_suspects ? reuse_tests_pipeline_
+                                                                     : (nearer ? reuse_near_pipeline_ : (lean ? reuse_lean_pipeline_ : reuse_pipeline_))))
+                                     .Get());
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
           reuse_frame_ = frame;
           reuse_lights_mode_ = lights_mode;
@@ -4465,6 +4520,19 @@ class RtScene12 {
   static constexpr uint32_t REUSE_TEST_NO_SKY = 4;
   static constexpr uint32_t REUSE_TEST_NO_CONTACT = 8;
   static constexpr uint32_t REUSE_TEST_SEEN_LIGHTS_FRAME = 16;
+  static constexpr uint32_t REUSE_TEST_SPATIAL_CLAMP = 32;
+  static constexpr uint32_t REUSE_TEST_SKY_DIRECTION = 64;
+  static constexpr uint32_t REUSE_TEST_NO_JACOBIAN_CUT = 128;
+  static constexpr uint32_t REUSE_TEST_HISTORY_PLAIN = 256;
+  static constexpr uint32_t REUSE_TEST_NEIGHBOUR_VISIBILITY = 512;
+  static constexpr uint32_t REUSE_BIAS_BASIC = 1024;
+  static constexpr uint32_t REUSE_BIAS_RAYTRACED = 2048;
+  static constexpr uint32_t REUSE_TEST_SCREEN_NORMAL = 4096;
+  // Read only by the REUSE_TESTS builds.
+  static constexpr uint32_t REUSE_SUSPECT_BITS = REUSE_TEST_SPATIAL_CLAMP | REUSE_TEST_SKY_DIRECTION | REUSE_TEST_NO_JACOBIAN_CUT | REUSE_TEST_HISTORY_PLAIN
+                                                 | REUSE_TEST_NEIGHBOUR_VISIBILITY | REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED | REUSE_TEST_SCREEN_NORMAL;
+  static constexpr uint32_t REUSE_TEST_BOIL = 8192;
+  static constexpr uint32_t REUSE_TEST_BOIL_PLANT = 16384;
   static constexpr uint32_t LIGHTS_IN_PATHS = 128;  // rt_camera.hlsli (PathConstants::lights_in_bounce)
   static constexpr uint32_t LIGHTS_RATIO_BITS = 256;  // rt_camera.hlsli: a trace's, the addon reads flagged bits (RT_SCENE_LIGHT_BITS)
   static constexpr UINT LIGHT_KEPT_TEXELS = 5;  // rt_path.hlsli light_kept
@@ -10284,6 +10352,9 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> reuse_pipeline_;  // ReSTIR GI's spatial reuse
   ComPtr<ID3D12PipelineState> reuse_lean_pipeline_;  // its Lean Reuse build (REUSE_LEAN)
   ComPtr<ID3D12PipelineState> reuse_near_pipeline_;  // its Near Reuse build (REUSE_NEAR)
+  ComPtr<ID3D12PipelineState> path_tests_pipeline_;   // the paths' build with ReSTIR GI's test switches (REUSE_TESTS)
+  ComPtr<ID3D12PipelineState> reuse_tests_pipeline_;  // the reuse's (REUSE_TESTS)
+  ComPtr<ID3D12PipelineState> reuse_boil_pipeline_;  // its boiling filter (REUSE_BOIL; RTXDI builds)
   std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_surface_;  // the bounce texels' rays' origins and normals (SURFACE_ORIGIN, SURFACE_NORMAL)
