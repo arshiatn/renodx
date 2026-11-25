@@ -918,8 +918,16 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
 - 4b ROW LINES (graphics_page.hpp): grey 'Torch and Fire Light from Path Tracing ( ... | ?
 - FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a v ... | ?
-- nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guid ... | ?
 - SOURCE FIDELITY AUDIT (ATN 11-26 ~00:1x: 'if we were not doing this paper's meth ... | ?
+- NV1 CONSERVATIVE VISIBILITY for DI initial + bias rays (RtxdiApplicationBridge.m ... | ?
+- NV2 OMM 2-STATE ON SECONDARY RAYS ONLY, 4-state on visible sun / torch shadows ( ... | ?
+- NV3 SHaRC UPDATE CHEAP LIGHT-SHADOW VISIBILITY (whitepaper 5090 case: 0.69 -> 0. ... | ?
+- NV4 ASYNC COMPUTE: RT + AS builds of frame N+1 beside RR of frame N (RTXPT Desig ... | ?
+- NV5 LIVE-STATE CUTS + FP16 in path / reflection kernels (Indiana Jones -15 %, it ... | ?
+- NV6 SMALL: RR packed normals + roughness (< 0.03 ms); thread-group size test + c ... | ?
+- NV7 ATN NUMBERS: RR preset D / E 1.83 vs 2.12 ms at 4K Performance on the 5090 ( ... | ?
+- NV8 UNIFIED ADDENDUM (coord -> unified_pt.md): C1-C14 choices (C2 visibility reu ... | ?
+- NV9 NVIDIA-SAYS-DON'T (section 4): TLAS fast-build (rt_d3d12.hpp:8069) = U12c; s ... | ?
 - rpgr_ PG REVIEW (Opus xHigh, read-only, STARTED 00:2x, est 30 / deadline 60): re ... | ?
 - ATN Q (rpg_ Q1): Guided Light Bounce row in today's hybrid ReSTIR GI too, or onl ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
@@ -17017,7 +17025,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         baseline expected to differ) and fused RAY_TRACED vs BASIC.
         Pitfalls (next pass): HLSL has no ?: on structs; a failing cd in a 'cd ...; grep -r' chain greps the whole
         tree. Owner: pd4r_, pdi4c_
-        - [ ] nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guides and sdks for all of
+        - [x] nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guides and sdks for all of
         our RT/PT stuffs? how do they work with our unified PT?'; Opus xHigh, read-only, STARTED 23:4x, est 45 /
         deadline 90): plan_1117\nv_speedups.md = every NVIDIA-documented speed-up for RT shadows / AO / GI / PT bounce
         / SHaRC / reflections / fog / DI / OMM / SER / AS builds / RR / NRD / D3D12: used or not (V / U), gain, look
@@ -17035,6 +17043,45 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> deviation chosen (reason / ATN's word) or BUG. Then one Opus xHigh critic (missing sources, unproven V's) ->
         every BUG = its own box + owner; chosen deviations into their design files. Skill rule added: game-port-method
         'Every cited source gets a fidelity table'. Owner: coord, fa1_..fa4_, critic
+        AUDIT STARTED 00:4x (after nvs_): common brief plan_1117\fidelity\brief_common.md; 5 agents (Opus xHigh,
+        read-only, est 50 / deadline 100): fa1_ pt_di_rtxdi.md, fa2_ restir_gi_sharc_fog.md, fa3_ rt_core.md, fa4_
+        denoisers.md, fa5_ screen_space.md (ADDED by the coord: GT-VBAO / VBGI, XeGTAO, Bend SSS, SSSR, vMF design: 'all
+        papers'). Then the critic. Owner: fa1_..fa5_, coord
+        nvs_ DONE 23:43 (19 min vs 45; plan_1117\nv_speedups.md). NEW speed-ups (all fit unified with section 3's
+        order), each its own box:
+        - [ ] NV1 CONSERVATIVE VISIBILITY for DI initial + bias rays (RtxdiApplicationBridge.md:170 'can skip
+        alpha-tested'; ours = full alpha-tested Occluded via DiVisible, rt_di_surface.hlsli:92-97); est -0.05..0.3 ms at
+        29 / 128 (U); mean same (final ray exact), more noise under leaves -> one more pdi4c_ variant (C1: initial +
+        temporal + spatial together; final + T1 exact). Owner: pdi4c_ (told with the rebase head)
+        - [ ] NV2 OMM 2-STATE ON SECONDARY RAYS ONLY, 4-state on visible sun / torch shadows (Indiana Jones split,
+        TraceMain 7.90 -> 3.58 ms); ours: 2-state only via Fast Leaf Shadows, every ray (rt_scene.hlsli:149-155); est
+        reuse -0.1..0.25, paths -0.05..0.2, day1_low grass ambient -0.3..1.0 (U); replaces X4; per STREAM never per call
+        site (C4); quality gate at floor = default on, else Experimental. Owner: next RT writer slot after steps 3 / 5 /
+        4c merge
+        - [ ] NV3 SHaRC UPDATE CHEAP LIGHT-SHADOW VISIBILITY (whitepaper 5090 case: 0.69 -> 0.31 ms with Force Opaque;
+        our update's path rays already skip alpha, its light shadow rays don't); est -0.05..0.3 (U). Owner: SHaRC writer
+        after the merges
+        - [ ] NV4 ASYNC COMPUTE: RT + AS builds of frame N+1 beside RR of frame N (RTXPT Design.md:136); every helper
+        queue DIRECT today (rt_d3d12.hpp:354, rr_d3d12.hpp:119); est -0.3..1.5 ms GPU-bound only (U); biggest effort ->
+        own Opus xHigh design after U8 (C7: request order, RR inputs double-buffered, never two RT-core passes
+        overlapping). Owner: coord (design slot after U8)
+        - [ ] NV5 LIVE-STATE CUTS + FP16 in path / reflection kernels (Indiana Jones -15 %, its SER gain 11 -> 24 %
+        after); adds to R2 / R3; est -0.15..0.45 (U); precondition for the SER re-measure. Owner: R2 / R3 owner
+        - [ ] NV6 SMALL: RR packed normals + roughness (< 0.03 ms); thread-group size test + compile-time ray flags
+        (U13); bounded VNDF (noise only; before U5a if done). Owner: U13 / U5a owners
+        - [ ] NV7 ATN NUMBERS: RR preset D / E 1.83 vs 2.12 ms at 4K Performance on the 5090 (another model = ATN's
+        call). Owner: coord -> ATN
+        - [ ] NV8 UNIFIED ADDENDUM (coord -> unified_pt.md): C1-C14 choices (C2 visibility reuse stays off or T1 reads
+        the same visibility; C3 decide split vs fused DI BEFORE G2 / G3 / G5 get a second implementation; C9 only the
+        exact far-unit update skip on by default) + the S11 correction (the screen-wide permutation XOR is RTXDI's own
+        RTXDI_ApplyPermutationSampling; the per-texel hash is OUR choice, not an RR rule). Owner: coord
+        - [ ] NV9 NVIDIA-SAYS-DON'T (section 4): TLAS fast-build (rt_d3d12.hpp:8069) = U12c; smoke particles as
+        candidates = CHOSEN (smoke shadows, capped); SCREEN-SPACE DITHER under RR (InterleavedGradientNoise
+        rt_lights.cs_6_5.hlsl:319-320, rt_trace.cs_6_5.hlsl:322 / 333-334 / 395, rt_path.hlsli:981; RR guide p21 avoid)
+        -> mode fixes it (M2), the hybrid keeps it -> fa4_ verifies -> ATN with numbers; Half / Quarter bounce into RR
+        input (p22; does the RR route force Full?) -> fa4_; over-inlined spills = R2 / R3; runtime ray flags = U13;
+        COMMON resting state (shared with D3D11?) -> fa3_. Compliant: SIGMA blocker distance, face culling off, BLAS
+        pooled, no Russian roulette, permutation like RTXDI's. Owner: fa3_ / fa4_, coord
         - [x] rpg_ ReSTIR PG DESIGN (ATN 11-25 ~23:4x 'can we design it now or wait?'; coord: design NOW, build after
         unified U3, because PG's needs must go into U3's reservoir layout before U3 is built; Opus xHigh, STARTED
         23:4x, est 60 / deadline 120): downloads zeng2025 into tools\refcode\papers\restir_pg_1125\ (untrusted, own
