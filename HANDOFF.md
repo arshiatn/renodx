@@ -15733,6 +15733,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (4th Settings Mode page 'CPU', 64-bit only; ours / PerfFix heapfix.ini / Sol settings.txt incl. interface_size;
         written only on change; code waits for ATN's semi / full answer; until then L2B / PK2P rows in a 'CPU' section
         on Graphics 2 of 2). 6 ATN questions held for the list. -> c8r_ RE-CHECK STARTED 13:1x.
+        c8r_ RE-CHECK 14:0x: FIX FIRST (Re-check 11-25 in c8_wave2_plan_review.md; hand-back c8r_recheck_handback.md):
+        M1 / S1-S16 fixed; new R-M1 T0 time-order merge of RENODX_TW_SET (+ :919 check), R-M2 / R-M3 = PK2P's own render
+        state + per-bit core_wanted in B0, R-S1 float bounds, R-S2 pending notes proven in F7 / PD, R-S3 one writer order,
+        R-S4 page-3 assignment stays in addon.cpp, R-S5 Sol's exact comparisons in start_files. -> c8f_ FIX ROUND 2
+        STARTED 14:0x.
+        - [x] BINDING WRITER ORDER 14:0x (coordinator): cpu_plan_64_map.md section 3.3 = one order for every design
+        (plugin_block.h = C8 B0 only for v2; plugin main.cpp / hooks.hpp: B0 -> L2B W2 -> PK2P P1p -> C8 W1p..W4p -> PK5-64
+        -> PK9 -> PK8; addon.cpp: C8 B0a -> L2B W3 -> C8 W1a..W4a -> PK1-64 -> PK5-64 -> PK2P P1a -> PK9 A3 -> PK8, CP
+        outside the chain; a64_ab.ps1: L2B W4 -> PK6-64 (owns ALL new kinds) -> PK9 -> C8 T0 -> PK8). c8f_ + p2d_ told.
         - [x] ucr_ UTILS CLONE FIX REVIEW 11:4x: GO, no Musts (study_1124\ucf_clone_fix_review.md, hand-back
         ucr_review_handback.md). MERGED f3dc754dd (6eacd8a84) + twattila amd64 build check. Follow-ups -> ucf_ (branch
         ucf_follow): S1 twattila OnCopyPresentPicture comment wrong now; drop the duplicate full-frame scRGB copy (~66 MB
