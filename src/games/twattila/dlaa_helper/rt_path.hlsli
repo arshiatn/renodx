@@ -850,12 +850,14 @@ Reservoir LoadReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, ui
   return reservoir;
 }
 
+// The normals packed never 0, the loads' "none": OctahedralEncode gives 0 for +z itself (ReSTIR GI took a hit facing +z
+// for a sky sample and dropped a receiver's history facing +z each frame); 1 is +z with x 1 / 32767.
 void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 texel, Reservoir reservoir, float3 receiver_normal) {
   samples[texel] = float4(reservoir.hit, reservoir.weight);
   data[texel] = uint4(f32tof16(reservoir.light.r) | (f32tof16(reservoir.light.g) << 16),
                       f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
-                      (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? OctahedralEncode(reservoir.hit_normal) : 0u,
-                      (dot(receiver_normal, receiver_normal) > 0.f) ? OctahedralEncode(receiver_normal) : 0u);
+                      (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? max(OctahedralEncode(reservoir.hit_normal), 1u) : 0u,
+                      (dot(receiver_normal, receiver_normal) > 0.f) ? max(OctahedralEncode(receiver_normal), 1u) : 0u);
 }
 
 // Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
