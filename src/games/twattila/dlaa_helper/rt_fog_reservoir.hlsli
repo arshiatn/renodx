@@ -29,6 +29,7 @@ struct FogLight {
   float reach;  // metres
   float3 colour;
   bool linear_falloff;  // 1 - distance / reach; else its square
+  bool in_last_trace;   // it had a place in the last trace's list (light_previous not 255): last frame's reservoirs can hold it
 };
 
 FogLight FogLightOf(uint light);  // the includer's
@@ -47,15 +48,25 @@ static const uint FOG_DIM_SECOND = 20u;      // the second final sample (FOG_TWO
 struct FogDomain {
   float3 origin;
   float3 direction;
-  float range;  // metres (0: none)
+  float range;      // metres (0: none)
+  bool last_trace;  // last frame's (the temporal merge's domain 1): its target 0 for a light new this trace
 };
+
+FogDomain FogDomainOf(float3 origin, float3 direction, float range) {
+  FogDomain domain;
+  domain.origin = origin;
+  domain.direction = direction;
+  domain.range = range;
+  domain.last_trace = false;
+  return domain;
+}
 
 struct FogReservoir {
   float t;           // metres along the ray
   uint light;        // NO_FOG_LIGHT: none chosen
   float weight;      // W, the chosen sample's unbiased contribution weight (its target's inverse x the weights' sum)
   float confidence;  // M (1 a frame's candidates)
-  float target;      // the chosen sample's target in its domain
+  float target;      // the chosen sample's target in its domain (not packed: every merge takes its own)
   float range;       // its domain's range when written
 };
 
@@ -70,10 +81,10 @@ FogReservoir EmptyFogReservoir(float confidence, float range) {
   return reservoir;
 }
 
-// 16 bytes (R32G32B32A32_UINT): t and W as floats, the light and M (f16), the target and the range (f16).
+// 16 bytes (R32G32B32A32_UINT): t, W and the range as floats, the light (bits 0-7; 8-15 free) and M (f16).
 uint4 PackFogReservoir(FogReservoir reservoir) {
   return uint4(asuint(reservoir.t), asuint(reservoir.weight), reservoir.light | (f32tof16(reservoir.confidence) << 16),
-               f32tof16(reservoir.target) | (f32tof16(reservoir.range) << 16));
+               asuint(reservoir.range));
 }
 
 FogReservoir UnpackFogReservoir(uint4 packed) {
@@ -82,8 +93,8 @@ FogReservoir UnpackFogReservoir(uint4 packed) {
   reservoir.weight = asfloat(packed.y);
   reservoir.light = packed.z & 0xFFu;
   reservoir.confidence = f16tof32(packed.z >> 16);
-  reservoir.target = f16tof32(packed.w);
-  reservoir.range = f16tof32(packed.w >> 16);
+  reservoir.target = 0.f;
+  reservoir.range = asfloat(packed.w);
   return reservoir;
 }
 
@@ -94,9 +105,12 @@ float FogTarget(uint light, float3 at) {
   return max(Luminance(data.colour), 0.f) * (data.linear_falloff ? falloff : (falloff * falloff));
 }
 
-// A sample's target in a domain: along its ray at the same t, 0 past its range.
+// A sample's target in a domain: along its ray at the same t, 0 past its range. Last frame's domain: 0 for a light new
+// this trace (new, moved or of another reach): its reservoirs cannot hold it, so Talbot's weights would not sum to 1
+// there and the candidates' share of it would drop to M_0 / (M_0 + M_1) (RTXDI's rule: no previous index, no previous
+// target).
 float FogDomainTarget(FogDomain domain, float t, uint light) {
-  if (light == NO_FOG_LIGHT || t > domain.range) return 0.f;
+  if (light == NO_FOG_LIGHT || t > domain.range || (domain.last_trace && !FogLightOf(light).in_last_trace)) return 0.f;
   return FogTarget(light, domain.origin + (domain.direction * t));
 }
 
@@ -210,20 +224,19 @@ FogReservoir FogCandidates(FogDomain domain, FogList list, uint count, float jit
 // [V21 Eq. 11] (the generalized balance heuristic: a partition of unity over the domains that reach y, so unbiased for any
 // targets). `own`: each input's target in domain 0.
 void ResampleFogReservoirs(FogDomain domains[4], FogReservoir inputs[4], out float4 weights, out float4 own) {
+  // The sums as a dot product of the confidences and the four domains' targets (with scalar sums and picks the cs_6_9
+  // builds kept the domain loop rolled: the domains in local memory).
+  const float4 confidences = float4(inputs[0].confidence, inputs[1].confidence, inputs[2].confidence, inputs[3].confidence);
   [unroll]
   for (uint input = 0u; input < 4u; ++input) {
-    float all = 0.f;
-    float its = 0.f;
-    float first = 0.f;
+    float4 targets;
     [unroll]
     for (uint domain = 0u; domain < 4u; ++domain) {
-      const float target = (inputs[domain].confidence > 0.f) ? FogDomainTarget(domains[domain], inputs[input].t, inputs[input].light) : 0.f;
-      all += inputs[domain].confidence * target;
-      if (domain == input) its = target;
-      if (domain == 0u) first = target;
+      targets[domain] = (confidences[domain] > 0.f) ? FogDomainTarget(domains[domain], inputs[input].t, inputs[input].light) : 0.f;
     }
-    weights[input] = (all > 0.f) ? (inputs[input].confidence * its / all) * first * inputs[input].weight : 0.f;
-    own[input] = first;
+    const float all = dot(confidences, targets);
+    weights[input] = (all > 0.f) ? (confidences[input] * targets[input] / all) * targets.x * inputs[input].weight : 0.f;
+    own[input] = targets.x;
   }
 }
 

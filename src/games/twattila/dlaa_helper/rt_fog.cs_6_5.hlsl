@@ -92,19 +92,25 @@ void FogRay(uint2 pixel, float4 position, float3 camera, out float3 direction, o
 cbuffer FogRestir : register(b2) {
   uint fog_restir_flags;
 };
-static const uint FOG_HISTORY = 1u;      // fog_reservoirs[1] holds the last trace's final reservoirs (shade ran, same size)
-static const uint FOG_TILES = 2u;        // rt_lights wrote this trace's tile lists (light_mask from light_tile_row)
+// FOG_HISTORY: fog_reservoirs[1] holds the last trace's final reservoirs (its shade ran, this fog size), and b4's
+// light_previous maps this trace's lights to that trace's list (FogLightNow, FogLightOf's in_last_trace) and b3's
+// previous_view_projection is that trace's camera (FogTexelLastFrame, CameraOf).
+static const uint FOG_HISTORY = 1u;
+// FOG_TILES: rt_lights wrote this trace's tile lists (light_mask from light_tile_row), a UAV barrier on light_mask
+// between it and main.
+static const uint FOG_TILES = 2u;
 static const uint FOG_TWO_FINAL = 4u;    // two final samples a texel, else one (S7: the 4 x 4 block-flicker metric picks)
 static const uint FOG_SUN_HISTORY = 8u;  // Steady Fog Light Shafts (RayTracedFogHistory, Q4): the sun's share kept over frames
 static const uint FOG_SUN_PARITY = 16u;  // the last trace's sun history in fog_sun_history[1] (else [0]); this one's the other
-static const uint FOG_SUN_VALID = 32u;   // that history is the last trace's (same size)
+// FOG_SUN_VALID: that history is the last trace's (this fog size) and previous_view_projection that trace's camera.
+static const uint FOG_SUN_VALID = 32u;
 
 // The reservoirs at the fog texels (R32G32B32A32_UINT, rt_fog_reservoir.hlsli PackFogReservoir): [0] this frame's
 // candidates merged with last frame's (main writes, shade reads), [1] the final ones (shade writes, the next main reads).
-RWTexture2D<uint4> fog_reservoirs[2] : register(u90);
+RWTexture2D<uint4> fog_reservoirs[2] : register(u85);
 // The sun's share kept (R32_UINT, by FOG_SUN_PARITY): unorm16, its frames (bits 16-19, 0: none), its ray's range (f16's
 // bits 4-14 at bits 20-30).
-RWTexture2D<uint> fog_sun_history[2] : register(u92);
+RWTexture2D<uint> fog_sun_history[2] : register(u87);
 RWTexture2D<uint> light_mask : register(u22);  // rt_lights' tile lists (rt_lights.cs_6_5.hlsl TileWord)
 
 static const float FOG_HISTORY_CAP = 4.f;  // Q [V21 §5.3]: last frame's confidence (and the sun's frames) at most 4 frames'
@@ -114,12 +120,20 @@ static const float FOG_HISTORY_REACH = 0.05f;
 
 #include "./rt_fog_reservoir.hlsli"
 
+// Light `light`'s place in the last trace's list (light_previous's byte, selected, not indexed; 255: new this trace).
+uint LastTracePlace(uint light) {
+  const uint4 words = light_previous[light >> 4u];
+  const uint lane = (light >> 2u) & 3u;
+  return (((lane == 0u) ? words.x : (lane == 1u) ? words.y : (lane == 2u) ? words.z : words.w) >> ((light & 3u) * 8u)) & 0xFFu;
+}
+
 FogLight FogLightOf(uint light) {
   FogLight data;
   data.position = lights[light].xyz;
   data.reach = lights[light].w;
   data.colour = light_colours[light].rgb;
   data.linear_falloff = LightLinear(light);
+  data.in_last_trace = LastTracePlace(light) != 255u;
   return data;
 }
 
@@ -151,11 +165,7 @@ bool FogTexelLastFrame(float3 world, out uint2 texel) {
 uint FogLightNow(uint previous, uint count) {
   [loop]
   for (uint light = 0u; light < count; ++light) {
-    const uint4 words = light_previous[light >> 4u];
-    const uint lane = (light >> 2u) & 3u;
-    if (((((lane == 0u) ? words.x : (lane == 1u) ? words.y : (lane == 2u) ? words.z : words.w) >> ((light & 3u) * 8u)) & 0xFFu) == previous) {
-      return light;
-    }
+    if (LastTracePlace(light) == previous) return light;
   }
   return NO_FOG_LIGHT;
 }
@@ -240,9 +250,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     }
     FogDomain domains[4];
     FogReservoir inputs[4];
-    domains[0].origin = camera;
-    domains[0].direction = direction;
-    domains[0].range = range;
+    domains[0] = FogDomainOf(camera, direction, range);
     inputs[0] = FogCandidates(domains[0], FogListOf(low, high, count), count, jitter, uint3(id.xy, frame));
     [unroll]
     for (uint unused = 1u; unused < 4u; ++unused) {
@@ -251,7 +259,9 @@ void main(uint3 id : SV_DispatchThreadID) {
     }
     // Last frame's: the texel its camera saw this frame's chosen point in (the ray's end without one) [V21 §4.4], if that
     // texel's ray reached it; its light renumbered, its confidence capped. Its domain: last frame's camera's ray through
-    // the point (its texel's, up to the texel's size), its range.
+    // the point (its texel's, up to the texel's size), its range, its target 0 for lights new this trace. Under motion
+    // the texel follows the candidates' chosen point, so which domain merges depends on that sample: a second bias beside
+    // the domain's approximation (none with a still camera; the lag metric judges both, the ray's end the fixed choice).
     const float3 chosen = camera + direction * ((inputs[0].light != NO_FOG_LIGHT) ? inputs[0].t : range);
     uint2 last;
     if ((fog_restir_flags & FOG_HISTORY) != 0u && FogTexelLastFrame(chosen, last)) {
@@ -262,9 +272,8 @@ void main(uint3 id : SV_DispatchThreadID) {
         if (history.light != NO_FOG_LIGHT) history.light = FogLightNow(history.light, count);
         history.confidence = min(history.confidence, FOG_HISTORY_CAP);
         inputs[1] = history;
-        domains[1].origin = previous_camera;
-        domains[1].direction = (previous_distance > 1e-3f) ? from_previous / previous_distance : direction;
-        domains[1].range = history.range;
+        domains[1] = FogDomainOf(previous_camera, (previous_distance > 1e-3f) ? from_previous / previous_distance : direction, history.range);
+        domains[1].last_trace = true;
       }
     }
     float4 resampling;
@@ -294,8 +303,10 @@ void shade(uint3 id : SV_DispatchThreadID) {
   for (uint input = 0u; input < 4u; ++input) {
     const uint2 texel = (input == 0u) ? id.xy : (uint2)clamp(int2(id.xy) + FOG_NEIGHBOURS[(start + (input - 1u) * 7u) % 20u], 0, int2(size) - 1);
     const uint2 pixel = min(texel * 4u + 2u, uint2(width, height) - 1u);
-    domains[input].origin = camera;
-    FogRay(pixel, positions[pixel], camera, domains[input].direction, domains[input].range);
+    float3 ray;
+    float ray_range;
+    FogRay(pixel, positions[pixel], camera, ray, ray_range);
+    domains[input] = FogDomainOf(camera, ray, ray_range);
     // A neighbour clamped onto this texel (the screen's edge) counts once.
     inputs[input] = EmptyFogReservoir(0.f, 0.f);
     if (domains[input].range > 0.f && (input == 0u || any(texel != id.xy))) inputs[input] = UnpackFogReservoir(fog_reservoirs[0][texel]);
@@ -311,8 +322,11 @@ void shade(uint3 id : SV_DispatchThreadID) {
   fog_reservoirs[1][id.xy] = PackFogReservoir(chosen);
   float3 light = (chosen.light != NO_FOG_LIGHT) ? FogLightThrough(chosen.light, camera + domains[0].direction * chosen.t) * chosen.weight : 0.f;
   if ((fog_restir_flags & FOG_TWO_FINAL) != 0u) {
+    // The same sample twice (the same t and light, so the same W): its F again, not its ray.
     const FogReservoir second = ChooseFogReservoir(inputs, resampling, own, domains[0].range, Random(uint4(id.xy, frame, DIM_FOG_LIGHT + FOG_DIM_SECOND)));
-    light = 0.5f * (light + ((second.light != NO_FOG_LIGHT) ? FogLightThrough(second.light, camera + domains[0].direction * second.t) * second.weight : 0.f));
+    if (second.light != chosen.light || second.t != chosen.t) {
+      light = 0.5f * (light + ((second.light != NO_FOG_LIGHT) ? FogLightThrough(second.light, camera + domains[0].direction * second.t) * second.weight : 0.f));
+    }
   }
   fog_lights[id.xy] = float4(light / domains[0].range, 0.f);
 }
