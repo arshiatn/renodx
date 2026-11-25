@@ -174,7 +174,7 @@ Added 11-16 from the HANDOFF audit (C = you decide, B = you check in game):
 - [x] ANSWERED 23:0x (ATN: "Torches have "lights" too which can light up surfaces. That is what path tracing should do ... let's add that as an extra row too": a row Torch Light in Path-Traced GI (torches for seen + unseen hits), checked against the reference path tracer with torches, cost measured; gpu3_. Sky calibration + fewer rays stay open, next C line) C: Attila PT GI: torches also bounce (torch light for on-screen hits too: warm bounce near fires, costs a light loop + shadow ray per hit; gpu3_ measures first)? Calibrate the unseen route's sky (-3 % left, median 0.79, a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
 - [ ] C: Divinity 2 Skip the Game's Shadow Maps: on by default under RT shadows (your 22:3x every-game rule) once the coverage run passes (962 of 3,526 city draws skipped)? Path-Traced Ambient into the RT/PT preset once a run shows it? (from: div2_ 11-16)
 - [x] C: (ANSWERED ATN 09:4x: calibrate the unseen sky, on by default (consistency bug): box UNSEEN SKY FIX; fewer rays stays a look-risk row) Attila PT GI: calibrate the unseen route's sky (off-screen hits -3 % darker, sky median 0.79: a look change)? Fewer rays for trace / lights / fog (a look risk)? (from: gpu3_ 11-16)
-- [ ] C: Ryse "Recommended (with Deeper Shadows)": after the V35 fit it changes V31 only (V35 Shadows 0.75 would sit far below the game's). Keep the button or drop it? (from: rys2_ 23:xx)
+- [x] DONE (ry_ 11-25 check: bddd4c443 dropped the button, ho_g08 merged) C: Ryse "Recommended (with Deeper Shadows)": after the V35 fit it changes V31 only (V35 Shadows 0.75 would sit far below the game's). Keep the button or drop it? (from: rys2_ 23:xx)
 - [x] ANSWERED 23:5x (ATN: "add it": Experimental row, off; shs2_) C: GT-VBAO horizon loss on flat ground at grazing pitch (0.969 at 13.6 deg): sample the depth at the exact place (a look change, an Experimental row)? (from: shs2_ A15 91267bbf9)
 - [x] ANSWERED 23:5x (ATN: "yes please": 2.2 under Gamma Correction; shs2_) C: Attila / Thrones run DLAA / SMAA / CMAA2 in a gamma 2.0 frame while Gamma Correction makes it 2.2 (exact round trip, only the AA's working curve differs): move them to 2.2? (from: shs2_ 23:xx)
 - [x] ANSWERED 00:1x (ATN: SSR "if it is more correct, add it as on default but an extra slider please": the paths' occlusion on reflections under Path-Traced Ambient, on by default + a strength slider, tw1_; x64 engine memory "in handsoff but let's do it at end of the week or next week if we still got usage left": X64 ENGINE MEMORY box) C: the SSR path-traced occlusion (L1778) and x64 engine_memory (S-list): ATN's call, details in shs2_'s report (from: shs2_ 23:xx)
@@ -447,7 +447,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Attila in-game batch (tkf_ LOST 12543): gpu_probe never ran: (c) the game side o ... | ?
 - heapfix author package (tkf_ LOST 12610 / 12626): a note of OUR patch sites so n ... | ?
 - lab / replay owner (tkf_ LOST 12585, minor): rt_scene OnAnyDraw gate not in the ... | ?
-- G08 Ryse (tkf_ LOST 12460, cosmetic): dlss_capture.hpp:28 still names "twshogun2 ... | ?
 - G03 Pharaoh (tkf_ LOST 12436, low): Dead Unit Detail 6-byte patch still written ... | ?
 - PARKED (ATN 11-24: CPU / MT work Attila only until he asks) WH3 (tkf_ LOST 12808 ... | ?
 - coord: fix the stale ticks (12566 / 12673 / 12675 -> note REVERTED bc7ba324; 125 ... | ?
@@ -836,6 +835,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
 - PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; ... | ?
 - NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\rou ... | ?
+- ry_ QUESTIONS FOR ATN (ry_'s pick first): (1) Ryse's rays are sharper than the g ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
@@ -11660,7 +11660,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] heapfix author package (tkf_ LOST 12610 / 12626): a note of OUR patch sites so nothing collides (e.g. Faster
         Render Lists +0x176CED0); no author zip has one (11-19 README: "We did not compile a complete list").
         - [ ] lab / replay owner (tkf_ LOST 12585, minor): rt_scene OnAnyDraw gate not in the replay oracle.
-        - [ ] G08 Ryse (tkf_ LOST 12460, cosmetic): dlss_capture.hpp:28 still names "twshogun2completeedition_dlss".
+        - [x] DONE (ry_ 11-25 check: f6362bf42, ho_g08 merged 99040ea86) G08 Ryse (tkf_ LOST 12460, cosmetic): dlss_capture.hpp:28 still names "twshogun2completeedition_dlss".
         - [ ] G03 Pharaoh (tkf_ LOST 12436, low): Dead Unit Detail 6-byte patch still written without stopping threads (ec99db49
         left it; window theoretical).
         - [ ] PARKED (ATN 11-24: CPU / MT work Attila only until he asks) WH3 (tkf_ LOST 12808, optional): heapfix in WH3, jungle-battle A/B (ab_run_wh3.ps1 never ran; study predicts
@@ -15957,6 +15957,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         (one writer), ryse.tsv. ta_ first: TALES scRGB COPY OUT OF BUFFER 0, tw_tales_unit link check, dead-files
         check, open T-steps from data on disk. No game runs, no shared files. STARTED ~13:2x -> Opus xHigh review ->
         merge one at a time. If ATN says 'let the subagents finish': finish the item, hand back 'part'. Owner: coord.
+        ry_ DONE 13:3x (hand-back tools\nontw\round_1125\handbacks\ry_handback.md; list scratch\ry_\list.md: OFFLINE-NOW 5,
+        DONE ALREADY 24, NEEDS A RUN 19, ATN 12, SHARED 10; plan.md 'State 2026-11-25 (ry_)'): NO Ryse C++ left offline.
+        MERGED 5b12e2c30 (nt_ry1, coord read: 3 G13 cherry-picks rve_ had reviewed + 6701d711a PLAN_LEDGERS: ry / ta / exr
+        ledgers stay beside their plans, which drops G13's move-and-stub step). Outside the repo: dump_any.py + README
+        letters d2 / ry / ta / exr merged with a64b_'s lines (backups *.bak_ry_), Ryse page dumps at HEAD (absent / present),
+        ryse.tsv refreshed: parity_check --games ry open 119 -> 0 (waiting 63, settled 280); unload harness 2 cycles PASS
+        (control FAIL 158); Ryse's rays already skip the game's reflection blur (WON'T GET for Sharp RT Reflections).
+        Ryse parts done in mixed boxes: Video AutoHDR 0.2 21c698806 (L63), CheckBound order 499ad555c (R7 / TEST BOXES),
+        parity letters (All three box). LEFT for coord: skips.tsv (G13 rest); Expeditions' g13_ ledger conversion into
+        tools\nontw\expeditions (ta_ does tales.tsv).
+        - [ ] ry_ QUESTIONS FOR ATN (ry_'s pick first): (1) Ryse's rays are sharper than the game's own blurred
+        reflections: keep unless rough surfaces look too sharp in game (keep); (2) FSR Sharpening + Directional Light
+        Bounce rows to Ryse in the next Ryse round (yes, FSR Sharpening first); (3) SSR hierarchical march / SSSR as a
+        Ryse Experimental row (later, after RT reflections are checked in game); (4) RT Reflections do nothing under tiled
+        permutation 0xCDB59F36 (game SSR off, t6 unread): trace which setting draws it, then force the SSR permutation
+        while RT Reflections is on (yes, in the RYSE RUN); (5) Hue Clip 80, Rays Replace Shadow Maps default, No RT/PT
+        button: after the RYSE RUN. Owner: ATN
         - [x] p1d_ PK1-64 UPLOADS DESIGN DONE 13:3x (designs\pk1_uploads_64.md, hand-back p1d_design_handback.md): FCU
         default On on the port only after an offline T-test (tw_injection_buffers case 8 -Hardware; bytes identical;
         E +0.35..+1 % fps; ~540 ReShade pushes / frame gone); FDW hidden + forced off on the port (Sol's device never
