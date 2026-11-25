@@ -845,6 +845,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rtp_ QUESTIONS (rtp_'s pick first): R1 census trace now (yes); helper staged in ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
+- TDD TWINS + OCEAN PORT: tddi_ (Opus High, worktree, branch tddi_twins) STARTED: ... | ?
+- TDD RUN CHECKS (needs a TDD game run, ATN's OK): create-time patcher counts in R ... | ?
+- TDD AUTHOR QUESTIONS (via ATN): (1) does anything set the new values? (2) water ... | ?
 - C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + ... | ?
 - 1212 README: 'thanks / compatible' line (no licence line: none of their files us ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
@@ -16037,6 +16040,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         1212 + PerfFix + Flag Wave -> every static prop (0x347F3DD9 / 0xD830AD9B) on Sol's unknown VS = lost to
         motion vectors / RT capture / thin sheets until C4 (corrects 'flag pack = a download'; rtpr_ told).
         Not checked: the Steam collection page (HTTP 429), Flag Wave's default tick.
+        tdd_ DONE (evening; mod_shaders\tdd_shaders.md, hand-back mod_shaders\tdd_handback.md, scratch
+        testbin\scratch\tdd_): the 37 = A 17 / B 20 / C 0, each vanilla hash -> exactly one TDD hash (no collisions).
+        A: 8 terrain VS + campaign shroud VS (same instructions, an unused height value added), 8 unit VS (bone index
+        rounded = same bone for all 256). B twin only (19): 13 grass PS (snow tint ramp, samplers renumbered; Grass
+        Height Distance site + cb8 hold), 3 far-tree billboard VS (tilt; our capture builds its own card), 2
+        capture-point flag PS, 1 shadow-analysis PS (render scale, same t0 / t1). B port (1): old ocean VS
+        0xAB20418F -> 0xF80C6EEE (no 4 m sink over land): guard 3 vanilla lines in motion_ocean / motion_draw_ocean,
+        2 wrappers + 1 MOTION_SHADERS row, no TDD code. Without twins today: terrain / soldiers / far trees out of RT,
+        soldiers + waves lose object motion, grass fade at 100 m, flags lose thin cloth, render-scale shadow analysis
+        reads the wrong region. ~850 other TDD shaders: no broken pass offline (no post / lighting / fog / sky /
+        particle / UI change; signatures + t0 / t1 + G-buffer kept).
+        - [ ] TDD TWINS + OCEAN PORT: tddi_ (Opus High, worktree, branch tddi_twins) STARTED: TDD_TWINS (36 pairs) +
+        compile-time twin rows into SCENE / MOTION / RENDER_SCALE_READS / flag lists / CAMPAIGN + grass_fade (no
+        utils alias), ocean port + WARP equivalence vs TDD's VS, README / About credit (placeholder), x86 + amd64 +
+        64-bit builds. addon.cpp reserved for Friday: push before 11-27. -> review -> merge. Owner: tddi_
+        - [ ] TDD RUN CHECKS (needs a TDD game run, ATN's OK): create-time patcher counts in ReShade.log on TDD's
+        bytes; whether TDD's new values (rain gloss, near-leaf cull, billboard cull band) are ever set (named
+        nowhere in empire.retail.dll / TDD packs); MSAA shadow-analysis PS 0x702B83B7 has no render-scale entry.
+        Owner: ATN (go) -> coord
+        - [ ] TDD AUTHOR QUESTIONS (via ATN): (1) does anything set the new values? (2) water over land meant for every
+        map? (3) shadow-analysis / billboard / snow-ramp changes intended? (4) will future versions change shader
+        bytes? (5) credit wording? Owner: ATN
         - [ ] C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + one 64-bit 1212 battle
         (after PT DI, ATN's OK). Owner: rtp_ design / C4 implementer
         - [ ] 1212 README: 'thanks / compatible' line (no licence line: none of their files used); until C4 a line
