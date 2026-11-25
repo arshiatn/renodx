@@ -779,10 +779,21 @@ class RtScene12 {
     }
 #if defined(RENODX_REUSE_COMPATIBLE)
     // Matched ReSTIR Neighbours' build and its Balanced ReSTIR Light twin, both or neither (none: the switch does nothing).
-    if (!(dxr12_ ? pipeline(RT_REUSE_COMPATIBLE_OMM, sizeof(RT_REUSE_COMPATIBLE_OMM), &reuse_compatible_pipeline_)
-                       && pipeline(RT_REUSE_COMPATIBLE_BALANCED_OMM, sizeof(RT_REUSE_COMPATIBLE_BALANCED_OMM), &reuse_compatible_balanced_pipeline_)
-                 : pipeline(RT_REUSE_COMPATIBLE, sizeof(RT_REUSE_COMPATIBLE), &reuse_compatible_pipeline_)
-                       && pipeline(RT_REUSE_COMPATIBLE_BALANCED, sizeof(RT_REUSE_COMPATIBLE_BALANCED), &reuse_compatible_balanced_pipeline_))) {
+    bool compatible_made = false;
+    if (dxr12_) {
+      compatible_made = pipeline(RT_REUSE_COMPATIBLE_OMM, sizeof(RT_REUSE_COMPATIBLE_OMM), &reuse_compatible_pipeline_);
+      if (compatible_made) {
+        compatible_made = pipeline(RT_REUSE_COMPATIBLE_BALANCED_OMM, sizeof(RT_REUSE_COMPATIBLE_BALANCED_OMM),
+                                   &reuse_compatible_balanced_pipeline_);
+      }
+    } else {
+      compatible_made = pipeline(RT_REUSE_COMPATIBLE, sizeof(RT_REUSE_COMPATIBLE), &reuse_compatible_pipeline_);
+      if (compatible_made) {
+        compatible_made = pipeline(RT_REUSE_COMPATIBLE_BALANCED, sizeof(RT_REUSE_COMPATIBLE_BALANCED),
+                                   &reuse_compatible_balanced_pipeline_);
+      }
+    }
+    if (!compatible_made) {
       reuse_compatible_pipeline_.Reset();
       reuse_compatible_balanced_pipeline_.Reset();
     }
@@ -1969,9 +1980,10 @@ class RtScene12 {
       const auto found = resources.find(resource.name);
       if (found == resources.end() || !*resource.member || list == nullptr) continue;
       // A ReSTIR history recorded in the other reservoir layout (RT_RESERVOIR_COMPACT): left out, its sets empty (M 0).
-      if ((resource.history == HISTORY_REUSE || resource.history == HISTORY_REFLECT) && found->second.size() >= sizeof(recording::TextureHeader)
-          && reinterpret_cast<const recording::TextureHeader*>(found->second.data())->format != static_cast<uint32_t>((*resource.member)->GetDesc().Format)) {
-        continue;
+      if ((resource.history == HISTORY_REUSE || resource.history == HISTORY_REFLECT) && found->second.size() >= sizeof(recording::TextureHeader)) {
+        recording::TextureHeader recorded = {};
+        std::memcpy(&recorded, found->second.data(), sizeof(recorded));
+        if (recorded.format != static_cast<uint32_t>((*resource.member)->GetDesc().Format)) continue;
       }
       if (!UploadRecorded(list, resource.name, resource.member->Get(), resource.state, found->second, &uploads, why)) break;
       batch_bytes += found->second.size();
@@ -4043,15 +4055,18 @@ class RtScene12 {
           }
           std::array<wchar_t, 8> bias = {};
           if (GetEnvironmentVariableW(L"RENODX_TW_REUSE_BIAS", bias.data(), static_cast<DWORD>(bias.size())) != 0) {
-            const auto mode = std::wcstoul(bias.data(), nullptr, 10);
-            if (mode == 1) {
-              tests |= REUSE_BIAS_BASIC;
-            }
-            if (mode == 2) {
-              tests |= REUSE_BIAS_RAYTRACED;
-            }
-            if (mode == 3) {
-              tests |= REUSE_BIAS_PAIRWISE;
+            switch (std::wcstoul(bias.data(), nullptr, 10)) {
+              case 1:
+                tests |= REUSE_BIAS_BASIC;
+                break;
+              case 2:
+                tests |= REUSE_BIAS_RAYTRACED;
+                break;
+              case 3:
+                tests |= REUSE_BIAS_PAIRWISE;
+                break;
+              default:
+                break;
             }
           }
           return tests;
@@ -10733,8 +10748,8 @@ class RtScene12 {
   ComPtr<ID3D12Resource> rtxdi_reservoirs_;  // its reservoirs (RTXDI_GI_RESERVOIRS)
   ComPtr<ID3D12Resource> rtxdi_offsets_;     // its neighbour offsets (RTXDI_OFFSETS)
   // ReSTIR GI's and Own ReSTIR's reservoir formats (rt_path.hlsli ReservoirPoint / ReservoirData; G4: RT_RESERVOIR_COMPACT).
-  static constexpr DXGI_FORMAT RESERVOIR_POINTS = RT_RESERVOIR_COMPACT ? DXGI_FORMAT_R32G32B32A32_UINT : DXGI_FORMAT_R32G32B32A32_FLOAT;
-  static constexpr DXGI_FORMAT RESERVOIR_DATA = RT_RESERVOIR_COMPACT ? DXGI_FORMAT_R32G32_UINT : DXGI_FORMAT_R32G32B32A32_UINT;
+  static constexpr DXGI_FORMAT RESERVOIR_POINTS = (RT_RESERVOIR_COMPACT ? DXGI_FORMAT_R32G32B32A32_UINT : DXGI_FORMAT_R32G32B32A32_FLOAT);
+  static constexpr DXGI_FORMAT RESERVOIR_DATA = (RT_RESERVOIR_COMPACT ? DXGI_FORMAT_R32G32_UINT : DXGI_FORMAT_R32G32B32A32_UINT);
   std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_surface_;  // the bounce texels' rays' origins and normals (SURFACE_ORIGIN, SURFACE_NORMAL)
