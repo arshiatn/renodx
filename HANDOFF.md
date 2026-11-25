@@ -824,7 +824,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
-- a64p1_ (Opus High, worktree, reset onto atn-mods) G1 + P1 STARTED 00:3x -> R1 re ... | ?
+- a64p1r_ (Opus xHigh) R1 + a64p1s_ (Sonnet High) FINAL reviews STARTED 01:1x -> d ... | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
 - AFTER WINDOW 1 (started 23:5x): gbf gates (gbf_gpu_gates.ps1, coord, quiet GPU w ... | ?
@@ -15352,7 +15352,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         shipped; block v1: PassMeasure 16 B, hooks_wanted, rows_changed; kernel32 only. Wave 1: G1 generator -> P1
         plugin folder -> A1 add-on (after P1 freezes plugin_block.h AND a64b_ lands addon.cpp) -> R1 xHigh (+ Sonnet High
         FINAL) -> T1 coord smoke + C2 trace (shadow_refresh=2) -> R2 release lane.
-        - [ ] a64p1_ (Opus High, worktree, reset onto atn-mods) G1 + P1 STARTED 00:3x -> R1 review.
+        - [x] a64p1_ WAVE 1 G1 + P1 DONE (hand-back attila64/a64p1_wave1_handback.md): origin/a64p1_wave1 = de6be1a4f
+        (sites.h from the generator) + 2c10fa672 (renodx_attila64.dll: loader plugin, two hooks, block v1) on b1730d355.
+        Both sites ACCEPTED (0x3416d50 5 B, 0x33f6120 6 B; no foreign row within 64 B); catch gate on 0x33f6120 PASS
+        (libstdc++ / libgcc_s frames not checked); DLL kernel32-only, 3 exports, musttail on every non-measured path;
+        patcher_test + elf_sites_test PASS. plugin_block.h v1 FROZEN (Block 40 B; calls_in_flight moved before
+        callbacks; Callbacks 32 B; PassMeasure 16 B). Deviation: hook bodies not noexcept (clang refuses musttail out
+        of noexcept; they call only noexcept code). A1 note: the drain's first calls_in_flight == 0 ends the wait.
+        Open: PerfFix x87 blocks are only a range note (no source read; T1's perffix64: log comparison covers it),
+        game_hi (E) needs the T1 log. New run lines (generator / build.ps1 / test exes) listed in the hand-back.
+        - [ ] a64p1r_ (Opus xHigh) R1 + a64p1s_ (Sonnet High) FINAL reviews STARTED 01:1x -> designs/
+        plugin_wave1_review.md + plugin_wave1_review_sonnet.md -> fixes -> merge -> A1 add-on lane (after a64b_'s
+        merge) -> T1 smoke.
         - [ ] AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> designs/plugin_design_review.md)
         + C8 census agent (read-only Opus xHigh, brief section 15 -> census/c8_rows.tsv + c8_notes.md).
         - [x] gated_build.ps1 UNIFIED 00:3x (coord): takes testbin\scratch\build_slots\slot1-4.lock as gpu_lock v1
