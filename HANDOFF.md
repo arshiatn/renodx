@@ -363,6 +363,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT / PT SETTINGS SWEEP (ATN 20:0x: "we are testing every RT and PT setting ... o ... | gpr_, coordinator ADDENDUM 11-25 night (ATN: 'for nsight rou
 - NSR1 sweep_coverage.py (offline, python -I): every rt_flags / rt_path_flags / rt ... | ?
 - NSR2 Nsight MCP readiness. Coord smoke 11-25 19:4x: list families OK (capture, r ... | ?
+- ATN: rule lines R1-R4 (exact text in nsr_handback.md '## Rule lines ATN must add ... | ?
+- Start nv-aftermath-monitor.exe before the sweep + its dump folder in the crash t ... | coord
+- P1: rt_di_flags + rt_diffuse_roughness as lab fields. Owner: gpr_ (NSR3) | gpr_ (NSR3)
+- ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); k ... | ?
+- lab.py trace_plan closes an idle session of ANY owner (same trap as -Stop): fix ... | ?
+- gto_ S4 re-scope: injection + ns_mcp attach_session / collect_trace; re-test the ... | ?
+- Cleanup on ATN's yes: testbin\scratch\nsr_\ident_a + prof_a (~520 MB, proof fold ... | ATN
 - NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, lin ... | ?
 - NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
 - gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
@@ -3438,6 +3445,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         Graphics Debugger capture + replay of a helper play (one event's CBs) and Aftermath status (monitor on for
         the whole sweep); (e) is gto_ S4 (in-process Nsight) moot now that gpu_trace can attach? New switches /
         scripts -> exact rule lines for ATN; nothing runs without them. Owner: nsr_
+        nsr_ DONE 20:4x (plan_1117\nsr_handback.md; 21 min; offline only, no repo edit): (c) subagents CAN use
+        ngfx-native (offline queries OK; launches stay on ns_mcp.py / ns_locked.sh: the MCP server is not on the hidden
+        desktop and takes no lock). NSR1 DONE: tools\tw\nsight\sweep_coverage.py, atn-mods c583cbcfe 344 items = 190
+        mapped / 154 not offline / 0 unmapped; 5 open branches read via git show, 0 unmapped (new: bal3_
+        RT_PATH_REUSE_BALANCED_RAYTRACED, pdi5_ RENODX_TW_REUSE_COMPATIBLE + 2 ReSTIR bits settable in plays, pdi4c_
+        RENODX_TW_DI_TEST) -> plan_1117\settings_sweep_rows.md. (a) helper = its own build.ps1 (not CMake / gated_build):
+        ns_profile_build.py builds a PROFILE copy from a git export (identity mode 13 / 13 stems byte-equal to shipping;
+        profile DXIL code parts 61 / 61 equal); exe not built. (b) no metric set fills sass_counters on GB20x: they come
+        from --per-line-active-threads-per-warp, which works only for GPU Trace ON A GRAPHICS CAPTURE -> ns_trace_run.py
+        opt-in --sass-counters + --replay (backup .before_nsr; default line unchanged; --replay never run). (d) Aftermath
+        reader OK, nv-aftermath-monitor.exe present but not running; capture -> replay -> CB steps written; player
+        captures need ns_capture_probe.py support. (e) S4 NOT moot (attach needs an injected process); attach replaces
+        only S4's --attach-pid collector.
+        - [ ] ATN: rule lines R1-R4 (exact text in nsr_handback.md '## Rule lines ATN must add'): R1 profile build,
+        R2 harness trace of it, R3 one capture, R4 GPU Trace on the capture with SASS counters. Then coord runs R1 -> R4
+        in one GPU window (tool smoke, no gate id). No rush: before the sweep. Owner: ATN, coord
+        - [ ] Start nv-aftermath-monitor.exe before the sweep + its dump folder in the crash tools' search paths. Owner: coord
+        - [ ] P1: rt_di_flags + rt_diffuse_roughness as lab fields. Owner: gpr_ (NSR3)
+        - [ ] ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); keep stdin open (F1 EOF
+        trap); then the capture -> CB values driver script. Owner: next tooling slot (gti_ / gtl_)
+        - [ ] lab.py trace_plan closes an idle session of ANY owner (same trap as -Stop): fix with the -Stop owner fix.
+        Owner: gtl_
+        - [ ] gto_ S4 re-scope: injection + ns_mcp attach_session / collect_trace; re-test the 11-14 one-frame timeout with
+        limit_submits. Owner: gto_ follow-up
+        - [ ] Cleanup on ATN's yes: testbin\scratch\nsr_\ident_a + prof_a (~520 MB, proof folders). Owner: ATN
         - [ ] NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, linear lights and P2
         (upscaler / RR / FG request) need NEW recordings from the 64-bit game -> the run window after PT DI (ATN's
         rule lines). P1: add the new Shared fields (PT DI, fog ReSTIR, vMF) to the resident's 15. Owner: coord (run
