@@ -16214,6 +16214,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         .first / .second, stale comment, unused bit, torch_traced vs regir, null view type, bit placement).
         -> pdi3_ told 21:5x: S1 runs + S2 registers (+ S3 if cheap) INTO its current GPU turn; fix round after (S1 fix if
         confirmed, S4, NITs) -> E4 night128 rerun in a later GPU turn -> merge. Owner: pdi3_, coord
+        pdi3_ 22:0x: GPU turn = final2 (now all_modes e52ec9e28, ETA ~23:50) then pdi3_chain_final3.ps1 (+~30 min): S1 = 28
+        E4 runs (night128 KEEP_LIGHT / NO_VALIDATE, SHaRC off + on, NO_CUTS SHaRC off, 29-light controls; its E4 flags
+        134254641 / 134254897 had NO Balanced bit -> KEEP_LIGHT was not set); S2 = 9 Nsight traces rows off, base vs
+        ceecd4b84. rt_sharc_update local memory 42.5 / 42.4 MB on 2 / 2 branch traces vs 20.7 on 3 / 3 base = REAL (not
+        noise), registers equal 68-69 vs 68 -> find the cause in the fix round (dynamic array indexing?) + its cost. S3
+        done offline: 128-light reference moves +-0.5 / 0.8 % per frozen frame (3 / 29 lights <= 0.06 %); E4's +-0.0067 CI
+        already includes it. f128a1cc1^ control fails as required (0.986 BIAS). new2 plays 17 / 17, rec_scan 0.
+        GPU order items 2+ start after 'pdi3_ GPU done' (~00:20).
         ATN 11-25 evening ('maybe they don't change the same lines / functions ... so we could speed up'): same file
         allowed when the FUNCTIONS don't overlap (owner map in both briefs; the second to merge rebases + reruns gates).
         - [ ] PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbours, G7 report): pdi5_ (Opus
