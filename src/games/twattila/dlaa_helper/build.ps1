@@ -145,6 +145,17 @@ if ($rtxdi_found) {
     Dxc @sharc_flags -D SHARC_UPDATE=1 -D SHARC_PROPAGATION_DEPTH=2 @regir -Fh "$out\rt_sharc_update_regir.h" -Vn RT_SHARC_UPDATE_REGIR "$PSScriptRoot\rt_sharc_update.hlsl"
   }
 }
+# Matched ReSTIR Neighbours' reuse (REUSE_COMPATIBLE, PT DI step 5's G5: RTXDI's compatibility score; its PT header's
+# uncalled selection pass gets its surface read and buffer name from rt_path.hlsli) and its Balanced ReSTIR Light twin.
+$compatible = @(@('REUSE_COMPATIBLE REUSE', 'rt_reuse_compatible', 'RT_REUSE_COMPATIBLE'),
+                @('REUSE_BALANCED REUSE_COMPATIBLE REUSE', 'rt_reuse_compatible_balanced', 'RT_REUSE_COMPATIBLE_BALANCED'))
+foreach ($variant in $compatible) {
+  Remove-Item "$out\$($variant[1]).h", "$out\$($variant[1])_omm.h" -ErrorAction SilentlyContinue
+  if (-not $rtxdi_found) { continue }
+  $defines = $variant[0].Split(' ') | ForEach-Object { '-D', $_ }
+  Dxc -nologo -T cs_6_5 -E main -O3 @defines -I "$rtxdi\Include" -Fh "$out\$($variant[1]).h" -Vn $variant[2] "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -I "$rtxdi\Include" -Fh "$out\$($variant[1])_omm.h" -Vn "$($variant[2])_OMM" "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+}
 # The reference build's RTXDI GI contest (RENODX_TW_REUSE_RTXDI; rt_path.hlsli RtxdiPackTexel, ReuseTexel with REUSE_RTXDI).
 Remove-Item "$out\rt_reuse_rtxdi_pack.h", "$out\rt_reuse_rtxdi.h", "$out\rt_reuse_rtxdi_omm.h" -ErrorAction SilentlyContinue
 if ($rtxdi_found -and $env:RENODX_TW_REFERENCE_BUILD) {

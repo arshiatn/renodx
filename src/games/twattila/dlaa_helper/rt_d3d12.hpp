@@ -140,6 +140,15 @@
 #endif
 #define RENODX_REGIR 1
 #endif
+// Matched ReSTIR Neighbours (RT_RESTIR_COMPATIBLE, RENODX_TW_REUSE_COMPATIBLE): the reuse's REUSE_COMPATIBLE builds (RTXDI's
+// neighbour compatibility score) and their Balanced ReSTIR Light twin.
+#if __has_include("rt_reuse_compatible.h")
+#include "rt_reuse_compatible.h"
+#include "rt_reuse_compatible_balanced.h"
+#include "rt_reuse_compatible_balanced_omm.h"
+#include "rt_reuse_compatible_omm.h"
+#define RENODX_REUSE_COMPATIBLE 1
+#endif
 // RENODX_TW_PATH_PROBE (tests only: build.ps1 compiles these with RENODX_TW_PATH_PROBE_BUILD set): rt_path.hlsli ProbeTexel.
 #if __has_include("rt_path_probe.h")
 #include "rt_path_probe.h"
@@ -766,6 +775,16 @@ class RtScene12 {
                  : pipeline(RT_REUSE_NEAR, sizeof(RT_REUSE_NEAR), &reuse_near_pipeline_))) {
       reuse_near_pipeline_.Reset();
     }
+#if defined(RENODX_REUSE_COMPATIBLE)
+    // Matched ReSTIR Neighbours' build and its Balanced ReSTIR Light twin, both or neither (none: the switch does nothing).
+    if (!(dxr12_ ? pipeline(RT_REUSE_COMPATIBLE_OMM, sizeof(RT_REUSE_COMPATIBLE_OMM), &reuse_compatible_pipeline_)
+                       && pipeline(RT_REUSE_COMPATIBLE_BALANCED_OMM, sizeof(RT_REUSE_COMPATIBLE_BALANCED_OMM), &reuse_compatible_balanced_pipeline_)
+                 : pipeline(RT_REUSE_COMPATIBLE, sizeof(RT_REUSE_COMPATIBLE), &reuse_compatible_pipeline_)
+                       && pipeline(RT_REUSE_COMPATIBLE_BALANCED, sizeof(RT_REUSE_COMPATIBLE_BALANCED), &reuse_compatible_balanced_pipeline_))) {
+      reuse_compatible_pipeline_.Reset();
+      reuse_compatible_balanced_pipeline_.Reset();
+    }
+#endif
     // Balanced ReSTIR Light's twins, all or none (none: the row does nothing, the ready line says so).
     const std::array<BalancedTwin, 4> twins = BalancedTwins();
     bool balanced_made = true;
@@ -4295,7 +4314,11 @@ class RtScene12 {
           Mark(list, L"reuse");
           // Lean ReSTIR Reuse (RT_PATH_REUSE_LEAN, or RENODX_TW_REUSE_LEAN for the harness): the neighbours with fewer
           // fetches; Near ReSTIR Reuse (RT_PATH_REUSE_NEAR, RENODX_TW_REUSE_NEAR), before it: fewer, nearer ones
-          // (rt_path.hlsli ReuseTexel).
+          // (rt_path.hlsli ReuseTexel); Matched ReSTIR Neighbours (RT_RESTIR_COMPATIBLE, RENODX_TW_REUSE_COMPATIBLE), before
+          // both: three of eight near neighbours picked by how well their surfaces match.
+          const bool compatible = reuse_compatible_pipeline_
+                                  && ((version >= 32 && (shared.rt_restir_flags & dlaa_bridge::RT_RESTIR_COMPATIBLE) != 0)
+                                      || GetEnvironmentVariableW(L"RENODX_TW_REUSE_COMPATIBLE", nullptr, 0) != 0);
           const bool lean = reuse_lean_pipeline_
                             && ((version >= 31 && (requested & dlaa_bridge::RT_PATH_REUSE_LEAN) != 0)
                                 || GetEnvironmentVariableW(L"RENODX_TW_REUSE_LEAN", nullptr, 0) != 0);
@@ -4309,6 +4332,8 @@ class RtScene12 {
             reuse_state = reuse_rtxdi_pipeline_.Get();
           } else if (reuse_suspects) {
             reuse_state = reuse_tests_pipeline_.Get();
+          } else if (compatible) {
+            reuse_state = reuse_compatible_pipeline_.Get();
           } else if (nearer) {
             reuse_state = reuse_near_pipeline_.Get();
           } else if (lean) {
@@ -4321,6 +4346,9 @@ class RtScene12 {
             const auto twin = std::ranges::find_if(twins, [&](const BalancedTwin& each) { return (this->*each.plain).Get() == reuse_state; });
             if (twin != twins.end()) {
               reuse_state = reuse_balanced_pipelines_[twin - twins.begin()].Get();
+            }
+            if (compatible && reuse_state == reuse_compatible_pipeline_.Get()) {
+              reuse_state = reuse_compatible_balanced_pipeline_.Get();
             }
           }
           list->SetPipelineState(reuse_state);
@@ -10662,6 +10690,8 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> reuse_pipeline_;  // ReSTIR GI's spatial reuse
   ComPtr<ID3D12PipelineState> reuse_lean_pipeline_;  // its Lean Reuse build (REUSE_LEAN)
   ComPtr<ID3D12PipelineState> reuse_near_pipeline_;  // its Near Reuse build (REUSE_NEAR)
+  ComPtr<ID3D12PipelineState> reuse_compatible_pipeline_;           // its Matched ReSTIR Neighbours build (REUSE_COMPATIBLE; RTXDI builds)
+  ComPtr<ID3D12PipelineState> reuse_compatible_balanced_pipeline_;  // that build's Balanced ReSTIR Light twin
   // Balanced ReSTIR Light's twins (REUSE_BALANCED: G1 Basic) of the usual reuse builds: each plain build and its twin's
   // code (DXR 1.1, DXR 1.2), in reuse_balanced_pipelines_'s order.
   struct BalancedTwin {
