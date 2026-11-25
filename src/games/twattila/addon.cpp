@@ -1781,19 +1781,27 @@ inline bool OnCopyPresentPicture(reshade::api::command_list* cmd_list, reshade::
                             desc.texture.width, "x", desc.texture.height, ") has no upgrade: the HDR output stays black");
     }
   }
-  // HDR10 / SDR: buffer 0's clone is on, utils copies clone to clone next. scRGB: buffer 0 is the real RGBA16F, and the swap
-  // chain pass keeps its copy of it as the buffer's clone (off); utils would copy the picture there, which that pass then
-  // overwrites with the real buffer (black). So the picture's clone goes into the real buffer here (utils' copy into the
-  // pass's copy still runs: one copy too many, overwritten). Only into a buffer the copy is valid for (RGBA16F, the
-  // clone's size); any other is left to utils.
+  // utils copies next: HDR10 / SDR clone to clone; scRGB the picture's clone into the real RGBA16F buffer 0 (its clone,
+  // the swap chain pass's copy, is off and left alone). Only when another add-on's utils copies (the first RenoDX add-on
+  // loaded handles the events, for example a DevKit built before f3dc754dd) does the copy also happen here: that one may
+  // copy into the pass's copy, which the pass then overwrites with the real buffer (black). Only into a buffer the copy is
+  // valid for (RGBA16F, the clone's size); any other is left to utils.
   const bool same_layout = dest_desc.texture.format == reshade::api::format::r16g16b16a16_float
                            && dest_desc.texture.width == clone_desc.texture.width
                            && dest_desc.texture.height == clone_desc.texture.height;
-  if (!dest_clone_on && source_clone.handle != 0u && same_layout) {
+  if (!dest_clone_on && source_clone.handle != 0u && same_layout
+      && !renodx::utils::resource::upgrade::shared.IsEventHandler()) {
     cmd_list->copy_resource(source_clone, dest);
     return true;
   }
   return false;
+}
+
+// The loader frees its picture right before it makes the next (mode change, new window), which can get the same handle:
+// forgotten here, the next picture is logged and its overlay found.
+inline void OnDestroyPresentPicture(reshade::api::device* /*device*/, reshade::api::resource resource) {
+  uint64_t picture = resource.handle;
+  present_picture.compare_exchange_strong(picture, 0u);
 }
 
 // The loader's 8-bit overlay (the frame-rate number, the Discord button) comes as 4-byte rows: into buffer 0 after the
@@ -3055,6 +3063,7 @@ bool AttachAddon() {
   if constexpr (ATTILA64) {
     // Before swapchain::Use's resource upgrade registers its copy_resource: the clone is on when it copies.
     reshade::register_event<reshade::addon_event::copy_resource>(OnCopyPresentPicture);
+    reshade::register_event<reshade::addon_event::destroy_resource>(OnDestroyPresentPicture);
     reshade::register_event<reshade::addon_event::update_texture_region>(OnUpdateOverlay);
   }
   // A bench's live env keys bump the pool's env generation; its mt_trace key opens one pool trace window.
@@ -3193,6 +3202,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   if constexpr (ATTILA64) {
     reshade::unregister_event<reshade::addon_event::copy_resource>(OnCopyPresentPicture);
+    reshade::unregister_event<reshade::addon_event::destroy_resource>(OnDestroyPresentPicture);
     reshade::unregister_event<reshade::addon_event::update_texture_region>(OnUpdateOverlay);
     // Before the modules its callbacks call are uninstalled (a present still in flight looks up and registers nothing
     // after it).

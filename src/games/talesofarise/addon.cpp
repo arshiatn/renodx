@@ -935,8 +935,9 @@ bool OnCopyResource(reshade::api::command_list*, reshade::api::resource source, 
     source_cloned = info.clone_enabled;
   });
   if (!source_cloned) return false;
+  // Not a swap chain buffer: in scRGB its clone is the swap chain pass's copy (off), which that pass overwrites (black).
   renodx::utils::resource::UpdateResourceInfo(dest, [](renodx::utils::resource::ResourceInfo* info) {
-    if (info->clone_target != nullptr) {
+    if (info->clone_target != nullptr && !info->is_swap_chain) {
       info->clone_enabled = true;
     }
   });
