@@ -373,6 +373,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, lin ... | ?
 - NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
 - gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
+- (2) DEFAULT CAP: a command without a price history runs under budget.py watch's ... | gtb_
+- pfx_ hand-back -> HANDOFF; its proposed block rows -> ATN. Owner: pfx_, coord | pfx_, coord
 - F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ c ... | coord (audit), each file's owner
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
@@ -3461,6 +3463,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN: rule lines R1-R4 (exact text in nsr_handback.md '## Rule lines ATN must add'): R1 profile build,
         R2 harness trace of it, R3 one capture, R4 GPU Trace on the capture with SASS counters. Then coord runs R1 -> R4
         in one GPU window (tool smoke, no gate id). No rush: before the sweep. Owner: ATN, coord
+        R1 / R4 CORRECTED by coord 21:0x before ATN added them (R1 --out with forward slashes: bash eats unquoted
+        backslashes; R4 --ngfx-args value quoted: argparse got '1' as an extra argument) -> nsr_handback.md + pasted
+        to ATN in chat.
         - [ ] Start nv-aftermath-monitor.exe before the sweep + its dump folder in the crash tools' search paths. Owner: coord
         - [ ] P1: rt_di_flags + rt_diffuse_roughness as lab fields. Owner: gpr_ (NSR3)
         - [ ] ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); keep stdin open (F1 EOF
@@ -3495,6 +3500,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         gate, agent, reason) + tool_times rows, so a slow agent can be traced to its blocks.
         - [ ] gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) at a wave boundary.
         Owner: gte_, coord, ATN
+      - [x] FORGE'S 5 (ATN 11-25 21:xx 'Yes, all 5'): (1) briefs cite tools\tw\round_notes\agent_times.tsv (seeded:
+        nsr_, cdr_, pdi3_, pdi5_, pdi4c_, bal3_) + a 2x deadline; past it the agent stops and reports; (2) no untimed
+        commands; (3) a time per step in every hand-back; (4) a crash closes only with producer -> consumer chain +
+        exact mistake + pitfall row + a check that stops it coming back; (5) the coord's private crash lessons ->
+        tools\tw\pitfalls rows (about 25 already there; pfx_ STARTED 21:1x, Opus High, ~40 min, deadline 80, prose in
+        pitfalls\lessons.md). Skill game-port-method 'Time budgets' + the crash rule in 'Gates and pitfalls'; memory.
+        Also: 'shadow mode' = the gate hook, not Nsight (ATN asked); its enforce switch = gte_ above.
+      - [ ] (2) DEFAULT CAP: a command without a price history runs under budget.py watch's default deadline
+        (searches / reads short, builds longer); gate_hook price rows + budget.py. After gte_'s stage26 (same files).
+        Owner: gtb_
+      - [ ] pfx_ hand-back -> HANDOFF; its proposed block rows -> ATN. Owner: pfx_, coord
       - [ ] F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ cites D3D11.3 spec 3.2.2;
         the reviewer checks the cite), so a value stored again every frame drifts down = G4's darkening; round to
         nearest fixes it (E4 lum cand / ref, R = 4: day 49 0.98417 -> 0.98450, day 36913 0.99671 -> 0.99675, night40
