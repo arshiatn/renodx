@@ -24,6 +24,7 @@ cbuffer Paths : register(b3) {
   uint previous_square_root;  // 1: last frame's colour holds the light's square root (rt_path.hlsli PreviousLight)
   uint previous_positions_slice;  // last frame's positions' slice of previous_positions (rt_path.hlsli)
   uint lights_in_bounce;          // Torch and Fire Light in the Light Bounce: LIGHTS_* below (rt_path.hlsli, rt_lights)
+  uint reuse_tests;               // tests only: ReSTIR GI's parts left out, REUSE_TEST_* (rt_path.hlsli; 0: none)
 #if defined(PATH_PROBE)
   uint probe_mode;  // RENODX_TW_PATH_PROBE (tests): rt_path.hlsli ProbeTexel's mode, its rays a texel << 8
 #endif
@@ -81,6 +82,17 @@ bool SeenByLastTrace(float3 world, out uint2 seen_pixel) {
   seen_pixel = min(uint2(uv * float2(width, height)), uint2(width, height) - 1u);
   const float4 seen = LastTracePosition(seen_pixel);
   return seen.w > 0.f && distance(seen.xyz, world) < 0.030005185f + 0.01f * seen.w;
+}
+
+static const uint PATH_SQUARED_LOBE = 536870912u;  // reflections: alpha = roughness^2 (ReflectAlpha)
+static const float MIRROR_ROUGHNESS = 0.05f;       // smoother reflections are traced as mirrors (one ray, a delta lobe)
+
+// A reflection's lobe by the G-buffer's roughness (1 - gloss): GGX as wide as the game's own lights' highlight on it (a
+// Gaussian whose share within 0.5 degrees is gloss^2). The reflections' rays and NRD's guide (rt_nrd_front.hlsl) both.
+float ReflectAlpha(float roughness) {
+  if ((path_flags & PATH_SQUARED_LOBE) != 0u) return max(roughness * roughness, 0.0064f);
+  const float gloss = 1.f - roughness;
+  return 0.0064f / max(gloss * gloss, 0.0625f);
 }
 
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_CAMERA_HLSLI_

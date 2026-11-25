@@ -345,6 +345,12 @@ class RtScene12 {
           || !slot.left_out_readback) {
         return Fail("Ray tracing: no memory for its slots' buffers");
       }
+#if defined(RENODX_NRD)
+      slot.sun_readback = Buffer(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
+      if (!slot.sun_readback || FAILED(slot.sun_readback->Map(0, nullptr, reinterpret_cast<void**>(&slot.sun_data)))) {
+        return Fail("Ray tracing: no memory for its slots' buffers");
+      }
+#endif
       HRESULT made = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(slot.allocator.GetAddressOf()));
       if (SUCCEEDED(made)) {
         made = device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, slot.allocator.Get(), nullptr, IID_PPV_ARGS(slot.list.GetAddressOf()));
@@ -1044,6 +1050,8 @@ class RtScene12 {
       signal->failed = false;
     }
     nrd_bounce_hit_distance_.Reset();
+    sun_toward_ = {};
+    for (Slot& slot : slots_) slot.sun_copied = false;
 #endif
     nrd_off_ = 0;
     light_.Reset();
@@ -3318,6 +3326,16 @@ class RtScene12 {
     LARGE_INTEGER cpu_waited;
     QueryPerformanceCounter(&cpu_waited);
     cpu_marks_.clear();
+#if defined(RENODX_NRD)
+    // The sun's direction this slot's last trace copied (done: SIGMA's light direction a few traces late, the sun moves slowly;
+    // after a timed-out wait the GPU may still write it).
+    if (slot.sun_copied && !timed_out_) {
+      slot.sun_copied = false;
+      if (slot.sun_data[3] != 0.f) {
+        sun_toward_ = {slot.sun_data[0], slot.sun_data[1], slot.sun_data[2]};
+      }
+    }
+#endif
     // The last trace's placed instances (it is done: its slot's readback).
     if (placed_slot_ != SLOTS) {
       placed_written_ = slots_[placed_slot_].left_out_data[LEFT_OUT_BYTES / 4];
@@ -3790,7 +3808,9 @@ class RtScene12 {
         if (reuse) {
           flags |= PATH_REUSE | (reuse_parity_ != 0 ? PATH_REUSE_PARITY : 0u);
           if ((requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) flags |= PATH_PERMUTE;
-          if (history_valid_ && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 == frame && reuse_size_ == reuse_size) {
+          // RENODX_TW_REUSE_NO_TEMPORAL (tests): no history merged.
+          static const bool no_temporal = GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_TEMPORAL", nullptr, 0) != 0;
+          if (history_valid_ && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 == frame && reuse_size_ == reuse_size && !no_temporal) {
             flags |= PATH_REUSE_HISTORY;
           }
         }
@@ -3841,13 +3861,22 @@ class RtScene12 {
           }
           return false;
         }();
+        // RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY / _NO_CONTACT / _SEEN_LIGHTS_FRAME (tests, read once): ReSTIR GI's
+        // parts left out (the last two the raw paths' too).
+        static const uint32_t reuse_tests = (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_SPATIAL", nullptr, 0) != 0 ? REUSE_TEST_NO_SPATIAL : 0u)
+                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_VALIDATE", nullptr, 0) != 0 ? REUSE_TEST_NO_VALIDATE : 0u)
+                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_SKY", nullptr, 0) != 0 ? REUSE_TEST_NO_SKY : 0u)
+                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_NO_CONTACT", nullptr, 0) != 0 ? REUSE_TEST_NO_CONTACT : 0u)
+                                            | (GetEnvironmentVariableW(L"RENODX_TW_REUSE_SEEN_LIGHTS_FRAME", nullptr, 0) != 0 ? REUSE_TEST_SEEN_LIGHTS_FRAME : 0u);
         PathConstants constants = {
             .bounce_width = render_pixels ? width : shared.rt_bounce_width,
             .bounce_height = render_pixels ? height : shared.rt_bounce_height,
             .bounce_scale = render_pixels ? 1u : std::max(shared.rt_bounce_scale, 1u),
             .flags = flags,
             .bounces = std::clamp(shared.rt_path_bounces, 0u, 8u),
-            .samples = std::clamp(shared.rt_path_samples, 1u, 16u),
+            // ReSTIR GI under Ray Reconstruction (the trace's RT_RECONSTRUCTED: also with REBLUR on the Light Bounce): one path a
+            // texel whatever Light Bounce Rays or Match Output asked (its bias rose with the rays: G15's scorer; ATN 11-22).
+            .samples = (reuse && (shared.rt_flags & dlaa_bridge::RT_RECONSTRUCTED) != 0) ? 1u : std::clamp(shared.rt_path_samples, 1u, 16u),
             .bounce_range = bounce_range,
             .reflection_range = std::clamp(shared.rt_reflection_range, 0.5f, 200.02019f),
             .sky_range = std::clamp(shared.rt_ambient_range, 0.1f, 100.000854f),
@@ -3860,6 +3889,7 @@ class RtScene12 {
                                 | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
                                 | (ratio_follows ? 64u : 0u)
                                 | ((path_traced && light_count != 0 && (requested & dlaa_bridge::RT_PATH_TORCH_LIGHT) != 0) ? LIGHTS_IN_PATHS : 0u),
+            .reuse_tests = reuse_tests,
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -4393,7 +4423,7 @@ class RtScene12 {
   static constexpr uint32_t PATH_REFLECTIONS = 2;
   static constexpr uint32_t PATH_RAW = 512;
   static constexpr uint32_t PATH_NRD = 268435456;
-  static constexpr uint32_t PATH_SQUARED_LOBE = 536870912;
+  static constexpr uint32_t PATH_SQUARED_LOBE = 536870912;  // rt_camera.hlsli
   static constexpr uint32_t PATH_REFLECT_FOG = 16384;
   static constexpr uint32_t PATH_REFLECT_STEADY = 32768;  // rt_reflect_filter (the trace's PATH_AMBIENT_PARITY: another request's word)
   static constexpr uint32_t TRACE_NRD_BOUNCE = 4194304;   // rt_scene.hlsli
@@ -4429,6 +4459,12 @@ class RtScene12 {
   static constexpr uint32_t PATH_SKY_PARITY = 1048576;  // rt_path.hlsli (the trace's PATH_TINT)
   static constexpr uint32_t PATH_SUN_LIGHT = 2097152;   // rt_path.hlsli (the trace's PATH_TINT_GUIDES)
   static constexpr uint32_t PATH_START_PAST = 2147483648;  // rt_camera.hlsli
+  // PathConstants::reuse_tests (tests: the bisection of ReSTIR GI's bias rising with the rays; rt_path.hlsli).
+  static constexpr uint32_t REUSE_TEST_NO_SPATIAL = 1;
+  static constexpr uint32_t REUSE_TEST_NO_VALIDATE = 2;
+  static constexpr uint32_t REUSE_TEST_NO_SKY = 4;
+  static constexpr uint32_t REUSE_TEST_NO_CONTACT = 8;
+  static constexpr uint32_t REUSE_TEST_SEEN_LIGHTS_FRAME = 16;
   static constexpr uint32_t LIGHTS_IN_PATHS = 128;  // rt_camera.hlsli (PathConstants::lights_in_bounce)
   static constexpr uint32_t LIGHTS_RATIO_BITS = 256;  // rt_camera.hlsli: a trace's, the addon reads flagged bits (RT_SCENE_LIGHT_BITS)
   static constexpr UINT LIGHT_KEPT_TEXELS = 5;  // rt_path.hlsli light_kept
@@ -4449,6 +4485,7 @@ class RtScene12 {
     uint32_t previous_square_root = 0;  // RT_PATH_COLOR_SQUARE_ROOT
     uint32_t previous_positions_slice = 0;  // kept_positions_' slice with last frame's
     uint32_t lights_in_bounce = 0;  // rt_camera.hlsli LIGHTS_*: the mode (RT_PATH_LIGHTS_IN_BOUNCE 1, with RT_PATH_LIGHT_RATIO 3), the ratio's set and validity
+    uint32_t reuse_tests = 0;  // REUSE_TEST_* (tests; 0: none)
 #if defined(RENODX_PATH_PROBE)
     uint32_t probe_mode = 0;  // RENODX_TW_PATH_PROBE: rt_path.hlsli ProbeTexel's mode | its rays a texel << 8
 #endif
@@ -4563,6 +4600,13 @@ class RtScene12 {
     ComPtr<ID3D12Resource> left_out;
     ComPtr<ID3D12Resource> left_out_readback;
     uint32_t* left_out_data = nullptr;
+#if defined(RENODX_NRD)
+    // The sun texture's first texel (toward the sun) copied for the CPU in a trace NRD's SIGMA ran in, read when the slot
+    // comes round (SigmaSettings::lightDirection).
+    ComPtr<ID3D12Resource> sun_readback;
+    float* sun_data = nullptr;
+    bool sun_copied = false;
+#endif
     std::vector<uint64_t> capture_keys;
     std::vector<uint32_t> capture_flags;
     std::string status;  // its request's (a slow one's report)
@@ -8084,8 +8128,23 @@ class RtScene12 {
       list->ResourceBarrier(1, &uav_barrier);
     }
     if (nrd_sun) {
+      // SIGMA's light direction (toward the sun, world space; else an isotropic blur, softer and blotchier from a low sun):
+      // the sun texture's for a later trace.
+      auto to_copy = Transition(sun_.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE);
+      list->ResourceBarrier(1, &to_copy);
+      const D3D12_TEXTURE_COPY_LOCATION sun_copy = {
+          .pResource = slot->sun_readback.Get(),
+          .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+          .PlacedFootprint = {.Footprint = {.Format = DXGI_FORMAT_R32G32B32A32_FLOAT, .Width = 1, .Height = 1, .Depth = 1, .RowPitch = D3D12_TEXTURE_DATA_PITCH_ALIGNMENT}},
+      };
+      const D3D12_TEXTURE_COPY_LOCATION sun_texture = {.pResource = sun_.Get(), .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX};
+      const D3D12_BOX toward_texel = {.left = 0, .top = 0, .front = 0, .right = 1, .bottom = 1, .back = 1};
+      list->CopyTextureRegion(&sun_copy, 0, 0, 0, &sun_texture, &toward_texel);
+      std::swap(to_copy.Transition.StateBefore, to_copy.Transition.StateAfter);
+      list->ResourceBarrier(1, &to_copy);
+      slot->sun_copied = true;
       Mark(list, L"NRD SIGMA");
-      const nrd::SigmaSettings sigma = {};
+      const nrd::SigmaSettings sigma = {.lightDirection = {sun_toward_[0], sun_toward_[1], sun_toward_[2]}};
       nrd_denoised = nrd_sun_.denoiser->Run(list, static_cast<UINT>(slot_index), shared.rt_view_projection, frame, shared.rt_width, shared.rt_height, &sigma);
       if (nrd_denoised) {
         nrd_sun_.denoiser->Finish(list, nrd::ResourceType::OUT_SHADOW_TRANSLUCENCY, positions_.Get(), POSITIONS_VIEW, visibility_.Get(), DXGI_FORMAT_R8_UNORM);
@@ -10116,6 +10175,7 @@ class RtScene12 {
   NrdSignal nrd_bounce_;
   NrdSignal nrd_reflections_;
   ComPtr<ID3D12Resource> nrd_bounce_hit_distance_;
+  std::array<float, 3> sun_toward_ = {};  // the last sun direction read back (Slot::sun_readback; 0: none yet)
 #endif
   ComPtr<ID3D12PipelineState> scene_data_pipeline_;
   ComPtr<ID3D12DescriptorHeap> descriptors_;

@@ -248,7 +248,7 @@ void main(uint3 id : SV_DispatchThreadID) {
 #else
     const float roughness = saturate(guide_roughness[pixel]);
     const float alpha = ReflectAlpha(roughness);
-    const bool mirror = roughness < 0.05f;
+    const bool mirror = roughness < MIRROR_ROUGHNESS;
     // Traced as the helper traces it (rt_path.hlsli ReflectPixel): with reflections up to ROUGH_LIMIT; occlusion alone, every roughness.
     const bool traced = (path_flags & PATH_REFLECTIONS) != 0u && roughness <= ROUGH_LIMIT;
     float3 tangent;

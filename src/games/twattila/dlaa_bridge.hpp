@@ -17,6 +17,7 @@
 #include <cassert>
 #include <cfloat>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <exception>
 #include <format>
@@ -160,10 +161,16 @@ struct FrameRequest {
   float far_plane = 0.f;
 };
 
+// An evaluation's optional inputs (each default as before them).
+struct EvaluateOptions {
+  uint32_t extra_written = 0;  // bits of RR_EXTRA_*: written for this evaluation (Ray Reconstruction's, FSR's colour before)
+  float exposure = 0.f;        // DLSS's for presets J / K (0: its AutoExposure; 1 for a display-referred input)
+  float fsr_sharpness = 0.f;   // FSR's RCAS, 0-1 (0: off)
+};
+
 // Ray Reconstruction's settings for a request (its guides are the bridge's textures).
 struct RayReconstruction {
   uint32_t preset = 0;  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset
-  uint32_t extra_written = 0;  // bits of RR_EXTRA_*: written for this evaluation
   std::array<float, 16> world_to_view = {};
   std::array<float, 16> view_to_clip = {};
 };
@@ -197,6 +204,9 @@ struct Bridge {
   // accumulation and filter) leave its noise to it. Not where the helper ran DLSS without it (rr_refused).
   bool reconstructing = false;
   bool rr_refused = false;  // the helper's last word on it (logged when it changes)
+  // DLSS could not start on this GPU (the helper's dlss_refused): FSR in its place until the game restarts (DlssRefused;
+  // read by the settings' thread too).
+  std::atomic<bool> dlss_refused = false;
   // The colour last written into `color` is the light's square root (the upscaler's input for L, M, Ray Reconstruction): the
   // helper's paths square it back (RT_PATH_COLOR_SQUARE_ROOT).
   bool color_square_root = false;
@@ -598,13 +608,59 @@ inline bool Start(ID3D11Device* device) {
           add(bridge.watchdog.recovery, bridge.watchdog.waited.load());
         }
         if (copy_count == 0) return;
-        STARTUPINFOW rescue_startup = {.cb = sizeof(STARTUPINFOW)};
         PROCESS_INFORMATION rescue = {};
+        const auto start_rescue = [&](LPPROC_THREAD_ATTRIBUTE_LIST attributes) {
+          STARTUPINFOEXW startup = {.StartupInfo = {.cb = static_cast<DWORD>((attributes != nullptr) ? sizeof(STARTUPINFOEXW) : sizeof(STARTUPINFOW))},
+                                    .lpAttributeList = attributes};
+          const DWORD flags = CREATE_NO_WINDOW | ((attributes != nullptr) ? EXTENDED_STARTUPINFO_PRESENT : 0u);
+          return CreateProcessW(path.c_str(), command.data(), nullptr, nullptr, FALSE, flags, nullptr, nullptr, &startup.StartupInfo, &rescue) != FALSE;
+        };
+        // Made inside the helper's job (kill on close): the game's end or a kill ends it too, even before its first
+        // instruction (a game gone while this thread is inside CreateProcessW) or inside a driver call. A job the list
+        // cannot take: made outside it, its wait on the game's handle still ends it, unless a driver call holds it.
+        bool started = false;
+        if (bridge.job != nullptr) {
+          // One attribute's list, here (no allocation before the rescue's start); the job's handle read at the creation.
+          alignas(std::max_align_t) std::array<std::byte, 128> attribute_storage = {};
+          auto* attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attribute_storage.data());
+          SIZE_T attribute_size = attribute_storage.size();
+          HANDLE rescue_job = bridge.job;
+          DWORD job_error = 0;
+          if (!InitializeProcThreadAttributeList(attributes, 1, 0, &attribute_size)) {
+            job_error = GetLastError();
+          } else {
+            started = UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST, &rescue_job, sizeof(rescue_job), nullptr, nullptr)
+                      && start_rescue(attributes);
+            if (!started) {
+              job_error = GetLastError();
+            }
+            DeleteProcThreadAttributeList(attributes);
+          }
+          if (!started) {
+            try {
+              renodx::utils::log::w("[Total War] DLAA: the rescue is not in the helper's job (error ", job_error, ").");
+            } catch (const std::exception&) {
+              // No-op: out of memory costs this line, not the recovery.
+            }
+          }
+        }
+        if (!started) {
+          started = start_rescue(nullptr);
+        }
         std::string not_freed;
-        if (CreateProcessW(path.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &rescue_startup, &rescue)) {
+        if (started) {
           const std::array<HANDLE, 2> stop_or_done = {bridge.watcher_stop, rescue.hProcess};
-          // A new D3D12 device after a GPU fault can take seconds.
-          const DWORD rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000);
+          // A new D3D12 device after a GPU fault can take seconds. Past 15 s the rescue still waits for the game's GPU (no
+          // time limit: it ends when the GPU gets there, the game ends or this unload ends it).
+          DWORD rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, 15000);
+          if (rescue_woken == WAIT_TIMEOUT) {
+            try {
+              renodx::utils::log::w("[Total War] DLAA: the helper stopped; its rescue still waits for the game's GPU (renodx-tw-dlaa64.log).");
+            } catch (const std::exception&) {
+              // No-op: out of memory costs this line, not the recovery.
+            }
+            rescue_woken = WaitForMultipleObjects(2, stop_or_done.data(), FALSE, INFINITE);
+          }
           switch (rescue_woken) {
             case WAIT_OBJECT_0 + 1: {
               DWORD result = STILL_ACTIVE;
@@ -615,7 +671,6 @@ inline bool Start(ID3D11Device* device) {
               }
               break;
             }
-            case WAIT_TIMEOUT:  not_freed = "the rescue did not end in 15 s"; break;
             case WAIT_OBJECT_0: not_freed = "the unload ended the rescue"; break;
             default:            not_freed = std::format("the rescue's wait failed (error {})", GetLastError()); break;
           }
@@ -817,14 +872,17 @@ inline void PublishEmptySet() {
 
 // The shared objects for `width` x `height` on `device` (with Ray Reconstruction's guides when `guides`, ray tracing's
 // textures when `ray_tracing`, frame generation's in `fg_format` unless unknown, the reflections' with ray tracing when
-// `reflections`, `upscaler` the helper's UPSCALER_*, `fg_backend` its FG_BACKEND_*; made again when any changes); false: not
+// `reflections`, `upscaler` the helper's UPSCALER_*, `fg_backend` its FG_BACKEND_*, `rr_extra` the RR_EXTRA_* inputs asked for:
+// with the guides, or FSR's colour before the particles for its reactive mask; made again when any changes); false: not
 // available.
 inline bool Prepare(ID3D11Device* native_device, UINT width, UINT height, bool guides = false, bool ray_tracing = false,
                     DXGI_FORMAT fg_format = DXGI_FORMAT_UNKNOWN, bool reflections = false, uint32_t upscaler = UPSCALER_DLSS,
                     uint32_t fg_backend = FG_BACKEND_DLSS, uint32_t rr_extra = 0u) {
   if (internal::HelperLost()) return false;
   reflections = reflections && ray_tracing;
-  rr_extra = guides ? rr_extra : 0u;
+  if (!guides) {
+    rr_extra &= (upscaler == UPSCALER_FSR) ? (1u << RR_EXTRA_COLOR_BEFORE) : 0u;
+  }
   if (!internal::Start(native_device)) return false;
   ComPtr<ID3D11Device5> device;
   if (FAILED(native_device->QueryInterface(IID_PPV_ARGS(device.GetAddressOf())))) {
@@ -1412,7 +1470,7 @@ inline std::pair<uint32_t, uint64_t> RayTracingLeftOut() {
 // FSR and XeSS take the camera's near, far and field of view from `view_to_clip` (row vectors).
 inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_height, float jitter_x, float jitter_y,
                      bool reset, uint32_t preset, const RayReconstruction* ray_reconstruction = nullptr,
-                     const std::array<float, 16>* view_to_clip = nullptr) {
+                     const std::array<float, 16>* view_to_clip = nullptr, const EvaluateOptions& options = {}) {
   const bool evaluated = internal::Request(context, EVALUATE, [&](Shared* shared) {
     shared->fg_request = 0;
     shared->rt_request = 0;
@@ -1432,7 +1490,9 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
     }
     if (view_to_clip != nullptr) std::copy_n(view_to_clip->begin(), 16, shared->view_to_clip);
     shared->rr_hit_distance_written = (shared->ray_reconstruction != 0 && bridge.hit_distance_written) ? 1u : 0u;
-    shared->rr_extra_written = (shared->ray_reconstruction != 0) ? (ray_reconstruction->extra_written & bridge.rr_extra) : 0u;
+    shared->rr_extra_written = options.extra_written & bridge.rr_extra;
+    shared->dlss_exposure = options.exposure;
+    shared->fsr_sharpness = options.fsr_sharpness;
   });
   bridge.hit_distance_written = false;
   // Asked for and refused (helpers 108 on: Pharaoh's folder had no nvngx_dlssd.dll, its rays went raw into plain DLSS):
@@ -1446,6 +1506,11 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
     }
   }
   bridge.reconstructing = evaluated && ray_reconstruction != nullptr && bridge.guides && !refused;
+  // DLSS could not start (helpers that write it; older ones leave 0): latched, as nothing brings the DLL back while the
+  // game runs.
+  if (bridge.shared != nullptr && bridge.shared->dlss_refused != 0 && !bridge.dlss_refused.exchange(true)) {
+    renodx::utils::log::w("[Total War] DLSS could not start (", bridge.status, "): FSR runs in its place until the game restarts.");
+  }
   if (bridge.shared != nullptr) {
     // Ray tracing's counts change every frame: its line is logged when the part before ": " changes, else with Log Details
     // each minute.
@@ -1461,6 +1526,11 @@ inline bool Evaluate(ID3D11DeviceContext* context, UINT input_width, UINT input_
     }
   }
   return evaluated;
+}
+
+// DLSS could not start on this GPU (no nvngx_dlss.dll, NGX or the driver): the settings run FSR in its place.
+inline bool DlssRefused() {
+  return bridge.dlss_refused.load(std::memory_order_relaxed);
 }
 
 // A present through frame generation (the frame and HUD-less frame written on `context` before this): the helper copies
