@@ -834,6 +834,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
 - d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
+- FROZEN 32-BIT (only if ATN ever revives 32-bit): the 32-bit D3D11 pass capture ( ... | ?
 - PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in | ?
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
 - CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | ?
@@ -851,10 +852,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - TDD TWINS + OCEAN PORT: tddi_ (Opus High, worktree, branch tddi_twins) STARTED: ... | ?
-- TDD RUN CHECKS (needs a TDD game run, ATN's OK): create-time patcher counts in R ... | ?
-- TDD AUTHOR QUESTIONS (via ATN): (1) does anything set the new values? (2) water ... | ?
+- TDD AUTHORS' ANSWERS (1-4) -> tdd_shaders.md + any follow-up. Owner: ATN -> coor ... | ATN -> coord
 - C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + ... | ?
-- 1212 README: 'thanks / compatible' line (no licence line: none of their files us ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
 - ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the n ... | ATN
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
@@ -15926,6 +15925,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         changed, backed up) yes; exact wins on by default, no new rows (memory: faster + same picture = on); V3
         'Faster GT-VBAO' only after the exact round with numbers; 64-bit / WH3 capture only if needed; no Nsight
         64-bit probe now. OPEN FOR ATN: which replay has a forest with units? Owner: ATN (after d11r_)
+        ATN 11-25 evening: no forest-with-units replay; day1 has many trees + grass -> use day1 (already in the set).
+        CAPTURE ON 64-BIT, not 32-bit (ATN: 32-bit frozen; 32-bit items go to the FROZEN 32-BIT box). d11r_ told;
+        the design revision moves the run to the port (run script slot vs a64_ab.ps1's chain).
+        - [ ] FROZEN 32-BIT (only if ATN ever revives 32-bit): the 32-bit D3D11 pass capture (d11s_'s original run);
+        the 32-bit S4-rotation trace before any 32-bit release; 32-bit TDD twins ship only with a 32-bit release.
+        Owner: none (frozen)
         - [ ] PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in
         tools\tw\round_notes\proposed_rules_1125.md; ATN pastes them himself. Owner: ATN
         - [ ] CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on the vMF paper: 'just
@@ -15994,7 +15999,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         can do instanceData -> materialID'. No numbers for A / V16 / V40. cdr_ told: weigh a per-class route (class
         from our capture's shader hashes into instance data, knob set per class; fit source RGL only), one fixed set
         stays default / fallback, class table maybe a later step. Owner: cdr_
-        (C0 MESSAGE READY: cal_rev1_handback.md / callisto_diffuse.md R1; sent to ATN evening.)
+        (C0 DROPPED: ATN 11-25 evening won't ask Forge ('he didn't want to test it'). -> C0b own fit now, after ATN's
+        download yes; ATN asked whether donations are OK with MERL / RGL: yes (MERL CC BY-SA 4.0 allows commercial use
+        with attribution; RGL CC0).)
         - [ ] CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.05) / V40 + a joint fit with
         the game's specular held fixed; and what his 'Callisto full' included, his error metric, the smooth-terminator
         mask's unit. Owner: ATN
@@ -16167,18 +16174,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         (ATTILA64) exit 0, 61 warnings = baseline. Open: make_wind_motion_vs.py would drop the hand guard on
         regeneration; 0x702B83B7 (TDD MSAA shadow analysis) no render-scale row (never drawn in a trace). -> tddr_
         REVIEW (Opus xHigh) STARTED -> mod_shaders\tddi_review.md -> fix -> merge before 11-27.
-        - [ ] TDD RUN CHECKS (needs a TDD game run, ATN's OK): create-time patcher counts in ReShade.log on TDD's
+        - [x] TDD RUN CHECKS (ATN 11-25: NOT NEEDED, dropped) (needs a TDD game run, ATN's OK): create-time patcher counts in ReShade.log on TDD's
         bytes; whether TDD's new values (rain gloss, near-leaf cull, billboard cull band) are ever set (named
         nowhere in empire.retail.dll / TDD packs); MSAA shadow-analysis PS 0x702B83B7 has no render-scale entry.
         Owner: ATN (go) -> coord
-        - [ ] TDD AUTHOR QUESTIONS (via ATN): (1) does anything set the new values? (2) water over land meant for every
+        - [x] TDD AUTHOR QUESTIONS (via ATN): (1) does anything set the new values? (2) water over land meant for every
         map? (3) shadow-analysis / billboard / snow-ramp changes intended? (4) will future versions change shader
         bytes? (5) credit wording? Owner: ATN
+        ATN 11-25 evening: questions 1-4 SENT to TDD's authors (answers pending); (5) dropped: 'They don't need any
+        credits' -> tddi_'s fix round removes the About / README credit (236eeb00b) (memory updated).
+        - [ ] TDD AUTHORS' ANSWERS (1-4) -> tdd_shaders.md + any follow-up. Owner: ATN -> coord
         - [ ] C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + one 64-bit 1212 battle
         (after PT DI, ATN's OK). Owner: rtp_ design / C4 implementer
-        - [ ] 1212 README: 'thanks / compatible' line (no licence line: none of their files used); until C4 a line
+        - [x] 1212 README (ATN 11-25 'does it matter?': not now): 'thanks / compatible' line (no licence line: none of their files used); until C4 a line
         for 64-bit 1212 players: untick Flag Wave for full RT. Optional on ATN's go: one campaign HDR look check +
         one 32-bit 1212 battle data run (expect 0 unknown drawn hashes). Owner: ATN (wording / go)
+        -> moved to the 64-bit RT release check: only matters once RT ships on the port (1212 + PerfFix + Flag Wave);
+        C4 should land first; else one README line then. No 1212 runs.
         pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
         scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
         R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
