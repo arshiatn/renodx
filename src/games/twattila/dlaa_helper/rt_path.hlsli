@@ -337,6 +337,12 @@ bool SunLightGiven() {
   return (path_flags & (PATH_KEEP_LIGHT | PATH_SUN_LIGHT)) == (PATH_KEEP_LIGHT | PATH_SUN_LIGHT) && sun[uint2(SUN_LIGHT_TEXEL, 0)].w != 0.f;
 }
 
+// HitLight's answer for a surface the screen shows is SeenDiffuseLight's (the game's sun light given, this frame's light
+// not the final colour): its base colour lit by the hit's normal.
+bool SeenLightRelit() {
+  return SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT;
+}
+
 // Last frame's scene colour at a render pixel as light: squared back where the upscaler was given its square root.
 float3 PreviousLight(uint2 pixel) {
   const float3 color = max(previous_color[pixel].rgb, 0.f);
@@ -412,8 +418,7 @@ float3 LocalLights(float3 surface, float3 normal, uint4 seed) {
 // sight too bright until seen, the radiance cache keeping their light).
 float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, uint4 light_seed) {
   float3 emitted = SunLit(surface, behind, normal, albedo, transmittance, -1.f);
-  const bool seen_without_lights = SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT
-                                   && !TORCH_LIGHT_IN_PATHS;
+  const bool seen_without_lights = SeenLightRelit() && !TORCH_LIGHT_IN_PATHS;
   if ((path_flags & PATH_LOCAL_LIGHTS) != 0u && !seen_without_lights) emitted += albedo * LocalLights(surface, normal, light_seed);
   return emitted;
 }
@@ -872,8 +877,7 @@ float Validate(inout Reservoir previous, float3 origin, bool contact) {
   // the normal, SeenDiffuseLight: without one no sun, and Attila's open sky NaN): the screen's normal where it shows it now.
   float3 hit_normal = previous.hit_normal;
   uint2 seen_pixel;
-  if (!contact && all(hit_normal == 0.f) && SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT
-      && SeenNow(previous.hit, hit_normal, seen_pixel)) {
+  if (!contact && all(hit_normal == 0.f) && SeenLightRelit() && SeenNow(previous.hit, hit_normal, seen_pixel)) {
     hit_normal = PixelNormal(seen_pixel, positions[seen_pixel]);
   }
   if (!HitLight(previous.hit, hit_normal, light_now, cached)) return 0.f;
