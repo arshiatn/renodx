@@ -826,6 +826,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-BIT CPU DESIGNS STARTED 10:4x (Opus xHigh, read only, no builds; each -> Opus ... | ?
 - S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate ... | ?
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
+- S4 follow-ups (owner pds2_, helper lane, with / right after the brightness row): ... | ?
 - LEFTOVER pds2_ FOLDERS (ATN decides, not deleted): ra39a 51.0 GB, rs4 47.6 GB, r ... | ?
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
 - ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back | ?
@@ -15708,6 +15709,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         Player reach: needs Own ReSTIR on (off by default everywhere). S3 lobe twins for all no-op rows, for good.
         Known (no fix now): HitNormal vs G-buffer normal may pulse normal-mapped surfaces every 3rd frame. -> pds2_ S4
         ROUND 2 sent 12:2x (S4 first, then rebase pds2_bright) -> merge after M1 proof.
+        pds2_ S4 ROUND 2 (f1b46c92d fold, 61feaf053 reservoir normal never packs to 0 = NEW pre-existing bug: +z faces
+        read as sky in ReSTIR GI / Own ReSTIR, 69a7c672b S1): M1 PROVEN offline (verify_s4lobe: only the 3 sun rows'
+        reflection.bin change, NaN 23649 / 21764 / 23091 -> 0, controls byte-identical); 18 lobe twins in
+        gpu3_verify_modes.txt. s4r_ RE-CHECK ROUND 2: GO (hand-back handoff_plan\handbacks\s4r_recheck2_handback.md).
+        CORRECTION: the RT/PT preset sets Reuse = Own ReSTIR (rays_preset.hpp:53, since v149), so S4 reaches PLAYERS via
+        the preset in the games without the light copy: WH1, WH2, Rome II, Shogun 2, Ryse -> ships in their next
+        release. MERGED 5884d1aba (helper build exit 0). Stale now: 7d8256e24's E4 table, the S5 tables, Balanced's
+        pre-round-2 E4 numbers, the Part C conclusions.
+        - [ ] S4 follow-ups (owner pds2_, helper lane, with / right after the brightness row): R1 `sun_4_lobe_copy`
+        row (18432 + sun env; Own ReSTIR wall b/r 0.944 vs 1.106 without); R2 faces that see the sky stay dark with Own
+        Sky Rays off (cfg 49 box tops 0.951; pre-existing, S1 uncovered it); R3 Part C cause tests re-run on round 2
+        (at least s16sn, s16snvl, s16snkc) and Balanced's E4 numbers for ATN (off 0.98857 / 0.97905 / 0.98532, on
+        0.99982 / 0.98746 / 0.99822: ATN re-decides Balanced's default); R4 lobe twins for gpu3_verify_torch_modes.txt
+        (atn_sun_torch, atn_sun_4_samples_torch), g4_spot_modes, pdi1_quick_modes, gates_fix1_verify6, and gpu3_probe.sh
+        / gpu3_ns.ps1's 1024; past-proof re-runs 4bcc1a742 (lobe rows, expect identical), f18fd4deb (new
+        `reflect_fog_lobe` 18432 vs reflect_fog_reuse_lobe), 2e4c2a582 (quick list with lobe rows). Nit: sky samples
+        never revalidate (pre-existing).
         - [x] pds2_ TOOLING 11:1x: testbin\scratch\pds2_\pds2_play_dd.ps1 (dump-and-drop: play, hash + rec_compare +
         rec_scan to scratch\pds2_\dd\, floor only on a diff, deletes its own _dd dumps); pds2_verify.ps1 stops if
         D: < 100 GB or C: < 5 GB free.
@@ -15968,6 +15986,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         allocation, GOT slots, nit-5 changes re-derived. R-S1 WPR option = ep8 (not ep8p2), R-S2 narrow 'game code'
         literal for A15, R-S3 game start checks the half when H is not written, R-S4 T9 mutant +4 + lane-0 mutant, R-S5
         add T3b (every value per lane, other lanes random). -> p5d_ LAST TOUCH (+ ATN: build both H and R).
+        p5d_ LAST TOUCH DONE (hand-back p5d_lasttouch_handback.md): WPR option on ep8, narrow 'game code' literal + T12,
+        held ranges re-checked at game start with both hashes (written / check-only), T9 mutants, T3b (~10 min test
+        binary). PK5-64 DESIGN = GO for the build job after C8 W4p. Its 3 open questions answered by coord: gc0 trigger =
+        a look, never a gate; the ep8 + WPR data start = decide after S-C (ATN's row 15); Bitdefender = testbin exception.
         - [ ] vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md R2.9), before vMF S2:
         Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
         Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
