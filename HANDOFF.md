@@ -823,7 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
-- A1 add-on lane (Opus High) NEXT: brief = plugin wave 1 (block v1, plugin_block.h ... | ?
+- a64a1r_ (Opus xHigh) R1 + a64a1s_ (Sonnet High) FINAL reviews STARTED 04:2x -> d ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15451,10 +15451,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         static_checks known 5. a3_smoke addon64 now f37a8c6d61f13046 (dxgi 0cee63f9 / zz_capture fa2515d7 unchanged).
         - [x] MERGED 27ad6f414 (Merge a64b_bringup; anti_aliasing.hpp auto-merged) + coord build check on the merged
         tree: twattila addon64 + addon32 / twrome2 addon32 / twwarhammer3 addon64 exit 0 (61 / 61 / 62 / 61 warnings = before). Pushed.
-        - [ ] A1 add-on lane (Opus High) NEXT: brief = plugin wave 1 (block v1, plugin_block.h rules) + the bring-up's
-        hidden rows / plugin_ready + the PA1 install race (flag claimed before Install finishes) -> R1 -> T1 smoke + C2
-        trace (shadow_refresh=2). A3 Smoke: ATN's 4 -ReShade lines (drop '-ReShade -Warp': ReShade skips WARP) + check
-        the 'N code ranges' line counts all PF_X.
+        - [x] a64a1_ A1 ADD-ON LANE DONE (hand-back attila64/a64a1_lane_handback.md): branch a64a1_lane = b1c6b3559
+        (addon.cpp LookUpPlugin at the first device under a unique_lock: READY -> shadow_pass::Install -> rows -> then
+        plugin_ready release = the install race fixed; new attila64_plugin_link.hpp: noexcept callbacks in try / catch,
+        epoch in PassMeasure::reserved, register / unregister per 8.3 with the 1 s drain + FreeLibrary or kept
+        reference; shadow_pass.hpp PassBegin / PassEnd split + S4 rotation fix (drawn_frames % last_calls); 6 status
+        note rows; 'Skip the Game's Shadow Map Work' shown again on the port = ROW_PASS_DRAW) + f8ee47442 (F7 fake
+        plugin cases). x86 page dump = base except Build Date (387 rows); a64 / a64r +5 rows, rest 0 differences;
+        static_checks known 5; tw_unit_shadows x86 + amd64 PASS (new 7b plugin route with a CONTROL, 7c registration /
+        drain / CAS); F7 GPU 29 / 29 (23 + 6 fake-plugin cases); sweep twattila 64 / 32, twrome2 32, thrones 32, WH3
+        64 exit 0; merge-tree clean. Not done: host.flushes_unit_captures not wired on the port (C3); F7 can't trigger
+        registration (7c offline only); no game runs.
+        - [ ] a64a1r_ (Opus xHigh) R1 + a64a1s_ (Sonnet High) FINAL reviews STARTED 04:2x -> designs/plugin_a1_review.md
+        + plugin_a1_review_sonnet.md -> fixes -> merge a64a1_lane -> build check -> coord runs: 32-bit S4-rotation trace
+        (+ shadow_refresh=2), T1 smoke (attila64_log 2 sites applied + 'game started: 2 sites unchanged'; ReShade.log
+        'engine plugin ready, rows offered 3'), C2 (rows wanted 2 / 3; VIEW_DRAW first-call thread = present thread).
+        A3 Smoke: ATN's 4 -ReShade lines (drop '-ReShade -Warp': ReShade skips WARP) + check the 'N code ranges' line
+        counts all PF_X.
         - [ ] ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyResource (~2782-2790), and
         the same in OnResolveTextureRegion / OnCopyTextureRegion, use an existing clone even when that side's clone is
         DISABLED. In scRGB compatibility mode (default) a copy INTO the back buffer lands in the proxy pass's scratch ->
