@@ -85,8 +85,8 @@ static bool searched = false;
 
 }  // namespace internal
 
-// Whether a pass draw on this thread now is learned and may be skipped: the row active, and the render thread's (the binds
-// are counted there only).
+// Whether pass draws on this thread are counted now: the row active, on the render thread (the binds are counted there
+// only).
 inline bool Counting() {
   return internal::active.load(std::memory_order_relaxed)
          && GetCurrentThreadId() == internal::render_thread.load(std::memory_order_relaxed);
@@ -110,6 +110,7 @@ inline attila64_plugin::PassAction PassBegin(uint32_t kind_index, attila64_plugi
 
 // After a PASS_DRAW_MEASURED draw: whether it drew into the sun's map alone.
 inline void PassEnd(uint32_t kind_index, const attila64_plugin::PassMeasure& measure) {
+  if (kind_index >= internal::PASS_KINDS) return;
   auto& kind = internal::kinds[kind_index];
   if (kind.mixed) return;
   if (internal::other_binds == measure.other_binds_before

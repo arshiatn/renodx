@@ -37,6 +37,7 @@
 #include <iterator>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 #include "src/games/twattila/attila64_plugin_link.hpp"
@@ -493,12 +494,19 @@ int main(int argc, char** argv) {
     //     (a module reference held), the bits follow, a row changed after the plugin's init is not wanted, unregistered
     //     with the drain (reference released); a drain that runs out (a hook left inside) keeps the reference after 1 s;
     //     another add-on's callbacks are left alone and not tried again.
-    CHECK(link::Find() == link::Found::NOT_INSTALLED);
+    link::Lookup(false);
+    CHECK(link::Result() == link::Found::PENDING);
+    link::Lookup(true);
+    CHECK(link::Result() == link::Found::NOT_INSTALLED);
     plugin::Block block;
     block.rows_applied = plugin::RowBit(plugin::ROW_BONE_FLUSH) | plugin::RowBit(plugin::ROW_PASS_DRAW);
     block.status.store(plugin::STATUS_READY);
-    link::internal::block = &block;
     const uint32_t both = block.rows_applied;
+    // Not READY: nothing registered.
+    link::internal::block = &block;
+    link::Update(both);
+    CHECK(block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0);
+    link::internal::found.store(link::Found::READY);
     const uint32_t epoch_before = link::internal::epoch.load();
     link::Update(plugin::RowBit(plugin::ROW_PASS_DRAW));
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS && block.hooks_wanted.load() == plugin::RowBit(plugin::ROW_PASS_DRAW)
@@ -514,6 +522,19 @@ int main(int argc, char** argv) {
     CHECK(block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0 && link::internal::module_reference == nullptr);
     link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH));
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS && link::internal::epoch.load() != epoch_registered);
+    // A hook still inside for 50 ms: the wait ends when it leaves, the reference released.
+    block.calls_in_flight.store(1);
+    std::thread leaving([&block] {
+      Sleep(50);
+      block.calls_in_flight.store(0);
+    });
+    const ULONGLONG short_start = GetTickCount64();
+    link::Update(0);
+    const ULONGLONG short_wait = GetTickCount64() - short_start;
+    leaving.join();
+    CHECK(short_wait >= 30 && short_wait < 1000 && block.callbacks.load() == nullptr && link::internal::module_reference == nullptr);
+    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH));
+    CHECK(block.callbacks.load() == &link::internal::CALLBACKS);
     block.calls_in_flight.store(1);
     const ULONGLONG drain_start = GetTickCount64();
     link::Update(0);
@@ -527,10 +548,20 @@ int main(int argc, char** argv) {
     CHECK(block.callbacks.load() == &OTHER_ADDON && block.hooks_wanted.load() == 0 && !link::internal::registered
           && link::internal::lost && link::internal::module_reference == nullptr);
     link::Uninstall();
-    CHECK(!link::internal::lost && block.callbacks.load() == &OTHER_ADDON);
+    CHECK(!link::internal::lost && block.callbacks.load() == &OTHER_ADDON && link::Result() == link::Found::DETACHED
+          && link::internal::block == nullptr);
+    // A present after the detach (still in flight): no lookup, nothing registered again; the next attach looks up again.
+    block.callbacks.store(nullptr);
+    link::internal::block = &block;
+    link::Lookup(true);
+    link::Update(both);
+    CHECK(link::Result() == link::Found::DETACHED && block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0);
     link::internal::block = nullptr;
-    std::printf("7c callbacks: registered while wanted and offered, bits follow, a changed row not wanted, unregistered and "
-                "drained; a drain past 1 s keeps the reference; another add-on's callbacks left alone\n");
+    link::Install();
+    CHECK(link::Result() == link::Found::PENDING);
+    std::printf("7c callbacks: the lookup final at the last try, registered while READY, wanted and offered, bits follow, a "
+                "changed row not wanted, unregistered and drained (a hook leaving after 50 ms ends the wait); a drain past "
+                "1 s keeps the reference; another add-on's callbacks left alone; after the detach nothing registers\n");
     plugin_route = false;
     pass::active.store(false);
     std::printf("7 shadow map work: Render's pattern once in the shipped empire.retail.dll; off / casters drawn: every call; "
