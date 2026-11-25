@@ -15753,6 +15753,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         PK9 Sol-switch start with L2B S2?, keep / drop #8 (pk8tt8), 'key z 6' as W3-64 camera. -> p6r_ REVIEW
         (Opus xHigh) STARTED 12:3x -> designs\pk6_design_review.md. -> p6d_ fixes 2 analyzer bugs NOW (Python only:
         stale 243.0 NOPROBE check; det_pair 'same state' when X ticks differ) + re-checks window 1 / 3, L2B, L2C.
+        - [x] p6d_ ANALYZER FIXES DONE 13:0x (hand-back attila64\designs\p6d_analyzer_fix_handback.md): analyze_d0.py
+        (backup p0\analyze_d0.pre_p6fix_1125.py): NOPROBE vs the median 248.3 s of 4 valid no-probe base windows
+        (249.1 / 249.5 / 243.0 / 247.5), only base-kind starts feed it (3rd bug: arm starts widened the limit to 28.2 s);
+        det_pair 'same' only with the same X tick + done 1 + x_hash; --out=<dir>; self-test p0\test_analyze_d0.py 6/6.
+        Re-run: NO past determinism verdict changes (6 probe starts, 15 pairs all same at tick 3749); only the false
+        NOPROBE lines of window 3 / L2C go away. Outputs testbin\scratch\p6d_\fix_1125\. pk6 items B1 / B2 done.
         - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
         p8d_design_handback.md): main win SERIAL: Stage A exact group index replaces the quadratic pair search at
         0x79a690 (~89 % of seg 0), identical results by construction, fingerprint self-off, fallback; E -21..-24 ms /
