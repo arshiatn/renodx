@@ -827,7 +827,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate ... | ?
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
 - S4 follow-ups (owner pds2_, helper lane, with / right after the brightness row): ... | ?
-- LEFTOVER pds2_ FOLDERS (ATN decides, not deleted): ra39a 51.0 GB, rs4 47.6 GB, r ... | ?
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
 - ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back | ?
 - TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a sour ... | ?
@@ -15730,8 +15729,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] pds2_ TOOLING 11:1x: testbin\scratch\pds2_\pds2_play_dd.ps1 (dump-and-drop: play, hash + rec_compare +
         rec_scan to scratch\pds2_\dd\, floor only on a diff, deletes its own _dd dumps); pds2_verify.ps1 stops if
         D: < 100 GB or C: < 5 GB free.
-        - [ ] LEFTOVER pds2_ FOLDERS (ATN decides, not deleted): ra39a 51.0 GB, rs4 47.6 GB, ra39c 0.0, _dd, probe
-        builds ~0.2 GB each. Ask after s4r_ + merge.
+        - [x] LEFTOVER pds2_ FOLDERS: ATN 11-25 ~13:0x yes ('if we don't need them') after s4r_ round 2 GO + merge:
+        ra39a 51.0 GB, rs4 47.6 GB, ra39c (empty) DELETED by exact path (round-1 S4 dumps, last written 10:00-10:19,
+        0 links inside; round 2's proof is in verify_s4lobe / verify_s4r2). D: free 866.5 GB. Kept: _dd, probe builds.
         - [ ] pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + KEEP_LIGHT as ONE
         Experimental player row, default OFF (look change: ATN decides from numbers), bits into the player shaders;
         proofs: row OFF -Fc = fdfdd56d9, E4 ON vs OFF + luminance table, HARNESS_DUMP 53 modes, builds. If s4r_ asks
