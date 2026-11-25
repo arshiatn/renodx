@@ -18,9 +18,10 @@
 
 // The pixel's DI light into the addon's textures, the one place they are written (unified PT's demodulated pair swaps
 // this function): the slm light (the composite multiplies the game's SSAO into it) or the skinlm light (no SSAO), the
-// other 0; NaN, infinite or negative light 0.
+// other 0. Ours: a net that changes nothing in a normal frame (its light finite and 0 and up: DiLight's colours at 0 and
+// up, B2): NaN or infinite light 0, light past the half floats' largest clamped there.
 void DiStore(uint2 pixel, uint model, float3 light) {
-  const float3 kept = (all(light >= 0.f) && all(light < 65504.f)) ? light : 0.f;
+  const float3 kept = all(isfinite(light)) ? min(light, 65504.f) : 0.f;
   di_light[0][pixel] = float4((model == TW_POINT_LIGHT_SLM) ? kept : 0.f, 0.f);
   di_light[1][pixel] = float4((model == TW_POINT_LIGHT_SKIN) ? kept : 0.f, 0.f);
 }
