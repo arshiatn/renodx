@@ -918,6 +918,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 4b ROW LINES (graphics_page.hpp): grey 'Torch and Fire Light from Path Tracing ( ... | ?
 - FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a v ... | ?
 - nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guid ... | ?
+- SOURCE FIDELITY AUDIT (ATN 11-26 ~00:1x: 'if we were not doing this paper's meth ... | ?
 - rpg_ ReSTIR PG DESIGN (ATN 11-25 ~23:4x 'can we design it now or wait?'; coord: ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
@@ -17005,6 +17006,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         deadline 90): plan_1117\nv_speedups.md = every NVIDIA-documented speed-up for RT shadows / AO / GI / PT bounce
         / SHaRC / reflections / fog / DI / OMM / SER / AS builds / RR / NRD / D3D12: used or not (V / U), gain, look
         risk, unified fit, owner; top 10 with gates; unified PT conflicts; 'NVIDIA says don't' list. Owner: nvs_, coord
+        - [ ] SOURCE FIDELITY AUDIT (ATN 11-26 ~00:1x: 'if we were not doing this paper's method, how can we be sure
+        that all of our RT/PT and every nvidia sdks and all papers ... were not accidentally ignored like this?' -> 'Start
+        after nvs_'). Examples tonight: RTXDI temporal bias correction compiled out (4c M1, a review caught it, no test);
+        U2 read a torch-only ratio from a sum-target reservoir (not lin2026's method, 20 % error); the coord's 'NVIDIA
+        has a fused DI pass' (RTXDI 3.2 has it for GI only). 4 read-only Opus xHigh agents AFTER nvs_ (they get
+        nv_speedups.md): fa1_ PT DI / RTXDI (every function / macro / RAB contract, compiled-in proof per DXIL), fa2_
+        ReSTIR GI + PT bounce + SHaRC + fog (GRIS, lin2026, junkins2026, wyman2023, kajiya, Volumetric ReSTIR, SHaRC
+        SDK), fa3_ RT shadows / AO / reflections / OMM / SER / AS builds (NVIDIA SDKs + guides + D3D12 / DXR spec), fa4_
+        DLSS RR / NRD / FSR Ray Regeneration (every must / avoid of the integration guides). Each: plan_1117\fidelity\
+        <area>.md table = claim (source + section) -> code site (V / U) -> compiled-in proof -> test that fails if broken
+        -> deviation chosen (reason / ATN's word) or BUG. Then one Opus xHigh critic (missing sources, unproven V's) ->
+        every BUG = its own box + owner; chosen deviations into their design files. Skill rule added: game-port-method
+        'Every cited source gets a fidelity table'. Owner: coord, fa1_..fa4_, critic
         - [ ] rpg_ ReSTIR PG DESIGN (ATN 11-25 ~23:4x 'can we design it now or wait?'; coord: design NOW, build after
         unified U3, because PG's needs must go into U3's reservoir layout before U3 is built; Opus xHigh, STARTED
         23:4x, est 60 / deadline 120): downloads zeng2025 into tools\refcode\papers\restir_pg_1125\ (untrusted, own
