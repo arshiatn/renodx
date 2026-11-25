@@ -16028,6 +16028,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         view-before-copy test (prototype 8 / 8 + 6 / 6). dbe88a833 OK: 0.3333f is bit-exact the game's (399 / 448 depth-only
         discard shaders clip at -0.333299994); only 'Ray Tracing in the Helper (Experimental)', off by default; bug fix.
         -> ta_ FIX ROUND sent 14:4x (M1, S1 test export, S3 + nits) -> rvt_ re-check -> merge.
+        ta_ FIX DONE 15:0x (hand-back round_1125\handbacks\ta_fix_handback.md): ad85b2142 M1 (capture's resource + views
+        on via GetResourceClone activate, not on swap chain buffers; view-before-copy test 10 / 12 before, 12 / 12 after;
+        NOTE it also turns the views on in HDR10 / SDR, closing the same gap there), f36eaf28e tw_scene_coverage export
+        (parts 1-6 PASS, 37 / 37), ba8cbb8b2 tests tidy, b880a1fbb README_DLSS + comment. Build exit 0 (61 = baseline),
+        tw_tales_unit 5 / 5. Not added: the optional FlushDescriptors (needs the in-game trace). -> rvt_ RE-CHECK sent 15:0x
+        (incl. the HDR10 / SDR behaviour change and the skipped flush).
         - [ ] tw_scene_coverage crashes at start on atn-mods too (rvt_: 0xC0000005; since a98ca9fb3 11-22 InstallScene calls
         reshade::get_config_value and the test exports no ReShadeGetConfigValue, reshade.hpp:176-178 calls null): one-line
         export in test/tw_scene_coverage/tests.cpp -> ta_ fix round (coord OK, test-only). With it parts 1-6 PASS. Owner: ta_
