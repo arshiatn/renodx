@@ -375,6 +375,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
 - gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
 - gpr_ + gtw_ RE-CHECK stage26 (Opus xHigh, read-only + tests) -> GO / fixes. Owne ... | gpr_, gtw_
+- STAGE26 FIX ROUND (gte_ resumed, after gtw_'s hand-back, both reviews in one rou ... | ?
 - gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a ... | ?
 - REVIEW ~12-09 (ATN: 'after a while we decide if we even need the 2x stop'): coun ... | ?
 - (2) DEFAULT CAP: a command without a price history runs under budget.py watch's ... | gtb_
@@ -3551,6 +3552,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         step 1: proposed block_rows.tsv + tooling.tsv), and step 3 WITHOUT the 'files' + 'override' shadow lines (they
         keep refusing). Enforced: T01, T04 (incl. recordings), T09, files, override; all else logs. gpr_ + gtw_
         (STARTED 20:5x, Opus xHigh) told to check this config; then the coord gives ATN the final step text.
+        gpr_ r26 GO 11-25 21:1x (plan_1117\gpr_r26_recheck_handback.md; 18 min) on the final config, with MUST-1:
+        gte_handback.md:288 puts files + override + block_enforce in ONE $t+= line -> keep only the block_enforce part
+        (else either the refused shadow rows go in, or block_enforce is lost and T06 / T11 refuse too); step-5 check
+        text: 'only T01 / T04 / T09 and files / override'. Only T01 / T04 / T09 (gate_hook.py:931-934), files (:873,
+        :959), override (:918, :924) refuse; replay of 888 calls: 9 refused (7 files: gtp_'s 'cd X;' x6 + the coord's
+        golive copy; 1 T09; 1 T04). Block rows run before every slow check; nothing in a command can force a fault.
+        Tests live 1506 / 1506, stage26 final 1557 / 1557, split 1557 / 1557; audit 0 problems. SHOULDs (all also in
+        live): S1 CLEAR exit (:118-119, :915): a spec.py lookup + newline or a PowerShell ( ) skips EVERY row incl. files
+        / override -> one-line CHAIN regex fix, the one hole in ATN's choice: fix BEFORE the flip; S2 T01 / T04 / T09
+        text gaps (env-var / relative paths, parent-folder deletes, globs, loops, .Delete(), shutil.move, robocopy
+        /MOVE, ngfx via a variable) -> check rows against path_words like the files gate; S3 rare false refusals (0 in
+        real traffic); S4 override refuses shell text naming gate_override*.ps1 (gate reviewers: use Read / Grep); S5
+        no test of the exact final config (run_tests.py:3044); S6 mcp__terminal__run_in_terminal is not in the hook
+        matcher (settings.local.json:82) -> never gated; NIT block_enforce splits on blanks only.
+        - [ ] STAGE26 FIX ROUND (gte_ resumed, after gtw_'s hand-back, both reviews in one round): MUST-1 text, S1,
+        S2, S5 test, NIT commas, hook support for mcp__terminal__run_in_terminal (S6) -> gpr_ / gtw_ re-check the
+        diff -> final step text for ATN (+ his matcher line: add |mcp__terminal__run_in_terminal). Owner: gte_, coord
         d11v_ (lane I review, Opus xHigh) STARTED 20:5x.
         - [ ] gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a non-leading cd); spec
         gate on scratch files; web list gaps (44 research hosts); agent rules (gte_handback section 4) into briefs.
