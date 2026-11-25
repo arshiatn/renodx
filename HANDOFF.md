@@ -16410,6 +16410,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         spatial / shade / spatiotemporal; rt_lights stays .cs_6_5). Gated amd64 twattila add-on build exit 0 (61
         warnings = baseline); helper builds with / without RTXDI exit 0, all 83 / 60 headers byte-identical to before.
         Add-on build now in its gate. 2.9a harness parts done (outside git, N9). Next: B1 / B2 / parameters / DiMotion.
+        pdi4c_ 02:1x: origin/pdi4c_step4c_r4 = 1434dcf07 (on 288413a13). B1 d39458b43: rt_di_initial stores each DI
+        pixel's origin once (RayOrigin depth normal + Planar, then StartPast) in di_origin u84-u85 RGBA16F by light-
+        history parity (2 x 66 MB at 4K) as a half offset, initial uses the rounded value -> bit-equal origin in every
+        pass; RAB_GetGBufferSurface reads it for centre + neighbours, DiCentreSurface gone; RTXDI cite + deviation (f16
+        <= ~0.7 mm under the 3 mm offset); StartPast rays 4 -> 1 per pixel; W4 binds. B2 dace7bbf7: cause = fa9_ U3;
+        DiLight max(colour, 0) like LightArriving (cited; deviation: game shader unclamped); DiStore = inert NaN / Inf
+        net, >= 65504 clamps (no zero); only NaN left = light on the surface (target guard -> 0, never picked); negative-
+        colour counts need fa9_'s CPU census. Parameters: none cited (git log -S = adding commits; design only
+        numDisocclusionBoostSamples 8) -> A/Bs targetHistoryLength 4 vs 0 and 1024 vs 8192 offsets on the GPU list
+        (variant scripts). DiMotion 1434dcf07 'ours: why' (no helper shader reads object motion). fa3_: nv1_r2
+        rt_di_shade.h byte-identical to split_r2b. Gate on HEAD: helper plain / no-RTXDI / fused / NV1 / both A/B exit 0,
+        0 warnings; only 8 DI headers changed, 60 no-RTXDI equal; gated amd64 add-on exit 0; h0i 72 / 72; static_checks
+        same 5 old; diff --check clean. GPU turn adds: nested-instance harness scene (B1 test), B2's W4 extension.
+        WAITS for 'pdi4c_ GPU go' (after pdi5_ -> coord R2 / R3 / R4). Owner: pdi4c_
         GPU 00:1x: gsi_ SWAP DONE at a safe moment (swap.ps1 sha ok, 20 files hash-checked, backups *.bak_gsi_1125;
         test_gpu_queue 29 / 29) -> 'pdi5_ GPU go' sent (+ the typed-R16F rounding fact for fa3_ B3 if <= 10 min);
         pdi4c_ told: rebase onto ec96c503c, 2.9a, then fa1_ B1 / B2 / parameters / DiMotion comment, builds beside
