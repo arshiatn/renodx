@@ -834,7 +834,9 @@ inline bool VideoMemoryRoom(ID3D11DeviceContext* native, std::string* why) {
   DXGI_QUERY_VIDEO_MEMORY_INFO non_local = {};
   adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &local);
   adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &non_local);
-  if (local.CurrentUsage + VIDEO_MEMORY_MARGIN > local.Budget || non_local.CurrentUsage + (2 * POOL_BYTES) > non_local.Budget) {
+  // A UMA adapter (WARP, integrated GPUs) has no non-local segment: its staging copies are in the local one.
+  if (local.CurrentUsage + VIDEO_MEMORY_MARGIN > local.Budget
+      || (non_local.Budget != 0 && non_local.CurrentUsage + (2 * POOL_BYTES) > non_local.Budget)) {
     *why = std::format("video memory: local {} of {} MB, non-local {} of {} MB", local.CurrentUsage >> 20, local.Budget >> 20,
                        non_local.CurrentUsage >> 20, non_local.Budget >> 20);
     return false;
@@ -1146,11 +1148,28 @@ inline void Resource(ID3D11DeviceContext* native, const char* name, ID3D11Resour
   state.event.resources.emplace_back(name, resource);
 }
 
+// A view's resource, with the view's format and dimension as the event's values "<name>.view_format" / ".view_dimension"
+// (the replay makes the same view).
 inline void Resource(ID3D11DeviceContext* native, const char* name, ID3D11View* view) {
-  if (!internal::recording.load(std::memory_order_relaxed) || view == nullptr) return;
-  Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+  using namespace internal;
+  if (!recording.load(std::memory_order_relaxed) || view == nullptr) return;
+  ComPtr<ID3D11Resource> resource;
   view->GetResource(resource.GetAddressOf());
   Resource(native, name, resource.Get());
+  std::array<int, 2> format = {-1, -1};
+  if (ComPtr<ID3D11ShaderResourceView> srv; SUCCEEDED(view->QueryInterface(IID_PPV_ARGS(srv.GetAddressOf())))) {
+    D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
+    srv->GetDesc(&desc);
+    format = {static_cast<int>(desc.Format), static_cast<int>(desc.ViewDimension)};
+  } else if (ComPtr<ID3D11UnorderedAccessView> uav; SUCCEEDED(view->QueryInterface(IID_PPV_ARGS(uav.GetAddressOf())))) {
+    D3D11_UNORDERED_ACCESS_VIEW_DESC desc = {};
+    uav->GetDesc(&desc);
+    format = {static_cast<int>(desc.Format), static_cast<int>(desc.ViewDimension)};
+  }
+  const std::unique_lock lock(state.mutex);
+  if (!state.open) return;
+  state.event.values += std::format("{}{}:{},{}:{}", (state.event.values.empty() ? "" : ","), Quoted(std::format("{}.view_format", name)), format[0],
+                                    Quoted(std::format("{}.view_dimension", name)), format[1]);
 }
 
 // A CPU value of the open event (else of the frame) that feeds a constant buffer or a branch.

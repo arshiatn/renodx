@@ -28,6 +28,21 @@
 #ifdef SSS_FIND
 #define BEND_SSS_FIND
 #endif
+#ifdef BEND_SSS_RACE_MAP
+// Test only (test/tw_d3d11_replay's race-map build, never an add-on's): every write's tuple (the occlusion, the penumbra
+// and the filter as written, -1 not written; the dispatch, b3's index) in the next of the pixel's 4 slots, its writers
+// counted (above 4: overflow), so the pixels two waves of one dispatch write are known.
+struct RaceTuple
+{
+  float occlusion;
+  float penumbra;
+  float3 tint;
+  uint dispatch;
+};
+RWStructuredBuffer<uint> t_rw_race_count : register(u4);
+RWStructuredBuffer<RaceTuple> t_rw_race_tuples : register(u5);
+void RaceRecord(int2 xy, float occlusion, float penumbra, float3 tint);
+#endif
 #include "./bend_sss_gpu.hlsli"
 
 cbuffer sss_dispatch : register(b3)
@@ -37,6 +52,24 @@ cbuffer sss_dispatch : register(b3)
   uint g_sss_light_mode;
 #endif
 }
+
+#ifdef BEND_SSS_RACE_MAP
+void RaceRecord(int2 xy, float occlusion, float penumbra, float3 tint)
+{
+  const uint pixel = (uint)xy.y * (uint)g_sss_size.x + (uint)xy.x;
+  uint slot;
+  InterlockedAdd(t_rw_race_count[pixel], 1u, slot);
+  if (slot < 4u)
+  {
+    RaceTuple tuple;
+    tuple.occlusion = occlusion;
+    tuple.penumbra = penumbra;
+    tuple.tint = tint;
+    tuple.dispatch = g_sss_dispatch;
+    t_rw_race_tuples[pixel * 4u + slot] = tuple;
+  }
+}
+#endif
 
 Texture2D<float> t_sss_depth : register(t0);
 StructuredBuffer<int4> t_sss_parameters : register(t1);
@@ -78,6 +111,10 @@ void WriteExtended(DispatchParameters dp, int2 xy, float result, ExtendedResult 
     return;
   }
   dp.OutputTexture[xy] = result;
+#ifdef BEND_SSS_RACE_MAP
+  float race_penumbra = -1.f;
+  float3 race_tint = -1.f;
+#endif
   [branch] if (g_sss_sun_tangent > 0.f)
   {
     // The sun's disk widens the shadow by its distance from its caster: a radius of that x tan(half the disk), in render
@@ -91,6 +128,9 @@ void WriteExtended(DispatchParameters dp, int2 xy, float result, ExtendedResult 
       radius = distance(receiver, caster) * g_sss_sun_tangent * 0.5f * g_sss_render_size.y * projection._m11 / max(abs(receiver.z), 1e-3f);
     }
     t_rw_penumbra[xy] = min(radius, g_sss_soft_radius);
+#ifdef BEND_SSS_RACE_MAP
+    race_penumbra = min(radius, g_sss_soft_radius);
+#endif
   }
   [branch] if (g_sss_coloured != 0.f)
   {
@@ -102,7 +142,13 @@ void WriteExtended(DispatchParameters dp, int2 xy, float result, ExtendedResult 
       filter = (1.f - albedo / max(max(albedo.r, max(albedo.g, albedo.b)), 1.0004024e-3f)) * extended.thin_weight;
     }
     t_rw_tint[xy] = float4(filter, 0.f);
+#ifdef BEND_SSS_RACE_MAP
+    race_tint = filter;
+#endif
   }
+#ifdef BEND_SSS_RACE_MAP
+  RaceRecord(xy, result, race_penumbra, race_tint);
+#endif
 }
 #endif
 

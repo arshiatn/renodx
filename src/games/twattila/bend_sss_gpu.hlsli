@@ -773,6 +773,9 @@ struct DispatchParameters
 			WriteExtended(inParameters, (int2)write_xy, result, extended);
 #else
 			inParameters.OutputTexture[(int2)write_xy] = result;
+#ifdef BEND_SSS_RACE_MAP
+			RaceRecord((int2)write_xy, result, -1, -1);
+#endif
 #endif
 		}
 	}
