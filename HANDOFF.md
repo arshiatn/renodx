@@ -991,7 +991,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa8_ B4 upstream colorcorrect GammaSafe float4 overload calls Gamma (not sign-sa ... | ?
 - fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | ?
 - fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
-- crit_ CRITIC (Opus xHigh, read-only, STARTED 02:0x, est 60 / deadline 120) over ... | ?
+- crit_ CRITIC (Opus xHigh, read-only, STARTED 00:4x, est 60 / deadline 120) over ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -16405,12 +16405,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         pdi4c_ 00:5x: origin/pdi4c_step4c_r3 009f56852 (2.9a) on ec96c503c, pd3c_'s list covered (SwapStem refuses
         rt_lights while di_reservoirs_ held, 7cfc8ff2f); now the 2.9a harness parts, then B1 / B2 / parameters /
         DiMotion.
-        pdi4c_ 01:4x: origin/pdi4c_step4c_r4 6f55120ee = r3 rebased onto atn-mods 288413a13 (23 commits, no conflicts;
+        pdi4c_ 00:3x: origin/pdi4c_step4c_r4 6f55120ee = r3 rebased onto atn-mods 288413a13 (23 commits, no conflicts;
         r3 009f56852 superseded, no force push) + the DI passes renamed to plain .hlsl (rt_di_initial / temporal /
         spatial / shade / spatiotemporal; rt_lights stays .cs_6_5). Gated amd64 twattila add-on build exit 0 (61
         warnings = baseline); helper builds with / without RTXDI exit 0, all 83 / 60 headers byte-identical to before.
         Add-on build now in its gate. 2.9a harness parts done (outside git, N9). Next: B1 / B2 / parameters / DiMotion.
-        pdi4c_ 02:1x: origin/pdi4c_step4c_r4 = 1434dcf07 (on 288413a13). B1 d39458b43: rt_di_initial stores each DI
+        pdi4c_ 00:4x: origin/pdi4c_step4c_r4 = 1434dcf07 (on 288413a13). B1 d39458b43: rt_di_initial stores each DI
         pixel's origin once (RayOrigin depth normal + Planar, then StartPast) in di_origin u84-u85 RGBA16F by light-
         history parity (2 x 66 MB at 4K) as a half offset, initial uses the rounded value -> bit-equal origin in every
         pass; RAB_GetGBufferSurface reads it for centre + neighbours, DiCentreSurface gone; RTXDI cite + deviation (f16
@@ -16424,6 +16424,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         0 warnings; only 8 DI headers changed, 60 no-RTXDI equal; gated amd64 add-on exit 0; h0i 72 / 72; static_checks
         same 5 old; diff --check clean. GPU turn adds: nested-instance harness scene (B1 test), B2's W4 extension.
         WAITS for 'pdi4c_ GPU go' (after pdi5_ -> coord R2 / R3 / R4). Owner: pdi4c_
+        pdi4c_ HAND-BACK 00:4x (35 min; handbacks\pdi4c_handback.md 'Round 11-26 night'): r4 commits 6dd2fb000 SwapStem
+        refuses rt_lights during rt_lights_di builds, e99afb0c4 2.9a, 6f55120ee plain names, d39458b43 B1, dace7bbf7 B2,
+        1434dcf07 DiMotion; pd3c_ list already met in r3. 2.9a harness switches (outside git, tools\tw\rt_harness,
+        *.before_29a backups): HARNESS_DI_MATTE / _DROP / _E / _FRAMES / _SKIP_BOUNCE / _RESIZE (same size: sizes are
+        compile-time); m1_check.py frames + energy modes. Variant scripts tl0_variant.py / off8192_variant.py. GPU turn:
+        B1 test (nested instance under crowded torches, Start Past on; 6f55120ee must FAIL, Start Past off = equal),
+        B2 test (W4 part 3, negative-colour + distance-0 light; 6f55120ee must write 0), A/Bs (cost, E4, E6, noise),
+        refactor gate 667827225 / 268d758dd / a1ce92da6. NOTE: its worktree's add-on build ran with D:\Dev\renodx\bin
+        + the VS Installer folder on PATH for that call only (slangc lives in bin; nothing linked). Owner: pdi4c_
+        CLOCK NOTE: the coord's 11-26 night stamps 01:3x..02:1x were guessed (the PC clock read 00:44 at r3_1398);
+        the five this round are fixed, older ones stay as written. Owner: done
         GPU 00:1x: gsi_ SWAP DONE at a safe moment (swap.ps1 sha ok, 20 files hash-checked, backups *.bak_gsi_1125;
         test_gpu_queue 29 / 29) -> 'pdi5_ GPU go' sent (+ the typed-R16F rounding fact for fa3_ B3 if <= 10 min);
         pdi4c_ told: rebase onto ec96c503c, 2.9a, then fa1_ B1 / B2 / parameters / DiMotion comment, builds beside
@@ -17486,7 +17497,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Musa's containment assumes an interior mean, human_gamut_conditioning never tried -> rerun tw_psychov35 edge
         cases on his unmodified copy with conditioning, or guard only in ApplyPsychoV35; U6 which passes make the NaN /
         Inf ApplyPsychoV35's guard catches (one-frame census = the inert check). Owner: critic -> owners
-        - [ ] crit_ CRITIC (Opus xHigh, read-only, STARTED 02:0x, est 60 / deadline 120) over all nine tables at
+        - [ ] crit_ CRITIC (Opus xHigh, read-only, STARTED 00:4x, est 60 / deadline 120) over all nine tables at
         769ee4a15 -> fidelity\critic.md: A BUG verdicts (refute, merged ids), B contradictions, C open items + settle
         step, D one guard table (inert / output-changing / hang cap), E licences + credits, F never-considered NVIDIA
         ranking, G port propagation list (input for per-game agents), H fix order + open-branch overlap. Then: port
@@ -17639,14 +17650,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         target). Eq. 38 glyphs still unverified (no PDF renderer; poppler would be a download).
         - [x] rpgc_ RECHECK (Opus xHigh, read-only, STARTED 01:1x, est 15 / deadline 30) -> designs\restir_pg_recheck.md.
         Owner: rpgc_
-        rpgc_ OK WITH FIXES 01:3x (11 min): rpg2_'s math right (vMF stable form + series exact, (2-v)/(1-v), M3 bound,
+        rpgc_ OK WITH FIXES 11-26 night (11 min): rpg2_'s math right (vMF stable form + series exact, (2-v)/(1-v), M3 bound,
         B8 = G22 Eq. 37 = RTXDI's form, corrected defensive recipe sums to 1, U1 site 3601 verified: pd4r_'s first
         reading was wrong, hours add up). 2 MUST = gates that can't decide: MA arm S judged at equal SETTINGS (variance
         within PG-off seed CI on open ground + forest, Own Sky Rays on; control arm S off shows the rise), equal time
         stays the row decision to ATN; MB gate 9 baseline = PG1a's parent. 4 SHOULD (vMF switch at kappa 0.02 + own
         sampling series; gate 10 first-ray only, CI-low > 2x; gate 1b same-sign growth named; pt_di_rtxdi.md:219-220
         stale cites) + 6 NIT. -> rpg2_ resumed (v2.1, est 10 / deadline 20; also nv_speedups.md C5 line). Owner: rpg2_
-        rpg2_ v2.1 DONE 01:4x (4 min): MA gate 2b (arm S at equal settings; only a 2b fail hides the row under Own Sky
+        rpg2_ v2.1 DONE 11-26 night (4 min): MA gate 2b (arm S at equal settings; only a 2b fail hides the row under Own Sky
         Rays; gate 2 equal time = the row decision, numbers to ATN), MB gate 9 vs PG1a's parent, SA kappa 0.02 + own
         sampling series (re-derived), SB, SC, non-guards renamed, split-pass cost re-derived (40-48 B / +0.05..0.10 ms:
         weaker fallback), G22 5.6 row; pt_di_rtxdi.md R2.7 G2 = Eq. 37 + G4 24 B + section 5 old line superseded;
