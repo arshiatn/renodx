@@ -38,6 +38,7 @@
 
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
+#include "../../utils/float16.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/resource_upgrade.hpp"
 #include "../../utils/settings.hpp"
@@ -1146,6 +1147,9 @@ std::atomic_bool identity_read = false;
 // The loader's present picture (its resource handle) once its clone is on, and its no-upgrade warning (once).
 std::atomic<uint64_t> present_picture = 0;
 std::atomic_bool picture_warned = false;
+// The loader's overlay converted: one line for each target (buffer 0, the picture).
+std::atomic_bool buffer_overlay_logged = false;
+std::atomic_bool picture_overlay_logged = false;
 // The page dump's READY-forced variant (TWATTILA_PAGE_DUMP_PLUGIN_READY): the plugin ready, every game-code row offered.
 #if defined(TWATTILA_PAGE_DUMP_PLUGIN_READY)
 constexpr bool PLUGIN_READY_FORCED = true;
@@ -1763,6 +1767,46 @@ inline bool OnCopyPresentPicture(reshade::api::command_list* cmd_list, reshade::
     return true;
   }
   return false;
+}
+
+// The loader's 8-bit overlay (the frame-rate number, the Discord button) comes as 4-byte rows: into buffer 0 after the
+// copy (1.3.20) or into the picture before it (the fixed loader). Under the add-on both are RGBA16F there (their clones, or
+// scRGB's real buffer), 8 bytes a pixel: the rows are converted, else scRGB reads past them and HDR10 / SDR lose them. No
+// gamma change: the swap chain pass decodes the frame's encoding and applies the UI brightness.
+inline bool OnUpdateOverlay(reshade::api::device* device, const reshade::api::subresource_data& data, reshade::api::resource dest,
+                            uint32_t dest_subresource, const reshade::api::subresource_box* dest_box) {
+  if (dest_box == nullptr || dest_subresource != 0 || data.data == nullptr) return false;
+  const uint32_t width = dest_box->right - dest_box->left;
+  const uint32_t height = dest_box->bottom - dest_box->top;
+  if (width == 0 || height == 0 || data.row_pitch != 4 * width || device->get_api() != reshade::api::device_api::d3d11) return false;
+  // The fixed loader's target is the picture (before the copy), 1.3.20's buffer 0 (after it).
+  const bool to_picture = dest.handle == present_picture.load(std::memory_order_relaxed);
+  bool to_swap_chain = false;
+  reshade::api::resource target = dest;
+  reshade::api::format format = reshade::api::format::unknown;
+  renodx::utils::resource::GetResourceInfo(dest, [&](const renodx::utils::resource::ResourceInfo& info) {
+    to_swap_chain = info.is_swap_chain;
+    const bool clone_on = info.clone_enabled && info.clone.handle != 0u;
+    if (clone_on) target = info.clone;
+    format = (clone_on ? info.clone_desc : info.desc).texture.format;
+  });
+  if ((!to_picture && !to_swap_chain) || format != reshade::api::format::r16g16b16a16_float) return false;
+  static const std::array<uint16_t, 256> HALVES = [] {
+    std::array<uint16_t, 256> halves = {};
+    for (size_t value = 0; value < halves.size(); ++value) {
+      halves[value] = renodx::utils::float16::Encode(static_cast<float>(value) / 255.f);
+    }
+    return halves;
+  }();
+  // Tight rows (row pitch = 4 * width): one byte a channel, in order.
+  const std::span bytes(static_cast<const uint8_t*>(data.data), size_t{width} * height * 4);
+  std::vector<uint16_t> rows(bytes.size());
+  std::ranges::transform(bytes, rows.begin(), [](uint8_t value) { return HALVES[value]; });
+  device->update_texture_region({.data = rows.data(), .row_pitch = 8 * width, .slice_pitch = 8 * width * height}, target, 0, dest_box);
+  if (!(to_picture ? picture_overlay_logged : buffer_overlay_logged).exchange(true)) {
+    renodx::utils::log::i("[Total War] 64-bit Attila: the loader's 8-bit overlay converted (", (to_picture ? "picture" : "buffer"), ")");
+  }
+  return true;
 }
 
 void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
@@ -2934,6 +2978,7 @@ bool AttachAddon() {
   if constexpr (ATTILA64) {
     // Before swapchain::Use's resource upgrade registers its copy_resource: the clone is on when it copies.
     reshade::register_event<reshade::addon_event::copy_resource>(OnCopyPresentPicture);
+    reshade::register_event<reshade::addon_event::update_texture_region>(OnUpdateOverlay);
   }
   // A bench's live env keys bump the pool's env generation; its mt_trace key opens one pool trace window.
   twattila::test_hooks::Install(&settings, true, "[Total War]",
@@ -3069,6 +3114,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   if constexpr (ATTILA64) {
     reshade::unregister_event<reshade::addon_event::copy_resource>(OnCopyPresentPicture);
+    reshade::unregister_event<reshade::addon_event::update_texture_region>(OnUpdateOverlay);
   }
   twattila::cpu_sets::Stop();
   twattila::test_hooks::Uninstall();
@@ -3131,6 +3177,8 @@ void DetachAddon() {
     twattila::frame_trace::SetGameCode("", 0, {});
     present_picture = 0;
     picture_warned = false;
+    buffer_overlay_logged = false;
+    picture_overlay_logged = false;
     tone_mapper_target_warned = false;
     plugin_ready = PLUGIN_READY_FORCED;
     plugin_rows = 0;
