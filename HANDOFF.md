@@ -365,8 +365,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSR2 Nsight MCP readiness. Coord smoke 11-25 19:4x: list families OK (capture, r ... | ?
 - NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, lin ... | ?
 - NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
+- gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
 - F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ c ... | coord (audit), each file's owner
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
+- CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan)
 - GPU PLAN (11-24 status: plan_1117/resume_1124.md: fix1_, G1, SHaRC 1.8.3, SER R1 ... | coordinator
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
@@ -3439,6 +3441,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         (upscaler / RR / FG request) need NEW recordings from the 64-bit game -> the run window after PT DI (ATN's
         rule lines). P1: add the new Shared fields (PT DI, fog ReSTIR, vMF) to the resident's 15. Owner: coord (run
         window), gpr_ (P1 / P2)
+        OLD RECORDINGS (ATN 11-25: 'don't delete them, my 32-bit backup plan may need them'): they hold the helper's
+        requests (the D3D12 helper is the same 64-bit program for both game versions) and a newer player plays older
+        bridge versions (rt_recording.h:25-26), so they stay usable on the 64-bit path for every input they hold; new
+        recordings only add inputs. D:\Dev\tw_recordings (29 sets, 127 GB) + D:\RenoDX_archive\recordings (104 GB):
+        NEVER deleted (lab.py KEEP_FOREVER + block rows refuse recording deletes; memory).
         - [ ] NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frames relMSE / SMAPE /
         HDR-FLIP / flicker / lag; 6 known-answer scenes + pbrt-v4; dead_outputs.py). Forge 2 gate_hook LIVE IN SHADOW
         (logs, does not block); ENFORCE = ATN's yes (open since round 22). Every sweep number has a gate id; every
@@ -3446,6 +3453,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         nsr_ STARTED 11-25 19:5x (Opus High; NSR1 + NSR2 a-e; tools-side only, no repo commits, no -Stop, at most one
         smoke trace on existing rule lines; hand-back plan_1117\nsr_handback.md). Agents: pdi3_, pdi4c_, pdi5_, bal3_,
         d11i_, nsr_.
+        ATN 11-25 night: YES to ENFORCE ('this is at least what Forge said'). Shadow log 11-24 / 11-25: ~480 would-deny a
+        day (cxx 393, shell 119, cxx,cite 118, spec 117, web_allow 91, price 74, cxx,spec 60); faults: 97 web_allow.tsv
+        missing (web gate not working, fail open), 38 cite check exit 2, 3 timeouts. Flipping mid-wave = hundreds of
+        blocks -> gte_ STARTED 20:0x (Opus xHigh, read-only + testbin\scratch\gte_): true / false positive /
+        friction per gate, stage26 fixes + tests, agent rules for briefs, ATN's exact steps (proposals into place,
+        T11 / T07, golive, the mode.txt command, the back-to-shadow command). Every block = a gates_log.tsv row (time,
+        gate, agent, reason) + tool_times rows, so a slow agent can be traced to its blocks.
+        - [ ] gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) at a wave boundary.
+        Owner: gte_, coord, ATN
       - [ ] F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ cites D3D11.3 spec 3.2.2;
         the reviewer checks the cite), so a value stored again every frame drifts down = G4's darkening; round to
         nearest fixes it (E4 lum cand / ref, R = 4: day 49 0.98417 -> 0.98450, day 36913 0.99671 -> 0.99675, night40
@@ -3457,6 +3473,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         pdi5_g7_cb01_dump; pdi5_'s old chain also called -Stop at ~19:03, 19:14, 19:15, 19:20, 19:25, 19:33,
         19:35:31). Fix: -Stop takes the owner tag and refuses another owner's session (pds2_lab_br.ps1 has the same
         pattern). Running agents told: no -Stop in chains; pdi5_ reruns its jobs. Owner: gtl_ (lab), next tooling slot
+      - [ ] CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO BUNDLING: 'don't bundle or
+        repackage my mods with yours'; players get the engine fix / Flag Wave from his Steam / Nexus page (self-update).
+        We don't: 32-bit heapfix = own use only; PerfFix 64 = optional, his package (port_plan.md install step 3); flag
+        pack = his download; our zips hold only our files (the author notes zips are patches FOR him). Every release +
+        readme: link his pages, never ship his files. (2) OK to change heapfix.ini from our overlay (keys read at start,
+        restart needed, except [tuning] culling = F8 live; a missing key = its default, on). (3) Flag Wave = GPU cloth
+        (24 x 36 grid, up to 512 flags, Verlet 6 substeps, world space); his 2nd bank is 1/6 frame back, not last frame.
+        OFFER: keep last frame's particles + the pole transform and export the two buffers + the frame's surface
+        function from perffix64.dll for our MVs (M6 / C4): ATN's yes / no. (4) heapfix.ini: append missing keys with
+        defaults on update: ATN's yes / no / later. (5) menu / cutscene 1 s stutter = Sol's mod. Owner: ATN (answers),
+        coord (M6 plan)
       - [x] REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a change per chunk (mean /
         max relative difference of float outputs, mean luminance shift) so fixes like fix1_'s brightening are measured,
         not just counted. Owner: next recorder touch (tools)
@@ -16204,6 +16231,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         parked for now (if vMF is good to my eyes, we build that too). I would like to see vMF ... whenever it
         finishes with unified path tracing stuffs.' -> vMF S2-S6 CONTINUE in their slot (after PT DI 4b / 4c); no
         more measured-data tests (no PT / porous test). Callisto PARKED (origin/cal1_c1 kept, unmerged).
+        cdr_ withdrew its park-vMF advice after ATN's decision (addendum in callisto_diffuse_review.md + its hand-back).
         - [ ] ATN EYE TEST: vMF in game (its Experimental row, default 40 %) together with the unified PT check, once
         both are built. If vMF looks good -> build Callisto (C2-C4) too, as an Experimental row. Owner: ATN
         ATN 11-25 night: 'did you check vMF vs Lambert path traced? (where it stands out)'. Answer: no, C0b is
