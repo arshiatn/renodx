@@ -13,8 +13,8 @@
 //            with the instruction named (no row needs it today). Shadow variants: the hard path (g_shadow_soft_edges
 //            0); the soft path (PCF) is printed as information (its lit sum need not be exactly 1).
 //   W1 dxc   point_light_cs.hlsl (dxc cs_6_5 -O3, D3D12 WARP, the helper's compiler) on records of what the pixel
-//            probe read, against the same game outputs: the largest ulp distance per variant (information: the bar is
-//            fxc's; a dxc distance is the helper's, named in the report).
+//            probe read, against the same game outputs (rgb): the same bar. The include spells out the DXBC's mad()s
+//            and acos and makes its result precise: dxc's Acos and fast fmul / fadd gave up to 8e8 ulp without them.
 //   model    per slm / skinlm pair, a random stencil & 3 per pixel: 1 = the slm shader's value, 3 = the skinlm one's,
 //            0 / 2 = rgb 0 (both draws stencilled out), bit-exact.
 //   static   fxc ps_4_0 / ps_4_1 / ps_5_0 / cs_5_0 and dxc cs_6_5 / cs_6_9 compile the include without warnings.
@@ -755,7 +755,7 @@ int main(int argc, char** argv) {
         total.Add(Compare(game_outputs[variant.index][r], ours, true));
       }
       dxc_text[variant.index] = total.Text();
-      std::printf("INFO W1 dxc cs_6_5 (D3D12 WARP, rgb) %s: %s\n", Name(variant).c_str(), total.Text().c_str());
+      gate("W1 dxc cs_6_5 (D3D12 WARP, rgb) " + Name(variant), total.apart == 0 || total.max_ulp <= BAR_ULP, total.Text());
     }
   }
 

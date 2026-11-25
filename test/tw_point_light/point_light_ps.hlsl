@@ -52,8 +52,9 @@ void main(float4 v0 : SV_Position0, float4 v1 : TEXCOORD0, float4 v2 : POSITION1
   surface.channel_3 = gbuffer_channel_3.SampleLevel(gbuffer_channel_3_sampler, uv, uv.y);
   const float depth = gbuffer_channel_4.SampleLevel(gbuffer_channel_4_sampler, uv, uv.y).x;
   const float ssao = ssao_texture.Sample(s_ssao, uv).x;
-  const float2 view = (pixel * g_screen_size.zw - g_viewport_offset_scale.xy) / g_viewport_offset_scale.zw;
-  const float4 world = mul(float4(view * float2(2.f, -2.f) + float2(-1.f, 1.f), depth, 1.f), inv_view_projection);
+  // mad() as the DXBC has them: TwPointLight's precise result reaches back into these lines.
+  const float2 view = mad(pixel, g_screen_size.zw, -g_viewport_offset_scale.xy) / g_viewport_offset_scale.zw;
+  const float4 world = mul(float4(mad(view, float2(2.f, -2.f), float2(-1.f, 1.f)), depth, 1.f), inv_view_projection);
   surface.position = world.xyz / world.w;
   surface.model = (probe_model != 0u) ? probe_model : probe_models.Load(int3(v0.xy, 0));
   if (probe_squared_albedo != 0u) {
