@@ -38,10 +38,16 @@ Dxc -nologo -T cs_6_9 -E main -O3 -D REFLECT_RESERVOIR -D OPACITY_MICROMAPS -Fh 
 # (TORCHES_IN_BOUNCE: the reuse with a local light's sample a bounce texel, the local lights' trace that leaves them to it)
 # Lean Reuse (REUSE_LEAN: the reuse's neighbours with fewer fetches), Near Reuse (REUSE_NEAR: fewer, nearer neighbours),
 # the reflections of one sample a pixel (REFLECT_ONE_SAMPLE) and the paths of one ray a texel (PATH_ONE_SAMPLE): the same
-# picture in fewer registers.
-foreach ($variant in @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'), @('rt_lights', 'TORCHES_IN_BOUNCE', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'),
-                       @('rt_path', 'REUSE_LEAN REUSE', 'rt_reuse_lean', 'RT_REUSE_LEAN'), @('rt_path', 'REUSE_NEAR REUSE', 'rt_reuse_near', 'RT_REUSE_NEAR'),
-                       @('rt_path', 'REFLECT_ONE_SAMPLE REFLECT', 'rt_reflect_one', 'RT_REFLECT_ONE'), @('rt_path', 'PATH_ONE_SAMPLE', 'rt_path_one', 'RT_PATH_ONE'))) {
+# picture in fewer registers. RENODX_TW_REFERENCE_BUILD set: ReSTIR GI's test switches' too (REUSE_TESTS: the paths and the
+# reuse with PT DI step 2's suspects and bias correction, rt_path.hlsli REUSE_SUSPECTS; tests only, a player's helper has none).
+$variants = @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'), @('rt_lights', 'TORCHES_IN_BOUNCE', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'),
+              @('rt_path', 'REUSE_LEAN REUSE', 'rt_reuse_lean', 'RT_REUSE_LEAN'), @('rt_path', 'REUSE_NEAR REUSE', 'rt_reuse_near', 'RT_REUSE_NEAR'),
+              @('rt_path', 'REFLECT_ONE_SAMPLE REFLECT', 'rt_reflect_one', 'RT_REFLECT_ONE'), @('rt_path', 'PATH_ONE_SAMPLE', 'rt_path_one', 'RT_PATH_ONE'))
+Remove-Item "$out\rt_path_tests.h", "$out\rt_path_tests_omm.h", "$out\rt_reuse_tests.h", "$out\rt_reuse_tests_omm.h" -ErrorAction SilentlyContinue
+if ($env:RENODX_TW_REFERENCE_BUILD) {
+  $variants += @(@('rt_path', 'REUSE_TESTS', 'rt_path_tests', 'RT_PATH_TESTS'), @('rt_path', 'REUSE_TESTS REUSE', 'rt_reuse_tests', 'RT_REUSE_TESTS'))
+}
+foreach ($variant in $variants) {
   $defines = $variant[1].Split(' ') | ForEach-Object { '-D', $_ }
   Dxc -nologo -T cs_6_5 -E main -O3 @defines -Fh "$out\$($variant[2]).h" -Vn $variant[3] "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
   Dxc -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -Fh "$out\$($variant[2])_omm.h" -Vn "$($variant[3])_OMM" "$PSScriptRoot\$($variant[0]).cs_6_5.hlsl"
@@ -103,6 +109,25 @@ if (Test-Path "$sharc\include\SharcCommon.h") {
     $defines = $sharc_shader[1].Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { '-D', $_ }
     Dxc @sharc_flags @defines -Fh "$out\$($sharc_shader[2]).h" -Vn $sharc_shader[3] "$PSScriptRoot\$($sharc_shader[0]).hlsl"
   }
+}
+# NVIDIA's RTXDI-Library 3.2 (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/RTXDI-Library: commit
+# b67f61cd0bfa6792acbf5429bb29a68ee5cdd808) for ReSTIR GI's boiling filter and PT DI when it sits unmodified in
+# build\downloads\rtxdi\extracted\RTXDI-Library-b67f61cd (a copy of that commit, never committed here; the build never
+# fetches it). Without it the helper builds without RTXDI. The line below says which: a player's helper has it.
+$rtxdi = Join-Path $root "build\downloads\rtxdi\extracted\RTXDI-Library-b67f61cd"
+$rtxdi_found = Test-Path "$rtxdi\Include\Rtxdi\DI\Reservoir.hlsli"
+if ($rtxdi_found) { "RTXDI b67f61cd: found ($rtxdi)" } else { "RTXDI b67f61cd: NOT FOUND ($rtxdi): the helper builds without RTXDI" }
+# Its builds (old outputs removed first): ReSTIR GI's boiling filter (REUSE_BOIL, rt_path.hlsli BoilTexel).
+Remove-Item "$out\rt_reuse_boil.h" -ErrorAction SilentlyContinue
+if ($rtxdi_found) {
+  Dxc -nologo -T cs_6_5 -E main -O3 -D REUSE_BOIL -I "$rtxdi\Include" -Fh "$out\rt_reuse_boil.h" -Vn RT_REUSE_BOIL "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+}
+# The reference build's RTXDI GI contest (RENODX_TW_REUSE_RTXDI; rt_path.hlsli RtxdiPackTexel, ReuseTexel with REUSE_RTXDI).
+Remove-Item "$out\rt_reuse_rtxdi_pack.h", "$out\rt_reuse_rtxdi.h", "$out\rt_reuse_rtxdi_omm.h" -ErrorAction SilentlyContinue
+if ($rtxdi_found -and $env:RENODX_TW_REFERENCE_BUILD) {
+  Dxc -nologo -T cs_6_5 -E main -O3 -D REUSE_RTXDI_PACK -I "$rtxdi\Include" -Fh "$out\rt_reuse_rtxdi_pack.h" -Vn RT_REUSE_RTXDI_PACK "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_5 -E main -O3 -D REUSE -D REUSE_TESTS -D REUSE_RTXDI -I "$rtxdi\Include" -Fh "$out\rt_reuse_rtxdi.h" -Vn RT_REUSE_RTXDI "$PSScriptRoot\rt_path.cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_9 -E main -O3 -D REUSE -D REUSE_TESTS -D REUSE_RTXDI -D OPACITY_MICROMAPS -I "$rtxdi\Include" -Fh "$out\rt_reuse_rtxdi_omm.h" -Vn RT_REUSE_RTXDI_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 }
 foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA'), @('rt_compact', 'RT_COMPACT'), @('rt_place', 'RT_PLACE'),
                       @('rt_cache_fill', 'RT_CACHE_FILL'), @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'),
