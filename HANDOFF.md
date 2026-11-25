@@ -850,7 +850,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- pds2_ PART B RESUMED 03:1x (G0 suspects one switch at a time with controls, fixe ... | ?
+- pds2_ PART C SENT 04:0x: find the bright bias that grows with the sample count ( ... | ?
 - 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for ... | ?
 - QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
@@ -15828,10 +15828,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         BIAS, night40 lit_boxes 0.97460 BIAS; x1.03 control fails as it must. Open: h0i_test.py 4 fails that predate
         this round (ho_gbf_g23's RR 1-ray cap + HitLight seed) -> fixtures in part B; static_checks = the known 5
         water_reflections comptr; add-on not rebuilt for the credits string; NOT FOUND path not run.
-        - [ ] pds2_ PART B RESUMED 03:1x (G0 suspects one switch at a time with controls, fixes the reference proves,
-        G1 bias correction, REUSE_BOIL u73 / u74, RTXDI GI contest, h0i DIM kinds + the 4 old fixtures, lab cost a side
-        with gate ids, x64 build) -> per-fix merges via coord -> numbers for ATN. Holds build.ps1 / rt_d3d12.hpp (SHaRC
-        depth 4 waits).
+        - [x] pds2_ PART B DONE (hand-back handoff_plan/handbacks/pds2_step2_partB_handback.md): c3ae28cd8 + 9ede3607a =
+        TEST SWITCHES ONLY (RENODX_TW_REUSE_*, REUSE_TESTS builds; nothing default-on). CORRECTION: both commit messages
+        say the player DXIL equals HEAD's - that check was empty (dxc -Fc CON); the real compare vs ccd0175b1 = only
+        declaration order / select numbering. Rows-off proof from outputs: E4 g2off / g3off 16 / 16 bit-identical,
+        verify_g3all 50 modes 0 changed, rec_compare --floor 17 / 17 0 above, rec_scan NaN / Inf 0. E4 (36913 / cfg
+        49): base boxes 0.9945 / 1.0362, concave 1.0386 / 1.1112, night40 lit_boxes 0.9746. SCREEN_NORMAL (screen-
+        answered first hits kept normal 0 -> Jacobian 1, no ContactShade re-scale = a BUG) is the biggest fix: concave
+        1.039 -> 0.995, night40 lit_boxes 0.975 -> 1.008, night3 0.990 -> 0.997, cfg 49 closed 1.013 -> 1.003; WORSE at
+        edge (0.998 -> 0.996 / 0.992 -> 0.979). G1 on top overshoots bright (boxes +0.8..+3.3 %, Raytraced more; fixes
+        only cfg 49 open 1.0002) -> stays a switch. sc / nv ~base, hp = base, nj INVALID, sd helps cfg 49 only. x1.03
+        control fails. CONTEST (RTXDI_GISpatialResampling on our reservoirs): Basic / Raytraced match NVIDIA's within
+        the CI on ATN's rows (validates our G1); RTXDI loses Own-Sky-off open ground (sky-as-point Jacobian -2.8 %) and
+        night40 Off / Basic; ties -> NVIDIA: RTXDI wins Raytraced + most Basic on 36913. No clear winner. BOIL: ~base
+        (-0.0003), drop path works; plant on a live texel not done. '16 RAYS NOISIER' = NOT noise: a BRIGHT BIAS that
+        grows with samples (36913 all 1 ray 0.9996, 8 rays 1.0375, 16 rays 1.0527; HISTORY_PLAIN only halves it) ->
+        likely the same cause as the bright residual. RTXDI-less build checked (NOT FOUND, exit 0). h0i 66 / 66 incl.
+        the 4 old fixtures; static_checks known 5. No gate ids: the lab env allowlist doesn't pass RENODX_TW_REUSE_*.
+        - [ ] pds2_ PART C SENT 04:0x: find the bright bias that grows with the sample count (history / temporal
+        weight), with SCREEN_NORMAL on as the base; does it explain the edge regression? -> then the default-on fix
+        commits (bug fixes always on) + a candidate-compiled-on build for one lab cost job a side (existing gate lines;
+        no new env) -> review -> per-fix merges. Holds build.ps1 / rt_d3d12.hpp (SHaRC depth 4 waits).
         - [x] pdw1_ PT DI STEP 4a DONE (hand-back handoff_plan/handbacks/pdw1_step4a_handback.md; branch
         pdw1_step4a = 01010d235 + ba51ea59d, 6 new files: src/games/twattila/tw_point_light.hlsli +
         test/tw_point_light/*): W1 40 / 40 BIT-EXACT on WARP vs the game's DXBC under fxc AND dxc (98,304 rgba / 73,728
