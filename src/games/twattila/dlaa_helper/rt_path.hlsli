@@ -926,6 +926,13 @@ void ClampWeight(inout Reservoir reservoir, float3 origin, float3 normal) {
   reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP * 3.14159265f / max(dot(normal, normalize(reservoir.hit - origin)), 1e-3f));
 }
 
+// f32tof16 rounds toward zero (D3D's float conversions): a value stored again each frame would drift down. Nearest of
+// the truncated half and the next one up (value >= 0).
+uint F32ToF16Nearest(float value) {
+  const uint truncated = f32tof16(value);
+  return (value - f16tof32(truncated) > f16tof32(truncated + 1u) - value) ? truncated + 1u : truncated;
+}
+
 // The texel's own normal its reservoir was made for (0: none).
 float3 LoadReceiverNormal(RWTexture2D<uint4> data, uint2 texel) {
   const uint packed = data[texel].w;
@@ -948,8 +955,8 @@ Reservoir LoadReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, ui
 // for a sky sample and dropped a receiver's history facing +z each frame); 1 is +z with x 1 / 32767.
 void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 texel, Reservoir reservoir, float3 receiver_normal) {
   samples[texel] = float4(reservoir.hit, reservoir.weight);
-  data[texel] = uint4(f32tof16(reservoir.light.r) | (f32tof16(reservoir.light.g) << 16),
-                      f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
+  data[texel] = uint4(F32ToF16Nearest(reservoir.light.r) | (F32ToF16Nearest(reservoir.light.g) << 16),
+                      F32ToF16Nearest(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
                       (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? max(OctahedralEncode(reservoir.hit_normal), 1u) : 0u,
                       (dot(receiver_normal, receiver_normal) > 0.f) ? max(OctahedralEncode(receiver_normal), 1u) : 0u);
 }
