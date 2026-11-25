@@ -821,7 +821,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
 - a64pir_ RE-CHECK of the fix round SENT 01:3x -> GO / NOT GO for window 3 round 1 ... | ?
-- a64ab_ -Probe / -Wpr pass SENT 01:2x (plan M1-M3, sha from the sidecar, locks fo ... | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -848,7 +847,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- mrgb_ (Opus Medium) MERGED BUILD CHECK STARTED: every changed add-on (twattila a ... | ?
+- pds2_ (Opus High, worktree, branch pds2_step2) PT DI STEP 2 STARTED 01:3x (resum ... | ?
+- pdw1_ (Opus High, worktree, branch pdw1_step4a, NEW files only) PT DI STEP 4a ST ... | ?
+- QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
@@ -15314,8 +15315,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         closed; the intact check + perffix64 log compare cover it at run time). Self-test 119 / 0; DLL sha256
         669c215d0acdeb20... + sidecar; stubs +20.1 / +28.9 ns, GOT +1.6 ns.
         - [ ] a64pir_ RE-CHECK of the fix round SENT 01:3x -> GO / NOT GO for window 3 round 1.
-        - [ ] a64ab_ -Probe / -Wpr pass SENT 01:2x (plan M1-M3, sha from the sidecar, locks for the whole batch) ->
-        coord -DryRun (ATN's line) -> window 3 round 1 (base, inline, base + WPR s 100-160, ~21 min).
+        - [x] a64ab_ -Probe / -Wpr PASS DONE (hand-back attila64/study_1124/a64ab_probe_pass_handback.md): ETL waits /
+        refuses on D:\RenoDX_WPR\attila_wpr.etl, renamed in place to attila_wpr_<batch>_<n>_<arm>.etl (path + size in
+        start.json), schtasks /Query + /Run only, Stop in start + batch finally, wpr_running.txt marker for a hard-
+        killed batch; PerfFix compare without stats lines vs the newest clean no-probe B64P start (same sha); only
+        ATN's 4 lines run (everything else exits 1); DLL sha from the sidecar, copied before launch, removed in
+        finally. Round 1 -DryRun exit 0 at 01:21 (~26 min expected). Risks: PerfFix's 'threads paused' line may count
+        the beacon thread (false collision - summary prints the line); WPR task window takes focus (share reported).
+        -> a64pir_ re-check covers this script side too -> GO: coord runs window 3 round 1.
         - [x] a64bd_ BRING-UP DESIGN DONE (hand-back attila64/a64bd_design_handback.md; designs/bringup_design.md,
         PRIVATE): A2 required (Sol's RGBA8 picture never gets a clone -> black in HDR10 / scRGB / SDR); A2a copy_resource
         handler turns the clone on at the first copy into a swap buffer; A2b overlay rows -> halves; fixed loader's fix
@@ -15676,9 +15683,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] MERGED LOCALLY 01:0x: 1c2baf43b Merge ho_gbf_g23 (conflict only in test/tw_gpu_completion/tests.cpp:
         ho_gbf_g23's side; atn-mods' 7890b4dde = its cd16da81c + the rescue cases) + 807dbe07c Merge ho_g23 (clean).
         32 files, 11 games' DLSS bridges.
-        - [ ] mrgb_ (Opus Medium) MERGED BUILD CHECK STARTED: every changed add-on (twattila addon64 + addon32 + one
-        twattila-based x86 add-on), helper, tw_gpu_completion + tw_helper_lifetime x86 / amd64 -> PUSH OK: coord pushes
-        atn-mods (merges + HANDOFF) -> pds2_ (PT DI step 2) starts; a64b_ / a64p1_ rebase onto it at their merge.
+        - [x] mrgb_ MERGED BUILD CHECK = PUSH OK (hand-back handoff_plan/handbacks/mrgb_merged_build_handback.md): 16
+        add-on targets exit 0 (twattila 32 / 64, twrome2 32, WH3 32 / 64, Rome Remastered 32 / 64, Shogun 2 64,
+        Divinity 1 / 2 32 / 64, Expeditions, R.U.S.E., Ryse, Tales 64; tales_dlss is header-only inside Tales);
+        warnings = the pre-merge 61 (shared utils deprecations only); helper plain + PROBE / REFERENCE / RECORDER
+        builds exit 0; tw_gpu_completion x86 / amd64 PASS, tw_helper_lifetime 25 / 0 each. Pushed atn-mods 01:3x.
+        - [ ] pds2_ (Opus High, worktree, branch pds2_step2) PT DI STEP 2 STARTED 01:3x (resume_1124.md task 2 + Rev 2;
+        checkpoint A = fresh E4 baseline + ContactShade fold + RTXDI copy / found line + credits line) -> coord.
+        - [ ] pdw1_ (Opus High, worktree, branch pdw1_step4a, NEW files only) PT DI STEP 4a STARTED 01:3x
+        (tw_point_light.hlsli + test/tw_point_light, W1 40 / 40 on WARP) -> xHigh review -> merge alone.
+        - [ ] QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes while quiet_run.lock
+        exists (window 3).
         ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
         continue?' -> YES: no new agents except a64ab_'s fix round for a64abr_'s review; running ones (s3fr_, a64abr_,
         a64p0r_, a64bd_, a64pl_) finish; then window 1 stage A on a quiet CPU (no builds); then the G23 gate, s3f_'s
