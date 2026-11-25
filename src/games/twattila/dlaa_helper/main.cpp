@@ -685,6 +685,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       shared->rt_dynamic_uvs = scene->DynamicUvs();
     }
     if (version >= 23) shared->rt_nrd_off = scene->NrdOff();
+    if (version >= 32) shared->rt_di_ok = scene->DiOk();
   };
   std::thread rt_worker([&] {
     std::unique_lock lock(rt_work.mutex);
