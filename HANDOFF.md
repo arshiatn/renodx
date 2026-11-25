@@ -823,7 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
-- a64a1r_ (Opus xHigh) R1 + a64a1s_ (Sonnet High) FINAL reviews STARTED 04:2x -> d ... | ?
+- a64a1_ FIX ROUND SENT 04:4x (all of the above + forced-wanted-bit F7 case + forb ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15462,8 +15462,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         drain / CAS); F7 GPU 29 / 29 (23 + 6 fake-plugin cases); sweep twattila 64 / 32, twrome2 32, thrones 32, WH3
         64 exit 0; merge-tree clean. Not done: host.flushes_unit_captures not wired on the port (C3); F7 can't trigger
         registration (7c offline only); no game runs.
-        - [ ] a64a1r_ (Opus xHigh) R1 + a64a1s_ (Sonnet High) FINAL reviews STARTED 04:2x -> designs/plugin_a1_review.md
-        + plugin_a1_review_sonnet.md -> fixes -> merge a64a1_lane -> build check -> coord runs: 32-bit S4-rotation trace
+        - [x] a64a1r_ OPUS R1 + a64a1s_ SONNET FINAL = both GO WITH CHANGES, 0 Musts (hand-backs
+        attila64/a64a1r_review_handback.md + a64a1s_final_review_handback.md; designs/plugin_a1_review.md +
+        plugin_a1_review_sonnet.md). Hold: install race fixed (Install before the release store, acquire readers), no
+        deadlock, every non-READY status leaves the plugin off, drain in AddonUninit before FreeLibrary and not under the
+        loader lock, no callback after unload, no row patches game code on the port, PassBegin / PassEnd = the old
+        32-bit code except the rotation. Shoulds: the S4 ROTATION FIX CHANGES 32-bit Attila / Thrones / Rome II at their
+        next rebuild (kept call per frame; first frame after a gap) -> coord keeps it (bug fix = always on), README +
+        'x86 unchanged' claim corrected, the 32-bit trace gates any 32-bit release; bone-flush trigger: drop the dead
+        batched term (PacksHooked false on the port), derive from rt_core's predicate; lookup result over 4 atomics ->
+        one release flag; plugin_rows vs rows_changed at game start; READY note when the bone-flush site is refused;
+        LOADING reported as 'another version'; F7 end-of-run block check can't fail (nothing registers) + 5 of 6 notes
+        shown in 0 states (design 17 done-when not met). Nits: 12 + 8.
+        - [ ] a64a1_ FIX ROUND SENT 04:4x (all of the above + forced-wanted-bit F7 case + forbidden log lines) ->
+        a64a1r_ re-check -> merge a64a1_lane -> build check -> coord runs: 32-bit S4-rotation trace
         (+ shadow_refresh=2), T1 smoke (attila64_log 2 sites applied + 'game started: 2 sites unchanged'; ReShade.log
         'engine plugin ready, rows offered 3'), C2 (rows wanted 2 / 3; VIEW_DRAW first-call thread = present thread).
         A3 Smoke: ATN's 4 -ReShade lines (drop '-ReShade -Warp': ReShade skips WARP) + check the 'N code ranges' line
