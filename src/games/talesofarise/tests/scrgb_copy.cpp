@@ -6,12 +6,14 @@
  * handler (addon.cpp OnCopyResource) and then utils' (resource_upgrade.hpp OnCopyResource), in ReShade's order, on
  * resource records as the swap chain module leaves them. The command list records the copy utils issues.
  *  scrgb    scRGB: buffer 0 is the real RGBA16F buffer, its clone (the swap chain pass's copy) off. The capture's clone
- *           turns on and buffer 0 is copied into it. CONTROL: before the fix the capture's clone stays off and utils
- *           drops the copy as mismatched (no copy: the capture stays stale).
- *  hdr10    HDR10: buffer 0's clone on; its clone is copied into the capture's clone (as before the fix).
- *  early    before the tone mapper: the capture's clone stays off.
- *  into_bb  a copy into buffer 0 in scRGB: its clone stays off (the pass would overwrite it: black).
+ *           and its view made before the copy turn on, and buffer 0 is copied into the clone. CONTROL: before the fix
+ *           the capture's clone stays off and utils drops the copy as mismatched (the capture stays stale).
+ *  hdr10    HDR10: buffer 0's clone on; its clone is copied into the capture's clone, the capture's view reads it.
+ *  early    before the tone mapper: the capture's clone and view stay off.
+ *  into_bb  a copy into buffer 0 in scRGB: its clone and view stay off (the pass would overwrite it: black), the copy
+ *           lands in the real buffer 0.
  *  stock    an 8-bit texture without an active clone: nothing turns on, the plain copy.
+ *  float    CONTROL: an RGBA16F texture that is no swap chain buffer (clone off) turns nothing on.
  * Run by test/tw_tales_unit (after the talesofarise target); exit code 0 when every check holds.
  */
 
@@ -106,7 +108,8 @@ struct CommandList : command_list {
   void update_texture_region(const subresource_data& data, resource dest, uint32_t dest_subresource, const subresource_box* dest_box = nullptr) override { UNEXPECTED("update_texture_region") }
 };
 
-// A 1280x720 texture's record: its clone already made (no device call), enabled or not.
+// A 1280x720 texture: its record and one shader resource view made with it (before any copy, as UE4's RHI makes a render
+// target's views), their clones already made (no device call), enabled or not.
 struct Texture {
   uint64_t handle = 0u;
   format format = format::unknown;
@@ -116,44 +119,13 @@ struct Texture {
 };
 
 constexpr uint64_t CLONE = 0x1000u;  // a texture's clone handle: its handle + CLONE
-
-void Record(const Texture& texture) {
-  res::UpsertResourceInfo({texture.handle}, [&](res::ResourceInfo* info, bool) {
-    *info = {
-        .desc = resource_desc(1280u, 720u, 1u, 1u, texture.format, 1u, memory_heap::gpu_only,
-                              resource_usage::render_target | resource_usage::shader_resource | resource_usage::copy_dest),
-        .clone_desc = resource_desc(1280u, 720u, 1u, 1u, format::r16g16b16a16_float, 1u, memory_heap::gpu_only,
-                                    resource_usage::render_target | resource_usage::shader_resource | resource_usage::copy_dest),
-        .resource = {texture.handle},
-        .clone = {texture.handle + CLONE},
-        .clone_enabled = texture.clone_enabled,
-        .is_swap_chain = texture.swap_chain,
-        .clone_target = texture.clone_target,
-    };
-  });
-}
-
-bool CloneEnabled(uint64_t handle) {
-  bool enabled = false;
-  res::GetResourceInfo({handle}, [&enabled](const res::ResourceInfo& info) { enabled = info.clone_enabled; });
-  return enabled;
-}
+constexpr uint64_t VIEW = 0x100u;    // its view: its handle + VIEW (the view's clone: + VIEW + CLONE)
 
 struct Result {
   bool dest_clone_enabled = false;
+  uint64_t dest_view = 0u;  // what a later bind of the destination's view reads: its clone view, or 0 (the original)
   std::vector<std::pair<uint64_t, uint64_t>> copies;
 };
-
-// One game copy through both handlers, as ReShade calls them (the add-on registered before utils).
-Result Copy(const Texture& source, const Texture& dest, bool tonemapped) {
-  Record(source);
-  Record(dest);
-  frame_tonemapped.store(tonemapped);
-  CommandList commands;
-  OnCopyResource(&commands, {source.handle}, {dest.handle});
-  renodx::utils::resource::upgrade::OnCopyResource(&commands, {source.handle}, {dest.handle});
-  return {.dest_clone_enabled = CloneEnabled(dest.handle), .copies = commands.copies};
-}
 
 }  // namespace copy_test
 
@@ -171,6 +143,47 @@ int main() {
   const Texture capture = {.handle = 0x30000u, .format = format::r8g8b8a8_unorm, .clone_target = &frame_clone};
   const Texture capture_on = {.handle = 0x30000u, .format = format::r8g8b8a8_unorm, .clone_target = &frame_clone, .clone_enabled = true};
   const Texture stock = {.handle = 0x40000u, .format = format::r8g8b8a8_unorm};
+  const Texture float_texture = {.handle = 0x50000u, .format = format::r16g16b16a16_float};
+
+  // One game copy through both handlers, as ReShade calls them (the add-on registered before utils).
+  const auto copy = [](const Texture& source, const Texture& dest, bool tonemapped) {
+    for (const Texture* texture : {&source, &dest}) {
+      res::UpsertResourceInfo({texture->handle}, [texture](res::ResourceInfo* info, bool) {
+        *info = {
+            .desc = resource_desc(1280u, 720u, 1u, 1u, texture->format, 1u, memory_heap::gpu_only,
+                                  resource_usage::render_target | resource_usage::shader_resource | resource_usage::copy_dest),
+            .clone_desc = resource_desc(1280u, 720u, 1u, 1u, format::r16g16b16a16_float, 1u, memory_heap::gpu_only,
+                                        resource_usage::render_target | resource_usage::shader_resource | resource_usage::copy_dest),
+            .resource = {texture->handle},
+            .clone = {texture->handle + CLONE},
+            .clone_enabled = texture->clone_enabled,
+            .is_swap_chain = texture->swap_chain,
+            .clone_target = texture->clone_target,
+        };
+        info->resource_view_handles.insert(texture->handle + VIEW);
+      });
+      res::UpsertResourceViewInfo({texture->handle + VIEW}, [texture](res::ResourceViewInfo* info, bool) {
+        *info = {
+            .view = {texture->handle + VIEW},
+            .clone = {texture->handle + VIEW + CLONE},
+            .clone_enabled = texture->clone_enabled,
+            .original_resource = {texture->handle},
+            .clone_resource = {texture->handle + CLONE},
+            .clone_target = texture->clone_target,
+            .usage = resource_usage::shader_resource,
+            .is_swap_chain = texture->swap_chain,
+        };
+      });
+    }
+    frame_tonemapped.store(tonemapped);
+    CommandList commands;
+    OnCopyResource(&commands, {source.handle}, {dest.handle});
+    renodx::utils::resource::upgrade::OnCopyResource(&commands, {source.handle}, {dest.handle});
+    Result result = {.dest_view = renodx::utils::resource::upgrade::GetResourceViewClone({dest.handle + VIEW}).handle,
+                     .copies = commands.copies};
+    res::GetResourceInfo({dest.handle}, [&result](const res::ResourceInfo& info) { result.dest_clone_enabled = info.clone_enabled; });
+    return result;
+  };
 
   int failures = 0;
   const auto check = [&failures](bool condition, const char* label) {
@@ -178,24 +191,32 @@ int main() {
     failures += condition ? 0 : 1;
   };
   using Copies = std::vector<std::pair<uint64_t, uint64_t>>;
+  const uint64_t capture_clone_view = capture.handle + VIEW + CLONE;
 
-  const Result scrgb = Copy(scrgb_buffer, capture, true);
+  const Result scrgb = copy(scrgb_buffer, capture, true);
   check(scrgb.dest_clone_enabled, "scrgb: the capture's clone turns on");
   check(scrgb.copies == Copies{{scrgb_buffer.handle, capture.handle + CLONE}}, "scrgb: buffer 0 copied into the capture's clone");
+  check(scrgb.dest_view == capture_clone_view, "scrgb: the capture's view (made before the copy) then reads its clone");
 
-  const Result hdr10 = Copy(hdr10_buffer, capture, true);
+  const Result hdr10 = copy(hdr10_buffer, capture, true);
   check(hdr10.dest_clone_enabled, "hdr10: the capture's clone turns on");
   check(hdr10.copies == Copies{{hdr10_buffer.handle + CLONE, capture.handle + CLONE}}, "hdr10: buffer 0's clone copied into the capture's clone");
+  check(hdr10.dest_view == capture_clone_view, "hdr10: the capture's view then reads its clone");
 
-  const Result early = Copy(scrgb_buffer, capture, false);
-  check(!early.dest_clone_enabled, "early: before the tone mapper the capture's clone stays off");
+  const Result early = copy(scrgb_buffer, capture, false);
+  check(!early.dest_clone_enabled && early.dest_view == 0u, "early: before the tone mapper the capture's clone and view stay off");
 
-  const Result into_bb = Copy(capture_on, scrgb_buffer, true);
-  check(!into_bb.dest_clone_enabled, "into_bb: buffer 0's clone stays off");
+  const Result into_bb = copy(capture_on, scrgb_buffer, true);
+  check(!into_bb.dest_clone_enabled && into_bb.dest_view == 0u, "into_bb: buffer 0's clone and view stay off");
+  check(into_bb.copies == Copies{{capture.handle + CLONE, scrgb_buffer.handle}}, "into_bb: the capture's clone copied into the real buffer 0");
 
-  const Result stock_copy = Copy(stock, capture, true);
+  const Result stock_copy = copy(stock, capture, true);
   check(!stock_copy.dest_clone_enabled, "stock: an 8-bit source turns no clone on");
   check(stock_copy.copies == Copies{{stock.handle, capture.handle}}, "stock: the plain copy");
+
+  // CONTROL: an RGBA16F texture that is no swap chain buffer, its clone off, is not the frame.
+  const Result float_copy = copy(float_texture, capture, true);
+  check(!float_copy.dest_clone_enabled && float_copy.dest_view == 0u, "float: a non-swap-chain RGBA16F source turns no clone on");
 
   std::printf("%s (%d failed)\n", failures == 0 ? "All passed" : "FAILED", failures);
   return failures == 0 ? 0 : 1;
