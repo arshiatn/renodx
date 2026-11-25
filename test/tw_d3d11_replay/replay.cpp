@@ -2,7 +2,7 @@
 // blobs\, done.txt) replayed through the modules' own internal entry points, each event from its own dumped inputs, on
 // the hardware GPU (--warp: WARP).
 //   replay.exe --self-test <folder> [--warp] [--race-map <csos>]   dumps its own frames through pass_dump, replays them
-//   replay.exe --exact <frame> [--race-map <csos>] [--out <dir>] [--against <dir>] [--warp]
+//   replay.exe --exact <frame> [--race-map <csos>] [--out <dir>] [--against <dir>] [--skip <event>[,<event>]] [--warp]
 //   replay.exe --time <n> <frame> --out <block.json> [--warp]
 //   replay.exe --settings <matrix.json> <frame> --out <dir> [--warp]
 //   replay.exe --profile [<exe name> ...]                            the driver profile's filtering keys (NVAPI DRS, read only)
@@ -13,9 +13,15 @@
 // that event's case is void and the field is named. Bend's race pixels (two waves of one dispatch writing different
 // values to a pixel) come from the race-map build (run.ps1 compiles sss_bend*.cs_5_0.hlsl with BEND_SSS_RACE_MAP; outside
 // the race pixels its outputs must equal the real build's dump, the proof it computes the same): outside them every byte
-// must be equal; at them the value the other side wrote must be one of this side's writers' (unorm 8 and half: within 1
-// step, D3D's conversions may round or truncate). Overflow (more than 4 writers): passes only if the other side's value
-// is one of the 4 kept; lane against base (--against) only if both overflow, else the writers' multisets must match.
+// must be equal; at them each output's value must be one writer's, all of its channels from that writer (the joint
+// rule, design M4: tint's RGB is one store). Not one writer across outputs: occlusion, penumbra and tint are separate
+// stores to separate UAVs, which two waves may interleave (WARP, 11-25: 7 of 665 race pixels held one writer's
+// occlusion and another's penumbra). Unorm 8 and half: within 1 step, D3D's conversions may round or truncate.
+// Overflow (more than 4 writers): passes only if one of the 4 kept gives it; lane against base (--against) only if both
+// overflow, else the writers' multisets must match.
+// An event this build can replay that is not replayed (an input not made, a module not prepared) fails the frame, unless
+// --skip <name>[,<name>] names it; the events listed above as not replayed are listed, not failed. A blob whose size is
+// not the one its name and its rows give refuses the frame.
 // Downstream of Bend (sss_blur / sss_soft) runs again from the dump's occlusion and penumbra (injection): byte equal.
 // A texture an event makes (the first frame after a setting turns it on) is not one of its inputs: compared from the
 // next frame on.
@@ -121,7 +127,20 @@ static bool LoadFrame(const fs::path& folder, Frame* frame) {
       Subresource subresource = {.index = sub["index"], .width = sub["width"], .height = sub["height"], .depth = sub["depth"],
                                  .row_bytes = sub["row_bytes"], .rows = sub["rows"]};
       const std::string blob = sub["blob"];
-      if (!blob.empty()) subresource.data = ReadFile(folder / "blobs" / blob);
+      const size_t want = size_t{subresource.row_bytes} * subresource.rows * subresource.depth;
+      if (blob.empty() && want != 0) {
+        std::printf("%s: a subresource of copy %zu has no blob (refused)\n", folder.string().c_str(), frame->copies.size());
+        return false;
+      }
+      if (!blob.empty()) {
+        subresource.data = ReadFile(folder / "blobs" / blob);
+        const size_t named = std::stoull(blob.substr(blob.rfind('_') + 1));
+        if (subresource.data.size() != named || subresource.data.size() != want) {
+          std::printf("%s: blob %s is %zu bytes (its name %zu, its rows %zu): refused\n", folder.string().c_str(), blob.c_str(),
+                      subresource.data.size(), named, want);
+          return false;
+        }
+      }
       copy.subresources.push_back(std::move(subresource));
     }
     frame->copies.push_back(std::move(copy));
@@ -167,9 +186,14 @@ static ComPtr<ID3D11Resource> Make(const Copy& copy) {
     if (SUCCEEDED(device->CreateBuffer(&desc, initial.data(), buffer.GetAddressOf()))) made = buffer;
   } else if (copy.kind == "texture2d") {
     if (copy.multisampled) return nullptr;
+    // D3D11 takes no initial data for a depth-stencil texture: the replay only reads it through a view.
+    UINT bind = d["BindFlags"];
+    if ((bind & D3D11_BIND_DEPTH_STENCIL) != 0) {
+      bind = (bind & ~static_cast<UINT>(D3D11_BIND_DEPTH_STENCIL)) | D3D11_BIND_SHADER_RESOURCE;
+    }
     const D3D11_TEXTURE2D_DESC desc = {.Width = d["Width"], .Height = d["Height"], .MipLevels = d["MipLevels"], .ArraySize = d["ArraySize"],
                                        .Format = static_cast<DXGI_FORMAT>(d["Format"].get<int>()), .SampleDesc = {.Count = 1},
-                                       .Usage = D3D11_USAGE_DEFAULT, .BindFlags = d["BindFlags"],
+                                       .Usage = D3D11_USAGE_DEFAULT, .BindFlags = bind,
                                        .MiscFlags = d["MiscFlags"].get<UINT>() & D3D11_RESOURCE_MISC_TEXTURECUBE};
     ComPtr<ID3D11Texture2D> texture;
     if (SUCCEEDED(device->CreateTexture2D(&desc, initial.data(), texture.GetAddressOf()))) made = texture;
@@ -363,14 +387,14 @@ static uint32_t Quantize(float value, DXGI_FORMAT format) {
 
 struct Compared {
   size_t bytes = 0;      // differing bytes outside the race pixels
-  size_t raced = 0;      // race pixels
-  size_t race_bad = 0;   // race pixels whose value is none of the writers'
   size_t first = SIZE_MAX;
 };
 
 // `got` against `want` byte for byte; with a race map for a Bend output (`channel`: 0 occlusion R8, 1 penumbra R16F,
-// 2 tint RGBA8), its race pixels by its writers instead.
-static Compared Compare(const std::vector<std::vector<uint8_t>>& got, const Copy& want, const RaceResult* race = nullptr, int channel = -1) {
+// 2 tint RGBA8), its race pixels by its writers instead: each race pixel's bit of `matching` (one bit a writer slot)
+// stays set only for the writers whose value, every channel of it, this output's `want` holds (the joint rule).
+static Compared Compare(const std::vector<std::vector<uint8_t>>& got, const Copy& want, const RaceResult* race = nullptr, int channel = -1,
+                        std::vector<uint8_t>* matching = nullptr) {
   Compared result;
   for (size_t sub = 0; sub < want.subresources.size() && sub < got.size(); ++sub) {
     const auto& expected = want.subresources[sub].data;
@@ -383,25 +407,30 @@ static Compared Compare(const std::vector<std::vector<uint8_t>>& got, const Copy
       ++result.bytes;
       if (result.first == SIZE_MAX) result.first = byte;
     }
-    if (race != nullptr && sub == 0) {
+    if (race != nullptr && sub == 0 && matching != nullptr) {
       const auto format = (channel == 1) ? DXGI_FORMAT_R16_FLOAT : DXGI_FORMAT_R8_UNORM;
       for (size_t pixel = 0; pixel < race->count.size() && (pixel + 1) * texel <= expected.size(); ++pixel) {
         if (!race->Raced(pixel)) continue;
-        ++result.raced;
-        bool found = false;
-        for (uint32_t slot = 0; slot < std::min<uint32_t>(race->count[pixel], 4) && !found; ++slot) {
+        for (uint32_t slot = 0; slot < std::min<uint32_t>(race->count[pixel], 4); ++slot) {
           const RaceTuple& tuple = race->tuples[(pixel * 4) + slot];
-          found = true;
+          bool holds = true;
           for (size_t component = 0; component < ((channel == 2) ? 3 : 1); ++component) {
-            const float value = (channel == 0) ? tuple.occlusion : (channel == 1) ? tuple.penumbra : tuple.tint[component];
+            float value = tuple.tint[component];
+            if (channel == 0) {
+              value = tuple.occlusion;
+            } else if (channel == 1) {
+              value = tuple.penumbra;
+            }
             if (value < 0.f) continue;  // not written by this writer
             uint32_t stored = 0;
             std::memcpy(&stored, expected.data() + (pixel * texel) + ((channel == 2) ? component : 0), (channel == 1) ? 2 : 1);
             const uint32_t quantized = Quantize(value, format);
-            found = found && (std::max(stored, quantized) - std::min(stored, quantized)) <= 1;
+            holds = holds && (std::max(stored, quantized) - std::min(stored, quantized)) <= 1;
+          }
+          if (!holds) {
+            (*matching)[pixel] &= static_cast<uint8_t>(~(1u << slot));
           }
         }
-        if (!found) ++result.race_bad;
       }
     }
   }
@@ -758,21 +787,62 @@ static bool Check(const std::string& label, const Frame& frame, const json& even
     for (const auto& mismatch : replayed.mismatches) std::printf("  %s: constant bytes differ: %s (void)\n", label.c_str(), mismatch.c_str());
     return false;
   }
+  // The joint rule: in each Bend output a race pixel's value is one writer's (Compare clears the slots whose value it
+  // does not hold); `no_writer` marks the pixels where an output held none.
+  std::vector<uint8_t> matching;
+  std::vector<bool> no_writer;
+  if (race != nullptr) {
+    matching.resize(race->count.size());
+    no_writer.resize(race->count.size());
+  }
   for (const auto& [name, resource] : replayed.outputs) {
     const Copy* expected = want(name);
     if (expected == nullptr || resource == nullptr) continue;
-    const int channel = (name == "sss.occlusion") ? 0 : (name == "sss.penumbra") ? 1 : (name == "sss.tint") ? 2 : -1;
-    const auto compared = Compare(Read(resource, *expected), *expected, (channel >= 0) ? race : nullptr, channel);
-    const bool same = compared.bytes == 0 && compared.race_bad == 0;
-    equal = equal && same;
+    int channel = -1;
+    if (name == "sss.occlusion") {
+      channel = 0;
+    } else if (name == "sss.penumbra") {
+      channel = 1;
+    } else if (name == "sss.tint") {
+      channel = 2;
+    }
+    if (race != nullptr && channel >= 0) {
+      for (size_t pixel = 0; pixel < matching.size(); ++pixel) {
+        matching[pixel] = static_cast<uint8_t>((1u << std::min<uint32_t>(race->count[pixel], 4)) - 1u);
+      }
+    }
+    const auto compared = Compare(Read(resource, *expected), *expected, (channel >= 0) ? race : nullptr, channel, &matching);
+    if (race != nullptr && channel >= 0) {
+      for (size_t pixel = 0; pixel < matching.size(); ++pixel) {
+        if (race->Raced(pixel) && matching[pixel] == 0) {
+          no_writer[pixel] = true;
+        }
+      }
+    }
+    equal = equal && compared.bytes == 0;
     std::printf("  %s %s%s: %s", label.c_str(), name.c_str(), (replayed.injected && name == "sss.soft") ? " (from the dump's occlusion)" : "",
-                same ? "equal" : "DIFFERS");
+                (compared.bytes == 0) ? "equal" : "DIFFERS");
     if (compared.bytes != 0) std::printf(", %zu bytes apart (first at byte %zu)", compared.bytes, compared.first);
-    if (compared.raced != 0) std::printf(", %zu race pixels (%zu none of the writers')", compared.raced, compared.race_bad);
     std::printf("\n");
+  }
+  if (race != nullptr) {
+    size_t raced = 0;
+    size_t bad = 0;
+    for (size_t pixel = 0; pixel < matching.size(); ++pixel) {
+      if (!race->Raced(pixel)) continue;
+      ++raced;
+      if (no_writer[pixel]) ++bad;
+    }
+    equal = equal && bad == 0;
+    std::printf("  %s race pixels: %zu, %zu with an output no writer gives\n", label.c_str(), raced, bad);
   }
   return equal;
 }
+
+// The events this build does not replay (the header's list): listed, not failed.
+constexpr std::array<const char*, 4> NOT_REPLAYED = {"sss.lights", "smoke.map", "ao.draw", "bounce.sun_draw"};
+// --skip's events: not replayed without failing the frame.
+static std::vector<std::string> skipped_events;
 
 // Every event of a frame replayed against its afters (H0); `out`: the replay's outputs written there (raw, per event).
 static bool Exact(const Frame& frame, const fs::path& out, const fs::path& against) {
@@ -803,7 +873,10 @@ static bool Exact(const Frame& frame, const fs::path& out, const fs::path& again
     }
     const auto replayed = Replay(frame, event, &kept, false);
     if (!replayed.replayed) {
-      std::printf("  %s: %s\n", label.c_str(), replayed.why.c_str());
+      const std::string name = event["name"];
+      const bool listed = std::ranges::find(NOT_REPLAYED, name) != NOT_REPLAYED.end() || std::ranges::find(skipped_events, name) != skipped_events.end();
+      std::printf("  %s: %s%s\n", label.c_str(), replayed.why.c_str(), listed ? "" : " (FAIL: replayable here; --skip names it)");
+      all = all && listed;
       continue;
     }
     ++replayed_count;
@@ -1010,6 +1083,10 @@ struct Synthetic {
   UINT height = 180;
   ComPtr<ID3D11Texture2D> depth;
   ComPtr<ID3D11ShaderResourceView> depth_srv;
+  // The same depth in a depth-stencil texture (R24G8, as the game's): SSR reads it, so its dump input is one D3D11 takes
+  // no initial data for (Make drops the binding).
+  ComPtr<ID3D11Texture2D> depth_stencil;
+  ComPtr<ID3D11ShaderResourceView> depth_stencil_srv;
   ComPtr<ID3D11Buffer> camera;
   ComPtr<ID3D11Buffer> lighting;
   ComPtr<ID3D11Texture2D> target;
@@ -1038,6 +1115,20 @@ static Synthetic MakeSynthetic(uint32_t seed) {
   const D3D11_SUBRESOURCE_DATA depth_data = {depth.data(), s.width * 4, 0};
   device->CreateTexture2D(&depth_desc, &depth_data, s.depth.GetAddressOf());
   device->CreateShaderResourceView(s.depth.Get(), nullptr, s.depth_srv.GetAddressOf());
+  // The depth-stencil copy: 24-bit depth packed into an R24G8 texture made with it, copied into the depth-stencil one.
+  std::vector<uint32_t> packed(depth.size());
+  for (size_t texel = 0; texel < depth.size(); ++texel) packed[texel] = static_cast<uint32_t>(std::lround(depth[texel] * 16777215.f));
+  ComPtr<ID3D11Texture2D> packed_depth;
+  const D3D11_TEXTURE2D_DESC packed_desc = {s.width, s.height, 1, 1, DXGI_FORMAT_R24G8_TYPELESS, {1, 0}, D3D11_USAGE_DEFAULT, D3D11_BIND_SHADER_RESOURCE, 0, 0};
+  const D3D11_SUBRESOURCE_DATA packed_data = {packed.data(), s.width * 4, 0};
+  device->CreateTexture2D(&packed_desc, &packed_data, packed_depth.GetAddressOf());
+  const D3D11_TEXTURE2D_DESC stencil_desc = {s.width, s.height, 1, 1, DXGI_FORMAT_R24G8_TYPELESS, {1, 0}, D3D11_USAGE_DEFAULT,
+                                             D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_DEPTH_STENCIL, 0, 0};
+  device->CreateTexture2D(&stencil_desc, nullptr, s.depth_stencil.GetAddressOf());
+  context->CopyResource(s.depth_stencil.Get(), packed_depth.Get());
+  const D3D11_SHADER_RESOURCE_VIEW_DESC stencil_view = {.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS, .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
+                                                        .Texture2D = {.MostDetailedMip = 0, .MipLevels = 1}};
+  device->CreateShaderResourceView(s.depth_stencil.Get(), &stencil_view, s.depth_stencil_srv.GetAddressOf());
   // Camera: projection (60 degrees high) at c5, its inverse at c17, view projection = projection (view identity) at c9 / c21,
   // inv_view identity at c13, the position 0, near / far at c25.
   std::array<float, 30 * 4> constants = {};
@@ -1111,10 +1202,10 @@ static void RunSynthetic(const Synthetic& s, int frame) {
   D3D11_TEXTURE2D_DESC target_desc = {};
   s.target->GetDesc(&target_desc);
   if (ssr::internal::Prepare(device.Get(), s.width, s.height) && ssr::internal::PrepareResolve(device.Get(), target_desc)) {
-    ssr::internal::Build(context.Get(), s.depth_srv.Get());
+    ssr::internal::Build(context.Get(), s.depth_stencil_srv.Get());
     constexpr FLOAT HIT[4] = {0.25f, 0.75f, 0.f, 0.f};
     context->ClearRenderTargetView(ssr_runtime.objects.hit_rtv.Get(), HIT);
-    ssr::internal::Resolve(context.Get(), s.target.Get(), s.depth_srv.Get(), s.camera.Get());
+    ssr::internal::Resolve(context.Get(), s.target.Get(), s.depth_stencil_srv.Get(), s.camera.Get());
   }
   auto& ao_runtime = aof::internal::runtime;
   ++ao_runtime.frame;
@@ -1152,7 +1243,7 @@ static bool SelfTest(const fs::path& folder) {
     }
     if (frames.size() < 3) std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
-  dump::internal::Stop();
+  CHECK(dump::internal::Stop(60000));
   CHECK(frames.size() == 3);
   std::ranges::sort(frames);
   bool all = !frames.empty();
@@ -1166,6 +1257,10 @@ static bool SelfTest(const fs::path& folder) {
     const auto uses = ReadFile(path / "uses.tsv");
     const std::string uses_text(uses.begin(), uses.end());
     CHECK(uses_text.find("\tsss_setup\tuav\tu0:0\t") != std::string::npos && uses_text.find("\tssr_resolve\tsrv\tt2:0\t") != std::string::npos);
+    // SSR's depth is a depth-stencil texture (the R24G8 case): its copy keeps the binding, and Exact replays it.
+    const Copy* ssr_depth = Find(frame, frame.manifest["events"][1], "before", "ssr.depth");
+    CHECK(ssr_depth != nullptr && (ssr_depth->desc["BindFlags"].get<UINT>() & D3D11_BIND_DEPTH_STENCIL) != 0
+          && ssr_depth->desc["Format"].get<int>() == DXGI_FORMAT_R24G8_TYPELESS);
     std::printf("self test: %s (%zu copies)\n", path.string().c_str(), frame.copies.size());
     all = Exact(frame, path / "replay_out", {}) && all;
     // The replay against its own outputs (the --against path, its race maps the same): equal.
@@ -1226,6 +1321,11 @@ int main(int argc, char** argv) {
     return 2;
   }
   if (const auto csos = option("--race-map"); !csos.empty()) LoadRaceMap(csos);
+  for (std::string skip = option("--skip"); !skip.empty();) {
+    const size_t comma = skip.find(',');
+    skipped_events.push_back(skip.substr(0, comma));
+    skip = (comma == std::string::npos) ? std::string() : skip.substr(comma + 1);
+  }
   if (const auto folder = option("--self-test"); !folder.empty()) {
     const bool passed = SelfTest(folder);
     std::printf("%s (%d failures)\n", passed ? "PASS" : "FAILED", failures);
