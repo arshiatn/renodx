@@ -15858,7 +15858,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         by coord; F2 kinds match PK6's. NEW 6.1 'Stage B handover for Friday's designer' (12 open proofs, data, 9
         risks; main risk: the step thread runs queue tasks while it waits for the join). ATN questions: Q1 Stage A
         default + row text, Q3 init / README wording, Q4 Stage B Friday, Q5 offer to Sol, Q6 Bitdefender exception
-        for battle_step_test.exe (ATN only). -> p8r_ RE-CHECK STARTED 16:2x; p2d_ fixes PK2P's members[4] text.
+        for battle_step_test.exe (ATN only). -> p8r_ RE-CHECK STARTED 16:2x; p2d_ fixed PK2P's members[4] text (DONE 16:3x).
         - [x] p9d_ PK9 EFFECTS DESIGN DONE 13:3x (designs\pk9_effects_64.md 515 lines, hand-back p9d_design_handback.md):
         ROUTE A recommended = keep Sol's own parallel effect update, no hook / patch: A1 note to Sol (race census N1-N12,
         C10, soak list, ask for a settings.txt key where 0 = off: today any value even 0 turns it on; credit RenoDX /
