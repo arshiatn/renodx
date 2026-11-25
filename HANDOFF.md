@@ -16995,7 +16995,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         stays split (build.ps1 doesn't build it). Both builds exit 0 (scratch\pdi4c_\split_r2_run, fused_r2_run).
         -> pd4r_ checks the fused estimator (MIS / bias weights over current + temporal + spatial, ping-pong race,
         DIM 40, the refactor's purity) after 2.9a; fused numbers count only after its GO. GPU TURN ADDS: REFACTOR GATE
-        (W4 + E6 DI dumps of the split passes, 1abc8c505 + M1 vs a60be72b7, BYTE-EQUAL) and fused RAY_TRACED vs BASIC.
+        (W4 + E6 DI dumps of the split passes, 632b30c86 (the commit before d3a0ba2e3, has M1; pdi4c_'s correct
+        change: 88b296e7b's N1 / N4 change the DI passes on purpose) vs a60be72b7, BYTE-EQUAL; 1abc8c505 + M1 = a second
+        baseline expected to differ) and fused RAY_TRACED vs BASIC.
         Pitfalls (next pass): HLSL has no ?: on structs; a failing cd in a 'cd ...; grep -r' chain greps the whole
         tree. Owner: pd4r_, pdi4c_
         - [ ] nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guides and sdks for all of
