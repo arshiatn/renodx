@@ -834,7 +834,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-bit release: private release step, 64-bit map section 6 item 13 (before the f ... | ?
 - p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
 - ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
-- K0 test-only fix of test\tw_render_mt_defaults\run.ps1 (pk1 section 11.1 edits A ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
@@ -15919,8 +15918,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         N1 = Q7 over all 8 add-ons after F5 G18 / G20 (K4 9 targets), E64-mv entries 125 / 127 + MAP_TRACE 130,3 before
         140, O8 / O9 census, 10 s median-step sub-rule, w3t TAA arm on ATN's yes, FCU=0 pin needs the revision key.
         -> p1r_ RE-CHECK STARTED.
-        - [ ] K0 test-only fix of test\tw_render_mt_defaults\run.ps1 (pk1 section 11.1 edits A / B / C): apply after
-        p1r_'s re-check GO. Owner: coord.
+        - [x] K0 test-only fix of test\tw_render_mt_defaults\run.ps1 DONE 4da2ace4c: all match on HEAD (was 1 FAIL
+        since 90b4b94e1); a mutation copy without '!ATTILA64 && ' gives exactly 1 FAIL.
+        p1r_ RE-CHECK: GO (hand-back p1r_recheck_handback.md); K0 GO. R-S1 C8 T0 entries -> 125 / 127 / 130,3 with one
+        home (applied to c8_wave2_plan.md by coord); R-S2 trap sub-rule B: a step in both starts = UNSURE, at a WPR
+        start / stop or focus change = FOUND -> p1d_ LAST TOUCH (text only). PK1-64 DESIGN = GO.
         - [x] p5d_ PK5-64 GAME CODE DESIGN DONE 13:4x (designs\pk5_game_code_64.md 628 lines, hand-back
         p5d_design_handback.md): R = one SSE2 stub for the 20 calls to the half 0x3009b90 in the sprite row loop
         (site 0x32d9de5, held 0x32d9d60..0x32da032; denormal class / overlap -> the game's code), H = register-exact twin
