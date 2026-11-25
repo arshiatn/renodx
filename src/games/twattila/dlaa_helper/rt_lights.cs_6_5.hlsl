@@ -21,9 +21,11 @@
 // bits: a still pixel's bits change only with the scene and the lights), hard (helpers 108 on): a bit can't hold a share of
 // a light without noise that moves each frame, and helper106's fixed disk point a pixel was a fixed dither, black dots in
 // every penumbra (Pharaoh's campaign, its torches' disk a quarter of their reach).
-// Build (build.ps1): dxc -T cs_6_5 -Fh rt_lights.h -Vn RT_LIGHTS; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_LIGHTS_OMM.
+// Build (build.ps1): dxc -T cs_6_5 -Fh rt_lights.h -Vn RT_LIGHTS; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_LIGHTS_OMM;
+// with -D LIGHTS_DI (RTXDI builds) rt_lights_di, Path-Traced Torch Light's (the tiles' members, the DI pixels' words).
 #include "./rt_scene.hlsli"
 #include "./rt_camera.hlsli"
+#include "./rt_light_tiles.hlsli"
 
 RWTexture2D<uint> light_mask : register(u22);
 RWTexture2D<uint> light_history[2] : register(u32);  // the bits kept over frames
@@ -31,40 +33,12 @@ RWTexture2D<uint> light_history[2] : register(u32);  // the bits kept over frame
 static const uint LIGHT_RAYS_ALWAYS = 4u;  // the list's first, traced every frame
 static const uint LIGHT_RAYS_TURNS = 4u;   // and the others' a frame
 static const uint LIGHT_IMPORTANCE_RAYS = 2u;
-static const uint TILE_LIGHTS = 32u;  // a tile's list: the mask's bits
-static const uint NO_LIGHT = 0xFFu;
 // Torch and Fire Shadows from the Light Bounce: a pixel's texels' ratios further apart than this hold a shadow's edge or a
 // shadow narrower than a texel (a crack's): their blend lit the shadowed side; it gets its own bits (LIGHTS_RATIO_BITS).
 static const float RATIO_SPREAD = 0.1f;
 // The spread's rays at most this many a pixel (the bits' with Importance: 2 a pixel and their kept bits; 4 lights at every
 // pixel cost 2.6 ms at 4K against the bits' 1.9).
 static const uint RATIO_SPREAD_LIGHTS = 3u;
-
-groupshared uint tile_reach[4];  // the lights any of the tile's pixels reaches (128 bits)
-groupshared uint tile_list[8];   // the tile's lights, a byte each
-groupshared uint tile_size;
-
-// Bit `index` of a 128-bit set, and the set with it (selected, not indexed: a vector indexed by a variable goes through
-// local memory).
-uint SetBit(uint4 set, uint index) {
-  const uint word = index >> 5u;
-  return (((word == 0u) ? set.x : (word == 1u) ? set.y : (word == 2u) ? set.z : set.w) >> (index & 31u)) & 1u;
-}
-uint4 WithBit(uint4 set, uint index) {
-  const uint word = index >> 5u;
-  const uint bit = 1u << (index & 31u);
-  return set | uint4((word == 0u) ? bit : 0u, (word == 1u) ? bit : 0u, (word == 2u) ? bit : 0u, (word == 3u) ? bit : 0u);
-}
-
-// The tile's list's light at `slot`.
-uint ListLight(uint slot) {
-  return (tile_list[slot >> 2u] >> ((slot & 3u) * 8u)) & 0xFFu;
-}
-
-// Word `word` of tile `tile`'s list in the mask and the history.
-uint2 TileWord(uint2 tile, uint word) {
-  return uint2((tile.x * 4u) + (word & 3u), light_tile_row + (tile.y * 2u) + (word >> 2u));
-}
 
 // Whether a ray from `from` reaches local light `light`, stopping LIGHT_CLEARANCE short of its lamp; `soft`: to a point of
 // its disk (light_size), picked by `pixel` and `index` (rt_scene.hlsli DIM_LIGHT_DISK's).
@@ -80,8 +54,7 @@ bool LightRayReaches(uint light, float3 from, bool soft, uint2 pixel, uint index
 
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index : SV_GroupIndex) {
-  if (index < 4u) tile_reach[index] = 0u;
-  if (index < 8u) tile_list[index] = 0xFFFFFFFFu;
+  TileClear(index);
   GroupMemoryBarrierWithGroupSync();
   const bool inside = id.x < width && id.y < height;
   const float4 position = inside ? positions[id.xy] : 0.f;
@@ -105,39 +78,19 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
       const float light_distance = length(to_light);
       if (light_distance < lights[light].w && light_distance > 1.0003098e-3f && (!planar || dot(to_light, normal) > 0.f)) reached = WithBit(reached, light);
     }
-    if (reached.x != 0u) InterlockedOr(tile_reach[0], reached.x);
-    if (reached.y != 0u) InterlockedOr(tile_reach[1], reached.y);
-    if (reached.z != 0u) InterlockedOr(tile_reach[2], reached.z);
-    if (reached.w != 0u) InterlockedOr(tile_reach[3], reached.w);
+    TileReach(reached);
   }
   GroupMemoryBarrierWithGroupSync();
-  {
-    // The tile's list: the first TILE_LIGHTS of the lights it reaches (without tiles every light) in the lights' order, a
-    // light's slot the count of those before it. Every thread places two (lights index and index + 64) into their bytes
-    // (one thread's loop over all of them kept 63 waiting at the barrier).
-    const uint4 tile = uint4(tile_reach[0], tile_reach[1], tile_reach[2], tile_reach[3]);
-    if (index == 0u) {
-      tile_size = min(tiled ? (countbits(tile.x) + countbits(tile.y) + countbits(tile.z) + countbits(tile.w)) : count, TILE_LIGHTS);
-    }
-    [unroll]
-    for (uint pair = 0u; pair < 2u; ++pair) {
-      const uint light = index + (pair * 64u);
-      if (light >= count || (tiled && SetBit(tile, light) == 0u)) continue;
-      const uint word = light >> 5u;
-      const uint before = countbits(((word == 0u) ? tile.x : (word == 1u) ? tile.y : (word == 2u) ? tile.z : tile.w) & ((1u << (light & 31u)) - 1u))
-                          + ((word > 0u) ? countbits(tile.x) : 0u) + ((word > 1u) ? countbits(tile.y) : 0u) + ((word > 2u) ? countbits(tile.z) : 0u);
-      const uint slot = tiled ? before : light;
-      if (slot >= TILE_LIGHTS) continue;
-      const uint shift = (slot & 3u) * 8u;
-      InterlockedAnd(tile_list[slot >> 2u], (light << shift) | ~(0xFFu << shift));
-    }
-  }
+  TileList(index, count, tiled);
   GroupMemoryBarrierWithGroupSync();
   const uint parity_written = (path_flags & PATH_AMBIENT_PARITY) != 0u ? 0u : 1u;
   if (tiled && index < 8u) {
     light_mask[TileWord(group.xy, index)] = tile_list[index];
     light_history[parity_written][TileWord(group.xy, index)] = tile_list[index];
   }
+#if defined(LIGHTS_DI)
+  if (index == 0u) di_members[group.xy] = TileMembers();
+#endif
   if (!inside) return;
   if (!surface) {
 #if defined(TORCHES_IN_BOUNCE)
@@ -154,7 +107,24 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   for (uint slot = 0u; slot < size; ++slot) {
     if (SetBit(reached, ListLight(slot)) != 0u) reached_slots |= 1u << slot;
   }
+#if defined(LIGHTS_DI)
+  // Path-Traced Torch Light (the LIGHTS_DI build, a trace that runs the DI passes): a pixel reaching more than
+  // LIGHT_RAYS_ALWAYS listed lights takes RTXDI's light of its listed lights (rt_di_shade): its word 0 (each listed light
+  // dark in the game's shaders; the unlisted keep the game's), its history DI_PIXEL_WORD (the DI passes' mark), its torch
+  // light left to the paths' own (T2). The others trace each reached light every frame (exact bits; Importance and Steady
+  // do not apply). Without the game's HDR state this frame (the sun texel's w not written yet) every pixel is exact.
+  if (countbits(reached_slots) > LIGHT_RAYS_ALWAYS && DiShadedFrame()) {
+    light_mask[id.xy] = 0u;
+    light_history[parity_written][id.xy] = DI_PIXEL_WORD;
+#if defined(PATH_REGIR)
+    if ((lights_in_bounce & LIGHTS_TORCH_IRRADIANCE) != 0u) torch_irradiance[id.xy] = 0.f;
+#endif
+    return;
+  }
+  const bool steady = false;
+#else
   const bool steady = (flags & LIGHT_STEADY) != 0u;
+#endif
   const bool reconstructed = (flags & RECONSTRUCTED) != 0u;
   const bool soft = reconstructed && light_size > 0.f && !steady;
 #if defined(TORCHES_IN_BOUNCE)
@@ -244,7 +214,11 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   uint lit = 0xFFFFFFFFu;
   uint2 seen_pixel;
   const uint reached_count = countbits(reached_slots);
+#if defined(LIGHTS_DI)
+  const bool importance = false;
+#else
   const bool importance = (flags & LIGHT_IMPORTANCE) != 0u;
+#endif
   if (!steady && reached_count > (importance ? LIGHT_IMPORTANCE_RAYS : LIGHT_RAYS_ALWAYS + LIGHT_RAYS_TURNS)
       && (path_flags & PATH_LIGHT_HISTORY) != 0u && SeenByLastTrace(position.xyz, seen_pixel)) {
     // The list's first LIGHT_RAYS_ALWAYS every frame, the others in turns by their place, each 8 x 8 block its own phase
