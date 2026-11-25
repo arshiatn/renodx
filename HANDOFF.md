@@ -831,9 +831,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
-- UNIFIED U4b (in-lobe ESS report, sizes route (c); scratch only): u4b_ (Opus xHig ... | ?
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
+- d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
 - PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in | ?
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
 - CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | ?
@@ -15807,6 +15807,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_flags@bounce), so a lab arm
         cannot change one bounce bit while keeping the recording's other requests (pds2_ used scratch recorder
         builds). Add after PT DI step 3 merges (pdi3_ owns rt_serve.h now). Owner: coord (after pdi3_ merge)
+        Evening: helper side done on pdi5_step5 (pdi5_'s edit lambda reads rt_path_flags@trace / @bounce /
+        @reflections); lab job_schema.json config.fields now allows the @kind suffix (coord; backup
+        job_schema.json.bak_1125; job.json valid; tests/test_lab_jobs.py 36 / 36 OK). Closes when step 5 merges.
+        SHARED TOOLS fixed (evening): h0\h0i_test.py failed on atn-mods HEAD after pdi3_'s T2 edit (6 FAIL): pdi3_
+        (its only writer now) made T2 + fixtures conditional on TORCH_KIND_SHIFT and added pdi5_'s optional
+        'compatible_candidates' cap / 'candidate' range: HEAD 67 / 67, pdi3_ 72 / 72, pdi5_ 67 / 67 (backup
+        h0i_test.py.bak_pdi3_1125). h0\h0_gpu_runs.ps1: all_modes_check's archive build lacked src/utils/float16.hpp
+        (failed at atn-mods level) + header count now a minimum (pdi3_; backup h0\backups\h0_gpu_runs.pre_pdi3.ps1).
         pds2_ FOGREUSE + G1 COST DONE 18:xx (hand-back handoff_plan\handbacks\pds2_fogreuse_g1cost_handback.md); pds2_
         FINISHED (worktree clean on pds2_nits, builds kept). 3a: the reference suite has no reflected-light reference
         (REF_REFLECT sums only the lobe share), but the harness known answer shows Reflection Reuse 'From ReSTIR GI'
@@ -15873,8 +15881,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         branches (one RAB set for U2; own commit, every non-DI build byte-identical by -Fc). pdi3_ told. S1 lowdef =
         a stated delta (shaded as highdef in DI pixels); 4d measures it, visible -> no DI for lowdef lights.
         ATN 11-25 evening 'Yes, start both' (unified PT pieces that need no PT DI):
-        - [ ] UNIFIED U4b (in-lobe ESS report, sizes route (c); scratch only): u4b_ (Opus xHigh) STARTED ->
+        - [x] UNIFIED U4b (in-lobe ESS report, sizes route (c); scratch only): u4b_ (Opus xHigh) STARTED ->
         designs\u4b_ess_report.md. Owner: u4b_
+        u4b_ DONE (evening; hand-back handoff_plan\handbacks\u4b_handback.md): route (c) MARGINAL. Default lobe (ATN's
+        Attila): every rough pixel alpha 0.1024, only ~0.27 useful bounce ray / pixel at S = 1 vs (b)'s 0.98 (~3.6x
+        noisier), U4c's alpha >= 0.3 gate turns (c) off anyway. Squared Lobe (WH3): 5-8 candidates, but the 6 m cut
+        misses +2..+9 % of 10 m occlusion (GPU's own lobe samples +7.8..+8.6 %) -> the 6-10 m top-up ray at 90-100 %
+        of rough pixels: (c) saves ~0.03-0.35 ms of (b)'s 0.55 (a: 0.55), +66 MB. For U4a: (a) has the same 6-10 m
+        range bias (default +0.5..+7.4 %, WH3 +2.2 %), may fail E5 on range alone. U4c if built: gate = Squared Lobe
+        on, S = 1, each candidate's 6 m visibility in the RIS target. U4d: paired dump arms in the report. CPU-only
+        numbers; NQ1 unchanged (all arms to U4d, ATN decides). Scratch testbin\scratch\u4b_ 332 MB (delete after U4d
+        only on ATN's yes).
         - [ ] UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; owns rt_fog.cs_6_5.hlsl +
         the fog variant's build.ps1 lines): u6f_ (Opus High, worktree, branch u6f_fog) STARTED. PART 2 (rt_d3d12.hpp
         buffers / dispatches, a slot range from coord, harness gates) after steps 3 + 5 merge. Owner: u6f_
@@ -15884,6 +15901,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         optimize'): d11s_ (Opus xHigh, text only) STARTED -> designs\d3d11_pass_speed.md (Nsight 64-bit capture vs
         our own pass-input dump + replay harness, GPU sharing via gpu_job.lock, per-pass targets, same-picture
         gates, lanes per pass family, the exact capture run for ATN's OK). Owner: d11s_
+        d11s_ DONE (evening; designs\d3d11_pass_speed.md, hand-back handoff_plan\handbacks\d11s_design_handback.md):
+        capture = OUR OWN DUMP + REPLAY (Nsight GPU Trace is D3D12 / Vulkan / GL only; its capture missed ReShade on
+        Ryse; 32-bit Attila can't be captured). Lane I first (one writer): Time Each Pass lines for our own passes
+        (today hidden in the host draw), new pass_dump.hpp from pass_timing::Install (RENODX_TW_PASS_DUMP + set key
+        pass_dump=<frames>, 16 MB strips on 32-bit), test\tw_d3d11_replay (exact / timing / matrix) + a D3D12 twin
+        for the profiler view. Capture run (ATN's OK): 32-bit Attila dev add-on via constantinople_bench.ps1, day1 /
+        night1 / sea1 + a forest replay ATN names + one MSAA start, 6 segments each, ~45 min, <= 35 GB in
+        D:\Dev\d11_dumps\. Gates: replay byte-exact vs in-game first; each change byte-exact on the 5090 + a failing
+        control; on at >= 3 % faster with a G- verdict. Levers: Bend groupshared sized 1920 vs 480 used (-30..50 %
+        main pass if occupancy-bound), no-banner skip (+0.60 ms today), Softer tile skip (+0.53); GT-VBAO V1 / V2;
+        GT-VBGI port; SSSR <= 0.1 ms. ~0.7-1.2 ms at No RT/PT 4K, ~0.1-0.2 ms at ATN's RT/PT (old numbers, no gate).
+        Lanes: one optimizer per family (GT-VBAO owns bitmask.hlsli). -> d11r_ REVIEW (Opus xHigh) STARTED ->
+        designs\d3d11_pass_speed_review.md.
+        - [ ] d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one MSAA start (game AA
+        changed, backed up) yes; exact wins on by default, no new rows (memory: faster + same picture = on); V3
+        'Faster GT-VBAO' only after the exact round with numbers; 64-bit / WH3 capture only if needed; no Nsight
+        64-bit probe now. OPEN FOR ATN: which replay has a forest with units? Owner: ATN (after d11r_)
         - [ ] PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in
         tools\tw\round_notes\proposed_rules_1125.md; ATN pastes them himself. Owner: ATN
         - [ ] CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on the vMF paper: 'just
