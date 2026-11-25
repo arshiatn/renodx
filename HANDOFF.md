@@ -857,6 +857,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALLISTO C1: cal1_ (Opus High, worktree, branch cal1_c1) STARTED: new files only ... | ?
 - WARP HARNESS SHARED HELPER: ~190 lines copied from the vMF test into tw_callisto ... | ?
 - C1 MERGE (origin/cal1_c1 31c5b84e7 + the C0b commit) -> no build needed (no call ... | ?
+- ATN (after cdr_): Callisto = ship nothing (C1 branch parked, C2-C4 not started); ... | ?
 - CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent ... | ?
 - CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mism ... | later
 - CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
@@ -16140,6 +16141,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         wraps tests.cpp:38 (189 cols) + 5 make_points.py lines > 120 and drops README:9's history line.
         - [ ] C1 MERGE (origin/cal1_c1 31c5b84e7 + the C0b commit) -> no build needed (no callers) -> HANDOFF.
         Owner: coord (after c0b_)
+        c0b_ DONE (designs\callisto_c0b_fit.md; hand-back c0b_handback.md): NO SET WINS -> design pick 'ship nothing'.
+        Rough subset 69 materials, Lambert mean E 18.35 %: A -4.9 %, A+F -26.7 %, V16 -12.6 %, V40 -23.4 %, V16_DI
+        -7.7 %, V40_DI -12.7 %, vMF r 0.16 -13.5 %, r 0.40 -28.6 % (all worse than Lambert); best joint fit +3.2 %
+        (rho_f free; CI +1.6..+5.2) / +2.2 % (rho_f 1) vs the +10 % bar; per-material ceiling +17.6 %; same verdict
+        in 4 variants x 3 refit modes; 85 deg grid best +8.4 %. Data wants retro DARKENING (rho_r ~0), the opposite
+        of A. Talk sanity: its own sets better on 5 / 10 materials. MERL md5 = Zenodo, CC BY-SA 4.0 (2023 README
+        overrides the 2006 'academic' Readme); RGL 51 isotropic CC0 files (48 MB). Scratch c0b_ 1.60 GB (MERL zip
+        deletable on ATN's yes). -> cdr_ C0b CHECK STARTED (also judges vMF S2-S6 and C1's branch). Then ATN.
+        - [ ] ATN (after cdr_): Callisto = ship nothing (C1 branch parked, C2-C4 not started); vMF S2-S6 (~17-23 h)
+        also loses to Lambert on measured data: drop / park, or keep as the look-by-eye Experimental row? Owner: ATN
         - [ ] CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent (Opus xHigh, scratch
         only) after ATN's download yes (MERL BRDFDatabase.zip 1.3 GB + RGL; pick MERL + RGL) . Owner: coord (date)
         - [ ] CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mismatch measured. Owner: later
