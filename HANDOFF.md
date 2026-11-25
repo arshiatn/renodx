@@ -374,6 +374,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, lin ... | ?
 - NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
 - gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
+- gpr_ + gtw_ RE-CHECK stage26 (Opus xHigh, read-only + tests) -> GO / fixes. Owne ... | gpr_, gtw_
+- ATN: (a) T04 split (recordings log only) or keep recordings enforced under T04 ( ... | ?
+- gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a ... | ?
 - REVIEW ~12-09 (ATN: 'after a while we decide if we even need the 2x stop'): coun ... | ?
 - (2) DEFAULT CAP: a command without a price history runs under budget.py watch's ... | gtb_
 - ATN: PROPOSED block rows: T16 (block -Stop until gtl_'s owner fix; coord's view: ... | ?
@@ -878,6 +881,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
 - d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
 - FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | ?
+- d11v_ CODE + SCRIPT REVIEW (Opus xHigh) of d11i_lane_i + d11_capture64.ps1 -> fi ... | d11v_, coord
+- 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU wi ... | coord
+- ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ?
+- SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.h ... | ?
+- Replay gaps (d11i_): sss.lights, smoke.map, ao.draw, bounce.sun_draw not replaye ... | ?
 - PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in | ?
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
 - CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | ?
@@ -3526,6 +3534,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 11-25 ~20:3x: 'only do a strict gate for nsight only' -> gte_ told: ENFORCE = Nsight rows only (ngfx rules,
         Nsight trace / capture / reference deletes, Nsight GPU-lock rows, Nsight rule-line rows); every other row incl.
         the other block rows + protected files LOGS only. gte_ lists the exact row ids in its hand-back.
+        gte_ DONE 11-25 20:5x (plan_1117\gte_handback.md; 59 min): stage26 in testbin\scratch\gte_\stage26 (gate_hook.py
+        bb69191c..., checker 60761621...): new rows 'shadow' per gate + 'block_enforce <ids>'; neither row = today's
+        behaviour. Nsight set = T01 (ngfx --platform), T04 (Nsight trace / capture / reference-run deletes + moves),
+        T09 (GPU lock cleared by hand). Replay of 888 distinct would-deny calls under enforce: 2 refused (coord's T09
+        rm of gpu_job.lock, pds2_'s T04 mv of a reference run), 886 log. 986 would-deny rows since 11-24: 831 true,
+        128 friction, 27 false (22 = missing web_allow.tsv, 5 shell; stage26 passes the 5). Every fault FAILS OPEN
+        (logs TOOL FAULT); stage26 fixes the 21 '2>&1' faults, 3 git-range timeouts (134-200 s -> 0.3-0.9 s) and the
+        here-string fault. Tests 1557 / 1557 (live 1506 / 1506). Optional split: recordings out of T04 into T18
+        (log only). ATN's steps = gte_handback.md section 5 (wave boundary, after gpr_ + gtw_ GO).
+        - [ ] gpr_ + gtw_ RE-CHECK stage26 (Opus xHigh, read-only + tests) -> GO / fixes. Owner: gpr_, gtw_
+        - [ ] ATN: (a) T04 split (recordings log only) or keep recordings enforced under T04 (coord: KEEP, it is your
+        32-bit backup and no real work deletes it); (b) 'files' + 'override' rows shadow or keep refusing (coord:
+        KEEP refusing: in shadow an agent could edit the rows and lift the Nsight block; they only refuse edits of the
+        gate's own files). Then section 5 at a wave boundary. Owner: ATN
+        - [ ] gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a non-leading cd); spec
+        gate on scratch files; web list gaps (44 research hosts); agent rules (gte_handback section 4) into briefs.
+        Owner: gtp_, coord
         - [x] ATN: the deadline softening 'doesn't make sense' (a stop forces us to find the cause). Coord's proposal:
         at 2x the agent STOPS AT A SAFE POINT (finish the running command, free the GPU lock, commit / resume note,
         hand back with the cause), never a kill; the coord resumes it (SendMessage keeps its context) only with a
@@ -16292,6 +16317,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         call sites); 'never' list names its files; race-map build = real build values + an overflow rule; S14 port
         exe likely matches no NVIDIA profile: harness copy with the same name first. Still ATN's: the rule lines
         (incl. SendInput), V3 on, any NVIDIA profile change. -> d11i_ LANE I IMPLEMENTER (Opus High) STARTED.
+        d11i_ DONE 11-25 20:4x (handoff_plan\handbacks\d11i_handback.md; 140 min, 0 lock wait): origin/d11i_lane_i
+        10d44c4a8..ca0cb8cc4 (own-pass marks in Time Each Pass, pass_dump.hpp + set key, marks / dump events at the
+        pass sites, test\tw_d3d11_replay, uses.tsv rtv_blend / dsv / dsv_write, tw_screen_space_shadows NAME link fix,
+        env unset = nothing registered). Outside git: testbin\d11s_twin (WARP: differs only on race pixels -> profiling,
+        not exact), lab\dead_outputs.py --dxbc, attila64\d11\d11_capture64.ps1, testbin\attila64_present\d11_stage.
+        GATES: every game builds exit 0 (Attila 61 = baseline; others 61, Rome II / Divinity 2 62, R.U.S.E. 78, no
+        baselines); 83 SSS shaders byte-identical, 66 Bend wrappers compile with the race map; WARP suites x86 + amd64
+        PASS (pass_timing, test_hooks, SSS, replay self test 3 frames, dead_outputs); page dumps SAME for 16 games
+        (Shogun 2 dump crashes before + after, known). Capture script: dry runs only (day1 refused: commit 48 GB during
+        builds, needs < 32 GB). NOT DONE: 5090 replay self test (GPU-lock commit guard refused it during builds).
+        Two stuck processes (replay.exe 36264, dump_s2_d11i.exe 22080; access denied, 0 CPU / 0 MB) hold scratch
+        exes until a reboot: harmless.
+        - [ ] d11v_ CODE + SCRIPT REVIEW (Opus xHigh) of d11i_lane_i + d11_capture64.ps1 -> fix round -> merge. Owner: d11v_, coord
+        - [ ] 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU window. Owner: coord
+        - [ ] ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set keys, folders, SendInput
+        E / A / D + wheel only with the game in front) are in d11i_handback.md 'Rule lines' / 'OKs'. Owner: ATN
+        - [ ] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
+        auto_thickness, so the _auto Bend variants are dead in game (shared TW code). Check the design: wire the
+        intended row (bug fix = always on) or drop the dead variants. Owner: coord (next twattila writer slot)
+        - [ ] Replay gaps (d11i_): sss.lights, smoke.map, ao.draw, bounce.sun_draw not replayed; uses.tsv misses
+        indirect-argument reads (use --external). Fix only if the capture analysis needs them. Owner: coord
         - [ ] PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in
         tools\tw\round_notes\proposed_rules_1125.md; ATN pastes them himself. Owner: ATN
         - [ ] CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on the vMF paper: 'just
