@@ -885,6 +885,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
 - d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
 - FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | ?
+- d11 NITs (64 vs 8 OM slots check on the first dump, static_cast<void>, stoull gu ... | ?
 - 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU wi ... | coord
 - ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ?
 - CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | ?
@@ -16479,6 +16480,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         060535d8...; dry runs pass their own checks, refused only by the held GPU lock -> one clean dry run owed.
         -> d11v_ diff re-check STARTED 22:0x -> merge -> GPU order: d11 self test on the 5090, then the day1 CAPTURE (a game
         run, own GPU slot, standing go) after the timing jobs. Owner: d11v_, coord
+        d11v_ RE-CHECK GO 21:59 (6 min; d11v_review_handback.md '## Re-check'): all MUST / SHOULD fixed or knowingly kept
+        (S-7 / S-8 / S-12 tracked; S-9 per output accepted); player safety holds. New NITs: OwnPassDone asks 64 OM UAV
+        slots (rest of the tree 8) -> on the first day1 dump check uses.tsv still has rtv / oDepth rows for draw passes,
+        else use the 8-slot constant; empty 'if' around Bytes -> static_cast<void>; double Install after a timed-out Stop
+        (not on the port); replay stoull throws on a corrupt blob name.
+        MERGED 22:0x: 36dd0030d (--no-ff origin/d11i_lane_i 89022799a). atn-mods had no src commits since 10d44c4a8, and
+        git diff branch..merge over src / test / CMakeLists = empty -> the branch's 17 exit-0 builds stand for the merge.
+        - [ ] d11 NITs (64 vs 8 OM slots check on the first dump, static_cast<void>, stoull guard) -> next lane I touch.
+        Owner: coord
         - [ ] 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU window. Owner: coord
         - [ ] ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set keys, folders, SendInput
         E / A / D + wheel only with the game in front) are in d11i_handback.md 'Rule lines' / 'OKs'. Owner: ATN
