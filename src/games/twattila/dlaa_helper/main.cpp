@@ -1110,6 +1110,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       if (version >= 25) keep({shared->rr_extra[0], shared->rr_extra[1], shared->rr_extra[2]});
       if (version >= 18) keep({shared->rt_fog_lights});
       if (version >= 19) keep({shared->rt_tint});
+      if (version >= 32) keep({shared->rt_light_surface, shared->rt_di_light[0], shared->rt_di_light[1]});
       color.Reset();
       depth.Reset();
       motion.Reset();
