@@ -839,6 +839,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
 - CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ?
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
+- PARITY LEDGER LINES for the waiting rows (Directional Light Bounce; PT Reflectio ... | ?
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
@@ -15881,6 +15882,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         yet; important lessons since the last content update 11-22): sku_ (Opus xHigh, worktree, branch
         sku_1125) STARTED -> review -> merge. The full skills double-check (11-17 step 9) comes after Attila +
         unified PT with every optimization is done, on ATN's word. Owner: sku_
+        sku_ DONE 19:xx (hand-back handoff_plan\handbacks\sku_handback.md): origin/sku_1125 c50f3710e, 8 commits, docs
+        only. bringup.md 'Attila rows waiting for their port' (Upscaling Debug View, Light Bounce Resolution,
+        Directional Light Bounce, PT torch rows, Bend Debug View / Distance Softness / Foliage, Balanced ReSTIR Light,
+        FSR Sharpening, PT Reflection Occlusion, Sharp RT Reflections; Has it / Not yet from page dumps); testing.md lab
+        method + twins-on timing; helper-fg-stability, ao-gi, sss-particles-water-fog (S4 reach), render-scale-dlss,
+        shaders-ui lessons; game-port-method 'Device removal and resource clones', review on top, standing trace / dump
+        OK, non-TW ledgers. parity same except Shogun 2 1/12/132 -> 2/16/272 (its partial dump now read). -> rvs_
+        REVIEW (Opus xHigh) STARTED -> handoff_plan\sku_review.md -> merge.
+        - [ ] PARITY LEDGER LINES for the waiting rows (Directional Light Bounce; PT Reflection Occlusion; Sharp RT
+        Reflections in WH1 / WH2 / Shogun 2 / Expeditions / Divinity 1 + 2; FSR Sharpening in Shogun 2 / R.U.S.E.) so
+        parity_check reads them as waiting (rvs_ proposes the lines). Pre-existing: Shogun 2's page dump crashes
+        (0xC0000005, partial 201 keys); Divinity 1 ledger / census behind (570 open); Expeditions ledger unconverted
+        (143). Owner: coord after the sku_ merge
         - [ ] RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator corrected: PT DI 4b waits for
         RT on the port + the shader hash census, NOT for Friday's Fable work, which is CPU only): rtp_ (Opus xHigh,
         text only) STARTED: designs\rt_port_64.md (what works / breaks on Sol's port, helper vs in-process route,
