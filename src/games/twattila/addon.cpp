@@ -88,7 +88,7 @@ namespace {
 constexpr bool ATTILA64 = sizeof(void*) == 8;
 
 // The port: a tone mapper target without an upgrade (a renderer asking for another 8-bit format) keeps the HDR output
-// 8-bit. Said once; reset at detach.
+// 8-bit. A game target that is already RGBA16F (as on 32-bit) needs no clone. Said once; reset at detach.
 std::atomic_bool tone_mapper_target_warned = false;
 
 inline void WarnToneMapperTarget(reshade::api::device* device, reshade::api::resource_view rtv) {
@@ -98,7 +98,8 @@ inline void WarnToneMapperTarget(reshade::api::device* device, reshade::api::res
   bool upgraded = true;
   reshade::api::resource_desc desc = {};
   renodx::utils::resource::GetResourceInfo(resource, [&](const renodx::utils::resource::ResourceInfo& info) {
-    upgraded = info.is_clone || info.clone_target != nullptr;
+    upgraded = info.is_clone || info.clone_target != nullptr
+               || info.desc.texture.format == reshade::api::format::r16g16b16a16_float;
     desc = info.desc;
   });
   if (upgraded || tone_mapper_target_warned.exchange(true)) return;
