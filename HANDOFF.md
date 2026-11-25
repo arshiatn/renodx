@@ -15833,6 +15833,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         High, worktree, branch pdi5_step5) STARTED beside step 3: owns ReuseTarget, the GI reuse merge, Reservoir /
         Load / Store, the neighbour choice, reservoir formats, rt_restir_flags, G5's PT-header stubs; no new slots
         (u75+ are pdi3_'s) -> review -> merge. Owner: pdi5_
+        Owner map addition 19:xx: rt_d3d12.hpp PlayRequest's v32 lift (max(playback_.version, block->version)) +
+        rt_serve.h's edit lambda (block->version = 32 on a v32 field) -> pdi5_ (own commit, lifted-vs-unlifted
+        rec_compare control); optional rt_path_flags@bounce lab field there too (closes LAB TOOL). pdi3_ told.
         Owner map addition 17:xx: rt_reference.hlsli RefRouteIncoming's light count -> pdi3_ ((T2 on) ? 128u : 32u, so
         E4 night40 is not biased by construction); the GI contest's RAB block (REUSE_RTXDI / _PACK) stays untouched
         (no T2 define in the contest builds).
@@ -15899,6 +15902,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         B1 trace with point lights (in rtp_'s run list, ATN's OK). Owner: rtp_ (list) -> ATN
         - [ ] TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of our hashes lose their
         match in both builds (12 drawn on 32-bit). Add TDD's versions? Owner: ATN
+        ATN 11-25 evening: yes, get them out and add them (TDD + '1212'). tdd_ (Opus xHigh, read-only) STARTED: the 37
+        classified A (same logic: alias our replacement to TDD's hash, nothing of theirs shipped) / B (changed logic:
+        needs the TDD authors' OK via ATN, like Caesar) / C -> round_notes\mod_shaders\tdd_shaders.md. '1212' (Medieval
+        Kingdoms 1212AD?) is NOT installed (not in data\ or the 18 Workshop items): ATN says where. Owner: tdd_, ATN (1212)
         pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
         scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
         R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
