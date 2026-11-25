@@ -130,6 +130,12 @@ static const uint REUSE_VALIDATION_PERIOD = 3u;
 // scored better, its pass about half the cost).
 static const uint REUSE_NEIGHBOURS = 3u;
 static const float REUSE_RADIUS = 6.f;        // bounce texels
+#elif defined(REUSE_COMPATIBLE)
+// Matched ReSTIR Neighbours (PT DI step 5's G5, only its rt_reuse_compatible builds): three neighbours picked among
+// COMPATIBLE_CANDIDATES within the reach by how well their surfaces match (ReuseTexel).
+static const uint REUSE_NEIGHBOURS = 3u;
+static const float REUSE_RADIUS = 12.f;       // bounce texels
+static const uint COMPATIBLE_CANDIDATES = 8u;
 #else
 static const uint REUSE_NEIGHBOURS = 5u;
 static const float REUSE_RADIUS = 12.f;       // bounce texels
@@ -1327,11 +1333,40 @@ void RtxdiPackTexel(uint2 id) {
 }
 #endif
 
-// ReuseTexel's neighbour `neighbour` of texel `id`: a texel within REUSE_RADIUS (it may fall off the texels or on `id`).
+#if defined(REUSE_COMPATIBLE)
+// Matched ReSTIR Neighbours (G5, junkins2026's compatibility-guided neighbours): NVIDIA's RTXDI-Library 3.2 score
+// RTXDI_PTNeighborCompatibilityScore (NVIDIA RTX SDKs License; build.ps1 compiles its header from the copy in
+// build\downloads\rtxdi: not part of this file; the helper's notices, credits.hpp, carry NVIDIA's sentence) in our own
+// selection (ReuseTexel: its pass's 32 candidates within 50 pixels are fixed in its header). The header's selection pass
+// is compiled though never called: our surface read is its RAB_GetNeighborSelectionSurface, and its buffer a name no
+// entry point uses (dxc drops it).
+RWByteAddressBuffer rtxdi_neighbour_selection_unused;
+#define RTXDI_SPATIAL_NEIGHBOR_SELECTION_BUFFER rtxdi_neighbour_selection_unused
+// A bounce texel's surface as PathTraceTexel found it (u58 / u59): its normal, rays' origin and depth (false: the sky).
+bool RAB_GetNeighborSelectionSurface(int2 texel, out float3 normal, out float3 position, out float depth) {
+  const float4 surface = surface_origin[uint2(texel)];
+  normal = surface_normal[uint2(texel)].xyz;
+  position = surface.xyz;
+  depth = surface.w;
+  return depth > 0.f;
+}
+#include "Rtxdi/PT/SpatialNeighborSelection.hlsli"
+#endif
+
+// ReuseTexel's neighbour `neighbour` of texel `id`: a texel within REUSE_RADIUS (it may fall off the texels or on `id`);
+// in the REUSE_COMPATIBLE builds the one Matched ReSTIR Neighbours picked (ReuseTexel's compatible_picks).
+#if defined(REUSE_COMPATIBLE)
+static uint3 compatible_picks;  // the texels picked, x | y << 16 (~0: none, off the texels)
+#endif
 int2 ReuseNeighbourTexel(uint2 id, uint neighbour) {
+#if defined(REUSE_COMPATIBLE)
+  const uint pick = (neighbour == 0u) ? compatible_picks.x : ((neighbour == 1u) ? compatible_picks.y : compatible_picks.z);
+  return (pick == ~0u) ? int2(-1, -1) : int2(pick & 0xFFFFu, pick >> 16);
+#else
   const float angle = 6.2831853f * Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u));
   const float radius = REUSE_RADIUS * sqrt(Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u + 1u)));
   return int2(id) + int2(round(float2(cos(angle), sin(angle)) * radius));
+#endif
 }
 
 // ReSTIR GI's spatial reuse: a texel's reservoir merged with neighbours' on the same surface (their samples' density
@@ -1383,6 +1418,36 @@ void ReuseTexel(uint2 id) {
   uint chosen = ~0u;  // the one whose sample was kept (~0: the texel's own)
   float canonical_share = 0.f;  // G2: the own sample's shares against the neighbours streamed
   uint streamed = 0u;           // G2: the neighbours streamed
+#if defined(REUSE_COMPATIBLE)
+  // G5: COMPATIBLE_CANDIDATES texels within the reach, each scored by RTXDI's compatibility (normals alike, near in the
+  // world for the depth), REUSE_NEIGHBOURS weighted reservoirs over them (each takes a candidate with its score over the
+  // scores so far), stopping once as many scored 0.5 or more (as RTXDI's selection); a texel picked twice merges once.
+  // Their numbers in DIM_REUSE_NEIGHBOUR's from 64 (the candidates' angle, radius) and 128 (the reservoirs').
+  compatible_picks = ~0u;
+  float score_sum = 0.f;
+  uint good = 0u;
+  [loop]
+  for (uint candidate = 0u; candidate < COMPATIBLE_CANDIDATES && good < REUSE_NEIGHBOURS && neighbours != 0u; ++candidate) {
+    const float angle = 6.2831853f * Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + 64u + candidate * 2u));
+    const float radius = REUSE_RADIUS * sqrt(Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + 64u + candidate * 2u + 1u)));
+    const int2 texel = int2(id) + int2(round(float2(cos(angle), sin(angle)) * radius));
+    if (any(texel < 0) || texel.x >= (int)bounce_width || texel.y >= (int)bounce_height || all(texel == int2(id))) continue;
+    float3 candidate_normal;
+    float3 candidate_origin;
+    float candidate_depth;
+    if (!RAB_GetNeighborSelectionSurface(texel, candidate_normal, candidate_origin, candidate_depth)) continue;
+    const float score = RTXDI_PTNeighborCompatibilityScore(normal, origin, position.w, candidate_normal, candidate_origin);
+    if (!(score > 0.f)) continue;
+    if (score >= 0.5f) ++good;
+    score_sum += score;
+    const float3 taken = float3(Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + 128u + candidate * 3u)),
+                                Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + 128u + candidate * 3u + 1u)),
+                                Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + 128u + candidate * 3u + 2u)));
+    compatible_picks = select(taken * score_sum < score, uint(texel.x) | (uint(texel.y) << 16), compatible_picks);
+  }
+  if (compatible_picks.y == compatible_picks.x) compatible_picks.y = ~0u;
+  if (compatible_picks.z == compatible_picks.x || compatible_picks.z == compatible_picks.y) compatible_picks.z = ~0u;
+#endif
   [loop]
   for (uint neighbour = 0u; neighbour < neighbours; ++neighbour) {
     const int2 texel = ReuseNeighbourTexel(id, neighbour);
