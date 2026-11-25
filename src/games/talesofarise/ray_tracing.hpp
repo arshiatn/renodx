@@ -35,12 +35,11 @@
 // written): the opaque prepass's vertex shaders (rt_shadows::DEPTH_SHADERS; the characters' dynamic) and the masked
 // prepass's (rt_core's SceneCoverage: an alpha test at a texture coordinate as drawn or times a material register, at
 // the game's 0.3333, without the material's opacity factor; a dithered fade solid; the characters' by
-// rt_shadows::SKINNED_MASKED_SHADERS dynamic). The trace at Bandai's
-// sun shadow mask (cs 0x2084C889: the scene depth at t0, ScreenToShadow at b0 c28-c30, the View at b1): the camera
-// (TranslatedWorldToClip c0-c3 and PreViewTranslation c62 in metres), the direction toward the sun (0x7A1E0D12's
-// TowardSun, here on the CPU); then the traced sun at t40 for sunshadow00 (its texture's top-left the render pixels it
-// loads) and the traced ambient copied to the scene depth's size for the lighting passes' t41 (rt_ambient.hlsli reads it
-// by UV), in rt_shadows' place. At the frame's first lighting or toon draw (its G-buffer at t1-t3, the View at b1): the
+// rt_shadows::SKINNED_MASKED_SHADERS dynamic). The trace at Bandai's sun shadow mask (cs 0x2084C889: the scene depth at
+// t0, ScreenToShadow at b0 c28-c30, the View at b1): the camera (TranslatedWorldToClip c0-c3 and PreViewTranslation c62
+// in metres), the direction toward the sun (0x7A1E0D12's TowardSun, here on the CPU); then the traced sun at t40 for
+// sunshadow00 (its texture's top-left the render pixels it loads) and the traced ambient copied to the scene depth's
+// size for the lighting passes' t41 (rt_ambient.hlsli reads it by UV), in rt_shadows' place. At the frame's first lighting or toon draw (its G-buffer at t1-t3, the View at b1): the
 // G-buffer guides into the bridge (WriteGuides, the anti-aliasing's 0x7A1E0D31), then the reflections and the specular
 // occlusion traced (rt_scene::Reflections; their hits light from last frame's colour, the bridge's), copied for t43 /
 // t44. The light bounce and the paths: GT-VBGI's passes (talesofarise_dlss/ue_light_bounce.hpp: the prepare from the

@@ -11,6 +11,18 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
   blur and the tonemapper run at the output size, so nothing after DLSS is upscaled again.
 - **Graphics settings** beyond the game's menu, applied live: preset buttons and one choice per setting.
 
+### Fixes 2026-11-25 (built only, not run in game)
+
+- Fixed: a copy of the finished frame into an 8-bit capture or fade texture (a loading screen, a battle's end) now
+  lands in the capture's 16-bit clone, and the capture's views read it. Before, in scRGB the copy out of the back
+  buffer was dropped (the capture stayed stale), and in HDR10 / SDR the capture's views kept reading the 8-bit
+  original. To check in game: scRGB and HDR10, a loading screen and a battle end each, against the game's own picture
+  (no stale or black frame).
+- Fixed: Ray Tracing in the Helper (Experimental) takes the masked prepass's own clip value (0.3333, was 0.5) and the
+  masks read at a scaled texture coordinate (37 shaders; they were left out of the rays' scene). Still missing: the
+  material's opacity factor (51 of the 55 dumped masks multiply alpha by a material value). To check in game: foliage
+  and fences in the rays' shadows with the helper route on, against the in-process rays.
+
 ### Open items G09 (2026-11-22; built only, not run in game)
 
 - Changed: **Auto Thickness** (GT-VBAO and GT-VBGI) is on by default and no longer Experimental (ATN 11-22: bug fixes
@@ -45,7 +57,8 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
   ambient copied to the scene depth's size at t41 (same contract as the in-process rays). Reflections, the bounce,
   the paths, the sky texels (c155-c162) and torches (038D003A) stay in process for now (off in this mode).
 - Known differences to prove offline: masks read at a scaled UV (some of the 89 masked shaders) are left out, and the
-  helper cuts alpha at 0.5 where the game does at 0.333 (rt_core's host route has no cutoff of its own yet).
+  helper cuts alpha at 0.5 where the game does at 0.333 (rt_core's host route has no cutoff of its own yet). Since
+  2026-11-25 both are fixed (see Fixes 2026-11-25); the material's opacity factor is still missing.
 - tests/helper_rays (WARP + CPU): TowardSun equals sun_direction.hlsli's, the camera equals TranslatedWorldToClip.
 - Step 2: the **reflections and specular occlusion** in the helper too. At the frame's first lighting or toon draw the
   G-buffer guides go into the bridge from its t1-t3 and View (the anti-aliasing's 0x7A1E0D31, one `WriteGuides` for
