@@ -104,7 +104,7 @@ static const uint DI_PIXEL_WORD = 0u;
 // Whether this frame's light can be the game's formula: the sun texture's texel 2 w holds the game's HDR state (0.004:
 // HDR, 1: its SDR constants; 0: not written yet, the first frame or a host without it: no DI, tw_point_light.hlsli).
 bool DiShadedFrame() {
-  const float diffuse_scale = sun[uint2(2, 0)].w;
+  const float diffuse_scale = sun[uint2(SUN_LIGHT_TEXEL, 0)].w;
   return diffuse_scale > 0.f && diffuse_scale <= 1.f;
 }
 #endif
