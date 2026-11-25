@@ -15840,6 +15840,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         incl. GameCode, R3 A11 lists the -ReShade blocks + w3 checks the 16 applied lines, R4 per-start keep list ->
         p6d_ LAST TOUCH (text only). Camera key confirmed (same physical key): that ATN question is dropped. PK6-64
         DESIGN = GO.
+        p6d_ LAST TOUCH DONE (hand-back in agent log): S-A fallback ep1c,ep1cvfx (ep8vfx gone), A15 key -> literal
+        table (RenderCore / BattleStep / GameCode / ContactSplitOn, narrow strings, T-test pinned), A11 opens :96 / :614
+        for w3 only, per-start ini keep list, A8 Bitdefender processes, WPR data option on ep8. Plan unchanged.
+        ATN adds a CPU Set Setter rule (16 V-cache threads) for run_rs_b64p\attila64.exe (his tool; question 14).
         - [ ] ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questions_1125.md, 18 rows with coord
         picks: C8, L2B, PK2P, PK6, PK8). Part 2 (PK1-64, PK5-64, PK9) when their fix rounds are back. No rule lines /
         exceptions needed today (lines given when the code exists). Owner: coord.
