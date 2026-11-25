@@ -376,6 +376,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
 - gpr_ + gtw_ RE-CHECK stage26 (Opus xHigh, read-only + tests) -> GO / fixes. Owne ... | gpr_, gtw_
 - STAGE26 FIX ROUND (gte_ resumed, after gtw_'s hand-back, both reviews in one rou ... | ?
+- BEFORE ENFORCE: the coord's 'ATN plays' hold moves to gpu_lock.py acquire --pid ... | ?
 - gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a ... | ?
 - REVIEW ~12-09 (ATN: 'after a while we decide if we even need the 2x stop'): coun ... | ?
 - (2) DEFAULT CAP: a command without a price history runs under budget.py watch's ... | gtb_
@@ -3597,6 +3598,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         commit messages 0 refused. Paste text = gte_r2_handback.md section 3 (+ optional step 6: ATN's matcher line).
         D1 (coord 21:5x): STRICT: LOCK_TEST deleted, hand-taken / hand-released gpu_job.lock refused by T09; the coord
         uses gpu_lock.py / GpuLock.psm1 / the self-locking tools -> gte_ resumed (~10 min) -> gpr_ + gtw_ diff re-check.
+        gte_ D1 STRICT DONE 22:01 (11 min): LOCK_TEST gone; extra fix: path_rows expands variables inside each { } block
+        (gate_hook.py:938-939; the 2nd $lock in 'if (Test-Path $lock) { Remove-Item $lock }' passed). Hashes gate_hook
+        63B0BE44..., run_tests FD7682CE...; suite 1634 / 1634; stage26b.diff 246 lines. Real traffic (7355 calls): 22 newly
+        refused, all T09: 20 = the coord's hand-lock lines (11 takes, 9 releases incl. the 'ATN plays' / quiet_run loop),
+        1 = ta_ O6 agility_probe script ([IO.File]::Open CreateNew + Remove-Item in finally), 1 replay artifact. Probes
+        100 / 109 as before; 18 / 18 daily calls; 0 commit messages refused. Agent rule (section 4): gpu_job.lock only via
+        gpu_lock.py acquire / release, GpuLock.psm1 or the self-locking tools; hand take / release refused by T09.
+        -> gpr_ + gtw_ RE-CHECK of stage26b STARTED 22:1x.
+        - [ ] BEFORE ENFORCE: the coord's 'ATN plays' hold moves to gpu_lock.py acquire --pid <game pid> --note (no
+        Set-Content); ta_ O6 agility_probe script moves to GpuLock.psm1 (or is retired). Owner: coord
         d11v_ (lane I review, Opus xHigh) STARTED 20:5x.
         - [ ] gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a non-leading cd); spec
         gate on scratch files; web list gaps (44 research hosts); agent rules (gte_handback section 4) into briefs.
