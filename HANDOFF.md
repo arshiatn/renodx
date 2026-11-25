@@ -851,6 +851,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
 - pds2_ S4 FIX STARTED 10:0x (branch pds2_s4 off atn-mods; + the review's 2 left n ... | ?
+- ATN 10:1x decisions: (a) C8 WAVE 2 YES -> starts when a3f_ merges (addon.cpp one ... | ?
 - S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner ... | ?
 - ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0 ... | ?
 - 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for ... | ?
@@ -16019,6 +16020,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         rt_path.hlsli / rt_d3d12.hpp): PT DI 4b / 4c -> vMF S2 (+ VMF RHO SKY TEST) -> SHaRC depth 4.
         64-bit lane: a3f_ -> C8 wave 2 (tweak rows, then hook rows) after a3f_ merges (addon.cpp); l2bd_ design ->
         review -> L2B waves; C3 (RT on the port) design. Game starts: none needed now; ATN 11-25: trim every game batch.
+        - [ ] ATN 10:1x decisions: (a) C8 WAVE 2 YES -> starts when a3f_ merges (addon.cpp one writer): settle the 8 E
+        items (census c8_notes section 7), then tweak rows, then hook rows; parked rows wait for L4. (b) UTILS CLONE FIX
+        YES -> ucf_ (Opus High, worktree, branch ucf_clone_fix) STARTED 10:1x: resource_upgrade.hpp 3 sites, F7 scRGB
+        case + control, sweep builds, game-only gaps listed (coord decides; trim). (c) BRIGHTNESS ROW YES 'for now' =
+        G1 + KEEP_LIGHT as an Experimental player row -> pds2_ AFTER S4 (needs the bits in player shaders, today they
+        are reference-build tests). (d) L2C + ATN's '2 cores / 4 threads' arm -> folded into l2bd_'s design (minimum
+        starts). (e) FLIP (Forge's tip): we have it since 11-21 / 22 (tools\refcode\flip d3ab02a BSD-3; reference\
+        flip_tool.py + flip_numpy.py; iq_frames --flip) -> next: HDR-FLIP per mask in E4 ref_compare + the 32 / 64-bit
+        frame compare + 'same picture' gates of speed rows (owner coord, a small tooling step).
         - [ ] S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner pds2_ since 10:0x):
         Attila / Thrones copy the t6 light -> RT_REFLECTIONS_LIGHT -> HitLight returns before the NaN route. Reached
         only with no light copy (other format / MSAA / small, or water_reflections.hpp without a light buffer: Troy,
