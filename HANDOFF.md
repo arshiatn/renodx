@@ -876,6 +876,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_t ... | ?
+- CLEANUP after steps 3 + 5 merge: one shared OctahedralFold / OctahedralUnfold in ... | ?
 - PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row ... | ?
 - PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
@@ -16262,6 +16263,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         :1622 light_ratio; :1108 own_sky = one store, no drift. Remedy: store f16tof32(F32ToF16Nearest(x)) (the S1-fixed
         function). BUG FIX = always on; after steps 3 + 5 merge (rt_path.hlsli has both writers). Owner: coord (next
         helper writer slot)
+        - [ ] CLEANUP after steps 3 + 5 merge: one shared OctahedralFold / OctahedralUnfold in rt_scene.hlsli used by
+        OctahedralEncode / Decode and G4's 8+8 pack (pd5r_ DRY nit; coord said no mid-round: pdi3_ owns Encode / Decode);
+        prove player DXIL unchanged with the listings. Owner: coord (next helper writer slot)
         - [ ] PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row from 'suspected' + add
         'run a rotation in the same session as its calibration' (next pitfall pass). Owner: coord
         - [x] PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ReGIR presample are
