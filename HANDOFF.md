@@ -17079,6 +17079,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         RESUMED 00:5x: F1 + NV1 conservative-visibility variant now; G1 / G2 into the 2.9a commit; GPU turn = A/A first,
         then the refactor gate (both DI textures + 3 reservoir arrays, bias 0 + 3, +- DI_NO_SPATIAL), F2 / F3 notes,
         split vs NV1. Owner: pdi4c_
+        F1 + NV1 CODED (pdi4c_, 5 min vs 20; origin/pdi4c_step4c_r2 dd727e871): F1 = the fused pair under DI_FUSED
+        (rt_di_surface.hlsli), rt_di_spatiotemporal #error without it (dxc fails as it should), fused DI shaders
+        byte-identical to the earlier variant; NV1 = DiVisible under DI_CONSERVATIVE traces solid only (no CUT_OUTS
+        query), RTXDI source + deviation comments, scratch nv1_variant.py on rt_di_initial + reuse (split or fused),
+        rt_di_shade + T1 exact; player build headers byte-identical to split_r2; h0i_test 72/72. Waits for pdi3_'s
+        final head (rebase, then G1 / G2 into 2.9a, then its GPU turn). Owner: pdi4c_
         - [ ] WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed with colour 0 -> DI pixels
         would lose them. Owner: WH2 port of PT DI
         - [ ] 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its paths still run. Owner: 4b
