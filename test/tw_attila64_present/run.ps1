@@ -44,8 +44,9 @@ $identity = '[Total War] 64-bit Attila: attila64.exe, loader 1.3.20.0'
 $mapped = '[Total War] 64-bit Attila: game code mapped, build id a64b000102030405060708090a0b0c0d0e0f1011, 1 code ranges'
 $upgraded = @("the game's picture upgraded (1280x720)", "the game's picture upgraded (1600x900)")
 $notReadable = '[Total War] 64-bit Attila: game code not readable at the first present'
-$noPlugin = '[Total War] 64-bit Attila: engine plugin not installed, rows offered 0'
-$forbidden = @('has no upgrade', 'leaves it alone', 'not readable at the first present', 'was not unregistered')
+$noPlugin = '[Total War] 64-bit Attila: engine plugin not installed, rows offered 0x0'
+$forbidden = @('has no upgrade', 'leaves it alone', 'not readable at the first present', 'was not unregistered',
+               'did not leave the add-on within 1 s', 'callback failed', 'another add-on holds')
 # The color space every effect runtime reports, per output.
 $colorSpaces = @{ 0 = 'hdr10_st2084'; 1 = 'extended_srgb_linear'; 2 = 'srgb_nonlinear' }
 $encodings = @{ hdr10 = 0; scrgb = 1; sdr = 2 }
@@ -60,17 +61,26 @@ foreach ($encoding in 'hdr10', 'scrgb', 'sdr') {
 # The engine plugin's block (fake_plugin.cpp, RENODX_F7_PLUGIN = "<status> <rows_applied> <rows_changed>"): found at the
 # game's init_device, its status logged once, frames as without it, no callbacks left in the block at the end.
 $pluginCases = [ordered]@{
-  plugin_ready = @('1 3 0', 'engine plugin ready, rows offered 3')
-  plugin_changed = @('1 3 2', 'engine plugin ready, rows offered 1')
-  plugin_off = @('2 0 0', 'engine plugin off (ReShade.ini), rows offered 0')
-  plugin_wrong_game = @('3 0 0', 'engine plugin off (another game build), rows offered 0')
-  plugin_wrong_loader = @('4 0 0', 'engine plugin off (another loader or file name), rows offered 0')
-  plugin_loading = @('0 3 0', 'engine plugin of another version, rows offered 0')
+  plugin_ready = @('1 3 0', 'engine plugin ready, rows offered 0x3')
+  plugin_changed = @('1 3 2', 'engine plugin ready, rows offered 0x1')
+  plugin_off = @('2 0 0', 'engine plugin off (ReShade.ini), rows offered 0x0')
+  plugin_wrong_game = @('3 0 0', 'engine plugin off (another game build), rows offered 0x0')
+  plugin_wrong_loader = @('4 0 0', 'engine plugin off (another loader version), rows offered 0x0')
+  plugin_loading = @('0 3 0', 'engine plugin not started by the loader (another loader version), rows offered 0x0')
+  plugin_unknown = @('9 3 0', 'engine plugin of another version, rows offered 0x0')
 }
 foreach ($name in $pluginCases.Keys) {
   $table[$name] = @{ addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = $pluginCases[$name][0]
-                     lines = @($identity, $mapped, "[Total War] 64-bit Attila: $($pluginCases[$name][1])") + $upgraded; forbid = @('engine plugin not installed') }
+                     lines = @($identity, $mapped, "[Total War] 64-bit Attila: $($pluginCases[$name][1])") + $upgraded
+                     forbid = @('engine plugin not installed', 'callbacks registered') }
 }
+# Registration end to end: rows forced wanted (RENODX_TW_PLUGIN_WANT), the callbacks registered at a present, the fake
+# hooks' thread calling into them, then unregistered and drained inside ReShade's unload before the add-on is freed.
+$table['plugin_calls'] = @{ addon = 'current'; args = 'd3d11 fixed upgraded plugin plugin_calls'; encoding = 0; plugin = '1 3 0'; want = '3'
+                            lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x3',
+                                      '[Total War] 64-bit Attila: rows 0x3 wanted from RENODX_TW_PLUGIN_WANT (tests only)',
+                                      '[Total War] 64-bit Attila: engine plugin callbacks registered (rows wanted 0x3)') + $upgraded
+                            forbid = @('engine plugin not installed') }
 $table['C1_1320'] = @{ addon = 'none'; args = 'd3d11 1320 plain'; encoding = 0; lines = @() }
 $table['C1_fixed'] = @{ addon = 'none'; args = 'd3d11 fixed plain'; encoding = 0; lines = @() }
 $table['C2_hdr10_1320'] = @{ addon = 'c2'; args = 'd3d11 1320 broken'; encoding = 0; lines = @() }
@@ -114,6 +124,7 @@ foreach ($name in $Cases) {
   if ($addonPath -ne '') { Copy-Item -LiteralPath $addonPath -Destination (Join-Path $dir 'renodx-twattila.addon64') }
   if ($case.plugin) { Copy-Item -LiteralPath (Join-Path $binDir 'renodx_attila64.dll') -Destination $dir }
   $env:RENODX_F7_PLUGIN = $case.plugin
+  $env:RENODX_TW_PLUGIN_WANT = $case.want
   # A fresh ini: no LoadFromDllMain key, the tutorial done (no splash), the add-on's output rows explicit.
   @(
     '[ADDON]', 'DisabledAddons=', '[GENERAL]', 'EffectSearchPaths=', 'TextureSearchPaths=', 'PresetPath=.\ReShadePreset.ini',

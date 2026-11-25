@@ -10,13 +10,14 @@
 // 3. The loader's vectored handler and unhandled filter; 0x400000 committed with a synthetic ELF64 header (image_none:
 //    left reserved; image_badmagic: a wrong magic; image_table: a program header table past the page).
 // 3b. A plugin's test device (made and released): the same asserts.
-// 3c. plugin: the loader's plugins, as F7's renodx_attila64.dll (fake_plugin.cpp: the engine plugin's block alone); at
-//     the end its callbacks must be gone (none registered, or unregistered before the add-on's unload).
+// 3c. plugin: the loader's plugins, as F7's renodx_attila64.dll (fake_plugin.cpp: the engine plugin's block, a thread
+//     calling the callbacks while a row is wanted); at the end its callbacks must be gone (none registered, or
+//     unregistered and drained at the add-on's unload). plugin_calls: the callbacks must have been called.
 // 4. Window, device, flip swap chain (RGBA8, 2 buffers), the picture (RGBA8, SRV | RT) and its depth.
 // 5-7. Frames into the picture, the loader's copy into buffer 0 and its 8-bit overlay, a mode change, a new window.
 // Then the captures (zz_capture) against the reference of the swap chain proxy.
 // Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8] [image_none|image_badmagic|image_table]
-//        [plugin] [gpu]
+//        [plugin [plugin_calls]] [gpu]
 //        attila64.exe d3d12 [gpu]   (C4: frames written; run.ps1 compares them with a run without the add-on)
 //        attila64.exe opengl        (C6: as C4, GPU only)
 
@@ -933,6 +934,11 @@ int main(int argc, char** argv) {
     } else if (block->callbacks.load() != nullptr || block->hooks_wanted.load() != 0 || block->calls_in_flight.load() != 0) {
       Fail("the plugin's block still holds the add-on's callbacks or hooks after its unload");
     }
+    // plugin_calls: the add-on registered (RENODX_TW_PLUGIN_WANT) and the fake hooks called into it before its unload.
+    const auto calls_export = reinterpret_cast<unsigned (*)()>(GetProcAddress(plugin, "renodx_f7_callback_calls"));
+    const unsigned calls = (calls_export != nullptr ? calls_export() : 0u);
+    std::cout << "  plugin: " << calls << " calls into the add-on's callbacks\n";
+    if (has("plugin_calls") && calls == 0) Fail("no call into the add-on's callbacks (nothing registered)");
   }
   if (reserved_range_violations.load() != 0) Fail(std::format("{} access violations inside 0x400000 + 16 MB", reserved_range_violations.load()));
   const bool passed = (result == 0 && failures.empty());
