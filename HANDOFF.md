@@ -15372,6 +15372,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         of noexcept; they call only noexcept code). A1 note: the drain's first calls_in_flight == 0 ends the wait.
         Open: PerfFix x87 blocks are only a range note (no source read; T1's perffix64: log comparison covers it),
         game_hi (E) needs the T1 log. New run lines (generator / build.ps1 / test exes) listed in the hand-back.
+        - [x] a64p1s_ SONNET FINAL = GO WITH CHANGES, no Musts (hand-back attila64/a64p1s_final_review_handback.md;
+        designs/plugin_wave1_review_sonnet.md): hooks, Block offsets, ELF bytes, LoaderApi, Dekker drain verified (M);
+        tests re-run PASS. Shoulds: S1 static_assert sites 5..11 B (loader breaks 12..15), S2 pass_end same-callbacks
+        comment overclaims -> A1 epoch in PassMeasure::reserved, S3 Callbacks bytes / version never checked, S4
+        GetModuleFileNameW checked before wcsrchr / wcscpy_s, S5 test gaps, S6 build.ps1 relative -Out, S7 CXX_STYLE.
         - [ ] a64p1r_ (Opus xHigh) R1 + a64p1s_ (Sonnet High) FINAL reviews STARTED 01:1x -> designs/
         plugin_wave1_review.md + plugin_wave1_review_sonnet.md -> fixes -> merge -> A1 add-on lane (after a64b_'s
         merge) -> T1 smoke.
