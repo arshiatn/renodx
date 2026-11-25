@@ -15663,6 +15663,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         game-code leaves (pk5_game_code_64.md), p2d_ PK2P main core as an L2B arm (pk2p_main_core_64.md), p1d_ PK1-64
         uploads (pk1_uploads_64.md), p6d_ PK6-64 tooling + ONE combined start plan + PK4-64 census verdict
         (pk6_tooling_64.md); all in attila64\designs\. The map's 6 ATN items go to ATN with the designs' answers.
+        - [x] ucf_ UTILS CLONE FIX DONE 11:1x (hand-back study_1124\ucf_clone_fix_handback.md): 6eacd8a84 on
+        origin/ucf_clone_fix, src/utils/resource_upgrade.hpp only (+46 / -24): copy / resolve handlers use a clone only
+        when clone_enabled (lost in upstream lock-free refactor b550588713). F7: fix + no own-copy PASS all scRGB cases,
+        control old + no own-copy = black frames; full F7 30 / 31 (scrgb_1320 frames perfect, log line keyed on a reused
+        handle = harness issue, A/A shows it on old too). 17 / 17 builds exit 0 (14 amd64 + 3 x86), no new warnings,
+        static_checks known 5 only. Follow-ups: twattila's own scRGB copy now redundant (one full-frame copy to drop);
+        F7 log key; game-only gaps (R.U.S.E. proxy clones, 64-bit Attila scRGB, swapchain_v1 users). -> ucr_ REVIEW
+        (Opus xHigh, read only) STARTED 11:1x -> study_1124\ucf_clone_fix_review.md -> merge -> builds.
         - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
         09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
