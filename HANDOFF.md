@@ -375,7 +375,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
 - gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
 - (2) DEFAULT CAP: a command without a price history runs under budget.py watch's ... | gtb_
-- pfx_ hand-back -> HANDOFF; its proposed block rows -> ATN. Owner: pfx_, coord | pfx_, coord
+- ATN: PROPOSED block rows: T16 (block -Stop until gtl_'s owner fix; coord's view: ... | ?
+- CRASHES CLOSED WITHOUT A PITFALL ROW (pfx_'s list): F31 / ecr_ exit race ('the d ... | ?
+- pitfall_check.py report: line numbers drift on HANDOFF.md (4 lone CR bytes; file ... | ?
 - F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ c ... | coord (audit), each file's owner
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
@@ -3519,7 +3521,21 @@ heading text are in HANDOFF_ARCHIVE.md)
       - [ ] (2) DEFAULT CAP: a command without a price history runs under budget.py watch's default deadline
         (searches / reads short, builds longer); gate_hook price rows + budget.py. After gte_'s stage26 (same files).
         Owner: gtb_
-      - [ ] pfx_ hand-back -> HANDOFF; its proposed block rows -> ATN. Owner: pfx_, coord
+      - [x] pfx_ DONE (plan_1117\pfx_handback.md; 12 min vs budget 40): 22 new pitfall rows G10-G17, H03-H10, T12-T17
+        (T16 = lab -Stop / trace-plan trap, G16 = f16 rounding 'suspected, verify the cite', T17 = broken rule lines:
+        Bash backslash paths / unquoted --opt=--x 1 / single-backslash PowerShell rules, 3 hits); T07 regex widened to
+        tools\tw\bench + h0 junctions; prose in tools\tw\pitfalls\lessons.md; backups testbin\scratch\pfx_\tsv_backup.
+        pitfall_check.py audit PASS (49 rows, was 27; 5 block rows; 0 problems); report on nsr_handback.md 0 findings.
+        - [ ] ATN: PROPOSED block rows: T16 (block -Stop until gtl_'s owner fix; coord's view: NO, fix the owner check
+        instead, a block would also stop the coord), T07 (make the commented block line live with the widened tail;
+        coord's view: YES, INSTALL item 5 says so after the shadow days). Owner: ATN
+        - [ ] CRASHES CLOSED WITHOUT A PITFALL ROW (pfx_'s list): F31 / ecr_ exit race ('the drain covers it' comment);
+        heapfix exit crash (check = the open WER box); s3f_ / s3fr_ crash filter (lost stack-overflow + DLL crashes);
+        s3f_ slot-lock slip; ALOD-2 Thrones part 19 (80000001, no cause in the box); Tales device removal not
+        detected (G02 hit + 1, wider rule; G02's home is a memory file -> move its prose to lessons.md). Each gets the
+        4-part write-up when its owner next touches it. Owner: coord
+        - [ ] pitfall_check.py report: line numbers drift on HANDOFF.md (4 lone CR bytes; file changes while read);
+        protected file -> a gates-owner fix with ATN's override. Owner: gtp_ (next gate round)
       - [ ] F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ cites D3D11.3 spec 3.2.2;
         the reviewer checks the cite), so a value stored again every frame drifts down = G4's darkening; round to
         nearest fixes it (E4 lum cand / ref, R = 4: day 49 0.98417 -> 0.98450, day 36913 0.99671 -> 0.99675, night40
