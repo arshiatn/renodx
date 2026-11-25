@@ -4,11 +4,12 @@
  */
 
 // tests.cpp's probe: src/games/twattila/callisto_diffuse.hlsli per record, compiled by fxc (cs_5_0, D3D11 WARP) and
-// dxc (cs_6_5, D3D12 WARP). `main`: every named set as the compilers fold it and the record's own set (bound sets,
-// the talk's defaults, controls). `vmf`: the merged VmfLobe at base 0.5, r 0.16 / 0.40 (T-vmf). `cost` / `cost_base`
-// (compiled with CALLISTO_COST_SET defined, never run): one lobe of that set, and the same loads and store with the
-// lobe's multiply and two more in its place; the static cost line is their difference. The record count is a multiple
-// of 64 (no bounds: a D3D12 root descriptor has no size).
+// dxc (cs_6_5, D3D12 WARP). `main`: every header set as the compilers fold it and the record's own set (bound sets,
+// the talk's defaults, the named and scoring sets, controls). `vmf`: the merged VmfLobe at base 0.5, r 0.16 / 0.40
+// (T-vmf). `cost` / `cost_base` (compiled with CALLISTO_COST_KNOBS = a set's seven initializers, never run): one lobe
+// of that set as a static const, as the header's sets are, and the same loads and store with the lobe's multiply and
+// two more in its place; the static cost line is their difference. The record count is a multiple of 64 (no bounds:
+// a D3D12 root descriptor has no size).
 #include "../../src/games/twattila/callisto_diffuse.hlsli"
 #include "../../src/games/twattila/vmf_diffuse.hlsli"
 
@@ -22,7 +23,6 @@ struct ProbeInput {
 
 struct ProbeOutput {
   float set_a;
-  float set_a_f;
   float set_v16;
   float set_v16_di;
   float set_v40;
@@ -39,7 +39,6 @@ void main(uint3 id : SV_DispatchThreadID) {
   const ProbeInput input = inputs[id.x];
   ProbeOutput output;
   output.set_a = CallistoLobe(CALLISTO_SET_A, input.n_dot_l, input.n_dot_v, input.l_dot_v, input.amount);
-  output.set_a_f = CallistoLobe(CALLISTO_SET_A_F, input.n_dot_l, input.n_dot_v, input.l_dot_v, input.amount);
   output.set_v16 = CallistoLobe(CALLISTO_SET_V16, input.n_dot_l, input.n_dot_v, input.l_dot_v, input.amount);
   output.set_v16_di = CallistoLobe(CALLISTO_SET_V16_DI, input.n_dot_l, input.n_dot_v, input.l_dot_v, input.amount);
   output.set_v40 = CallistoLobe(CALLISTO_SET_V40, input.n_dot_l, input.n_dot_v, input.l_dot_v, input.amount);
@@ -59,14 +58,15 @@ void vmf(uint3 id : SV_DispatchThreadID) {
                              VmfLobe(input.x, input.y, input.z, 0.5f, 0.40f).x);
 }
 
-#ifdef CALLISTO_COST_SET
+#ifdef CALLISTO_COST_KNOBS
+static const CallistoSet COST_SET = {CALLISTO_COST_KNOBS};
 RWStructuredBuffer<float> cost_outputs : register(u2);
 
 [numthreads(64, 1, 1)]
 void cost(uint3 id : SV_DispatchThreadID) {
   const ProbeInput input = inputs[id.x];
   cost_outputs[id.x] = input.n_dot_l
-                       * CallistoLobe(CALLISTO_COST_SET, input.n_dot_l, input.n_dot_v, input.l_dot_v, input.amount);
+                       * CallistoLobe(COST_SET, input.n_dot_l, input.n_dot_v, input.l_dot_v, input.amount);
 }
 
 [numthreads(64, 1, 1)]

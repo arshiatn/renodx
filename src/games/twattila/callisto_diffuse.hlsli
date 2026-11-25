@@ -25,7 +25,7 @@ float CallistoPower(float base, float exponent) {
 
 // c1 / bond for the set, capped at CALLISTO_LOBE_MAX, blended in by `amount` (0 = Lambert) and faded to 1 below n.v
 // 0.1. 1 at amount <= 0, n.l <= 0 (the caller's cosine is 0 there: wrap and transmission terms stay unchanged) and
-// n.v <= 0. Exactly reciprocal in l and v where n.v >= 0.1 (c1 depends on theta_d and theta_h only).
+// n.v <= 0. Exactly reciprocal in l and v where n.l and n.v >= 0.1 (c1 depends on theta_d and theta_h only).
 float CallistoLobe(CallistoSet set, float n_dot_l, float n_dot_v, float l_dot_v, float amount) {
   if (amount <= 0.f) return 1.f;
   if (n_dot_l <= 0.f) return 1.f;

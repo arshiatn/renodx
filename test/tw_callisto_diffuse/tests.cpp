@@ -3,23 +3,26 @@
  * SPDX-License-Identifier: MIT
  */
 
-// Callisto diffuse C1 (designs/callisto_diffuse.md R1.8): src/games/twattila/callisto_diffuse.hlsli against its CPU
-// twin (below: the header's math in float, pow as exp2(e log2 x) like HLSL), and the twin against a double slide
-// model (c1, c2 in its three alpha_s readings, Proxima: slides 85 / 90 / 128, explicit h vectors). The twin and the
-// probe take their sets and constants from the one src/games/twattila/callisto_diffuse.h; the slide model takes the
-// talk's knobs from slide_points.h (make_points.py). The header runs in callisto_probe.hlsl on WARP, compiled by fxc
-// (cs_5_0, D3D11) and dxc (cs_6_5, D3D12); dxc's cs_6_9 build is checked statically only.
+// Callisto diffuse gates: src/games/twattila/callisto_diffuse.hlsli against its CPU twin (below: the header's math in
+// float, pow as exp2(e log2 x) like HLSL), and the twin against a double slide model (c1, c2 in its three alpha_s
+// readings, Proxima: slides 85 / 90 / 128, explicit h vectors). The twin and the probe take their sets and constants
+// from the one src/games/twattila/callisto_diffuse.h; the slide model takes the talk's knobs and the design's knob
+// table from slide_points.h (make_points.py). The header runs in callisto_probe.hlsl on WARP, compiled by fxc (cs_5_0,
+// D3D11) and dxc (cs_6_5, D3D12); dxc's cs_6_9 build is checked statically only.
 // Gates (each PASS / FAIL line):
 //   T-slides  the slide model at slide_points.h's points (make_points.py's numpy reading) within 1e-9 relative; its
 //             integrals (E at view 0 / 45 / 70 / 85, bond, c2's R cos rows) against make_points.py's on the same grid
-//             within 1e-6 relative; those against cal_'s callisto_check.txt and cdr_'s cdr_callisto.txt within
-//             1e-3 max(|ref|, 0.1) + half a printed unit
-//   bonds     each kept set's inverse_bond x its unfaded bond albedo in double on T-bond's 96^3 grid within 1e-6
-//   T-twin    the twin against the slide model's c1 x inverse_bond with the same u clamp, cap and fade, every set,
-//             u from 1e-4: 1e-5 relative; and against the raw c1 x inverse_bond over u >= 0.1 where it is <= 4
+//             within 1e-6 relative; those against the two earlier checks' printed ones (callisto_check.txt,
+//             cdr_callisto.txt) within 1e-3 max(|ref|, 0.1) + half a printed unit
+//   design    each set's rho and exponents against the design's knob table (10 (1 - knob)) within 1e-6; each DI
+//             twin's retro is its parent's, with rho_f 1
+//   bonds     each kept set's inverse_bond x the knob model's unfaded bond albedo (double, T-bond's 96^3 grid) within
+//             1e-6; an unkept set's inverse_bond exactly 1
+//   T-twin    the twin against the knob model's c1 x inverse_bond with the same u clamp, cap and fade, every set, u
+//             from 1e-4: 1e-5 relative; and against the raw c1 x inverse_bond over u >= 0.1 where it is <= 4
 //   T2        c1's reciprocity on the twin and both WARP builds, u >= 0.1: 1e-6 relative
-//   T-bond    each kept set's bond albedo = 1 within 1e-3 on a 96^3 grid with the fade in (twin); a set the cap
-//             acts on (A + F) gets an INFO line with its capped and uncapped bonds instead
+//   T-bond    each kept set's bond albedo = 1 within 1e-3 on a 96^3 grid with the fade in (twin), and the cap acts
+//             on none of them; a scoring-only set the cap acts on (A + F) gets an INFO line with its bonds instead
 //   T3        amount 0, and the talk's defaults (rho 1) at amount 1: exactly 1.0f (twin, fxc WARP, dxc WARP)
 //   T4        finite (the twin's std::isfinite: WARP's min / max hide NaNs), R in [0, 4], exactly 1 at amount 0,
 //             n.l <= 0 and n.v <= 0, the fade R = 1 + (n.v / 0.1) (unfaded - 1) below n.v 0.1 (the design's 0.1; the
@@ -31,8 +34,8 @@
 //   static    fxc and dxc (cs_6_5, cs_6_9) without warnings; no indexable temp / immediate constant buffer (fxc), no
 //             alloca, wave op or half (dxc); the cost line: fxc slots and DXIL instructions per set
 // Controls (each must FAIL its gate; CONTROL lines): T-slides with 5n read as n^5, with r(x) = 2x, with theta_d /
-// theta_h swapped inside alpha_r; T2 with cos_h from n.l alone (twin) and with c2 at o 0.25 (slide model); T-bond with
-// inverse_bond x 1.01; T3 with rho_r 1 + 2^-20; T4 with neither the exponent-0 fold nor the base clamp (NaN at h = n,
+// theta_h swapped inside alpha_r; design and bonds with V16's n_r off by 1e-3; T-twin without the fade; T2 with cos_h
+// from n.l alone (twin) and with c2 at o 0.25 (slide model); T-bond with inverse_bond x 1.01; T3 with rho_r 1 + 2^-20; T4 with neither the exponent-0 fold nor the base clamp (NaN at h = n,
 // n_r 1, and at l = v, n_f 1), and the fade at 0.08; WARP against a twin with two exponents swapped; T-vmf with
 // Lambert.
 // tests.exe <repository> <folder of dxcompiler.dll and dxil.dll>; exit 0 when every gate passes and every control
@@ -73,24 +76,29 @@ constexpr uint32_t ONE_BITS = 0x3F800000u;
 constexpr uint32_t GROUP = 64;
 constexpr double SAME_CODE = 1e-4;  // |WARP - twin| <= SAME_CODE max(|twin|, 1)
 constexpr double DEGREE = std::numbers::pi / 180.0;
-// The design's fade cosine and cap (R1.8), not the header's: a slip there moves the twin too.
+// The design's fade cosine and cap, not the header's: a slip there moves the twin too.
 constexpr float DESIGN_FADE_COSINE = 0.1f;
 constexpr float DESIGN_LOBE_MAX = 4.f;
 
 struct NamedSet {
   const char* name;
   CallistoSet set;
-  bool kept;  // inverse_bond = 1 / its bond albedo (the planted control set is unkept)
+  bool scoring_only;  // never shipped: the cap may act on it (T-bond then prints its bonds instead of gating them)
 };
 
-// callisto_probe.hlsl's ProbeOutput order.
-const std::array<NamedSet, 7> NAMED_SETS = {{{"A", CALLISTO_SET_A, true},
-                                             {"A+F", CALLISTO_SET_A_F, true},
-                                             {"V16", CALLISTO_SET_V16, true},
-                                             {"V16_DI", CALLISTO_SET_V16_DI, true},
-                                             {"V40", CALLISTO_SET_V40, true},
-                                             {"V40_DI", CALLISTO_SET_V40_DI, true},
-                                             {"PLANTED", CALLISTO_SET_PLANTED, false}}};
+// The header's sets in callisto_probe.hlsl's ProbeOutput order, then the scoring-only ones; slide_points.h's
+// DESIGN_SETS order. A + F: A plus red fabric 2's diffuse Fresnel (slide 110: rho_f 25, n_f 0.6, m_f 0.97); rho_f > 1
+// is not a shipping set. The cap acts on it at grazing views: its bond albedo is 0.9890 with the fade in, 0.9907
+// unfaded, 1 uncapped.
+constexpr size_t PROBE_SETS = 6;
+const std::array<NamedSet, 7> NAMED_SETS = {{{"A", CALLISTO_SET_A, false},
+                                             {"V16", CALLISTO_SET_V16, false},
+                                             {"V16_DI", CALLISTO_SET_V16_DI, false},
+                                             {"V40", CALLISTO_SET_V40, false},
+                                             {"V40_DI", CALLISTO_SET_V40_DI, false},
+                                             {"PLANTED", CALLISTO_SET_PLANTED, false},
+                                             {"A+F", {3.f, 5.f, 2.5f, 25.f, 4.f, 0.3f, 1.f / 1.1816264f}, true}}};
+static_assert(std::size(DESIGN_SETS) == NAMED_SETS.size());
 
 // The twin's switches: all on / off as shipped; the rest are controls.
 struct TwinOptions {
@@ -191,26 +199,13 @@ double SlideLobe(const SlideModel& model, const Vector& l, const Vector& v, cons
   const double alpha_s = (1.0 - std::pow(1.0 - theta_d, 3.0)) * (1.0 - std::pow(1.0 - theta_h, 3.0));
   const double edge = alpha_s * model.terminator_length;
   double step = (cos_i > 0.0) ? 1.0 : 0.0;
-  if (edge != 0.0) step = std::clamp(cos_i / edge, 0.0, 1.0);
+  if (edge != 0.0) {
+    step = std::clamp(cos_i / edge, 0.0, 1.0);
+  }
   const double c2 = 1.0 + ((((step * step * (3.0 - (2.0 * step))) - 1.0) * alpha_s) * model.terminator);
   const double proxima =
       1.0 + (model.proxima_alpha * (-0.55 + (0.19 / bar(cos_i))) * (1.0 - std::sqrt(bar(-Dot(v, l)))));
   return c1 * c2 * proxima;
-}
-
-// A set's knobs as the slide model's (falloff = 1 - exponent / 10; c2 and Proxima off).
-SlideModel SlideModelOf(const CallistoSet& set) {
-  return {.name = "set",
-          .retro = set.retro,
-          .retro_falloff = 1.0 - (set.retro_exponent / 10.0),
-          .retro_tangent_falloff = 1.0 - (set.retro_tangent_exponent / 10.0),
-          .fresnel = set.fresnel,
-          .fresnel_falloff = 1.0 - (set.fresnel_exponent / 10.0),
-          .fresnel_tangent_falloff = 1.0 - (set.fresnel_tangent_exponent / 10.0),
-          .terminator = 0.0,
-          .terminator_length = 0.5,
-          .proxima_alpha = 0.0,
-          .alpha_s_reading = 0};
 }
 
 // Gauss-Legendre on (0, 1): {node, weight}, weights summing to 1.
@@ -256,10 +251,10 @@ struct ProbeInput {
 static_assert(sizeof(ProbeInput) == 44);
 
 struct ProbeOutput {
-  std::array<float, 7> named = {};  // NAMED_SETS' order
-  float own = 0;                    // the record's set
+  std::array<float, PROBE_SETS> named = {};  // NAMED_SETS' order
+  float own = 0;                             // the record's set
 };
-static_assert(sizeof(ProbeOutput) == 32);
+static_assert(sizeof(ProbeOutput) == 28);
 
 enum class RecordKind : uint8_t { T3_ZERO, T3_DEFAULTS, T3_CONTROL, SWEEP, FADE, GRID, PAD };
 
@@ -273,7 +268,9 @@ class IncludeBesideParent : public ID3DInclude {
                          UINT* size) noexcept override {
     std::filesystem::path folder = folder_;
     for (const File& file : files_) {
-      if (file.text.data() == parent) folder = file.folder;
+      if (file.text.data() == parent) {
+        folder = file.folder;
+      }
     }
     const std::filesystem::path path = (folder / name).lexically_normal();
     std::ifstream stream(path, std::ios::binary);
@@ -309,13 +306,17 @@ int main(int argc, char** argv) {
   int controls_passed = 0;
   const auto gate = [&](const std::string& name, bool passed, const std::string& detail) {
     std::printf("%s %s: %s\n", passed ? "PASS" : "FAIL", name.c_str(), detail.c_str());
-    if (!passed) ++gates_failed;
+    if (!passed) {
+      ++gates_failed;
+    }
   };
   // A control must fail its gate.
   const auto control = [&](const std::string& name, bool gate_failed, const std::string& detail) {
     std::printf("CONTROL %s %s: %s\n", gate_failed ? "fails as required" : "PASSES (wrong)", name.c_str(),
                 detail.c_str());
-    if (!gate_failed) ++controls_passed;
+    if (!gate_failed) {
+      ++controls_passed;
+    }
   };
   const auto setup_failed = [](const char* step) {
     std::printf("FAIL setup: %s\n", step);
@@ -332,8 +333,8 @@ int main(int argc, char** argv) {
     return std::isfinite(gap) ? gap : std::numeric_limits<double>::infinity();
   };
 
-  // T-slides: the slide model at make_points.py's points and against cal_'s / cdr_'s integrals; each control reading
-  // must fail one of them.
+  // T-slides: the slide model at make_points.py's points and against the earlier checks' integrals; each control
+  // reading must fail one of them.
   {
     const std::vector<std::array<double, 2>> light_rule = GaussLegendre(128);
     const std::vector<std::array<double, 2>> bond_light_rule = GaussLegendre(96);
@@ -398,8 +399,8 @@ int main(int argc, char** argv) {
     gate(format("T-slides its integrals against make_points.py's full-precision ones (%zu: E, bonds, c2's R cos)",
                 std::size(SLIDE_INTEGRALS)),
          reading[1] <= 1e-6, format("max relative %.2e (<= 1e-6, the same grid) at %s", reading[1], where.c_str()));
-    // cal_'s and cdr_'s printed integrals against make_points.py's (other quadratures, printed to 3-4 decimals): within
-    // 1e-3 max(|ref|, 0.1) + half a unit of the printed last digit.
+    // The earlier checks' printed integrals against make_points.py's (other quadratures, printed to 3-4 decimals):
+    // within 1e-3 max(|ref|, 0.1) + half a unit of the printed last digit.
     double printed_worst = 0;
     std::string printed_where;
     for (const SlidePrinted& printed : SLIDE_PRINTED) {
@@ -416,7 +417,7 @@ int main(int argc, char** argv) {
         }
       }
     }
-    gate(format("T-slides cal_'s and cdr_'s %zu printed integrals vs make_points.py's", std::size(SLIDE_PRINTED)),
+    gate(format("T-slides the earlier checks' %zu printed integrals vs make_points.py's", std::size(SLIDE_PRINTED)),
          printed_worst <= 1.0,
          format("worst %.2f x the tolerance (1e-3 max(|ref|, 0.1) + half a printed unit), at %s", printed_worst,
                 printed_where.c_str()));
@@ -433,14 +434,12 @@ int main(int argc, char** argv) {
     }
   }
 
-  // bonds: each set's bond albedo, unfaded, in double on T-bond's grid (Gauss-Legendre 96 x 96, 96 midpoints in phi
-  // over [0, pi]) against the header's inverse_bond (kept sets; the planted set's is printed, its inverse bond is 1).
+  // design and bonds: each set against slide_points.h's knob table (the design's, independent of the header): rho and
+  // the exponents 10 (1 - knob), each DI twin's retro against its parent's, and inverse_bond against the knob model's
+  // unfaded bond albedo in double on T-bond's grid (Gauss-Legendre 96 x 96, 96 midpoints in phi over [0, pi]).
   {
     const std::vector<std::array<double, 2>> rule = GaussLegendre(96);
-    std::string rows;
-    double worst = 0;
-    for (const NamedSet& named : NAMED_SETS) {
-      const SlideModel model = SlideModelOf(named.set);
+    const auto bond_of = [&](const SlideModel& model) {
       double sum = 0;
       for (const auto& [u_l, weight_l] : rule) {
         for (const auto& [u_v, weight_v] : rule) {
@@ -454,17 +453,66 @@ int main(int argc, char** argv) {
           sum += weight_l * weight_v * u_l * u_v * phi_sum / 96.0;
         }
       }
-      const double bond = 4.0 * sum;
-      if (named.kept) worst = std::max(worst, std::abs((named.set.inverse_bond * bond) - 1.0));
-      rows += format(" %s %.7f%s;", named.name, bond, named.kept ? "" : " (unkept)");
+      return 4.0 * sum;
+    };
+    // max |header - design| over rho and the exponents.
+    const auto knob_gap = [](const CallistoSet& set, const SlideModel& model) {
+      const std::array<double, 6> header = {set.retro,   set.retro_exponent,   set.retro_tangent_exponent,
+                                            set.fresnel, set.fresnel_exponent, set.fresnel_tangent_exponent};
+      const std::array<double, 6> design = {
+          model.retro,   10.0 * (1.0 - model.retro_falloff),   10.0 * (1.0 - model.retro_tangent_falloff),
+          model.fresnel, 10.0 * (1.0 - model.fresnel_falloff), 10.0 * (1.0 - model.fresnel_tangent_falloff)};
+      double worst = 0;
+      for (size_t knob = 0; knob < header.size(); ++knob) {
+        worst = std::max(worst, std::abs(header[knob] - design[knob]));
+      }
+      return worst;
+    };
+    // |inverse_bond x bond - 1| for a kept set, |inverse_bond - 1| for an unkept one; the bond through `bond`.
+    const auto bond_gap = [&](const CallistoSet& set, const DesignSet& design, double* bond) {
+      *bond = bond_of(design.model);
+      return design.kept ? std::abs((set.inverse_bond * *bond) - 1.0) : std::abs(set.inverse_bond - 1.0);
+    };
+    bool names_match = true;
+    bool twins_match = true;
+    double knob_worst = 0;
+    double bond_worst = 0;
+    std::string rows;
+    for (size_t index = 0; index < NAMED_SETS.size(); ++index) {
+      const NamedSet& named = NAMED_SETS[index];
+      const DesignSet& design = DESIGN_SETS[index];
+      names_match = names_match && std::string(named.name) == design.model.name;
+      knob_worst = std::max(knob_worst, knob_gap(named.set, design.model));
+      if (design.parent >= 0) {
+        const CallistoSet& parent = NAMED_SETS[design.parent].set;
+        twins_match = twins_match && named.set.retro == parent.retro
+                      && named.set.retro_exponent == parent.retro_exponent
+                      && named.set.retro_tangent_exponent == parent.retro_tangent_exponent && named.set.fresnel == 1.f;
+      }
+      double bond = 0;
+      bond_worst = std::max(bond_worst, bond_gap(named.set, design, &bond));
+      rows += format(" %s %.7f%s;", named.name, bond, design.kept ? "" : " (unkept)");
     }
-    gate("bonds inverse_bond x the unfaded bond albedo in double, every kept set", worst <= 1e-6,
-         format("max |inverse_bond x bond - 1| %.2e (<= 1e-6):%s", worst, rows.c_str()));
+    gate("design every set's rho and exponents vs slide_points.h's knob table, 10 (1 - knob)",
+         names_match && knob_worst <= 1e-6,
+         format("names %s; max |header - design| %.2e (<= 1e-6)", names_match ? "match" : "DIFFER", knob_worst));
+    gate("design each DI twin's retro is its parent's, rho_f 1", twins_match, twins_match ? "V16_DI, V40_DI" : "no");
+    gate("bonds inverse_bond x the knob model's unfaded bond albedo in double = 1, every kept set; unkept 1",
+         bond_worst <= 1e-6, format("max gap %.2e (<= 1e-6):%s", bond_worst, rows.c_str()));
+    DesignSet off = DESIGN_SETS[1];
+    off.model.retro_falloff += 1e-3;
+    double off_bond = 0;
+    const double off_knob = knob_gap(NAMED_SETS[1].set, off.model);
+    const double off_bond_gap = bond_gap(NAMED_SETS[1].set, off, &off_bond);
+    control(format("design and bonds with %s's n_r off by 1e-3", NAMED_SETS[1].name),
+            off_knob > 1e-6 && off_bond_gap > 1e-6,
+            format("knob gap %.2e, bond gap %.2e (bond %.7f)", off_knob, off_bond_gap, off_bond));
   }
 
-  // T-twin: the twin against the double slide model's c1 x inverse_bond, evaluated at the twin's own (float) n.l, n.v
-  // and l.v: (1) with the header's u clamp, cap and fade, u from 1e-4; (2) raw over u >= 0.1, where none of the three
-  // acts (records where the raw value passes the cap are counted, not compared).
+  // T-twin: the twin against the double slide model of the design's knobs, c1 x inverse_bond, evaluated at the twin's
+  // own (float) n.l, n.v and l.v: (1) with the header's u clamp, cap and fade, u from 1e-4; (2) raw over u >= 0.1,
+  // where none of the three acts (records where the raw value passes the cap are counted, not compared). Its control:
+  // the twin without the fade.
   {
     // The double model at the twin's inputs: l in the xz plane, v from n.v and l.v.
     const auto slide_at = [](const SlideModel& model, double u_l, double u_v, double l_dot_v) {
@@ -481,47 +529,61 @@ int main(int argc, char** argv) {
     size_t capped = 0;
     std::string clamped_where;
     std::string raw_where;
-    for (const NamedSet& named : NAMED_SETS) {
-      const SlideModel model = SlideModelOf(named.set);
-      for (const float n_dot_l : cosines) {
-        for (const float n_dot_v : cosines) {
-          for (int step = 0; step <= 12; ++step) {
-            const float l_dot_v = LDotV(n_dot_l, n_dot_v, 15.0 * step);
-            const float twin = TwinLobe(named.set, n_dot_l, n_dot_v, l_dot_v, 1.f, {});
-            const double u_l = std::clamp(static_cast<double>(n_dot_l), static_cast<double>(CALLISTO_MIN_COSINE), 1.0);
-            const double u_v = std::clamp(static_cast<double>(n_dot_v), static_cast<double>(CALLISTO_MIN_COSINE), 1.0);
-            const double raw = slide_at(model, u_l, u_v, l_dot_v) * named.set.inverse_bond;
-            const double fade = std::clamp(static_cast<double>(n_dot_v) / DESIGN_FADE_COSINE, 0.0, 1.0);
-            const double clamped = 1.0 + (fade * (std::min(raw, static_cast<double>(DESIGN_LOBE_MAX)) - 1.0));
-            const double gap = relative(twin, clamped);
-            if (gap > clamped_worst) {
-              clamped_worst = gap;
-              clamped_where = format("%s n.l %g n.v %g phi %d: %.7f vs %.7f", named.name, n_dot_l, n_dot_v, 15 * step,
-                                     twin, clamped);
-            }
-            if (n_dot_l < 0.1f || n_dot_v < 0.1f) continue;
-            if (raw > DESIGN_LOBE_MAX) {
-              ++capped;
-              continue;
-            }
-            const double raw_gap = relative(twin, raw);
-            if (raw_gap > raw_worst) {
-              raw_worst = raw_gap;
-              raw_where = format("%s n.l %g n.v %g phi %d", named.name, n_dot_l, n_dot_v, 15 * step);
+    // The clamped pass's worst gap for a twin with `options` (the gate's twin when `gate_twin`: both passes recorded).
+    const auto compare = [&](const TwinOptions& options, bool gate_twin) {
+      double worst = 0;
+      for (size_t index = 0; index < NAMED_SETS.size(); ++index) {
+        const NamedSet& named = NAMED_SETS[index];
+        const SlideModel& model = DESIGN_SETS[index].model;
+        for (const float n_dot_l : cosines) {
+          for (const float n_dot_v : cosines) {
+            for (int step = 0; step <= 12; ++step) {
+              const float l_dot_v = LDotV(n_dot_l, n_dot_v, 15.0 * step);
+              const float twin = TwinLobe(named.set, n_dot_l, n_dot_v, l_dot_v, 1.f, options);
+              const double u_l =
+                  std::clamp(static_cast<double>(n_dot_l), static_cast<double>(CALLISTO_MIN_COSINE), 1.0);
+              const double u_v =
+                  std::clamp(static_cast<double>(n_dot_v), static_cast<double>(CALLISTO_MIN_COSINE), 1.0);
+              const double raw = slide_at(model, u_l, u_v, l_dot_v) * named.set.inverse_bond;
+              const double fade = std::clamp(static_cast<double>(n_dot_v) / DESIGN_FADE_COSINE, 0.0, 1.0);
+              const double clamped = 1.0 + (fade * (std::min(raw, static_cast<double>(DESIGN_LOBE_MAX)) - 1.0));
+              const double gap = relative(twin, clamped);
+              worst = std::max(worst, gap);
+              if (!gate_twin) continue;
+              if (gap > clamped_worst) {
+                clamped_worst = gap;
+                clamped_where = format("%s n.l %g n.v %g phi %d: %.7f vs %.7f", named.name, n_dot_l, n_dot_v,
+                                       15 * step, twin, clamped);
+              }
+              if (n_dot_l < 0.1f || n_dot_v < 0.1f) continue;
+              if (raw > DESIGN_LOBE_MAX) {
+                ++capped;
+                continue;
+              }
+              const double raw_gap = relative(twin, raw);
+              if (raw_gap > raw_worst) {
+                raw_worst = raw_gap;
+                raw_where = format("%s n.l %g n.v %g phi %d", named.name, n_dot_l, n_dot_v, 15 * step);
+              }
             }
           }
         }
       }
-    }
-    gate("T-twin the twin vs the slide model's c1 x inverse_bond with the u clamp, cap and fade, every set, u >= 1e-4",
+      return worst;
+    };
+    compare({}, true);
+    gate("T-twin the twin vs the knob model's c1 x inverse_bond with the u clamp, cap and fade, every set, u >= 1e-4",
          clamped_worst <= 1e-5, format("max relative %.2e (<= 1e-5) at %s", clamped_worst, clamped_where.c_str()));
-    gate("T-twin the twin vs the raw slide c1 x inverse_bond, every set, u >= 0.1", raw_worst <= 1e-5,
+    gate("T-twin the twin vs the knob model's raw c1 x inverse_bond, every set, u >= 0.1", raw_worst <= 1e-5,
          format("max relative %.2e (<= 1e-5) at %s; %zu records above the cap skipped", raw_worst, raw_where.c_str(),
                 capped));
+    const double unfaded_worst = compare({.fade = false}, false);
+    control("T-twin with the twin's fade off", unfaded_worst > 1e-5, format("max relative %.2e", unfaded_worst));
   }
 
   // T-bond: each kept set's bond albedo with the fade in (twin, amount 1; Gauss-Legendre 96 x 96, 96 midpoints in phi
-  // over [0, pi]), and the control inverse_bond x 1.01. A set the cap acts on gets an INFO line instead.
+  // over [0, pi]), and the control inverse_bond x 1.01. The cap must act on no kept set (it would break brightness
+  // kept); a scoring-only set it acts on gets an INFO line instead.
   {
     const std::vector<std::array<double, 2>> rule = GaussLegendre(96);
     const auto kept_bond = [&](const CallistoSet& set, const TwinOptions& options) {
@@ -542,22 +604,29 @@ int main(int argc, char** argv) {
     double worst = 0;
     double control_best = std::numeric_limits<double>::infinity();
     std::string rows;
-    for (const NamedSet& named : NAMED_SETS) {
-      if (!named.kept) continue;
+    std::string cap_acts;
+    for (size_t index = 0; index < NAMED_SETS.size(); ++index) {
+      const NamedSet& named = NAMED_SETS[index];
+      if (!DESIGN_SETS[index].kept) continue;
       const double bond = kept_bond(named.set, {});
       const double unfaded = kept_bond(named.set, {.fade = false});
       const double uncapped = kept_bond(named.set, {.fade = false, .lobe_max = std::numeric_limits<float>::infinity()});
       if (std::abs(uncapped - unfaded) > 1e-6) {
-        std::printf("INFO T-bond %s: the cap acts: kept bond %.6f (unfaded %.6f, uncapped %.6f)\n", named.name, bond,
-                    unfaded, uncapped);
-        continue;
+        if (named.scoring_only) {
+          std::printf("INFO T-bond %s (scoring only): the cap acts: kept bond %.6f (unfaded %.6f, uncapped %.6f)\n",
+                      named.name, bond, unfaded, uncapped);
+          continue;
+        }
+        cap_acts += format(" %s (unfaded %.6f, uncapped %.6f)", named.name, unfaded, uncapped);
       }
       worst = std::max(worst, std::abs(bond - 1.0));
       control_best = std::min(control_best, std::abs(kept_bond(named.set, {.bond_scale = 1.01f}) - 1.0));
       rows += format(" %s %.6f (unfaded %.6f);", named.name, bond, unfaded);
     }
-    gate("T-bond each kept set's bond albedo = 1 within 1e-3 (96^3, fade in)", worst <= 1e-3,
-         format("max |bond - 1| %.2e:%s", worst, rows.c_str()));
+    gate("T-bond each kept set's bond albedo = 1 within 1e-3 (96^3, fade in), the cap acting on none",
+         worst <= 1e-3 && cap_acts.empty(),
+         format("max |bond - 1| %.2e:%s%s%s", worst, rows.c_str(), cap_acts.empty() ? "" : " the cap acts on:",
+                cap_acts.c_str()));
     control("T-bond with inverse_bond x 1.01", control_best > 1e-3,
             format("min |bond - 1| over the sets %.2e", control_best));
   }
@@ -637,13 +706,14 @@ int main(int argc, char** argv) {
       }
     }
   }
-  // The fade's ramp on consistent directions: n.v 0.03 / 0.05 / 0.08 against every n.l of the grid.
+  // The fade's ramp on consistent directions: n.v 0.03 / 0.05 / 0.08 against every n.l of the grid; the own set is
+  // A + F (the first scoring set).
   for (const float n_dot_v : {0.03f, 0.05f, 0.08f}) {
     for (int i = 1; i <= 10; ++i) {
       for (int step = 0; step <= 6; ++step) {
         const float n_dot_l = static_cast<float>(i) * 0.1f;
         for (const float amount : {1.f, 0.5f}) {
-          add(RecordKind::FADE, {.set = CALLISTO_SET_A_F, .n_dot_l = n_dot_l, .n_dot_v = n_dot_v,
+          add(RecordKind::FADE, {.set = NAMED_SETS[PROBE_SETS].set, .n_dot_l = n_dot_l, .n_dot_v = n_dot_v,
                                  .l_dot_v = LDotV(n_dot_l, n_dot_v, 30.0 * step), .amount = amount});
         }
       }
@@ -687,7 +757,7 @@ int main(int argc, char** argv) {
     std::vector<ProbeOutput> outputs(inputs.size());
     for (size_t index = 0; index < inputs.size(); ++index) {
       const ProbeInput& input = inputs[index];
-      for (size_t set = 0; set < NAMED_SETS.size(); ++set) {
+      for (size_t set = 0; set < PROBE_SETS; ++set) {
         outputs[index].named[set] =
             TwinLobe(NAMED_SETS[set].set, input.n_dot_l, input.n_dot_v, input.l_dot_v, input.amount, options);
       }
@@ -695,9 +765,12 @@ int main(int argc, char** argv) {
     }
     return outputs;
   };
+  // Every Callisto output of a record: the probe sets, then the own set.
   const auto lobes_of = [](const ProbeOutput& output) {
-    return std::array<float, 8>{output.named[0], output.named[1], output.named[2], output.named[3],
-                                output.named[4], output.named[5], output.named[6], output.own};
+    std::array<float, PROBE_SETS + 1> lobes = {};
+    std::copy(output.named.begin(), output.named.end(), lobes.begin());
+    lobes[PROBE_SETS] = output.own;
+    return lobes;
   };
   const std::vector<ProbeOutput> twin = twin_outputs({});
   const std::vector<ProbeOutput> unfaded = twin_outputs({.fade = false});
@@ -708,9 +781,9 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < 10; ++i) {
       for (size_t j = 0; j < 10; ++j) {
         for (size_t step = 0; step < 7; ++step) {
-          const std::array<float, 8> forward = lobes_of(outputs[grid_index(i, j, step)]);
-          const std::array<float, 8> backward = lobes_of(outputs[grid_index(j, i, step)]);
-          for (size_t field = 0; field < NAMED_SETS.size(); ++field) {  // own sets differ between i and j
+          const auto forward = lobes_of(outputs[grid_index(i, j, step)]);
+          const auto backward = lobes_of(outputs[grid_index(j, i, step)]);
+          for (size_t field = 0; field < PROBE_SETS; ++field) {  // own sets differ between i and j
             worst = std::max(worst, relative(forward[field], backward[field]));
           }
         }
@@ -723,8 +796,11 @@ int main(int argc, char** argv) {
     control("T2 twin with cos_h from n.l alone", from_n_dot_l > 1e-6, format("max relative %.2e", from_n_dot_l));
     const SlideModel* terminator = nullptr;
     for (const SlideModel& model : SLIDE_MODELS) {
-      if (std::string(model.name) == "c2 o 0.25 radians") terminator = &model;
+      if (std::string(model.name) == "c2 o 0.25 radians") {
+        terminator = &model;
+      }
     }
+    if (terminator == nullptr) return setup_failed("no \"c2 o 0.25 radians\" model in slide_points.h");
     double worst = 0;
     for (int i = 1; i <= 10; ++i) {
       for (int j = 1; j <= 10; ++j) {
@@ -750,13 +826,17 @@ int main(int argc, char** argv) {
     }};
     std::array<std::string, 3> rows;
     std::array<bool, 3> finite = {};
+    bool both_nan = false;
     for (size_t guard = 0; guard < guards.size(); ++guard) {
       const float at_h_n = TwinLobe(retro_bound, 1.f, 1.f, 1.f, 1.f, guards[guard].second);
       const float at_l_v = TwinLobe(fresnel_bound, 0.6f, 0.6f, 1.f, 1.f, guards[guard].second);
       finite[guard] = std::isfinite(at_h_n) && std::isfinite(at_l_v);
+      if (guard == 0) {
+        both_nan = !std::isfinite(at_h_n) && !std::isfinite(at_l_v);
+      }
       rows[guard] = format("%s: h = n %g, l = v %g", guards[guard].first, at_h_n, at_l_v);
     }
-    control("twin T4 finite with " + rows[0], !finite[0], "both NaN required");
+    control("twin T4 finite with " + rows[0], both_nan, "both NaN required");
     gate("twin T4 finite with either guard alone", finite[1] && finite[2], rows[1] + "; " + rows[2]);
   }
 
@@ -771,7 +851,7 @@ int main(int argc, char** argv) {
     double fade_worst = 0;
     for (size_t index = 0; index < inputs.size(); ++index) {
       const ProbeInput& input = inputs[index];
-      const std::array<float, 8> lobes = lobes_of(outputs[index]);
+      const auto lobes = lobes_of(outputs[index]);
       const auto all_one = [&]() {
         return std::all_of(lobes.begin(), lobes.end(),
                            [](float value) { return std::bit_cast<uint32_t>(value) == ONE_BITS; });
@@ -790,17 +870,21 @@ int main(int argc, char** argv) {
         case RecordKind::T3_CONTROL:
           control_all_one = control_all_one && std::bit_cast<uint32_t>(outputs[index].own) == ONE_BITS;
           break;
-        case RecordKind::FADE:
-          for (size_t set = 0; set < NAMED_SETS.size(); ++set) {
+        case RecordKind::FADE: {
+          const auto reference = lobes_of(unfaded[index]);
+          for (size_t field = 0; field < lobes.size(); ++field) {
             const double weight = input.n_dot_v / DESIGN_FADE_COSINE;
-            const double expected = 1.0 + (weight * (unfaded[index].named[set] - 1.0));
-            fade_worst = std::max(fade_worst, std::abs(outputs[index].named[set] - expected) / std::max(expected, 1.0));
+            const double expected = 1.0 + (weight * (reference[field] - 1.0));
+            fade_worst = std::max(fade_worst, std::abs(lobes[field] - expected) / std::max(expected, 1.0));
           }
           break;
+        }
         default:
           break;
       }
-      if (input.n_dot_l <= 0.f || input.n_dot_v <= 0.f) outside_one = outside_one && all_one();
+      if (input.n_dot_l <= 0.f || input.n_dot_v <= 0.f) {
+        outside_one = outside_one && all_one();
+      }
     }
     const double reciprocity_worst = reciprocity(outputs);
     gate(build + " T3 amount 0, and the talk's defaults at amount 1: exactly 1.0f", t3_ok,
@@ -821,10 +905,12 @@ int main(int argc, char** argv) {
     double worst = 0;
     for (size_t index = 0; index < inputs.size(); ++index) {
       if (kinds[index] != RecordKind::FADE) continue;
-      for (size_t set = 0; set < NAMED_SETS.size(); ++set) {
+      const auto lobes = lobes_of(early[index]);
+      const auto reference = lobes_of(unfaded[index]);
+      for (size_t field = 0; field < lobes.size(); ++field) {
         const double weight = inputs[index].n_dot_v / DESIGN_FADE_COSINE;
-        const double expected = 1.0 + (weight * (unfaded[index].named[set] - 1.0));
-        worst = std::max(worst, std::abs(early[index].named[set] - expected) / std::max(expected, 1.0));
+        const double expected = 1.0 + (weight * (reference[field] - 1.0));
+        worst = std::max(worst, std::abs(lobes[field] - expected) / std::max(expected, 1.0));
       }
     }
     control("twin T4 fade with the fade at 0.08", worst > SAME_CODE, format("max %.2e", worst));
@@ -836,8 +922,8 @@ int main(int argc, char** argv) {
                               std::string* where) {
     double worst = 0;
     for (size_t index = 0; index < inputs.size(); ++index) {
-      const std::array<float, 8> measured = lobes_of(outputs[index]);
-      const std::array<float, 8> expected = lobes_of(reference[index]);
+      const auto measured = lobes_of(outputs[index]);
+      const auto expected = lobes_of(reference[index]);
       for (size_t field = 0; field < measured.size(); ++field) {
         const double gap = std::abs(static_cast<double>(measured[field]) - expected[field]);
         const double error = std::isfinite(gap) ? gap / std::max(std::abs(static_cast<double>(expected[field])), 1.0)
@@ -903,28 +989,33 @@ int main(int argc, char** argv) {
 
   const std::filesystem::path probe_path =
       std::filesystem::path(repository) / "test" / "tw_callisto_diffuse" / "callisto_probe.hlsl";
-  // The cost line's sets: the probe's `cost` per set against `cost_base` (lobe = cost - base + 2: the base has two
-  // more multiplies than the lobe's caller).
-  const std::array<const char*, 6> cost_macros = {"CALLISTO_SET_A",      "CALLISTO_SET_A_F", "CALLISTO_SET_V16",
-                                                  "CALLISTO_SET_V16_DI", "CALLISTO_SET_V40", "CALLISTO_SET_V40_DI"};
+  // The cost line: the probe's `cost` per named set (CALLISTO_COST_KNOBS = its seven floats, exact in %.8e) against
+  // `cost_base` (lobe = cost - base + 2: the base has two more multiplies than the lobe's caller).
+  std::array<std::string, NAMED_SETS.size()> cost_knobs;
+  for (size_t set = 0; set < NAMED_SETS.size(); ++set) {
+    const CallistoSet& knobs = NAMED_SETS[set].set;
+    cost_knobs[set] = format("%.8ef, %.8ef, %.8ef, %.8ef, %.8ef, %.8ef, %.8ef", knobs.retro, knobs.retro_exponent,
+                             knobs.retro_tangent_exponent, knobs.fresnel, knobs.fresnel_exponent,
+                             knobs.fresnel_tangent_exponent, knobs.inverse_bond);
+  }
 
   // fxc (cs_5_0, /O3 as the add-ons' CMake) on D3D11 WARP.
   {
     std::string cost_line;
     std::string static_problems;
-    // The probe's `entry` with CALLISTO_COST_SET = `set` (or none), its static gates folded into one line; the slot
-    // count through `slots`.
-    const auto compile = [&](const char* entry, const char* set, int* slots) {
+    // The probe's `entry` with CALLISTO_COST_KNOBS = `knobs` (or none), its static gates folded into one line; the
+    // slot count through `slots`.
+    const auto compile = [&](const char* entry, const char* knobs, int* slots) {
       ComPtr<ID3DBlob> code;
       ComPtr<ID3DBlob> messages;
       IncludeBesideParent includes(probe_path.parent_path());
-      const std::array<D3D_SHADER_MACRO, 2> macros = {{{"CALLISTO_COST_SET", set}, {nullptr, nullptr}}};
-      const HRESULT compiled = D3DCompileFromFile(probe_path.c_str(), (set != nullptr) ? macros.data() : nullptr,
+      const std::array<D3D_SHADER_MACRO, 2> macros = {{{"CALLISTO_COST_KNOBS", knobs}, {nullptr, nullptr}}};
+      const HRESULT compiled = D3DCompileFromFile(probe_path.c_str(), (knobs != nullptr) ? macros.data() : nullptr,
                                                   &includes, entry, "cs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0,
                                                   code.GetAddressOf(), messages.GetAddressOf());
       const std::string message_text =
           (messages != nullptr) ? std::string(static_cast<const char*>(messages->GetBufferPointer())) : "";
-      const char* set_name = (set != nullptr) ? set : "";
+      const char* set_name = (knobs != nullptr) ? knobs : "";
       if (FAILED(compiled) || !message_text.empty()) {
         static_problems += format("%s %s: %s ", entry, set_name, message_text.c_str());
       }
@@ -948,10 +1039,10 @@ int main(int argc, char** argv) {
     int vmf_slots = 0;
     const ComPtr<ID3DBlob> vmf_code = compile("vmf", nullptr, &vmf_slots);
     int base_slots = 0;
-    compile("cost_base", cost_macros[0], &base_slots);
-    for (size_t set = 0; set < cost_macros.size(); ++set) {
+    compile("cost_base", cost_knobs[0].c_str(), &base_slots);
+    for (size_t set = 0; set < cost_knobs.size(); ++set) {
       int slots = 0;
-      compile("cost", cost_macros[set], &slots);
+      compile("cost", cost_knobs[set].c_str(), &slots);
       cost_line += format(" %s %d;", NAMED_SETS[set].name, slots - base_slots + 2);
     }
     gate("static fxc cs_5_0 /O3: no warnings, no indexable temp, no immediate constant buffer",
@@ -1064,16 +1155,18 @@ int main(int argc, char** argv) {
     const DxcBuffer source_buffer = {
         .Ptr = source->GetBufferPointer(), .Size = source->GetBufferSize(), .Encoding = DXC_CP_ACP};
     std::string static_problems;
-    // The probe's `entry` at `target` with CALLISTO_COST_SET = `set` (or none), its static gates folded into one
+    // The probe's `entry` at `target` with CALLISTO_COST_KNOBS = `knobs` (or none), its static gates folded into one
     // line; its entry's DXIL instruction count through `instructions` (the function body's indented lines).
-    const auto compile = [&](const wchar_t* target, const wchar_t* entry, const wchar_t* set, int* instructions) {
-      const std::wstring define = std::wstring(L"CALLISTO_COST_SET=") + ((set != nullptr) ? set : L"");
+    const auto compile = [&](const wchar_t* target, const wchar_t* entry, const std::string* knobs,
+                             int* instructions) {
+      std::wstring define = L"CALLISTO_COST_KNOBS=";
       std::vector<LPCWSTR> arguments = {probe_path.c_str(), L"-T", target, L"-E", entry, L"-O3"};
-      if (set != nullptr) {
+      if (knobs != nullptr) {
+        define.append(knobs->begin(), knobs->end());  // ASCII
         arguments.push_back(L"-D");
         arguments.push_back(define.c_str());
       }
-      const std::string name = format("%ls %ls %ls", target, entry, (set != nullptr) ? set : L"");
+      const std::string name = format("%ls %ls %s", target, entry, (knobs != nullptr) ? knobs->c_str() : "");
       ComPtr<IDxcResult> result;
       HRESULT status = E_FAIL;
       ComPtr<IDxcBlob> object;
@@ -1107,7 +1200,9 @@ int main(int argc, char** argv) {
       *instructions = 0;
       for (size_t line = assembly.find('\n', body);
            line != std::string::npos && assembly.compare(line, 3, "\n}\n") != 0; line = assembly.find('\n', line + 1)) {
-        if (assembly.compare(line + 1, 2, "  ") == 0 && assembly[line + 3] != ';') ++*instructions;
+        if (assembly.compare(line + 1, 2, "  ") == 0 && assembly[line + 3] != ';') {
+          ++*instructions;
+        }
       }
       return object;
     };
@@ -1117,15 +1212,12 @@ int main(int argc, char** argv) {
     int vmf_instructions = 0;
     const ComPtr<IDxcBlob> vmf_object = compile(L"cs_6_5", L"vmf", nullptr, &vmf_instructions);
     if (object == nullptr || vmf_object == nullptr) return setup_failed("dxc cs_6_5");
-    const std::array<const wchar_t*, 6> wide_macros = {L"CALLISTO_SET_A",      L"CALLISTO_SET_A_F",
-                                                       L"CALLISTO_SET_V16",    L"CALLISTO_SET_V16_DI",
-                                                       L"CALLISTO_SET_V40",    L"CALLISTO_SET_V40_DI"};
     int base_instructions = 0;
-    compile(L"cs_6_5", L"cost_base", wide_macros[0], &base_instructions);
+    compile(L"cs_6_5", L"cost_base", cost_knobs.data(), &base_instructions);
     std::string cost_line;
-    for (size_t set = 0; set < wide_macros.size(); ++set) {
+    for (size_t set = 0; set < cost_knobs.size(); ++set) {
       int instructions = 0;
-      compile(L"cs_6_5", L"cost", wide_macros[set], &instructions);
+      compile(L"cs_6_5", L"cost", &cost_knobs[set], &instructions);
       cost_line += format(" %s %d;", NAMED_SETS[set].name, instructions - base_instructions + 2);
     }
     gate("static dxc cs_6_5 / cs_6_9 -O3: no warnings, no alloca, no wave op, no half", static_problems.empty(),

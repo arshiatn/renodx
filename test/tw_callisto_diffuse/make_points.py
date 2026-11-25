@@ -8,9 +8,12 @@
 # - the integrals at full precision from that reading, on tests.cpp's grid (E: Gauss-Legendre 128 in cos x 128
 #   midpoints in phi over [0, pi]; bonds: 64 Gauss-Legendre views x 96 x 96): E at view 0 / 45 / 70 / 85, the bond
 #   albedo, and c2's R cos rows;
-# - the same integrals as cal_ (callisto_check.txt, midpoint grid) and cdr_ (cdr_callisto.txt, Gauss-Legendre)
-#   printed them, with their printed decimals (cdr_ lists 8 talk fits: the two metals are 1 by construction).
-# usage: python -I make_points.py <cal_/callisto_check.txt> <cdr_/cdr_callisto.txt> <slide_points.h>
+# - the same integrals as the two earlier numeric checks printed them (callisto_check.txt, midpoint grid;
+#   cdr_callisto.txt, Gauss-Legendre), with their printed decimals (the second lists 8 talk fits: the two metals are
+#   1 by construction);
+# - the design's knob table for callisto_diffuse.h's sets (rho / falloff n / tangent falloff m), which tests.cpp
+#   gates the header's numbers against.
+# usage: python -I make_points.py <callisto_check.txt> <cdr_callisto.txt> <slide_points.h>
 import math
 import re
 import sys
@@ -38,6 +41,24 @@ for reading, reading_name in enumerate(('radians', 'normalized', 'cosines')):
     for o in (0.25, 1.0, -1.0):
         MODELS.append((f'c2 o {o:g} {reading_name}', 1, 0.75, 0.75, 1, 0.75, 0.75, o, 0.5, 0, reading))
 INDEX = {model[0]: index for index, model in enumerate(MODELS)}
+
+# The design's knob sets in tests.cpp's NAMED_SETS order (the header's sets, then the scoring-only ones): name, retro
+# rho / n / m, Fresnel rho / n / m, the set whose retro a DI twin keeps (None), kept (inverse_bond = 1 / the bond
+# albedo; unkept: 1). A's and the planted set's Fresnel knobs are the talk's 0.75 defaults (unused at rho_f 1); a DI
+# twin is its parent with rho_f 1.
+A = ('A', 3, 0.5, 0.75, 1, 0.75, 0.75)
+V16 = ('V16', 1.989, 0.817, 0.665, 0.05, 0.854, 1.0)
+V40 = ('V40', 2.48, 0.809, 0.803, 0.127, 0.915, 1.0)
+DESIGN_SETS = [
+    (*A, None, True),
+    (*V16, None, True),
+    ('V16_DI', *V16[1:4], 1, *V16[5:7], 'V16', True),
+    (*V40, None, True),
+    ('V40_DI', *V40[1:4], 1, *V40[5:7], 'V40', True),
+    ('PLANTED', 6.5, 0.9, 0.75, 1, 0.75, 0.75, None, False),
+    ('A+F', *A[1:4], *MODELS[INDEX['red fabric 2']][4:7], None, True),  # A plus slide 110's red fabric 2 Fresnel
+]
+DESIGN_INDEX = {design[0]: index for index, design in enumerate(DESIGN_SETS)}
 
 
 def falloff_exponent(x):
@@ -138,47 +159,47 @@ for line in section(cal, '2.').splitlines():
     if label.startswith('proxima ag '):
         name = 'proxima alpha ' + f'{float(label.split()[2]):g}'
     for view, text in zip((0, 45, 70, 85), match.groups()[1:5]):
-        add('cal_', name, 0, view, text)
-    add('cal_', name, 1, 0, match.group(6))
+        add('callisto_check', name, 0, view, text)
+    add('callisto_check', name, 1, 0, match.group(6))
 for line in section(cal, '4.').splitlines():
     match = re.match(r'^(radians|normalized|cosines)\s+E0\s+' + NUMBER + r'\s+E45\s+' + NUMBER + r'\s+E70\s+' + NUMBER
                      + r'\s+bond\s+' + NUMBER, line)
     if match:
         name = f'c2 o 0.25 {match.group(1)}'
         for view, text in zip((0, 45, 70), match.groups()[1:4]):
-            add('cal_', name, 0, view, text)
-        add('cal_', name, 1, 0, match.group(5))
+            add('callisto_check', name, 0, view, text)
+        add('callisto_check', name, 1, 0, match.group(5))
     match = re.match(r'^o\s+' + NUMBER + r': R cos at .*?:\s+' + r'\s+'.join([NUMBER] * 4), line)
     if match and float(match.group(1)) != 0.0:
         for cos_i, text in zip((0.02, 0.1, 0.25, 0.5), match.groups()[1:]):
-            add('cal_', f'c2 o {float(match.group(1)):g} radians', 2, cos_i, text)
+            add('callisto_check', f'c2 o {float(match.group(1)):g} radians', 2, cos_i, text)
 
 cdr = open(sys.argv[2], encoding='utf-8').read()
-for line in section(cdr, '2.').splitlines():  # 8 fits: cdr_ leaves out the two metals (1 by construction)
+for line in section(cdr, '2.').splitlines():  # 8 fits: the two metals are left out (1 by construction)
     match = re.match(r'^(.*?)\s+' + r'\s+'.join([NUMBER] * 4) + r'\s+bond\s+' + NUMBER, line)
     if match:
         name = match.group(1).strip()
         for view, text in zip((0, 45, 70, 85), match.groups()[1:5]):
-            add('cdr_', name, 0, view, text)
-        add('cdr_', name, 1, 0, match.group(6))
+            add('cdr_callisto', name, 0, view, text)
+        add('cdr_callisto', name, 1, 0, match.group(6))
 for line in section(cdr, '6.').splitlines():
     match = re.match(r'^\s*o\s+' + NUMBER + r':\s+' + r'\s+'.join([NUMBER] * 4), line)
     if match:
         for cos_i, text in zip((0.02, 0.1, 0.25, 0.5), match.groups()[1:]):
-            add('cdr_', f'c2 o {float(match.group(1)):g} radians', 2, cos_i, text)
+            add('cdr_callisto', f'c2 o {float(match.group(1)):g} radians', 2, cos_i, text)
     match = re.match(r'^\s*bond o \.25 (radians|normalized|cosines)\s+' + NUMBER, line)
     if match:
-        add('cdr_', f'c2 o 0.25 {match.group(1)}', 1, 0, match.group(2))
+        add('cdr_callisto', f'c2 o 0.25 {match.group(1)}', 1, 0, match.group(2))
 for alpha, text in zip((0.16, 0.49, 0.77, 1), re.findall(NUMBER, section(cdr, '8.'))[-4:]):
-    add('cdr_', f'proxima alpha {alpha:g}', 1, 0, text)
+    add('cdr_callisto', f'proxima alpha {alpha:g}', 1, 0, text)
 
 # Every integral either file printed, once, at full precision.
 integrals = sorted({(INDEX[name], kind, at) for _, name, kind, at, _, _ in printed})
 values = {key: value_of(MODELS[key[0]][0], key[1], key[2]) for key in integrals}
 
 with open(sys.argv[3], 'w', newline='\n') as f:
-    f.write('// Generated by make_points.py (an own numpy reading of the Callisto slides 85 / 90 / 128) and from\n'
-            '// cal_/callisto_check.txt and cdr_/cdr_callisto.txt (the integrals they printed).\n')
+    f.write('// Generated by make_points.py (an own numpy reading of the Callisto slides 85 / 90 / 128, the design\'s\n'
+            '// knob table) and from callisto_check.txt and cdr_callisto.txt (the integrals they printed).\n')
     f.write('#ifndef TEST_TW_CALLISTO_DIFFUSE_SLIDE_POINTS_H_\n#define TEST_TW_CALLISTO_DIFFUSE_SLIDE_POINTS_H_\n\n')
     f.write('// The talk\'s knobs: intensity, falloff, tangent falloff (retro, then diffuse Fresnel), the smooth\n'
             '// terminator\'s o and p, Proxima\'s GGX alpha and the alpha_s reading (0 radians, 1 angle / 90, 2 cosines).\n')
@@ -203,13 +224,23 @@ with open(sys.argv[3], 'w', newline='\n') as f:
     for key in integrals:
         f.write(f'    {{{key[0]}, {key[1]}, {key[2]:g}, {values[key]:.17g}}},\n')
     f.write('};\n\n')
-    f.write('// The same integrals as cal_ and cdr_ printed them: who, the model, the kind, at, the value and its\n'
-            '// printed decimals.\n')
+    f.write('// The same integrals as the two earlier checks printed them: the file, the model, the kind, at, the value\n'
+            '// and its printed decimals.\n')
     f.write('struct SlidePrinted {\n  const char* source;\n  int model;\n  int kind;\n  double at;\n  double value;\n'
             '  int decimals;\n};\n\n')
     f.write(f'static const SlidePrinted SLIDE_PRINTED[{len(printed)}] = {{\n')
     for source, name, kind, at, value, decimals in printed:
         f.write(f'    {{"{source}", {INDEX[name]}, {kind}, {at:g}, {value:g}, {decimals}}},\n')
+    f.write('};\n\n')
+    f.write('// The design\'s knob sets (tests.cpp\'s NAMED_SETS order) as slide models with c2 and Proxima off; parent:\n'
+            '// the index of the set whose retro a DI twin keeps (-1 none); kept: inverse_bond = 1 / the bond albedo\n'
+            '// (else exactly 1).\n')
+    f.write('struct DesignSet {\n  SlideModel model;\n  int parent;\n  bool kept;\n};\n\n')
+    f.write(f'static const DesignSet DESIGN_SETS[{len(DESIGN_SETS)}] = {{\n')
+    for design in DESIGN_SETS:
+        parent = -1 if design[7] is None else DESIGN_INDEX[design[7]]
+        f.write('    {{"' + design[0] + '", ' + ', '.join(f'{x:g}' for x in design[1:7]) + ', 0, 0.5, 0, 0}, '
+                + f'{parent}, {"true" if design[8] else "false"}}},\n')
     f.write('};\n\n#endif  // TEST_TW_CALLISTO_DIFFUSE_SLIDE_POINTS_H_\n')
 worst = max(abs(values[(INDEX[name], kind, at)] - value) / (1e-3 * max(abs(value), 0.1) + 0.5 * 10.0 ** -decimals)
             for _, name, kind, at, value, decimals in printed)
