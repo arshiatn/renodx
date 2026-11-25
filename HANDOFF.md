@@ -16151,6 +16151,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         deletable on ATN's yes). -> cdr_ C0b CHECK STARTED (also judges vMF S2-S6 and C1's branch). Then ATN.
         - [ ] ATN (after cdr_): Callisto = ship nothing (C1 branch parked, C2-C4 not started); vMF S2-S6 (~17-23 h)
         also loses to Lambert on measured data: drop / park, or keep as the look-by-eye Experimental row? Owner: ATN
+        ATN 11-25 night: 'did you check vMF vs Lambert path traced? (where it stands out)'. Answer: no, C0b is
+        single-bounce BRDF accuracy; a PT test is possible offline (pbrt-v4 measured RGL materials as ground truth vs
+        Lambert vs vMF, bounces, FLIP). cdr_ check extended: vMF with fitted r (best single r + per-material
+        ceiling) and the truly-rough materials scored apart (MERL / RGL may hold too few). ATN decides vMF after.
+        CREDITS (ATN asked): nothing MERL-derived ships ('ship nothing') -> no MERL credit needed; RGL is CC0. A
+        credit line only if MERL-fitted constants ever ship.
         - [ ] CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent (Opus xHigh, scratch
         only) after ATN's download yes (MERL BRDFDatabase.zip 1.3 GB + RGL; pick MERL + RGL) . Owner: coord (date)
         - [ ] CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mismatch measured. Owner: later
