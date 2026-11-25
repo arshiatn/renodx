@@ -15622,7 +15622,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Facts: both read their files only at start; PerfFix writes heapfix.ini ONCE and never appends new keys (ATN's
         own ini lacks culling / battle_ui_cache / flag_wave / parallel_sort / sound_crash_guard); his log names no keys.
         WAITS FOR ATN: semi-auto (keys in the file + a known 7.5 list + ask JSa25 to append missing keys on update) vs a
-        fixed list we update. Owner after his answer: C8 wave 2 (addon.cpp one writer).
+        fixed list we update. Owner after his answer: C8 wave 2 (addon.cpp one writer). ATN 10:5x: he asked Sol AND JSa25
+        himself; after their answers -> semi or fully automatic (he tells coord). Page also gets Sol's interface_size
+        (Auto = like 1080p at 4K = zoom 2.0; 100 % = the game's own size; restart only).
         - [ ] D: FULL 10:17 (0 bytes; C: 12.6 GB): pds2_'s HARNESS_DUMP verify dumps in its worktree
         build\pds2play ~309 GB (1.22 GB per buffer): rbase1 / rbase2 / rnew / rsn 204 GB = step 2 verify (merged,
         recorded), ra39a / b / c + rs4 105 GB = the S4 verify (cut at 10:17). No links inside. pds2_ + ucf_ PAUSED.
