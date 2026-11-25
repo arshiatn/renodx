@@ -3904,7 +3904,7 @@ class RtScene12 {
         }();
         // RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY / _NO_CONTACT / _SEEN_LIGHTS_FRAME (tests, read once): ReSTIR GI's
         // parts left out (the last two the raw paths' too); _SPATIAL_CLAMP / _SKY_DIRECTION / _NO_JACOBIAN_CUT / _HISTORY_PLAIN /
-        // _NEIGHBOUR_VISIBILITY / _SCREEN_NORMAL its bias suspects (PT DI step 2's G0); RENODX_TW_REUSE_BIAS=1 / 2 the spatial
+        // _NEIGHBOUR_VISIBILITY its bias suspects (PT DI step 2's G0); RENODX_TW_REUSE_BIAS=1 / 2 the spatial
         // merge's bias correction, Basic / Raytraced (G1); _BOIL the boiling filter's pass, _BOIL_PLANT its test texel;
         // _RTXDI (the reference build) RTXDI's spatial resampling in the reuse's place, its bias correction RENODX_TW_REUSE_BIAS's;
         // _VALIDATE_* Validate's parts and _NO_HISTORY_CLAMP the history's ClampWeight (part C's bisection) (rt_path.hlsli).
@@ -3916,7 +3916,6 @@ class RtScene12 {
                                           std::pair{L"RENODX_TW_REUSE_SPATIAL_CLAMP", REUSE_TEST_SPATIAL_CLAMP}, std::pair{L"RENODX_TW_REUSE_SKY_DIRECTION", REUSE_TEST_SKY_DIRECTION},
                                           std::pair{L"RENODX_TW_REUSE_NO_JACOBIAN_CUT", REUSE_TEST_NO_JACOBIAN_CUT}, std::pair{L"RENODX_TW_REUSE_HISTORY_PLAIN", REUSE_TEST_HISTORY_PLAIN},
                                           std::pair{L"RENODX_TW_REUSE_NEIGHBOUR_VISIBILITY", REUSE_TEST_NEIGHBOUR_VISIBILITY},
-                                          std::pair{L"RENODX_TW_REUSE_SCREEN_NORMAL", REUSE_TEST_SCREEN_NORMAL},
                                           std::pair{L"RENODX_TW_REUSE_BOIL", REUSE_TEST_BOIL}, std::pair{L"RENODX_TW_REUSE_BOIL_PLANT", REUSE_TEST_BOIL_PLANT},
                                           std::pair{L"RENODX_TW_REUSE_RTXDI", REUSE_TEST_RTXDI},
                                           std::pair{L"RENODX_TW_REUSE_VALIDATE_NO_DROP", REUSE_TEST_VALIDATE_NO_DROP},
@@ -4591,7 +4590,6 @@ class RtScene12 {
   static constexpr uint32_t REUSE_TEST_NEIGHBOUR_VISIBILITY = 512;
   static constexpr uint32_t REUSE_BIAS_BASIC = 1024;
   static constexpr uint32_t REUSE_BIAS_RAYTRACED = 2048;
-  static constexpr uint32_t REUSE_TEST_SCREEN_NORMAL = 4096;
   static constexpr uint32_t REUSE_TEST_VALIDATE_NO_DROP = 65536;
   static constexpr uint32_t REUSE_TEST_VALIDATE_KEEP_LIGHT = 131072;
   static constexpr uint32_t REUSE_TEST_VALIDATE_NO_CUTS = 262144;
@@ -4602,7 +4600,7 @@ class RtScene12 {
   static constexpr uint32_t REUSE_TEST_VALIDATE_NO_CACHE = 8388608;
   // Read only by the REUSE_TESTS builds.
   static constexpr uint32_t REUSE_SUSPECT_BITS = REUSE_TEST_SPATIAL_CLAMP | REUSE_TEST_SKY_DIRECTION | REUSE_TEST_NO_JACOBIAN_CUT | REUSE_TEST_HISTORY_PLAIN
-                                                 | REUSE_TEST_NEIGHBOUR_VISIBILITY | REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED | REUSE_TEST_SCREEN_NORMAL
+                                                 | REUSE_TEST_NEIGHBOUR_VISIBILITY | REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED
                                                  | REUSE_TEST_VALIDATE_NO_DROP | REUSE_TEST_VALIDATE_KEEP_LIGHT | REUSE_TEST_VALIDATE_NO_CUTS
                                                  | REUSE_TEST_VALIDATE_RESCALE | REUSE_TEST_VALIDATE_NO_INVALIDITY
                                                  | REUSE_TEST_VALIDATE_KEEP_CHROMA | REUSE_TEST_NO_HISTORY_CLAMP | REUSE_TEST_VALIDATE_NO_CACHE;

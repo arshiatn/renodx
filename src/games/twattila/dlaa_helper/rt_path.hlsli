@@ -117,8 +117,7 @@ static const uint REUSE_VALIDATION_PERIOD = 3u;
 // SeenDiffuseLight picks keyed by the frame as well. PT DI step 2's suspects (G0, each its own switch): _SPATIAL_CLAMP the
 // receiver-unit W clamp after the spatial Finish too; _SKY_DIRECTION a neighbour's sky sample (a point at its first ray's
 // reach) moved as a direction; _NO_JACOBIAN_CUT no 0.1-10 cut; _HISTORY_PLAIN the history cap without the rays; _NEIGHBOUR_
-// VISIBILITY a neighbour's sample shadow-tested before its merge (its target 0 when blocked); _SCREEN_NORMAL a first hit the
-// screen answered keeps its normal (its Jacobian and ContactShade's re-scale as any surface's). RENODX_TW_REUSE_BIAS=1 / 2
+// VISIBILITY a neighbour's sample shadow-tested before its merge (its target 0 when blocked). RENODX_TW_REUSE_BIAS=1 / 2
 // (G1): the spatial merge's MIS-like normalization over the neighbours that could have made the chosen sample (Basic), they
 // also seeing it (Raytraced, a ray each), instead of 1 / M (RTXDI's GI bias correction modes).
 static const uint REUSE_TEST_NO_SPATIAL = 1u;
@@ -133,7 +132,6 @@ static const uint REUSE_TEST_HISTORY_PLAIN = 256u;
 static const uint REUSE_TEST_NEIGHBOUR_VISIBILITY = 512u;
 static const uint REUSE_BIAS_BASIC = 1024u;
 static const uint REUSE_BIAS_RAYTRACED = 2048u;
-static const uint REUSE_TEST_SCREEN_NORMAL = 4096u;  // _SCREEN_NORMAL (G0): a first hit the screen answers keeps its normal
 static const uint REUSE_TEST_BOIL = 8192u;        // RENODX_TW_REUSE_BOIL: the boiling filter's pass (BoilTexel)
 static const uint REUSE_TEST_BOIL_PLANT = 16384u; // RENODX_TW_REUSE_BOIL_PLANT: its pass plants a texel 100 x too bright first
 // Validate's parts (part C, the bias that grows with the rays; REUSE_TESTS builds): _VALIDATE_NO_DROP keeps a history whose
@@ -150,7 +148,7 @@ static const uint REUSE_TEST_VALIDATE_NO_INVALIDITY = 1048576u;
 static const uint REUSE_TEST_VALIDATE_KEEP_CHROMA = 2097152u;
 static const uint REUSE_TEST_NO_HISTORY_CLAMP = 4194304u;
 static const uint REUSE_TEST_VALIDATE_NO_CACHE = 8388608u;
-// The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
+// The suspects', G1's and Validate's bits (32-2048, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set): every other build is the shipped code to the byte (0: their code compiled out).
 #if defined(REUSE_TESTS)
 #define REUSE_SUSPECTS reuse_tests
@@ -709,9 +707,10 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     // ray a frame, no history, no filter, showed each re-rolled hit as a warm dot jumping about a paused picture (ATN: water).
     const bool relearn = may_relearn && Random(uint4(seed, frame, DIM_PATH_RELEARN + path * 32u + vertex * 2u)) < CACHE_RELEARN;
     // No cached answer for a ray shorter than its cell (as SHaRC's): the cell may be the ray's own start's.
-    // REUSE_TEST_SCREEN_NORMAL (G0): a first surface the screen answers keeps its normal too (else none: ReSTIR GI moved its
-    // sample with a Jacobian of 1 and without ContactShade's re-scale).
-    if (vertex == 0u && (REUSE_SUSPECTS & REUSE_TEST_SCREEN_NORMAL) != 0u) first_normal = normal;
+    // The Light Bounce's paths (`may_relearn`): a first surface the screen answers keeps its normal too. Without it ReSTIR GI
+    // moved such a sample with a Jacobian of 1 and without ContactShade's re-scale, as if it were the sky (PT DI step 2's
+    // reference suite, G0). The reflections' keep none (their Validate asks the screen alone of them).
+    if (vertex == 0u && may_relearn) first_normal = normal;
     if (PROBE_SCREEN(vertex) && HitLight(position, normal, light_there, PROBE_CACHE() && !relearn && query.CommittedRayT() >= CacheCellSize(position))) {
       radiance += throughput * light_there;
 #if defined(PATH_PROBE)
@@ -900,8 +899,8 @@ float Validate(inout Reservoir previous, float3 origin, bool contact) {
     previous.count = 0.f;
     return 0.f;
   }
-  // The cache's answer at the face of its stored normal, from a cell's size away at least (a sample the screen answered stored
-  // none: no face to look up).
+  // The cache's answer at the face of its stored normal, from a cell's size away at least (a reflection sample the screen
+  // answered stored none: no face to look up).
   float3 light_now;
   const bool cached = (REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_CACHE) == 0u && dot(previous.hit_normal, previous.hit_normal) > 0.f
                       && hit_distance >= CacheCellSize(previous.hit);
@@ -1227,8 +1226,8 @@ RTXDI_ReservoirBufferParameters RtxdiReservoirs() {
   return reservoirs;
 }
 
-// A texel's reservoir in RTXDI's format (its normal a unit vector: the sky's, no surface, and a screen hit's without
-// REUSE_TEST_SCREEN_NORMAL face the texel's rays' start); the first texels write the neighbour offsets too, our own disk
+// A texel's reservoir in RTXDI's format (its normal a unit vector: the sky's, no surface, faces the texel's rays' start);
+// the first texels write the neighbour offsets too, our own disk
 // (SpotOf's R2 points, area-uniform: RTXDI walks them from a random start, consecutive ones spread).
 void RtxdiPackTexel(uint2 id) {
   if (id.x >= bounce_width || id.y >= bounce_height) return;
