@@ -820,7 +820,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- R1 -> a64pi_, R2 -> a64ab_ SENT 01:4x -> coord -DryRun -> window 3 round 1. | ?
+- WINDOW 3 ROUND 1: coord holds quiet_run.lock from 01:36 to drain (slot1 gated_bu ... | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15320,7 +15320,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         1 is none (PerfFix prints 'threads paused' before the probe DLL loads). R1 (probe): the fetch's own time now
         lands in own code (NULL polls too) -> H5 / H3b biased up; fix via the GTLOCK delta. R2 (a64_ab): refocus our
         game at +2 / +4 s after each WPR /Run (constantinople_bench's rule); start 3 + ETL read only if front >= 95 %.
-        - [ ] R1 -> a64pi_, R2 -> a64ab_ SENT 01:4x -> coord -DryRun -> window 3 round 1.
+        - [x] R1 DONE (hand-back attila64/a64pi_probe_r1_handback.md): fetch spans the whole call minus its own lock
+        (gt0 delta, a64probe_hot.c:354 / 483 / 488 / 500); NULL polls NULL again; data page RW before any patch; dump
+        duration logged; must_fire list in the analyzer; WPR start keyed on wpr.start_at. Self-test 120 / 0; DLL
+        sha256 0257a9aa3e722c12... (sidecar matches, coord checked); stubs +21.8 / +31.8 ns, GOT +1.9 ns.
+        - [x] R2 DONE (hand-back attila64/study_1124/a64ab_r2_fix_handback.md): refocus our game window at +2 / +4 s
+        after each WPR /Run (ShowWindow + SetForegroundWindow, AppActivate fallback, no input), logged in
+        start.json wpr.refocus; start 3 + ETL read only if front >= 95 %; DLL delete retried ~10 s.
+        - [x] coord -DryRun of round 1 01:36 (ab_runs\20261125_013618_AB_dryrun): preconditions met, self-test ok for
+        every arm, probe sha = sidecar, D: 324.7 GB free, ~26 min. New zombie attila64.exe 32564 (01:03, 0 threads /
+        handles, parent gone) - ignored like the other 4.
+        - [ ] WINDOW 3 ROUND 1: coord holds quiet_run.lock from 01:36 to drain (slot1 gated_build, slot2 pds2_ helper,
+        pds2_'s E4 GPU jobs) -> releases it and starts `-AB -Arms base,inline,base -Probe full -Wpr` at once -> analyze
+        (python -I p0\analyze_d0.py <batch>; HANDOFF-safe block only) -> round 2 only on triggers.
         - [x] a64ab_ -Probe / -Wpr PASS DONE (hand-back attila64/study_1124/a64ab_probe_pass_handback.md): ETL waits /
         refuses on D:\RenoDX_WPR\attila_wpr.etl, renamed in place to attila_wpr_<batch>_<n>_<arm>.etl (path + size in
         start.json), schtasks /Query + /Run only, Stop in start + batch finally, wpr_running.txt marker for a hard-
