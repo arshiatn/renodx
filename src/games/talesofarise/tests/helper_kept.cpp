@@ -25,20 +25,18 @@
 #include <wrl/client.h>
 
 #include "../ray_tracing.hpp"
+#include "./warp.hpp"
 
 // utils/settings.hpp (through ray_tracing.hpp) names the add-on.
 extern "C" __declspec(dllexport) const char* const NAME = "Tales helper_kept test";
 
 namespace {
 
-using Microsoft::WRL::ComPtr;
+using warp::Check;
+using warp::ComPtr;
 constexpr std::array<UINT, 2> BRIDGE = {16, 12};
 constexpr std::array<UINT, 2> DEPTH = {11, 8};
 constexpr std::array<UINT, 2> RENDER = {10, 7};
-
-void Check(HRESULT result) {
-  if (FAILED(result)) throw std::runtime_error("Direct3D failed: " + std::to_string(result));
-}
 
 float Traced(UINT x, UINT y) {
   return static_cast<float>(1 + x + (y * BRIDGE[0]));
@@ -49,10 +47,8 @@ float Traced(UINT x, UINT y) {
 int wmain(int argc, wchar_t** argv) {
   try {
     if (argc < 2) throw std::runtime_error("the add-on's source folder as the first argument");
-    ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
-    Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
-                            context.GetAddressOf()));
+    const auto device = warp::Device(&context);
     // The bridge's traced texture (R32F here: Keep copies any format).
     std::vector<float> traced;
     for (UINT y = 0; y < BRIDGE[1]; ++y) {

@@ -33,19 +33,17 @@
 #include <wrl/client.h>
 
 #include "../ray_tracing.hpp"
+#include "./warp.hpp"
 
 // utils/settings.hpp (through ray_tracing.hpp) names the add-on.
 extern "C" __declspec(dllexport) const char* const NAME = "Tales helper_rays test";
 
 namespace {
 
-using Microsoft::WRL::ComPtr;
+using warp::Check;
+using warp::ComPtr;
 using Rows = std::array<std::array<float, 4>, 3>;
 constexpr UINT CASES = 64;
-
-void Check(HRESULT result) {
-  if (FAILED(result)) throw std::runtime_error("Direct3D failed: " + std::to_string(result));
-}
 
 // sun_direction.hlsli's TowardSun for each case's six rows (ScreenToShadow 0-2, ScreenToWorld 0-2) on WARP.
 std::vector<std::array<float, 4>> GpuTowardSun(const std::filesystem::path& folder, const std::vector<std::array<std::array<float, 4>, 6>>& cases) {
@@ -62,12 +60,12 @@ std::vector<std::array<float, 4>> GpuTowardSun(const std::filesystem::path& fold
   ComPtr<ID3DBlob> errors;
   const HRESULT compiled = D3DCompile(source.data(), source.size(), name.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0",
                                       D3DCOMPILE_IEEE_STRICTNESS, 0, code.GetAddressOf(), errors.GetAddressOf());
-  if (errors) std::cerr << static_cast<const char*>(errors->GetBufferPointer());
+  if (errors) {
+    std::cerr << static_cast<const char*>(errors->GetBufferPointer());
+  }
   Check(compiled);
-  ComPtr<ID3D11Device> device;
   ComPtr<ID3D11DeviceContext> context;
-  Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
-                          context.GetAddressOf()));
+  const auto device = warp::Device(&context);
   ComPtr<ID3D11ComputeShader> shader;
   Check(device->CreateComputeShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, shader.GetAddressOf()));
   const D3D11_BUFFER_DESC rows_desc = {.ByteWidth = static_cast<UINT>(cases.size() * sizeof(cases[0])), .Usage = D3D11_USAGE_DEFAULT,

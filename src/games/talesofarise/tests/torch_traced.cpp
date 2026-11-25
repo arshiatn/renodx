@@ -18,9 +18,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
-#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -65,10 +63,8 @@ int wmain(int argc, wchar_t** argv) {
   try {
     if (argc < 2) throw std::runtime_error("the add-on's source folder as the first argument");
     const std::filesystem::path source = argv[1];
-    ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
-    Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
-                            context.GetAddressOf()));
+    const auto device = warp::Device(&context);
     const auto vertex_code = warp::Compile(VERTEX_SHADER, source / "tests" / "light_volume.vs_5_0.hlsl", "vs_5_0");
     const auto shader_file = source / "shaders" / "locallight00_0x038D003A.ps_5_0.hlsl";
     const auto pixel_code = warp::Compile(shader_file, "ps_5_0");
@@ -158,23 +154,31 @@ int wmain(int argc, wchar_t** argv) {
       std::memcpy(lights[128].data(), count_word.data(), 16);
       const auto lights_buffer = buffer(lights);
       std::vector<uint32_t> words(EDGE * (TILE_ROW + 2), 0xFFFFFFFFu);
-      for (UINT pixel = 0; pixel < EDGE * EDGE; ++pixel) words[pixel] = test.pixel_word;
+      for (UINT pixel = 0; pixel < EDGE * EDGE; ++pixel) {
+        words[pixel] = test.pixel_word;
+      }
       words[TILE_ROW * EDGE] = test.list;
       const auto mask = view(texture(DXGI_FORMAT_R32_UINT, TILE_ROW + 2, words.data(), EDGE * 4, D3D11_BIND_SHADER_RESOURCE));
 
       const std::array<float, 4> clear = {-1.f, -1.f, -1.f, -1.f};
-      for (const auto& target : target_views) context->ClearRenderTargetView(target.Get(), clear.data());
+      for (const auto& target : target_views) {
+        context->ClearRenderTargetView(target.Get(), clear.data());
+      }
       const D3D11_VIEWPORT viewport = {.Width = static_cast<float>(EDGE), .Height = static_cast<float>(EDGE), .MaxDepth = 1.f};
       context->OMSetRenderTargets(2, target_views[0].GetAddressOf(), nullptr);
       context->RSSetViewports(1, &viewport);
       context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
       context->VSSetShader(vertex_shader.Get(), nullptr, 0);
       context->PSSetShader(pixel_shader.Get(), nullptr, 0);
-      for (UINT slot = 0; slot < gbuffer.size(); ++slot) context->PSSetShaderResources(slot, 1, gbuffer[slot].GetAddressOf());
+      for (UINT slot = 0; slot < gbuffer.size(); ++slot) {
+        context->PSSetShaderResources(slot, 1, gbuffer[slot].GetAddressOf());
+      }
       context->PSSetShaderResources(5, 1, attenuation.GetAddressOf());
       ID3D11ShaderResourceView* const mask_view = test.mask ? mask.Get() : nullptr;
       context->PSSetShaderResources(42, 1, &mask_view);
-      for (UINT slot = 0; slot < 6; ++slot) context->PSSetSamplers(slot, 1, sampler.GetAddressOf());
+      for (UINT slot = 0; slot < 6; ++slot) {
+        context->PSSetSamplers(slot, 1, sampler.GetAddressOf());
+      }
       context->PSSetConstantBuffers(0, 1, view_buffer.GetAddressOf());
       context->PSSetConstantBuffers(1, 1, light_buffer.GetAddressOf());
       context->PSSetConstantBuffers(9, 1, lights_buffer.GetAddressOf());
@@ -238,8 +242,7 @@ int wmain(int argc, wchar_t** argv) {
     if (failed != 0) throw std::runtime_error(std::to_string(failed) + " of " + std::to_string(expects.size()) + " cases");
 
     // CONTROL: the shader with the rays' visibility dropped (traced pixels lit) is caught by the blocked case.
-    std::ifstream input(shader_file, std::ios::binary);
-    std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    std::string text = warp::Read(shader_file);
     const std::string traced = "r0.z = traced_visibility;";
     const size_t at = text.find(traced);
     if (at == std::string::npos) throw std::runtime_error("CONTROL: no traced branch in the shader");

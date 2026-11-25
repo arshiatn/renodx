@@ -2,8 +2,8 @@
  * Copyright (C) 2026 ArshiaTN
  * SPDX-License-Identifier: MIT
  *
- * The shader tests' WARP device and their compile of the add-on's HLSL from its source folder (nested includes as fxc
- * resolves them).
+ * The shader tests' WARP device, their HRESULT check, and their read and compile of the add-on's HLSL from its source
+ * folder (nested includes as fxc resolves them).
  */
 
 #pragma once
@@ -59,14 +59,29 @@ inline ComPtr<ID3DBlob> Compile(const std::string& text, const std::filesystem::
   ComPtr<ID3DBlob> errors;
   const HRESULT compiled = D3DCompile(text.data(), text.size(), name.string().c_str(), nullptr, &includes, "main", target, 0, 0,
                                       code.GetAddressOf(), errors.GetAddressOf());
-  if (errors) std::cerr << static_cast<const char*>(errors->GetBufferPointer());
+  if (errors) {
+    std::cerr << static_cast<const char*>(errors->GetBufferPointer());
+  }
   Check(compiled);
   return code;
 }
 
-inline ComPtr<ID3DBlob> Compile(const std::filesystem::path& file, const char* target) {
+// A source file's text (a missing file fails here, not as an empty shader).
+inline std::string Read(const std::filesystem::path& file) {
   std::ifstream input(file, std::ios::binary);
-  return Compile(std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>()), file, target);
+  if (!input) throw std::runtime_error("cannot open " + file.string());
+  return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+}
+
+inline ComPtr<ID3DBlob> Compile(const std::filesystem::path& file, const char* target) {
+  return Compile(Read(file), file, target);
+}
+
+inline ComPtr<ID3D11Device> Device(ComPtr<ID3D11DeviceContext>* context) {
+  ComPtr<ID3D11Device> device;
+  Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, device.GetAddressOf(), nullptr,
+                          context->GetAddressOf()));
+  return device;
 }
 
 }  // namespace warp
