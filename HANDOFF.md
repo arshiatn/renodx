@@ -15867,6 +15867,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         surface; slots after pdi3_'s (pdi5_ adds none); rebases on pdi3_ fixes; real-frame gates need pdi5_'s v32
         lift (local cherry-pick only); 29-light cost first (<= 1.2 ms); Callisto C3 seam kept (one target / one shade
         function). -> review -> fix -> merge after step 3. Owner: pdi4c_
+        Owner map addition (evening, coord OK): 4c's slots u77 DI_MEMBERS, u78 LIGHT_SURFACE (add-on's shared, as UAV),
+        u79 its previous copy, u80 DI_RESERVOIRS, u81 DI_OFFSETS, u82-u83 DI_LIGHT, u84 DI_LIGHTS_PREVIOUS; DIM kinds
+        37-40 in rt_scene.hlsli's one table; rt_rtxdi_bridge.hlsli's two structs + DI stub bodies get #if PATH_DI
+        branches (one RAB set for U2; own commit, every non-DI build byte-identical by -Fc). pdi3_ told. S1 lowdef =
+        a stated delta (shaded as highdef in DI pixels); 4d measures it, visible -> no DI for lowdef lights.
         ATN 11-25 evening 'Yes, start both' (unified PT pieces that need no PT DI):
         - [ ] UNIFIED U4b (in-lobe ESS report, sizes route (c); scratch only): u4b_ (Opus xHigh) STARTED ->
         designs\u4b_ess_report.md. Owner: u4b_
