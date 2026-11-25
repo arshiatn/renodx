@@ -827,6 +827,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
 - LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_f ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
+- PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
+- PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ... | ?
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
@@ -15800,6 +15802,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         it merges; pds2_ is LAB-ONLY: Balanced numbers (running) -> 3a fog reuse reference -> 3b G1 Raytraced cost
         -> the affected-gate list; code fixes it finds become boxes.
         - [ ] PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twattila builds). Owner: pdi3_
+        ATN 11-25 evening ('maybe they don't change the same lines / functions ... so we could speed up'): same file
+        allowed when the FUNCTIONS don't overlap (owner map in both briefs; the second to merge rebases + reruns gates).
+        - [ ] PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbours, G7 report): pdi5_ (Opus
+        High, worktree, branch pdi5_step5) STARTED beside step 3: owns ReuseTarget, the GI reuse merge, Reservoir /
+        Load / Store, the neighbour choice, reservoir formats, rt_restir_flags, G5's PT-header stubs; no new slots
+        (u75+ are pdi3_'s) -> review -> merge. Owner: pdi5_
+        - [ ] PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ReGIR presample are
+        pushed; then a 4c implementer starts on that commit (new DI pass files, LIGHTS_DI functions, the harness's
+        synthetic light surface) and merges after step 3. Owner: coord (start at the checkpoint)
         - [ ] CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on the vMF paper: 'just
         diffuse; Callisto full still beats it' (diffuse, smooth terminator, retro-reflection, Fresnel). cal_ (Opus
         xHigh, text only) STARTED: design plan_1117\designs\callisto_diffuse.md as the candidate to replace vMF
