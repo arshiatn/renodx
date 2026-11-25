@@ -19,7 +19,9 @@
 //    its pattern once; off, Set writes Shadow Map Size's bytes alone, as before the row (2x: the six sizes; 1x: the game's
 //    bytes); on, the four cascade immediates (Max's and High's +0x98 and +0x84) become Medium's own (read after the pattern),
 //    nothing else; off again and 1x: the game's bytes; CONTROL: Medium's writes not as known, on writes nothing.
-// 7. Shadow map work (Render's hook), Attila's and Rome II's.
+// 7. Shadow map work (Render's hook), Attila's and Rome II's, also with the 64-bit loader's Shadow refresh rest frames;
+//    7b the 64-bit route (the engine plugin's hook calling attila64_plugin_link.hpp's callbacks); 7c the callbacks'
+//    registration and drain on a block as the plugin publishes it.
 // 8. Rome II's Two Shadow Cascades Under Rays (twrome2/shadow_cascades.hpp) over its shipped empire.retail.dll.
 #include <windows.h>
 #include <d3d11.h>
@@ -35,8 +37,10 @@
 #include <iterator>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
+#include "src/games/twattila/attila64_plugin_link.hpp"
 #include "src/games/twattila/graphics_hooks.hpp"
 #include "src/games/twattila/rt_scene.hpp"
 #include "src/games/twattila/shadow_pass.hpp"
@@ -351,22 +355,43 @@ int main(int argc, char** argv) {
     pass::original_render = &StandInRender;
     pass::original_render_rome2 = &StandInRenderRome2;
     bool rome2 = false;              // the calls through Rome II's hook
+    bool plugin_route = false;       // the calls through the 64-bit engine plugin's hook (7b)
+    uint32_t epoch_bump_kind = UINT32_MAX;  // 7b: a registration between this kind's pass_begin and pass_end
+    namespace link = twattila::attila64_plugin_link;
+    namespace plugin = twattila::attila64_plugin;
     pass::searched = true;           // no search for empire.retail.dll in the test
     pass::binds_counted = true;
     pass::hooks.emplace_back();      // as installed (never installed here)
-    const auto frame = [&](bool row, bool casters_skipped) {
-      twattila::shadow_pass::Update(row, casters_skipped);
+    // `shadow_view` false: the 64-bit loader's Shadow refresh rest frame (the shadow view not processed: no cascade
+    // call).
+    const auto frame = [&](bool row, bool casters_skipped, bool shadow_view = true) {
+      twattila::shadow_pass::Update(row, casters_skipped, plugin_route);
       stand_in.calls.clear();
       stand_in.numbers = {};
       scene::internal::skipping_casters.store(true);  // the stage bound the sun's map
       const auto render = [&](StandInPass* drawn) {
-        if (rome2) {
+        if (plugin_route) {
+          // The plugin's pass hook (attila64_plugin/hooks.hpp) on an enabled node: the kind, pass_begin, then SKIP
+          // returns, DRAW draws, MEASURED draws and calls pass_end.
+          plugin::PassMeasure measure;
+          const plugin::PassAction action = link::internal::CALLBACKS.pass_begin(drawn->kind, &measure);
+          if (action == plugin::PASS_SKIP) return;
+          StandInRender(self.data(), nullptr, nullptr, reinterpret_cast<uint8_t*>(drawn));
+          if (drawn->kind == epoch_bump_kind) {
+            link::internal::epoch.fetch_add(1);
+          }
+          if (action == plugin::PASS_DRAW_MEASURED) {
+            link::internal::CALLBACKS.pass_end(drawn->kind, measure);
+          }
+        } else if (rome2) {
           pass::OnRenderRome2(self.data(), nullptr, reinterpret_cast<uint8_t*>(drawn));
         } else {
           pass::OnRender(self.data(), nullptr, nullptr, reinterpret_cast<uint8_t*>(drawn));
         }
       };
-      for (int cascade = 0; cascade < 4; ++cascade) render(&passes[0]);
+      if (shadow_view) {
+        for (int cascade = 0; cascade < 4; ++cascade) render(&passes[0]);
+      }
       render(&passes[2]);
       render(&passes[1]);
       return stand_in.calls;
@@ -383,7 +408,20 @@ int main(int argc, char** argv) {
       const auto calls = frame(true, true);
       CHECK(calls.size() == 3 && calls[0].first == 5 && calls[1] == (std::pair<uint32_t, uint32_t>{9, 0})
             && calls[2] == (std::pair<uint32_t, uint32_t>{0, 0}));
-      CHECK(calls[0].second == static_cast<uint32_t>(pass::frame % 4));
+      CHECK(calls[0].second == pass::kinds[5].drawn_frames % 4);
+      ++drawn_cascades[calls[0].second];
+    }
+    CHECK(std::ranges::all_of(drawn_cascades, [](uint32_t count) { return count == 10; }));
+    // The 64-bit loader's Shadow refresh 2 (the shadow view rests every other frame): the kept call still turns over
+    // every cascade (each 10 of 40 drawn frames; turning with the present count and taking a rest frame's 0 calls kept
+    // call 0 only), the other kinds every call on both frames.
+    drawn_cascades = {};
+    for (int index = 0; index < 40; ++index) {
+      const auto rest = frame(true, true, false);
+      CHECK(rest.size() == 2 && rest[0] == (std::pair<uint32_t, uint32_t>{9, 0})
+            && rest[1] == (std::pair<uint32_t, uint32_t>{0, 0}));
+      const auto calls = frame(true, true);
+      CHECK(calls.size() == 3 && calls[0].first == 5 && calls[1] == (std::pair<uint32_t, uint32_t>{9, 0}));
       ++drawn_cascades[calls[0].second];
     }
     CHECK(std::ranges::all_of(drawn_cascades, [](uint32_t count) { return count == 10; }));
@@ -416,13 +454,126 @@ int main(int argc, char** argv) {
     drawn_cascades = {};
     for (int index = 0; index < 40; ++index) {
       const auto calls = frame(true, true);
-      CHECK(calls.size() == 3 && calls[0].first == 5 && calls[0].second == static_cast<uint32_t>(pass::frame % 4));
+      CHECK(calls.size() == 3 && calls[0].first == 5 && calls[0].second == pass::kinds[5].drawn_frames % 4);
       ++drawn_cascades[calls[0].second];
     }
     CHECK(std::ranges::all_of(drawn_cascades, [](uint32_t count) { return count == 10; }));
     CHECK(frame(false, true) == every);
     std::printf("7 Rome II: %s; through its one-argument hook the same learning and turns\n", rome2_status);
+    // 7b. The 64-bit route: no hook of ours (Update told the plugin hooks the pass draw), the plugin's hook calling the
+    //     add-on's callbacks (attila64_plugin_link.hpp): the same learning and turns, a refresh rest frame included;
+    //     off: every call, nothing counted; a pass_end of another registration (epoch) learns nothing.
     pass::hooks.clear();
+    pass::kinds = {};
+    rome2 = false;
+    plugin_route = true;
+    for (int index = 0; index < 4; ++index) CHECK(frame(true, true) == every);
+    CHECK(pass::kinds[5].sun_only == 16 && pass::kinds[0].mixed && !pass::kinds[9].mixed
+          && pass::kinds[9].sun_only == 4);
+    drawn_cascades = {};
+    for (int index = 0; index < 40; ++index) {
+      CHECK(frame(true, true, false).size() == 2);
+      const auto calls = frame(true, true);
+      CHECK(calls.size() == 3 && calls[0].first == 5 && calls[0].second == pass::kinds[5].drawn_frames % 4);
+      ++drawn_cascades[calls[0].second];
+    }
+    CHECK(std::ranges::all_of(drawn_cascades, [](uint32_t count) { return count == 10; }));
+    CHECK(frame(false, true) == every && pass::kinds[5].calls == 0);
+    const uint32_t lone_sun_only = pass::kinds[9].sun_only;
+    epoch_bump_kind = 9;
+    CHECK(frame(true, true).size() == 3 && pass::kinds[9].sun_only == lone_sun_only);
+    epoch_bump_kind = UINT32_MAX;
+    CHECK(frame(true, true).size() == 3 && pass::kinds[9].sun_only == lone_sun_only + 1);
+    // CONTROL: without the plugin's word Update keeps nothing active with no hook of ours: every call, nothing counted.
+    plugin_route = false;
+    twattila::shadow_pass::Update(true, true);
+    CHECK(!pass::active.load());
+    plugin_route = true;
+    link::internal::CALLBACKS.before_pack();  // nothing pending: returns
+    CHECK(!link::internal::callback_failed.load());
+    std::printf(
+        "7b 64-bit route: the same learning and turns through the plugin's callbacks (refresh rest frames too), "
+        "a pass_end of another registration ignored; CONTROL: without the plugin's word nothing active\n");
+    // 7c. The callbacks' registration on a block as the plugin publishes it: registered while a row is wanted and
+    //     offered (a module reference held), the bits follow, a row changed after the plugin's init is not wanted,
+    //     unregistered with the drain (reference released); a drain that runs out (a hook left inside) keeps the
+    //     reference after 1 s; another add-on's callbacks are left alone and not tried again.
+    link::Lookup(false);
+    CHECK(link::Result() == link::Found::PENDING);
+    link::Lookup(true);
+    CHECK(link::Result() == link::Found::NOT_INSTALLED);
+    plugin::Block block;
+    block.rows_applied = plugin::RowBit(plugin::ROW_BONE_FLUSH) | plugin::RowBit(plugin::ROW_PASS_DRAW);
+    block.status.store(plugin::STATUS_READY);
+    const uint32_t both = block.rows_applied;
+    // Not READY: nothing registered.
+    link::internal::block = &block;
+    link::Update(both);
+    CHECK(block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0);
+    link::internal::found.store(link::Found::READY);
+    const uint32_t epoch_before = link::internal::epoch.load();
+    link::Update(plugin::RowBit(plugin::ROW_PASS_DRAW));
+    CHECK(block.callbacks.load() == &link::internal::CALLBACKS
+          && block.hooks_wanted.load() == plugin::RowBit(plugin::ROW_PASS_DRAW)
+          && link::internal::module_reference != nullptr && link::internal::epoch.load() != epoch_before);
+    const uint32_t epoch_registered = link::internal::epoch.load();
+    link::Update(both);
+    CHECK(block.hooks_wanted.load() == both && link::internal::epoch.load() == epoch_registered);
+    block.rows_changed.store(plugin::RowBit(plugin::ROW_PASS_DRAW));
+    link::Update(both);
+    CHECK(block.hooks_wanted.load() == plugin::RowBit(plugin::ROW_BONE_FLUSH)
+          && block.callbacks.load() == &link::internal::CALLBACKS);
+    block.rows_changed.store(0);
+    link::Update(0);
+    CHECK(block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0
+          && link::internal::module_reference == nullptr);
+    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH));
+    CHECK(block.callbacks.load() == &link::internal::CALLBACKS && link::internal::epoch.load() != epoch_registered);
+    // A hook still inside for 50 ms: the wait ends when it leaves, the reference released.
+    block.calls_in_flight.store(1);
+    std::thread leaving([&block] {
+      Sleep(50);
+      block.calls_in_flight.store(0);
+    });
+    const ULONGLONG short_start = GetTickCount64();
+    link::Update(0);
+    const ULONGLONG short_wait = GetTickCount64() - short_start;
+    leaving.join();
+    CHECK(short_wait >= 30 && short_wait < 1000 && block.callbacks.load() == nullptr
+          && link::internal::module_reference == nullptr);
+    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH));
+    CHECK(block.callbacks.load() == &link::internal::CALLBACKS);
+    block.calls_in_flight.store(1);
+    const ULONGLONG drain_start = GetTickCount64();
+    link::Update(0);
+    CHECK(GetTickCount64() - drain_start >= 1000 && block.callbacks.load() == nullptr
+          && link::internal::module_reference != nullptr);
+    block.calls_in_flight.store(0);
+    FreeLibrary(std::exchange(link::internal::module_reference, nullptr));
+    constexpr plugin::Callbacks OTHER_ADDON = {};
+    block.callbacks.store(&OTHER_ADDON);
+    link::Update(both);
+    link::Update(both);
+    CHECK(block.callbacks.load() == &OTHER_ADDON && block.hooks_wanted.load() == 0 && !link::internal::registered
+          && link::internal::lost && link::internal::module_reference == nullptr);
+    link::Uninstall();
+    CHECK(!link::internal::lost && block.callbacks.load() == &OTHER_ADDON && link::Result() == link::Found::DETACHED
+          && link::internal::block == &block);
+    // A present after the detach (still in flight): no lookup, nothing registered again; the next attach looks up
+    // again.
+    block.callbacks.store(nullptr);
+    link::Lookup(true);
+    link::Update(both);
+    CHECK(link::Result() == link::Found::DETACHED && block.callbacks.load() == nullptr
+          && block.hooks_wanted.load() == 0);
+    link::internal::block = nullptr;
+    link::Install();
+    CHECK(link::Result() == link::Found::PENDING);
+    std::printf(
+        "7c callbacks: the lookup final at the last try, registered while READY, wanted and offered, bits follow, a "
+        "changed row not wanted, unregistered and drained (a hook leaving after 50 ms ends the wait); a drain past "
+        "1 s keeps the reference; another add-on's callbacks left alone; after the detach nothing registers\n");
+    plugin_route = false;
     pass::active.store(false);
     std::printf("7 shadow map work: Render's pattern once in the shipped empire.retail.dll; off / casters drawn: every call; "
                 "on: cascade kind learned after 16 calls, then 1 of 4 a frame in turn (each cascade 10 of 40 frames), the "

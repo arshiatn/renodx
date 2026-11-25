@@ -47,6 +47,7 @@
 #include "./graphics_hooks.hpp"
 #include "./anti_aliasing.hpp"
 #include "./ao_pass.hpp"
+#include "./attila64_plugin_link.hpp"
 #include "./buffer_pool.hpp"
 #include "./cpu_sets.hpp"
 #include "./device_loss.hpp"
@@ -1152,20 +1153,17 @@ std::atomic_bool picture_warned = false;
 // The loader's overlay converted: one line for each target (buffer 0, the picture).
 std::atomic_bool buffer_overlay_logged = false;
 std::atomic_bool picture_overlay_logged = false;
-// The page dump's READY-forced variant (TWATTILA_PAGE_DUMP_PLUGIN_READY): the plugin ready, every game-code row offered.
+// The page dump's READY-forced variant (TWATTILA_PAGE_DUMP_PLUGIN_READY): every game-code row shown, as if the plugin
+// offered each (its driver publishes a READY block, so the notes and RowsOffered read a real one).
 #if defined(TWATTILA_PAGE_DUMP_PLUGIN_READY)
 constexpr bool PLUGIN_READY_FORCED = true;
 #else
 constexpr bool PLUGIN_READY_FORCED = false;
 #endif
-// The 64-bit engine plugin's block: ready, and the rows it offers (bit: PluginRow). Filled by its lookup.
-std::atomic_bool plugin_ready = PLUGIN_READY_FORCED;
-std::atomic<uint32_t> plugin_rows = 0;
-// Atomic: init_device and present may run on different threads.
-std::atomic_bool shadow_pass_installed = false;
 
-// The rows the 64-bit engine plugin can bring back (none yet: its add-on side adds them). NONE: hidden on the port.
+// The rows the 64-bit engine plugin can bring back: its rows (attila64_plugin::Row). NONE: hidden on the port.
 enum class PluginRow : uint8_t {
+  PASS_DRAW = twattila::attila64_plugin::ROW_PASS_DRAW,
   NONE = 0xFF,
 };
 
@@ -1200,7 +1198,7 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
     {.match = "GraphicsBigBattleFix"},
     {.match = "GraphicsSmallSoldiersAsSprites"},
     {.match = "GraphicsSpriteSize"},
-    {.match = "RayTracedSkipShadowPass"},
+    {.match = "RayTracedSkipShadowPass", .plugin_row = PluginRow::PASS_DRAW},
     {.match = "FasterGameCpuCode"},
     {.match = "FasterRenderLists"},
     {.match = "FasterJobWakeUps"},
@@ -1224,12 +1222,29 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
 
 // A game-code row on the port: shown once the 64-bit engine plugin is ready and offers its row.
 inline bool GameCodeRowShown(PluginRow row) {
+  static_assert(twattila::attila64_plugin::ROW_COUNT <= 32, "a row's bit in a 32-bit mask");
   if constexpr (PLUGIN_READY_FORCED) return true;
-  const auto bit = static_cast<uint32_t>(row);
-  return plugin_ready.load(std::memory_order_relaxed) && row != PluginRow::NONE && bit < 32u
-         && (plugin_rows.load(std::memory_order_relaxed) & (1u << bit)) != 0;
+  return row != PluginRow::NONE
+         && twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY
+         && (twattila::attila64_plugin_link::RowsOffered() & (1u << static_cast<uint32_t>(row))) != 0;
 }
 
+// The note rows in graphics_status's place on the port, one per final lookup result: READY's shows while any of the
+// plugin's rows is not offered (its hook refused or changed), whether a settings row reads it or not.
+constexpr std::array<std::pair<twattila::attila64_plugin_link::Found, const char*>, 6> PLUGIN_NOTES = {{
+    {twattila::attila64_plugin_link::Found::NOT_INSTALLED,
+     "Engine options: the 64-bit engine plugin is not installed."},
+    {twattila::attila64_plugin_link::Found::OFF,
+     "Engine options: the 64-bit engine plugin is turned off in ReShade.ini."},
+    {twattila::attila64_plugin_link::Found::WRONG_GAME,
+     "Engine options: the 64-bit engine plugin does not support this game version."},
+    {twattila::attila64_plugin_link::Found::WRONG_LOADER,
+     "Engine options: the 64-bit engine plugin does not support this loader version."},
+    {twattila::attila64_plugin_link::Found::OTHER_VERSION,
+     "Engine options: the 64-bit engine plugin does not match this add-on's version."},
+    {twattila::attila64_plugin_link::Found::READY,
+     "Engine options: the 64-bit engine plugin could not turn on every engine option."},
+}};
 
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
 // pass (whose replacement is the game's code only).
@@ -1858,10 +1873,10 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
 void OnInitDevice(reshade::api::device* device) {
   if constexpr (ATTILA64) {
     if (StandsDown(device)) return;
-    // The 64-bit engine plugin's block lookup goes here (until found). Its block is published before the game's device,
-    // so this is shadow_pass's normal install point; the first present is the fallback.
-    if (plugin_ready.load() && !shadow_pass_installed.exchange(true)) {
-      twattila::shadow_pass::Install();
+    // The plugin publishes its block before the game's device: this is the normal lookup (and shadow_pass's install),
+    // the first present the fallback.
+    if (twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::PENDING) {
+      twattila::attila64_plugin_link::Lookup(false);
     }
     // The shadow map size and cascades patch the 32-bit game's code: never on the port.
     return;
@@ -2017,14 +2032,25 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         renodx::utils::log::w("[Total War] 64-bit Attila: game code not readable at the first present");
       }
     }
-    // The 64-bit engine plugin's block lookup goes here (until found). Present runs on the loader's drawing thread between
-    // frames: Install from here only when init_device did not (never from a bind or draw callback).
-    if (plugin_ready.load()) {
-      if (!shadow_pass_installed.exchange(true)) {
-        twattila::shadow_pass::Install();
-      }
-      // Two sites of this call: the 32-bit one below waits for the at-start tests (one writer at a time); the port has none.
-      twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped());
+    // The plugin's lookup, final here when init_device did not find it READY. Present runs on the loader's drawing
+    // thread between frames (never Install from a bind or draw callback).
+    if (twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::PENDING) {
+      twattila::attila64_plugin_link::Lookup(true);
+    }
+    if (twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY) {
+      namespace plugin = twattila::attila64_plugin;
+      // shadow_pass's Update runs every present (it ends the frame's counts), here its second site: the 32-bit one
+      // below waits for the at-start tests; the port has none.
+      const bool pass_draw =
+          twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped(), true);
+      // Bone flush: before each bone pack, limb motion vectors' unit records (object_motion's own switch:
+      // FlushUnitRecords has work only while it is on). Batched Unit Capture batches only where the host flushes it
+      // (Host::flushes_unit_captures, PacksHooked: never on the port yet); C3 adds its term when that flag is wired.
+      twattila::attila64_plugin_link::Update(
+          (twattila::object_motion::internal::active.load(std::memory_order_relaxed)
+               ? plugin::RowBit(plugin::ROW_BONE_FLUSH)
+               : 0u)
+          | (pass_draw ? plugin::RowBit(plugin::ROW_PASS_DRAW) : 0u));
     }
     // Everything below writes the 32-bit game's code or values.
     return;
@@ -2945,20 +2971,25 @@ void ConfigureAddon() {
         return GameCodeRowShown(row) && (own == nullptr || own());
       };
     }
-    // One note in graphics_status's place (the engine values it reports are the 32-bit game's).
-    settings.insert(std::ranges::find(settings, graphics_status),
-                    new renodx::utils::settings::Setting{
-                        .value_type = renodx::utils::settings::SettingValueType::TEXT,
-                        .label = "Engine options: the 64-bit engine plugin is not installed.",
-                        .section = graphics_status->section,
-                        .tint = twattila::graphics_page::WARNING_TINT,
-                        .is_visible = [] {
-                          return !plugin_ready.load(std::memory_order_relaxed)
-                                 || std::ranges::any_of(GAME_CODE_ROWS, [](const GameCodeRow& row) {
-                                      return row.plugin_row != PluginRow::NONE && !GameCodeRowShown(row.plugin_row);
-                                    });
-                        },
-                    });
+    // The plugin's note in graphics_status's place (the engine values it reports are the 32-bit game's): one row per
+    // lookup result, at most one shown.
+    auto note_at = std::ranges::find(settings, graphics_status);
+    for (const auto& [found, label] : PLUGIN_NOTES) {
+      note_at = std::next(settings.insert(
+          note_at, new renodx::utils::settings::Setting{
+                       .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                       .label = label,
+                       .section = graphics_status->section,
+                       .tint = twattila::graphics_page::WARNING_TINT,
+                       .is_visible = [found] {
+                         const twattila::attila64_plugin_link::Found result = twattila::attila64_plugin_link::Result();
+                         if (result != found) return false;
+                         constexpr uint32_t EVERY_ROW = (1u << twattila::attila64_plugin::ROW_COUNT) - 1u;
+                         return result != twattila::attila64_plugin_link::Found::READY
+                                || twattila::attila64_plugin_link::RowsOffered() != EVERY_ROW;
+                       },
+                   }));
+    }
   }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
@@ -3121,8 +3152,10 @@ bool AttachAddon() {
   // Ray-Traced Shadows Only: the sun's shadow map's casters skipped (the map the sun draws read); the forward passes that
   // read it (near grass, particles) take the rays' shadows instead.
   twattila::rt_scene::InstallShadowsOnly();
-  // The port: at the first lookup that finds the 64-bit engine plugin ready (OnInitDevice, else OnPresent).
-  if constexpr (!ATTILA64) {
+  if constexpr (ATTILA64) {
+    // The port: shadow_pass at the lookup that finds the 64-bit engine plugin ready (attila64_plugin_link::Lookup).
+    twattila::attila64_plugin_link::Install();
+  } else {
     twattila::shadow_pass::Install();
   }
   twattila::screen_space_shadows::PatchForwardShadows(twattila::rt_scene::SHADOW_READER_SHADERS);
@@ -3160,6 +3193,9 @@ void DetachAddon() {
   if constexpr (ATTILA64) {
     reshade::unregister_event<reshade::addon_event::copy_resource>(OnCopyPresentPicture);
     reshade::unregister_event<reshade::addon_event::update_texture_region>(OnUpdateOverlay);
+    // Before the modules its callbacks call are uninstalled (a present still in flight looks up and registers nothing
+    // after it).
+    twattila::attila64_plugin_link::Uninstall();
   }
   twattila::cpu_sets::Stop();
   twattila::test_hooks::Uninstall();
@@ -3225,9 +3261,6 @@ void DetachAddon() {
     buffer_overlay_logged = false;
     picture_overlay_logged = false;
     tone_mapper_target_warned = false;
-    plugin_ready = PLUGIN_READY_FORCED;
-    plugin_rows = 0;
-    shadow_pass_installed = false;
   }
 
   attached = false;

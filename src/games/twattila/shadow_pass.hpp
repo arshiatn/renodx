@@ -20,6 +20,7 @@
 #include "../../utils/detour.hpp"
 #include "../../utils/log.hpp"
 #include "../twrome2/engine_tweaks.hpp"
+#include "./attila64_plugin/plugin_block.h"
 #include "./native_hook_lifetime.hpp"
 #include "./rt_scene.hpp"
 
@@ -31,6 +32,8 @@
 // cascade within a few frames. Which passes those are is learned in game, not assumed: a pass kind every one of whose
 // calls drew into the sun's map alone (bound alone for drawing at its start or by it, nothing else bound, still at its
 // end), 16 calls without one that wasn't. Off, or without the rays' shadows: every call made as the game makes it.
+// The 32-bit games hook the pass draw here; on the 64-bit port the engine plugin hooks it and calls PassBegin / PassEnd
+// (attila64_plugin_link.hpp).
 namespace twattila::shadow_pass {
 
 namespace internal {
@@ -59,13 +62,15 @@ struct Kind {
   uint32_t sun_only = 0;    // calls that drew into the sun's map alone
   bool mixed = false;       // a call that bound another target, or ran with the map not bound
   uint32_t calls = 0;       // this frame's
-  uint32_t last_calls = 0;  // the frame before's
+  uint32_t last_calls = 0;  // the last frame's that drew this kind
+  // Frames that drew this kind: the kept call turns with them. The 64-bit loader's shadow refresh rests the shadow view
+  // on some frames (no call then); turning with the present count would keep the same call on every drawn frame.
+  uint32_t drawn_frames = 0;
   bool logged = false;
 };
 
 // The render thread's (Render, the binds and the present run there; other threads' calls pass through).
 static std::array<Kind, PASS_KINDS> kinds;
-static uint32_t frame = 0;
 static std::atomic<DWORD> render_thread = 0;
 static std::atomic<bool> active = false;  // the row on and the casters skipped (Update, at the present)
 static std::atomic<bool> other_thread_logged = false;
@@ -78,7 +83,54 @@ static std::vector<renodx::utils::detour::Function> hooks;
 static tw::native_hooks::Lifetime hook_lifetime;
 static bool searched = false;
 
-// A Render call of either build: `draw` makes the game's call.
+}  // namespace internal
+
+// Whether pass draws on this thread are counted now: the row active, on the render thread (the binds are counted there
+// only).
+inline bool Counting() {
+  return internal::active.load(std::memory_order_relaxed)
+         && GetCurrentThreadId() == internal::render_thread.load(std::memory_order_relaxed);
+}
+
+// Before a pass draw that is Counting, its node enabled: skip it, draw it, or draw and measure it (then PassEnd with
+// the same `measure`, after the draw). Leaves measure->reserved alone (the 64-bit link's).
+inline attila64_plugin::PassAction PassBegin(uint32_t kind_index, attila64_plugin::PassMeasure* measure) {
+  if (kind_index >= internal::PASS_KINDS) return attila64_plugin::PASS_DRAW;
+  auto& kind = internal::kinds[kind_index];
+  const uint32_t call = kind.calls++;
+  if (kind.mixed) return attila64_plugin::PASS_DRAW;
+  if (kind.sun_only >= internal::LEARNED_CALLS && call != kind.drawn_frames % std::max(kind.last_calls, 1u)) {
+    return attila64_plugin::PASS_SKIP;
+  }
+  measure->sun_binds_before = internal::sun_binds;
+  measure->other_binds_before = internal::other_binds;
+  measure->sun_at_start = rt_scene::SkippingCasters() ? 1u : 0u;
+  return attila64_plugin::PASS_DRAW_MEASURED;
+}
+
+// After a PASS_DRAW_MEASURED draw: whether it drew into the sun's map alone.
+inline void PassEnd(uint32_t kind_index, const attila64_plugin::PassMeasure& measure) {
+  if (kind_index >= internal::PASS_KINDS) return;
+  auto& kind = internal::kinds[kind_index];
+  if (kind.mixed) return;
+  if (internal::other_binds == measure.other_binds_before
+      && (measure.sun_at_start != 0u || internal::sun_binds != measure.sun_binds_before)
+      && rt_scene::SkippingCasters()) {
+    ++kind.sun_only;
+  } else {
+    kind.mixed = true;
+  }
+  if (!kind.logged && (kind.mixed || kind.sun_only == internal::LEARNED_CALLS)) {
+    kind.logged = true;
+    renodx::utils::log::i("[Total War] Shadow map work: pass kind ", kind_index,
+                          kind.mixed ? " draws more than the sun's map: always drawn"
+                                     : " draws only into the sun's map: left out but one call a frame");
+  }
+}
+
+namespace internal {
+
+// A Render call of either 32-bit build: `draw` makes the game's call.
 template <typename Draw>
 static void OnPassDraw(const uint8_t* self, uint8_t* pass, const Draw& draw) {
   const bool on_render_thread = (GetCurrentThreadId() == render_thread.load(std::memory_order_relaxed));
@@ -94,25 +146,17 @@ static void OnPassDraw(const uint8_t* self, uint8_t* pass, const Draw& draw) {
   void** pass_vtable;
   std::memcpy(&pass_vtable, pass, sizeof(pass_vtable));
   const uint32_t kind_index = reinterpret_cast<PassKind>(pass_vtable[PASS_KIND_SLOT])(pass, nullptr);
-  if (kind_index >= PASS_KINDS) return draw();
-  auto& kind = kinds[kind_index];
-  const uint32_t call = kind.calls++;
-  if (!kind.mixed && kind.sun_only >= LEARNED_CALLS && call != frame % std::max(kind.last_calls, 1u)) return;
-  const bool sun_at_start = rt_scene::SkippingCasters();
-  const uint32_t sun_before = sun_binds;
-  const uint32_t others_before = other_binds;
-  draw();
-  if (kind.mixed) return;
-  if (other_binds == others_before && (sun_at_start || sun_binds != sun_before) && rt_scene::SkippingCasters()) {
-    ++kind.sun_only;
-  } else {
-    kind.mixed = true;
-  }
-  if (!kind.logged && (kind.mixed || kind.sun_only == LEARNED_CALLS)) {
-    kind.logged = true;
-    renodx::utils::log::i("[Total War] Shadow map work: pass kind ", kind_index,
-                          kind.mixed ? " draws more than the sun's map: always drawn"
-                                     : " draws only into the sun's map: left out but one call a frame");
+  attila64_plugin::PassMeasure measure;
+  switch (PassBegin(kind_index, &measure)) {
+    case attila64_plugin::PASS_SKIP:
+      return;
+    case attila64_plugin::PASS_DRAW_MEASURED:
+      draw();
+      PassEnd(kind_index, measure);
+      return;
+    case attila64_plugin::PASS_DRAW:
+    default:
+      return draw();
   }
 }
 
@@ -125,7 +169,7 @@ static void __fastcall OnRenderRome2(uint8_t* self, void* unused_edx, uint8_t* p
 }
 
 static void OnBindTargets(reshade::api::command_list*, uint32_t, const reshade::api::resource_view*, reshade::api::resource_view) {
-  if (!active.load(std::memory_order_relaxed) || GetCurrentThreadId() != render_thread.load(std::memory_order_relaxed)) return;
+  if (!Counting()) return;
   if (rt_scene::SkippingCasters()) {
     ++sun_binds;
   } else {
@@ -142,15 +186,18 @@ inline void Install() {
 }
 
 // Every present (the render thread): `row` and whether this frame's casters are skipped (rt_scene::CastersSkipped). The
-// hook goes in the first time the row is on; without the row no game byte changes.
-inline void Update(bool row, bool casters_skipped) {
+// hook goes in the first time the row is on; without the row no game byte changes. `plugin_hooked`: the 64-bit engine
+// plugin hooks the pass draw (nothing searched here). Returns whether the pass draws are learned and skipped now.
+inline bool Update(bool row, bool casters_skipped, bool plugin_hooked = false) {
   internal::render_thread.store(GetCurrentThreadId(), std::memory_order_relaxed);
   for (auto& kind : internal::kinds) {
-    kind.last_calls = kind.calls;
+    if (kind.calls != 0) {
+      kind.last_calls = kind.calls;
+      ++kind.drawn_frames;
+    }
     kind.calls = 0;
   }
-  ++internal::frame;
-  if (row && !internal::searched && internal::binds_counted) {
+  if (row && !plugin_hooked && !internal::searched && internal::binds_counted) {
     internal::searched = true;
     HMODULE module = GetModuleHandleW(L"empire.retail.dll");
     const std::vector<std::string_view> code = (module != nullptr ? tw::engine_tweaks::ModuleSections(module).code
@@ -176,7 +223,9 @@ inline void Update(bool row, bool casters_skipped) {
     }
     renodx::utils::log::i("[Total War] Shadow map work: the model manager's pass draw ", result);
   }
-  internal::active.store(row && casters_skipped && !internal::hooks.empty(), std::memory_order_relaxed);
+  const bool active = row && casters_skipped && (plugin_hooked ? internal::binds_counted : !internal::hooks.empty());
+  internal::active.store(active, std::memory_order_relaxed);
+  return active;
 }
 
 // Addon detach.
