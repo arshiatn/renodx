@@ -827,7 +827,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
 - LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_f ... | ?
 - REFLECTION REUSE 'FROM ReSTIR GI' FIX (rt_path.hlsli ReflectPixel, PATH_REFLECT_ ... | ?
-- G1 RAYTRACED: +1.1 / +2.9 ms for box tops 0.95 -> 0.99. Coord pick: keep Basic i ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ... | ?
@@ -15817,8 +15816,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         reused bounce sample's light through HitLight when PATH_LIGHT_FINAL is set; then the weighting bias with its
         own check (a reflected-light reference, or the 4-sample no-reuse average as target). Non-default mode only.
         Owner: next helper fixer after steps 3 + 5 merge (ReflectPixel is in neither owner map)
-        - [ ] G1 RAYTRACED: +1.1 / +2.9 ms for box tops 0.95 -> 0.99. Coord pick: keep Basic in the Balanced row,
+        - [x] G1 RAYTRACED: +1.1 / +2.9 ms for box tops 0.95 -> 0.99. Coord pick: keep Basic in the Balanced row,
         Raytraced stays a test switch. Owner: ATN
+        ATN 11-25 evening: 'Keep Basic'. DECIDED (no code change: Basic is what the row uses).
         - [x] Nit (brr_): rt_d3d12.hpp:757 conditional initializer without parentheses (CXX_STYLE) -> pds2_'s next branch.
         Owner: pds2_
         MERGED e52ec9e28 (pds2_nits 268b687f8; helper exit 0, 5,859,328 B), pushed.
@@ -15936,6 +15936,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         classified A (same logic: alias our replacement to TDD's hash, nothing of theirs shipped) / B (changed logic:
         needs the TDD authors' OK via ATN, like Caesar) / C -> round_notes\mod_shaders\tdd_shaders.md. '1212' (Medieval
         Kingdoms 1212AD?) is NOT installed (not in data\ or the 18 Workshop items): ATN says where. Owner: tdd_, ATN (1212)
+        ATN 11-25 evening: BOTH MODS' AUTHORS SAID OK (happy we add their shader versions for RT / PT, DLSS, etc.;
+        credit each mod in README / About; memory updated). tdd_ told: B-class may be ported on top of TDD's version.
+        ATN downloaded 1212 (Workshop 325610: 1212models1-9, compbuild_v2, 1-1212scripts, music; 12 items). m12_ (Opus
+        xHigh, read-only) STARTED -> round_notes\mod_shaders\m1212_shaders.md (lost hashes A / B / C, new shaders in our
+        passes, porting plan). Porting = a later implementer step (files after Friday's CPU writers if addon.cpp).
+        Owner: tdd_ / m12_
         pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
         scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
         R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
