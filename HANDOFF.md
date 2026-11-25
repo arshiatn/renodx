@@ -825,6 +825,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D: FULL 10:17 (0 bytes; C: 12.6 GB): pds2_'s HARNESS_DUMP verify dumps in its wo ... | ?
 - 64-BIT CPU DESIGNS STARTED 10:4x (Opus xHigh, read only, no builds; each -> Opus ... | ?
 - S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate ... | ?
+- s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
 - LEFTOVER pds2_ FOLDERS (ATN decides, not deleted): ra39a 51.0 GB, rs4 47.6 GB, r ... | ?
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
@@ -15685,9 +15686,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> merge origin/pds2_s4 -> helper build check.
         - [ ] S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate (own_reflect_4 ==
         default_reuse byte-identical; 3 forced-probe builds changed nothing; gate guides && version >= 19 &&
-        RT_REFLECTIONS_OWN && EnsureHistory). So the bug case (no light copy: Troy / Pharaoh Dynasties) is not proven
-        offline. Owner: s4r_ finds the cause + smallest harness / recording change -> pds2_ implements after the
-        brightness row -> rerun the S4 proof.
+        RT_REFLECTIONS_OWN && EnsureHistory). So the bug case is not proven offline. CAUSE FOUND (s4r_ 12:2x): not the
+        host gate (all 4 hold); the SHADER gate rt_path.hlsli:1496 / :1674: since 3da5b3c78 (11-03) the default lobe
+        reaches REFLECT_REUSE_ALPHA 0.09 only at roughness >= 0.733 (< ROUGH_LIMIT 0.75 = R8 188-191) and the harness
+        roughness bytes (0/8/15, 102, 153, 230) miss it -> reservoirs empty. So 17 of 50 verify modes (every Own ReSTIR
+        1024 row: atn*, own_reflect_4) + reflect_fog_reuse (512) have been NO-OPS since 11-03. Fix = mode rows with
+        RT_REFLECTIONS_SQUARED_LOBE 16384 (own_sun_4_lobe, _copy, sun_4_lobe, own_reflect_4_lobe), no rebuild -> pds2_.
+        - [ ] s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, hand-back
+        handoff_plan\handbacks\s4r_review_handback.md). M1 prove offline (base vs fix on the 4 lobe rows: own_sun_4_lobe
+        differs, controls identical) before it counts; S1 PRE-EXISTING contact-path bug (Light Bounce sky samples,
+        PT AO + Own Sky Rays off: N = 0 -> lost sun / NaN -> W-clamp firefly; fix return 0 after the occlusion test, own
+        commit, E4 cfg 49); S2 GAME LIST CORRECTED: Troy / Pharaoh DO copy the light (water_reflections.hpp:197/:264);
+        WH1 / WH2 never pass one; WH3 copies by default (no-copy = 'Reflections Lit as This Frame' off). NaN possible
+        (w 1): Attila, Thrones, Rome II, Troy, Pharaoh, WH1 without harmonics; lost sun only (w 0): WH2, WH3, Shogun 2.
+        Player reach: needs Own ReSTIR on (off by default everywhere). S3 lobe twins for all no-op rows, for good.
+        Known (no fix now): HitNormal vs G-buffer normal may pulse normal-mapped surfaces every 3rd frame. -> pds2_ S4
+        ROUND 2 sent 12:2x (S4 first, then rebase pds2_bright) -> merge after M1 proof.
         - [x] pds2_ TOOLING 11:1x: testbin\scratch\pds2_\pds2_play_dd.ps1 (dump-and-drop: play, hash + rec_compare +
         rec_scan to scratch\pds2_\dd\, floor only on a diff, deletes its own _dd dumps); pds2_verify.ps1 stops if
         D: < 100 GB or C: < 5 GB free.
