@@ -3466,6 +3466,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         R1 / R4 CORRECTED by coord 21:0x before ATN added them (R1 --out with forward slashes: bash eats unquoted
         backslashes; R4 --ngfx-args value quoted: argparse got '1' as an extra argument) -> nsr_handback.md + pasted
         to ATN in chat.
+        ATN ADDED R1-R4 11-25 21:2x. R1 (profile build) STARTED 21:2x in the background; R2 -> R4 next in a GPU window
+        (they wait for gpu_job.lock). ATN to bed ~22:00-22:30; keep-awake on (session_idle).
         - [ ] Start nv-aftermath-monitor.exe before the sweep + its dump folder in the crash tools' search paths. Owner: coord
         - [ ] P1: rt_di_flags + rt_diffuse_roughness as lab fields. Owner: gpr_ (NSR3)
         - [ ] ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); keep stdin open (F1 EOF
