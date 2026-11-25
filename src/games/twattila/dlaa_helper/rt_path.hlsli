@@ -132,9 +132,10 @@ static const uint REUSE_NEIGHBOURS = 3u;
 static const float REUSE_RADIUS = 6.f;        // bounce texels
 #elif defined(REUSE_COMPATIBLE)
 // Matched ReSTIR Neighbours (PT DI step 5's G5, only its rt_reuse_compatible builds): three neighbours picked among
-// COMPATIBLE_CANDIDATES within the reach by how well their surfaces match (ReuseTexel).
+// COMPATIBLE_CANDIDATES within Near Reuse's reach by how well their surfaces match (ReuseTexel; 12 texels darkened the
+// edges and boxes more than Near, E4 p5_g5c / p5_g5r6).
 static const uint REUSE_NEIGHBOURS = 3u;
-static const float REUSE_RADIUS = 12.f;       // bounce texels
+static const float REUSE_RADIUS = 6.f;        // bounce texels
 static const uint COMPATIBLE_CANDIDATES = 8u;
 #else
 static const uint REUSE_NEIGHBOURS = 5u;
