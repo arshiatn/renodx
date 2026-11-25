@@ -820,7 +820,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- a64pir_ RE-CHECK of the fix round SENT 01:3x -> GO / NOT GO for window 3 round 1 ... | ?
+- R1 -> a64pi_, R2 -> a64ab_ SENT 01:4x -> coord -DryRun -> window 3 round 1. | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15314,7 +15314,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         '# intact n/N' re-check, collide_d0.py vs Sol's loader 0 near hits (PerfFix part NOT run: source stays
         closed; the intact check + perffix64 log compare cover it at run time). Self-test 119 / 0; DLL sha256
         669c215d0acdeb20... + sidecar; stubs +20.1 / +28.9 ns, GOT +1.6 ns.
-        - [ ] a64pir_ RE-CHECK of the fix round SENT 01:3x -> GO / NOT GO for window 3 round 1.
+        - [x] a64pir_ RE-CHECK = GO once R1 + R2 are in (hand-back attila64/a64pir_probe_recheck_handback.md; 'Re-check'
+        in probe_review.md): M4-M9 fixed (M), a64_ab M1-M3 in (M), no new crash / state risk; PerfFix check without
+        its source acceptable (it inits before the probe; ordered compare + '# intact' cover later patches); pass risk
+        1 is none (PerfFix prints 'threads paused' before the probe DLL loads). R1 (probe): the fetch's own time now
+        lands in own code (NULL polls too) -> H5 / H3b biased up; fix via the GTLOCK delta. R2 (a64_ab): refocus our
+        game at +2 / +4 s after each WPR /Run (constantinople_bench's rule); start 3 + ETL read only if front >= 95 %.
+        - [ ] R1 -> a64pi_, R2 -> a64ab_ SENT 01:4x -> coord -DryRun -> window 3 round 1.
         - [x] a64ab_ -Probe / -Wpr PASS DONE (hand-back attila64/study_1124/a64ab_probe_pass_handback.md): ETL waits /
         refuses on D:\RenoDX_WPR\attila_wpr.etl, renamed in place to attila_wpr_<batch>_<n>_<arm>.etl (path + size in
         start.json), schtasks /Query + /Run only, Stop in start + batch finally, wpr_running.txt marker for a hard-
