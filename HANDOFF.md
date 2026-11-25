@@ -15723,6 +15723,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         lane), M2 (start 1 seeds audio rows at 2x, two sliders only go to 1.11x / 1.43x), S1-S16, N1-N7.
         -> c8f_ FIX ROUND (Opus xHigh, design only) STARTED 11:3x: all Musts / Shoulds + section 8 (CPU page section)
         -> then ATN's C8 questions -> W0.
+        - [x] c8f_ C8 FIX ROUND DONE 13:1x (c8_wave2_plan.md rewritten, 731 lines; hand-back c8f_fix_round_handback.md):
+        M1 / M2 + S1-S16 + N1-N7 fixed. Block v2: render_core_status @76, scales_active @80 (neutral fast path),
+        reserved @84, scales @88, BlockBytes(2) = 216; CORE_BATTLE / CORE_RENDER; one CoreState enum (B0 owns it).
+        One-writer table 4.1 (add-on lane B0a -> L2B W3 -> W1a -> N1 -> W2a..W4a -> CP -> PK2P; a64_ab.ps1 L2B W4 -> C8
+        T0 -> PK2P). S12: no engine_tweaks.hpp change / no 9-folder sweep. NEW: FrameBridge is <exe dir>\..\FrameBridge.
+        Cull vs sprites 2.6: our sprite stub first (estimate until W0's reach check). CPU PAGE section 8 designed
+        (4th Settings Mode page 'CPU', 64-bit only; ours / PerfFix heapfix.ini / Sol settings.txt incl. interface_size;
+        written only on change; code waits for ATN's semi / full answer; until then L2B / PK2P rows in a 'CPU' section
+        on Graphics 2 of 2). 6 ATN questions held for the list. -> c8r_ RE-CHECK STARTED 13:1x.
         - [x] ucr_ UTILS CLONE FIX REVIEW 11:4x: GO, no Musts (study_1124\ucf_clone_fix_review.md, hand-back
         ucr_review_handback.md). MERGED f3dc754dd (6eacd8a84) + twattila amd64 build check. Follow-ups -> ucf_ (branch
         ucf_follow): S1 twattila OnCopyPresentPicture comment wrong now; drop the duplicate full-frame scRGB copy (~66 MB
