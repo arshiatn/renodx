@@ -270,7 +270,10 @@ RTXDI_DISpatialResamplingParameters DiSpatialParameters() {
   return parameters;
 }
 // The pixel's motion to where the last trace's camera saw its surface (pixel centres), and its depth's change (0: behind
-// that camera).
+// that camera). Ours: the camera's motion only (RTXDI takes the application's full motion vectors), as every helper
+// history reprojects (rt_camera.hlsli SeenByLastTrace, the Light Bounce's reuse): no helper ray-tracing shader reads the
+// game's object motion. A moved unit's surface fails the temporal pass's depth / normal tests (DiTemporalParameters)
+// and takes fresh samples: less reuse there, no stale light (fa1_ U1 measures it).
 float3 DiMotion(uint2 pixel, RAB_Surface surface) {
   const float4 clip = ClipOf(surface.position, previous_view_projection);
   if (!(clip.w > 0.f)) return 0.f;
