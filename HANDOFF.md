@@ -883,7 +883,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - d11v_ CODE + SCRIPT REVIEW (Opus xHigh) of d11i_lane_i + d11_capture64.ps1 -> fi ... | d11v_, coord
 - 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU wi ... | coord
 - ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ?
-- SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.h ... | ?
+- CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | ?
 - Replay gaps (d11i_): sss.lights, smoke.map, ao.draw, bounce.sun_draw not replaye ... | ?
 - PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in | ?
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
@@ -16337,9 +16337,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU window. Owner: coord
         - [ ] ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set keys, folders, SendInput
         E / A / D + wheel only with the game in front) are in d11i_handback.md 'Rule lines' / 'OKs'. Owner: ATN
-        - [ ] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
-        auto_thickness, so the _auto Bend variants are dead in game (shared TW code). Check the design: wire the
-        intended row (bug fix = always on) or drop the dead variants. Owner: coord (next twattila writer slot)
+        - [x] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
+        auto_thickness, so the _auto Bend variants are dead in game (shared TW code). ATN 11-25 ~21:0x: 'SSS auto
+        thickness should never be used. It is shit. Thickness should always stay at the current default' -> NOT a
+        bug; never wire it. Default stays 0.005 (feature_settings.hpp:28, screen_space_shadows.hpp:63,
+        bend_sss_gpu.hlsli:152).
+        - [ ] CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThicknessScale, the _auto Bend
+        wrappers, SssSettings.auto_thickness) in the next twattila writer slot; every other SSS shader byte-identical,
+        all TW games build. Owner: coord
         - [ ] Replay gaps (d11i_): sss.lights, smoke.map, ao.draw, bounce.sun_draw not replayed; uses.tsv misses
         indirect-argument reads (use --external). Fix only if the capture analysis needs them. Owner: coord
         - [ ] PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in
