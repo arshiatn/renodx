@@ -909,7 +909,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
-- pd4r_ STEP 4c REVIEW (Opus xHigh) on origin/pdi4c_step4c_r2 -> fix round -> merg ... | ?
+- pd4r_ STEP 4c REVIEW (Opus xHigh, STARTED 22:2x) on origin/pdi4c_step4c_r2 -> pl ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
@@ -16792,8 +16792,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         backup .before_pdi4c; exe not rebuilt; inert without HARNESS_DI). 4d needs: lowdef-never-reaches-DI harness
         check, the 4b fix, the R1 E6 / R3 composite. NOTE: pdi4c_ counted waiting as deadline time -> brief rule
         wording: 'waiting does not count' must be in every brief.
-        - [ ] pd4r_ STEP 4c REVIEW (Opus xHigh) on origin/pdi4c_step4c_r2 -> fix round -> merge after steps 3 + 5.
-        Owner: coord (start when a review slot frees)
+        - [ ] pd4r_ STEP 4c REVIEW (Opus xHigh, STARTED 22:2x) on origin/pdi4c_step4c_r2 -> plan_1117/designs/
+        pt_di_step4c_review.md -> fix round -> merge after steps 3 + 5. Owner: pd4r_, pdi4c_
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
