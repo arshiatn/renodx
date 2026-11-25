@@ -15635,7 +15635,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         S4 is verified). Lost: nothing of ATN's; ours = one HANDOFF commit (redone), pds2_ rs4 wh3_forest_unit + ra39c +
         verify_s4b 12 modes (rerun), ucf_ build outputs (rebuild); ucf_ 6eacd8a84 and pds2_'s S4 working tree intact
         (byte-identical to rt_path.hlsli.s4fix). pds2_ 'go on' 11:0x: commit S4 FIRST, dump-and-drop + D: < 100 GB
-        guard, then reruns. ucf_ 'go on'.
+        guard, then reruns. ucf_ 'go on'. pds2_ S4 PUSHED 2202523e6 (origin/pds2_s4). The extra ~400 GB on D: = ATN
+        deleted some of his games on both drives (his own call).
+        - [x] ATN 11:0x 'Yes move them': tools\tw\bench (27755 files, 110359089391 bytes) MOVED 10:36-10:38 to
+        D:\RenoDX_archive\tw_moved_1125\bench, verified (count + bytes), JUNCTION left at tools\tw\bench (runs list ok),
+        C: original removed. tools\tw\h0 NOT moved: 416 links inside (h0\builds\all\*\tree\bin ...), script stopped
+        before copying; not needed (C: 946.9 GB free after ATN's own cleanup, D: 772.8 GB). Script + logs: session
+        scratchpad move_h0_bench.ps1 / move_bench.log. NEVER recursive-delete through tools\tw\bench (a junction).
         - [x] c8p_ C8 WAVE 2 PLAN DONE 10:4x (designs\c8_wave2_plan.md 413 lines; hand-back c8p_plan_handback.md): 21
         graphics rows + presets + 58 test rows, block v2 one layout (B0 writer first; L2B W2 drops plugin_block.h), E1-E8
         + N9 decisions, waves W0 / B0 / B0a / W1-W4 / T0 / R, ONE game batch (-Smoke -ReShade -EnginePlugin -C2, 2
