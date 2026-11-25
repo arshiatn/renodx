@@ -16383,6 +16383,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         pdi4c_ 00:5x: origin/pdi4c_step4c_r3 009f56852 (2.9a) on ec96c503c, pd3c_'s list covered (SwapStem refuses
         rt_lights while di_reservoirs_ held, 7cfc8ff2f); now the 2.9a harness parts, then B1 / B2 / parameters /
         DiMotion.
+        pdi4c_ 01:4x: origin/pdi4c_step4c_r4 6f55120ee = r3 rebased onto atn-mods 288413a13 (23 commits, no conflicts;
+        r3 009f56852 superseded, no force push) + the DI passes renamed to plain .hlsl (rt_di_initial / temporal /
+        spatial / shade / spatiotemporal; rt_lights stays .cs_6_5). Gated amd64 twattila add-on build exit 0 (61
+        warnings = baseline); helper builds with / without RTXDI exit 0, all 83 / 60 headers byte-identical to before.
+        Add-on build now in its gate. 2.9a harness parts done (outside git, N9). Next: B1 / B2 / parameters / DiMotion.
         GPU 00:1x: gsi_ SWAP DONE at a safe moment (swap.ps1 sha ok, 20 files hash-checked, backups *.bak_gsi_1125;
         test_gpu_queue 29 / 29) -> 'pdi5_ GPU go' sent (+ the typed-R16F rounding fact for fa3_ B3 if <= 10 min);
         pdi4c_ told: rebase onto ec96c503c, 2.9a, then fa1_ B1 / B2 / parameters / DiMotion comment, builds beside
