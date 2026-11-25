@@ -16279,6 +16279,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         done offline: 128-light reference moves +-0.5 / 0.8 % per frozen frame (3 / 29 lights <= 0.06 %); E4's +-0.0067 CI
         already includes it. f128a1cc1^ control fails as required (0.986 BIAS). new2 plays 17 / 17, rec_scan 0.
         GPU order items 2+ start after 'pdi3_ GPU done' (~00:20).
+        pdi3_ 22:4x: LAB COST GATE FAILS: Torch Light in PT GI on vs off: path tracing +0.08 ms, total +0.14 / +0.15 ms
+        [G-1125-87] [-90] (day) [-93] [-96] (night) vs budget +0.05; ReGIR cells 0.065 ms vs budget 0.02; T1 twin +0.000;
+        calibrations pass [G-1125-85..95]. ReGIR = 64 lights / cell x 32 build samples (RTXDI default 8). Coord: no design
+        call, measure: variants B1 build samples 8, B2 lights / cell 16, C TORCH_CANDIDATES 4 (B1 + C if needed), built on
+        CPU now, jobs APPENDED to this GPU turn: cost day + night, E4 29 / 128, per-texel noise; pick the smallest change
+        meeting both budgets with E4 in base CI + noise <= base; visibly noisier -> numbers to ATN. all_modes f23d665ca vs
+        e52ec9e28 rows off: 3 changed (leaf_storm ambient, micromaps_leaf_quarter bounce + reflection; the known streaming
+        race family M6_OUTPUTS_LEFT_OUT) -> the ceecd4b84 run decides. Fix commit 149e75363 (S4 SwapStem refuses rt_lights
+        while T1 held + nits; 69 recorder headers = ceecd4b84). pdi4c_'s 'di ?' arm now goes into lights_state's initializer.
         ATN 11-25 evening ('maybe they don't change the same lines / functions ... so we could speed up'): same file
         allowed when the FUNCTIONS don't overlap (owner map in both briefs; the second to merge rebases + reruns gates).
         - [ ] PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbours, G7 report): pdi5_ (Opus
