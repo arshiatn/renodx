@@ -910,7 +910,9 @@ class RtScene12 {
       di_made = di_made && pipeline(code.data(), code.size(), build.state);
     }
     if (!di_made) {
-      for (const DiBuild& build : di_builds) build.state->Reset();
+      for (const DiBuild& build : di_builds) {
+        build.state->Reset();
+      }
     }
 #endif
 #if defined(RENODX_RTXDI_GI)
@@ -1261,6 +1263,7 @@ class RtScene12 {
 
   void Close() {
     WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "ray tracing");
+    di_ok_ = 0;
     vertices_.Reset();
     positions_.Reset();
     sun_.Reset();
@@ -3558,6 +3561,7 @@ class RtScene12 {
   // fence value and signals the next (also when nothing ran). `cluster_data`: its new cluster sets' data (v16, the
   // second mapping's start). False: nothing traced.
   bool Trace(const dlaa_bridge::Shared& shared, uint32_t version, std::span<const uint8_t> cluster_data) {
+    di_ok_ = 0;  // a trace skipped or failed before its DI: none ran
     if (!visibility_) return false;
     // The GPU harness's RENODX_TW_TEST_REMOVAL: the device removed at the process's third trace, as a GPU hang removes it
     // (main.cpp starts a new one).
@@ -5664,6 +5668,10 @@ class RtScene12 {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
     device_->CreateUnorderedAccessView(nullptr, nullptr, &NO_REGIR_CELLS, Descriptor(REGIR_CELLS));
+#if defined(RENODX_RTXDI_DI)
+    device_->CreateUnorderedAccessView(nullptr, nullptr, &DI_RESERVOIRS_NULL, Descriptor(DI_RESERVOIRS));
+    device_->CreateUnorderedAccessView(nullptr, nullptr, &DI_OFFSETS_NULL, Descriptor(DI_OFFSETS));
+#endif
     if (cache_keys_) return;
     const D3D12_UNORDERED_ACCESS_VIEW_DESC buffer_written = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
                                                              .Buffer = {.NumElements = 1}};
@@ -6527,62 +6535,16 @@ class RtScene12 {
   // RTXDI's neighbour offsets for the spatial pass (a power of two; rt_di_surface.hlsli di_offset_mask).
   static constexpr uint32_t DI_OFFSET_COUNT = 1024;
   static constexpr uint64_t DI_RESERVOIR_BYTES = sizeof(RTXDI_PackedDIReservoir);
+  // The reservoirs' and the neighbour offsets' null views (as their buffers' kinds).
+  static constexpr D3D12_UNORDERED_ACCESS_VIEW_DESC DI_RESERVOIRS_NULL = {.Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                                                                         .Buffer = {.NumElements = 1, .StructureByteStride = DI_RESERVOIR_BYTES}};
+  static constexpr D3D12_UNORDERED_ACCESS_VIEW_DESC DI_OFFSETS_NULL = {.Format = DXGI_FORMAT_R32G32_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                                                                      .Buffer = {.NumElements = 1}};
   static constexpr uint32_t DI_RESERVOIR_ARRAYS = 3;  // rt_di_surface.hlsli DI_*_ARRAY
   // RTXDI's reservoir layout at the shared textures' size (one set's: the history keeps it at any render size).
   [[nodiscard]] RTXDI_ReservoirBufferParameters DiReservoirLayout() const {
     const D3D12_RESOURCE_DESC size = positions_->GetDesc();
     return rtxdi::CalculateReservoirBufferParameters(static_cast<uint32_t>(size.Width), size.Height, rtxdi::CheckerboardMode::Off);
-  }
-  // Path-Traced Torch Light's own resources, made when first asked for (released after HISTORY_FRAMES unused:
-  // ExpireHistory), their views written: the tiles' members, the light surface's copy (its own desc), the reservoirs,
-  // and the neighbour offsets (uploaded once on `list`). False (said once): no memory, no DI for this set.
-  bool EnsureDi(ID3D12GraphicsCommandList4* list) {
-    if (!di_reservoirs_) {
-      D3D12_RESOURCE_DESC surface_desc = light_surface_->GetDesc();
-      surface_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-      const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
-      const uint64_t reservoir_bytes = uint64_t{DiReservoirLayout().reservoirArrayPitch} * DI_RESERVOIR_ARRAYS * DI_RESERVOIR_BYTES;
-      ComPtr<ID3D12Resource> upload = Buffer(uint64_t{DI_OFFSET_COUNT} * 8, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
-      di_reservoirs_ = Buffer(reservoir_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-      di_offsets_ = Buffer(uint64_t{DI_OFFSET_COUNT} * 8, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
-      void* mapped = nullptr;
-      if (!di_reservoirs_ || !di_offsets_ || !upload || FAILED(upload->Map(0, nullptr, &mapped))
-          || !Texture(DXGI_FORMAT_R32G32B32A32_UINT, &di_members_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, dlaa_bridge::RT_LIGHT_TILE)
-          || FAILED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &surface_desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                                     IID_PPV_ARGS(light_surface_previous_.GetAddressOf())))) {
-        slow_report_ += std::format("{}[TW ray tracing] Path-Traced Torch Light: no memory for its {} MB of reservoirs: off for this size",
-                                    slow_report_.empty() ? "" : "\n", reservoir_bytes >> 20);
-        di_reservoirs_.Reset();
-        di_offsets_.Reset();
-        di_members_.Reset();
-        light_surface_previous_.Reset();
-        light_surface_.Reset();
-        return false;
-      }
-      // RTXDI's stratified offsets as snorm8 pairs, as floats (its shaders read the buffer's values times the radius).
-      std::array<uint8_t, size_t{DI_OFFSET_COUNT} * 2> offsets = {};
-      rtxdi::FillNeighborOffsetBuffer(offsets.data(), DI_OFFSET_COUNT, ReSTIRDI_SpatialSamplingMode::StratifiedLowDiscrepancy);
-      auto* floats = static_cast<float*>(mapped);
-      for (size_t index = 0; index < offsets.size(); ++index) floats[index] = static_cast<float>(static_cast<int8_t>(offsets[index])) / 127.f;
-      upload->Unmap(0, nullptr);
-      list->CopyBufferRegion(di_offsets_.Get(), 0, upload.Get(), 0, uint64_t{DI_OFFSET_COUNT} * 8);
-      const D3D12_RESOURCE_BARRIER to_read = Transition(di_offsets_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-      list->ResourceBarrier(1, &to_read);
-      releases_.push_back({.value = own_value_ + 1, .resource = std::move(upload)});
-    }
-    const D3D12_UNORDERED_ACCESS_VIEW_DESC reservoirs_view = {
-        .Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
-        .Buffer = {.NumElements = static_cast<UINT>(di_reservoirs_->GetDesc().Width / DI_RESERVOIR_BYTES), .StructureByteStride = DI_RESERVOIR_BYTES}};
-    const D3D12_UNORDERED_ACCESS_VIEW_DESC offsets_view = {.Format = DXGI_FORMAT_R32G32_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
-                                                           .Buffer = {.NumElements = DI_OFFSET_COUNT}};
-    device_->CreateUnorderedAccessView(di_reservoirs_.Get(), nullptr, &reservoirs_view, Descriptor(DI_RESERVOIRS));
-    device_->CreateUnorderedAccessView(di_offsets_.Get(), nullptr, &offsets_view, Descriptor(DI_OFFSETS));
-    Written(di_members_.Get(), DXGI_FORMAT_R32G32B32A32_UINT, DI_MEMBERS);
-    Written(light_surface_.Get(), DXGI_FORMAT_R32G32B32A32_UINT, LIGHT_SURFACE);
-    Written(light_surface_previous_.Get(), DXGI_FORMAT_R32G32B32A32_UINT, LIGHT_SURFACE_PREVIOUS);
-    Written(di_light_[0].Get(), di_light_[0]->GetDesc().Format, DI_LIGHT);
-    Written(di_light_[1].Get(), di_light_[1]->GetDesc().Format, DI_LIGHT + 1);
-    return true;
   }
 #endif
 
@@ -6623,7 +6585,9 @@ class RtScene12 {
     if (di_reservoirs_ && (di_frame_ == UINT32_MAX || di_frame_ + HISTORY_FRAMES < frame)) {
       release("Path-Traced Torch Light's",
               {std::addressof(di_members_), std::addressof(light_surface_previous_), std::addressof(di_reservoirs_), std::addressof(di_offsets_)},
-              {DI_MEMBERS, LIGHT_SURFACE_PREVIOUS, DI_RESERVOIRS, DI_OFFSETS});
+              {DI_MEMBERS, LIGHT_SURFACE_PREVIOUS});
+      device_->CreateUnorderedAccessView(nullptr, nullptr, &DI_RESERVOIRS_NULL, Descriptor(DI_RESERVOIRS));
+      device_->CreateUnorderedAccessView(nullptr, nullptr, &DI_OFFSETS_NULL, Descriptor(DI_OFFSETS));
       di_frame_ = UINT32_MAX;
     }
 #endif
@@ -8682,8 +8646,72 @@ class RtScene12 {
     // with Torch and Fire Light in the Light Bounce (its own build and words: today's). A switch of it drops the lights'
     // kept bits once (their mode).
 #if defined(RENODX_RTXDI_DI)
-    const bool di = version >= 32 && (shared.rt_di_flags & dlaa_bridge::RT_DI_LIGHTS) != 0 && lights_kept && !lights_in_bounce && lights_di_pipelines_[0]
-                    && light_surface_ && di_light_[1] && EnsureDi(list);
+    const bool di_asked = version >= 32 && (shared.rt_di_flags & dlaa_bridge::RT_DI_LIGHTS) != 0 && lights_kept && !lights_in_bounce
+                          && lights_di_pipelines_[0] && light_surface_ && di_light_[1];
+    // Its own resources, made at the first request (released after HISTORY_FRAMES unused: ExpireHistory): the tiles'
+    // members, the light surface's copy (its own desc), the reservoirs and the neighbour offsets (uploaded once). A piece
+    // that cannot be made: said, no DI for this set (its light surface dropped).
+    if (di_asked && !di_reservoirs_) {
+      D3D12_RESOURCE_DESC surface_desc = light_surface_->GetDesc();
+      surface_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+      const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+      const uint64_t reservoir_bytes = uint64_t{DiReservoirLayout().reservoirArrayPitch} * DI_RESERVOIR_ARRAYS * DI_RESERVOIR_BYTES;
+      ComPtr<ID3D12Resource> upload = Buffer(uint64_t{DI_OFFSET_COUNT} * 8, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+      di_reservoirs_ = Buffer(reservoir_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      di_offsets_ = Buffer(uint64_t{DI_OFFSET_COUNT} * 8, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+      // The first piece that could not be made (none: all of them).
+      void* mapped = nullptr;
+      const char* failed = nullptr;
+      if (!di_reservoirs_) {
+        failed = "reservoirs";
+      } else if (!di_offsets_ || !upload) {
+        failed = "neighbour offsets";
+      } else if (FAILED(upload->Map(0, nullptr, &mapped))) {
+        failed = "neighbour offsets' upload (Map)";
+      } else if (!Texture(DXGI_FORMAT_R32G32B32A32_UINT, &di_members_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, dlaa_bridge::RT_LIGHT_TILE)) {
+        failed = "tile members";
+      } else if (FAILED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &surface_desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                                                         IID_PPV_ARGS(light_surface_previous_.GetAddressOf())))) {
+        failed = "light surface's copy";
+      }
+      if (failed != nullptr) {
+        slow_report_ += std::format("{}[TW ray tracing] Path-Traced Torch Light: its {} could not be made ({} MB of reservoirs): off for this set",
+                                    slow_report_.empty() ? "" : "\n", failed, reservoir_bytes >> 20);
+        di_reservoirs_.Reset();
+        di_offsets_.Reset();
+        di_members_.Reset();
+        light_surface_previous_.Reset();
+        light_surface_.Reset();
+      } else {
+        // RTXDI's stratified offsets as snorm8 pairs, as floats (its shaders read the buffer's values times the radius).
+        std::array<uint8_t, size_t{DI_OFFSET_COUNT} * 2> offsets = {};
+        rtxdi::FillNeighborOffsetBuffer(offsets.data(), DI_OFFSET_COUNT, ReSTIRDI_SpatialSamplingMode::StratifiedLowDiscrepancy);
+        auto* floats = static_cast<float*>(mapped);
+        for (size_t index = 0; index < offsets.size(); ++index) {
+          floats[index] = static_cast<float>(static_cast<int8_t>(offsets[index])) / 127.f;
+        }
+        upload->Unmap(0, nullptr);
+        list->CopyBufferRegion(di_offsets_.Get(), 0, upload.Get(), 0, uint64_t{DI_OFFSET_COUNT} * 8);
+        const D3D12_RESOURCE_BARRIER to_read = Transition(di_offsets_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        list->ResourceBarrier(1, &to_read);
+        releases_.push_back({.value = own_value_ + 1, .resource = std::move(upload)});
+      }
+    }
+    const bool di = di_asked && di_reservoirs_;
+    if (di) {
+      const D3D12_UNORDERED_ACCESS_VIEW_DESC reservoirs_view = {
+          .Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+          .Buffer = {.NumElements = static_cast<UINT>(di_reservoirs_->GetDesc().Width / DI_RESERVOIR_BYTES), .StructureByteStride = DI_RESERVOIR_BYTES}};
+      const D3D12_UNORDERED_ACCESS_VIEW_DESC offsets_view = {.Format = DXGI_FORMAT_R32G32_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                                                             .Buffer = {.NumElements = DI_OFFSET_COUNT}};
+      device_->CreateUnorderedAccessView(di_reservoirs_.Get(), nullptr, &reservoirs_view, Descriptor(DI_RESERVOIRS));
+      device_->CreateUnorderedAccessView(di_offsets_.Get(), nullptr, &offsets_view, Descriptor(DI_OFFSETS));
+      Written(di_members_.Get(), DXGI_FORMAT_R32G32B32A32_UINT, DI_MEMBERS);
+      Written(light_surface_.Get(), DXGI_FORMAT_R32G32B32A32_UINT, LIGHT_SURFACE);
+      Written(light_surface_previous_.Get(), DXGI_FORMAT_R32G32B32A32_UINT, LIGHT_SURFACE_PREVIOUS);
+      Written(di_light_[0].Get(), di_light_[0]->GetDesc().Format, DI_LIGHT);
+      Written(di_light_[1].Get(), di_light_[1]->GetDesc().Format, DI_LIGHT + 1);
+    }
 #else
     constexpr bool di = false;
 #endif
@@ -10299,7 +10327,13 @@ class RtScene12 {
   [[nodiscard]] std::unique_ptr<dlaa_bridge::Shared> PlaybackBlock(const PlaybackRequest& request, uint32_t frame_offset) const {
     auto block = std::make_unique<dlaa_bridge::Shared>();
     std::memcpy(block.get(), request.data.data(), std::min(request.block_bytes, sizeof(dlaa_bridge::Shared)));
-    for (size_t index = 0; index < PLAYER_HANDLES.size(); ++index) block.get()->*PLAYER_HANDLES[index].second = playback_.handles[index];
+    for (size_t index = 0; index < PLAYER_HANDLES.size(); ++index) {
+      block.get()->*PLAYER_HANDLES[index].second = playback_.handles[index];
+    }
+    // No recorded light surface or DI textures (v32): the recording process's handle numbers would open the player's own.
+    block->rt_light_surface = 0;
+    block->rt_di_light[0] = 0;
+    block->rt_di_light[1] = 0;
     block->rt_frame += frame_offset;
     return block;
   }
