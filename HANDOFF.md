@@ -845,6 +845,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rtp_ QUESTIONS (rtp_'s pick first): R1 census trace now (yes); helper staged in ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
+- C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + ... | ?
+- 1212 README: 'thanks / compatible' line (no licence line: none of their files us ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
 - ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the n ... | ATN
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
@@ -15987,6 +15989,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         xHigh, read-only) STARTED -> round_notes\mod_shaders\m1212_shaders.md (lost hashes A / B / C, new shaders in our
         passes, porting plan). Porting = a later implementer step (files after Friday's CPU writers if addon.cpp).
         Owner: tdd_ / m12_
+        m12_ DONE (evening; mod_shaders\m1212_shaders.md, hand-back mod_shaders\m12_handback.md, scratch
+        testbin\scratch\m12_): 1212 ships NO shader files (12 / 12 items complete, 100,485 files, 0 shaders) -> 0 of
+        our 350 hashes lost on 32 / 64-bit, no aliases, no port, no TDD overlap; its 27,395 models use vanilla
+        material / vertex pairs only (all their main-view VS in our tables; RT capture tables unchanged). 1212
+        replaces 53 / 86 campaign lighting files (brighter sun, more saturation; our tonemap keeps the game's limits
+        = their look, kept). LIVE ITEM: on 64-bit, Sol's installer ships its own 1212 flag pack, auto-loaded with
+        1212 + PerfFix + Flag Wave -> every static prop (0x347F3DD9 / 0xD830AD9B) on Sol's unknown VS = lost to
+        motion vectors / RT capture / thin sheets until C4 (corrects 'flag pack = a download'; rtpr_ told).
+        Not checked: the Steam collection page (HTTP 429), Flag Wave's default tick.
+        - [ ] C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + one 64-bit 1212 battle
+        (after PT DI, ATN's OK). Owner: rtp_ design / C4 implementer
+        - [ ] 1212 README: 'thanks / compatible' line (no licence line: none of their files used); until C4 a line
+        for 64-bit 1212 players: untick Flag Wave for full RT. Optional on ATN's go: one campaign HDR look check +
+        one 32-bit 1212 battle data run (expect 0 unknown drawn hashes). Owner: ATN (wording / go)
         pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
         scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
         R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
