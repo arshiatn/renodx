@@ -929,7 +929,7 @@ void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 
 }
 
 // Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
-// screen or the cache knows it) takes the stored light's place, and a change shortens the history (bright changes
+// screen or the cache knows it; not with TORCH_REGIR) takes the stored light's place, and a change shortens the history (bright changes
 // dimmed until they settle). The change (0: none, 1: all of the history goes). `contact`: its light in ContactShade's.
 float Validate(inout Reservoir previous, float3 origin, bool contact) {
   const float3 to_hit = previous.hit - origin;
@@ -966,7 +966,9 @@ float Validate(inout Reservoir previous, float3 origin, bool contact) {
   }
   if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_RESCALE) != 0u) previous.weight *= ratio;
   if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_KEEP_CHROMA) != 0u) light_now = previous.light / max(ratio, 1e-8f);
-  if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_KEEP_LIGHT) == 0u) previous.light = light_now;
+  // With TORCH_REGIR the light now is a fresh T2 draw, not the one the sample's weight came from: it keeps its stored light
+  // (else the history darkens by T2's zero draws: E4 at 128 lights).
+  if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_KEEP_LIGHT) == 0u && !TORCH_REGIR) previous.light = light_now;
   if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_INVALIDITY) != 0u) return 0.f;
   return smoothstep(0.1f, 0.5f, length(change) / 1.7320508f);
 }
