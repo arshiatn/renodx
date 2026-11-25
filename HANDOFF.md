@@ -842,7 +842,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
 - ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
 - PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; ... | ?
-- PK9 O1 PERFFIX CHECK: p9c_ (Opus xHigh, read-only) STARTED: height cache + part ... | ?
+- PERFFIX ROWS IN foreign_sites.tsv (p9c_): real lengths (5-17 B, not 'taken as 16 ... | ?
+- PK9 RELEASE CHECK: if PerfFix ships after 7.5, rerun testbin\scratch\p9c_\pfmap. ... | ?
 - NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\rou ... | ?
 - TALES CAPTURE FIX IN GAME: in SDR, HDR10 and scRGB, a loading screen / battle en ... | ?
 - tw_scene_coverage crashes at start on atn-mods too (rvt_: 0xC0000005; since a98c ... | ?
@@ -16102,9 +16103,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 11-25 EVENING: Caesar (PerfFix / heapfix author) says we may READ his code read-only and check ourselves
         whether it conflicts. Rule updated (memory, round_1125\brief.md, group_brief.md): read-only conflict checks
         only by an agent whose brief names one; nothing of his copied; others still neither open nor search.
-        - [ ] PK9 O1 PERFFIX CHECK: p9c_ (Opus xHigh, read-only) STARTED: height cache + part cull / skip hooks (waits,
+        - [x] PK9 O1 PERFFIX CHECK: p9c_ (Opus xHigh, read-only) STARTED: height cache + part cull / skip hooks (waits,
         multi-thread safety, byte conflicts, other hooks inside the closure, ini keys) -> verdict per site + addendum
         in pk9_effects_64.md -> Friday's last review gets the answer instead of the question. Owner: p9c_
+        p9c_ DONE 17:xx: O1 CLOSED, SAFE (designs\pk9_o1_perffix.md, hand-back designs\p9c_o1_handback.md, addendum in
+        pk9_effects_64.md; PerfFix 64 7.5 = the bench's build; only perffix_src opened, read + review only, nothing
+        copied). Height cache: no wait / lock / post; non-main threads run the original at once; never used in a
+        battle (bench: 0 hits). Part cull: per-thread state, one short lock per thread, no game calls, distance site
+        dominates both part sites. Other PerfFix code in the closure: in-place x87 blocks (no calls) + library slots
+        (mimalloc internals not read). Byte overlaps: none (>= 2481 B from every PK9 site); Sol overlap only where
+        PerfFix leaves Sol's patch alone; Rule H holds. No ini key adds a wait. Asking Caesar no longer needed; S-A
+        still runs with PerfFix installed; the row stays Experimental for Sol's untested scenes.
+        - [ ] PERFFIX ROWS IN foreign_sites.tsv (p9c_): real lengths (5-17 B, not 'taken as 16'); add 8 batch reset
+        writes, the script extender's 0x2e04200 / 0x2e03d20, 9 library slots; x87 block list from OUR scan of the game
+        file, never from his header (licence). None near a site. Owner: the generator's holder (Friday builders)
+        - [ ] PK9 RELEASE CHECK: if PerfFix ships after 7.5, rerun testbin\scratch\p9c_\pfmap.py + x87mem.py on the new
+        source before the soak sign-off. Owner: coord (PK9 release)
         - [x] PLAN OVERVIEW REFRESHED (ATN 11-25 ~14:0x 'Let's maybe refresh them?'): ov_ wrote
         round_notes\plan_overview_1125.md (one page) + plan_overview_1125_facts.md (a source per claim; coord checked
         it, added the C8 W0 result; hand-back handoff_plan\handbacks\ov_overview_handback.md). The 11-22 overview is
