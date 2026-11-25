@@ -15980,6 +15980,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         bonds, fade <= 5e-4, T3 / T4, return 1 at n.l <= 0 safe (tw_point_light.hlsli:110 / :112), C2a / C2b split,
         MERL record. cal1_ redirected (RM1-RM3, RS1, RS3, lab flags); cal_ writes Rev 1.1 (texts + RM4 + lab flags
         correction).
+        cal_ REV 1.1 DONE (hand-back handoff_plan\handbacks\cal_rev11_handback.md, R1.10 + '(R1.1)' marks in place):
+        RM1-RM4 + RS1-RS3 applied (T-vmf closed grid 161x161x181: V16 1.53 / 37.6 %, V40 1.21 / 16.1 %; quotes now
+        38 / 16 %; CALLISTO_SET_PLANTED for BIAS controls, mean +78 %; RM4 = factor-R bias, not 1 / R); lab flags rule
+        corrected everywhere (path_flags null; SHARED_FIELDS already take <field>@kind, only rt_path_flags bits wait
+        for step 5). Pitfall: clip cosines to [0, 1] in double models (l = v gives pow of -2e-16 = NaN). RT AO loop
+        owner check: pdi4c_ does not touch rt_trace's AO loop. cal1_ told R1.8 + R1.10 = final brief.
         - [ ] CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent (Opus xHigh, scratch
         only) after ATN's download yes (MERL BRDFDatabase.zip 1.3 GB + RGL; pick MERL + RGL) . Owner: coord (date)
         - [ ] CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mismatch measured. Owner: later
