@@ -947,7 +947,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa2_ B4 TEMPORAL SHIFT WITHOUT THE RECONNECTION JACOBIAN (RTXDI applies one; pre ... | ?
 - fa2_ B5 TEMPORAL SURFACE TEST = receiver normal >= 0.8 only (no depth; PATH_PERM ... | ?
 - fa2_ B7 ReuseJacobian abs() where RTXDI saturates (pdsr_ S5; G0 bit 4096 already ... | ?
-- fa2_ B6 + B8 UNIFIED DESIGN: Talbot temporal MIS cited (4.3, G22 Eq. 36) but cod ... | ?
 - fa2_ G-1 W CLAMP (ClampWeight) also hides our own bright biases (B1 / B2 / U1) - ... | ?
 - fa2_ G-2 / G-3 SHaRC BANS ('reflections hung at 4K', 'depth 4 hung'; 1.6.5, neve ... | ?
 - fa2_ U1 VALIDATE'S LIGHT SWAP = leading candidate for pds2_'s unexplained colour ... | ?
@@ -962,9 +961,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NV5 LIVE-STATE CUTS + FP16 in path / reflection kernels (Indiana Jones -15 %, it ... | ?
 - NV6 SMALL: RR packed normals + roughness (< 0.03 ms); thread-group size test + c ... | ?
 - NV7 ATN NUMBERS: RR preset D / E 1.83 vs 2.12 ms at 4K Performance on the 5090 ( ... | ?
-- NV8 UNIFIED ADDENDUM (coord -> unified_pt.md): C1-C14 choices (C2 visibility reu ... | ?
 - NV9 NVIDIA-SAYS-DON'T (section 4): TLAS fast-build (rt_d3d12.hpp:8069) = U12c; s ... | ?
-- rpg2_ PG REVISION + UNIFIED ADDENDA (Opus xHigh, design files only, est 30 / dea ... | ?
+- rpgc_ RECHECK (Opus xHigh, read-only, STARTED 01:1x, est 15 / deadline 30) -> de ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
@@ -17227,7 +17225,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> edge leaks. Owner: same
         - [ ] fa2_ B7 ReuseJacobian abs() where RTXDI saturates (pdsr_ S5; G0 bit 4096 already builds saturate) ->
         leaks through thin cards. Owner: same
-        - [ ] fa2_ B6 + B8 UNIFIED DESIGN: Talbot temporal MIS cited (4.3, G22 Eq. 36) but code 1/M; G2 cited as
+        - [x] fa2_ B6 + B8 UNIFIED DESIGN (resolved in design by rpg2_ part (d); rpgc_ rechecks): Talbot temporal MIS cited (4.3, G22 Eq. 36) but code 1/M; G2 cited as
         defensive (Eq. 38, 'no W clamp on DI') but S5's G2 is uniform pairwise -> rpg2_ told (part (d) of its addendum).
         Owner: rpg2_, then U3
         - [ ] fa2_ G-1 W CLAMP (ClampWeight) also hides our own bright biases (B1 / B2 / U1) -> rework or drop after
@@ -17307,7 +17305,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (U13); bounded VNDF (noise only; before U5a if done). Owner: U13 / U5a owners
         - [ ] NV7 ATN NUMBERS: RR preset D / E 1.83 vs 2.12 ms at 4K Performance on the 5090 (another model = ATN's
         call). Owner: coord -> ATN
-        - [ ] NV8 UNIFIED ADDENDUM (coord -> unified_pt.md): C1-C14 choices (C2 visibility reuse stays off or T1 reads
+        - [x] NV8 UNIFIED ADDENDUM (DONE by rpg2_ 11-26, part (b); rpgc_ rechecks): C1-C14 choices (C2 visibility reuse stays off or T1 reads
         the same visibility; C3 decide split vs fused DI BEFORE G2 / G3 / G5 get a second implementation; C9 only the
         exact far-unit update skip on by default) + the S11 correction (the screen-wide permutation XOR is RTXDI's own
         RTXDI_ApplyPermutationSampling; the per-texel hash is OUR choice, not an RR rule). Owner: coord
@@ -17370,11 +17368,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         3-5 GPU-h. Licence fine (API use of the fetched SHaRC header, credits.hpp covers it).
         - [x] ATN Q (rpg_ Q1): CLOSED by standing rules (rpgr_ S11): the mode first; the hybrid row follows as its own
         step (every-setting rule), hidden wherever not proven; Q2 = an Experimental row, off. Told ATN 11-26.
-        - [ ] rpg2_ PG REVISION + UNIFIED ADDENDA (Opus xHigh, design files only, est 30 / deadline 60): fold every MUST
+        - [x] rpg2_ PG REVISION + UNIFIED ADDENDA (Opus xHigh, design files only, est 30 / deadline 60): fold every MUST
         / SHOULD into restir_pg.md (change list on top, rpgr_'s fidelity table kept); write the unified_pt.md addendum
         = PG's U3 text (A5 / A6 / A8 / A9 + S2) + NV8 (C1-C14 choices, S11 permutation correction) + U1 (pd4r_: the
         mode sets runtime.lights_in_bounce = 0, S12 checks both requests); S9 text fixes in pt_di_rtxdi.md section 5
         + unified 4.2. One writer for those 3 files. Then a short Opus xHigh recheck. Owner: rpg2_, coord
+        rpg2_ DONE 01:0x (19 min; handoff_plan\handbacks\rpg2_handback.md; backups testbin\scratch\rpg2_\): restir_pg
+        v2 (change list M1-M7, S1-S11, N1-N6 + fa2_ B8; nothing skipped); M2 -> arm S built FIRST in PG1b (the RT/PT
+        preset turns Own Sky Rays on, rays_preset.hpp:44; open ground = worst case 11x); hidden under Own Sky Rays only
+        if arm S fails its gate; PG1h = the hybrid step, hidden where unproven; hours 33.5 h + 3 h reviews + 4-6 GPU-h.
+        Found: G4 = build option RT_RESERVOIR_COMPACT, 0 (off) at f370cd3bd (rt_reuse_bits.h:67-69) -> today's
+        default is the 32 B layout; PackNormal16 lives only inside G4's #if (PG2 must move it out). unified_pt.md:
+        4.2 G4 fixed, S12 covers both requests (cite 3647 -> 3702), section 7 / 4.3 / 4.5 / section 6 lines fixed in
+        place, addendum (a) U3 text (A5 literal 1.0f, A6, S2 deviation from lin2026 Eq. 4a / 5, A7 for U4c, A8, A9,
+        RT_RESTIR_GUIDE 8, rt_di_ok 64), (b) NV8 C1-C14 + S11 (RTXDI permutation = one number a frame,
+        ReSTIRDIParameters.h:117, ReSTIRDI.cpp:190; per-texel hash = ours, to be measured), (c) U1 verified: the fix
+        belongs at rt_core.hpp:3601 (the trace's local lights_in_bounce), zeroing runtime.lights_in_bounce after 3769
+        alone leaves the trace flags on; WH2 shadows_only applies in the mode too, (d) fa4_ B1 view Z for U11 + U8
+        jitter after FRR (denoising.md:103-105); fa2_ B8: G2 = G22 uniform Eq. 37 (= RTXDI), cite fixed, defensive
+        form = a measured arm, 'no W clamp on DI' holds (DI default RAY_TRACED, G22 5.6); fa2_'s defensive recipe did
+        not sum to 1 (corrected form given); fa2_ B6 = marked deviation (Talbot = 1/M without visibility in the
+        target). Eq. 38 glyphs still unverified (no PDF renderer; poppler would be a download).
+        - [ ] rpgc_ RECHECK (Opus xHigh, read-only, STARTED 01:1x, est 15 / deadline 30) -> designs\restir_pg_recheck.md.
+        Owner: rpgc_
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
