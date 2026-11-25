@@ -825,6 +825,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-BIT CPU DESIGNS STARTED 10:4x (Opus xHigh, read only, no builds; each -> Opus ... | ?
 - S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate ... | ?
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
+- LAB METHOD (brr_): the recorder overwrites every request's rt_path_flags (rt_ser ... | ?
+- BALANCED DEFAULT, before any default On (pds2_ 'pds2_ balanced numbers'): the Ne ... | ?
+- Nit (brr_): rt_d3d12.hpp:757 conditional initializer without parentheses (CXX_ST ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
 - ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the n ... | ATN
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
@@ -15754,6 +15757,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         inside corners 2-5 % brighter (e.g. night40 1.01986 -> 1.05309). Cost with Near, row On: -0.09 ms day / -0.16 ms
         night total [G-1125-24 / -27] (lab: 'FASTER, not for on by default'). S4 dynamic (red -> green wall light): row
         On reaches 10-16 % less of the change at 4 frames, 3-4 % less at 8, none by 16. -> brr_ RE-CHECK sent 16:2x.
+        brr_ RE-CHECK 16:4x: MERGE (Re-check 11-25 in bright_r2_review.md; hand-back handoff_plan\handbacks\
+        brr_recheck_handback.md). MERGED 1c617c35e (109a6fa6f) after main-tree builds: helper exit 0 (5,859,328 B = brr_'s),
+        twattila amd64 + x86 exit 0, talesofarise amd64 exit 0 (61 warnings each = baseline). Row stays Off. brr_ on the
+        numbers: with Near (the default) units are already within 0.3-1.4 % of the reference without the row; the row
+        closes most of it but inside corners get 1.7-3.3 points worse; 'faster' with Near (-0.09 / -0.16 ms) is real
+        (8-14x A/A) but a data effect of the kept light, read as 'no extra cost in a still replay'.
+        - [ ] LAB METHOD (brr_): the recorder overwrites every request's rt_path_flags (rt_serve.h:895-898); the 36913-based
+        arm flags have no AMBIENT / RT_REFLECTIONS / SPEC_OCC, so EVERY cost job since 11-22 measured Path Tracing without
+        Path-Traced AO, Own Sky Rays or sun light and skipped the reflections request (not the RT/PT preset). pds2_ told
+        16:4x: use the preset's flags (86020209 / 354455665) or the recording's own flags with only the tested bit changed;
+        list the affected gate ids (rerun only those feeding a pending decision). Owner: pds2_
+        - [ ] BALANCED DEFAULT, before any default On (pds2_ 'pds2_ balanced numbers'): the Near cost pair in the preset
+        config + a KEEP_LIGHT-on-both-arms job to split the 'faster' effect; the DIMMING case (green -> red, light off;
+        red -> green tested only the brightening branch; by reading On keeps ~1/2, 1/3, 1/4 of the old light over the
+        next frames). Then ATN decides (coord pick: keep Off until seen in game). Owner: pds2_, then ATN
+        - [ ] Nit (brr_): rt_d3d12.hpp:757 conditional initializer without parentheses (CXX_STYLE) -> pds2_'s next branch.
+        Owner: pds2_
         pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
         scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
         R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
