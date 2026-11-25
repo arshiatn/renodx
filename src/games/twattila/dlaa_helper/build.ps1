@@ -24,6 +24,12 @@ Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_lights.h" -Vn RT_LIGHTS "$PSScrip
 Dxc -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_lights_omm.h" -Vn RT_LIGHTS_OMM "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
 Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_fog.h" -Vn RT_FOG "$PSScriptRoot\rt_fog.cs_6_5.hlsl"
 Dxc -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_fog_omm.h" -Vn RT_FOG_OMM "$PSScriptRoot\rt_fog.cs_6_5.hlsl"
+# The unified path tracing's fog streams (FOG_RESTIR, unified_pt.md U6): Volumetric ReSTIR's candidates with the sun
+# (main) and its reuse and shading (shade); the fog's builds above stay as they were.
+foreach ($entry in @(@('main', 'rt_fog_restir', 'RT_FOG_RESTIR'), @('shade', 'rt_fog_restir_shade', 'RT_FOG_RESTIR_SHADE'))) {
+  Dxc -nologo -T cs_6_5 -E $entry[0] -O3 -D FOG_RESTIR -Fh "$out\$($entry[1]).h" -Vn $entry[2] "$PSScriptRoot\rt_fog.cs_6_5.hlsl"
+  Dxc -nologo -T cs_6_9 -E $entry[0] -O3 -D FOG_RESTIR -D OPACITY_MICROMAPS -Fh "$out\$($entry[1])_omm.h" -Vn "$($entry[2])_OMM" "$PSScriptRoot\rt_fog.cs_6_5.hlsl"
+}
 Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_bounce.h" -Vn RT_BOUNCE "$PSScriptRoot\rt_bounce.cs_6_5.hlsl"
 Dxc -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_bounce_omm.h" -Vn RT_BOUNCE_OMM "$PSScriptRoot\rt_bounce.cs_6_5.hlsl"
 Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\rt_path.h" -Vn RT_PATH "$PSScriptRoot\rt_path.cs_6_5.hlsl"
