@@ -15891,6 +15891,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         0x32d93a0, 0xa4fdb0, 0xac3430, sqrtss inlining. 0 new starts (rides S-C #6 / #9; optional gc0 ~7 min). 4 ATN
         questions held. -> p5r_ REVIEW (Opus xHigh) STARTED 13:4x -> designs\pk5_design_review.md. ALL SIX 64-BIT CPU
         DESIGNS NOW WRITTEN; reviews running: p2r_, p6r_, p8r_, p9r_, p1r_, p5r_ (+ c8r_ re-check).
+        p5r_ REVIEW 16:1x: GO WITH CHANGES (hand-back p5r_review_handback.md): engine code right (2^32 formula model
+        0 mismatches for H and R). M1 R also holds the half 0x3009b90..0x3009c43; M2 start re-hash skips our own site
+        bytes (else 'changed' every start); M3 GameCode = value key in C8's SHADOW_MAP pattern (Off != refused); M4
+        T2 / T4 to the 32-bit part-11 standard (20 lanes, denormal edges, 16 MXCSR modes, page edges, whole loop). S2
+        all-or-nothing row, S3 near-page budget (PK5 last), S6 A1 sqrtf gate, S7 0xa4fdb0 site owned by C8 W4 (map
+        section 6 item 15), S9 / S10 gain wording. -> p5d_ FIX ROUND STARTED 16:1x. ALL SIX REVIEWS BACK; fix rounds
+        running: p1d_, p5d_, p8d_, p9d_; p6r_ re-check; p2d_ names.
         - [ ] vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md R2.9), before vMF S2:
         Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
         Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
