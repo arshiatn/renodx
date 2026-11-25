@@ -22,9 +22,10 @@
 // a light without noise that moves each frame, and helper106's fixed disk point a pixel was a fixed dither, black dots in
 // every penumbra (Pharaoh's campaign, its torches' disk a quarter of their reach).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_lights.h -Vn RT_LIGHTS; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_LIGHTS_OMM;
-// with -D LIGHTS_DI (RTXDI builds) rt_lights_di, Path-Traced Torch Light's (the tiles' members, the DI pixels' words).
+// with -D LIGHTS_DI (RTXDI builds) rt_lights_di, Path-Traced Torch Light's (the tiles' members, the DI pixels' words), with
+// TORCHES_IN_BOUNCE too rt_lights_di_bounce (only for Torch and Fire Shadows from the Light Bounce: DI wins there).
 // TORCH_IRRADIANCE (the PATH_REGIR builds' twins, rt_lights_torch / rt_lights_bounce_torch, and with LIGHTS_DI
-// rt_lights_di_torch): Torch Light in Path-Traced GI's T1 too, in builds of their own (in this one it took every
+// rt_lights_di_torch / rt_lights_di_bounce_torch): Torch Light in Path-Traced GI's T1 too, in builds of their own (in this one it took every
 // rt_lights 56 -> 64 registers, Nsight at 4K).
 #include "./rt_scene.hlsli"
 #include "./rt_camera.hlsli"
@@ -115,7 +116,9 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
   // LIGHT_RAYS_ALWAYS listed lights takes RTXDI's light of its listed lights (rt_di_shade): its word 0 (each listed light
   // dark in the game's shaders; the unlisted keep the game's), its history DI_PIXEL_WORD (the DI passes' mark), its torch
   // light left to the paths' own (T2). The others trace each reached light every frame (exact bits; Importance and Steady
-  // do not apply). Without the game's HDR state this frame (the sun texel's w not written yet) every pixel is exact.
+  // do not apply). Without the game's HDR state this frame (the sun texel's w not written yet) no pixel is DI. With Torch
+  // and Fire Shadows from the Light Bounce (rt_lights_di_bounce) the word 0 is the ratio 0 for the listed lights alike
+  // (rt_local_lights.hlsli: the unlisted keep the game's shadow maps); that bounce leaves these lights out.
   if (countbits(reached_slots) > LIGHT_RAYS_ALWAYS && DiShadedFrame()) {
     light_mask[id.xy] = 0u;
     light_history[parity_written][id.xy] = DI_PIXEL_WORD;
