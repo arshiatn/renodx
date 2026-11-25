@@ -16323,6 +16323,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> pdi5_ RESUMED 21:5x for the fix round: code now (S1, S3 coord policy: non-finite = dropped + visible to rec_scan,
         S4, S5, NITs, builds), GPU turn = item 2 of the order (M1, S2 cold arms + reflections row + timing-total, G5
         re-run + night3). Owner: pdi5_
+        pdi5_ FIX ROUND code DONE 22:04: 87cecd809 (S1 F32ToF16Nearest corrected, in rt_scene.hlsli), 2c1fdaa16 (S3 NaN
+        policy / S4 G5 merge test first / S5 G2 2nd function + HLSL nits), f370cd3bd (C++ nits); addon64 + addon32 +
+        helper built; DXIL: only the 12 StoreReservoir listings move (+ REUSE_TESTS-only listings). G4 grid SNORM-127;
+        shared octahedral fold NOT done (coord: after merge). GPU script ready (M1 all_modes + 17 plays + rec_compare /
+        rec_scan; S2 lab jobs 20-28 warm both arms + timing-total + G5 toggle + G4 reflections dump; G5 E4 + night3; G4
+        E4). M1 baseline = pdi3_'s tonight e52ec9e28 all_modes run (4cd4c6122 = HANDOFF-only on top of it), not 11-22.
+        WAITING for 'pdi5_ GPU go' (after pdi3_, ~00:20).
         - [ ] F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_trace.cs_6_5.hlsl:77
         ambient_history (-0.14..-0.20 %), rt_path.hlsli:1995 specular_accumulated (-0.33..-0.49 %), :1996 specular_meta,
         :1622 light_ratio; :1108 own_sky = one store, no drift. Remedy: store f16tof32(F32ToF16Nearest(x)) (the S1-fixed
