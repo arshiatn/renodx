@@ -385,6 +385,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ c ... | coord (audit), each file's owner
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
 - GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job ... | gtl_ (lab), next tooling slot pdi5_ GPU DONE 21:14 (last ses
+- GPU CHECK SPEED (ATN 11-25 ~21:5x: 'for nsight we check why x took y time; what ... | gsp_, then gtl_ / coord
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
 - Caesar's test build (Flag Wave export + heapfix.ini key append) -> ATN relays -> ... | ?
 - 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20 ... | ?
@@ -874,7 +875,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - bal3_ route-b cost numbers (after 'bal3_ resume') -> review (Opus xHigh) -> merg ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
-- pd5r_ STEP 5 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step5 ... | ?
+- F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_t ... | ?
 - PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row ... | ?
 - PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
@@ -3646,6 +3647,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         (step 3 merge blocker, RESUMED 21:2x) -> 2 pdi5_ leftovers (f16 all_modes_check + rec_scan, G4 timing-total
         row, G5 night3) -> 3 coord R2 -> R3 -> R4 Nsight smoke (~15 min) -> 4 pdi4c_ r2 chain -> 5 bal3_ lab_b jobs
         03-12 + all_modes_check -> 6 d11 replay self test on the 5090 (after d11i_'s fix round).
+      - [ ] GPU CHECK SPEED (ATN 11-25 ~21:5x: 'for nsight we check why x took y time; what about our GPU checks?').
+        Coord's first numbers (lab_phases.tsv, 11-25, 65 lab jobs, 3.76 GPU-h): measure 47 %, recording LOAD 37 % (405
+        loads x 12.2 s median, ~0.44 GB/s; about 6 resident starts + loads per job), lock give-ups 8 % (40 SLOW at 22.5 s),
+        resident_start 6.5 %; outside the lab pdi5_ waited ~85 min on the lock. gsp_ (Opus xHigh, read-only) STARTED
+        21:5x -> plan_1117\gpu_check_speed.md: ranked fixes with savings + validity gates (keep the recording loaded
+        across arms with a proven reset, faster load, FIFO + automatic hand-over, E4 reference cache, sample counts,
+        build / GPU scheduling); changes to tools in use only at a wave boundary. Owner: gsp_, then gtl_ / coord
       - [ ] CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO BUNDLING: 'don't bundle or
         repackage my mods with yours'; players get the engine fix / Flag Wave from his Steam / Nexus page (self-update).
         We don't: 32-bit heapfix = own use only; PerfFix 64 = optional, his package (port_plan.md install step 3); flag
@@ -16223,8 +16231,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         row ('timing': 'total') confirms total <= off; G5 opt-in; G2 test only. LEFT (pdi5_'s GPU turn, item 2 of the
         order): all_modes_check + rec_scan for 32fcc2f72, the G4 timing-total row, G5 6-texel night3. pdi5_ also ran
         gpu_lab -Stop 7 times 19:03-19:35 (T16) -> removed from pdi5_lab_br.ps1.
-        - [ ] pd5r_ STEP 5 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step5_review.md -> fix round ->
+        - [x] pd5r_ STEP 5 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step5_review.md -> fix round ->
         merge after step 3. Owner: pd5r_, pdi5_
+        pd5r_ GO WITH CHANGES 21:48 (30 min). M1 = gate not run: all_modes_check (new baseline) + rec_scan NaN / Inf 0
+        for 32fcc2f72 (the only player-DXIL change). S1 F32ToF16Nearest (rt_path.hlsli:876-881) picks the farther half
+        for NEGATIVE values (-0.5 x 1000 frames -> -0.988; -0 -> -6e-8) + inf into fast math >= 65504; branch only passes
+        >= 0 today -> corrected version (abs compare, early 0x7BFF), move to rt_scene.hlsli. S2 G4 E4 / cost confounded:
+        32 B recorded histories skipped by the compact player (rt_d3d12.hpp:1930-1934) -> G4 arm cold vs off warm; no
+        reflections row. S3 G4 hides NaN (NaN light -> 0, NaN W -> 4.29e9, inf -> 65408). S4 G5 scores neighbours the
+        merge then rejects (:1446-1462 vs :1482) -> on planes = Near + fetches (explains +0.11 ms). S5 G2 canonical step
+        inline -> 2nd function (R2.7). Checks out: the D3D11.3 3.2.2 cite; F32ToF16Nearest exact for >= 0, 65504 cap, NaN
+        kept, 8 ops; G2 = RTXDI pairwise MIS term by term; RGB9E5 / sqrt W to nearest, re-store stable; oct 8+8 mean 0.34
+        deg; v32 lift leaves unedited plays alone; only StoreReservoir builds change. G4 DEFAULT: yes after S2 rows, S3
+        policy, S1, new baselines.
+        -> pdi5_ RESUMED 21:5x for the fix round: code now (S1, S3 coord policy: non-finite = dropped + visible to rec_scan,
+        S4, S5, NITs, builds), GPU turn = item 2 of the order (M1, S2 cold arms + reflections row + timing-total, G5
+        re-run + night3). Owner: pdi5_
+        - [ ] F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_trace.cs_6_5.hlsl:77
+        ambient_history (-0.14..-0.20 %), rt_path.hlsli:1995 specular_accumulated (-0.33..-0.49 %), :1996 specular_meta,
+        :1622 light_ratio; :1108 own_sky = one store, no drift. Remedy: store f16tof32(F32ToF16Nearest(x)) (the S1-fixed
+        function). BUG FIX = always on; after steps 3 + 5 merge (rt_path.hlsli has both writers). Owner: coord (next
+        helper writer slot)
         - [ ] PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row from 'suspected' + add
         'run a rotation in the same session as its calibration' (next pitfall pass). Owner: coord
         - [x] PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ReGIR presample are
