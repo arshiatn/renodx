@@ -823,7 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
-- a64a1_ FIX ROUND SENT 04:4x (all of the above + forced-wanted-bit F7 case + forb ... | ?
+- a64a1r_ RE-CHECK SENT 05:1x (incl. whether RENODX_TW_PLUGIN_WANT belongs in rele ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15474,8 +15474,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         one release flag; plugin_rows vs rows_changed at game start; READY note when the bone-flush site is refused;
         LOADING reported as 'another version'; F7 end-of-run block check can't fail (nothing registers) + 5 of 6 notes
         shown in 0 states (design 17 done-when not met). Nits: 12 + 8.
-        - [ ] a64a1_ FIX ROUND SENT 04:4x (all of the above + forced-wanted-bit F7 case + forbidden log lines) ->
-        a64a1r_ re-check -> merge a64a1_lane -> build check -> coord runs: 32-bit S4-rotation trace
+        - [x] a64a1_ FIX ROUND DONE (hand-back attila64/a64a1_fix_round_handback.md): 35ddb39da + d227c46be. Rotation
+        fix kept on 32-bit (README + hand-back corrected: changes the kept call per frame and the first frame after a
+        gap); bone-flush trigger = object_motion's switch only (batched term back in C3); lookup moved into the link as
+        one std::atomic<Found> (release after block + Install, acquire reads), RowsOffered() read from the block each
+        time; READY note when any site is refused; LOADING -> WRONG_LOADER; one lock for Lookup / Update / Uninstall +
+        DETACHED state; short player-facing note texts; masks printed 0x3. F7 GPU 31 / 31 (+ plugin_unknown,
+        plugin_calls: test-only RENODX_TW_PLUGIN_WANT=3 forces rows, 63 guarded calls, drain under ReShade's real unload,
+        forbidden lines checked); all 6 notes shown in the a64 dump's lookup section; x86 dump = base except Build Date;
+        tw_unit_shadows x86 + amd64 PASS (7c drain after 50 ms); static_checks known 5; sweep 5 / 5. Not fixed: N9
+        object_motion internal read (no accessor; not its file), N12 teardown after a timed-out drain (design policy).
+        - [ ] a64a1r_ RE-CHECK SENT 05:1x (incl. whether RENODX_TW_PLUGIN_WANT belongs in release builds) -> merge
+        a64a1_lane -> build check -> coord runs: 32-bit S4-rotation trace
         (+ shadow_refresh=2), T1 smoke (attila64_log 2 sites applied + 'game started: 2 sites unchanged'; ReShade.log
         'engine plugin ready, rows offered 3'), C2 (rows wanted 2 / 3; VIEW_DRAW first-call thread = present thread).
         A3 Smoke: ATN's 4 -ReShade lines (drop '-ReShade -Warp': ReShade skips WARP) + check the 'N code ranges' line
