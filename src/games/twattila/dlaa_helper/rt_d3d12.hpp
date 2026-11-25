@@ -1968,6 +1968,11 @@ class RtScene12 {
     for (const RecordedResource& resource : RecordedResources()) {
       const auto found = resources.find(resource.name);
       if (found == resources.end() || !*resource.member || list == nullptr) continue;
+      // A ReSTIR history recorded in the other reservoir layout (RT_RESERVOIR_COMPACT): left out, its sets empty (M 0).
+      if ((resource.history == HISTORY_REUSE || resource.history == HISTORY_REFLECT) && found->second.size() >= sizeof(recording::TextureHeader)
+          && reinterpret_cast<const recording::TextureHeader*>(found->second.data())->format != static_cast<uint32_t>((*resource.member)->GetDesc().Format)) {
+        continue;
+      }
       if (!UploadRecorded(list, resource.name, resource.member->Get(), resource.state, found->second, &uploads, why)) break;
       batch_bytes += found->second.size();
       if (batch_bytes > (512ull << 20) && !flush()) break;
@@ -6223,15 +6228,15 @@ class RtScene12 {
         // surface_origin, surface_normal: this frame's only; ~265 MB at 4K).
         if (reuse_samples_[0]) return true;
         for (UINT set = 0; set < 2; ++set) {
-          if (!Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reuse_samples_[set]) || !Texture(DXGI_FORMAT_R32G32B32A32_UINT, &reuse_data_[set])
+          if (!Texture(RESERVOIR_POINTS, &reuse_samples_[set]) || !Texture(RESERVOIR_DATA, &reuse_data_[set])
               || !Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reuse_surface_[set])) {
             reuse_samples_ = {};
             reuse_data_ = {};
             reuse_surface_ = {};
             return false;
           }
-          Written(reuse_samples_[set].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, REUSE_SAMPLES + set);
-          Written(reuse_data_[set].Get(), DXGI_FORMAT_R32G32B32A32_UINT, REUSE_DATA + set);
+          Written(reuse_samples_[set].Get(), RESERVOIR_POINTS, REUSE_SAMPLES + set);
+          Written(reuse_data_[set].Get(), RESERVOIR_DATA, REUSE_DATA + set);
         }
         Written(reuse_surface_[0].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, SURFACE_ORIGIN);
         Written(reuse_surface_[1].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, SURFACE_NORMAL);
@@ -6265,14 +6270,14 @@ class RtScene12 {
         // Own ReSTIR's two sets (half the render pixels: ~130 MB at 4K).
         if (reflect_samples_[0]) return true;
         for (UINT set = 0; set < 2; ++set) {
-          if (!Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reflect_samples_[set], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 2)
-              || !Texture(DXGI_FORMAT_R32G32B32A32_UINT, &reflect_data_[set], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 2)) {
+          if (!Texture(RESERVOIR_POINTS, &reflect_samples_[set], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 2)
+              || !Texture(RESERVOIR_DATA, &reflect_data_[set], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 2)) {
             reflect_samples_ = {};
             reflect_data_ = {};
             return false;
           }
-          Written(reflect_samples_[set].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, REFLECT_SAMPLES + set);
-          Written(reflect_data_[set].Get(), DXGI_FORMAT_R32G32B32A32_UINT, REFLECT_DATA + set);
+          Written(reflect_samples_[set].Get(), RESERVOIR_POINTS, REFLECT_SAMPLES + set);
+          Written(reflect_data_[set].Get(), RESERVOIR_DATA, REFLECT_DATA + set);
         }
         reflect_frame_ = UINT32_MAX;
         return true;
@@ -10727,6 +10732,9 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> reuse_rtxdi_pipeline_;       // its reuse (REUSE_RTXDI)
   ComPtr<ID3D12Resource> rtxdi_reservoirs_;  // its reservoirs (RTXDI_GI_RESERVOIRS)
   ComPtr<ID3D12Resource> rtxdi_offsets_;     // its neighbour offsets (RTXDI_OFFSETS)
+  // ReSTIR GI's and Own ReSTIR's reservoir formats (rt_path.hlsli ReservoirPoint / ReservoirData; G4: RT_RESERVOIR_COMPACT).
+  static constexpr DXGI_FORMAT RESERVOIR_POINTS = RT_RESERVOIR_COMPACT ? DXGI_FORMAT_R32G32B32A32_UINT : DXGI_FORMAT_R32G32B32A32_FLOAT;
+  static constexpr DXGI_FORMAT RESERVOIR_DATA = RT_RESERVOIR_COMPACT ? DXGI_FORMAT_R32G32_UINT : DXGI_FORMAT_R32G32B32A32_UINT;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_surface_;  // the bounce texels' rays' origins and normals (SURFACE_ORIGIN, SURFACE_NORMAL)
