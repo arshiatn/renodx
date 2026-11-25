@@ -829,7 +829,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REFLECTION REUSE 'FROM ReSTIR GI' FIX (rt_path.hlsli ReflectPixel, PATH_REFLECT_ ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
-- PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ... | ?
+- PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
 - UNIFIED U4b (in-lobe ESS report, sizes route (c); scratch only): u4b_ (Opus xHig ... | ?
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
@@ -15841,9 +15841,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner map addition 17:xx: rt_reference.hlsli RefRouteIncoming's light count -> pdi3_ ((T2 on) ? 128u : 32u, so
         E4 night40 is not biased by construction); the GI contest's RAB block (REUSE_RTXDI / _PACK) stays untouched
         (no T2 define in the contest builds).
-        - [ ] PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ReGIR presample are
+        - [x] PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ReGIR presample are
         pushed; then a 4c implementer starts on that commit (new DI pass files, LIGHTS_DI functions, the harness's
         synthetic light surface) and merges after step 3. Owner: coord (start at the checkpoint)
+        pdi3_ CHECKPOINT (evening) f23d665ca on origin/pdi3_step3: rt_rtxdi_bridge.hlsli + rt_regir_presample, T1 / T2
+        plumbing, build.ps1; helper plain / rec / ref / probe exit 0, no warnings; gates running. Bridge API:
+        RabSampler(uint4 lanes), RegirLights(), RAB_Surface{origin, normal}, RAB_LightInfo{index}, cells u76
+        (RTXDI_RIS_BUFFER), ReGIR_Parameters in b4 under PATH_REGIR.
+        - [ ] PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) STARTED: new DI files
+        (rt_di_initial.hlsli + thin kernel, rt_di_temporal / spatial / shade), LIGHTS_DI in rt_lights (new code),
+        new bridge functions appended, DI resources / rt_di_ok in rt_d3d12.hpp, DI build lines, harness light
+        surface; slots after pdi3_'s (pdi5_ adds none); rebases on pdi3_ fixes; real-frame gates need pdi5_'s v32
+        lift (local cherry-pick only); 29-light cost first (<= 1.2 ms); Callisto C3 seam kept (one target / one shade
+        function). -> review -> fix -> merge after step 3. Owner: pdi4c_
         ATN 11-25 evening 'Yes, start both' (unified PT pieces that need no PT DI):
         - [ ] UNIFIED U4b (in-lobe ESS report, sizes route (c); scratch only): u4b_ (Opus xHigh) STARTED ->
         designs\u4b_ess_report.md. Owner: u4b_
@@ -15873,6 +15883,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         Forge message -> C1 new files now (callisto_diffuse.h / .hlsli, test/tw_callisto_diffuse) -> C2 receivers
         after step 3 -> C3 in / after 4c -> C4 64-bit rows -> C5 raster. Own fit only on RGL (CC0); MERL research-only.
         -> cdr_ REVIEW (Opus xHigh) STARTED 18:xx -> designs\callisto_diffuse_review.md.
+        FORGE (via ATN, evening) on the fixed set: old games (and UE 5.3.2's default lit) have no material class /
+        ID (Lambert + GGX for all); Callisto's engine looks up per-material classes; 'AC Shadows does the same: you
+        can do instanceData -> materialID'. No numbers for A / V16 / V40. cdr_ told: weigh a per-class route (class
+        from our capture's shader hashes into instance data, knob set per class; fit source RGL only), one fixed set
+        stays default / fallback, class table maybe a later step. Owner: cdr_
         - [ ] CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.05) / V40 + a joint fit with
         the game's specular held fixed; and what his 'Callisto full' included, his error metric, the smooth-terminator
         mask's unit. Owner: ATN
@@ -15915,6 +15930,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         perffix_src\); names only, nothing opened. -> rtpr_ REVIEW (Opus xHigh) STARTED -> rt_port_64_review.md.
         - [ ] rtp_ QUESTIONS (rtp_'s pick first): R1 census trace now (yes); helper staged in our test run folder (yes);
         lowdef on R1's data; recordings on D: (yes); shadow refresh 2 pulsing: fix in the add-on. Owner: ATN after rtpr_
+        ATN 11-25 evening: 'Sounds good'; game runs R1 -> R2 -> R3 one at a time, AFTER PT DI (steps 3 / 5 / 4c /
+        4d). R1 is not needed sooner: it only feeds 4b, which waits for RT on the port (R2) anyway.
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
