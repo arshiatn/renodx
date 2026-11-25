@@ -374,7 +374,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, lin ... | ?
 - NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
 - gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
-- ATN: the deadline softening 'doesn't make sense' (a stop forces us to find the c ... | ?
+- REVIEW ~12-09 (ATN: 'after a while we decide if we even need the 2x stop'): coun ... | ?
 - (2) DEFAULT CAP: a command without a price history runs under budget.py watch's ... | gtb_
 - ATN: PROPOSED block rows: T16 (block -Stop until gtl_'s owner fix; coord's view: ... | ?
 - CRASHES CLOSED WITHOUT A PITFALL ROW (pfx_'s list): F31 / ecr_ exit race ('the d ... | ?
@@ -3525,11 +3525,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 11-25 ~20:3x: 'only do a strict gate for nsight only' -> gte_ told: ENFORCE = Nsight rows only (ngfx rules,
         Nsight trace / capture / reference deletes, Nsight GPU-lock rows, Nsight rule-line rows); every other row incl.
         the other block rows + protected files LOGS only. gte_ lists the exact row ids in its hand-back.
-        - [ ] ATN: the deadline softening 'doesn't make sense' (a stop forces us to find the cause). Coord's proposal:
+        - [x] ATN: the deadline softening 'doesn't make sense' (a stop forces us to find the cause). Coord's proposal:
         at 2x the agent STOPS AT A SAFE POINT (finish the running command, free the GPU lock, commit / resume note,
         hand back with the cause), never a kill; the coord resumes it (SendMessage keeps its context) only with a
         written reason in agent_times.tsv; every overrun gets a cause (estimate -> new number, tool -> fix + pitfall
         row, lock wait -> gtl_); GPU-lock waits counted apart; single commands get a hard timeout. Owner: ATN, coord
+        ATN 11-25 ~20:4x: 'Let's do your suggestion' -> skill game-port-method 'Time budgets' rewritten, memory
+        feedback_forge_budgets updated, agent_times.tsv got wait_min + overrun columns, running agents told.
+        - [ ] REVIEW ~12-09 (ATN: 'after a while we decide if we even need the 2x stop'): count the stops in
+        agent_times.tsv overrun column: how many found a real problem (tool / estimate / lock) vs 'real progress,
+        resumed'. Mostly resumed + causes fixed -> loosen (3x) or keep only as a backstop; still finding problems ->
+        keep. Owner: coord, ATN
       - [x] FORGE'S 5 (ATN 11-25 21:xx 'Yes, all 5'): (1) briefs cite tools\tw\round_notes\agent_times.tsv (seeded:
         nsr_, cdr_, pdi3_, pdi5_, pdi4c_, bal3_) + a 2x deadline; past it the agent stops and reports; (2) no untimed
         commands; (3) a time per step in every hand-back; (4) a crash closes only with producer -> consumer chain +
