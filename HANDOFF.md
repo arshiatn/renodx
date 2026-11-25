@@ -15935,6 +15935,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         (generator rebuilds it) -> CURATED list + refusal < 5 + static_assert; RS2 reuse addon.cpp's version read +
         a 'Sol Invictus' check; RS3 node+0x128 confirmed, cost per capacity, hysteresis per node, vfxauto paired
         in-batch. -> p9d_ LAST TOUCH (+ ATN's live-switch answer).
+        p9d_ LAST TOUCH DONE (hand-back p9d_lasttouch_handback.md; pk9 784 lines): live row 'Effects on All Cores
+        (Experimental)' Off / Automatic / On, default Off, our plugin the only writer of the flag at the walk entry,
+        shown only with the hook in + the live slot verdict OK + Sol's 5 guards; Automatic = form 1 (32-bit
+        thresholds, TABLE_SLOT_LIMIT 4096); kinds {vfx, ep1cvfx} + vfxauto; EFFECT_GUARDS curated list + static_assert;
+        loader gate reuses ModuleFileVersion + 'Sol Invictus'. PK9 DESIGN = GO. Sol note ready (designs\sol_note_pk9.txt,
+        coord added one line asking Sol's OK for the flag write) -> sent to ATN to paste; PK5 upload tip + C10 = a
+        follow-up after C4. Coord answers: ep1cvfx + vfxauto once the code is in = yes (+14 min); the conditional WPR
+        data start runs without asking (trace runs need no ask); default after the soak = ATN later.
         - [x] p1d_ PK1-64 UPLOADS DESIGN DONE 13:3x (designs\pk1_uploads_64.md, hand-back p1d_design_handback.md): FCU
         default On on the port only after an offline T-test (tw_injection_buffers case 8 -Hardware; bytes identical;
         E +0.35..+1 % fps; ~540 ReShade pushes / frame gone); FDW hidden + forced off on the port (Sol's device never
