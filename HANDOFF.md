@@ -822,7 +822,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
 - a64pir_ (Opus xHigh) PROBE R1 REVIEW STARTED 00:5x -> probe\probe_review.md -> f ... | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
-- a64ab_ -ReShade pass SENT 00:3x (design 9 / 10 / 10.1, exact switch names, offli ... | ?
+- ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
+- a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
 - a64p1_ (Opus High, worktree, reset onto atn-mods) G1 + P1 STARTED 00:3x -> R1 re ... | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
@@ -846,7 +847,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- GATE RUN 3 STARTED 00:49 in a quiet window (coord holds quiet_run.lock: no new b ... | ?
+- mrgb_ (Opus Medium) MERGED BUILD CHECK STARTED: every changed add-on (twattila a ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
 - PARKED (ATN hold): coord's 5090 window gate S1a-D: items d then t (lines in the ... | ?
@@ -15320,8 +15321,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         ... -Exe64Sha a75c1b8a63a267d6 (or -Package * wildcard) - ATN adds them when A3 is near.
         - [ ] a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00:3x: steps 0-6 -> R1 xHigh
         review -> merge -> PA1 plugin add-on lane -> A3 Smoke (ATN's -ReShade lines).
-        - [ ] a64ab_ -ReShade pass SENT 00:3x (design 9 / 10 / 10.1, exact switch names, offline self-tests only); the
-        -Probe det|full / -Wpr pass after a64pi_ lands.
+        - [x] a64ab_ -ReShade PASS DONE 01:0x (hand-back attila64/study_1124/a64ab_reshade_pass_handback.md): own run
+        folders run_rs_c64 / run_rs_b64p / run_rs_pkg_<sha16>; fresh ReShade.ini (TutorialProgress=4 only); env per
+        10.1 (RENODX_TW_SET=0:AntiAliasing=0;140:Time Each Pass (One Frame)=1); pictures only from zz_capture; ~4 min a
+        start (-Warp: menu only, ~3 min); -Analyze prints the Smoke checks. Dry runs exit 3 ONLY on the 3 missing staged
+        files in testbin\attila64_present\a3_smoke\ (dxgi.dll = ReShade64 6.8.0.2155 from reshade680_amd64, the
+        addon64, zz_capture) -> a64b_ told to stage them at its end. Bad switch mixes exit 1; window-1 arms unchanged.
+        Finding: design 9 item 4 - 3 hashes are drawn on 32-bit but not in replaced32_ref.tsv -> checked as 'drawn'.
+        - [ ] ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-ReShade Smoke'; optional
+        -DryRun twins; -Package * wildcard for a rebuilt package).
+        - [ ] a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan.md).
         - [x] a64pl_ PLUGIN DESIGN DONE (hand-back attila64/a64pl_design_handback.md; designs/plugin_design.md, PRIVATE):
         load order Sol -> perffix64 -> probe -> renodx_attila64.dll -> ctors -> game_started; all writes once at init
         (no thread pausing); identity = build-id note + api_version >= 1; each site checks bytes +-16 vs offline ELF
@@ -15626,8 +15635,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         idle release' longest 83.4 ms vs < 75 (tw_rt_harness.cpp:4682). Pre / post commits unchanged since run 1 (both
         57.4 ms there); this run pre 70.7 ms too, while a64b_'s TW add-on build ran (slot2 from 00:34) -> load noise,
         not the change (E until run 3).
-        - [ ] GATE RUN 3 STARTED 00:49 in a quiet window (coord holds quiet_run.lock: no new builds; CPU 2 % at start)
-        -> s4a-release passes: one ho_gbf_g23 merge -> pds2_; fails again: root-cause (pre vs post vs run 1).
+        - [x] GATE RUN 3 CLEAN (gbf\runs\20261125_004934_33508; quiet_run.lock held by coord 00:49 -> freed after): s4a
+        debug + release PASS (idle-release answer 55.2 / 59.9 ms, bar < 75; run 2's 83.4 = build load), jobs 1-3 / 5-7
+        PASS, g23-t3 / t4a / t4b PASS, job4 OPEN as before (base fails the same checks). a64ab_ ran 2 light -Analyze
+        runs 00:54-00:56 inside the window (python only); S4a passed anyway, so no re-check.
+        - [x] MERGED LOCALLY 01:0x: 1c2baf43b Merge ho_gbf_g23 (conflict only in test/tw_gpu_completion/tests.cpp:
+        ho_gbf_g23's side; atn-mods' 7890b4dde = its cd16da81c + the rescue cases) + 807dbe07c Merge ho_g23 (clean).
+        32 files, 11 games' DLSS bridges.
+        - [ ] mrgb_ (Opus Medium) MERGED BUILD CHECK STARTED: every changed add-on (twattila addon64 + addon32 + one
+        twattila-based x86 add-on), helper, tw_gpu_completion + tw_helper_lifetime x86 / amd64 -> PUSH OK: coord pushes
+        atn-mods (merges + HANDOFF) -> pds2_ (PT DI step 2) starts; a64b_ / a64p1_ rebase onto it at their merge.
         ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
         continue?' -> YES: no new agents except a64ab_'s fix round for a64abr_'s review; running ones (s3fr_, a64abr_,
         a64p0r_, a64bd_, a64pl_) finish; then window 1 stage A on a quiet CPU (no builds); then the G23 gate, s3f_'s
