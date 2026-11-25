@@ -53,6 +53,7 @@ struct AaSliders {
   float taa_strength = 0.9f;
   float taa_motion = 0.f;  // Attila's (graphics_page.hpp): TAA's: the camera's motion, or the objects' own too
   float sharpening = 0.25f;
+  float fsr_sharpness = 0.f;  // FSR's RCAS, 0-1 (0: off)
   float dlaa_preset = 2.f;  // K, M, L
   float dlss_mode = 0.f;       // DLAA's scale: DLSS_MODE_SCALES, the last Custom (render_scale)
   float render_scale = 100.f;  // Custom, in percent (below 100: DLSS)
@@ -67,7 +68,7 @@ struct AaSliders {
   float frame_debug_view = 0.f;    // frame generation's: off, the HUD-less image, the UI layer
   float texture_lod_bias = 2.f;    // DLSS's: off, matched, sharper, sharpest
   float object_motion = 1.f;       // DLAA's: units', props' and cloth's own motion
-  float debug_view = 0.f;          // DLAA's: off, motion vectors, object motion, no camera motion
+  float debug_view = 0.f;          // DLAA's: off, motion vectors, object motion, no camera motion, warp error
 };
 
 inline screen_space_shadows::Settings SssSettings(const SssSliders& sliders) {
@@ -109,17 +110,22 @@ inline float RenderScale(const AaSliders& sliders) {
 }
 
 inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
+  // DLSS could not start on this GPU (no nvngx_dlss.dll, NGX, the driver: the helper's answer, latched until the game
+  // restarts): FSR in its place, not saved, so DLSS comes back once it can.
+  const bool dlss_refused = sliders.method == 5.f && dlaa_bridge::DlssRefused();
   return {
-      .method = static_cast<twattila::anti_aliasing::Method>(std::clamp(static_cast<int>(sliders.method), 0, 7)),
+      .method = (dlss_refused ? twattila::anti_aliasing::Method::FSR
+                              : static_cast<twattila::anti_aliasing::Method>(std::clamp(static_cast<int>(sliders.method), 0, 7))),
       .quality = static_cast<int>(sliders.quality),
       .extra_sharpness = (sliders.extra_sharpness != 0.f),
       .history_weight = sliders.taa_strength,
       .sharpening = sliders.sharpening,
+      .fsr_sharpness = std::clamp(sliders.fsr_sharpness, 0.f, 1.f),
       // NVSDK_NGX_DLSS_Hint_Render_Preset K, M, L.
       .dlaa_preset = std::array<uint32_t, 3>{11u, 13u, 12u}[std::clamp(static_cast<int>(sliders.dlaa_preset), 0, 2)],
       .render_scale = RenderScale(sliders),
       .effects_at_output = (sliders.effects_at_output != 0.f),
-      .ray_reconstruction = sliders.method == 5.f && sliders.ray_reconstruction != 0.f,
+      .ray_reconstruction = sliders.method == 5.f && sliders.ray_reconstruction != 0.f && !dlss_refused,
       // NVSDK_NGX_RayReconstruction_Hint_Render_Preset Default, D, E, F.
       .ray_reconstruction_preset = std::array<uint32_t, 5>{0u, 0u, 4u, 5u, 6u}[std::clamp(static_cast<int>(sliders.ray_reconstruction), 0, 4)],
       // 2-6 frames shown per rendered frame, 1 Dynamic (frame_generation.hpp), 0 off.
@@ -135,7 +141,7 @@ inline anti_aliasing::Settings AaSettings(const AaSliders& sliders) {
       .frame_debug_view = static_cast<uint32_t>(std::clamp(sliders.frame_debug_view, 0.f, 2.f)),
       .texture_lod_bias = std::clamp(static_cast<int>(sliders.texture_lod_bias), 0, 3),
       .object_motion = ((sliders.method == 4.f ? sliders.taa_motion : sliders.object_motion) != 0.f),
-      .debug_view = static_cast<uint32_t>(std::clamp(sliders.debug_view, 0.f, 3.f)),
+      .debug_view = static_cast<uint32_t>(std::clamp(sliders.debug_view, 0.f, 4.f)),
   };
 }
 
@@ -420,6 +426,19 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
                                             .format = "%.2f",
                                             .is_enabled = [sliders] { return sliders->method == 3.f || sliders->method == 4.f; },
                                         },
+                                        // Its own row at 0: the TAA row's 0.25 default would sharpen every AMD and Intel player.
+                                        new renodx::utils::settings::Setting{
+                                            .key = "AntiAliasingFsrSharpening",
+                                            .binding = &sliders->fsr_sharpness,
+                                            .default_value = 0.f,
+                                            .label = "FSR Sharpening",
+                                            .section = AA_SECTION,
+                                            .tooltip = "Sharpens FSR's image (0: off).",
+                                            .max = 1.f,
+                                            .format = "%.2f",
+                                            // FSR chosen, or running in DLSS's place (AaSettings).
+                                            .is_visible = [sliders] { return AaSettings(*sliders).method == anti_aliasing::Method::FSR; },
+                                        },
                                         new renodx::utils::settings::Setting{
                                             .key = "AntiAliasingDlaaPreset",
                                             .binding = &sliders->dlaa_preset,
@@ -506,9 +525,10 @@ inline void AppendAa(std::vector<renodx::utils::settings::Setting*>* settings, A
         .section = AA_SECTION,
         .tooltip = render_scale ? "Motion Vectors: the motion DLSS gets (colour: direction, brighter: faster).\n"
                                   "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"
-                                  "No Camera Motion: DLSS gets the objects' motion alone."
+                                  "No Camera Motion: DLSS gets the objects' motion alone.\n"
+                                  "Warp Error: where last frame, moved along the motion, misses this one (orange)."
                                 : "Motion Vectors: the motion DLSS gets (colour: direction, brighter: faster).",
-        .labels = render_scale ? std::vector<std::string>{"Off", "Motion Vectors", "Object Motion", "No Camera Motion"}
+        .labels = render_scale ? std::vector<std::string>{"Off", "Motion Vectors", "Object Motion", "No Camera Motion", "Warp Error"}
                                : std::vector<std::string>{"Off", "Motion Vectors"},
         .is_enabled = [sliders] { return Upscaling(*sliders); },
     });

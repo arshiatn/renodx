@@ -391,9 +391,10 @@ inline bool PrepareBridge(ID3D11Device* device, UINT width, UINT height) {
     const std::shared_lock lock(internal::state.mutex);
     output = internal::OutputSize(width, height);
   }
-  const uint32_t upscaler = (sliders.method >= 6.f) ? static_cast<uint32_t>(std::min(sliders.method, 7.f)) - 5u : twattila::dlaa_bridge::UPSCALER_DLSS;
-  return twattila::dlaa_bridge::Prepare(device, output[0], output[1], false, rays, twattila::frame_generation::Format(), false, upscaler,
-                                        twattila::feature_settings::AaSettings(sliders).frame_backend);
+  // AaSettings' method: FSR in DLSS's place when DLSS could not start on this GPU.
+  const auto aa = twattila::feature_settings::AaSettings(sliders);
+  return twattila::dlaa_bridge::Prepare(device, output[0], output[1], false, rays, twattila::frame_generation::Format(), false,
+                                        twattila::anti_aliasing::UpscalerOf(aa.method), aa.frame_backend);
 }
 
 // The kept scene depth's size (the render's; 0 before one was kept).
@@ -563,8 +564,9 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   // DLSS's presets L and M crush dark tones on a linear frame: its square root for them (Attila's c243f7c4). FSR and XeSS
   // take the frame as it is, and the camera's near, far and field of view from its projection (the game's rows, as the
   // helper reads them; without the jitter).
-  const bool dlss = sliders.method == 5.f;
-  const uint32_t preset = twattila::feature_settings::AaSettings(sliders).dlaa_preset;
+  const auto aa = twattila::feature_settings::AaSettings(sliders);
+  const bool dlss = aa.method == twattila::anti_aliasing::Method::DLAA;
+  const uint32_t preset = aa.dlaa_preset;
   const bool square_root = dlss && (preset == 12u || preset == 13u);
   // aa_dlaa_prepare at the tone mapper's size, aa_dlaa_finish at the output's (the input size its Debug View's).
   const auto update_settings = [&](UINT pass_width, UINT pass_height) {
@@ -617,7 +619,7 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
   native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
   bind(nullptr, {}, {});
   const bool resolved = twattila::dlaa_bridge::Evaluate(native, width, height, camera.jitter[0], -camera.jitter[1], !continued, preset,
-                                                        nullptr, (dlss ? nullptr : &camera.projection));
+                                                        nullptr, (dlss ? nullptr : &camera.projection), {.fsr_sharpness = aa.fsr_sharpness});
   const bool upscaled = output[0] != width;
   if (resolved) {
     update_settings(output[0], output[1]);

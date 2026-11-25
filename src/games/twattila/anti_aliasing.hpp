@@ -79,6 +79,11 @@ enum class Method : uint8_t {
 // An upscaler in the helper: the same frame path, textures, jitter, render scale and object motion for all.
 constexpr bool Upscales(Method method) { return method >= Method::DLAA; }
 
+// The bridge's upscaler (dlaa_bridge.h's UPSCALER_*) for an upscaling method; DLSS for the others.
+constexpr uint32_t UpscalerOf(Method method) {
+  return Upscales(method) ? static_cast<uint32_t>(method) - static_cast<uint32_t>(Method::DLAA) : dlaa_bridge::UPSCALER_DLSS;
+}
+
 // The object motion's types under their old names (the addons' MOTION_SHADERS).
 using object_motion::MotionKind;
 using object_motion::MotionShader;
@@ -90,6 +95,7 @@ struct Settings {
   bool extra_sharpness = false;  // CMAA2's
   float history_weight = 0.9f;   // TAA: the history's share each frame
   float sharpening = 0.25f;      // TAA, SMAA T2x
+  float fsr_sharpness = 0.f;     // FSR's RCAS, 0-1 (0: off)
   uint32_t dlaa_preset = 0;      // DLAA: NVSDK_NGX_DLSS_Hint_Render_Preset (0: NVIDIA's)
   float render_scale = 1.f;      // DLAA below 1: DLSS (the 3D image drawn at this fraction of the display's size)
   bool effects_at_output = true;  // DLSS: the effects' resolutions follow the render scale (frame_history::effect_share)
@@ -115,7 +121,7 @@ struct Settings {
   // (object_motion.hpp redraws them); off, the camera's alone.
   bool object_motion = true;
   // DLAA / DLSS's Debug View: 0 off, 1 the motion NVIDIA gets, 2 the objects' own (aa_dlaa_finish), 3 no camera motion
-  // (the objects' alone: aa_dlaa_prepare).
+  // (the objects' alone: aa_dlaa_prepare), 4 the warp error (last frame's input moved along the motion, minus this one's).
   uint32_t debug_view = 0;
   // The frame's gamma (frame_gamma.hlsli TW_FRAME_GAMMA): 2.2, DLAA's and CMAA2's passes decode and encode at it (aa.hlsli
   // AaFrameGamma22: the frame's own curve with Gamma Correction on); 2, their 2.0.
@@ -205,7 +211,7 @@ constexpr std::array<std::array<float, 4>, 4> SMAA_PRESETS = {{
 // CMAA2's presets' edge thresholds, low to ultra.
 constexpr std::array<float, 4> CMAA2_THRESHOLDS = {0.15f, 0.1f, 0.07f, 0.05f};
 constexpr UINT UAV_COUNT = 8;  // CMAA2's u0-u7
-constexpr UINT SRV_COUNT = 7;  // TAA's resolve, DLAA's Debug View: t0-t6
+constexpr UINT SRV_COUNT = 8;  // TAA's resolve, DLAA's Debug View: t0-t7
 
 struct DeviceObjects {
   ComPtr<ID3D11Device> device;
@@ -244,6 +250,9 @@ struct DeviceObjects {
   ComPtr<ID3D11ShaderResourceView> frame_srv;
   ComPtr<ID3D11Texture2D> result;
   ComPtr<ID3D11UnorderedAccessView> result_uav;
+  // The Debug View's Warp Error: last frame's input (as `color`), made and copied only while that view is on.
+  ComPtr<ID3D11Texture2D> warp_history;
+  ComPtr<ID3D11ShaderResourceView> warp_history_srv;
   ComPtr<ID3D11UnorderedAccessView> smaa_edges_uav;
   ComPtr<ID3D11ShaderResourceView> smaa_edges_srv;
   ComPtr<ID3D11UnorderedAccessView> smaa_weights_uav;
@@ -782,6 +791,8 @@ inline void ReleaseStorage() {
   objects.frame_srv.Reset();
   objects.result.Reset();
   objects.result_uav.Reset();
+  objects.warp_history.Reset();
+  objects.warp_history_srv.Reset();
   objects.smaa_edges_uav.Reset();
   objects.smaa_edges_srv.Reset();
   objects.smaa_weights_uav.Reset();
@@ -1082,7 +1093,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
         && !dlaa_bridge::Prepare(device.Get(), objects.width, objects.height,
                                  runtime.settings.ray_reconstruction || runtime.settings.ray_traced_guides, runtime.settings.ray_tracing,
                                  frame_generation::Format(), runtime.settings.ray_traced_reflections,
-                                 static_cast<uint32_t>(method) - static_cast<uint32_t>(Method::DLAA), runtime.settings.frame_backend)) {
+                                 UpscalerOf(method), runtime.settings.frame_backend)) {
       return;
     }
     continued = (objects.history_valid || Upscales(method)) && runtime.applied_frame + 1 == runtime.frame
@@ -1283,15 +1294,37 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
         }
       }
     }
+    // DLSS preset K (NVSDK_NGX_DLSS_Hint_Render_Preset_K, 11) reads an exposure: 1 for this input, the tone mapper's output
+    // (NVIDIA's guide 3.10 prefers it to AutoExposure). An A/B behind RENODX_TW_TEST_DLSS_EXPOSURE until it is measured;
+    // 0: AutoExposure, as before.
+    static const bool exposure_test = GetEnvironmentVariableW(L"RENODX_TW_TEST_DLSS_EXPOSURE", nullptr, 0) != 0;
     // The camera's jitter (y up) as it moves the picture (y down), as TAA's.
-    resolved = dlaa_bridge::Evaluate(native, input_width, input_height, runtime.jitter[0], -runtime.jitter[1], !continued,
-                                     runtime.settings.dlaa_preset, reconstruct ? &reconstruction : nullptr,
-                                     (method != Method::DLAA ? &reconstruction.view_to_clip : nullptr));
+    resolved = dlaa_bridge::Evaluate(
+        native, input_width, input_height, runtime.jitter[0], -runtime.jitter[1], !continued, runtime.settings.dlaa_preset,
+        reconstruct ? &reconstruction : nullptr, (method != Method::DLAA ? &reconstruction.view_to_clip : nullptr),
+        {.exposure = ((exposure_test && method == Method::DLAA && !reconstruct && runtime.settings.dlaa_preset == 11u) ? 1.f : 0.f),
+         .fsr_sharpness = runtime.settings.fsr_sharpness});
+    // The Debug View's Warp Error: last frame's input, its copy made at the view's first frame (that frame compares with
+    // nothing) and let go when it is turned off.
+    if (runtime.settings.debug_view != 4u) {
+      objects.warp_history.Reset();
+      objects.warp_history_srv.Reset();
+    } else if (!objects.warp_history) {
+      D3D11_TEXTURE2D_DESC history_desc = {};
+      objects.color->GetDesc(&history_desc);
+      D3D11_SHADER_RESOURCE_VIEW_DESC history_view = {};
+      objects.color_srv->GetDesc(&history_view);
+      if (FAILED(device->CreateTexture2D(&history_desc, nullptr, objects.warp_history.GetAddressOf()))
+          || FAILED(device->CreateShaderResourceView(objects.warp_history.Get(), &history_view, objects.warp_history_srv.GetAddressOf()))) {
+        objects.warp_history.Reset();
+        objects.warp_history_srv.Reset();
+      }
+    }
     if (resolved) {
       bind(objects.dlaa_finish.Get(),
            {dlaa_bridge::bridge.output.srv.Get(), frame_view, dlaa_bridge::bridge.motion.srv.Get(),
             object_motion_views.redrawn.Get(), depth_view, object_motion_views.drawn_motion.Get(),
-            object_motion_views.drawn_depth.Get()},
+            object_motion_views.drawn_depth.Get(), objects.warp_history_srv.Get()},
            {objects.result_uav.Get()});
       native->Dispatch(groups_x, groups_y, 1);
     }
@@ -1324,6 +1357,10 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     if (resolved) runtime.upscaled_frame = runtime.frame;
   }
   bind(nullptr, {}, {});
+  // This frame's input (the target still holds it) for the next frame's Warp Error.
+  if (objects.warp_history) {
+    native->CopyResource(objects.warp_history.Get(), target);
+  }
   if (resolved) native->CopyResource(target, objects.result.Get());
   if (generation) {
     frame_generation::KeepFrame(native, target, *generation);

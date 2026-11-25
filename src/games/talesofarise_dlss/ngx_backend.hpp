@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -30,6 +31,7 @@
 #include <include/reshade.hpp>
 
 #include "../../utils/directx.hpp"
+#include "../../utils/float16.hpp"
 #include "../twattila/dlaa_helper/gpu_completion.hpp"
 
 namespace talesofarise::dlss {
@@ -43,22 +45,47 @@ struct DlssLibrary {
   std::array<uint32_t, 3> version = {};  // file version; {0, 0, 0} if unreadable
 };
 
+// A module's file (empty if unreadable); nullptr: the process's exe.
+inline std::filesystem::path ModulePath(HMODULE module) {
+  std::wstring path(32768, L'\0');
+  const DWORD length = GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size()));
+  path.resize(length < path.size() ? length : 0);
+  return path;
+}
+
+// A DLL's file version from its version resource (VS_FIXEDFILEINFO, type 16: RT_VERSION), without loading its code;
+// {0, 0, 0} if unreadable.
+inline std::array<uint32_t, 3> FileVersion(const std::filesystem::path& file) {
+  std::array<uint32_t, 3> version = {};
+  HMODULE data = LoadLibraryExW(file.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
+  if (data == nullptr) return version;
+  if (HRSRC resource = FindResourceW(data, MAKEINTRESOURCEW(VS_VERSION_INFO), MAKEINTRESOURCEW(16))) {
+    const auto* bytes = static_cast<const uint8_t*>(LockResource(LoadResource(data, resource)));
+    const DWORD size = SizeofResource(data, resource);
+    for (DWORD offset = 0; bytes != nullptr && offset + sizeof(VS_FIXEDFILEINFO) <= size; offset += 4) {
+      VS_FIXEDFILEINFO info;
+      std::memcpy(&info, bytes + offset, sizeof(info));
+      if (info.dwSignature != VS_FFI_SIGNATURE) continue;
+      version = {HIWORD(info.dwFileVersionMS), LOWORD(info.dwFileVersionMS), HIWORD(info.dwFileVersionLS)};
+      break;
+    }
+  }
+  FreeLibrary(data);
+  return version;
+}
+
 // nvngx_dlss.dll next to this addon, next to the game, or (development builds) in the SDK.
 inline DlssLibrary FindDlssLibrary() {
-  const auto module_folder = [](HMODULE module) {
-    std::wstring path(32768, L'\0');
-    const DWORD length = GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size()));
-    path.resize(length < path.size() ? length : 0);
-    return std::filesystem::path(path).parent_path();
-  };
+  // The harness's missing-DLSS case: RENODX_TW_TEST_NO_DLSS set finds no library.
+  if (GetEnvironmentVariableW(L"RENODX_TW_TEST_NO_DLSS", nullptr, 0) != 0) return {};
   static const int ANCHOR = 0;
   HMODULE addon = nullptr;
   std::vector<std::pair<std::filesystem::path, const char*>> folders;
   if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                          reinterpret_cast<LPCWSTR>(&ANCHOR), &addon)) {
-    folders.emplace_back(module_folder(addon), "next to the addon");
+    folders.emplace_back(ModulePath(addon).parent_path(), "next to the addon");
   }
-  folders.emplace_back(module_folder(nullptr), "next to the game");
+  folders.emplace_back(ModulePath(nullptr).parent_path(), "next to the game");
 #ifdef RENODX_NGX_RUNTIME_PATH
   folders.emplace_back(RENODX_NGX_RUNTIME_PATH, "in the development SDK");
 #endif
@@ -66,23 +93,7 @@ inline DlssLibrary FindDlssLibrary() {
     const auto file = folder / L"nvngx_dlss.dll";
     const auto attributes = GetFileAttributesW(file.c_str());
     if (folder.empty() || attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) continue;
-    DlssLibrary library = {.folder = folder.wstring(), .place = place};
-    // VS_FIXEDFILEINFO from the version resource (type 16, RT_VERSION), without loading the library's code.
-    if (HMODULE data = LoadLibraryExW(file.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE)) {
-      if (HRSRC resource = FindResourceW(data, MAKEINTRESOURCEW(VS_VERSION_INFO), MAKEINTRESOURCEW(16))) {
-        const auto* bytes = static_cast<const uint8_t*>(LockResource(LoadResource(data, resource)));
-        const DWORD size = SizeofResource(data, resource);
-        for (DWORD offset = 0; bytes != nullptr && offset + sizeof(VS_FIXEDFILEINFO) <= size; offset += 4) {
-          VS_FIXEDFILEINFO info;
-          std::memcpy(&info, bytes + offset, sizeof(info));
-          if (info.dwSignature != VS_FFI_SIGNATURE) continue;
-          library.version = {HIWORD(info.dwFileVersionMS), LOWORD(info.dwFileVersionMS), HIWORD(info.dwFileVersionLS)};
-          break;
-        }
-      }
-      FreeLibrary(data);
-    }
-    return library;
+    return {.folder = folder.wstring(), .place = place, .version = FileVersion(file)};
   }
   return {};
 }
@@ -122,6 +133,9 @@ struct Evaluation {
   float jitter_x = 0.f;
   float jitter_y = 0.f;
   float pre_exposure = 1.f;
+  // The input's exposure as NVIDIA's 1x1 exposure texture (guide 3.9: only presets J and K read it; 1 for a
+  // display-referred input). 0: none, the caller keeps AutoExposure in create_flags.
+  float exposure = 0.f;
   bool reset = false;
   // Zero output dimensions preserve the native-resolution DLAA caller contract.
   uint32_t output_width = 0;
@@ -166,6 +180,12 @@ class Backend {
   bool initialized_ = false;
   bool failed_ = false;
   bool first_frame_ = true;
+  // DLSS could not start on this GPU (no nvngx_dlss.dll, no Super Resolution, an old driver, NGX's init on a live
+  // device): FSR may run in its place. Kept across Reset (fail() resets the rest); cleared by a successful init.
+  bool unavailable_ = false;
+  // Evaluation::exposure's texture (immutable 1x1 R16F), made again when the value or the device changes.
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> exposure_texture_;
+  float exposure_value_ = 0.f;
   // NVIDIA's guide 5.5: the feature and NGX freed only once no evaluation that used them can still run. This backend's
   // fence: signalled after each evaluation (the next reconfigure waits for it) and behind everything queued when a
   // release is due.
@@ -173,9 +193,6 @@ class Backend {
   Microsoft::WRL::ComPtr<ID3D11Fence> idle_fence_;
   HANDLE idle_event_ = nullptr;
   uint64_t idle_value_ = 0;
-
-  // The CPU's longest wait for this backend's evaluations (as Ray Reconstruction's and FSR's queues).
-  static constexpr DWORD FENCE_TIMEOUT = 5000;
 
   static void LogResult(const char* operation, const NVSDK_NGX_Result result) {
     std::ostringstream message;
@@ -212,6 +229,9 @@ class Backend {
     initialized_ = std::exchange(other.initialized_, false);
     failed_ = std::exchange(other.failed_, false);
     first_frame_ = std::exchange(other.first_frame_, true);
+    unavailable_ = std::exchange(other.unavailable_, false);
+    exposure_texture_ = std::move(other.exposure_texture_);
+    exposure_value_ = std::exchange(other.exposure_value_, 0.f);
     idle_context_ = std::move(other.idle_context_);
     idle_fence_ = std::move(other.idle_fence_);
     idle_event_ = std::exchange(other.idle_event_, nullptr);
@@ -228,6 +248,7 @@ class Backend {
     parameters_ = nullptr;
     initialized_ = false;
     device_.Detach();
+    exposure_texture_.Detach();
     idle_context_.Detach();
     idle_fence_.Detach();
   }
@@ -243,7 +264,7 @@ class Backend {
       if (device_->GetDeviceRemovedReason() == S_OK) {
         idle_context_->Signal(idle_fence_.Get(), ++idle_value_);
         idle_context_->Flush();
-        twattila::dlaa_helper::WaitForGpuBeforeRelease(idle_fence_.Get(), idle_event_, idle_value_, FENCE_TIMEOUT, "DLSS");
+        twattila::dlaa_helper::WaitForGpuBeforeRelease(idle_fence_.Get(), idle_event_, idle_value_, twattila::dlaa_helper::GPU_WAIT_TIMEOUT, "DLSS");
       }
       const auto result = NVSDK_NGX_D3D11_ReleaseFeature(feature_);
       if (NVSDK_NGX_FAILED(result)) {
@@ -270,6 +291,8 @@ class Backend {
     idle_fence_.Reset();
     idle_context_.Reset();
     idle_value_ = 0;
+    exposure_texture_.Reset();
+    exposure_value_ = 0.f;
     initialized_ = false;
     failed_ = false;
     first_frame_ = true;
@@ -292,13 +315,18 @@ class Backend {
     return failed_;
   }
 
+  bool Unavailable() const {
+    return unavailable_;
+  }
+
   bool Evaluate(ID3D11DeviceContext* context, const Evaluation& evaluation) {
     if (context == nullptr || evaluation.color == nullptr || evaluation.depth == nullptr
         || evaluation.motion_vectors == nullptr || evaluation.output == nullptr
         || evaluation.output == evaluation.color || evaluation.width == 0 || evaluation.height == 0
         || (evaluation.output_width == 0) != (evaluation.output_height == 0)
         || !std::isfinite(evaluation.jitter_x) || !std::isfinite(evaluation.jitter_y)
-        || !std::isfinite(evaluation.pre_exposure) || evaluation.pre_exposure <= 0.f) {
+        || !std::isfinite(evaluation.pre_exposure) || evaluation.pre_exposure <= 0.f
+        || !std::isfinite(evaluation.exposure) || evaluation.exposure < 0.f) {
       status_.store("Invalid temporal inputs; game TAA", std::memory_order_relaxed);
       return false;
     }
@@ -431,6 +459,7 @@ class Backend {
       const auto library = FindDlssLibrary();
       const auto& runtime_folder = library.folder;
       if (runtime_folder.empty()) {
+        unavailable_ = true;
         return fail("nvngx_dlss.dll not found", NVSDK_NGX_Result_FAIL_FeatureNotFound,
                     "nvngx_dlss.dll not found next to the addon or the game; game TAA");
       }
@@ -476,6 +505,8 @@ class Backend {
       auto result = NVSDK_NGX_D3D11_Init_with_ProjectID(
           PROJECT_ID, NVSDK_NGX_ENGINE_TYPE_CUSTOM, "1.0", cache_path_.c_str(), device_.Get(), &common_info);
       if (NVSDK_NGX_FAILED(result)) {
+        // A GPU reset is no reason to give up DLSS.
+        unavailable_ = device_->GetDeviceRemovedReason() == S_OK;
         return fail("Init_with_ProjectID", result, "NGX initialization failed; game TAA");
       }
       initialized_ = true;
@@ -490,6 +521,7 @@ class Backend {
       int available = 0;
       result = NVSDK_NGX_Parameter_GetI(parameters_, NVSDK_NGX_Parameter_SuperSampling_Available, &available);
       if (NVSDK_NGX_FAILED(result) || available == 0) {
+        unavailable_ = true;
         return fail("SuperSampling capability", NVSDK_NGX_Result_FAIL_FeatureNotSupported,
                     "DLAA/DLSS not supported; game TAA");
       }
@@ -497,9 +529,11 @@ class Backend {
       if (NVSDK_NGX_SUCCEED(NVSDK_NGX_Parameter_GetI(
               parameters_, NVSDK_NGX_Parameter_SuperSampling_NeedsUpdatedDriver, &needs_driver_update))
           && needs_driver_update != 0) {
+        unavailable_ = true;
         return fail("Driver capability", NVSDK_NGX_Result_FAIL_OutOfDate,
                     "DLAA/DLSS requires newer driver; game TAA");
       }
+      unavailable_ = false;
       LogResult("Initialized public D3D11 NGX SDK", NVSDK_NGX_Result_Success);
     }
 
@@ -608,7 +642,7 @@ class Backend {
         // NVIDIA's guide 5.5: its last evaluation not proven done on a live device (a removed device runs none). This
         // request only; the next asks again.
         if (device_->GetDeviceRemovedReason() == S_OK
-            && !twattila::dlaa_helper::WaitForGpu(idle_fence_.Get(), idle_event_, idle_value_, FENCE_TIMEOUT)) {
+            && !twattila::dlaa_helper::WaitForGpu(idle_fence_.Get(), idle_event_, idle_value_, twattila::dlaa_helper::GPU_WAIT_TIMEOUT)) {
           status_.store("DLAA/DLSS: its GPU work did not finish", std::memory_order_relaxed);
           first_frame_ = true;
           return false;
@@ -685,6 +719,36 @@ class Backend {
               << selected.max_width << 'x' << selected.max_height << "; active input "
               << width_ << 'x' << height_ << " -> " << output_width_ << 'x' << output_height_;
       reshade::log::message(reshade::log::level::info, message.str().c_str());
+      // The library NGX loaded, which an override (the NVIDIA app's) can swap for another file or name.
+      std::string loaded_line = "[Tales DLSS] Loaded module nvngx_dlss.dll: none under that name";
+      if (HMODULE loaded = nullptr; GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, L"nvngx_dlss.dll", &loaded)) {
+        const auto path = ModulePath(loaded);
+        const auto version = FileVersion(path);
+        loaded_line = std::format("[Tales DLSS] Loaded module nvngx_dlss.dll: {}.{}.{} from {}", version[0], version[1], version[2],
+                                  reinterpret_cast<const char*>(path.u8string().c_str()));
+      }
+      reshade::log::message(reshade::log::level::info, loaded_line.c_str());
+    }
+
+    if (evaluation.exposure > 0.f && (exposure_texture_ == nullptr || exposure_value_ != evaluation.exposure)) {
+      const uint16_t exposure_half = renodx::utils::float16::Encode(evaluation.exposure);
+      const D3D11_TEXTURE2D_DESC exposure_desc = {
+          .Width = 1,
+          .Height = 1,
+          .MipLevels = 1,
+          .ArraySize = 1,
+          .Format = DXGI_FORMAT_R16_FLOAT,
+          .SampleDesc = {.Count = 1, .Quality = 0},
+          .Usage = D3D11_USAGE_IMMUTABLE,
+          .BindFlags = D3D11_BIND_SHADER_RESOURCE,
+          .CPUAccessFlags = 0,
+          .MiscFlags = 0,
+      };
+      const D3D11_SUBRESOURCE_DATA exposure_data = {.pSysMem = &exposure_half, .SysMemPitch = sizeof(exposure_half), .SysMemSlicePitch = 0};
+      if (FAILED(device_->CreateTexture2D(&exposure_desc, &exposure_data, exposure_texture_.ReleaseAndGetAddressOf()))) {
+        return fail("CreateTexture2D exposure", NVSDK_NGX_Result_FAIL_PlatformError, "DLAA/DLSS exposure texture failed; game TAA");
+      }
+      exposure_value_ = evaluation.exposure;
     }
 
     NVSDK_NGX_D3D11_DLSS_Eval_Params parameters = {
@@ -697,6 +761,7 @@ class Backend {
         .InReset = (evaluation.reset || first_frame_ ? 1 : 0),
         .InMVScaleX = 1.f,
         .InMVScaleY = 1.f,
+        .pInExposureTexture = (evaluation.exposure > 0.f ? exposure_texture_.Get() : nullptr),
         .InPreExposure = evaluation.pre_exposure,
         .InExposureScale = 1.f,
     };

@@ -351,6 +351,16 @@ std::atomic<uint32_t> preset = NVSDK_NGX_DLSS_Hint_Render_Preset_M;  // L looks 
 std::atomic<int> upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;     // UPSCALERS' item
 std::atomic<int> ray_reconstruction = 0;                              // RAY_RECONSTRUCTION_CHOICES' item
 std::atomic<int> upscaling_debug_view = 0;                            // 1: the motion the upscaler gets (upscale_output)
+
+// The upscaler that runs: the item, with FSR in DLSS's place when DLSS could not start on this GPU (the helper's answer,
+// latched until the game restarts; not saved, so DLSS comes back once it can: Attila's AaSettings).
+inline int ChosenUpscaler() {
+  const int chosen = std::clamp(upscaler.load(), 0, static_cast<int>(UPSCALERS.size()) - 1);
+  return (chosen == static_cast<int>(twattila::dlaa_bridge::UPSCALER_DLSS) && twattila::dlaa_bridge::DlssRefused())
+             ? static_cast<int>(twattila::dlaa_bridge::UPSCALER_FSR)
+             : chosen;
+}
+
 // Frame generation (Experimental; the helper presents: twattila/frame_generation.hpp) with Tales' keys: FrameGeneration,
 // FrameGenerationMultiplier (2-6; 0 Dynamic; 1 off, Reflex only), FrameGenerationFrameLimit (Reflex's or Xe Low
 // Latency's; ReflexBoost, before the Reflex row, read once as its On + Boost).
@@ -1990,7 +2000,7 @@ constexpr auto OnTaaDraw = []<typename Context>(Context& command) -> command_act
     // row, scaled so that row 3, view forward, has unit length; a symmetric projection): the view (its rows the axes
     // right, up, forward), the projection and the view-projection in the bridge's depth (0 near: a reversed one's z row
     // turned to w - z), its near and far planes (none: 10 km).
-    const int chosen = std::clamp(upscaler.load(), 0, static_cast<int>(UPSCALERS.size()) - 1);
+    const int chosen = ChosenUpscaler();
     const bool nvidia_model = chosen == static_cast<int>(twattila::dlaa_bridge::UPSCALER_DLSS);
     if (!nvidia_model && !current_camera) return fail("Game TAA: FSR and XeSS need the game's camera (not found this frame)");
     std::array<float, 16> view = {};
@@ -3349,7 +3359,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
 // its depth and motion are the upscaler's; without the helper none), Reflex's (any AA mode, the game's own device).
 inline void UpdateHelper(reshade::api::swapchain* swapchain, upscaling::BridgeUse use, bool sdr_output) {
   const bool active = twattila::dlaa_bridge::HelperInstalled() && requested_mode.load() != AAMode::OFF;
-  const int chosen = std::clamp(upscaler.load(), 0, static_cast<int>(UPSCALERS.size()) - 1);
+  const int chosen = ChosenUpscaler();
   const int reconstruction = std::clamp(ray_reconstruction.load(), 0, static_cast<int>(RAY_RECONSTRUCTION_PRESETS.size()) - 1);
   const bool reconstruct = active && use.ray_reconstruction != 0 && chosen == static_cast<int>(twattila::dlaa_bridge::UPSCALER_DLSS)
                            && reconstruction != 0;

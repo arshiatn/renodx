@@ -172,6 +172,7 @@ static struct State {
 
 static std::atomic<AAMode> requested_mode = AAMode::OFF;
 static std::atomic<uint32_t> preset = 12u;  // NVSDK_NGX_DLSS_Hint_Render_Preset L
+static std::atomic<float> fsr_sharpness = 0.f;  // FSR's RCAS, 0-1 (0: off)
 // The page's upscaler (dlaa_bridge::UPSCALER_*) and its name.
 static std::atomic<uint32_t> requested_upscaler = twattila::dlaa_bridge::UPSCALER_DLSS;
 constexpr std::array<const char*, 3> UPSCALER_NAMES = {"DLSS", "FSR", "XeSS"};
@@ -893,7 +894,7 @@ inline bool Evaluate(Frame* frame, bool replace) {
                                                                      .view_to_clip = view_to_clip};
     evaluated = twattila::dlaa_bridge::Evaluate(context, frame->render_width, frame->render_height, frame->taa[26][0], frame->taa[26][1],
                                                 reset, preset.load(), reconstruct ? &reconstruction : nullptr,
-                                                nvidia_model ? nullptr : &view_to_clip);
+                                                nvidia_model ? nullptr : &view_to_clip, {.fsr_sharpness = fsr_sharpness.load()});
     runtime.performance.Mark(context);
     if (evaluated && replace) {
       // Replacing: the upscaled frame is the TAA output (its alpha the helper's, as NVIDIA's was).
@@ -1260,9 +1261,9 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     const AAMode mode = (upscaling ? UPSCALING_MODES[static_cast<size_t>(std::clamp(aa_sliders.dlss_mode, 0.f, 6.f))] : AAMode::OFF);
     if (requested_mode.exchange(mode) != mode && mode != AAMode::OFF) expeditionsrome::dlss::temporal_capture::Reset();
     const auto aa = twattila::feature_settings::AaSettings(aa_sliders);
-    requested_upscaler.store(aa_sliders.method == 7.f ? twattila::dlaa_bridge::UPSCALER_XESS
-                                                      : (aa_sliders.method == 6.f ? twattila::dlaa_bridge::UPSCALER_FSR : twattila::dlaa_bridge::UPSCALER_DLSS));
+    requested_upscaler.store(twattila::anti_aliasing::UpscalerOf(aa.method));
     preset.store(aa.dlaa_preset);
+    fsr_sharpness.store(aa.fsr_sharpness);
     live.custom = std::clamp(std::round(aa_sliders.render_scale), 1.f, 100.f);
     texture_lod_bias.choice = std::clamp(static_cast<int>(aa_sliders.texture_lod_bias), 0, 3);
     effects_at_output = aa_sliders.effects_at_output != 0.f;

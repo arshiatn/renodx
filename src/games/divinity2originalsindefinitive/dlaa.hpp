@@ -382,9 +382,10 @@ inline void KeepDepth(reshade::api::command_list* cmd_list) {
 // other makes its textures again). The page's 6 and 7 are the helper's FSR and XeSS (dlaa_bridge::UPSCALER_*: the method
 // less 5, as Attila's).
 inline bool PrepareBridge(ID3D11Device* device, UINT width, UINT height) {
-  const uint32_t upscaler = (sliders.method >= 6.f) ? static_cast<uint32_t>(std::min(sliders.method, 7.f)) - 5u : twattila::dlaa_bridge::UPSCALER_DLSS;
-  return twattila::dlaa_bridge::Prepare(device, width, height, rays && guides, rays, twattila::frame_generation::Format(), reflections, upscaler,
-                                        twattila::feature_settings::AaSettings(sliders).frame_backend);
+  // AaSettings' method: FSR in DLSS's place when DLSS could not start on this GPU.
+  const auto aa = twattila::feature_settings::AaSettings(sliders);
+  return twattila::dlaa_bridge::Prepare(device, width, height, rays && guides, rays, twattila::frame_generation::Format(), reflections,
+                                        twattila::anti_aliasing::UpscalerOf(aa.method), aa.frame_backend);
 }
 
 // The scene's depth as kept this frame (null: none yet) and its size.
@@ -524,8 +525,8 @@ inline void OnApplyLut(reshade::api::command_list* cmd_list) {
   // DLSS's presets L and M crush dark tones on a linear frame: its square root for them (Attila's c243f7c4). FSR and XeSS
   // take the frame as it is, and the camera's near, far and field of view from its projection (row vectors: the rows'
   // transpose, without the jitter).
-  const bool dlss = sliders.method == 5.f;
   const auto aa = twattila::feature_settings::AaSettings(sliders);
+  const bool dlss = aa.method == twattila::anti_aliasing::Method::DLAA;
   const uint32_t preset = aa.dlaa_preset;
   const bool square_root = dlss && (preset == 12u || preset == 13u);
   const float width_f = static_cast<float>(width);
@@ -581,7 +582,8 @@ inline void OnApplyLut(reshade::api::command_list* cmd_list) {
   };
   const bool reconstructing = aa.ray_reconstruction && guides_written && bridge.guides;
   const bool resolved = twattila::dlaa_bridge::Evaluate(native, width, height, camera.jitter[0], -camera.jitter[1], !continued, preset,
-                                                        (reconstructing ? &reconstruction : nullptr), (dlss ? nullptr : &view_to_clip));
+                                                        (reconstructing ? &reconstruction : nullptr), (dlss ? nullptr : &view_to_clip),
+                                                        {.fsr_sharpness = aa.fsr_sharpness});
   if (resolved) {
     bind(objects.finish.Get(), {bridge.output.srv.Get(), input.Get(), bridge.motion.srv.Get()}, {objects.result_uav.Get()});
     native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);

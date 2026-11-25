@@ -172,7 +172,8 @@ struct Bindings {
   float* rays_sheets_unselfed = nullptr;  // Cloth and sails don't shade themselves in the sun's rays; null: no such row
   float* engine_code = nullptr;  // Faster Game CPU Code (twattila/engine_code.hpp), any anti-aliasing; null: no such row
   Setting* pixel_trace = nullptr;      // The pixel trace's row, in the rays' extra options; null: elsewhere or none
-  std::vector<Setting*> rr_inputs = {};  // Ray Reconstruction's optional inputs, rows under its More Options
+  // The upscaler's optional inputs, rows under its More Options: Ray Reconstruction's, or a row's own is_visible.
+  std::vector<Setting*> rr_inputs = {};
   float* rays_hills_out_of_view = nullptr;  // The terrain out of the view in the scene too; null: no such row
   float* rays_terrain_count_later = nullptr;  // rt_core.hpp Settings::terrain_count_later; null: no such row
   float* rays_grass_counts_later = nullptr;  // rt_core.hpp Settings::indirect_counts_later; null: no such row
@@ -188,7 +189,7 @@ struct Bindings {
   float* light_ratio = nullptr;
   const Texts* texts = &ATTILA_TEXTS;
   std::span<const int> aa_methods = ALL_AA_METHODS;  // ascending
-  // The status line under the anti-aliasing with any upscaler; null: the helper's, FSR's and XeSS's only.
+  // The status line under the anti-aliasing with any upscaler; null: the helper's (DLSS, FSR, XeSS).
   std::string (*upscaler_status)() = nullptr;
   // The upscaling mode, render scale, LOD bias, effects' resolution, object motion; false: the game owns its scale.
   bool has_scale_rows = true;
@@ -521,11 +522,15 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
                            if (b.upscaler_status != nullptr) {
                              ImGui::TextWrapped("%s", b.upscaler_status().c_str());
                            } else {
-                             ImGui::TextWrapped("%s", (dlaa_bridge::bridge.shared != nullptr ? dlaa_bridge::bridge.shared->status : "Upscaling off"));
+                             // Why the helper did not start (WH3's Status), else what it runs (FSR in DLSS's place too).
+                             const auto& bridge = dlaa_bridge::bridge;
+                             ImGui::TextWrapped("%s", (bridge.failed              ? bridge.status.c_str()
+                                                       : bridge.shared != nullptr ? bridge.shared->status
+                                                                                  : "Upscaling off"));
                            }
                            return false;
                          },
-                         .is_visible = [b] { return (b.upscaler_status != nullptr) ? feature_settings::Upscaling(*b.aa) : b.aa->method > 5.f; }});
+                         .is_visible = [b] { return (b.upscaler_status != nullptr) ? feature_settings::Upscaling(*b.aa) : b.aa->method >= 5.f; }});
     if (b.upscaling_mode != nullptr) {
       const auto mode_shown = [b, upscaling] { return upscaling() && b.upscaling_mode_found(); };
       page.Add(new Setting{
@@ -591,6 +596,8 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     });
     page.Take({.match = "AntiAliasingSharpening", .section = section, .shown = [b] { return b.aa->method == 3.f || b.aa->method == 4.f; },
                .label = "Sharpening"});
+    // Its own row shows it only while FSR runs.
+    page.Take({.match = "AntiAliasingFsrSharpening", .section = section, .shown = [] { return true; }});
     page.Take({.match = "AntiAliasingDlssMode", .section = section, .shown = scale_rows, .label = "Upscaling Mode",
                .tooltip = "Native: the game at your resolution. The others draw it smaller and the upscaler brings it up (faster)."});
     if (b.upscaling_mode == nullptr) {
@@ -730,15 +737,18 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     }
     page.Take({.match = "FrameGenerationHudRecomposition", .section = section, .shown = more(&more_aa, composing_generation)});
     page.Take({.match = "FrameGenerationPreset", .section = section, .shown = more(&more_aa, dlss_generation)});
+    // With Ray Reconstruction, or by a row's own condition (WH3's FSR Reactive Particles).
     for (Setting* setting : b.rr_inputs) {
       setting->section = section;
-      setting->is_visible = more(&more_aa, [b, dlss] { return dlss() && b.aa->ray_reconstruction != 0.f; });
+      setting->is_visible = more(&more_aa, (setting->is_visible != nullptr ? setting->is_visible
+                                                                            : [b, dlss] { return dlss() && b.aa->ray_reconstruction != 0.f; }));
       page.Add(setting);
     }
     page.Take({.match = "AntiAliasingDebugView", .section = section, .shown = more(&more_aa, upscaling), .label = "Upscaling Debug View",
                .tooltip = (b.has_scale_rows ? "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).\n"
                                               "Object Motion: the soldiers', props' and cloth's own (grey: still, yellow: drawn twice, red: hidden).\n"
-                                              "No Camera Motion: the upscaler gets the objects' motion alone."
+                                              "No Camera Motion: the upscaler gets the objects' motion alone.\n"
+                                              "Warp Error: where last frame, moved along the motion, misses this one (orange)."
                                             : "Motion Vectors: the motion the upscaler gets (colour: direction, brighter: faster).")});
     page.Take({.match = "FrameGenerationDebugView", .section = section, .shown = more(&more_aa, dlss_generation)});
     page.Add(EmptyLine(section));
