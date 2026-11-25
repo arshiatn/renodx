@@ -15808,6 +15808,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         High, worktree, branch pdi5_step5) STARTED beside step 3: owns ReuseTarget, the GI reuse merge, Reservoir /
         Load / Store, the neighbour choice, reservoir formats, rt_restir_flags, G5's PT-header stubs; no new slots
         (u75+ are pdi3_'s) -> review -> merge. Owner: pdi5_
+        Owner map addition 17:xx: rt_reference.hlsli RefRouteIncoming's light count -> pdi3_ ((T2 on) ? 128u : 32u, so
+        E4 night40 is not biased by construction); the GI contest's RAB block (REUSE_RTXDI / _PACK) stays untouched
+        (no T2 define in the contest builds).
         - [ ] PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ReGIR presample are
         pushed; then a 4c implementer starts on that commit (new DI pass files, LIGHTS_DI functions, the harness's
         synthetic light surface) and merges after step 3. Owner: coord (start at the checkpoint)
