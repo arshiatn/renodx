@@ -74,9 +74,11 @@ TwPointLightSurface DiSurfaceOf(uint4 texel, float3 position) {
 // The game's light of local light `light` at a light surface (its point-light shader with visibility 1, at the light's
 // centre; SSAO left out: the addon's composite multiplies it into the slm light, rt_di_shade). The DI passes' one
 // evaluation of it: the target (rt_rtxdi_bridge.hlsli) and the shading both call this. Highdef only: the addon leaves
-// the lowdef shaders' lights to the game (none drawn in any timing capture), so no lowdef light reaches DI.
+// the lowdef shaders' lights to the game (none drawn in any timing capture), so no lowdef light reaches DI. Deviation
+// from the game's shader (it takes the colour as sent, unclamped): the colour at 0 and up, as the paths' LightArriving
+// takes it (rt_scene.hlsli), so no light is negative (fa9_ U3: the one source of negative DI light found; B2).
 float3 DiLight(uint4 texel, float3 position, uint light) {
-  return TwPointLight(DiSurfaceOf(texel, position), lights[light], light_colours[light].rgb, LightLinear(light), sun[uint2(1, 0)].xyz,
+  return TwPointLight(DiSurfaceOf(texel, position), lights[light], max(light_colours[light].rgb, 0.f), LightLinear(light), sun[uint2(1, 0)].xyz,
                       sun[uint2(SUN_LIGHT_TEXEL, 0)].w, 1.f, false);
 }
 
