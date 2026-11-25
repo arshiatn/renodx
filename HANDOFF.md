@@ -837,6 +837,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in | ?
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
 - CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | ?
+- CALLISTO C1: cal1_ (Opus High, worktree, branch cal1_c1) STARTED: new files only ... | ?
+- CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent ... | ?
+- CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mism ... | later
 - CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
 - CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ?
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
@@ -15954,12 +15957,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the new C0 message for ATN,
         the MERL licence check (ShareAlike on fitted constants?), C1's implementer brief. Then C1 (new files only).
         Owner: cal_
+        cal_ REV 1 DONE (evening; hand-back handoff_plan\handbacks\cal_rev1_handback.md; scratch\cal_\scripts\rev1_*):
+        M1-M4, S1-S7, nits 1-11 fixed, S8 dropped, nit 12 a stated delta; CallistoLobe returns 1 at n.l <= 0 (wrap /
+        transmission unchanged). Order: C0 now -> C0b own fit if no numbers by 2026-12-02 -> C1 now -> C2a after step
+        3 -> C2b after step 5 (ReuseTarget, first weight, ReuseTexel, Torch Light) -> C3 right after 4c
+        (TwPointLight diffuse_amount, slm diffuse only, DI twin rho_f = 1, skin R = 1, W1 rerun) -> C4 (C2b + C3)
+        -> C6 later. LICENCE: MERL = CC BY-SA 4.0 (Zenodo 8101681, cite Matusik et al. 2003); research-only was
+        only the old MIT copies; reading: 6-8 joint constants are not Adapted Material (add-on stays MIT),
+        per-material tables stay offline; attribute anyway; RGL CC0. Bridge field: reuse rt_diffuse_roughness
+        (coord pick). pdi4c_ told (diffuse_amount seam; AO loop question).
+        - [ ] CALLISTO C1: cal1_ (Opus High, worktree, branch cal1_c1) STARTED: new files only (include + CPU twin +
+        test/tw_callisto_diffuse), sets A / A+F / V16 / V40 + DI twins, NaN guards, static cost line. -> review ->
+        merge after Forge's numbers or on ATN's word. cdr_ RE-CHECK of Rev 1 running. Owner: cal1_ / cdr_
+        - [ ] CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent (Opus xHigh, scratch
+        only) after ATN's download yes (MERL BRDFDatabase.zip 1.3 GB + RGL; pick MERL + RGL) . Owner: coord (date)
+        - [ ] CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mismatch measured. Owner: later
         FORGE (via ATN, evening) on the fixed set: old games (and UE 5.3.2's default lit) have no material class /
         ID (Lambert + GGX for all); Callisto's engine looks up per-material classes; 'AC Shadows does the same: you
         can do instanceData -> materialID'. No numbers for A / V16 / V40. cdr_ told: weigh a per-class route (class
         from our capture's shader hashes into instance data, knob set per class; fit source RGL only), one fixed set
         stays default / fallback, class table maybe a later step. Owner: cdr_
-        (C0 TEXT CHANGES per cdr_ M3: wait for cal_'s Revision 1 message before ATN sends.)
+        (C0 MESSAGE READY: cal_rev1_handback.md / callisto_diffuse.md R1; sent to ATN evening.)
         - [ ] CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.05) / V40 + a joint fit with
         the game's specular held fixed; and what his 'Callisto full' included, his error metric, the smooth-terminator
         mask's unit. Owner: ATN
