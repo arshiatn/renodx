@@ -827,7 +827,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
 - LAB METHOD (brr_): the recorder overwrites every request's rt_path_flags (rt_ser ... | ?
 - BALANCED DEFAULT, before any default On (pds2_ 'pds2_ balanced numbers'): the Ne ... | ?
-- Nit (brr_): rt_d3d12.hpp:757 conditional initializer without parentheses (CXX_ST ... | ?
+- PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
+- CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
+- SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
 - ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the n ... | ATN
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
@@ -837,6 +839,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
 - ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
 - PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; ... | ?
+- PK9 O1 PERFFIX CHECK: p9c_ (Opus xHigh, read-only) STARTED: height cache + part ... | ?
 - NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\rou ... | ?
 - TALES CAPTURE FIX IN GAME: in SDR, HDR10 and scRGB, a loading screen / battle en ... | ?
 - tw_scene_coverage crashes at start on atn-mods too (rvt_: 0xC0000005; since a98c ... | ?
@@ -15772,8 +15775,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         config + a KEEP_LIGHT-on-both-arms job to split the 'faster' effect; the DIMMING case (green -> red, light off;
         red -> green tested only the brightening branch; by reading On keeps ~1/2, 1/3, 1/4 of the old light over the
         next frames). Then ATN decides (coord pick: keep Off until seen in game). Owner: pds2_, then ATN
-        - [ ] Nit (brr_): rt_d3d12.hpp:757 conditional initializer without parentheses (CXX_STYLE) -> pds2_'s next branch.
+        - [x] Nit (brr_): rt_d3d12.hpp:757 conditional initializer without parentheses (CXX_STYLE) -> pds2_'s next branch.
         Owner: pds2_
+        MERGED e52ec9e28 (pds2_nits 268b687f8; helper exit 0, 5,859,328 B), pushed.
+        ATN 11-25 EVENING ('Cannot we do the long PT DI other steps now? Or anything else at the same time?'):
+        the next PT DI step is 3 (RTXDI C++, ReGIR, torch T1 + T2; 4c needs 3, 4b needs the 64-bit add-on's
+        bring-up + hash census). pdi3_ (Opus High, worktree, branch pdi3_step3) STARTED 17:xx as the ONLY writer
+        of rt_path.hlsli / rt_d3d12.hpp / build.ps1 / rt_scene.hlsli / rt_lights.cs_6_5.hlsl / rt_serve.h until
+        it merges; pds2_ is LAB-ONLY: Balanced numbers (running) -> 3a fog reuse reference -> 3b G1 Raytraced cost
+        -> the affected-gate list; code fixes it finds become boxes.
+        - [ ] PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twattila builds). Owner: pdi3_
+        - [ ] CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on the vMF paper: 'just
+        diffuse; Callisto full still beats it' (diffuse, smooth terminator, retro-reflection, Fresnel). cal_ (Opus
+        xHigh, text only) STARTED: design plan_1117\designs\callisto_diffuse.md as the candidate to replace vMF
+        S1b / S2 (fixed knobs, where it applies, energy vs the game's specular, cost, gates, row, files after
+        step 3) -> design review -> ATN decides. Owner: cal_, then ATN
+        - [ ] SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills as port rows, no ports
+        yet; important lessons since the last content update 11-22): sku_ (Opus xHigh, worktree, branch
+        sku_1125) STARTED -> review -> merge. The full skills double-check (11-17 step 9) comes after Attila +
+        unified PT with every optimization is done, on ATN's word. Owner: sku_
         pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
         scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
         R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
@@ -16043,6 +16063,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         Caesar via ATN + the S-A sitting with PerfFix installed. O2-O4 bounded only (E). SEARCH NOTE 3 (reported to
         ATN): before the rule reached it, p9v_ started one recursive find under tools\tw; it hung and was stopped
         after ~120 s; nothing opened. ALL THREE PRE-FRIDAY CHECKS DONE.
+        ATN 11-25 EVENING: Caesar (PerfFix / heapfix author) says we may READ his code read-only and check ourselves
+        whether it conflicts. Rule updated (memory, round_1125\brief.md, group_brief.md): read-only conflict checks
+        only by an agent whose brief names one; nothing of his copied; others still neither open nor search.
+        - [ ] PK9 O1 PERFFIX CHECK: p9c_ (Opus xHigh, read-only) STARTED: height cache + part cull / skip hooks (waits,
+        multi-thread safety, byte conflicts, other hooks inside the closure, ini keys) -> verdict per site + addendum
+        in pk9_effects_64.md -> Friday's last review gets the answer instead of the question. Owner: p9c_
         - [x] PLAN OVERVIEW REFRESHED (ATN 11-25 ~14:0x 'Let's maybe refresh them?'): ov_ wrote
         round_notes\plan_overview_1125.md (one page) + plan_overview_1125_facts.md (a source per claim; coord checked
         it, added the C8 W0 result; hand-back handoff_plan\handbacks\ov_overview_handback.md). The 11-22 overview is
@@ -16160,6 +16186,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         Resolution, Directional Light Bounce, path-traced torch rows, Bend Debug View / Distance Softness / Foliage
         (port in the next Tales round, debug views first); (2) landscape LOD bias, 44 sampler copies, low value
         (WON'T GET). Owner: ATN
+        ATN 11-25 evening: (1) put these rows into the skills now as port rows (sku_), port them later, after Attila
+        + unified PT are done (ATN says when); (2) answered when we return to Tales. Box stays open for (2).
         SEARCH NOTE 2 (reported to ATN): before the rule reached it, ta_ ran one file-NAME search for parity_check.py
         that probably walked all of tools\tw (names only, no contents; nothing opened in the two excluded folders).
         - [ ] ry_ QUESTIONS FOR ATN (ry_'s pick first): (1) Ryse's rays are sharper than the game's own blurred
