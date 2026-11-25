@@ -885,7 +885,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
 - d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
 - FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | ?
-- d11i_ FIX ROUND (RESUMED 21:2x): M-1, M-2, S-1..S-6, S-9, S-10 (bug fix, always ... | ?
 - 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU wi ... | coord
 - ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ?
 - CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | ?
@@ -16467,8 +16466,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         light_bounce upload failures 'return {}' mid-pass (game draw runs again with our state half changed); S-11
         uses.tsv misses VS SRVs + PS OM UAVs (dead_outputs could call a live resource DEAD); S-12 no 5090 self test;
         S-13 Uninstall repeats Stop; NITs CXX_STYLE. ac542aaa9 NAME fix = right fix (settings.hpp:60).
-        - [ ] d11i_ FIX ROUND (RESUMED 21:2x): M-1, M-2, S-1..S-6, S-9, S-10 (bug fix, always on, check if player
+        - [x] d11i_ FIX ROUND (RESUMED 21:2x): M-1, M-2, S-1..S-6, S-9, S-10 (bug fix, always on, check if player
         code), S-11, S-13, NITs; later S-7 / S-8; S-12 = GPU order item 5 -> d11v_ diff re-check -> merge. Owner: d11i_, d11v_
+        d11i_ fix round DONE 21:54 (38 min): a196e5b39 (M-1 detach, S-13 Stop(wait_ms) 2 s, S-2 FAILED + no done.txt,
+        S-11 VS views + OM UAVs, NITs, x86 depth read keyed on DEPTH_STENCIL), 7eb33fade (S-10: the 3 'return {}' were
+        lane I's own step-4 code, not player code -> always restore + bypass; NITs), 89022799a (S-3 blob sizes, S-4
+        depth-stencil as SRV textures + R24G8 self-test case, un-replayed events fail unless --skip). S-9 = PER OUTPUT
+        (Bend stores occlusion / penumbra / tint separately; 7 / 665 race pixels mixed writers). M-2 = option (a): the
+        Recommended row also at first present + 5 s. Script: 230 GB free, STOP on 'stopped:' / 'FAILED', HHmmss roots, 60 s
+        A-hold + 30 s kill wait. Gates: 17 builds exit 0 (61 / 62 / 78 as before), 83 SSS shaders SAME, WARP suites x86 +
+        amd64 PASS incl. replay depth-stencil case + tw_bounce_sh 37 PASS, env unset = enabled 0; restaged addon64
+        060535d8...; dry runs pass their own checks, refused only by the held GPU lock -> one clean dry run owed.
+        -> d11v_ diff re-check STARTED 22:0x -> merge -> GPU order: d11 self test on the 5090, then the day1 CAPTURE (a game
+        run, own GPU slot, standing go) after the timing jobs. Owner: d11v_, coord
         - [ ] 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU window. Owner: coord
         - [ ] ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set keys, folders, SendInput
         E / A / D + wheel only with the game in front) are in d11i_handback.md 'Rule lines' / 'OKs'. Owner: ATN
