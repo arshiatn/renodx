@@ -104,6 +104,7 @@ struct Copy {
   std::string staging_key;
   size_t staging_bytes = 0;
   bool multisampled = false;  // named only
+  bool read_failed = false;   // a Map of its staging failed: the frame is not complete
   std::vector<Subresource> subresources;
 };
 
@@ -165,8 +166,7 @@ struct State {
   std::deque<std::shared_ptr<Frame>> queue;
   size_t queued_bytes = 0;
   bool stopping = false;
-  std::atomic_bool worker_idle_exit = false;
-  std::thread worker;
+  std::atomic_bool worker_idle_exit = false;  // the worker is detached (a joinable thread in a static ends the process at exit)
 };
 static State state;
 static std::atomic_bool enabled = false;    // RENODX_TW_PASS_DUMP set (Install)
@@ -188,7 +188,9 @@ std::string Words(const T& value) {
 inline std::string Quoted(std::string_view text) {
   std::string quoted = "\"";
   for (const char character : text) {
-    if (character == '"' || character == '\\') quoted += '\\';
+    if (character == '"' || character == '\\') {
+      quoted += '\\';
+    }
     if (static_cast<unsigned char>(character) < 0x20) {
       quoted += std::format("\\u{:04x}", static_cast<int>(character));
       continue;
@@ -213,18 +215,6 @@ inline uint64_t Hash(std::span<const uint8_t> bytes) {
 
 inline void Log(const std::string& text) { renodx::utils::log::i(std::format("[Total War] pass_dump: {}", text)); }
 
-// The largest free block of the address space (x86's Map guard).
-inline size_t LargestFreeBlock() {
-  size_t largest = 0;
-  MEMORY_BASIC_INFORMATION info = {};
-  for (auto* address = static_cast<uint8_t*>(nullptr); VirtualQuery(address, &info, sizeof(info)) == sizeof(info);
-       address = static_cast<uint8_t*>(info.BaseAddress) + info.RegionSize) {
-    if (info.State == MEM_FREE) largest = std::max(largest, static_cast<size_t>(info.RegionSize));
-    if (static_cast<uint8_t*>(info.BaseAddress) + info.RegionSize < address) break;
-  }
-  return largest;
-}
-
 // `copy`'s staging read: its subresources' rows packed into their data; the staging back to the free pool.
 inline bool Read(ID3D11DeviceContext* native, Copy* copy) {
   bool read = true;
@@ -232,6 +222,7 @@ inline bool Read(ID3D11DeviceContext* native, Copy* copy) {
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (FAILED(native->Map(copy->staging.Get(), subresource.index, D3D11_MAP_READ, 0, &mapped))) {
       read = false;
+      copy->read_failed = true;
       continue;
     }
     subresource.data.resize(size_t{subresource.row_bytes} * subresource.rows * subresource.depth);
@@ -251,14 +242,6 @@ inline bool Read(ID3D11DeviceContext* native, Copy* copy) {
   copy->staging.Reset();
   state.in_flight_bytes -= copy->staging_bytes;
   return read;
-}
-
-inline void DrainInFlight(ID3D11DeviceContext* native, size_t room) {
-  while (!state.in_flight.empty() && state.in_flight_bytes + room > POOL_BYTES) {
-    Copy* oldest = state.in_flight.front();
-    state.in_flight.pop_front();
-    if (!Read(native, oldest)) Log(std::format("a copy of {:#x} could not be read", oldest->id));
-  }
 }
 
 // x86: one subresource of `resource` read now, through a staging texture of that subresource alone (above STRIP_BYTES
@@ -311,7 +294,17 @@ inline bool ReadNow(ID3D11DeviceContext* native, ID3D11Resource* resource, D3D11
                              .bottom = std::min(subresource->height, (first_row + rows) * block), .back = 1};
       native->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, resource, subresource->index, &box);
     }
-    if (LargestFreeBlock() < 2 * row_bytes * rows) return false;
+    // x86's Map guard: the address space's largest free block must hold twice the strip.
+    size_t largest_free = 0;
+    MEMORY_BASIC_INFORMATION info = {};
+    for (auto* address = static_cast<uint8_t*>(nullptr); VirtualQuery(address, &info, sizeof(info)) == sizeof(info);
+         address = static_cast<uint8_t*>(info.BaseAddress) + info.RegionSize) {
+      if (info.State == MEM_FREE) {
+        largest_free = std::max(largest_free, static_cast<size_t>(info.RegionSize));
+      }
+      if (static_cast<uint8_t*>(info.BaseAddress) + info.RegionSize < address) break;
+    }
+    if (largest_free < 2 * row_bytes * rows) return false;
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (FAILED(native->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return false;
     for (UINT slice = 0; slice < subresource->depth; ++slice) {
@@ -348,19 +341,6 @@ inline size_t Snapshot(ID3D11DeviceContext* native, ID3D11Resource* resource) {
         return format;
     }
   };
-  const auto is_depth = [](DXGI_FORMAT format) {
-    switch (format) {
-      case DXGI_FORMAT_D24_UNORM_S8_UINT:
-      case DXGI_FORMAT_R24G8_TYPELESS:
-      case DXGI_FORMAT_D32_FLOAT:
-      case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
-      case DXGI_FORMAT_R32G8X24_TYPELESS:
-      case DXGI_FORMAT_D16_UNORM:
-        return true;
-      default:
-        return false;
-    }
-  };
   // A texture's subresources (mip-major within each array slice, D3D11's order) with their packed row sizes.
   const auto add_subresources = [&](DXGI_FORMAT format, UINT width, UINT height, UINT depth, UINT mips, UINT slices) {
     for (UINT slice = 0; slice < slices; ++slice) {
@@ -380,6 +360,8 @@ inline size_t Snapshot(ID3D11DeviceContext* native, ID3D11Resource* resource) {
   native->GetDevice(device.GetAddressOf());
   DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
   bool copyable = true;
+  // D3D11 copies a depth-stencil resource's subresource only whole (x86 reads it without strips).
+  bool depth_stencil = false;
   switch (dimension) {
     case D3D11_RESOURCE_DIMENSION_BUFFER: {
       D3D11_BUFFER_DESC desc = {};
@@ -399,6 +381,7 @@ inline size_t Snapshot(ID3D11DeviceContext* native, ID3D11Resource* resource) {
                                desc.Width, desc.MipLevels, desc.ArraySize, static_cast<int>(desc.Format), static_cast<int>(desc.Usage), desc.BindFlags,
                                desc.CPUAccessFlags, desc.MiscFlags);
       format = staging_format(desc.Format);
+      depth_stencil = (desc.BindFlags & D3D11_BIND_DEPTH_STENCIL) != 0;
       copyable = add_subresources(format, desc.Width, 1, 1, desc.MipLevels, desc.ArraySize);
       copy->staging_key = std::format("1:{}:{}:{}:{}", desc.Width, desc.MipLevels, desc.ArraySize, static_cast<int>(format));
       break;
@@ -412,6 +395,7 @@ inline size_t Snapshot(ID3D11DeviceContext* native, ID3D11Resource* resource) {
           desc.Width, desc.Height, desc.MipLevels, desc.ArraySize, static_cast<int>(desc.Format), desc.SampleDesc.Count, desc.SampleDesc.Quality,
           static_cast<int>(desc.Usage), desc.BindFlags, desc.CPUAccessFlags, desc.MiscFlags);
       format = staging_format(desc.Format);
+      depth_stencil = (desc.BindFlags & D3D11_BIND_DEPTH_STENCIL) != 0;
       copy->multisampled = desc.SampleDesc.Count > 1;
       copyable = !copy->multisampled && add_subresources(format, desc.Width, desc.Height, 1, desc.MipLevels, desc.ArraySize);
       copy->staging_key = std::format("2:{}:{}:{}:{}:{}", desc.Width, desc.Height, desc.MipLevels, desc.ArraySize, static_cast<int>(format));
@@ -433,7 +417,9 @@ inline size_t Snapshot(ID3D11DeviceContext* native, ID3D11Resource* resource) {
       copyable = false;
       break;
   }
-  if (!copyable) copy->subresources.clear();
+  if (!copyable) {
+    copy->subresources.clear();
+  }
   for (const auto& subresource : copy->subresources) {
     copy->staging_bytes += size_t{subresource.row_bytes} * subresource.rows * subresource.depth;
   }
@@ -443,10 +429,17 @@ inline size_t Snapshot(ID3D11DeviceContext* native, ID3D11Resource* resource) {
     // x86: read at once (the address space has no room for a whole frame's staging).
     copied = true;
     for (auto& subresource : copy->subresources) {
-      copied = copied && ReadNow(native, resource, dimension, &subresource, format, is_depth(format));
+      copied = copied && ReadNow(native, resource, dimension, &subresource, format, depth_stencil);
     }
   } else if (!copied) {
-    DrainInFlight(native, copy->staging_bytes);
+    // The oldest copies read first while the in-flight pool is full.
+    while (!state.in_flight.empty() && state.in_flight_bytes + copy->staging_bytes > POOL_BYTES) {
+      Copy* oldest = state.in_flight.front();
+      state.in_flight.pop_front();
+      if (!Read(native, oldest)) {
+        Log(std::format("a copy of {:#x} could not be read", oldest->id));
+      }
+    }
     auto& pool = state.free_staging[copy->staging_key];
     if (!pool.empty()) {
       copy->staging = pool.back();
@@ -495,7 +488,9 @@ inline size_t Snapshot(ID3D11DeviceContext* native, ID3D11Resource* resource) {
         default:
           break;
       }
-      if (FAILED(made)) copy->staging.Reset();
+      if (FAILED(made)) {
+        copy->staging.Reset();
+      }
     }
     if (copy->staging) {
       native->CopyResource(copy->staging.Get(), resource);
@@ -679,12 +674,16 @@ inline std::string HostState(ID3D11DeviceContext* native) {
   UINT sample_mask = 0;
   native->OMGetBlendState(blend.GetAddressOf(), blend_factor.data(), &sample_mask);
   D3D11_BLEND_DESC blend_desc = {};
-  if (blend) blend->GetDesc(&blend_desc);
+  if (blend) {
+    blend->GetDesc(&blend_desc);
+  }
   ComPtr<ID3D11DepthStencilState> depth_state;
   UINT stencil_ref = 0;
   native->OMGetDepthStencilState(depth_state.GetAddressOf(), &stencil_ref);
   D3D11_DEPTH_STENCIL_DESC depth_desc = {};
-  if (depth_state) depth_state->GetDesc(&depth_desc);
+  if (depth_state) {
+    depth_state->GetDesc(&depth_desc);
+  }
   text += std::format(R"(,"blend":{},"blend_factor":[{},{},{},{}],"sample_mask":{},"depth_stencil":{},"stencil_ref":{}}})",
                       (blend ? Words(blend_desc) : "null"), blend_factor[0], blend_factor[1], blend_factor[2], blend_factor[3], sample_mask,
                       (depth_state ? Words(depth_desc) : "null"), stencil_ref);
@@ -698,7 +697,9 @@ inline std::string HostState(ID3D11DeviceContext* native) {
   ComPtr<ID3D11RasterizerState> rasterizer;
   native->RSGetState(rasterizer.GetAddressOf());
   D3D11_RASTERIZER_DESC rasterizer_desc = {};
-  if (rasterizer) rasterizer->GetDesc(&rasterizer_desc);
+  if (rasterizer) {
+    rasterizer->GetDesc(&rasterizer_desc);
+  }
   text += R"(,"rs":{"viewports":[)";
   for (UINT index = 0; index < viewport_count; ++index) {
     const auto& viewport = viewports[index];
@@ -764,44 +765,8 @@ inline void CloseEvent(ID3D11DeviceContext* native) {
   state.event = {};
 }
 
-// The worker: each frame's blobs (once per hash), manifest.json, uses.tsv, done.txt, the log line.
-inline void WriteFrame(const std::shared_ptr<Frame>& frame) {
-  std::error_code error;
-  std::filesystem::create_directories(frame->folder / "blobs", error);
-  std::unordered_set<std::string> written;
-  for (const auto& copy : frame->copies) {
-    for (auto& subresource : copy->subresources) {
-      if (subresource.data.empty() && subresource.row_bytes != 0) continue;
-      subresource.blob = std::format("{:016x}_{}.bin", Hash(subresource.data), subresource.data.size());
-      if (written.insert(subresource.blob).second) {
-        std::ofstream(frame->folder / "blobs" / subresource.blob, std::ios::binary | std::ios::trunc)
-            .write(reinterpret_cast<const char*>(subresource.data.data()), static_cast<std::streamsize>(subresource.data.size()));
-      }
-      std::vector<uint8_t>().swap(subresource.data);
-    }
-  }
-  std::string copies;
-  for (size_t index = 0; index < frame->copies.size(); ++index) {
-    const auto& copy = *frame->copies[index];
-    std::string subresources;
-    for (const auto& subresource : copy.subresources) {
-      subresources += std::format(R"({}{{"index":{},"width":{},"height":{},"depth":{},"row_bytes":{},"rows":{},"blob":{}}})",
-                                  (subresources.empty() ? "" : ","), subresource.index, subresource.width, subresource.height, subresource.depth,
-                                  subresource.row_bytes, subresource.rows, Quoted(subresource.blob));
-    }
-    copies += std::format(R"({}{{"id":"{:#x}","kind":"{}","desc":{},"multisampled":{},"subresources":[{}]}})", (index == 0 ? "" : ",\n"), copy.id, copy.kind,
-                          copy.desc, (copy.multisampled ? "true" : "false"), subresources);
-  }
-  const std::string manifest = std::format(
-      "{{\"version\":1,\"present\":{},\"label\":{},\"pointer_bits\":{},\"settings\":{{{}}},\"values\":{{{}}},\n\"copies\":[\n{}\n],\n\"events\":[\n{}\n]}}\n",
-      frame->present, Quoted(frame->label), sizeof(void*) * 8, frame->settings, frame->values, copies, frame->events);
-  std::ofstream(frame->folder / "manifest.json.tmp", std::ios::binary | std::ios::trunc) << manifest;
-  std::filesystem::rename(frame->folder / "manifest.json.tmp", frame->folder / "manifest.json", error);
-  std::ofstream(frame->folder / "uses.tsv", std::ios::binary | std::ios::trunc) << "# frame\tspan\tstem\tkind\tslot\tresource\n" << frame->uses;
-  std::ofstream(frame->folder / "done.txt", std::ios::binary | std::ios::trunc) << std::format("{} events, {} copies\n", frame->event_count, frame->copies.size());
-  Log(std::format("frame {} done ({} events, {} copies, {})", frame->present, frame->event_count, frame->copies.size(), frame->folder.string()));
-}
-
+// The worker: each frame's blobs (once per hash), manifest.json, uses.tsv, then done.txt and the log line only when
+// every copy was read and every file written (else "frame N FAILED": the folder stays without done.txt).
 inline void Work() {
   while (true) {
     std::shared_ptr<Frame> frame;
@@ -812,7 +777,59 @@ inline void Work() {
       frame = state.queue.front();
       state.queue.pop_front();
     }
-    WriteFrame(frame);
+    std::error_code error;
+    std::filesystem::create_directories(frame->folder / "blobs", error);
+    std::string failed = (error ? std::format("blobs folder: {}", error.message()) : "");
+    const auto write_file = [&](const std::filesystem::path& path, std::string_view bytes) {
+      std::ofstream file(path, std::ios::binary | std::ios::trunc);
+      file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+      file.close();
+      if (!file && failed.empty()) {
+        failed = std::format("{} not written", path.filename().string());
+      }
+    };
+    std::unordered_set<std::string> written;
+    for (const auto& copy : frame->copies) {
+      if (copy->read_failed && failed.empty()) {
+        failed = std::format("a copy of {:#x} not read", copy->id);
+      }
+      for (auto& subresource : copy->subresources) {
+        if (subresource.data.empty() && subresource.row_bytes != 0) continue;
+        subresource.blob = std::format("{:016x}_{}.bin", Hash(subresource.data), subresource.data.size());
+        if (written.insert(subresource.blob).second) {
+          write_file(frame->folder / "blobs" / subresource.blob,
+                     {reinterpret_cast<const char*>(subresource.data.data()), subresource.data.size()});
+        }
+        std::vector<uint8_t>().swap(subresource.data);
+      }
+    }
+    std::string copies;
+    for (size_t index = 0; index < frame->copies.size(); ++index) {
+      const auto& copy = *frame->copies[index];
+      std::string subresources;
+      for (const auto& subresource : copy.subresources) {
+        subresources += std::format(R"({}{{"index":{},"width":{},"height":{},"depth":{},"row_bytes":{},"rows":{},"blob":{}}})",
+                                    (subresources.empty() ? "" : ","), subresource.index, subresource.width, subresource.height, subresource.depth,
+                                    subresource.row_bytes, subresource.rows, Quoted(subresource.blob));
+      }
+      copies += std::format(R"({}{{"id":"{:#x}","kind":"{}","desc":{},"multisampled":{},"subresources":[{}]}})", (index == 0 ? "" : ",\n"), copy.id, copy.kind,
+                            copy.desc, (copy.multisampled ? "true" : "false"), subresources);
+    }
+    const std::string manifest = std::format(
+        "{{\"version\":1,\"present\":{},\"label\":{},\"pointer_bits\":{},\"settings\":{{{}}},\"values\":{{{}}},\n\"copies\":[\n{}\n],\n\"events\":[\n{}\n]}}\n",
+        frame->present, Quoted(frame->label), sizeof(void*) * 8, frame->settings, frame->values, copies, frame->events);
+    write_file(frame->folder / "manifest.json.tmp", manifest);
+    std::filesystem::rename(frame->folder / "manifest.json.tmp", frame->folder / "manifest.json", error);
+    if (error && failed.empty()) {
+      failed = std::format("manifest rename: {}", error.message());
+    }
+    write_file(frame->folder / "uses.tsv", "# frame\tspan\tstem\tkind\tslot\tresource\n" + frame->uses);
+    if (!failed.empty()) {
+      Log(std::format("frame {} FAILED ({}): no done.txt, {}", frame->present, failed, frame->folder.string()));
+    } else {
+      write_file(frame->folder / "done.txt", std::format("{} events, {} copies\n", frame->event_count, frame->copies.size()));
+      Log(std::format("frame {} done ({} events, {} copies, {})", frame->present, frame->event_count, frame->copies.size(), frame->folder.string()));
+    }
     const std::unique_lock lock(state.queue_mutex);
     state.queued_bytes -= frame->bytes;
   }
@@ -844,26 +861,6 @@ inline bool VideoMemoryRoom(ID3D11DeviceContext* native, std::string* why) {
   return true;
 }
 
-// The camera constants' line (camera_VS_PS: c0 its position, c13-c16 inv_view; either packing: the one whose
-// translation is c0), yaw and pitch of its forward axis in degrees (y up).
-inline std::string CameraLine(const float* constants) {
-  const float* position = constants;
-  const float* inv_view = constants + (13 * 4);
-  const auto at_position = [&](const std::array<float, 3>& value) {
-    return std::abs(value[0] - position[0]) + std::abs(value[1] - position[1]) + std::abs(value[2] - position[2])
-           < 0.01f * (1.f + std::abs(position[0]) + std::abs(position[1]) + std::abs(position[2]));
-  };
-  std::array<float, 3> forward = {inv_view[8], inv_view[9], inv_view[10]};  // rows: c15
-  if (!at_position({inv_view[12], inv_view[13], inv_view[14]}) && at_position({inv_view[3], inv_view[7], inv_view[11]})) {
-    forward = {inv_view[2], inv_view[6], inv_view[10]};  // columns: the z column
-  }
-  const float length = std::sqrt((forward[0] * forward[0]) + (forward[1] * forward[1]) + (forward[2] * forward[2]));
-  constexpr float DEGREES = 57.29577951f;
-  const float yaw = std::atan2(forward[0], forward[2]) * DEGREES;
-  const float pitch = (length > 0.f ? std::asin(std::clamp(forward[1] / length, -1.f, 1.f)) * DEGREES : 0.f);
-  return std::format("camera yaw {:.2f} pitch {:.2f} pos {:.3f} {:.3f} {:.3f}", yaw, pitch, position[0], position[1], position[2]);
-}
-
 // Arming: `text` "<n>[ <label>]".
 inline void Arm(std::string_view text) {
   uint32_t frames = 0;
@@ -876,7 +873,9 @@ inline void Arm(std::string_view text) {
     return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9')
            || character == '_' || character == '-';
   });
-  if (!label.empty() && plain) state.label = label;
+  if (!label.empty() && plain) {
+    state.label = label;
+  }
   state.armed += frames;
   Log(std::format("armed {} frames (label {}){}", frames, state.label, (plain ? "" : "; the label is not plain, the last one kept")));
 }
@@ -894,7 +893,9 @@ inline void Present(ID3D11DeviceContext* native) {
   };
   if (state.finishing) {
     for (const auto& copy : state.finishing->copies) {
-      if (copy->staging) Read(native, copy.get());
+      if (copy->staging) {
+        Read(native, copy.get());
+      }
     }
     drop_in_flight(*state.finishing);
     Log(std::format("frame {} copied ({} MB)", state.finishing->present, state.finishing->bytes >> 20));
@@ -933,7 +934,24 @@ inline void Present(ID3D11DeviceContext* native) {
   if (state.camera_pending) {
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (native->Map(state.camera_staging.Get(), 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped) == S_OK) {
-      Log(CameraLine(static_cast<const float*>(mapped.pData)));
+      // The camera constants' line (camera_VS_PS: c0 its position, c13-c16 inv_view; either packing: the one whose
+      // translation is c0), yaw and pitch of its forward axis in degrees (y up).
+      const auto* constants = static_cast<const float*>(mapped.pData);
+      const float* position = constants;
+      const float* inv_view = constants + (13 * 4);
+      const auto at_position = [&](const std::array<float, 3>& value) {
+        return std::abs(value[0] - position[0]) + std::abs(value[1] - position[1]) + std::abs(value[2] - position[2])
+               < 0.01f * (1.f + std::abs(position[0]) + std::abs(position[1]) + std::abs(position[2]));
+      };
+      std::array<float, 3> forward = {inv_view[8], inv_view[9], inv_view[10]};  // rows: c15
+      if (!at_position({inv_view[12], inv_view[13], inv_view[14]}) && at_position({inv_view[3], inv_view[7], inv_view[11]})) {
+        forward = {inv_view[2], inv_view[6], inv_view[10]};  // columns: the z column
+      }
+      const float length = std::sqrt((forward[0] * forward[0]) + (forward[1] * forward[1]) + (forward[2] * forward[2]));
+      constexpr float DEGREES = 57.29577951f;
+      const float yaw = std::atan2(forward[0], forward[2]) * DEGREES;
+      const float pitch = (length > 0.f ? std::asin(std::clamp(forward[1] / length, -1.f, 1.f)) * DEGREES : 0.f);
+      Log(std::format("camera yaw {:.2f} pitch {:.2f} pos {:.3f} {:.3f} {:.3f}", yaw, pitch, position[0], position[1], position[2]));
       native->Unmap(state.camera_staging.Get(), 0);
       state.camera_pending = false;
     }
@@ -973,13 +991,6 @@ inline void Present(ID3D11DeviceContext* native) {
   recording.store(true);
 }
 
-inline ID3D11DeviceContext* NativeContext(reshade::api::command_list* cmd_list) {
-  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return nullptr;
-  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
-  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
-  return native;
-}
-
 inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*, const reshade::api::rect*, uint32_t,
                       const reshade::api::rect*) {
   if (queue->get_device()->get_api() != reshade::api::device_api::d3d11) return;
@@ -990,7 +1001,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
 }
 
 inline void KeepDraw(reshade::api::command_list* cmd_list, std::string text) {
-  if (!recording.load(std::memory_order_relaxed) || NativeContext(cmd_list) == nullptr) return;
+  if (!recording.load(std::memory_order_relaxed) || cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   const std::unique_lock lock(state.mutex);
   state.draw = std::move(text);
 }
@@ -1078,12 +1089,13 @@ inline void Start(const std::filesystem::path& root) {
   std::filesystem::remove(state.exe_folder / MARKER, ignored);
   state.stopping = false;
   state.worker_idle_exit.store(false);
-  state.worker = std::thread(Work);
+  std::thread(Work).detach();
   enabled.store(true);
 }
 
-// The worker stopped after the frames queued (the replay's self test; Uninstall).
-inline void Stop() {
+// The worker stopped after the frames queued, waited for at most `wait_ms` (frames still queued then are lost: their
+// folders have no done.txt): false when it had not finished.
+inline bool Stop(int wait_ms) {
   enabled.store(false);
   recording.store(false);
   {
@@ -1091,7 +1103,8 @@ inline void Stop() {
     state.stopping = true;
   }
   state.queue_wake.notify_one();
-  if (state.worker.joinable()) state.worker.join();
+  for (int waited = 0; waited < wait_ms && !state.worker_idle_exit.load(); waited += 10) Sleep(10);
+  return state.worker_idle_exit.load();
 }
 
 }  // namespace internal
@@ -1106,7 +1119,9 @@ inline void Begin(ID3D11DeviceContext* native, const char* name) {
   const std::unique_lock lock(state.mutex);
   if (state.frame == nullptr) return;
   if (native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) {
-    if (!state.logged_deferred) Log("a deferred context's event skipped");
+    if (!state.logged_deferred) {
+      Log("a deferred context's event skipped");
+    }
     state.logged_deferred = true;
     return;
   }
@@ -1224,7 +1239,9 @@ inline void Camera(ID3D11DeviceContext* native, ID3D11Buffer* camera) {
   camera->GetDesc(&desc);
   if (desc.ByteWidth < 17 * 16) return;
   D3D11_BUFFER_DESC staging_desc = {};
-  if (state.camera_staging) state.camera_staging->GetDesc(&staging_desc);
+  if (state.camera_staging) {
+    state.camera_staging->GetDesc(&staging_desc);
+  }
   if (staging_desc.ByteWidth != desc.ByteWidth) {
     ComPtr<ID3D11Device> device;
     native->GetDevice(device.GetAddressOf());
@@ -1237,7 +1254,8 @@ inline void Camera(ID3D11DeviceContext* native, ID3D11Buffer* camera) {
 }
 
 // OwnPass's end (pass_timing.hpp): the pass's bindings as uses.tsv rows (span: the mark's number in the frame; stem:
-// its name, the shader's embed name; compute: the CS stage's views and UAVs, else the PS stage's views and OM's targets).
+// its name, the shader's embed name; compute: the CS stage's views and UAVs, else the VS and PS stages' views and OM's
+// targets and UAVs).
 inline void OwnPassDone(ID3D11DeviceContext* native, const char* name, bool compute) {
   using namespace internal;
   if (!recording.load(std::memory_order_relaxed) || native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
@@ -1261,15 +1279,31 @@ inline void OwnPassDone(ID3D11DeviceContext* native, const char* name, bool comp
     }
   } else {
     native->PSGetShaderResources(0, static_cast<UINT>(views.size()), views.data());
+    std::array<ID3D11ShaderResourceView*, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT> vertex_views = {};
+    native->VSGetShaderResources(0, static_cast<UINT>(vertex_views.size()), vertex_views.data());
+    for (UINT slot = 0; slot < vertex_views.size(); ++slot) {
+      if (vertex_views[slot] != nullptr) {
+        row("srv", std::format("vs_t{}:0", slot), vertex_views[slot]);
+      }
+    }
     std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> targets = {};
     ID3D11DepthStencilView* depth = nullptr;
-    native->OMGetRenderTargets(static_cast<UINT>(targets.size()), targets.data(), &depth);
+    std::array<ID3D11UnorderedAccessView*, D3D11_1_UAV_SLOT_COUNT> uavs = {};
+    native->OMGetRenderTargetsAndUnorderedAccessViews(static_cast<UINT>(targets.size()), targets.data(), &depth, 0, static_cast<UINT>(uavs.size()),
+                                                      uavs.data());
+    for (UINT slot = 0; slot < uavs.size(); ++slot) {
+      if (uavs[slot] != nullptr) {
+        row("uav", std::format("u{}:0", slot), uavs[slot]);
+      }
+    }
     // A blended target is read too (rtv_blend); the depth is read by the depth or stencil test (dsv), and written by
     // the state (dsv_write). A null state is D3D11's default: no blending, depth test and write on.
     ComPtr<ID3D11BlendState> blend;
     native->OMGetBlendState(blend.GetAddressOf(), nullptr, nullptr);
     D3D11_BLEND_DESC blend_desc = {};
-    if (blend) blend->GetDesc(&blend_desc);
+    if (blend) {
+      blend->GetDesc(&blend_desc);
+    }
     for (UINT slot = 0; slot < targets.size(); ++slot) {
       if (targets[slot] == nullptr) continue;
       row(blend_desc.RenderTarget[blend_desc.IndependentBlendEnable ? slot : 0].BlendEnable ? "rtv_blend" : "rtv", std::format("o{}:0", slot), targets[slot]);
@@ -1277,7 +1311,9 @@ inline void OwnPassDone(ID3D11DeviceContext* native, const char* name, bool comp
     ComPtr<ID3D11DepthStencilState> depth_state;
     native->OMGetDepthStencilState(depth_state.GetAddressOf(), nullptr);
     D3D11_DEPTH_STENCIL_DESC depth_desc = {.DepthEnable = TRUE, .DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL};
-    if (depth_state) depth_state->GetDesc(&depth_desc);
+    if (depth_state) {
+      depth_state->GetDesc(&depth_desc);
+    }
     const bool tested = depth_desc.DepthEnable || depth_desc.StencilEnable;
     const bool written = (depth_desc.DepthEnable && depth_desc.DepthWriteMask == D3D11_DEPTH_WRITE_MASK_ALL)
                          || (depth_desc.StencilEnable && depth_desc.StencilWriteMask != 0);
@@ -1297,6 +1333,10 @@ inline void OwnPassDone(ID3D11DeviceContext* native, const char* name, bool comp
 inline void Install() {
   const DWORD size = GetEnvironmentVariableW(L"RENODX_TW_PASS_DUMP", nullptr, 0);
   if (size == 0 || internal::enabled.load()) return;
+  if (size == 1) {
+    internal::Log("RENODX_TW_PASS_DUMP is empty: off");
+    return;
+  }
   std::wstring folder(size, L'\0');
   folder.resize(GetEnvironmentVariableW(L"RENODX_TW_PASS_DUMP", folder.data(), size));
   internal::Start(folder);
@@ -1310,7 +1350,7 @@ inline void Install() {
                             (internal::state.exe_folder / internal::MARKER).string()));
 }
 
-// The worker is stopped and waited for at most 2 s (frames still queued then are lost: the folder has no done.txt).
+// AddonUninit can run under the loader lock (DLL unload): the worker is waited for at most 2 s.
 inline void Uninstall() {
   if (!internal::enabled.load()) return;
   reshade::unregister_event<reshade::addon_event::present>(internal::OnPresent);
@@ -1319,16 +1359,9 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::dispatch>(internal::OnDispatch);
   reshade::unregister_event<reshade::addon_event::init_pipeline>(internal::OnInitPipeline);
   reshade::unregister_event<reshade::addon_event::destroy_pipeline>(internal::OnDestroyPipeline);
-  internal::enabled.store(false);
-  internal::recording.store(false);
-  {
-    const std::unique_lock lock(internal::state.queue_mutex);
-    internal::state.stopping = true;
+  if (!internal::Stop(2000)) {
+    internal::Log("the worker had not finished after 2 s: queued frames have no done.txt");
   }
-  internal::state.queue_wake.notify_one();
-  // AddonUninit can run under the loader lock (DLL unload): a join could wait forever there.
-  for (int wait = 0; wait < 200 && !internal::state.worker_idle_exit.load(); ++wait) Sleep(10);
-  if (internal::state.worker.joinable()) internal::state.worker.detach();
 }
 
 }  // namespace twattila::pass_dump
