@@ -753,7 +753,9 @@ class RtScene12 {
 #endif
 #if defined(RENODX_RTXDI)
     // ReSTIR GI's boiling filter (REUSE_BOIL: no ray tracing, one build; none: its switch does nothing).
-    if (!pipeline(RT_REUSE_BOIL, sizeof(RT_REUSE_BOIL), &reuse_boil_pipeline_)) reuse_boil_pipeline_.Reset();
+    if (!pipeline(RT_REUSE_BOIL, sizeof(RT_REUSE_BOIL), &reuse_boil_pipeline_)) {
+      reuse_boil_pipeline_.Reset();
+    }
 #endif
 #if defined(RENODX_RTXDI_GI)
     // The RTXDI GI contest's (REUSE_RTXDI_PACK: no ray tracing, one build; REUSE_RTXDI: the reuse's).
@@ -3937,13 +3939,19 @@ class RtScene12 {
                                           std::pair{L"RENODX_TW_REUSE_VALIDATE_KEEP_CHROMA", REUSE_TEST_VALIDATE_KEEP_CHROMA},
                                           std::pair{L"RENODX_TW_REUSE_NO_HISTORY_CLAMP", REUSE_TEST_NO_HISTORY_CLAMP},
                                           std::pair{L"RENODX_TW_REUSE_VALIDATE_NO_CACHE", REUSE_TEST_VALIDATE_NO_CACHE}}) {
-            if (GetEnvironmentVariableW(name, nullptr, 0) != 0) tests |= bit;
+            if (GetEnvironmentVariableW(name, nullptr, 0) != 0) {
+              tests |= bit;
+            }
           }
           std::array<wchar_t, 8> bias = {};
           if (GetEnvironmentVariableW(L"RENODX_TW_REUSE_BIAS", bias.data(), static_cast<DWORD>(bias.size())) != 0) {
             const auto mode = std::wcstoul(bias.data(), nullptr, 10);
-            if (mode == 1) tests |= REUSE_BIAS_BASIC;
-            if (mode >= 2) tests |= REUSE_BIAS_RAYTRACED;
+            if (mode == 1) {
+              tests |= REUSE_BIAS_BASIC;
+            }
+            if (mode >= 2) {
+              tests |= REUSE_BIAS_RAYTRACED;
+            }
           }
           return tests;
         }();
@@ -4109,6 +4117,14 @@ class RtScene12 {
                                        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             rtxdi_offsets_ = Buffer(uint64_t{RTXDI_OFFSET_COUNT} * 8, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                                     D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            if (!rtxdi_reservoirs_ || !rtxdi_offsets_) {
+              // Said once: the contest stays off (Buffer() reports no failure of its own).
+              slow_report_ += std::format("{}[TW ray tracing] RENODX_TW_REUSE_RTXDI: no memory for its {} MB of reservoirs: off",
+                                          slow_report_.empty() ? "" : "\n", (reservoirs * RTXDI_RESERVOIR_BYTES) >> 20);
+              rtxdi_reservoirs_.Reset();
+              rtxdi_offsets_.Reset();
+              reuse_rtxdi_pipeline_.Reset();
+            }
           }
           rtxdi = rtxdi && rtxdi_reservoirs_ && rtxdi_offsets_;
           if (rtxdi) {
@@ -4135,12 +4151,19 @@ class RtScene12 {
           const bool nearer = reuse_near_pipeline_
                               && ((version >= 31 && (requested & dlaa_bridge::RT_PATH_REUSE_NEAR) != 0)
                                   || GetEnvironmentVariableW(L"RENODX_TW_REUSE_NEAR", nullptr, 0) != 0);
-          list->SetPipelineState(
-              (lights_mode != 0 ? reuse_lights_pipeline_
-                                : (rtxdi ? reuse_rtxdi_pipeline_
-                                         : (reuse_suspects ? reuse_tests_pipeline_
-                                                           : (nearer ? reuse_near_pipeline_ : (lean ? reuse_lean_pipeline_ : reuse_pipeline_)))))
-                  .Get());
+          ID3D12PipelineState* reuse_state = reuse_pipeline_.Get();
+          if (lights_mode != 0) {
+            reuse_state = reuse_lights_pipeline_.Get();
+          } else if (rtxdi) {
+            reuse_state = reuse_rtxdi_pipeline_.Get();
+          } else if (reuse_suspects) {
+            reuse_state = reuse_tests_pipeline_.Get();
+          } else if (nearer) {
+            reuse_state = reuse_near_pipeline_.Get();
+          } else if (lean) {
+            reuse_state = reuse_lean_pipeline_.Get();
+          }
+          list->SetPipelineState(reuse_state);
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
           reuse_frame_ = frame;
           reuse_lights_mode_ = lights_mode;
@@ -4588,36 +4611,13 @@ class RtScene12 {
   static constexpr uint32_t PATH_SKY_PARITY = 1048576;  // rt_path.hlsli (the trace's PATH_TINT)
   static constexpr uint32_t PATH_SUN_LIGHT = 2097152;   // rt_path.hlsli (the trace's PATH_TINT_GUIDES)
   static constexpr uint32_t PATH_START_PAST = 2147483648;  // rt_camera.hlsli
-  // PathConstants::reuse_tests (tests: the bisection of ReSTIR GI's bias rising with the rays; rt_path.hlsli).
-  static constexpr uint32_t REUSE_TEST_NO_SPATIAL = 1;
-  static constexpr uint32_t REUSE_TEST_NO_VALIDATE = 2;
-  static constexpr uint32_t REUSE_TEST_NO_SKY = 4;
-  static constexpr uint32_t REUSE_TEST_NO_CONTACT = 8;
-  static constexpr uint32_t REUSE_TEST_SEEN_LIGHTS_FRAME = 16;
-  static constexpr uint32_t REUSE_TEST_SPATIAL_CLAMP = 32;
-  static constexpr uint32_t REUSE_TEST_SKY_DIRECTION = 64;
-  static constexpr uint32_t REUSE_TEST_NO_JACOBIAN_CUT = 128;
-  static constexpr uint32_t REUSE_TEST_HISTORY_PLAIN = 256;
-  static constexpr uint32_t REUSE_TEST_NEIGHBOUR_VISIBILITY = 512;
-  static constexpr uint32_t REUSE_BIAS_BASIC = 1024;
-  static constexpr uint32_t REUSE_BIAS_RAYTRACED = 2048;
-  static constexpr uint32_t REUSE_TEST_VALIDATE_NO_DROP = 65536;
-  static constexpr uint32_t REUSE_TEST_VALIDATE_KEEP_LIGHT = 131072;
-  static constexpr uint32_t REUSE_TEST_VALIDATE_NO_CUTS = 262144;
-  static constexpr uint32_t REUSE_TEST_VALIDATE_RESCALE = 524288;
-  static constexpr uint32_t REUSE_TEST_VALIDATE_NO_INVALIDITY = 1048576;
-  static constexpr uint32_t REUSE_TEST_VALIDATE_KEEP_CHROMA = 2097152;
-  static constexpr uint32_t REUSE_TEST_NO_HISTORY_CLAMP = 4194304;
-  static constexpr uint32_t REUSE_TEST_VALIDATE_NO_CACHE = 8388608;
+#include "./rt_reuse_bits.h"  // PathConstants::reuse_tests' bits (tests; rt_path.hlsli)
   // Read only by the REUSE_TESTS builds.
   static constexpr uint32_t REUSE_SUSPECT_BITS = REUSE_TEST_SPATIAL_CLAMP | REUSE_TEST_SKY_DIRECTION | REUSE_TEST_NO_JACOBIAN_CUT | REUSE_TEST_HISTORY_PLAIN
                                                  | REUSE_TEST_NEIGHBOUR_VISIBILITY | REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED
                                                  | REUSE_TEST_VALIDATE_NO_DROP | REUSE_TEST_VALIDATE_KEEP_LIGHT | REUSE_TEST_VALIDATE_NO_CUTS
                                                  | REUSE_TEST_VALIDATE_RESCALE | REUSE_TEST_VALIDATE_NO_INVALIDITY
                                                  | REUSE_TEST_VALIDATE_KEEP_CHROMA | REUSE_TEST_NO_HISTORY_CLAMP | REUSE_TEST_VALIDATE_NO_CACHE;
-  static constexpr uint32_t REUSE_TEST_BOIL = 8192;
-  static constexpr uint32_t REUSE_TEST_BOIL_PLANT = 16384;
-  static constexpr uint32_t REUSE_TEST_RTXDI = 32768;  // the host's only
   static constexpr UINT RTXDI_RESERVOIR_BYTES = 32;  // RTXDI_PackedGIReservoir
   static constexpr UINT RTXDI_OFFSET_COUNT = 1024;   // rt_path.hlsli RTXDI_NEIGHBOUR_OFFSETS
   static constexpr uint32_t LIGHTS_IN_PATHS = 128;  // rt_camera.hlsli (PathConstants::lights_in_bounce)

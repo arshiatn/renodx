@@ -111,43 +111,7 @@ static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this many times one ray's (kajiya's RESTIR_RESERVOIR_W_CLAMP; the bounce's: W x cos / pi)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
-// reuse_tests (RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY / _NO_CONTACT / _SEEN_LIGHTS_FRAME, rt_d3d12.hpp; the
-// bisection of ReSTIR GI's bias rising with the rays): ReuseTexel merges no neighbours; PathTraceTexel validates no history;
-// ReuseTexel leaves Own Sky Rays' sky out; ContactShade 1 (CONTACT_RANGE 0, the raw paths' too); HitLight's
-// SeenDiffuseLight picks keyed by the frame as well. PT DI step 2's suspects (G0, each its own switch): _SPATIAL_CLAMP the
-// receiver-unit W clamp after the spatial Finish too; _SKY_DIRECTION a neighbour's sky sample (a point at its first ray's
-// reach) moved as a direction; _NO_JACOBIAN_CUT no 0.1-10 cut; _HISTORY_PLAIN the history cap without the rays; _NEIGHBOUR_
-// VISIBILITY a neighbour's sample shadow-tested before its merge (its target 0 when blocked). RENODX_TW_REUSE_BIAS=1 / 2
-// (G1): the spatial merge's MIS-like normalization over the neighbours that could have made the chosen sample (Basic), they
-// also seeing it (Raytraced, a ray each), instead of 1 / M (RTXDI's GI bias correction modes).
-static const uint REUSE_TEST_NO_SPATIAL = 1u;
-static const uint REUSE_TEST_NO_VALIDATE = 2u;
-static const uint REUSE_TEST_NO_SKY = 4u;
-static const uint REUSE_TEST_NO_CONTACT = 8u;
-static const uint REUSE_TEST_SEEN_LIGHTS_FRAME = 16u;
-static const uint REUSE_TEST_SPATIAL_CLAMP = 32u;
-static const uint REUSE_TEST_SKY_DIRECTION = 64u;
-static const uint REUSE_TEST_NO_JACOBIAN_CUT = 128u;
-static const uint REUSE_TEST_HISTORY_PLAIN = 256u;
-static const uint REUSE_TEST_NEIGHBOUR_VISIBILITY = 512u;
-static const uint REUSE_BIAS_BASIC = 1024u;
-static const uint REUSE_BIAS_RAYTRACED = 2048u;
-static const uint REUSE_TEST_BOIL = 8192u;        // RENODX_TW_REUSE_BOIL: the boiling filter's pass (BoilTexel)
-static const uint REUSE_TEST_BOIL_PLANT = 16384u; // RENODX_TW_REUSE_BOIL_PLANT: its pass plants a texel 100 x too bright first
-// Validate's parts (part C, the bias that grows with the rays; REUSE_TESTS builds): _VALIDATE_NO_DROP keeps a history whose
-// sample's ray is blocked, _VALIDATE_KEEP_LIGHT keeps its stored light, _VALIDATE_NO_CUTS its count and weight,
-// _VALIDATE_RESCALE takes the light now with its weight over the change (W x the target stays), _VALIDATE_NO_INVALIDITY
-// returns no change (the history cap stays whole), _VALIDATE_KEEP_CHROMA takes the light now's luminance in the stored
-// light's colour, _VALIDATE_NO_CACHE asks the screen only (no cache answer: the stored light stays); REUSE_TEST_NO_HISTORY_
-// CLAMP: no ClampWeight after the history merge.
-static const uint REUSE_TEST_VALIDATE_NO_DROP = 65536u;
-static const uint REUSE_TEST_VALIDATE_KEEP_LIGHT = 131072u;
-static const uint REUSE_TEST_VALIDATE_NO_CUTS = 262144u;
-static const uint REUSE_TEST_VALIDATE_RESCALE = 524288u;
-static const uint REUSE_TEST_VALIDATE_NO_INVALIDITY = 1048576u;
-static const uint REUSE_TEST_VALIDATE_KEEP_CHROMA = 2097152u;
-static const uint REUSE_TEST_NO_HISTORY_CLAMP = 4194304u;
-static const uint REUSE_TEST_VALIDATE_NO_CACHE = 8388608u;
+#include "./rt_reuse_bits.h"  // reuse_tests' bits (RENODX_TW_REUSE_*, rt_d3d12.hpp)
 // The suspects', G1's and Validate's bits (32-2048, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set): every other build is the shipped code to the byte (0: their code compiled out).
 #if defined(REUSE_TESTS)
@@ -1349,13 +1313,8 @@ void ReuseTexel(uint2 id) {
     for (uint neighbour = 0u; neighbour < neighbours; ++neighbour) {
       if ((merged & (1u << neighbour)) == 0u) continue;
       const uint2 texel = uint2(ReuseNeighbourTexel(id, neighbour));
-#if defined(REUSE_LEAN)
-      const float3 other_origin = positions[min(texel * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u)].xyz;
-      const float3 other_normal = LoadReceiverNormal(reuse_data[set], texel);
-#else
       const float3 other_origin = surface_origin[texel].xyz;
       const float3 other_normal = surface_normal[texel].xyz;
-#endif
       Reservoir there = combined;
       float target_there = ReuseTarget(other_origin, other_normal, origin, there);
       const float jacobian = ReuseJacobian(combined, origin, other_origin);
