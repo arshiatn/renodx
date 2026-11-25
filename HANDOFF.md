@@ -856,8 +856,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | ?
 - CALLISTO C1: cal1_ (Opus High, worktree, branch cal1_c1) STARTED: new files only ... | ?
 - WARP HARNESS SHARED HELPER: ~190 lines copied from the vMF test into tw_callisto ... | ?
-- C1 MERGE (origin/cal1_c1 31c5b84e7 + the C0b commit) -> no build needed (no call ... | ?
-- ATN (after cdr_): Callisto = ship nothing (C1 branch parked, C2-C4 not started); ... | ?
+- (PARKED 11-25 night: ship nothing; reopens if ATN likes vMF by eye) C1 MERGE (or ... | ?
+- ATN EYE TEST: vMF in game (its Experimental row, default 40 %) together with the ... | ?
 - CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent ... | ?
 - CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mism ... | later
 - CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
@@ -16139,7 +16139,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         0.97 right; no process tokens in code). HELD by the design's rule (C1 merges after C0b's numbers, or on ATN's
         word): merge when c0b_ reports, together with its winning set (or none) in one small cal1_ commit that also
         wraps tests.cpp:38 (189 cols) + 5 make_points.py lines > 120 and drops README:9's history line.
-        - [ ] C1 MERGE (origin/cal1_c1 31c5b84e7 + the C0b commit) -> no build needed (no callers) -> HANDOFF.
+        - [ ] (PARKED 11-25 night: ship nothing; reopens if ATN likes vMF by eye) C1 MERGE (origin/cal1_c1 31c5b84e7 + the C0b commit) -> no build needed (no callers) -> HANDOFF.
         Owner: coord (after c0b_)
         c0b_ DONE (designs\callisto_c0b_fit.md; hand-back c0b_handback.md): NO SET WINS -> design pick 'ship nothing'.
         Rough subset 69 materials, Lambert mean E 18.35 %: A -4.9 %, A+F -26.7 %, V16 -12.6 %, V40 -23.4 %, V16_DI
@@ -16149,8 +16149,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         of A. Talk sanity: its own sets better on 5 / 10 materials. MERL md5 = Zenodo, CC BY-SA 4.0 (2023 README
         overrides the 2006 'academic' Readme); RGL 51 isotropic CC0 files (48 MB). Scratch c0b_ 1.60 GB (MERL zip
         deletable on ATN's yes). -> cdr_ C0b CHECK STARTED (also judges vMF S2-S6 and C1's branch). Then ATN.
-        - [ ] ATN (after cdr_): Callisto = ship nothing (C1 branch parked, C2-C4 not started); vMF S2-S6 (~17-23 h)
+        - [x] (ANSWERED 11-25 night) ATN (after cdr_): Callisto = ship nothing (C1 branch parked, C2-C4 not started); vMF S2-S6 (~17-23 h)
         also loses to Lambert on measured data: drop / park, or keep as the look-by-eye Experimental row? Owner: ATN
+        ATN: 'no need to test more ... I want to see it with my eyes in the game. Don't park vMF. Callisto can get
+        parked for now (if vMF is good to my eyes, we build that too). I would like to see vMF ... whenever it
+        finishes with unified path tracing stuffs.' -> vMF S2-S6 CONTINUE in their slot (after PT DI 4b / 4c); no
+        more measured-data tests (no PT / porous test). Callisto PARKED (origin/cal1_c1 kept, unmerged).
+        - [ ] ATN EYE TEST: vMF in game (its Experimental row, default 40 %) together with the unified PT check, once
+        both are built. If vMF looks good -> build Callisto (C2-C4) too, as an Experimental row. Owner: ATN
         ATN 11-25 night: 'did you check vMF vs Lambert path traced? (where it stands out)'. Answer: no, C0b is
         single-bounce BRDF accuracy; a PT test is possible offline (pbrt-v4 measured RGL materials as ground truth vs
         Lambert vs vMF, bounces, FLIP). cdr_ check extended: vMF with fitted r (best single r + per-material
