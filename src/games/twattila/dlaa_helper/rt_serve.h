@@ -398,8 +398,9 @@ inline void ApplyLights(const LightFrame& frame, dlaa_bridge::Shared* block) {
 }
 
 // config's fields: the numeric Shared fields a lab arm may set (rt_light_count: a cap on the recorded count; rt_path_flags:
-// over path_flags, e.g. one kind's). A name may end in "@trace", "@bounce" or "@reflections": that request kind's alone. `version`: the block version that added it (an edit
-// lifts an older recording's block to it, so the helper reads it; 0: older than any recording).
+// over path_flags, e.g. one kind's). A name may end in "@trace", "@bounce" or "@reflections": that request kind's alone.
+// `version`: the block version that added it (an edit lifts an older recording's block to it, so the helper reads it; 0:
+// older than any recording).
 using SharedMember = std::variant<uint32_t dlaa_bridge::Shared::*, float dlaa_bridge::Shared::*>;
 struct SharedField {
   std::string_view name;
@@ -407,23 +408,23 @@ struct SharedField {
   uint32_t version = 0;
 };
 inline constexpr std::array<SharedField, 17> SHARED_FIELDS = {{
-    {"rt_shadow_rays", &dlaa_bridge::Shared::rt_shadow_rays},
-    {"rt_sun_softness", &dlaa_bridge::Shared::rt_sun_softness},
-    {"rt_light_size", &dlaa_bridge::Shared::rt_light_size},
-    {"rt_ambient_range", &dlaa_bridge::Shared::rt_ambient_range},
-    {"rt_ambient_rays", &dlaa_bridge::Shared::rt_ambient_rays},
-    {"rt_grass_shadow_range", &dlaa_bridge::Shared::rt_grass_shadow_range},
-    {"rt_bounce_rays", &dlaa_bridge::Shared::rt_bounce_rays},
-    {"rt_bounce_range", &dlaa_bridge::Shared::rt_bounce_range},
-    {"rt_path_bounces", &dlaa_bridge::Shared::rt_path_bounces},
-    {"rt_path_samples", &dlaa_bridge::Shared::rt_path_samples},
-    {"rt_reflection_range", &dlaa_bridge::Shared::rt_reflection_range},
-    {"rt_kept_frames", &dlaa_bridge::Shared::rt_kept_frames},
-    {"rt_nrd_off", &dlaa_bridge::Shared::rt_nrd_off},
-    {"rt_scene_flags", &dlaa_bridge::Shared::rt_scene_flags},
-    {"rt_light_count", &dlaa_bridge::Shared::rt_light_count},
-    {"rt_path_flags", &dlaa_bridge::Shared::rt_path_flags},
-    {"rt_restir_flags", &dlaa_bridge::Shared::rt_restir_flags, 32},
+    {.name = "rt_shadow_rays", .member = &dlaa_bridge::Shared::rt_shadow_rays},
+    {.name = "rt_sun_softness", .member = &dlaa_bridge::Shared::rt_sun_softness},
+    {.name = "rt_light_size", .member = &dlaa_bridge::Shared::rt_light_size},
+    {.name = "rt_ambient_range", .member = &dlaa_bridge::Shared::rt_ambient_range},
+    {.name = "rt_ambient_rays", .member = &dlaa_bridge::Shared::rt_ambient_rays},
+    {.name = "rt_grass_shadow_range", .member = &dlaa_bridge::Shared::rt_grass_shadow_range},
+    {.name = "rt_bounce_rays", .member = &dlaa_bridge::Shared::rt_bounce_rays},
+    {.name = "rt_bounce_range", .member = &dlaa_bridge::Shared::rt_bounce_range},
+    {.name = "rt_path_bounces", .member = &dlaa_bridge::Shared::rt_path_bounces},
+    {.name = "rt_path_samples", .member = &dlaa_bridge::Shared::rt_path_samples},
+    {.name = "rt_reflection_range", .member = &dlaa_bridge::Shared::rt_reflection_range},
+    {.name = "rt_kept_frames", .member = &dlaa_bridge::Shared::rt_kept_frames},
+    {.name = "rt_nrd_off", .member = &dlaa_bridge::Shared::rt_nrd_off},
+    {.name = "rt_scene_flags", .member = &dlaa_bridge::Shared::rt_scene_flags},
+    {.name = "rt_light_count", .member = &dlaa_bridge::Shared::rt_light_count},
+    {.name = "rt_path_flags", .member = &dlaa_bridge::Shared::rt_path_flags},
+    {.name = "rt_restir_flags", .member = &dlaa_bridge::Shared::rt_restir_flags, .version = 32},
 }};
 inline constexpr std::array<std::string_view, 3> REQUEST_KINDS = {"trace", "bounce", "reflections"};  // rt_request 1, 2, 3
 struct FieldEdit {
