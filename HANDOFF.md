@@ -915,8 +915,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
-- ATN Q (pdm1_): while Path-Traced Torch Light is on with RR, 'Torch and Fire Ligh ... | ?
-- ATN Q (coord 23:5x): checkerboard as an Experimental test row? DLSS-RR Integrati ... | ?
+- 4b ROW LINES (graphics_page.hpp): grey 'Torch and Fire Light from Path Tracing ( ... | ?
 - FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a v ... | ?
 - nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guid ... | ?
 - rpg_ ReSTIR PG DESIGN (ATN 11-25 ~23:4x 'can we design it now or wait?'; coord: ... | ?
@@ -16966,14 +16965,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         design 2.9a.'
         -> pd4r_ RESUMED 23:5x: 2.9a check (est 15 / deadline 30) -> pt_di_step4c_review.md '## 2.9a check'. pdi4c_ told:
         2.9a = ONE commit on r3 after the rebase, before its GPU turn (+ section 5 runs). Owner: pd4r_, pdi4c_
-        - [ ] ATN Q (pdm1_): while Path-Traced Torch Light is on with RR, 'Torch and Fire Light from Path Tracing' does
+        - [x] ATN Q (pdm1_): while Path-Traced Torch Light is on with RR, 'Torch and Fire Light from Path Tracing' does
         nothing (DI lights those torches, with highlights, not following Light Bounce Strength): grey that row then,
         tooltip 'Not used with Path-Traced Torch Light on: that lights these torches then.'? Coord: yes. 4b's row
         lines. Owner: ATN, then 4b
-        - [ ] ATN Q (coord 23:5x): checkerboard as an Experimental test row? DLSS-RR Integration Guide 3.5 lists 'Use of
+        ATN 11-25 night: 'yes, grey it out'.
+        - [ ] 4b ROW LINES (graphics_page.hpp): grey 'Torch and Fire Light from Path Tracing (Experimental)' while
+        Path-Traced Torch Light is on with Ray Reconstruction + the tooltip's new last line 'Not used with Path-Traced
+        Torch Light on: that lights these torches then.' (design 2.9a section 2). Owner: 4b implementer
+        - [x] ATN Q (coord 23:5x): checkerboard as an Experimental test row? DLSS-RR Integration Guide 3.5 lists 'Use of
         checkerboard rendering' first under 'practices to be avoided'; Shogun 2 Grass Fade showed DLSS smears per-frame
         coverage changes; would save ~0.4-0.5 ms of DI + half the DI reservoirs (~430 -> ~215 MB 4K DLSS Q) but needs
         a fill pass for the skipped half. Coord: skip. Owner: ATN
+        ATN 11-25 night: 'skip checkerboard' (RR guide 3.5). Not built, not an Experimental row.
         - [ ] FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a variant build (text
         substitution, no new env var) with one rt_di_spatiotemporal pass (RTXDI_DISpatioTemporalResampling, same
         RAY_TRACED bias, neighbours, M cap, translation, previous surface; DRY setup) in place of temporal + spatial;
