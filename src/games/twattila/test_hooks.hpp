@@ -41,7 +41,8 @@
 // RENODX_TW_SET=<seconds>:<key>=<value>[;<seconds>:<key>=<value>...] settings changed then, as their sliders would; a
 // button's label as the key presses it (every button with that label: several pages have a Reset), "<group>/<label>"
 // only that group's (page-presets/Reset); the key "shot" takes a screenshot, the key "trace" writes renodx_trace_now
-// next to the exe (the frame traces' on-demand marker), the key "memory" logs the address space (free, the largest free
+// next to the exe (the frame traces' on-demand marker), the key "pass_dump" writes its value ("<frames>[ <label>]") into
+// renodx_pass_dump_now next to the exe (pass_dump.hpp's trigger: a temp file renamed), the key "memory" logs the address space (free, the largest free
 // block: one walk) and, when the add-on defines RENODX_TEST_HOOKS_MEMORY (a function returning text) before including
 // this, its own reservations (Attila: the constant buffer ring's).
 // RENODX_TW_SET_FILE=<path>: the same entries from a file, one "<seconds>:<key>=<value>;" per line in time order, without
@@ -194,6 +195,17 @@ inline void OnReshadePresent(reshade::api::effect_runtime* runtime) {
     } else if (key == "trace") {
       std::ofstream(exe_folder / L"renodx_trace_now", std::ios::binary | std::ios::trunc);
       renodx::utils::log::i(std::format("{} Test: renodx_trace_now written.", log_name));
+    } else if (key == "pass_dump") {
+      // pass_dump.hpp reads the marker every 30 presents, maybe while this writes it: a temp file renamed over it.
+      std::error_code error;
+      const bool replaced = std::filesystem::exists(exe_folder / L"renodx_pass_dump_now", error);
+      std::ofstream(exe_folder / L"renodx_pass_dump_now.tmp", std::ios::binary | std::ios::trunc) << value;
+      std::filesystem::rename(exe_folder / L"renodx_pass_dump_now.tmp", exe_folder / L"renodx_pass_dump_now", error);
+      if (error) {
+        renodx::utils::log::w(std::format("{} Test: renodx_pass_dump_now could not be written ({}).", log_name, error.message()));
+      } else {
+        renodx::utils::log::i(std::format("{} Test: renodx_pass_dump_now written ({}){}.", log_name, value, (replaced ? ", over one not read yet" : "")));
+      }
     } else if (key == "memory") {
       std::string line = std::format("{} Test: memory: {}", log_name, device_end::AddressSpace());
 #ifdef RENODX_TEST_HOOKS_MEMORY

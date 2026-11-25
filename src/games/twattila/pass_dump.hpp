@@ -1071,6 +1071,8 @@ inline void Start(const std::filesystem::path& root) {
   std::error_code ignored;
   std::filesystem::create_directories(root, ignored);
   state.exe_folder = std::filesystem::path(exe).parent_path();
+  // A marker a last run left would arm this one at once.
+  std::filesystem::remove(state.exe_folder / MARKER, ignored);
   state.stopping = false;
   state.worker_idle_exit.store(false);
   state.worker = std::thread(Work);
