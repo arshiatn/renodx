@@ -840,7 +840,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ?
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
-- 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's lo ... | ?
+- 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
+- TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
 - ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the n ... | ATN
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
@@ -15881,9 +15882,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         RT on the port + the shader hash census, NOT for Friday's Fable work, which is CPU only): rtp_ (Opus xHigh,
         text only) STARTED: designs\rt_port_64.md (what works / breaks on Sol's port, helper vs in-process route,
         bridge v33, everything 4b needs, 64-bit recordings, steps + gates, the exact game runs for ATN's OK). Owner: rtp_
-        - [ ] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
+        - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
+        hsc_ DONE 19:xx: SAME (designs\shader_hash_64.md, hand-back designs\hsc_handback.md). Sol's 1.3.20 has ONE
+        shader path (dx_make_shader, dx11_device.inc 1066-1139): the game's fxc bytes from the packs, cut at 'DXBC',
+        passed unchanged (no patch / recompile / cache / own shaders). 8,866 shader files, one valid range each; names
+        unique across vanilla packs; ATN's 4 mod packs hold no shaders; names.tsv (10-20) matches all 5,056 rows; all
+        260 hashes from 32-bit runs equal the cut; our 350 hashes all in the vanilla packs. The 11-25 ReShade Smokes in
+        attila64.exe agree: 188 / 188 hashes, 48 / 48 replacements fired. NO in-game census needed; 4a's W1 needs no
+        re-run; 4b's census blocker closed (bring-up left). Also: tessellation cannot draw on the port (no hull /
+        domain support); the timed Smoke frame misses 4-bone units, point lights, ocean / water (one water twin
+        0x2E69BF8E 32-bit vs 0xC9FBACCB 64-bit, both ours); the brief had the installs swapped (C: = real Attila).
+        rtp_ told 19:xx.
+        - [ ] 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-bit draws #00 / #01) -> one
+        B1 trace with point lights (in rtp_'s run list, ATN's OK). Owner: rtp_ (list) -> ATN
+        - [ ] TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of our hashes lose their
+        match in both builds (12 drawn on 32-bit). Add TDD's versions? Owner: ATN
         pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
         scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
         R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
