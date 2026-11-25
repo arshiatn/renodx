@@ -823,6 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B NEXT: W0 (block v2 agreed with C8 wave 2, 6 points in the design; plugin_des ... | ?
 - ATN 10:2x: ONE 'CPU' PAGE for 64-bit Attila (ours live / restart per row; PerfFi ... | ?
 - D: FULL 10:17 (0 bytes; C: 12.6 GB): pds2_'s HARNESS_DUMP verify dumps in its wo ... | ?
+- 64-BIT CPU DESIGNS STARTED 10:4x (Opus xHigh, read only, no builds; each -> Opus ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
@@ -15655,6 +15656,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         becomes an L2B arm), PK1-64 uploads, PK4-64 census (likely moot), PK6-64 tooling first; parked PK2R / PK3 / H25;
         census corrections C01 / C13 / C14. 6 ATN items (PK8 study go, PK9 route, C01 half-float row, W3-64 data start,
         one placement owner, Friday only on his word). NEXT: per-package Opus xHigh design fixers (no builds).
+        - [ ] 64-BIT CPU DESIGNS STARTED 10:4x (Opus xHigh, read only, no builds; each -> Opus xHigh review -> fix):
+        p8d_ PK8 battle step (pk8_battle_step_64.md), p9d_ PK9 effects + route A/B (pk9_effects_64.md), p5d_ PK5-64
+        game-code leaves (pk5_game_code_64.md), p2d_ PK2P main core as an L2B arm (pk2p_main_core_64.md), p1d_ PK1-64
+        uploads (pk1_uploads_64.md), p6d_ PK6-64 tooling + ONE combined start plan + PK4-64 census verdict
+        (pk6_tooling_64.md); all in attila64\designs\. The map's 6 ATN items go to ATN with the designs' answers.
         - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
         09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
