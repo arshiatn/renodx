@@ -368,7 +368,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
 - F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ c ... | coord (audit), each file's owner
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
-- CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan)
+- CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:xx: answers Caes
+- 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20 ... | ?
 - GPU PLAN (11-24 status: plan_1117/resume_1124.md: fix1_, G1, SHaRC 1.8.3, SER R1 ... | coordinator
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
@@ -3484,6 +3485,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         function from perffix64.dll for our MVs (M6 / C4): ATN's yes / no. (4) heapfix.ini: append missing keys with
         defaults on update: ATN's yes / no / later. (5) menu / cutscene 1 s stutter = Sol's mod. Owner: ATN (answers),
         coord (M6 plan)
+        ATN 11-25 20:xx: answers Caesar with our two lines (Flag Wave export: 'I'd say yes'; ini keys: 'yes or later
+        both work') -> treat (3) as YES once Caesar confirms; (4) is Caesar's pick. When his export lands: C4 reads it
+        for flag MVs (port_plan.md addendum 11-25).
+        - [ ] 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20:2x (Opus xHigh, read-only:
+        src_1320 + our add-on) -> attila64\designs\menu_stutter_1s.md: suspects with file:line, ours checked, one
+        confirming menu + cutscene run (PresentMon + existing WPR scripts; goes in the run window after PT DI, ATN's
+        rule lines), fix options (our plugin patch with MIT credit / a patch for Sol / a setting). Owner: s1s_, coord
       - [x] REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a change per chunk (mean /
         max relative difference of float outputs, mean luminance shift) so fixes like fix1_'s brightening are measured,
         not just counted. Owner: next recorder touch (tools)
