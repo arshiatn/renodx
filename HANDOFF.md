@@ -844,6 +844,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | ?
 - CALLISTO C1: cal1_ (Opus High, worktree, branch cal1_c1) STARTED: new files only ... | ?
 - WARP HARNESS SHARED HELPER: ~190 lines copied from the vMF test into tw_callisto ... | ?
+- C1 MERGE (origin/cal1_c1 31c5b84e7 + the C0b commit) -> no build needed (no call ... | ?
 - CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent ... | ?
 - CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mism ... | later
 - CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
@@ -16050,6 +16051,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         A+F in tests.cpp, probe 28 B, cost via CALLISTO_COST_KNOBS; S4 no third-party / process tokens; NITs 1-8)
         + 31c5b84e7 (UTF-8 run log, README). Run ALL OK, 17 controls fail; T-vmf unchanged. Cost fxc 38-54 slots /
         dxc 41-56 DXIL (A 40 / 42, V16 48 / 51, DI twins 40 / 42, A+F 54 / 56). -> cdr_ RE-CHECK STARTED -> merge.
+        cdr_ RE-CHECK: MERGE (callisto_diffuse_c1_review.md '## Re-check 11-25'; rerun ALL OK 12 s, 34 gates pass, 17
+        controls fail; DESIGN_SETS = the design's R1.8 / R1.10 knobs, independent of the header; A+F Fresnel 25 / 0.6 /
+        0.97 right; no process tokens in code). HELD by the design's rule (C1 merges after C0b's numbers, or on ATN's
+        word): merge when c0b_ reports, together with its winning set (or none) in one small cal1_ commit that also
+        wraps tests.cpp:38 (189 cols) + 5 make_points.py lines > 120 and drops README:9's history line.
+        - [ ] C1 MERGE (origin/cal1_c1 31c5b84e7 + the C0b commit) -> no build needed (no callers) -> HANDOFF.
+        Owner: coord (after c0b_)
         - [ ] CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent (Opus xHigh, scratch
         only) after ATN's download yes (MERL BRDFDatabase.zip 1.3 GB + RGL; pick MERL + RGL) . Owner: coord (date)
         - [ ] CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mismatch measured. Owner: later
