@@ -146,16 +146,19 @@ if ($rtxdi_found) {
     Dxc @sharc_flags -D SHARC_UPDATE=1 -D SHARC_PROPAGATION_DEPTH=2 @regir -Fh "$out\rt_sharc_update_regir.h" -Vn RT_SHARC_UPDATE_REGIR "$PSScriptRoot\rt_sharc_update.hlsl"
   }
 }
-# Path-Traced Torch Light (PT DI step 4c): rt_lights' LIGHTS_DI build (the tiles' members, the DI pixels' words) and the
-# DI passes (PATH_DI: rt_di_initial, rt_di_temporal, rt_di_spatial, rt_di_shade), each with its OMM twin.
-$di_builds = @(@('rt_lights', 'LIGHTS_DI', 'rt_lights_di', 'RT_LIGHTS_DI'), @('rt_di_initial', 'PATH_DI', 'rt_di_initial', 'RT_DI_INITIAL'),
+# Path-Traced Torch Light (PT DI step 4c): rt_lights' LIGHTS_DI build (the tiles' members, the DI pixels' words) and its
+# twin with T1 (rt_lights_di_torch), and the DI passes (PATH_DI: rt_di_initial, rt_di_temporal, rt_di_spatial,
+# rt_di_shade), each with its OMM twin.
+$di_builds = @(@('rt_lights', 'LIGHTS_DI', 'rt_lights_di', 'RT_LIGHTS_DI'), @('rt_lights', 'LIGHTS_DI TORCH_IRRADIANCE', 'rt_lights_di_torch', 'RT_LIGHTS_DI_TORCH'),
+               @('rt_di_initial', 'PATH_DI', 'rt_di_initial', 'RT_DI_INITIAL'),
                @('rt_di_temporal', 'PATH_DI', 'rt_di_temporal', 'RT_DI_TEMPORAL'), @('rt_di_spatial', 'PATH_DI', 'rt_di_spatial', 'RT_DI_SPATIAL'),
                @('rt_di_shade', 'PATH_DI', 'rt_di_shade', 'RT_DI_SHADE'))
 foreach ($di in $di_builds) { Remove-Item "$out\$($di[2]).h", "$out\$($di[2])_omm.h" -ErrorAction SilentlyContinue }
 if ($rtxdi_found) {
   foreach ($di in $di_builds) {
-    Dxc -nologo -T cs_6_5 -E main -O3 @regir -D $di[1] -Fh "$out\$($di[2]).h" -Vn $di[3] "$PSScriptRoot\$($di[0]).cs_6_5.hlsl"
-    Dxc -nologo -T cs_6_9 -E main -O3 @regir -D $di[1] -D OPACITY_MICROMAPS -Fh "$out\$($di[2])_omm.h" -Vn "$($di[3])_OMM" "$PSScriptRoot\$($di[0]).cs_6_5.hlsl"
+    $defines = $di[1].Split(' ') | ForEach-Object { '-D', $_ }
+    Dxc -nologo -T cs_6_5 -E main -O3 @regir @defines -Fh "$out\$($di[2]).h" -Vn $di[3] "$PSScriptRoot\$($di[0]).cs_6_5.hlsl"
+    Dxc -nologo -T cs_6_9 -E main -O3 @regir @defines -D OPACITY_MICROMAPS -Fh "$out\$($di[2])_omm.h" -Vn "$($di[3])_OMM" "$PSScriptRoot\$($di[0]).cs_6_5.hlsl"
   }
 }
 # The reference build's RTXDI GI contest (RENODX_TW_REUSE_RTXDI; rt_path.hlsli RtxdiPackTexel, ReuseTexel with REUSE_RTXDI).

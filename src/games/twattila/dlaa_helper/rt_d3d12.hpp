@@ -155,6 +155,8 @@
 #include "rt_di_temporal_omm.h"
 #include "rt_lights_di.h"
 #include "rt_lights_di_omm.h"
+#include "rt_lights_di_torch.h"
+#include "rt_lights_di_torch_omm.h"
 #define RENODX_RTXDI_DI 1
 #endif
 // RENODX_TW_PATH_PROBE (tests only: build.ps1 compiles these with RENODX_TW_PATH_PROBE_BUILD set): rt_path.hlsli ProbeTexel.
@@ -839,8 +841,9 @@ class RtScene12 {
       std::span<const unsigned char> code_omm;
       ComPtr<ID3D12PipelineState>* state;
     };
-    const std::array<DiBuild, 5> di_builds = {{
-        {RT_LIGHTS_DI, RT_LIGHTS_DI_OMM, &lights_di_pipeline_},
+    const std::array<DiBuild, 6> di_builds = {{
+        {RT_LIGHTS_DI, RT_LIGHTS_DI_OMM, &lights_di_pipelines_[0]},
+        {RT_LIGHTS_DI_TORCH, RT_LIGHTS_DI_TORCH_OMM, &lights_di_pipelines_[1]},
         {RT_DI_INITIAL, RT_DI_INITIAL_OMM, &di_initial_pipeline_},
         {RT_DI_TEMPORAL, RT_DI_TEMPORAL_OMM, &di_temporal_pipeline_},
         {RT_DI_SPATIAL, RT_DI_SPATIAL_OMM, &di_spatial_pipeline_},
@@ -8540,7 +8543,7 @@ class RtScene12 {
     // with Torch and Fire Light in the Light Bounce (its own build and words: today's). A switch of it drops the lights'
     // kept bits once (their mode).
 #if defined(RENODX_RTXDI_DI)
-    const bool di = version >= 32 && (shared.rt_di_flags & dlaa_bridge::RT_DI_LIGHTS) != 0 && lights_kept && !lights_in_bounce && lights_di_pipeline_
+    const bool di = version >= 32 && (shared.rt_di_flags & dlaa_bridge::RT_DI_LIGHTS) != 0 && lights_kept && !lights_in_bounce && lights_di_pipelines_[0]
                     && light_surface_ && di_light_[1] && EnsureDi(list);
 #else
     constexpr bool di = false;
@@ -8601,7 +8604,7 @@ class RtScene12 {
 #if defined(RENODX_RTXDI_DI)
       const ComPtr<ID3D12PipelineState>& lights_state =
           lights_in_bounce ? (torch_written ? lights_torch_pipelines_[1] : lights_bounce_pipeline_)
-                           : (di ? lights_di_pipeline_ : (torch_written ? lights_torch_pipelines_[0] : lights_pipeline_));
+                           : (di ? lights_di_pipelines_[torch_written ? 1 : 0] : (torch_written ? lights_torch_pipelines_[0] : lights_pipeline_));
 #else
       const ComPtr<ID3D12PipelineState>& lights_state = (torch_written ? lights_torch_pipelines_[lights_in_bounce ? 1 : 0]
                                                                        : (lights_in_bounce ? lights_bounce_pipeline_ : lights_pipeline_));
@@ -10901,7 +10904,7 @@ class RtScene12 {
   // Path-Traced Torch Light (PT DI step 4c): its builds; the addon's light surface and DI textures (v32), the helper's
   // copy of the surface (the last DI trace's), the tiles' listed lights, RTXDI's reservoirs (three arrays) and neighbour
   // offsets; the last trace that ran it.
-  ComPtr<ID3D12PipelineState> lights_di_pipeline_;
+  std::array<ComPtr<ID3D12PipelineState>, 2> lights_di_pipelines_;  // rt_lights_di and its twin with T1 (rt_lights_di_torch)
   ComPtr<ID3D12PipelineState> di_initial_pipeline_;
   ComPtr<ID3D12PipelineState> di_temporal_pipeline_;
   ComPtr<ID3D12PipelineState> di_spatial_pipeline_;
