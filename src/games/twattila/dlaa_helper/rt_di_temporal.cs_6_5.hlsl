@@ -31,26 +31,11 @@ void main(uint3 id : SV_DispatchThreadID, uint index : SV_GroupIndex) {
   const RTXDI_ReservoirBufferParameters reservoirs = DiReservoirParameters();
   RTXDI_DIReservoir reservoir = RTXDI_LoadDIReservoir(reservoirs, id.xy, DI_INITIAL_ARRAY);
   if ((di_flags & (DI_HISTORY | DI_NO_TEMPORAL)) == DI_HISTORY) {
-    // The pixel's motion to where the last trace's camera saw its surface (pixel centres), and its depth's change.
-    float3 motion = 0.f;
-    const float4 clip = ClipOf(surface.position, previous_view_projection);
-    if (clip.w > 0.f) {
-      const float2 seen = (clip.xy / clip.w * float2(0.5f, -0.5f) + 0.5f) * float2(width, height) - 0.5f;
-      motion = float3(seen - float2(id.xy), clip.w - ClipOf(surface.position, view_projection).w);
-    }
-    RTXDI_DITemporalResamplingParameters parameters = (RTXDI_DITemporalResamplingParameters)0;
-    parameters.maxHistoryLength = 20u;
-    parameters.biasCorrectionMode = DiBiasCorrection();
-    parameters.depthThreshold = 0.1f;
-    parameters.normalThreshold = 0.5f;
-    parameters.enablePermutationSampling = 1u;
-    parameters.uniformRandomNumber = di_uniform_random;
-    parameters.enableFallbackSampling = 1u;
     RTXDI_RandomSamplerState rng = RabSampler(uint4(id.xy, frame, DIM_DI_TEMPORAL));
     int2 temporal_pixel;
     RAB_LightSample picked = RAB_EmptyLightSample();
-    reservoir = RTXDI_DITemporalResampling(id.xy, surface, reservoir, rng, DiRuntimeParameters(), reservoirs, motion, DI_SHADE_ARRAY, parameters,
-                                           temporal_pixel, picked);
+    reservoir = RTXDI_DITemporalResampling(id.xy, surface, reservoir, rng, DiRuntimeParameters(), reservoirs, DiMotion(id.xy, surface),
+                                           DI_HISTORY_ARRAY, DiTemporalParameters(), temporal_pixel, picked);
   }
   RTXDI_StoreDIReservoir(reservoir, reservoirs, id.xy, DI_TEMPORAL_ARRAY);
 }
