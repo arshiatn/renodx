@@ -823,7 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
-- a64a1_ FOLLOW-UPS SENT 05:4x -> merge a64a1_lane -> build check -> coord runs (+ ... | ?
+- COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15490,8 +15490,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         release (F7 tests the shipped binary); plugin_calls can fail 4 ways; 32-bit only the never-firing PassEnd range
         check. New: R-S1 Uninstall nulls the block while lock-free READY readers read it (unreachable under ReShade's
         unload order) -> drop the line; R-N1 static_assert ROW_COUNT <= 32; R-N2 > 120 columns.
-        - [ ] a64a1_ FOLLOW-UPS SENT 05:4x -> merge a64a1_lane -> build check -> coord runs (+ T1 ReShade.log must NOT
-        contain the RENODX_TW_PLUGIN_WANT line): 32-bit S4-rotation trace
+        - [x] a64a1_ FOLLOW-UPS DONE (hand-back attila64/a64a1_followups_handback.md): c0a78ee1e (Uninstall keeps the
+        pinned block; static_assert ROW_COUNT <= 32; lines <= 120 columns). twattila 64 / 32, tw_unit_shadows x86 +
+        amd64, F7 GPU 31 / 31 (62 calls, clean drain), x86 dump = base except Build Date, static_checks known 5.
+        - [x] MERGED 35b5e715a (Merge a64a1_lane) + coord build check on the merged tree: twattila addon64 + addon32,
+        twrome2 addon32, twthronesofbritannia addon32, twwarhammer3 addon64 exit 0 (61 / 61 / 62 / 61 / 61 warnings =
+        before). Pushed 06:0x.
+        - [ ] COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-on in the 64-bit port; only
+        -Smoke without ReShade exists). The 32-bit S4-rotation trace gates the next 32-bit Attila / Thrones / Rome II
+        release (none planned now). T1 ReShade.log must NOT contain the RENODX_TW_PLUGIN_WANT line. Checks: 32-bit S4-rotation trace
         (+ shadow_refresh=2), T1 smoke (attila64_log 2 sites applied + 'game started: 2 sites unchanged'; ReShade.log
         'engine plugin ready, rows offered 3'), C2 (rows wanted 2 / 3; VIEW_DRAW first-call thread = present thread).
         A3 Smoke: ATN's 4 -ReShade lines (drop '-ReShade -Warp': ReShade skips WARP) + check the 'N code ranges' line
