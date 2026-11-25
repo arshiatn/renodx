@@ -3,6 +3,11 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
+- [ ] PORT PROOF (ATN 11-25 night asked whether our mods even work on 64-bit + its mod list): our add-on + ReShade
+  have NOT run in game on the port yet (only -Smoke without ReShade); the T1 -ReShade smoke start waits for ATN's
+  4 rule lines (A3 Smoke in the 64-bit box). The port has its own start window + mod_list.txt (copied once from
+  used_mods.txt; CA's launcher no longer sets its order) with TDD / 1212 fixes. ATN: run the smoke start soon, or
+  after PT DI? Owner: ATN
 - [ ] LATER (ATN 11-25 evening: 'check it out in a couple of weeks'): why lowdef point lights get NO PT DI on 64-bit
   (decision: none drawn in 326 32-bit timing files, 4b's add-on leaves them to the game's shaders, no v33; R1 checks
   64-bit). Revisit with R1's 64-bit data: are any lowdef lights drawn, and do they look wrong next to DI-lit ones?
@@ -839,7 +844,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - U6 PART 2 MUSTS (u6f_part1_review.md): P1 FOG_HISTORY = shade ran last trace at ... | ?
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
 - d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
-- FROZEN 32-BIT (only if ATN ever revives 32-bit): the 32-bit D3D11 pass capture ( ... | ?
+- FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | ?
 - PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in | ?
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
 - CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | ?
@@ -15939,6 +15944,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         pdi5_ owns the REF_OUT_REUSE census case (~:108) of rt_reference.cs_6_5.hlsl (read via LoadReservoir, 2
         lines; gates: reference build with COMPACT 0 and 1, census output identical at 0). rt_reference.hlsli stays
         pdi3_ / pdi4c_.
+        pdi3_ REGISTER GATE FAILED (evening): rt_lights_omm 56 -> 64 regs (occupancy 72 -> 64 %) even with the row off,
+        from T1. FIX (coord OK): T1 under TORCH_IRRADIANCE in twin builds rt_lights_torch / rt_lights_bounce_torch
+        (+ _omm, RTXDI builds only); plain rt_lights lines drop @regir (= today's bytes); rt_d3d12.hpp: one block
+        lights_torch_pipelines_[2] after regir_pipeline_ in Init + the local-lights SetPipelineState picks the twin
+        while torch_written (both spots added to pdi3_'s owner map; pdi4c_ + bal3_ told). Gates: plain builds
+        byte-identical, 56 regs row off, the twins' own regs recorded.
         Still waiting: U1-U3 / U5 (need PT DI), U6p (bridge + rt_lights), U12a / U12d (add-on files Friday's CPU builders
         use), U11 / U11h (AMD only), SHaRC depth 4 (hang risk: quiet GPU + ATN home).
         - [ ] D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record it in game, then
@@ -15965,9 +15976,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 11-25 evening: no forest-with-units replay; day1 has many trees + grass -> use day1 (already in the set).
         CAPTURE ON 64-BIT, not 32-bit (ATN: 32-bit frozen; 32-bit items go to the FROZEN 32-BIT box). d11r_ told;
         the design revision moves the run to the port (run script slot vs a64_ab.ps1's chain).
-        - [ ] FROZEN 32-BIT (only if ATN ever revives 32-bit): the 32-bit D3D11 pass capture (d11s_'s original run);
+        - [ ] FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port proves unusable: author
+        barely answers; our add-on + ReShade in game on the port and players' mods there are unproven). RULE: every
+        new 64-bit-only item gets its 32-bit line here and in attila64\designs\backup_32bit.md (b32_ gap analysis
+        STARTED: classes shared-source / needs a 32-bit port / moot / 64-bit-only runs, revive order, Friday's CPU
+        wave's 32-bit cost, cheapest proofs of the port). Lines: the 32-bit D3D11 pass capture (d11s_'s original run);
         the 32-bit S4-rotation trace before any 32-bit release; 32-bit TDD twins ship only with a 32-bit release.
-        Owner: none (frozen)
+        Owner: coord (keep current) / ATN (revive)
         d11r_ REVIEW: GO WITH CHANGES (designs\d3d11_pass_speed_review.md; hand-back d11r_review_handback.md). MUST
         M1 per-event copies on change; M2 CPU state dump + CB equality; M3 full own-state list; M4 Bend double-write
         race map; M5 no pause; M6 64-bit capture; M7 pass_dump on 64-bit (complete frame folders, no shutdown
