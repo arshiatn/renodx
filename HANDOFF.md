@@ -16045,6 +16045,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         C1 measured 42-56 DXIL per lobe vs the 25-40 estimate (addendum in callisto_diffuse.md).
         - [ ] WARP HARNESS SHARED HELPER: ~190 lines copied from the vMF test into tw_callisto_diffuse; fold into
         one shared test helper when a third WARP test needs it. Owner: coord (later, not blocking)
+        cal1_ FIX ROUND DONE: fa030e458 (S1 DESIGN_SETS knob table in slide_points.h + design-knob / DI-twin gates,
+        bonds from the knob model, V16 n_r +1e-3 control; S2 T-bond fails on cap hits except scoring_only A+F; S3
+        A+F in tests.cpp, probe 28 B, cost via CALLISTO_COST_KNOBS; S4 no third-party / process tokens; NITs 1-8)
+        + 31c5b84e7 (UTF-8 run log, README). Run ALL OK, 17 controls fail; T-vmf unchanged. Cost fxc 38-54 slots /
+        dxc 41-56 DXIL (A 40 / 42, V16 48 / 51, DI twins 40 / 42, A+F 54 / 56). -> cdr_ RE-CHECK STARTED -> merge.
         - [ ] CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent (Opus xHigh, scratch
         only) after ATN's download yes (MERL BRDFDatabase.zip 1.3 GB + RGL; pick MERL + RGL) . Owner: coord (date)
         - [ ] CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mismatch measured. Owner: later
