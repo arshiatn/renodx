@@ -58,9 +58,8 @@ constexpr uint8_t RT_LIGHT_LINEAR = 1;  // 1 - d / r
 // - The three handles are SharedSet's: Publish writes them every set (0: none, so PublishEmptySet's Publish({}) zeroes
 //   them), and they are in Prepare's `transferred` (an unread set's are closed in the helper by CloseInHelper).
 // - With Torch and Fire Shadows from the Light Bounce (RT_LIGHT_RATIO) it wins in its pixels (their words the ratio 0:
-//   the listed lights dark; that bounce leaves the lights out). With Torch and Fire Light in the Light Bounce alone
-//   (RT_LIGHTS_IN_BOUNCE without RT_LIGHT_RATIO) the helper runs none (rt_di_ok 0): the bounce carries those lights and
-//   would count them again.
+//   the listed lights dark; that bounce leaves the lights out). With Torch and Fire Light in the Light Bounce it runs
+//   too; that frame's bounce leaves those lights out (helpers from design 2.9a on). The addon asks both rows as set.
 // - DI pixels get no Screen-Space Shadows contact shadow (sss_bend clears mask bits; theirs is 0 already): a seam can
 //   show between DI and exact pixels (a 4d look line).
 constexpr uint32_t RT_DI_LIGHTS = 1;
