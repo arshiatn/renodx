@@ -389,6 +389,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job ... | gtl_ (lab), next tooling slot pdi5_ GPU DONE 21:14 (last ses
 - GPU CHECK SPEED (ATN 11-25 ~21:5x: 'for nsight we check why x took y time; what ... | gsi_, coord
 - FIX 15 SHARED LOCK MODE (ATN 11-25 ~23:0x 'run multiple recordings?'). Coord mea ... | ?
+- GSI SWAP: swap.ps1 -Check | -Swap | -Rollback (refuses unless safe + live == ori ... | ?
+- GSI GPU GATES (one GPU turn each, ~40 min for fix 15): fix 1 (8 E4 runs old vs n ... | ?
 - WORKTREE BUILDS NEED slangc (pdi5_ 22:1x): gated_build twattila configure fails ... | coord (next tooling slot)
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
 - Caesar's test build (Flag Wave export + heapfix.ini key append) -> ATN relays -> ... | ?
@@ -3728,6 +3730,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         drains shared, TDR = both rerun; gate = 16 E4 + 1 all_modes serial vs 2-wide byte-equal. ~100 min/day today,
         ~45-60 after fixes 1 / 3 / 9. gpu_check_speed.md addendum; gsi_ told 23:1x (design the ticket field now; code
         if it fits its deadline, else next item). Owner: gsi_, coord
+        gsi_ DONE 23:15 (63 min vs 90; plan_1117\gsi_handback.md): 20 files STAGED in testbin\scratch\gsi_\stage\
+        (originals in gsi_\orig\, all 20 live files still equal them; sha256 + diff summary in the hand-back). Nothing
+        live changed, no GPU job / build / game. Tests CPU only: live baseline 262 / 266 (4 old: build_job*.lock names in
+        test_budget), staged 317 / 319 + 2 skipped (busy checks while a helper lived), new test_gpu_queue 29 / 29 +
+        test_e4_batch 13 / 13. FIX 15 IN THE STAGED SET: ticket kind, off by default (acquire --kind shared /
+        e4_batch.ps1 -Shared), max 2, VRAM >= 11 GB + RAM >= 8 GB, exclusive head drains, device removal reruns once.
+        Lock HOLD command (the keeper-process way, checked across tool calls): gpu_lock.py hold --script coordinator
+        --note '...' --timeout 500 / release --record; PowerShell Start-GpuLockHold / Exit-GpuLock. Caller changes
+        after the swap: no exit 7 SLOW, busy job.lock waits (not exit 1), > 45 GB commit waits (not exit 6),
+        RENODX_LAB_JOB = own job file per chain, matching calibrate PASS reused, keeper answers in 50 ms, gated_build
+        memory rule (commit + p95 rise <= 55 GB, 47 while a lab session holds the lock). Findings: ref_cache key UNSAFE
+        (227 / 241 keys map to > 1 reference -> fix 10 needs a new key); gsp_'s 'ref_cache raises on a list meta' wrong;
+        budget.py watch missed every build slot since the 11-25 slot change (fixed in the staged copy).
+        - [ ] GSI SWAP: swap.ps1 -Check | -Swap | -Rollback (refuses unless safe + live == orig; .bak_gsi_1125 + hash
+        check; lab.py + lab_keeper.py + gpu_lock.py together). At a WAVE BOUNDARY between two GPU turns (23:12: NOT SAFE,
+        pdi3_batch.ps1 running) -> next: after 'pdi3_ GPU done', before 'pdi5_ GPU go'. If the run is refused: report
+        to ATN (rule line), no workaround. Owner: coord
+        - [ ] GSI GPU GATES (one GPU turn each, ~40 min for fix 15): fix 1 (8 E4 runs old vs new runner byte-equal),
+        4 / 7 / 8 (calibrate PASS + A/A rotation not INVALID), 15 (16 E4 + 1 all_modes serial vs 2-wide byte-equal).
+        Helper fixes 2 / 3 / QW3 / QW4 = design notes (gsi_handback section 7) after steps 3 / 5 / 4c merge. Owner:
+        coord, then the helper writer slot
       - [ ] WORKTREE BUILDS NEED slangc (pdi5_ 22:1x): gated_build twattila configure fails in a worktree ('Could not find
         SLANGC_BIN'): CMake looks only in <tree>in and worktrees never link bin. Coord: copy slangc.exe + its DLLs as
         plain files (never a bin junction). Fix tooling: gated_build copies the bin tools CMake needs into a worktree's
