@@ -172,9 +172,10 @@ struct Settings {
   bool reuse_lean = false;
   // Near ReSTIR Reuse (Experimental, with Path Tracing; bridge RT_PATH_REUSE_NEAR): three neighbours within half the reach.
   bool reuse_near = false;
-  // Balanced ReSTIR Light (Experimental, with Path Tracing; bridge RT_PATH_REUSE_BALANCED): RTXDI's Basic bias correction in
-  // ReSTIR GI's spatial merge, a sample's stored light kept when its history is checked again.
-  bool reuse_balanced = false;
+  // Balanced ReSTIR Light (Experimental, with Path Tracing; bridge RT_PATH_REUSE_BALANCED): 0 Off; 1 Basic, RTXDI's Basic bias
+  // correction in ReSTIR GI's spatial merge, a sample's stored light kept when its history is checked again; 2 Raytraced, its
+  // ray-traced bias correction instead (RT_PATH_REUSE_BALANCED_RAYTRACED too).
+  uint32_t reuse_balanced = 0;
   // Importance-Sampled Torch Shadows (Experimental): two shadow rays a pixel toward the local lights, picked by their light.
   bool light_importance = false;
   // Steady Torch Shadows (Experimental): every light a pixel reaches traced every frame, each soft ray to the same disk point.
@@ -3853,7 +3854,8 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
                                                      | (runtime.settings.sharc ? dlaa_bridge::RT_PATH_SHARC : 0u)
                                                      | (runtime.settings.reuse_lean ? dlaa_bridge::RT_PATH_REUSE_LEAN : 0u)
                                                      | (runtime.settings.reuse_near ? dlaa_bridge::RT_PATH_REUSE_NEAR : 0u)
-                                                     | (runtime.settings.reuse_balanced ? dlaa_bridge::RT_PATH_REUSE_BALANCED : 0u)
+                                                     | ((runtime.settings.reuse_balanced != 0) ? dlaa_bridge::RT_PATH_REUSE_BALANCED : 0u)
+                                                     | ((runtime.settings.reuse_balanced == 2) ? dlaa_bridge::RT_PATH_REUSE_BALANCED_RAYTRACED : 0u)
                                                      | ((runtime.lights_in_bounce != 0) ? dlaa_bridge::RT_PATH_LIGHTS_IN_BOUNCE : 0u)
                                                      | ((runtime.lights_in_bounce == 3) ? dlaa_bridge::RT_PATH_LIGHT_RATIO : 0u)
                                                      | ((runtime.lights_in_bounce == 3 && runtime.settings.light_ratio_follow) ? dlaa_bridge::RT_PATH_RATIO_FOLLOW : 0u)

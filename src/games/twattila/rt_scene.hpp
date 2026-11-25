@@ -234,7 +234,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .sharc = sliders.sharc != 0.f,
       .reuse_lean = sliders.reuse_lean != 0.f,
       .reuse_near = sliders.reuse_near != 0.f,
-      .reuse_balanced = sliders.reuse_balanced != 0.f,
+      .reuse_balanced = static_cast<uint32_t>(sliders.reuse_balanced),
       .light_importance = sliders.light_importance != 0.f,
       .light_steady = sliders.light_steady != 0.f,
       .lights_in_bounce = sliders.lights_in_bounce != 0.f,
@@ -2610,13 +2610,14 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
       new renodx::utils::settings::Setting{
           .key = "RayTracedReuseBalanced",
           .binding = &sliders->reuse_balanced,
-          .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
           .default_value = 0.f,
           .label = "Balanced ReSTIR Light (Experimental)",
           .section = section,
           .tooltip = "ReSTIR GI shares its neighbours' light more evenly: units closer in brightness\n"
-                     "to full path tracing, inside corners a little brighter.",
-          .labels = {"Off", "On"},
+                     "to full path tracing, inside corners a little brighter.\n"
+                     "Raytraced: more exact, heavier.",
+          .labels = {"Off", "Basic", "Raytraced"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->light_bounce == 2.f; },
       },
       new renodx::utils::settings::Setting{
