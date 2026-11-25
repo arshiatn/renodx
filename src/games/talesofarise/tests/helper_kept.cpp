@@ -52,7 +52,9 @@ int wmain(int argc, wchar_t** argv) {
     // The bridge's traced texture (R32F here: Keep copies any format).
     std::vector<float> traced;
     for (UINT y = 0; y < BRIDGE[1]; ++y) {
-      for (UINT x = 0; x < BRIDGE[0]; ++x) traced.push_back(Traced(x, y));
+      for (UINT x = 0; x < BRIDGE[0]; ++x) {
+        traced.push_back(Traced(x, y));
+      }
     }
     const D3D11_TEXTURE2D_DESC bridge_desc = {.Width = BRIDGE[0], .Height = BRIDGE[1], .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_R32_FLOAT,
                                               .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_SHADER_RESOURCE};
@@ -82,7 +84,9 @@ int wmain(int argc, wchar_t** argv) {
     ComPtr<ID3DBlob> errors;
     const HRESULT compiled = D3DCompile(source.data(), source.size(), name.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "cs_5_0", 0, 0,
                                         code.GetAddressOf(), errors.GetAddressOf());
-    if (errors) std::cerr << static_cast<const char*>(errors->GetBufferPointer());
+    if (errors) {
+      std::cerr << static_cast<const char*>(errors->GetBufferPointer());
+    }
     Check(compiled);
     ComPtr<ID3D11ComputeShader> shader;
     Check(device->CreateComputeShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, shader.GetAddressOf()));
@@ -120,7 +124,9 @@ int wmain(int argc, wchar_t** argv) {
       context->Unmap(staging.Get(), 0);
       float error = 0.f;
       for (UINT y = 0; y < RENDER[1]; ++y) {
-        for (UINT x = 0; x < RENDER[0]; ++x) error = std::max(error, std::abs(values[x + (y * RENDER[0])] - Traced(x, y)));
+        for (UINT x = 0; x < RENDER[0]; ++x) {
+          error = std::max(error, std::abs(values[x + (y * RENDER[0])] - Traced(x, y)));
+        }
       }
       return error;
     };

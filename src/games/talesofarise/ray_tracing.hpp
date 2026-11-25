@@ -39,18 +39,19 @@
 // t0, ScreenToShadow at b0 c28-c30, the View at b1): the camera (TranslatedWorldToClip c0-c3 and PreViewTranslation c62
 // in metres), the direction toward the sun (0x7A1E0D12's TowardSun, here on the CPU); then the traced sun at t40 for
 // sunshadow00 (its texture's top-left the render pixels it loads) and the traced ambient copied to the scene depth's
-// size for the lighting passes' t41 (rt_ambient.hlsli reads it by UV), in rt_shadows' place. At the frame's first lighting or toon draw (its G-buffer at t1-t3, the View at b1): the
-// G-buffer guides into the bridge (WriteGuides, the anti-aliasing's 0x7A1E0D31), then the reflections and the specular
-// occlusion traced (rt_scene::Reflections; their hits light from last frame's colour, the bridge's), copied for t43 /
-// t44. The light bounce and the paths: GT-VBGI's passes (talesofarise_dlss/ue_light_bounce.hpp: the prepare from the
-// lighting pass's light, the resolve, the light arriving x Strength at t42) with the rays' trace in place of its own
-// (rt_scene's TraceLightBounce through twattila::light_bounce::SetRayTracedTrace), as the Total War games. Path-Traced
-// Ambient stays the rays' AO under the paths: Bandai's sky light is inside the scene colour the lighting passes read (no
-// input to leave out), so the helper's paths bring no sky (its sky texels stay zero). The move's steps (ATN 2026-11-16):
-// 1 the sun shadows and the AO, 2 the reflections and specular occlusion, 3 the light bounce and the paths, 4 the torch
-// shadows: each deferred local light draw (ps 038D003A) gives its light to the next frame's trace (FDeferredLightUniformStruct
-// at ps b1: LightPosition c0.xyz, LightInvRadius c0.w, LightColor c1.xyz; in metres) and reads this frame's lit bits
-// (t42, b9: shaders/locallight00, rt_local_lights.hlsli) in place of its shadow.
+// size for the lighting passes' t41 (rt_ambient.hlsli reads it by UV), in rt_shadows' place. At the frame's first
+// lighting or toon draw (its G-buffer at t1-t3, the View at b1): the G-buffer guides into the bridge (WriteGuides, the
+// anti-aliasing's 0x7A1E0D31), then the reflections and the specular occlusion traced (rt_scene::Reflections; their
+// hits light from last frame's colour, the bridge's), copied for t43 / t44. The light bounce and the paths: GT-VBGI's
+// passes (talesofarise_dlss/ue_light_bounce.hpp: the prepare from the lighting pass's light, the resolve, the light
+// arriving x Strength at t42) with the rays' trace in place of its own (rt_scene's TraceLightBounce through
+// twattila::light_bounce::SetRayTracedTrace), as the Total War games. Path-Traced Ambient stays the rays' AO under the
+// paths: Bandai's sky light is inside the scene colour the lighting passes read (no input to leave out), so the
+// helper's paths bring no sky (its sky texels stay zero). The move's steps (ATN 2026-11-16): 1 the sun shadows and the
+// AO, 2 the reflections and specular occlusion, 3 the light bounce and the paths, 4 the torch shadows: each deferred
+// local light draw (ps 038D003A) gives its light to the next frame's trace (FDeferredLightUniformStruct at ps b1:
+// LightPosition c0.xyz, LightInvRadius c0.w, LightColor c1.xyz; in metres) and reads this frame's lit bits (t42, b9:
+// shaders/locallight00, rt_local_lights.hlsli) in place of its shadow.
 namespace talesofarise::dlss::ray_tracing {
 
 using Microsoft::WRL::ComPtr;

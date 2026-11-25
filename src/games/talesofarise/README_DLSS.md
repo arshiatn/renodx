@@ -16,8 +16,8 @@ ReShade addon (DX11, x64), separate from the HDR addon (`talesofarise`):
 - Fixed: a copy of the finished frame into an 8-bit capture or fade texture (a loading screen, a battle's end) now
   lands in the capture's 16-bit clone, and the capture's views read it. Before, in scRGB the copy out of the back
   buffer was dropped (the capture stayed stale), and in HDR10 / SDR the capture's views kept reading the 8-bit
-  original. To check in game: scRGB and HDR10, a loading screen and a battle end each, against the game's own picture
-  (no stale or black frame).
+  original. To check in game: scRGB, HDR10 and SDR, a loading screen and a battle end each, against the game's own
+  picture (no stale or black frame), and the fade's brightness against the stock game (no add-on) at the same moment.
 - Fixed: Ray Tracing in the Helper (Experimental) takes the masked prepass's own clip value (0.3333, was 0.5) and the
   masks read at a scaled texture coordinate (37 shaders; they were left out of the rays' scene). Still missing: the
   material's opacity factor (51 of the 55 dumped masks multiply alpha by a material value). To check in game: foliage
