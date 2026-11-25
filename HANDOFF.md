@@ -830,6 +830,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
 - ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back | ?
 - TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a sour ... | ?
+- FRIDAY 11-27, ONLY ON ATN'S GO (he wakes ~06:00, switches accounts): Fable 5.2 x ... | ?
+- 64-bit release: private release step, 64-bit map section 6 item 13 (before the f ... | ?
 - p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
@@ -15796,6 +15798,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         R2 no fps_ex clause, R3 refusal scans the plugin DLL, R4 render bit leaves wanted on YIELDED / FAILED + nits ->
         p2d_ (text only, no new re-check). Map 3.3 gets the W5 default-flip line; L2B section 8 wins over its body text.
         PK2P DESIGN = GO.
+        p2d_ LAST TOUCH DONE 15:3x (hand-back p2d_lasttouch_handback.md): R1-R4 + n1-n6 applied (render thread own
+        line, no WPR in either arm, refusal scans the plugin DLL, sticky states drop CORE_RENDER); verdict GO kept.
+        - [ ] FRIDAY 11-27, ONLY ON ATN'S GO (he wakes ~06:00, switches accounts): Fable 5.2 xHigh DESIGNS PK8 Stage B
+        (split contact test across cores, Experimental) from p8d_'s Stage B handover; then Fable's last review of
+        all 64-bit designs incl. Stage B; then 5.2 medium implementers (64-bit map section 6 item 12). Owner: coord.
+        - [ ] 64-bit release: private release step, 64-bit map section 6 item 13 (before the first 64-bit zip; every
+        64-bit release). Owner: coord.
         - [x] p6d_ PK6-64 TOOLING + PK4 CENSUS DONE 12:3x (designs\pk6_tooling_64.md, hand-back p6d_design_handback.md):
         PK4-64 MOOT (main waits ~0.26 ms / frame = 1.6 % of main; 32-bit was 11.83 ms); S1 done by Sol; NEW: memcpy
         10.43 % of main (~1.6 ms / frame) -> M2 reopened under PK5-64 (p5d_ told); C10 unpark met -> PK9 stage 2
@@ -15859,6 +15868,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> a64_ab.ps1:633's ';140:' entry can fire out of order (C8 T0 must fix; sent to c8r_); tw_render_mt_defaults
         has a STALE game_cpus check failing on HEAD. 6 ATN questions held. -> p1r_ REVIEW (Opus xHigh) STARTED 13:3x
         -> designs\pk1_design_review.md.
+        p1r_ REVIEW 15:3x: GO WITH CHANGES (hand-back p1r_review_handback.md): M1 FCU estimate 0..-0.1 ms (E), case 8
+        becomes a no-regression gate (F <= R + 3x A/A, report F/R; bug fixes stay on); M2 anti_aliasing.hpp is shared
+        by 8 TW add-ons (Rome II / Thrones ship 32-bit) -> N1 = ATN Q7, after F5 G18 / G20, builds all 8. S1 schedule
+        entries before 140, S2 census + motion ring Maps, S3 PerfFix overlap (UI shader ~88 %), S4 10 s median-step
+        rule, S5 TAA-on WPR gates can't fire, S6 N1 gate >= 400 uploads, S7 FCU=0 pin + revision key, S8 stale
+        game_cpus check = test-only fix, S9 braces. -> p1d_ FIX ROUND STARTED 15:4x.
         - [x] p5d_ PK5-64 GAME CODE DESIGN DONE 13:4x (designs\pk5_game_code_64.md 628 lines, hand-back
         p5d_design_handback.md): R = one SSE2 stub for the 20 calls to the half 0x3009b90 in the sprite row loop
         (site 0x32d9de5, held 0x32d9d60..0x32da032; denormal class / overlap -> the game's code), H = register-exact twin
