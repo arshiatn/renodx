@@ -4,7 +4,7 @@
  */
 
 // PathConstants::reuse_tests' bits (tests: the RENODX_TW_REUSE_* switches, rt_d3d12.hpp; the bisection of ReSTIR GI's bias
-// rising with the rays), the one list rt_path.hlsli and rt_d3d12.hpp (inside RtScene12: class constants) include.
+// rising with the rays), the one list rt_path.hlsli and rt_d3d12.hpp include (C++: twattila::dlaa_helper's constants).
 // ReuseTexel merges no neighbours (_NO_SPATIAL); PathTraceTexel validates no history (_NO_VALIDATE); ReuseTexel leaves Own
 // Sky Rays' sky out (_NO_SKY); ContactShade 1 (_NO_CONTACT: CONTACT_RANGE 0, the raw paths' too); HitLight's
 // SeenDiffuseLight picks keyed by the frame as well (_SEEN_LIGHTS_FRAME). PT DI step 2's suspects (G0, each its own switch):
@@ -25,7 +25,10 @@
 #define SRC_GAMES_TWATTILA_DLAA_HELPER_RT_REUSE_BITS_H_
 
 #if defined(__cplusplus)
-#define RT_REUSE_BIT static constexpr uint32_t
+#include <cstdint>
+
+namespace twattila::dlaa_helper {
+#define RT_REUSE_BIT inline constexpr uint32_t
 #else
 #define RT_REUSE_BIT static const uint
 #endif
@@ -54,5 +57,8 @@ RT_REUSE_BIT REUSE_TEST_VALIDATE_KEEP_CHROMA = 2097152u;
 RT_REUSE_BIT REUSE_TEST_NO_HISTORY_CLAMP = 4194304u;
 RT_REUSE_BIT REUSE_TEST_VALIDATE_NO_CACHE = 8388608u;
 #undef RT_REUSE_BIT
+#if defined(__cplusplus)
+}  // namespace twattila::dlaa_helper
+#endif
 
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_REUSE_BITS_H_

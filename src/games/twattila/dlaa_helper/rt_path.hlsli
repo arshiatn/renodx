@@ -112,7 +112,7 @@ static const float REUSE_HISTORY = 20.f;      // last frame's samples at most th
 static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this many times one ray's (kajiya's RESTIR_RESERVOIR_W_CLAMP; the bounce's: W x cos / pi)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
 #include "./rt_reuse_bits.h"  // reuse_tests' bits (RENODX_TW_REUSE_*, rt_d3d12.hpp)
-// The suspects', G1's and Validate's bits (32-2048, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
+// The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set): every other build is the shipped code to the byte (0: their code compiled out).
 #if defined(REUSE_TESTS)
 #define REUSE_SUSPECTS reuse_tests
@@ -337,6 +337,12 @@ bool SunLightGiven() {
   return (path_flags & (PATH_KEEP_LIGHT | PATH_SUN_LIGHT)) == (PATH_KEEP_LIGHT | PATH_SUN_LIGHT) && sun[uint2(SUN_LIGHT_TEXEL, 0)].w != 0.f;
 }
 
+// HitLight's answer for a surface the screen shows is SeenDiffuseLight's (the game's sun light given, this frame's light
+// not the final colour): its base colour lit by the hit's normal.
+bool SeenLightRelit() {
+  return SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT;
+}
+
 // Last frame's scene colour at a render pixel as light: squared back where the upscaler was given its square root.
 float3 PreviousLight(uint2 pixel) {
   const float3 color = max(previous_color[pixel].rgb, 0.f);
@@ -412,8 +418,7 @@ float3 LocalLights(float3 surface, float3 normal, uint4 seed) {
 // sight too bright until seen, the radiance cache keeping their light).
 float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, uint4 light_seed) {
   float3 emitted = SunLit(surface, behind, normal, albedo, transmittance, -1.f);
-  const bool seen_without_lights = SunLightGiven() && (path_flags & (PATH_LIGHT | PATH_LIGHT_FINAL)) == PATH_LIGHT
-                                   && !TORCH_LIGHT_IN_PATHS;
+  const bool seen_without_lights = SeenLightRelit() && !TORCH_LIGHT_IN_PATHS;
   if ((path_flags & PATH_LOCAL_LIGHTS) != 0u && !seen_without_lights) emitted += albedo * LocalLights(surface, normal, light_seed);
   return emitted;
 }
@@ -845,12 +850,14 @@ Reservoir LoadReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, ui
   return reservoir;
 }
 
+// The normals packed never 0, the loads' "none": OctahedralEncode gives 0 for +z itself (ReSTIR GI took a hit facing +z
+// for a sky sample and dropped a receiver's history facing +z each frame); 1 is +z with x 1 / 32767.
 void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 texel, Reservoir reservoir, float3 receiver_normal) {
   samples[texel] = float4(reservoir.hit, reservoir.weight);
   data[texel] = uint4(f32tof16(reservoir.light.r) | (f32tof16(reservoir.light.g) << 16),
                       f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
-                      (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? OctahedralEncode(reservoir.hit_normal) : 0u,
-                      (dot(receiver_normal, receiver_normal) > 0.f) ? OctahedralEncode(receiver_normal) : 0u);
+                      (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? max(OctahedralEncode(reservoir.hit_normal), 1u) : 0u,
+                      (dot(receiver_normal, receiver_normal) > 0.f) ? max(OctahedralEncode(receiver_normal), 1u) : 0u);
 }
 
 // Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
@@ -863,12 +870,23 @@ float Validate(inout Reservoir previous, float3 origin, bool contact) {
     previous.count = 0.f;
     return 0.f;
   }
+  // A contact sample without a normal is the Light Bounce's sky sample (Own Sky Rays off; a path's surface sample keeps its
+  // normal): it keeps its light. HitLight would take a surface the screen shows beside its reach point for it (no sun), or
+  // where none, OpenSky(normalize(0)): NaN, a W-clamp firefly.
+  if (contact && all(previous.hit_normal == 0.f)) return 0.f;
   // The cache's answer at the face of its stored normal, from a cell's size away at least (a reflection sample the screen
   // answered stored none: no face to look up).
   float3 light_now;
   const bool cached = (REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_CACHE) == 0u && dot(previous.hit_normal, previous.hit_normal) > 0.f
                       && hit_distance >= CacheCellSize(previous.hit);
-  if (!HitLight(previous.hit, previous.hit_normal, light_now, cached)) return 0.f;
+  // Such a sample under Path-Traced Ambient's sun light (the reflections', `contact` false; the screen's answer lit by
+  // the normal, SeenDiffuseLight: without one no sun, and Attila's open sky NaN): the screen's normal where it shows it now.
+  float3 hit_normal = previous.hit_normal;
+  uint2 seen_pixel;
+  if (!contact && all(hit_normal == 0.f) && SeenLightRelit() && SeenNow(previous.hit, hit_normal, seen_pixel)) {
+    hit_normal = PixelNormal(seen_pixel, positions[seen_pixel]);
+  }
+  if (!HitLight(previous.hit, hit_normal, light_now, cached)) return 0.f;
   if (contact) {
     light_now *= ContactShade(hit_distance);
   }
