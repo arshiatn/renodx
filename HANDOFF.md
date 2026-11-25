@@ -16157,6 +16157,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         ceiling) and the truly-rough materials scored apart (MERL / RGL may hold too few). ATN decides vMF after.
         CREDITS (ATN asked): nothing MERL-derived ships ('ship nothing') -> no MERL credit needed; RGL is CC0. A
         credit line only if MERL-fitted constants ever ship.
+        cdr_ C0b CHECK: CONFIRMED (callisto_diffuse_review.md '## C0b check 11-25'; hand-back
+        cdr_c0b_check_handback.md; rerun = c0b_ to 1e-13; readers match BRDFRead.cpp). No variant helps a design set.
+        vMF scored fairly: best single r for any group = 0.001 (= Lambert); per-material r +0.7 % rough / +0.9 % matte
+        (41 / 69 pick r 0); design mapping r = (1-exp(-alpha))^2 -12 % / -31 %. COVERAGE: 69 rough = 17 cloth, 8
+        matte / porous, 5 paper, 39 smooth; NO stone / plaster / soil / bark / sand (flat RGL samples, MERL spheres) ->
+        the data cannot judge vMF's target (terrain, stone, plaster = most of a TW battlefield). Near-win: a matte
+        forward-scatter set (rho_r 0, rho_f ~3) +12.4 % CV but +6.3 % cross-dataset, no game signal to select it,
+        +33..79 % brighter toward a low sun: not usable. PT test (pbrt-v4 vs RGL) ~6-10 h but the same flat samples:
+        can't test vMF's target either; porous data (e.g. CUReT, licence unchecked) ~3-4 h could. Recommends: C1
+        parked unmerged; PARK vMF S2-S6 (R2.9 gate to ATN), reopen only for the look or if porous data shows a win.
         - [ ] CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent (Opus xHigh, scratch
         only) after ATN's download yes (MERL BRDFDatabase.zip 1.3 GB + RGL; pick MERL + RGL) . Owner: coord (date)
         - [ ] CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mismatch measured. Owner: later
