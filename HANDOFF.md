@@ -15958,6 +15958,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         fill the view; grass + model detail sliders max (fresh backup of the settings, restored after); CPU-limited
         is fine (offline replay). -> d11s_ REV 1 STARTED (evening) -> d11r_ RE-CHECK -> lane I implementer ->
         capture (ATN's rule lines: 4 script lines + env / set key / D:\Dev\d11_dumps / replay tools OKs).
+        d11s_ REV 1 DONE (hand-back handoff_plan\handbacks\d11s_rev1_handback.md): all 10 MUSTs, all SHOULDs (S15 via
+        a marker file: pass_dump.hpp must not include test_hooks.hpp) and NITs; S2 zero-write skip dropped (0.02 ms,
+        race mixing). Costs ~0.4-0.8 ms No RT/PT 4K (+0.3-0.4 only if LDS-limited), < 0.1 ms RT/PT. Camera: wheel
+        zoom + Q presses to 90-135 deg left, checked by a test-only camera log line; port prefs copy already 3/3 for
+        grass / tree / unit / building / terrain; unit size kept at 2 (replay's soldier counts). day1 only (+ sea1 /
+        stress_test_log2 on conditions), up to 25 GB dumps. Lane I outline: d11i_lane_i, Opus High, never touches
+        addon.cpp / graphics_page / feature_settings / rt_scene.hpp / a64_ab.ps1 / presets.
+        d11s_'s 8 questions answered by coord (standing rules): 64-bit yes (ATN OK); D:\Dev\d11_dumps yes (delete on
+        ATN's yes only); exact wins on, no rows (faster + same picture = on); V3 Faster GT-VBAO after the exact round
+        (look-risk numbers for ATN); no later start for the add-on's grass / model rows; profile match only if H0
+        fails; no Nsight probe now; WH3 only if needed. -> d11r_ RE-CHECK STARTED -> lane I implementer -> code +
+        script review (Opus xHigh) -> ATN's rule lines (4 lines + env / SendInput / D: / offline-tool OKs).
         - [ ] PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in
         tools\tw\round_notes\proposed_rules_1125.md; ATN pastes them himself. Owner: ATN
         - [ ] CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on the vMF paper: 'just
