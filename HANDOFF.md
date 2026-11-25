@@ -851,7 +851,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- pdsr_ (Opus xHigh) STEP 2 REVIEW STARTED 07:0x (branch pds2_step2, 6 commits, me ... | ?
+- pds2_ FIX ROUND SENT 07:0x: M1 (+ compile the probe build), S1 gate, S3 one SUN_ ... | ?
 - ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0 ... | ?
 - 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for ... | ?
 - QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes ... | ?
@@ -15919,15 +15919,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         night3 boxes 0.98912 -> 0.99756; night40 boxes 0.97489 -> 1.00811; x1.03 control fails. HARNESS_DUMP: only
         bounce.bin, only in the 39 ReSTIR GI modes; rec_compare: only bounce / reuse chunks above floor, 0 NaN / Inf; h0i
         66 / 66; static_checks known 5. COST: G-1125-3 day1_wide total +0.04 ms (9.56 -> 9.60, trace pass +0.02 too =
-        drift?), G-1125-6 night1_low +0.003 ms NO CHANGE (calibrations G-1125-1 / -2 / -4 / -5 PASS). RAY-COUNT BIAS:
+        a REAL cost of the fix per pdsr_ S2), G-1125-6 night1_low +0.003 ms NO CHANGE (calibrations G-1125-1 / -2 / -4 / -5 PASS). RAY-COUNT BIAS:
         SCREEN_NORMAL cuts the 16-ray bias ~77 % (1.0527 -> 1.0122); the rest = the light COLOUR Validate writes into
         the history (KEEP_LIGHT / KEEP_CHROMA / NO_VALIDATE / NO_TEMPORAL remove it; RESCALE / NO_DROP / NO_CUTS /
         NO_INVALIDITY / NO_CACHE don't); mechanism not explained. KEEP_LIGHT / KEEP_CHROMA darken cfg 49 (~0.985) and
         night40 boxes (0.987 / 0.983) -> not proven, test switches. G1 + KEEP_LIGHT lands on 36913 + night (boxes 0.998,
         edge 1.002) but darkens cfg 49 (0.992) = the strongest row candidate for ATN. Edge regression NOT explained.
         Not done: boil plant on a live texel; rt_path_ser DXIL compare.
-        - [ ] pdsr_ (Opus xHigh) STEP 2 REVIEW STARTED 07:0x (branch pds2_step2, 6 commits, merge-tree clean) ->
-        plan_1117/designs/pt_di_step2_review.md -> fixes -> merge pds2_step2 -> helper build check -> push. Then
+        - [x] pdsr_ STEP 2 REVIEW DONE 07:0x: GO WITH CHANGES (plan_1117/designs/pt_di_step2_review.md; hand-back
+        handoff_plan/handbacks/pdsr_step2_review_handback.md). M1: rt_d3d12.hpp:4038-4047 the probe build's '} else'
+        takes the reuse_suspects declaration as its body -> C2065 (read, not compiled). S1: REUSE_TESTS PSOs ship +
+        compile in every player helper. S2: the +0.02-0.03 ms day1_wide is a REAL cost (Validate traces with a real
+        normal; sun / sky terms now run). S3: the fix also removes the no-sun / NaN-firefly Validate in the game's-sun
+        mode (Attila); no E4 SUN_LIGHT row. S4 (pre-existing): the reflections' own Validate (rt_path.hlsli:1557)
+        still gets zero normals under KEEP_LIGHT|SUN_LIGHT (rt_d3d12.hpp:3830). S5: ReuseJacobian abs() keeps
+        back-facing samples RTXDI saturate()s away (leak through thin cards; not the edge cause). 10 nits. EDGE
+        SPLIT: 36913 no real regression (concave 1.0386 -> 0.995, convex 0.99061 -> 0.99569); cfg 49 convex a REAL
+        -0.75 % (0.97115 -> 0.96366), G1 Basic brings it back to 0.97013 -> 1/M at silhouettes, not a wrong normal.
+        - [ ] pds2_ FIX ROUND SENT 07:0x: M1 (+ compile the probe build), S1 gate, S3 one SUN_LIGHT E4 row (or the
+        gap written), S4 check the reflection flags, S5 test switch + one E4 row, nits -> pdsr_ re-check -> merge
+        pds2_step2 (merge message carries the f01f1a95c DXIL correction) -> helper build check -> push. Then
         build.ps1 / rt_d3d12.hpp free (SHaRC depth 4 may start).
         - [ ] ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0.996, cfg 49 0.992 ->
         0.979) and the optional row 'G1 + KEEP_LIGHT' (fixes 36913 + night, darkens Own-Sky-off ~1 %).
