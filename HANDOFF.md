@@ -820,8 +820,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- optc_ (Opus xHigh, read only) STARTED 09:5x on ATN's question: every Sol loader ... | ?
-- l2bd_ (Opus xHigh, read only) L2B PRODUCT DESIGN STARTED 09:2x on ATN's yes -> | ?
+- l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 10:5x -> designs\l2b_des ... | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
@@ -15567,14 +15566,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         C64 / package / E64 / E64-mv; NO (timing only, old quit) B64P + E64-sr2. NOT done: restage a3_smoke with the
         merged add-on (do it right before the next 64-bit game batch, which builds newer anyway); the close-units E64-mv
         start (fold into C8 wave 2's one batch); ~670 MB analysis copies in the session scratchpad (a3f_batches).
-        - [ ] optc_ (Opus xHigh, read only) STARTED 09:5x on ATN's question: every Sol loader / PerfFix 64 option that
-        could clash with ours (overlay, present, shaders, textures, shadows, AA) + how to force it off ->
-        study_1124\sol_perffix_options.md. PerfFix: settings / logs / docs only, never its source.
+        - [x] optc_ DONE 10:4x (study_1124\sol_perffix_options.md, 40 rows; hand-back optc_options_handback.md). Real
+        clashes: 1.3.20 overlay (handled: converted buffer / picture); FrameBridge (PerfFix DLSS / FSR / FG) must never
+        run with our helper (off: upscaling=0 / perf_fix=0); Flag Wave with a flag pack replaces our rigid-prop VS
+        0x347F3DD9 / 0xD830AD9B (props lose MVs + RT capture; off: tick / flag_wave=0 / Ctrl+Shift+F); Sol's OpenGL
+        safety net sticks after one early DX11 death (graphics=opengl_fallback; back via 'Use DirectX 11 again'); F8
+        panel 'NOT available' under our HDR (Culling choice lost; heapfix.ini culling= instead). NO clean force-off
+        (PerfFix inits first, no API; Sol's loader API v1 has no options): detect + status notes (sent to c8p_ 10:5x).
+        Our 'not installed' note is wrong under ATTILA_NO_PLUGINS / ATTILA_PLAIN. Asks for the authors (ATN): Sol =
+        options API or FrameBridge off with our helper, the sticky OpenGL fallback; JSa25 = Flag Wave vs our prop
+        shaders, the F8 panel under 10-bit / 16F back buffers.
         - [x] twattila amd64 build check of the merged tree (e85bd48f9 + HANDOFF commits) PASS 09:3x: exit 0, 61 warnings
         (= baseline), VC 14.44.35207 / SDK 10.0.28000.0 (log testbin\scratch\merge_pds2_twattila64.log).
-        - [ ] l2bd_ (Opus xHigh, read only) L2B PRODUCT DESIGN STARTED 09:2x on ATN's yes ->
-        round_notes\attila64\designs\l2b_product_design.md (where: our plugin vs a fix for Sol; how to find the step
-        thread; core pick on any CPU; the -1.4 % fps; row / default; test plan + ATN's rule lines; waves) -> review.
+        - [x] l2bd_ DONE 10:4x (designs\l2b_product_design.md 432 lines; hand-back l2bd_design_handback.md): row
+        ROW_CPU_PLACEMENT (plugin_block.h:54) in renodx_attila64.dll, entry hook 0xbb4e00 (7 bytes, pre-hook + tail
+        call), per-thread CPU sets only on thread change, default 16 -> 14 at the first step, 250 ms watchdog gives
+        the core back after 2 s idle; core pick whole SMT core / best EfficiencyClass / biggest L3, never widens;
+        gates SMT + >= 8 cores + <= 64 CPUs; default on, row 'Keep Battle Core Free'; later an MIT offer to Sol.
+        -1.4 % fps not shown real; 2 cores / 4 threads cannot help (0 starts); L2C est. 0-3 %. S1 = ONE start
+        '-AB -Arms l2c -Probe full' (<= 225.8 s -> L2C shape; >= 240 s -> L2B stays; between -> anchor 'l2b,l2c');
+        S2 after code '-AB -Arms ep1 -EnginePlugin -Probe full' (<= 228 s, same final state). 10 ATN questions in
+        the hand-back. L2C kind APPLIED to a64_ab.ps1 10:4x (a64_ab_l2c_patch.py; backup a64_ab.pre_l2c_1125.ps1;
+        0 parse errors); DryRun waits for ATN's S1 rule lines.
+        - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 10:5x -> designs\l2b_design_review.md. c8p_ told
+        10:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         - [ ] COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-on in the 64-bit port; only
         -Smoke without ReShade exists). The 32-bit S4-rotation trace gates the next 32-bit Attila / Thrones / Rome II
         release (none planned now). T1 ReShade.log must NOT contain the RENODX_TW_PLUGIN_WANT line. Checks: 32-bit S4-rotation trace
@@ -15781,7 +15796,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         (no add-on), run folder run_pkg_a75c1b8a63a267d6. Package copied to C:\Users\arshi\Downloads\Sol_fixes_1125
         (message_for_sol.md, sol_fixes_1124.patch (From: ATN's real noreply), zip, TESTS_for_sol.md; grep-clean of user
         paths / agent names).
-        - [ ] ATN: send Sol the Downloads\Sol_fixes_1125 package when he wants (credit request inside).
+        - [ ] ATN: send Sol the Downloads\Sol_fixes_1125 package when he wants (credit request inside). 11-25 09:5x
+        ATN saw 'nothing has run in the game yet' (stale): message_for_sol.md + TESTS_for_sol.md now name both in-game
+        starts of exe a75c1b8a (00:12 plain; 09:12 ReShade + our HDR add-on, ab_runs\20261125_091228_Smoke: number +
+        Discord button visible in HDR, 0 'not 8-bit', 0 CRASH, exit 0; not reached: 12-15 byte hook, DLL-caught
+        exception), discord_button=off worded as optional; zip rebuilt with '/' names (old copies in session
+        scratchpad sol_pkg_old).
         - [ ] ATN 11-25 ~00:0x: WPR traces on D: (C: 82 GB free, D: 327 GB). His tasks RenoDX_WPR_Start = 'wpr.exe -start
         CPU -start GPU -filemode', RenoDX_WPR_Stop = 'wpr.exe -stop C:\...\nsight\attila_run\attila_wpr.etl' (coord
         never edits them) -> asked ATN to add -recordtempto D:\RenoDX_WPR to Start and stop into D:\RenoDX_WPR (folder
