@@ -15960,6 +15960,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         GameCode (SHADOW_MAP pattern); M4 tests T1-T11 to the part-11 standard; S2 one near block (0xaff / 0x6ff) with
         rollback; S6 sqrtf gate + GOT checks; S7 64 B from W4's 0xa5049c. GO for implementation after C8 W4p (harness
         -> H -> R). E -0.9..-1.3 ms / frame main. 4 ATN questions (rows 33-36 of the list). -> p5r_ RE-CHECK STARTED.
+        p5r_ RE-CHECK: GO WITH CHANGES, engine code still exact (hand-back p5r_recheck_handback.md): hashes, sizes,
+        allocation, GOT slots, nit-5 changes re-derived. R-S1 WPR option = ep8 (not ep8p2), R-S2 narrow 'game code'
+        literal for A15, R-S3 game start checks the half when H is not written, R-S4 T9 mutant +4 + lane-0 mutant, R-S5
+        add T3b (every value per lane, other lanes random). -> p5d_ LAST TOUCH (+ ATN: build both H and R).
         - [ ] vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md R2.9), before vMF S2:
         Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
         Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
