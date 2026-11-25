@@ -15950,6 +15950,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         lights_torch_pipelines_[2] after regir_pipeline_ in Init + the local-lights SetPipelineState picks the twin
         while torch_written (both spots added to pdi3_'s owner map; pdi4c_ + bal3_ told). Gates: plain builds
         byte-identical, 56 regs row off, the twins' own regs recorded.
+        4c COLLISION RESOLVED (coord): pdi3_ owns the local-lights SetPipelineState line in step 3 (bounce / torch
+        twins); pdi4c_ (merges second) adds the `di ?` arm on its rebase + owns a LIGHTS_DI + TORCH_IRRADIANCE twin
+        rt_lights_di_torch (+ _omm) in its di_builds / DI block, picked while torch_written (DI traces keep T1 for
+        non-DI pixels). Its Init block stays separate next to pdi3_'s. Gate: rt_lights_di_torch_omm regs recorded.
         Still waiting: U1-U3 / U5 (need PT DI), U6p (bridge + rt_lights), U12a / U12d (add-on files Friday's CPU builders
         use), U11 / U11h (AMD only), SHaRC depth 4 (hang risk: quiet GPU + ATN home).
         - [ ] D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record it in game, then
