@@ -10,10 +10,13 @@
 // 3. The loader's vectored handler and unhandled filter; 0x400000 committed with a synthetic ELF64 header (image_none:
 //    left reserved; image_badmagic: a wrong magic; image_table: a program header table past the page).
 // 3b. A plugin's test device (made and released): the same asserts.
+// 3c. plugin: the loader's plugins, as F7's renodx_attila64.dll (fake_plugin.cpp: the engine plugin's block alone); at
+//     the end its callbacks must be gone (none registered, or unregistered before the add-on's unload).
 // 4. Window, device, flip swap chain (RGBA8, 2 buffers), the picture (RGBA8, SRV | RT) and its depth.
 // 5-7. Frames into the picture, the loader's copy into buffer 0 and its 8-bit overlay, a mode change, a new window.
 // Then the captures (zz_capture) against the reference of the swap chain proxy.
-// Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8] [image_none|image_badmagic|image_table] [gpu]
+// Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8] [image_none|image_badmagic|image_table]
+//        [plugin] [gpu]
 //        attila64.exe d3d12 [gpu]   (C4: frames written; run.ps1 compares them with a run without the add-on)
 //        attila64.exe opengl        (C6: as C4, GPU only)
 
@@ -42,6 +45,7 @@
 #include <string_view>
 #include <vector>
 
+#include "src/games/twattila/attila64_plugin/plugin_block.h"
 #include "src/utils/float16.hpp"
 
 using Microsoft::WRL::ComPtr;
@@ -900,6 +904,12 @@ int main(int argc, char** argv) {
   // 3b. A plugin's test device.
   ShortDevice();
   CheckAddonsFreed("plugin test device", 2);
+  // 3c. The loader's plugins.
+  HMODULE plugin = nullptr;
+  if (has("plugin")) {
+    plugin = LoadLibraryW((here / "renodx_attila64.dll").c_str());
+    if (plugin == nullptr) Fail("renodx_attila64.dll not loaded");
+  }
 
   int result = 0;
   if (api == "d3d12") {
@@ -913,6 +923,16 @@ int main(int argc, char** argv) {
     if (has("broken")) expect = Expect::BROKEN;
     if (has("no_overlay")) expect = Expect::NO_OVERLAY;
     result = RunD3D11(fixed_form, expect, has("pitch8"));
+  }
+  if (plugin != nullptr) {
+    const auto block_export = reinterpret_cast<twattila::attila64_plugin::BlockExportFn>(
+        GetProcAddress(plugin, twattila::attila64_plugin::BLOCK_EXPORT));
+    const twattila::attila64_plugin::Block* block = (block_export != nullptr ? block_export() : nullptr);
+    if (block == nullptr) {
+      Fail("renodx_attila64.dll has no block");
+    } else if (block->callbacks.load() != nullptr || block->hooks_wanted.load() != 0 || block->calls_in_flight.load() != 0) {
+      Fail("the plugin's block still holds the add-on's callbacks or hooks after its unload");
+    }
   }
   if (reserved_range_violations.load() != 0) Fail(std::format("{} access violations inside 0x400000 + 16 MB", reserved_range_violations.load()));
   const bool passed = (result == 0 && failures.empty());
