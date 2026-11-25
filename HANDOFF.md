@@ -16343,6 +16343,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         stress_test_log2 only on the script's conditions; + the fresh 64-bit recordings once PT DI is merged) in a
         natural GPU gap or before the next wave, never pausing agents; maybe tomorrow if the waves run fast. Before
         it: d11v_ GO + fixes, the 5090 replay self test, commit < 32 GB, fresh backups. Owner: coord
+        ATN 11-25 ~21:1x PASTED the 4 d11_capture64.ps1 rule lines (settings.local.json: 4 hits, JSON valid).
         - [x] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
         auto_thickness, so the _auto Bend variants are dead in game (shared TW code). ATN 11-25 ~21:0x: 'SSS auto
         thickness should never be used. It is shit. Thickness should always stay at the current default' -> NOT a
