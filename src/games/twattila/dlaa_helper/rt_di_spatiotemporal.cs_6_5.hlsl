@@ -13,9 +13,9 @@
 // (TemporalResampling.hlsli, SpatialResampling.hlsli) in the loop shape of its GI one (GI/SpatioTemporalResampling.hlsli)
 // and RTXDI 2's RTXDI_DISpatioTemporalResampling. NVIDIA's RTXDI-Library 3.2 (NVIDIA RTX SDKs License;
 // rt_rtxdi_bridge.hlsli). This software contains source code provided by NVIDIA Corporation.
-// Build (only the fused variant, scratch pdi4c_ fused_variant.py: its reservoirs' two arrays in turns): dxc -T cs_6_5
-// -D PATH_DI -D PATH_REGIR -I <RTXDI>\Include -Fh rt_di_spatiotemporal.h -Vn RT_DI_SPATIOTEMPORAL; with -T cs_6_9
-// -D OPACITY_MICROMAPS -Vn RT_DI_SPATIOTEMPORAL_OMM.
+// Build (only the fused variant, scratch pdi4c_ fused_variant.py; DI_FUSED in every DI pass build of it: the reservoirs'
+// two arrays in turns, rt_di_surface.hlsli): dxc -T cs_6_5 -D PATH_DI -D DI_FUSED -D PATH_REGIR -I <RTXDI>\Include
+// -Fh rt_di_spatiotemporal.h -Vn RT_DI_SPATIOTEMPORAL; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_DI_SPATIOTEMPORAL_OMM.
 #include "./rt_scene.hlsli"
 #include "./rt_camera.hlsli"
 #include "./rt_light_tiles.hlsli"
@@ -23,6 +23,9 @@
 #include "./rt_rtxdi_bridge.hlsli"
 #include "Rtxdi/DI/TemporalResampling.hlsli"
 #include "Rtxdi/DI/SpatialResampling.hlsli"
+#if !defined(DI_FUSED)
+#error "rt_di_spatiotemporal needs -D DI_FUSED (in its rt_di_initial and rt_di_shade builds too): one reservoir array would race"
+#endif
 
 // The spatial neighbour `index` of `count` around `centre` in the last trace (RTXDI's stratified offsets).
 int2 DiSpatialNeighbour(int2 centre, uint sequence, uint index, uint count, RTXDI_RuntimeParameters runtime, RTXDI_DISpatialResamplingParameters spatial) {
