@@ -141,6 +141,13 @@ static int Body() {
   Make(&second);
   Make(&third);
 
+  // 0. RENODX_TW_PASS_DUMP unset: pass_dump registers nothing (a register_event here would find no ReShade module).
+  {
+    CHECK(SetEnvironmentVariableW(L"RENODX_TW_PASS_DUMP", nullptr) || GetLastError() == ERROR_ENVVAR_NOT_FOUND);
+    twattila::pass_dump::Install();
+    std::printf("0 pass_dump without RENODX_TW_PASS_DUMP: enabled %d\n", static_cast<int>(twattila::pass_dump::internal::enabled.load()));
+    CHECK(!twattila::pass_dump::internal::enabled.load() && !twattila::pass_dump::internal::recording.load());
+  }
   // 1.
   {
     const int presents = Run(&first, 2500, 2500);
