@@ -15736,6 +15736,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         CORE_BATTLE / CORE_RENDER, one enum (sent to c8f_). Map 3.2 writer chains updated. ATN questions (held for the
         round's list): when to decide (pick (c) one arm after L2B S2), row text / default rule, battle-only v1, 2 rule
         lines. -> p2r_ REVIEW (Opus xHigh) STARTED 11:4x -> designs\pk2p_design_review.md.
+        - [x] p6d_ PK6-64 TOOLING + PK4 CENSUS DONE 12:3x (designs\pk6_tooling_64.md, hand-back p6d_design_handback.md):
+        PK4-64 MOOT (main waits ~0.26 ms / frame = 1.6 % of main; 32-bit was 11.83 ms); S1 done by Sol; NEW: memcpy
+        10.43 % of main (~1.6 ms / frame) -> M2 reopened under PK5-64 (p5d_ told); C10 unpark met -> PK9 stage 2
+        (p9d_ told). Tooling: a64_ab.ps1 13 items, analyze_d0.py 4, WPR chain 7; W3-64 scene (camera 'key z 6' =
+        ATN's Y 6 s). Combined plan 9 starts / 3 sittings ~70 min (6 new ~53 min). ATN questions held for the list:
+        PK9 Sol-switch start with L2B S2?, keep / drop #8 (pk8tt8), 'key z 6' as W3-64 camera. -> p6r_ REVIEW
+        (Opus xHigh) STARTED 12:3x -> designs\pk6_design_review.md. -> p6d_ fixes 2 analyzer bugs NOW (Python only:
+        stale 243.0 NOPROBE check; det_pair 'same state' when X ticks differ) + re-checks window 1 / 3, L2B, L2C.
         - [ ] vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md R2.9), before vMF S2:
         Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
         Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
