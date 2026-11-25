@@ -3,11 +3,16 @@
 ## OPEN FOR ATN (2026-11-15)
 ATN's questions from the HANDOFF audit (tools/tw/round_notes/handoff_audit_1115.tsv); each names the line it came
 from (search its text). Tick here and on that line when ATN answers.
-- [ ] PORT PROOF (ATN 11-25 night asked whether our mods even work on 64-bit + its mod list): our add-on + ReShade
-  have NOT run in game on the port yet (only -Smoke without ReShade); the T1 -ReShade smoke start waits for ATN's
-  4 rule lines (A3 Smoke in the 64-bit box). The port has its own start window + mod_list.txt (copied once from
-  used_mods.txt; CA's launcher no longer sets its order) with TDD / 1212 fixes. ATN: run the smoke start soon, or
-  after PT DI? Owner: ATN
+- [x] PORT PROOF (ATN 11-25 night: do our mods work on 64-bit + its mod list?): CORRECTED by coord the same night
+  (it first said 'not run yet': wrong, the boxes below were stale): our add-on + ReShade RAN on the port 11-25
+  09:06-09:24 (A3 / T1 / C2 entries; a3a_ / a3f_: all 3 flags were check artifacts): HDR10, 4K upgraded, 48 / 48
+  shaders, clean exits, engine plugin rows offered. The port has its own start window + mod_list.txt (copied once
+  from used_mods.txt; CA's launcher no longer sets its order) with TDD / 1212 fixes.
+- [ ] PORT STILL UNPROVEN: 4-bone units under our redraws (close-units E64-mv start); DLSS / RT helper (R1-R3);
+  pack mods (TDD / 1212) via the port's mod list with our add-on; uninit never runs (device never released).
+  RUN WINDOW (coord proposal): after PT DI, ONE quiet window: R1 (3 starts, no helper, ~15 min) + the close-units
+  E64-mv start + the d11 capture (lane I) back to back; a64_ab.ps1 takes quiet_run.lock + gpu_job.lock, so
+  agents' builds / GPU jobs wait by themselves (no stopping). Owner: coord (with ATN's rule lines then)
 - [ ] LATER (ATN 11-25 evening: 'check it out in a couple of weeks'): why lowdef point lights get NO PT DI on 64-bit
   (decision: none drawn in 326 32-bit timing files, 4b's add-on leaves them to the game's shaders, no v33; R1 checks
   64-bit). Revisit with R1's 64-bit data: are any lowdef lights drawn, and do they look wrong next to DI-lit ones?
@@ -890,9 +895,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
-- COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
+- (T1 / C2 / A3 parts DONE 11-25 09:06-09:24 on ATN's lines added 09:0x, see the A ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
-- ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
 - A1 add-on lane (Opus High) after a64b_'s merge -> R1 -> T1 smoke + C2 trace (sha ... | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
@@ -16821,7 +16825,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         attila64\designs\cpu_plan_64_map.md (per item CARRIES / RE-FIND / MOOT / CHANGED / NEW CONFLICT, battle-step MT
         answer, one-writer order with C8 wave 2 + L2B, fixer briefs) -> one Opus xHigh fixer + review per package.
         FRIDAY 11-27 ONLY ON ATN's WORD: one last Fable 5.2 xHigh review + Fable 5.2 medium implementers.
-        - [ ] COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-on in the 64-bit port; only
+        - [ ] (T1 / C2 / A3 parts DONE 11-25 09:06-09:24 on ATN's lines added 09:0x, see the A3 entries; LEFT = the
+        32-bit S4-rotation trace = FROZEN 32-BIT) COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-on in the 64-bit port; only
         -Smoke without ReShade exists). The 32-bit S4-rotation trace gates the next 32-bit Attila / Thrones / Rome II
         release (none planned now). T1 ReShade.log must NOT contain the RENODX_TW_PLUGIN_WANT line. Checks: 32-bit S4-rotation trace
         (+ shadow_refresh=2), T1 smoke (attila64_log 2 sites applied + 'game started: 2 sites unchanged'; ReShade.log
@@ -16842,7 +16847,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         files in testbin\attila64_present\a3_smoke\ (dxgi.dll = ReShade64 6.8.0.2155 from reshade680_amd64, the
         addon64, zz_capture) -> a64b_ told to stage them at its end. Bad switch mixes exit 1; window-1 arms unchanged.
         Finding: design 9 item 4 - 3 hashes are drawn on 32-bit but not in replaced32_ref.tsv -> checked as 'drawn'.
-        - [ ] ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-ReShade Smoke'; optional
+        - [x] (ATN added them 11-25 09:0x; A3 ran 09:06) ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-ReShade Smoke'; optional
         -DryRun twins; -Package * wildcard for a rebuilt package).
         - [ ] a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan.md).
         - [x] a64pl_ PLUGIN DESIGN DONE (hand-back attila64/a64pl_design_handback.md; designs/plugin_design.md, PRIVATE):
