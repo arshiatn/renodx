@@ -15735,6 +15735,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         0.98746 (day 49) / 0.99822 (night40) from 0.98857 / 0.97905 / 0.98532. Add-on not compiled in the worktree (no
         bin) -> coord builds after the merge. -> brr_ REVIEW (Opus xHigh) STARTED 14:3x ->
         plan_1117\designs\bright_r2_review.md -> merge + add-on build -> ATN decides the default from these numbers.
+        brr_ REVIEW DONE 15:2x (hand-back handoff_plan\handbacks\brr_review_handback.md): MERGE AFTER FIXES, Must 1 / Should
+        4 / Nit 5. M1: the add-on DOES NOT COMPILE: rt_scene.hpp:2617-2619 tooltip has a raw newline in the string literal
+        (a heredoc ate the backslash; breaks every add-on including rt_scene.hpp, 32- and 64-bit). S1: every number used
+        the PLAIN twin; players (Lean + Near on by default) run rt_reuse_near_balanced, never measured -> re-run E4 + cost
+        with Near. S2: tooltip 'corners closer' is wrong for inside corners (concave masks 2.5-5.8 % too bright with the
+        row on, e.g. night40 0.97786 -> 1.05449). S3: a twin that fails to create leaves the row half on (no log; KEEP_LIGHT
+        alone is worse) -> all-or-nothing + one log line. S4: with KEEP_LIGHT a dimming light fades ~9 frames late (code
+        read) -> one dynamic check before any default On. Confirmed: row Off = today (45 / 53 headers byte-identical, all
+        8 old reuse builds; 8 path headers +5 / +3 instructions only); bridge append-only, no version change; twins in
+        plain + OMM; Ryse / Shogun 2 / R.U.S.E. get no row, Tales hides it; exe +2.2 %. -> pds2_ FIX ROUND sent 15:2x
+        (before fog reuse) -> brr_ re-check -> merge + Attila 64 / 32 build in the main tree before the push.
         pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
         scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
         R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
