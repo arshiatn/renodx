@@ -16140,6 +16140,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> ta_ FIX ROUND sent 16:3x -> rvt_ re-check -> merge. Older side issue (rvt_): without the Agility SDK a held
         removed device could reach the frame-generation presenter on the same GPU (shared; see reference
         d3d12_singleton_removed). Owner: ta_ (fixes) / next shared round (side issue)
+        ta_ REMOVAL FIX DONE 16:5x (hand-back round_1125\handbacks\ta_removal_fix_handback.md): fc8b08a3b (M1 failed check in
+        CaptureSceneColor, S1 Retry releases a removed device, N1 status carries the HRESULT, e.g. 0x887A0005); S2 removal
+        test passes only on detection (DXR 1.2 / 1.1 PASS 515 / 457 ms; control with 6f2d93aa4's header FAILS point 1);
+        normal GPU tests PASS; build exit 0 (61); tw_tales_unit PASS; ~6 s GPU. -> rvt_ RE-CHECK sent 16:5x.
         - [ ] ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales multiplies mask alpha by a
         material constant); step 5 equality harness (one Tales frame in-process vs helper) = GPU plan; 'needs box'
         lines in tales.tsv -> boxes (coord, later cleanup). Owner: coord
