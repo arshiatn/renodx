@@ -227,7 +227,9 @@ void ApplyRecommendedPreset() {
           .on_draw = [](auto* cmd_list) {                                                             \
             auto rtvs = renodx::utils::swapchain::GetRenderTargets(cmd_list);                         \
             if constexpr (ATTILA64) {                                                                 \
-              for (auto rtv : rtvs) WarnToneMapperTarget(cmd_list->get_device(), rtv);                \
+              for (auto rtv : rtvs) {                                                                 \
+                WarnToneMapperTarget(cmd_list->get_device(), rtv);                                    \
+              }                                                                                       \
             }                                                                                         \
             bool changed = false;                                                                     \
             for (auto rtv : rtvs) {                                                                   \
@@ -1159,7 +1161,8 @@ constexpr bool PLUGIN_READY_FORCED = false;
 // The 64-bit engine plugin's block: ready, and the rows it offers (bit: PluginRow). Filled by its lookup.
 std::atomic_bool plugin_ready = PLUGIN_READY_FORCED;
 std::atomic<uint32_t> plugin_rows = 0;
-bool shadow_pass_installed = false;
+// Atomic: init_device and present may run on different threads.
+std::atomic_bool shadow_pass_installed = false;
 
 // The rows the 64-bit engine plugin can bring back (none yet: its add-on side adds them). NONE: hidden on the port.
 enum class PluginRow : uint8_t {
@@ -1222,8 +1225,9 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
 // A game-code row on the port: shown once the 64-bit engine plugin is ready and offers its row.
 inline bool GameCodeRowShown(PluginRow row) {
   if constexpr (PLUGIN_READY_FORCED) return true;
-  return plugin_ready.load(std::memory_order_relaxed) && row != PluginRow::NONE
-         && (plugin_rows.load(std::memory_order_relaxed) & (1u << static_cast<uint32_t>(row))) != 0;
+  const auto bit = static_cast<uint32_t>(row);
+  return plugin_ready.load(std::memory_order_relaxed) && row != PluginRow::NONE && bit < 32u
+         && (plugin_rows.load(std::memory_order_relaxed) & (1u << bit)) != 0;
 }
 
 
@@ -1702,10 +1706,6 @@ constexpr std::array<twattila::water_effects::WaterShader, 15> WATER_SHADERS = {
     {.hash = 0xA140EFBA, .lighting_slot = 1, .world_input = 3, .refraction_slot = 6, .caustics = false},
 }};
 
-}  // namespace
-
-// Lifecycle /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 // The port's other renderers (its OpenGL fallback, a D3D12 route) are left alone: this add-on's handlers are D3D11-only
 // (OnPresent's casts would crash there). Logged once per API.
 inline bool StandsDown(reshade::api::device* device) {
@@ -1734,21 +1734,28 @@ inline bool OnCopyPresentPicture(reshade::api::command_list* cmd_list, reshade::
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11 || source.handle == 0u || dest.handle == 0u) return false;
   bool to_swap_chain = false;
   bool dest_clone_on = false;
+  reshade::api::resource_desc dest_desc = {};
   renodx::utils::resource::GetResourceInfo(dest, [&](const renodx::utils::resource::ResourceInfo& info) {
     to_swap_chain = info.is_swap_chain;
     dest_clone_on = info.clone_enabled;
+    dest_desc = info.desc;
   });
   if (!to_swap_chain) return false;
   reshade::api::resource source_clone = {0u};
   reshade::api::resource_desc desc = {};
+  reshade::api::resource_desc clone_desc = {};
   renodx::utils::resource::GetResourceInfo(source, [&](const renodx::utils::resource::ResourceInfo& info) {
     if (info.clone_enabled) source_clone = info.clone;
     desc = info.desc;
+    clone_desc = info.clone_desc;
   });
   if (source_clone.handle == 0u) {
     renodx::utils::resource::ResourceUpgradeInfo* target = nullptr;
     source_clone = renodx::utils::resource::upgrade::GetResourceClone(
         source, {.require_enabled = false, .allow_create = true, .activate = true}, &target);
+    renodx::utils::resource::GetResourceInfo(source, [&clone_desc](const renodx::utils::resource::ResourceInfo& info) {
+      clone_desc = info.clone_desc;
+    });
     if (target != nullptr) {
       if (present_picture.exchange(source.handle) != source.handle) {
         renodx::utils::log::i("[Total War] 64-bit Attila: the game's picture upgraded (", desc.texture.width, "x", desc.texture.height, ")");
@@ -1761,8 +1768,12 @@ inline bool OnCopyPresentPicture(reshade::api::command_list* cmd_list, reshade::
   // HDR10 / SDR: buffer 0's clone is on, utils copies clone to clone next. scRGB: buffer 0 is the real RGBA16F, and the swap
   // chain pass keeps its copy of it as the buffer's clone (off); utils would copy the picture there, which that pass then
   // overwrites with the real buffer (black). So the picture's clone goes into the real buffer here (utils' copy into the
-  // pass's copy still runs: one copy too many, overwritten).
-  if (!dest_clone_on && source_clone.handle != 0u) {
+  // pass's copy still runs: one copy too many, overwritten). Only into a buffer the copy is valid for (RGBA16F, the
+  // clone's size); any other is left to utils.
+  const bool same_layout = dest_desc.texture.format == reshade::api::format::r16g16b16a16_float
+                           && dest_desc.texture.width == clone_desc.texture.width
+                           && dest_desc.texture.height == clone_desc.texture.height;
+  if (!dest_clone_on && source_clone.handle != 0u && same_layout) {
     cmd_list->copy_resource(source_clone, dest);
     return true;
   }
@@ -1776,9 +1787,11 @@ inline bool OnCopyPresentPicture(reshade::api::command_list* cmd_list, reshade::
 inline bool OnUpdateOverlay(reshade::api::device* device, const reshade::api::subresource_data& data, reshade::api::resource dest,
                             uint32_t dest_subresource, const reshade::api::subresource_box* dest_box) {
   if (dest_box == nullptr || dest_subresource != 0 || data.data == nullptr) return false;
+  // An empty or inverted box (D3D11: nothing written).
+  if (dest_box->right <= dest_box->left || dest_box->bottom <= dest_box->top) return false;
   const uint32_t width = dest_box->right - dest_box->left;
   const uint32_t height = dest_box->bottom - dest_box->top;
-  if (width == 0 || height == 0 || data.row_pitch != 4 * width || device->get_api() != reshade::api::device_api::d3d11) return false;
+  if (data.row_pitch != 4 * width || device->get_api() != reshade::api::device_api::d3d11) return false;
   // The fixed loader's target is the picture (before the copy), 1.3.20's buffer 0 (after it).
   const bool to_picture = dest.handle == present_picture.load(std::memory_order_relaxed);
   bool to_swap_chain = false;
@@ -1786,9 +1799,12 @@ inline bool OnUpdateOverlay(reshade::api::device* device, const reshade::api::su
   reshade::api::format format = reshade::api::format::unknown;
   renodx::utils::resource::GetResourceInfo(dest, [&](const renodx::utils::resource::ResourceInfo& info) {
     to_swap_chain = info.is_swap_chain;
-    const bool clone_on = info.clone_enabled && info.clone.handle != 0u;
-    if (clone_on) target = info.clone;
-    format = (clone_on ? info.clone_desc : info.desc).texture.format;
+    if (info.clone_enabled && info.clone.handle != 0u) {
+      target = info.clone;
+      format = info.clone_desc.texture.format;
+    } else {
+      format = info.desc.texture.format;
+    }
   });
   if ((!to_picture && !to_swap_chain) || format != reshade::api::format::r16g16b16a16_float) return false;
   static const std::array<uint16_t, 256> HALVES = [] {
@@ -1803,11 +1819,17 @@ inline bool OnUpdateOverlay(reshade::api::device* device, const reshade::api::su
   std::vector<uint16_t> rows(bytes.size());
   std::ranges::transform(bytes, rows.begin(), [](uint8_t value) { return HALVES[value]; });
   device->update_texture_region({.data = rows.data(), .row_pitch = 8 * width, .slice_pitch = 8 * width * height}, target, 0, dest_box);
-  if (!(to_picture ? picture_overlay_logged : buffer_overlay_logged).exchange(true)) {
-    renodx::utils::log::i("[Total War] 64-bit Attila: the loader's 8-bit overlay converted (", (to_picture ? "picture" : "buffer"), ")");
+  if (to_picture) {
+    if (!picture_overlay_logged.exchange(true)) renodx::utils::log::i("[Total War] 64-bit Attila: the loader's 8-bit overlay converted (picture)");
+  } else if (!buffer_overlay_logged.exchange(true)) {
+    renodx::utils::log::i("[Total War] 64-bit Attila: the loader's 8-bit overlay converted (buffer)");
   }
   return true;
 }
+
+}  // namespace
+
+// Lifecycle /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
   if constexpr (ATTILA64) {
@@ -1836,9 +1858,8 @@ void OnInitDevice(reshade::api::device* device) {
     if (StandsDown(device)) return;
     // The 64-bit engine plugin's block lookup goes here (until found). Its block is published before the game's device,
     // so this is shadow_pass's normal install point; the first present is the fallback.
-    if (plugin_ready.load() && !shadow_pass_installed) {
+    if (plugin_ready.load() && !shadow_pass_installed.exchange(true)) {
       twattila::shadow_pass::Install();
-      shadow_pass_installed = true;
     }
     // The shadow map size and cascades patch the 32-bit game's code: never on the port.
     return;
@@ -1951,7 +1972,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         ProgramHeader header;
         std::memcpy(&header, page + table + (index * sizeof(header)), sizeof(header));
         // PT_LOAD with PF_X: game code.
-        if (header.type == 1 && (header.flags & 1u) != 0) ranges.emplace_back(header.address, header.address + header.memory_size);
+        if (header.type == 1 && (header.flags & 1u) != 0 && header.memory_size <= UINTPTR_MAX - header.address) {
+          ranges.emplace_back(header.address, header.address + header.memory_size);
+        }
         // PT_NOTE inside the page: its notes (name size, description size, type, then the 4-aligned name and description).
         if (header.type != 4 || header.offset > PAGE || header.file_size > PAGE - header.offset) continue;
         const uint64_t notes_end = header.offset + header.file_size;
@@ -1965,11 +1988,25 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           // NT_GNU_BUILD_ID, owner "GNU".
           if (note[2] == 3 && note[0] == 4 && std::memcmp(page + name_at, "GNU", 4) == 0) {
             build_id.clear();
-            for (const uint8_t byte : std::span(page + description_at, note[1])) build_id += std::format("{:02x}", byte);
+            for (const uint8_t byte : std::span(page + description_at, note[1])) {
+              build_id += std::format("{:02x}", byte);
+            }
           }
           at = next;
         }
       }
+      // Each code range cut at its first page that is not committed and readable: the map trace's caller scan reads the
+      // code bytes before a return address.
+      for (auto& [begin, end] : ranges) {
+        uintptr_t at = begin;
+        MEMORY_BASIC_INFORMATION code = {};
+        while (at < end && VirtualQuery(reinterpret_cast<const void*>(at), &code, sizeof(code)) == sizeof(code)
+               && code.State == MEM_COMMIT && (code.Protect & READABLE) != 0 && (code.Protect & PAGE_GUARD) == 0) {
+          at = reinterpret_cast<uintptr_t>(code.BaseAddress) + code.RegionSize;
+        }
+        end = std::min(end, at);
+      }
+      std::erase_if(ranges, [](const std::pair<uintptr_t, uintptr_t>& range) { return range.second <= range.first; });
       if (elf && !ranges.empty()) {
         renodx::utils::log::i("[Total War] 64-bit Attila: game code mapped, build id ", build_id, ", ", ranges.size(), " code ranges");
         // Its offsets are the game's addresses (base 0).
@@ -1981,9 +2018,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     // The 64-bit engine plugin's block lookup goes here (until found). Present runs on the loader's drawing thread between
     // frames: Install from here only when init_device did not (never from a bind or draw callback).
     if (plugin_ready.load()) {
-      if (!shadow_pass_installed) {
+      if (!shadow_pass_installed.exchange(true)) {
         twattila::shadow_pass::Install();
-        shadow_pass_installed = true;
       }
       // Two sites of this call: the 32-bit one below waits for the at-start tests (one writer at a time); the port has none.
       twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped());
@@ -2875,8 +2911,10 @@ void ConfigureAddon() {
     }
   }
   // Without tests (the 64-bit port) the grass rows' section is still Graphics 2 of 2's.
-  if (std::ranges::find(engine_sections, twattila::engine_tests::GRASS) == engine_sections.end()) {
-    engine_sections.push_back(twattila::engine_tests::GRASS);
+  if constexpr (ATTILA64) {
+    if (std::ranges::find(engine_sections, twattila::engine_tests::GRASS) == engine_sections.end()) {
+      engine_sections.push_back(twattila::engine_tests::GRASS);
+    }
   }
   twattila::feature_settings::SetTints(
       {"General", "Psycho V30", "PsychoV31", "PsychoV35", "Extra", "Extra (Experimental)", "Output (Restart Required)", "About"},
@@ -2940,7 +2978,12 @@ bool AttachAddon() {
     // range here: the loader reserves it no-access until its game thread maps the game (the first present reads it).
     std::array<wchar_t, MAX_PATH> exe_path = {};
     GetModuleFileNameW(nullptr, exe_path.data(), static_cast<DWORD>(exe_path.size()));
-    const std::string exe_name = std::filesystem::path(exe_path.data()).filename().string();
+    std::wstring_view exe_file(exe_path.data());
+    exe_file.remove_prefix(std::min(exe_file.size(), exe_file.find_last_of(L"\\/") + 1));
+    std::string exe_name(WideCharToMultiByte(CP_UTF8, 0, exe_file.data(), static_cast<int>(exe_file.size()), nullptr, 0, nullptr, nullptr), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, exe_file.data(), static_cast<int>(exe_file.size()), exe_name.data(), static_cast<int>(exe_name.size()),
+                        nullptr, nullptr);
+    const bool port_exe = CompareStringOrdinal(exe_file.data(), static_cast<int>(exe_file.size()), L"attila64.exe", -1, TRUE) == CSTR_EQUAL;
     std::string version = "unknown";
     bool port_product = false;
     // RT_VERSION is 16 (its macro is the ANSI form in this build).
@@ -2959,7 +3002,7 @@ bool AttachAddon() {
       port_product = (bytes != nullptr && std::wstring_view(reinterpret_cast<const wchar_t*>(bytes), size / sizeof(wchar_t)).find(L"64-bit Attila") != std::wstring_view::npos);
     }
     renodx::utils::log::i("[Total War] 64-bit Attila: ", exe_name, ", loader ", version);
-    if (_stricmp(exe_name.c_str(), "attila64.exe") != 0 || !port_product) {
+    if (!port_exe || !port_product) {
       renodx::utils::log::w("[Total War] 64-bit Attila: not the port's exe or product name (", exe_name,
                             "): the add-on runs as on the port");
     }
