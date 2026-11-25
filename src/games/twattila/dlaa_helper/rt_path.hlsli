@@ -124,13 +124,15 @@ static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this 
 static const uint REUSE_VALIDATION_PERIOD = 3u;
 // The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set). Balanced ReSTIR Light (RT_PATH_REUSE_BALANCED): G1 Basic in the reuse's own builds
-// (REUSE_BALANCED: rt_reuse*_balanced, the host's choice with the row), Raytraced where the host sets REUSE_BIAS_RAYTRACED
-// (RT_PATH_REUSE_BALANCED_RAYTRACED), Validate's kept light read in the paths (the host sets it with the row); the other
-// builds read none (0: the bits' code compiled out, the shipped code to the byte).
+// (REUSE_BALANCED: rt_reuse*_balanced, the host's choice with the row), G1 Raytraced in their REUSE_BALANCED_RAYTRACED
+// twins (rt_reuse*_balanced_raytraced: RT_PATH_REUSE_BALANCED_RAYTRACED), Validate's kept light read in the paths (the
+// host sets it with the row); the other builds read none (0: the bits' code compiled out, the shipped code to the byte).
 #if defined(REUSE_TESTS)
 #define REUSE_SUSPECTS reuse_tests
+#elif defined(REUSE_BALANCED_RAYTRACED)
+#define REUSE_SUSPECTS REUSE_BIAS_RAYTRACED
 #elif defined(REUSE_BALANCED)
-#define REUSE_SUSPECTS (REUSE_BIAS_BASIC | (reuse_tests & REUSE_BIAS_RAYTRACED))
+#define REUSE_SUSPECTS REUSE_BIAS_BASIC
 #elif defined(REUSE) || defined(REFLECT_RESERVOIR)
 #define REUSE_SUSPECTS 0u
 #else
