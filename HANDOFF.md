@@ -15833,7 +15833,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         gc0, ep8tt8, way A). Kinds vfx / w3 / ep2 / ep1c / ep8 / ep8p2 / gc0 (+ ep8vfx fallback); A15 literal refusals
         on the plugin DLL; A14 ini lifetime; analyze_d0.py S5 / S6 applied (self-test 11 / 11; 15 pairs unchanged).
         5 ATN questions (vfx in S-A, drop ep8tt8, CPU Set Setter rule for run_rs_b64p, camera key, options).
-        -> p6r_ RE-CHECK STARTED 16:0x; p2d_ renames pk8 -> ep8 in pk2p_main_core_64.md.
+        -> p6r_ RE-CHECK STARTED 16:0x; p2d_ renamed pk8 -> ep8 in pk2p_main_core_64.md (DONE 16:1x, 11 lines).
         - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
         p8d_design_handback.md): main win SERIAL: Stage A exact group index replaces the quadratic pair search at
         0x79a690 (~89 % of seg 0), identical results by construction, fingerprint self-off, fallback; E -21..-24 ms /
@@ -15897,7 +15897,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         T2 / T4 to the 32-bit part-11 standard (20 lanes, denormal edges, 16 MXCSR modes, page edges, whole loop). S2
         all-or-nothing row, S3 near-page budget (PK5 last), S6 A1 sqrtf gate, S7 0xa4fdb0 site owned by C8 W4 (map
         section 6 item 15), S9 / S10 gain wording. -> p5d_ FIX ROUND STARTED 16:1x. ALL SIX REVIEWS BACK; fix rounds
-        running: p1d_, p5d_, p8d_, p9d_; p6r_ re-check; p2d_ names.
+        running: p1d_, p5d_, p8d_, p9d_; p6r_ re-check.
         - [ ] vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md R2.9), before vMF S2:
         Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
         Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
