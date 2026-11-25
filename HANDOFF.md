@@ -820,7 +820,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- a64wpr_ (Opus xHigh) WPR ETL analysis STARTED 02:0x -> attila64\wpr\window3_wpr. ... | ?
+- L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
@@ -15350,8 +15350,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] NOPROBE base DONE 02:03-02:09 (ab_runs\20261125_020316_AB, drained 377 s, CPU 1 %): window 247.5 s, 7.35
         steps/s, 63.7 fps, p99 26.3 ms = the probe starts (247.0 / 247.5) -> the probe costs ~0; +4 s vs window 1's
         243.0 = batch drift (11-24 20:34: 249.1 / 249.5). Window 3's probe numbers stand.
-        - [ ] a64wpr_ (Opus xHigh) WPR ETL analysis STARTED 02:0x -> attila64\wpr\window3_wpr.md (private) + HANDOFF-safe
-        answers (CPUs, SMT sibling, ready delay, clocks, hot functions, best first placement arm).
+        - [x] a64wpr_ WPR ETL ANALYSIS DONE (hand-back attila64/wpr/a64wpr_handback.md; private report
+        attila64\wpr\window3_wpr.md + w3_out.txt; intermediates D:\RenoDX_WPR\analysis_20261125\; ETL untouched): 485
+        beside steps inside the 84 s capture, joined to the probe by QPC (< 50 us). Wall median 156.7 ms; beside / inline
+        own ratio median 1.282 (p90 1.356). (1) Placement: the step runs on TBB task threads (4 tids), never off
+        logical 0-15; core 0 42.8 %, core 1 27.7 %, core 7 (14+15) 14.2 %; 7 migrations / step (probe said 2), on-CPU
+        0.9975. (2) SMT SIBLING busy 40.5 % of the step's on-CPU time (median; p90 50.2 %): TBB task threads 37.9 %
+        doing real drawing-side work (hex 32d95e0 / 3009b90 / 32d93a0 / a4fdb0), main / render 4.4 %; the game keeps
+        7.87 of 16 CPUs busy; main / render 99.1 % busy, 114 migrations / s. (3) Ready delay 0.39 ms / step (0.25 %),
+        voluntary waits 28 in 485 steps, DPC + ISR 0.83 % (GPU interrupts on logical 0-3). (4) No frequency data in the
+        trace (P-state rundown only). (5) Hot functions (1 kHz, ELF 98.3 %): 803e70 12.5 %, 79f090 10.9 %, 79a690 10.3
+        %, 75a350 7.4 % (top 4 = 41 %, top 30 = 72 %). (6) FIT: ratio = 1.112 + 0.414 x sibling busy share; migrations
+        cost 0; other CPUs' load explains nothing. E: L2B (sibling idle) -> ratio ~1.11 (1.04-1.12), step 12-19 %
+        faster, window ~217 s (204-218) vs 247.5, fps -1-2 %; L2C 0-3 %; TT8 not supported. RECOMMENDED FIRST ARM:
+        P-L2B as designed (process default logical 0-13, step thread on 14+15 during the tick). Noise in the capture:
+        two find scans 1.09 % of 16 CPUs; 24 leftover tail | grep monitor pairs -> coord stopped this session's 11-24
+        ones (46 processes) at 02:4x.
+        - [ ] L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 has no l2b kind (review
+        Must 3) -> on ATN's yes coord backs up a64_ab.ps1 and applies scratchpad a64_ab_l2b_patch.py (kind l2b +
+        PROBE_LINES base,l2b + refused without -Probe full) -> ATN adds `a64_ab.ps1 -AB -Arms base,l2b -Probe full` (+
+        the same with -DryRun) -> DryRun -> drain -> run (~13 min) -> python -I p0\analyze_d0.py -> L2C only if L2B
+        gains > 3 % and more than the A/A.
         - [ ] WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling occupancy, CCD, clocks,
         render-thread placement during s 100-160 -> decides what L2B should test.
         - [ ] ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a new rule line); the
