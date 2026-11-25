@@ -909,6 +909,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
+- pd4r_ STEP 4c REVIEW (Opus xHigh) on origin/pdi4c_step4c_r2 -> fix round -> merg ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
@@ -16776,6 +16777,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         TORCH_IRRADIANCE; SetPipelineState line in the coord's form; 1abc8c505 adds rt_lights_di_torch (+ _omm) as
         lights_di_pipelines_[torch_written], all-or-none with the DI builds. Rebased builds + header bytes check +
         gates running. REVIEW / MERGE USE _r2. Owner: pdi4c_, coord
+        pdi4c_ HAND-BACK 22:02 (handoff_plan\handbacks\pdi4c_handback.md; 291 min, 136 waiting): code DONE on _r2
+        (9f1a76087 .. 1abc8c505: DIM 37-40, rt_light_tiles.hlsli + LIGHTS_DI, rt_di_surface.hlsli, bridge PATH_DI, 4 DI
+        kernels, rt_d3d12.hpp / build.ps1 plumbing, rt_di_ok publish line, W4 test, DIM_DI_SHADE out, rt_lights_di_torch
+        twin). PASSED (WARP / harness, controls fail as they must): W4 0 unlisted picks, chi-square z 0.26; rt_di_ok;
+        keep() handles 4 vs 64 leak control; 5.3 M DI pixel-frames clean (needs HARNESS_SUN_LIGHT, first smoke was
+        vacuous -> fixed); partial E6 lit 0.994 / shadowed 0.987; D2 by name (pre-rebase); D1 rows off identical
+        (pre-rebase); h0i 72 / 72; static_checks 5 known; RTXDI-less builds; headers 58 identical / 8 rt_lights* refactor
+        / 12 new. NOT RUN (GPU, on _r2): 29-light lab cost vs the 1.2 ms budget, Nsight registers of
+        rt_lights_di_torch_omm, D2 + smoke + twin jobs, full D1, rec_compare lifted control + rec_scan, all_modes_check
+        -> testbin\scratch\pdi4c_\chain_r2.ps1 = GPU order item 4 (resume pdi4c_ with it). OPEN: 4b dlaa_bridge.hpp
+        Publish / PublishEmptySet must write rt_light_surface + rt_di_light[0..1] every set (else keep() closes stale
+        handles twice); pdi4c_ patched the SHARED harness source tools	wt_harness (tw_rt_harness.cpp + di_mode.hpp,
+        backup .before_pdi4c; exe not rebuilt; inert without HARNESS_DI). 4d needs: lowdef-never-reaches-DI harness
+        check, the 4b fix, the R1 E6 / R3 composite. NOTE: pdi4c_ counted waiting as deadline time -> brief rule
+        wording: 'waiting does not count' must be in every brief.
+        - [ ] pd4r_ STEP 4c REVIEW (Opus xHigh) on origin/pdi4c_step4c_r2 -> fix round -> merge after steps 3 + 5.
+        Owner: coord (start when a review slot frees)
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
