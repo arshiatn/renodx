@@ -382,6 +382,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
 - 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20 ... | ?
+- ATN: are the stuttering cutscenes films or in-engine scenes? Optional quick A/B: ... | ?
+- coord: analyse the test files; draft b1 (+ b2) for Sol (credit RenoDX / ATN, MIT ... | ?
 - GPU PLAN (11-24 status: plan_1117/resume_1124.md: fix1_, G1, SHaRC 1.8.3, SER R1 ... | coordinator
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
@@ -3565,6 +3567,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         src_1320 + our add-on) -> attila64\designs\menu_stutter_1s.md: suspects with file:line, ours checked, one
         confirming menu + cutscene run (PresentMon + existing WPR scripts; goes in the run window after PT DI, ATN's
         rule lines), fix options (our plugin patch with MIT credit / a patch for Sol / a setting). Owner: s1s_, coord
+        s1s_ DONE (attila64\designs\menu_stutter_1s.md + s1s_handback.md; read-only + existing a64_ab Smoke data):
+        NOT OURS (our only 1 s present-thread work cpu_sets.hpp:569-595 = microseconds; captures with / without our
+        add-on match). Menu (5 captures, Sol alone .. full stack): ~223 fps Independent Flip, no 1 Hz frame-time hitch
+        -> if ATN still sees it, it is in the picture (the menu background is a film) or the display. Intro films (Sol
+        alone): CPU-bound 15-30 ms frames ~0.9 / s, irregular. TOP SUSPECT (medium films / low menu): the film path on
+        the main thread = game decode (0x1c26b30) + Sol's texture upload (calloc whole level + UpdateSubresource + free
+        per map, dx11_device.inc:2986-2998 / :3018-3025) + Sol's cap waiting AFTER Present, frame start to frame
+        start (shim_gfx.c:1297-1320 via dx11_device.inc:473). FIXES: b1 patch for Sol: cap wait before Present,
+        Present to Present (dx_present, dx11_device.inc:446, ~20 lines, low risk); b2 one buffer per texture (only if
+        WPR shows uploads); c1 ATTILA_FPS_CAP=0 meanwhile; a2 our plugin paces only if Sol declines.
+        - [ ] ATN: are the stuttering cutscenes films or in-engine scenes? Optional quick A/B: ATTILA_FPS_CAP=0. Then
+        the hand test (design section 3: PresentMon + ~20 s WPR in films and menu, no keys; A/B cap 0; optional
+        ATTILA_TEST_SKIP_MOVIES=1) or an agent run with the 4 rule lines in design section 4. Owner: ATN
+        - [ ] coord: analyse the test files; draft b1 (+ b2) for Sol (credit RenoDX / ATN, MIT line kept), send only
+        after ATN agrees. Owner: coord
       - [x] REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a change per chunk (mean /
         max relative difference of float outputs, mean luminance shift) so fixes like fix1_'s brightening are measured,
         not just counted. Owner: next recorder touch (tools)
