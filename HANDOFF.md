@@ -16097,6 +16097,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         trace paths (~:1716, ~:2438), then rerun the removal case (expect 'Failed: the D3D12 queue stopped.', rays off);
         + rt_shadows.hpp:2624 uses utils::log without including log.hpp. Owner: ta_ (new branch after nt_ta1 merges) ->
         rvt_ review
+        ta_ REMOVAL DONE 16:0x (hand-back round_1125\handbacks\ta_removal_handback.md): nt_ta2 43a2acaf2 (both trace paths
+        also Fail on GetDeviceRemovedReason() != S_OK or a failed queue Signal; log.hpp include) + c095375b9 (rvt_ R1-R3).
+        Removal run after: 'Failed: the D3D12 queue stopped.' at frame 2, traced 0 after, no crash / hang, DXR 1.2 + 1.1;
+        normal rt_shadows_test (both), trace_test, omm_test PASS; talesofarise build exit 0 (61), tw_tales_unit 5 / 5.
+        tools\toa\rt_tests\rt_shadows_test.cpp exports ReShadeLogMessage (backup .bak_ta_). tales.tsv device-loss DONE
+        (parity ta 0 / 37 / 234). -> rvt_ REVIEW sent 16:0x -> merge.
         - [ ] ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales multiplies mask alpha by a
         material constant); step 5 equality harness (one Tales frame in-process vs helper) = GPU plan; 'needs box'
         lines in tales.tsv -> boxes (coord, later cleanup). Owner: coord
