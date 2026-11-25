@@ -311,8 +311,13 @@ inline ID3D11ShaderResourceView* Occlusion(ID3D11DeviceContext* native, ID3D11Sh
   native->OMSetRenderTargets(0, nullptr, nullptr);
   native->VSSetShaderResources(0, 1, &no_view);
 
-  const bool multisampled = (depth_view.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2DMS);
-  run(multisampled ? "smoke_map_apply_ms" : "smoke_map_apply", (multisampled ? objects.apply_ms : objects.apply).Get(),
+  const char* apply_name = "smoke_map_apply";
+  ID3D11ComputeShader* apply = objects.apply.Get();
+  if (depth_view.ViewDimension == D3D11_SRV_DIMENSION_TEXTURE2DMS) {
+    apply_name = "smoke_map_apply_ms";
+    apply = objects.apply_ms.Get();
+  }
+  run(apply_name, apply,
       {objects.map_srv.Get(), depth, occlusion, objects.view_srv.Get()}, {objects.dimmed_uav.Get(), objects.anchor_uav.Get()},
       (objects.width + 7) / 8, (objects.height + 7) / 8);
   context1->SwapDeviceContextState(game_state.Get(), nullptr);

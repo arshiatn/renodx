@@ -41,6 +41,7 @@ struct RaceTuple
 };
 RWStructuredBuffer<uint> t_rw_race_count : register(u4);
 RWStructuredBuffer<RaceTuple> t_rw_race_tuples : register(u5);
+// Declared before the include: bend_sss_gpu.hlsli's write calls it, and its body (below) needs that file's types.
 void RaceRecord(int2 xy, float occlusion, float penumbra, float3 tint);
 #endif
 #include "./bend_sss_gpu.hlsli"

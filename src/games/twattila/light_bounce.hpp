@@ -478,14 +478,16 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     runtime.settings.diffuse_rule = sun_draw.diffuse_rule;
     runtime.settings.texel_centre = objects.texel_centre;
     runtime.settings.directional = (objects.sh_traced ? 1.f : 0.f);
-    // `name`: the pass dump's (false: the replay's expected bytes differ, the pass must not run).
+    // `name`: the pass dump's. Unlike the compute sites, this pass does not stop on a mismatch: the game's draw ran
+    // already and our state is half set, so it runs on to the normal end (restore + bypass).
     const auto upload = [&](const char* name) {
-      if (!pass_dump::Bytes(name, &runtime.settings, sizeof(LightBounceConstants))) return false;
+      if (!pass_dump::Bytes(name, &runtime.settings, sizeof(LightBounceConstants))) {
+        // No-op: Bytes lists the mismatch for the replay (bounce.sun_draw is not replayed).
+      }
       if (std::memcmp(&objects.uploaded, &runtime.settings, sizeof(LightBounceConstants)) != 0) {
         native->UpdateSubresource(objects.constants.Get(), 0, nullptr, &runtime.settings, 0, 0);
         objects.uploaded = runtime.settings;
       }
-      return true;
     };
 
     // The game's draw first.
@@ -529,7 +531,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       pass_dump::Resource(native, "bounce.denoised_sh_zonal", objects.denoised_sh.zonal.texture.Get());
       pass_dump::Resource(native, "bounce.previous_camera", objects.previous_camera.Get());
     }
-    if (!upload("bounce.constants")) return {};
+    upload("bounce.constants");
 
     ComPtr<ID3D11PixelShader> game_shader;
     native->PSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
@@ -583,11 +585,9 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
           .Height = std::ceil(game_viewport.Height / scale),
           .MaxDepth = 1.f,
       };
-      if (msaa) {
-        const pass_timing::OwnPass mark(native, "light_bounce_light_copy", pass_timing::Stage::NONE);
+      if (const pass_timing::OwnPass mark(native, "light_bounce_light_copy", pass_timing::Stage::NONE); msaa) {
         native->ResolveSubresource(objects.light_copy.Get(), 0, light_texture.Get(), 0, light_view.Format);
       } else {
-        const pass_timing::OwnPass mark(native, "light_bounce_light_copy", pass_timing::Stage::NONE);
         // Only the texels the prepare reads: `scale` a side for each pixel of the trace's viewport (all of them at 100%; below it
         // the view is the texture's top-left part, and the rest was three quarters of the copy at half the size).
         const D3D11_BOX read = {
@@ -610,7 +610,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       // read the prepared normals too; should they fail, the screen-space trace takes the top-left's, w pinned there).
       const internal::RayTracedTrace ray_traced = internal::ray_traced_trace.load(std::memory_order_relaxed);
       runtime.settings.directional = ((objects.directional && ray_traced == nullptr) ? 1.f : 0.f);
-      if (!upload("bounce.constants_prepare")) return {};
+      upload("bounce.constants_prepare");
       native->OMSetBlendState(objects.replace_blend.Get(), nullptr, 0xFFFFFFFF);
       native->OMSetDepthStencilState(objects.no_depth.Get(), 0);
       native->RSSetState(objects.rasterizer.Get());
@@ -649,7 +649,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
       // Directional Light Bounce: the screen-space trace's (the rays' have none: the bounce as without it).
       objects.sh_traced = objects.directional && !rays;
       runtime.settings.directional = (objects.sh_traced ? 1.f : 0.f);
-      if (!upload("bounce.constants_trace")) return {};
+      upload("bounce.constants_trace");
       // Else the prepared light and geometry's levels, each from the one above (that level only, at t46-t47).
       if (!rays) {
         const pass_timing::OwnPass mark(native, "light_bounce_levels", pass_timing::Stage::PIXEL);
