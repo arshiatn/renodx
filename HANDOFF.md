@@ -820,7 +820,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- coord: A3 -ReShade -PerfFix (running 09:1x) -> -ReShade -Package sol_fixes_1124\ ... | ?
+- twattila amd64 build check of the merged tree STARTED 09:2x (RAM free after the ... | ?
+- l2bd_ (Opus xHigh, read only) L2B PRODUCT DESIGN STARTED 09:2x on ATN's yes -> | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
@@ -15529,9 +15530,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         study_1124\a3_smoke_analysis.md: (1) never-line 'the tone mapper's target (format 10, 3840x2160) has no
         upgrade'; (2) 21 of our 32-bit-drawn shaders not drawn (3 of 4 4-bone units 0x0ECFE74C 0xDAC80ECC 0xC2AA8FDA;
         gather 0x00D1F51E 0x2BD86A89); (3) exit: unloaded 1 of 2 loads + 3 WARN after the last unload.
-        - [ ] coord: A3 -ReShade -PerfFix (running 09:1x) -> -ReShade -Package sol_fixes_1124\build -Exe64Sha
-        a75c1b8a63a267d6 -> T1 -EnginePlugin (DryRun first) -> C2 -EnginePlugin -C2 (DryRun first) -> twattila amd64
-        build check of the merged tree (RAM now free).
+        - [x] coord A3 -ReShade -PerfFix 09:09 (20261125_090926_Smoke\1_B64P): clean exit 0, 48 / 48, same never-line;
+        NO only from check artifacts: the game quit 135 s after the start (PerfFix loads faster) before the first-present
+        s 140 / 145 timers (no pass timing, 1 of 2 captures); 'error / fail' = PerfFix 'stats: ... failed opens' lines.
+        - [x] coord A3 -ReShade -Package sol_fixes_1124\build -Exe64Sha a75c1b8a63a267d6 09:12 (20261125_091228_Smoke):
+        clean, 48 / 48, overlay converted (picture), 'not 8-bit' 0 (Sol's fix), Time Each Pass 14.587 ms; same 3 items.
+        - [x] coord T1 -EnginePlugin 09:15 (20261125_091532_Smoke\1_E64): plugin afb25357 loaded, build ok, PACK_ENTRY
+        0x3416d50 + VIEW_DRAW_ENTRY 0x33f6120 applied, 2 sites unchanged at game start, 'engine plugin ready, rows
+        offered 0x3' before 'game code mapped', E7 forbidden none, first calls on the present thread 24676, clean exit,
+        WER 0, dumps 0. Only the A3 items.
+        - [x] coord C2 09:18-09:24 (20261125_091836_Smoke): E64-sr2 shadow refresh 2 applied ('drawn 2908, left 2908 in
+        6653 frames'), rows 0x3, clean; E64-mv registration 0x1 (bone flush) as wanted, clean. Check artifacts: mv E6 /
+        E9 'present NOT FOUND' = ReShade.log pads the 4-digit thread '[ 7332]' (every add-on line + both first calls on
+        7332); sr2 quit 145 s after the start, before the 2nd capture timer. Rotation / RT capture = C3 (helper).
+        -> a3a_ gets the check artifacts too (one a64_ab.ps1 check-fix round after its analysis; ONE WRITER).
+        - [ ] twattila amd64 build check of the merged tree STARTED 09:2x (RAM free after the restart).
+        - [ ] l2bd_ (Opus xHigh, read only) L2B PRODUCT DESIGN STARTED 09:2x on ATN's yes ->
+        round_notes\attila64\designs\l2b_product_design.md (where: our plugin vs a fix for Sol; how to find the step
+        thread; core pick on any CPU; the -1.4 % fps; row / default; test plan + ATN's rule lines; waves) -> review.
         - [ ] COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-on in the 64-bit port; only
         -Smoke without ReShade exists). The 32-bit S4-rotation trace gates the next 32-bit Attila / Thrones / Rome II
         release (none planned now). T1 ReShade.log must NOT contain the RENODX_TW_PLUGIN_WANT line. Checks: 32-bit S4-rotation trace
