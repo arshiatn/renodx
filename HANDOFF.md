@@ -823,7 +823,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
-- a64br_ (Opus xHigh) R1 REVIEW STARTED 03:0x -> designs/bringup_review.md -> fixe ... | ?
+- a64b_ FIX ROUND SENT 03:2x (M1, S1-S5, Nits; utils untouched) -> merge a64b_brin ... | ?
+- ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
 - A1 add-on lane (Opus High) after a64b_'s merge -> R1 -> T1 smoke + C2 trace (sha ... | ?
@@ -15419,8 +15420,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         hidden too; MAKEINTRESOURCEW(16) for RT_VERSION. Not done: plugin lookup (plugin_ready stays false), A3 runs.
         Notes: bin\ReShade64.dll doesn't exist (design 10.1 item 2 -> reshade680_amd64 copy); an A3 case with
         ATTILA_DX11_WARP runs without the add-on (ReShade skips WARP). Junctions removed (links only).
-        - [ ] a64br_ (Opus xHigh) R1 REVIEW STARTED 03:0x -> designs/bringup_review.md -> fixes -> merge a64b_bringup
-        -> build check -> A1 add-on lane -> A3 Smoke (ATN's 4 -ReShade lines).
+        - [x] a64br_ OPUS xHIGH R1 = GO WITH CHANGES (hand-back attila64/a64br_bringup_review_handback.md;
+        designs/bringup_review.md): no hidden setting reaches game code on the port; x86 unchanged. M1 pass_timing.hpp
+        OnPresent casts every queue to D3D11 with no API check and 'Time Each Pass' is visible on the port -> crash on a
+        D3D12 / Vulkan / GL device (the 13-handler audit claim was wrong here). S1 scRGB copy doesn't check dest format
+        / size; S2 the C2 scRGB control can never fail (any 0xC0000005 = 'broken'; the crash is the overlay's 8-byte read
+        of 4-byte rows) and '18 / 18' = 17 results; S3 F7 must require the INFO colorspace line + fail on the WARNING;
+        S4 anti_aliasing buffer handlers need API checks; S5 no F7 case for a missing / corrupt image at 0x400000.
+        Nits: inverted box, ?: invoke, braces, anon namespace, shadow_pass_installed atomic, 1u << row >= 32, GRASS
+        fallback in if constexpr, PF_X ranges VirtualQuery-clamped, run.ps1 -Gpu default, tolerance comment, README.
+        - [ ] a64b_ FIX ROUND SENT 03:2x (M1, S1-S5, Nits; utils untouched) -> merge a64b_bringup -> build check -> A1
+        add-on lane -> A3 Smoke. The proposed '-ReShade -Warp' A3 line is useless (ReShade skips WARP devices): drop it.
+        - [ ] ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyResource (~2782-2790), and
+        the same in OnResolveTextureRegion / OnCopyTextureRegion, use an existing clone even when that side's clone is
+        DISABLED. In scRGB compatibility mode (default) a copy INTO the back buffer lands in the proxy pass's scratch ->
+        black frame; a copy OUT reads stale scratch. Exposed: the 16 swapchain_v2 + cloning add-ons (Divinity 1 / 2,
+        Expeditions, R.U.S.E., Ryse, Tales, all 10 TW); latent in TW (they draw to the back buffer), hit by the 64-bit
+        port (it copies). Smallest fix: use the existing clone only when that side is enabled. Proof: one scRGB F7 run +
+        R.U.S.E. + one TW game check; the port's own scRGB copy could then go. ATN decides.
         - [x] a64ab_ -ReShade PASS DONE 01:0x (hand-back attila64/study_1124/a64ab_reshade_pass_handback.md): own run
         folders run_rs_c64 / run_rs_b64p / run_rs_pkg_<sha16>; fresh ReShade.ini (TutorialProgress=4 only); env per
         10.1 (RENODX_TW_SET=0:AntiAliasing=0;140:Time Each Pass (One Frame)=1); pictures only from zz_capture; ~4 min a
