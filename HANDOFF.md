@@ -820,11 +820,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- WINDOW 3 ROUND 1: coord holds quiet_run.lock from 01:36 to drain (slot1 gated_bu ... | ?
+- WINDOW 3 ROUND 1 STARTED 01:37:33 (drained in 21 s, CPU 11 %; the bench holds qu ... | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
-- a64p1r_ (Opus xHigh) R1 + a64p1s_ (Sonnet High) FINAL reviews STARTED 01:1x -> d ... | ?
+- a64p1_ WAVE 1 FIX ROUND SENT 01:4x (both reviews' Shoulds, layout unchanged, bui ... | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
 - AFTER WINDOW 1 (started 23:5x): gbf gates (gbf_gpu_gates.ps1, coord, quiet GPU w ... | ?
@@ -15330,9 +15330,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] coord -DryRun of round 1 01:36 (ab_runs\20261125_013618_AB_dryrun): preconditions met, self-test ok for
         every arm, probe sha = sidecar, D: 324.7 GB free, ~26 min. New zombie attila64.exe 32564 (01:03, 0 threads /
         handles, parent gone) - ignored like the other 4.
-        - [ ] WINDOW 3 ROUND 1: coord holds quiet_run.lock from 01:36 to drain (slot1 gated_build, slot2 pds2_ helper,
-        pds2_'s E4 GPU jobs) -> releases it and starts `-AB -Arms base,inline,base -Probe full -Wpr` at once -> analyze
-        (python -I p0\analyze_d0.py <batch>; HANDOFF-safe block only) -> round 2 only on triggers.
+        - [ ] WINDOW 3 ROUND 1 STARTED 01:37:33 (drained in 21 s, CPU 11 %; the bench holds quiet_run.lock +
+        gpu_job.lock) -> analyze (python -I p0\analyze_d0.py <batch>; HANDOFF-safe block only) -> round 2 only on
+        triggers.
         - [x] a64ab_ -Probe / -Wpr PASS DONE (hand-back attila64/study_1124/a64ab_probe_pass_handback.md): ETL waits /
         refuses on D:\RenoDX_WPR\attila_wpr.etl, renamed in place to attila_wpr_<batch>_<n>_<arm>.etl (path + size in
         start.json), schtasks /Query + /Run only, Stop in start + batch finally, wpr_running.txt marker for a hard-
@@ -15409,9 +15409,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         tests re-run PASS. Shoulds: S1 static_assert sites 5..11 B (loader breaks 12..15), S2 pass_end same-callbacks
         comment overclaims -> A1 epoch in PassMeasure::reserved, S3 Callbacks bytes / version never checked, S4
         GetModuleFileNameW checked before wcsrchr / wcscpy_s, S5 test gaps, S6 build.ps1 relative -Out, S7 CXX_STYLE.
-        - [ ] a64p1r_ (Opus xHigh) R1 + a64p1s_ (Sonnet High) FINAL reviews STARTED 01:1x -> designs/
-        plugin_wave1_review.md + plugin_wave1_review_sonnet.md -> fixes -> merge -> A1 add-on lane (after a64b_'s
-        merge) -> T1 smoke.
+        - [x] a64p1r_ OPUS R1 = GO WITH CHANGES, 0 Musts (hand-back attila64/a64p1r_review_handback.md;
+        designs/plugin_wave1_review.md): block v1 freezes as is (40 B, offsets checked); hooks / exceptions / drain
+        (race-free with seq_cst on the add-on side) / patcher (all writes before game code) / generator verified (M);
+        no x87 instruction within 64 B of either site (the PerfFix range gap closed from the ELF); libstdc++ gap not
+        real. Shoulds: S1 header comments + unregister rules before A1, S3 tests of the DLL's own bodies / refusals,
+        S5 catch gate must follow indirect calls before C8 uses it, S2 / S4 / S6 / S7. Disclosure: a broad grep
+        printed 2 lines of tools\tw\heapfix\pkg_1124\...\x87_sites.h (maybe PerfFix-derived); not opened or used.
+        - [ ] a64p1_ WAVE 1 FIX ROUND SENT 01:4x (both reviews' Shoulds, layout unchanged, builds after window 3) ->
+        merge a64p1_wave1 -> A1 add-on lane (after a64b_'s merge) -> T1 smoke.
         - [ ] AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> designs/plugin_design_review.md)
         + C8 census agent (read-only Opus xHigh, brief section 15 -> census/c8_rows.tsv + c8_notes.md).
         - [x] gated_build.ps1 UNIFIED 00:3x (coord): takes testbin\scratch\build_slots\slot1-4.lock as gpu_lock v1
