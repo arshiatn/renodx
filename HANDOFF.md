@@ -15792,6 +15792,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         after L2B W2 / P1a after PK5-64, pick needs 4 whole cores below (NO_CORE on Zen 2 / Zen+ CCXs). F1 -> c8f_ (B0)
         + l2b_product_design.md section 8 item 6 (W2 / W3); F2 (ep2 kind, run-folder ini, analyzer checks) -> PK6-64
         (sent to p6r_). -> p2r_ RE-CHECK STARTED 14:2x. 4 ATN questions held (way A = S2 carries ep2).
+        p2r_ RE-CHECK 15:1x: GO (hand-back p2r_recheck_handback.md); last touch R1 render thread on its own log line,
+        R2 no fps_ex clause, R3 refusal scans the plugin DLL, R4 render bit leaves wanted on YIELDED / FAILED + nits ->
+        p2d_ (text only, no new re-check). Map 3.3 gets the W5 default-flip line; L2B section 8 wins over its body text.
+        PK2P DESIGN = GO.
         - [x] p6d_ PK6-64 TOOLING + PK4 CENSUS DONE 12:3x (designs\pk6_tooling_64.md, hand-back p6d_design_handback.md):
         PK4-64 MOOT (main waits ~0.26 ms / frame = 1.6 % of main; 32-bit was 11.83 ms); S1 done by Sol; NEW: memcpy
         10.43 % of main (~1.6 ms / frame) -> M2 reopened under PK5-64 (p5d_ told); C10 unpark met -> PK9 stage 2
