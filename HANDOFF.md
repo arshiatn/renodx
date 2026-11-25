@@ -17153,6 +17153,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         - fa3_ B8 PTLAS env-only: a real siege stall, cause never found; fa3_ found 2 likely bugs in our PTLAS code.
         - fa2_ G-1 / fa1_ B3 W clamp: the design's own temporary guard for the open reuse bias (known reason).
         - fa2_ B1 Validate occlusion drop: design choice, not a crash; fa2_ says it guards a non-bug.
+        ATN 11-26 ~00:5x: 'Maybe we leave the guards so we don't get any ... crashes / freezes?' -> RULE (skill
+        game-port-method 'Fix it at the source', memory feedback_cite_and_deviate, audit brief): crash / hang / NaN
+        guards STAY as safety nets even after the cause is fixed; the box is about finding + fixing the cause and a
+        one-frame trace that shows when the guard fires, never about removing the guard; hang caps (SHaRC depth 2,
+        PTLAS behind its switch) come off only once the cause is proven fixed.
         - [ ] fa4_ B7 rr_d3d12.hpp:32-33 cites the deleted talesofarise_dlss/rr_d3d12.hpp (ae86e8603): fix the comment
         (memory note fixed 11-26). Owner: next twattila writer
         - [ ] fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered penumbra 0.1 / 1.1 reads
