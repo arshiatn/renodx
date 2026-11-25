@@ -15742,6 +15742,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         5 Shoulds, 4 nits + PK2P F1 in B0 (render word own error bits 24-31, 6 CoreState values, INI_RENDER_CORE,
         CORE_WANTED_DEFAULT = CORE_BATTLE); T0 one time-order builder for :629-633 and :919; orders = map 3.3; page 3
         assigned inside addon.cpp (settings_pages.hpp untouched). -> c8r_ RE-CHECK 2 STARTED 14:3x.
+        c8r_ RE-CHECK 2 14:4x: GO (Re-check 2 in c8_wave2_plan_review.md; hand-back c8r_recheck2_handback.md); its one
+        nit (start 1 mirror lines: the last line per key shows B, up to 16 lines) fixed in the plan by coord. C8 WAVE 2
+        PLAN = GO. Next: ATN's 6 C8 questions (in the one list) -> W0 / B0 implementers (Opus High) per map 3.3.
         - [x] BINDING WRITER ORDER 14:0x (coordinator): cpu_plan_64_map.md section 3.3 = one order for every design
         (plugin_block.h = C8 B0 only for v2; plugin main.cpp / hooks.hpp: B0 -> L2B W2 -> PK2P P1p -> C8 W1p..W4p -> PK5-64
         -> PK9 -> PK8; addon.cpp: C8 B0a -> L2B W3 -> C8 W1a..W4a -> PK1-64 -> PK5-64 -> PK2P P1a -> PK9 A3 -> PK8, CP
