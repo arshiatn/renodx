@@ -829,6 +829,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LEFTOVER pds2_ FOLDERS (ATN decides, not deleted): ra39a 51.0 GB, rs4 47.6 GB, r ... | ?
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
 - ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back | ?
+- TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a sour ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
@@ -15747,6 +15748,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         Builds twattila amd64 + x86, Tales amd64 exit 0 (61 warnings = before); static_checks known 5. Not covered: a
         second RenoDX add-on as handler (no F7 case), Tales scRGB in game. -> ucr_ RE-CHECK 12:4x -> merge. Cleanup
         later (ATN's yes): worktree agent-ae7cab13600fa530f holds its own real bin\ copy (not a link).
+        ucr_ RE-CHECK 13:2x: MERGE (Re-check 11-25 in ucf_clone_fix_review.md; hand-back ucr_recheck_handback.md).
+        MERGED 1cd236071 (ucf_follow) + twattila / Tales amd64 build check.
+        - [ ] TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a source as cloned only when its
+        clone is on (talesofarise/addon.cpp:935); in scRGB buffer 0 is real RGBA16F with its clone off, so a copy from it
+        into an RGBA8 capture texture is dropped as mismatched and the capture stays stale. Matters only if Tales copies
+        out of buffer 0 (unproven); offline fix possible. Owner: next Tales round (tools\nontw\tales\plan.md).
         - [x] p2d_ PK2P DESIGN DONE 11:4x (designs\pk2p_main_core_64.md 509 lines, hand-back p2d_design_handback.md):
         GO; render (main) thread = the game_started thread, own whole core (ATN's PC: step 14 + 15, render 12 + 13,
         0-11 for the rest), never an E-core / the LLC's lowest 2 cores, off where L2B is off; E fps +3..+8 % big
@@ -15778,6 +15785,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         'Faster Battle Step' + tooltip, drop the thread-count start, init / README wording, Stage B at all / when,
         offer A to Sol (MIT, credit RenoDX / ATN). -> p8r_ REVIEW (Opus xHigh) STARTED 12:5x ->
         designs\pk8_design_review.md (incl. kind names vs p6d_, v2 vs v3 block fields).
+        - [x] p9d_ PK9 EFFECTS DESIGN DONE 13:3x (designs\pk9_effects_64.md 515 lines, hand-back p9d_design_handback.md):
+        ROUTE A recommended = keep Sol's own parallel effect update, no hook / patch: A1 note to Sol (race census N1-N12,
+        C10, soak list, ask for a settings.txt key where 0 = off: today any value even 0 turns it on; credit RenoDX /
+        ATN; ATN sends), A2 = p6d_'s start #2 'vfx' (no own line), A3 restart-only Experimental CPU-page row default Off
+        (live slot 0x526f272 only with Sol's written OK). Route B rejected (~2,500 lines, every site is Sol's). Effects
+        don't touch the battle model (closures, RNG 0x5261150). E -1.5..-2.5 ms / frame (+11..+20 % fps); go >= +3 %.
+        Stage 2: C06 0x34aceff parked (H24), C08 moot while parallel, C09 0x349bf7c, C10 to Sol, C01 9 / 12 not needed.
+        Risk: PerfFix's sound crash guard vs sound calls from task threads. 6 ATN questions held for the list.
+        -> p9r_ REVIEW (Opus xHigh) STARTED 13:3x -> designs\pk9_design_review.md.
+        - [x] p1d_ PK1-64 UPLOADS DESIGN DONE 13:3x (designs\pk1_uploads_64.md, hand-back p1d_design_handback.md): FCU
+        default On on the port only after an offline T-test (tw_injection_buffers case 8 -Hardware; bytes identical;
+        E +0.35..+1 % fps; ~540 ReShade pushes / frame gone); FDW hidden + forced off on the port (Sol's device never
+        single-threaded, no DYNAMIC CBs); NEW N1: anti_aliasing OnUpdateBufferRegion heap-copies 480-4096 B CB uploads
+        with TAA on (gated fix; anti_aliasing.hpp has no map 3.2 writer yet); T2 / U1 / U2 parked with gates; 0 own
+        starts (census entries ride C8's E64-mv; FCU read rides W3-64). Side finds: RENODX_TW_SET runs in string order
+        -> a64_ab.ps1:633's ';140:' entry can fire out of order (C8 T0 must fix; sent to c8r_); tw_render_mt_defaults
+        has a STALE game_cpus check failing on HEAD. 6 ATN questions held. -> p1r_ REVIEW (Opus xHigh) STARTED 13:3x
+        -> designs\pk1_design_review.md.
         - [ ] vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md R2.9), before vMF S2:
         Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
         Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
