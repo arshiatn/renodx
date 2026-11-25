@@ -38,6 +38,7 @@
 
 #include "../dlaa_bridge.h"
 #include "./gpu_completion.hpp"
+#include "./rt_reuse_bits.h"  // PathConstants::reuse_tests' bits (tests; rt_path.hlsli)
 // NVIDIA's NVAPI (MIT; build.ps1 adds it when build\downloads\nvapi holds it): RTX Mega Geometry's cluster operations.
 #if __has_include(<nvapi.h>)
 #include <nvapi.h>
@@ -4612,7 +4613,6 @@ class RtScene12 {
   static constexpr uint32_t PATH_SKY_PARITY = 1048576;  // rt_path.hlsli (the trace's PATH_TINT)
   static constexpr uint32_t PATH_SUN_LIGHT = 2097152;   // rt_path.hlsli (the trace's PATH_TINT_GUIDES)
   static constexpr uint32_t PATH_START_PAST = 2147483648;  // rt_camera.hlsli
-#include "./rt_reuse_bits.h"  // PathConstants::reuse_tests' bits (tests; rt_path.hlsli)
   // Read only by the REUSE_TESTS builds.
   static constexpr uint32_t REUSE_SUSPECT_BITS = REUSE_TEST_SPATIAL_CLAMP | REUSE_TEST_SKY_DIRECTION | REUSE_TEST_NO_JACOBIAN_CUT | REUSE_TEST_HISTORY_PLAIN
                                                  | REUSE_TEST_NEIGHBOUR_VISIBILITY | REUSE_TEST_JACOBIAN_SATURATE | REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED

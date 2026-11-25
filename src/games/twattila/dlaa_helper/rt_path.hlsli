@@ -112,7 +112,7 @@ static const float REUSE_HISTORY = 20.f;      // last frame's samples at most th
 static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this many times one ray's (kajiya's RESTIR_RESERVOIR_W_CLAMP; the bounce's: W x cos / pi)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
 #include "./rt_reuse_bits.h"  // reuse_tests' bits (RENODX_TW_REUSE_*, rt_d3d12.hpp)
-// The suspects', G1's and Validate's bits (32-2048, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
+// The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set): every other build is the shipped code to the byte (0: their code compiled out).
 #if defined(REUSE_TESTS)
 #define REUSE_SUSPECTS reuse_tests
