@@ -873,7 +873,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BALANCED RAYTRACED CHOICE: bal3_ (Opus High, worktree, branch bal3_raytraced) ST ... | ?
 - bal3_ route-b cost numbers (after 'bal3_ resume') -> review (Opus xHigh) -> merg ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
-- pd3r_ STEP 3 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step3 ... | ?
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - pd5r_ STEP 5 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step5 ... | ?
 - PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row ... | ?
@@ -16181,8 +16180,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         the hand-back is the report. LEFT: testbin\scratch\pdi3_\pdi3_chain_final2.ps1 (offc control, E4 on ceecd4b84,
         new2 plays, all_modes on e52ec9e28 + ceecd4b84, 8 lab cost jobs, Nsight A/A) after 'pdi3_ resume'. pdi4c_ must
         rebase onto ceecd4b84 (its di arm joins the same SetPipelineState line).
-        - [ ] pd3r_ STEP 3 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step3_review.md -> fix round
+        - [x] pd3r_ STEP 3 REVIEW (Opus xHigh, STARTED 21:3x) -> plan_1117/designs/pt_di_step3_review.md -> fix round
         (with chain_final2's findings) -> merge first. Owner: pd3r_, pdi3_
+        pd3r_ GO WITH CHANGES 21:5x (29 min; no MUST; T2 checked against RTXDI b67f61cd source: unbiased). S1 LIKELY
+        E4 128-LIGHT CAUSE: Validate replaces a history sample's light with a fresh draw (rt_path.hlsli:969); before
+        step 3 the seen route's torch light was the same every frame, with T2 the redraw no longer matches the weight's
+        draw -> history darkens by T2's zero rate; Validate's cuts (:964-965) add. Fits 3 / 29 = base, 128 dark, SHaRC on
+        less dark. Decisive: E4 night128 with RENODX_TW_REUSE_VALIDATE_KEEP_LIGHT and with _NO_VALIDATE (expect ~0.996;
+        if Balanced was on, _VALIDATE_NO_CUTS next). NOT the cause: RGBA16F T1 (written once, ~-0.05 %), ReGIR PDF, RIS
+        weights, RefLights. S2 registers unmeasured for rt_path / rt_path_sharc / rt_sharc_update / rt_cache_fill / 2
+        SER libs (DXIL +24-34 %, +1-3 ray queries; 42.5 MB = spills or variance). S3 reference spread over frozen
+        frames. S4 SwapStem('rt_lights') silently bypassed while the twin runs -> refuse / log. S5 probe gate x1.07 at
+        29 / 128 (base same), seen noise = probe artifact. Byte identity map in the review. NITs (braces, nested ?:,
+        .first / .second, stale comment, unused bit, torch_traced vs regir, null view type, bit placement).
+        -> pdi3_ told 21:5x: S1 runs + S2 registers (+ S3 if cheap) INTO its current GPU turn; fix round after (S1 fix if
+        confirmed, S4, NITs) -> E4 night128 rerun in a later GPU turn -> merge. Owner: pdi3_, coord
         ATN 11-25 evening ('maybe they don't change the same lines / functions ... so we could speed up'): same file
         allowed when the FUNCTIONS don't overlap (owner map in both briefs; the second to merge rebases + reruns gates).
         - [ ] PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbours, G7 report): pdi5_ (Opus
