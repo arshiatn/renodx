@@ -820,7 +820,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- a64pi_ probe fix round SENT 01:2x (M4-M9 + cheap Shoulds, rebuild + self-test, s ... | ?
+- a64pir_ RE-CHECK of the fix round SENT 01:3x -> GO / NOT GO for window 3 round 1 ... | ?
 - a64ab_ -Probe / -Wpr pass SENT 01:2x (plan M1-M3, sha from the sidecar, locks fo ... | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
@@ -15305,8 +15305,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (the ~215 ns query runs under the mutex, +0.46 us / lock, inflates H1b); M5 task-fetch lock counted twice.
         Analysis Musts M6-M8 (W0..W1 filter, NOPROBE from each start's window line, checksum compare informational);
         M9 analyzer output stays in the batch folder (names), HANDOFF numbers + hex only.
-        - [ ] a64pi_ probe fix round SENT 01:2x (M4-M9 + cheap Shoulds, rebuild + self-test, sha sidecar) -> a64pir_
-        re-check.
+        - [x] a64pi_ PROBE FIX ROUND DONE (hand-back attila64/a64pi_probe_fix_handback.md): M4 no cycle query inside a
+        held mutex (keep_nonown for get_task + GOT waits); M5 new bucket GTLOCK (lock inside the fetch counted once;
+        new self-test step); M6 W0..W1 filter; M7 NOPROBE from each start.json window line, WPR start apart; M8 live-
+        vs-stored compare informational; M9 full report in <batch>\analyze_d0.txt, stdout = HANDOFF-safe block (name
+        guard). Shoulds: wait word on its own RW page, H_RING 65536, H2 intervals, inclusive labels, dump-time
+        '# intact n/N' re-check, collide_d0.py vs Sol's loader 0 near hits (PerfFix part NOT run: source stays
+        closed; the intact check + perffix64 log compare cover it at run time). Self-test 119 / 0; DLL sha256
+        669c215d0acdeb20... + sidecar; stubs +20.1 / +28.9 ns, GOT +1.6 ns.
+        - [ ] a64pir_ RE-CHECK of the fix round SENT 01:3x -> GO / NOT GO for window 3 round 1.
         - [ ] a64ab_ -Probe / -Wpr pass SENT 01:2x (plan M1-M3, sha from the sidecar, locks for the whole batch) ->
         coord -DryRun (ATN's line) -> window 3 round 1 (base, inline, base + WPR s 100-160, ~21 min).
         - [x] a64bd_ BRING-UP DESIGN DONE (hand-back attila64/a64bd_design_handback.md; designs/bringup_design.md,
