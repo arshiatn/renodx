@@ -364,6 +364,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSR1 sweep_coverage.py (offline, python -I): every rt_flags / rt_path_flags / rt ... | ?
 - NSR2 Nsight MCP readiness. Coord smoke 11-25 19:4x: list families OK (capture, r ... | ?
 - ATN: rule lines R1-R4 (exact text in nsr_handback.md '## Rule lines ATN must add ... | ?
+- ATN: yes to delete build\nsr_profile_1 (the failed R1 output) -> coord reruns R1 ... | ATN
 - Start nv-aftermath-monitor.exe before the sweep + its dump folder in the crash t ... | coord
 - P1: rt_di_flags + rt_diffuse_roughness as lab fields. Owner: gpr_ (NSR3) | gpr_ (NSR3)
 - ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); k ... | ?
@@ -3468,6 +3469,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         to ATN in chat.
         ATN ADDED R1-R4 11-25 21:2x. R1 (profile build) STARTED 21:2x in the background; R2 -> R4 next in a GPU window
         (they wait for gpu_job.lock). ATN to bed ~22:00-22:30; keep-awake on (session_idle).
+        R1 FAILED (exit 2): ns_profile_build.py exported src/games/twattila alone; main.cpp:48 includes
+        ../../talesofarise_dlss/ngx_backend.hpp (+ utils / mods / shaders). FIXED by coord: EXPORT_PATHS = twattila,
+        talesofarise_dlss, utils, mods, shaders; re-export when any is missing (checked: all 5 export at 542904fb5).
+        The failed run left D:\Dev\renodx\build\nsr_profile_1 (68 files, 321 MB: runtime DLL copies + profile
+        shader headers); R1 refuses an existing folder -> rerun needs that folder deleted.
+        - [ ] ATN: yes to delete build\nsr_profile_1 (the failed R1 output) -> coord reruns R1 -> R2 -> R4. Owner: ATN
         - [ ] Start nv-aftermath-monitor.exe before the sweep + its dump folder in the crash tools' search paths. Owner: coord
         - [ ] P1: rt_di_flags + rt_diffuse_roughness as lab fields. Owner: gpr_ (NSR3)
         - [ ] ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); keep stdin open (F1 EOF
