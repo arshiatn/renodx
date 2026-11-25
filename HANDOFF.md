@@ -3569,6 +3569,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] STAGE26 FIX ROUND (gte_ resumed, after gtw_'s hand-back, both reviews in one round): MUST-1 text, S1,
         S2, S5 test, NIT commas, hook support for mcp__terminal__run_in_terminal (S6) -> gpr_ / gtw_ re-check the
         diff -> final step text for ATN (+ his matcher line: add |mcp__terminal__run_in_terminal). Owner: gte_, coord
+        gtw_ r26 GO 11-25 21:2x (plan_1117\gtw_r26_recheck_handback.md; ~35 min) ONLY with its corrected section 5:
+        M1 step 3's $t overwrites step 1's $T (PowerShell names ignore case; proven in PS 5.1: audit exit 2, re-run
+        'Illegal characters in path') -> $x; M2 the undo had no order (files back while mode = enforce -> every gate
+        refuses) -> shadow first, 4 files back, 2 hash checks. SHOULD: guarded backup (S1), re-runnable step 3 (S2),
+        INSTALL item 12's six rows OUT (S3: a price row would stop budget.py watch kills at deadlines), Nsight rows
+        literal-only (S4 = gpr_ S2), suite can't check the installed live state 385 / 429 (S5 -> gtp_ round 26).
+        Numbers: live 1506 / 1506, stage26 final 1557 / 1557, 27 / 27 sample calls as expected (recordings, gate
+        files, settings.local.json, gate_override run REFUSED; cxx / spec / heredoc / web / T06 / T11 logged), 18
+        everyday calls pass, mode.txt read right in every PS 5.1 encoding, hash matches. Cost of ATN's choices: ~3
+        refusals a day; the coord can no longer install stages; settings changes ATN asks Claude for need -Scope files.
+        -> gte_ RESUMED 21:2x for the fix round into stage26b (gtw_'s section 5 + gpr_ MUST-1, S1 CLEAR-exit fix, S2 /
+        S4 path_words matching for T01 / T04 / T09 with 0 false refusals on real traffic, final-config tests, commas,
+        run_in_terminal support; item 12 rows out) -> gte_r2_handback.md -> gpr_ / gtw_ diff re-check -> ATN.
         d11v_ (lane I review, Opus xHigh) STARTED 20:5x.
         - [ ] gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a non-leading cd); spec
         gate on scratch files; web list gaps (44 research hosts); agent rules (gte_handback section 4) into briefs.
