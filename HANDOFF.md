@@ -850,7 +850,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
 - pds2_ (Opus High, worktree, branch pds2_step2) PT DI STEP 2 STARTED 01:3x (resum ... | ?
-- pdw1_ (Opus High, worktree, branch pdw1_step4a, NEW files only) PT DI STEP 4a ST ... | ?
+- pdwr_ (Opus xHigh) step 4a REVIEW -> designs/pt_di_4a_review.md -> fixes if any ... | ?
 - QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
@@ -15745,8 +15745,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         builds exit 0; tw_gpu_completion x86 / amd64 PASS, tw_helper_lifetime 25 / 0 each. Pushed atn-mods 01:3x.
         - [ ] pds2_ (Opus High, worktree, branch pds2_step2) PT DI STEP 2 STARTED 01:3x (resume_1124.md task 2 + Rev 2;
         checkpoint A = fresh E4 baseline + ContactShade fold + RTXDI copy / found line + credits line) -> coord.
-        - [ ] pdw1_ (Opus High, worktree, branch pdw1_step4a, NEW files only) PT DI STEP 4a STARTED 01:3x
-        (tw_point_light.hlsli + test/tw_point_light, W1 40 / 40 on WARP) -> xHigh review -> merge alone.
+        - [x] pdw1_ PT DI STEP 4a DONE (hand-back handoff_plan/handbacks/pdw1_step4a_handback.md; branch
+        pdw1_step4a = 01010d235 + ba51ea59d, 6 new files: src/games/twattila/tw_point_light.hlsli +
+        test/tw_point_light/*): W1 40 / 40 BIT-EXACT on WARP vs the game's DXBC under fxc AND dxc (98,304 rgba / 73,728
+        rgb values per variant, 4 seeds, HDR on / off, all 0 ulp); 146 gates pass, 100 / 100 controls fail as they
+        must (kind swapped 40 / 40, model swapped 40 / 40, albedo squared on skinlm 20 / 20); stencil model test 20 /
+        20; s_ssao bound exactly when slm 40 / 40. Every DXBC mad written as mad(), acos written out, result
+        `precise` (else fxc 3141 ulp on skinlm's wrap, dxc 8e8 ulp). For 4b / 4c: model from stencil & 3; falloff kind
+        + lowdef from the hash; target (4.0 / 4.1 / 5.0) and shadow don't change the light; V is the caller's (slm
+        (light x V) x falloff, skinlm light x (V x falloff)). NOT DONE: V != 1 untested (hard path only; 4.1 soft PCF
+        <= 3 ulp = info); 64-bit hash census still needed (32-bit dump hashes); WARP only. QUIET RULE SLIP: one fxc
+        compile of the probe ran while quiet_run.lock existed (window 3, 01:37:37); noticed at once, all later work
+        waited until ~01:55. Window 3's numbers stand (base starts 247.0 / 247.5 = NOPROBE 247.5).
+        - [ ] pdwr_ (Opus xHigh) step 4a REVIEW -> designs/pt_di_4a_review.md -> fixes if any -> merge pdw1_step4a
+        alone -> push.
         - [ ] QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes while quiet_run.lock
         exists (window 3).
         ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
