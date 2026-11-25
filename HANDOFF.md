@@ -3443,6 +3443,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         HDR-FLIP / flicker / lag; 6 known-answer scenes + pbrt-v4; dead_outputs.py). Forge 2 gate_hook LIVE IN SHADOW
         (logs, does not block); ENFORCE = ATN's yes (open since round 22). Every sweep number has a gate id; every
         fix cites its paper / spec. Owner: ATN (enforce), coord
+        nsr_ STARTED 11-25 19:5x (Opus High; NSR1 + NSR2 a-e; tools-side only, no repo commits, no -Stop, at most one
+        smoke trace on existing rule lines; hand-back plan_1117\nsr_handback.md). Agents: pdi3_, pdi4c_, pdi5_, bal3_,
+        d11i_, nsr_.
       - [ ] F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ cites D3D11.3 spec 3.2.2;
         the reviewer checks the cite), so a value stored again every frame drifts down = G4's darkening; round to
         nearest fixes it (E4 lum cand / ref, R = 4: day 49 0.98417 -> 0.98450, day 36913 0.99671 -> 0.99675, night40
