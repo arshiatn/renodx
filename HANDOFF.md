@@ -833,7 +833,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FRIDAY 11-27, ONLY ON ATN'S GO (he wakes ~06:00, switches accounts): Fable 5.2 x ... | ?
 - 64-bit release: private release step, 64-bit map section 6 item 13 (before the f ... | ?
 - p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
-- ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designstn_questio ... | ?
+- ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
@@ -15840,7 +15840,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         incl. GameCode, R3 A11 lists the -ReShade blocks + w3 checks the 16 applied lines, R4 per-start keep list ->
         p6d_ LAST TOUCH (text only). Camera key confirmed (same physical key): that ATN question is dropped. PK6-64
         DESIGN = GO.
-        - [ ] ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designstn_questions_1125.md, 18 rows with coord
+        - [ ] ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questions_1125.md, 18 rows with coord
         picks: C8, L2B, PK2P, PK6, PK8). Part 2 (PK1-64, PK5-64, PK9) when their fix rounds are back. No rule lines /
         exceptions needed today (lines given when the code exists). Owner: coord.
         - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
