@@ -976,6 +976,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa9_ B3 RR SPECULAR-ALBEDO F0 not the game's (aa_rr_guides:54 lerp(0.04, albedo, ... | ?
 - fa9_ B5 n.v CLAMP 1e-3 FIRES IN NORMAL FRAMES (ReflectPixel / ReflectReservoirTe ... | ?
 - fa9_ UNKNOWNs: U1 ReflectAlpha's fit criterion unrecorded (~sigma_R; 1.3-1.5x FW ... | ?
+- fa7_ BUG-9 FSR viewSpaceToMetersFactor = 1 always (upscale_d3d12.hpp:321, fg_pro ... | ?
+- fa7_ BUG-2 FSR SHARPENING ROW DEAD: helper hardcodes enableSharpening = false (u ... | ?
+- fa7_ BUG-3 RR WITH < 32 JITTER PHASES outside the TW set: D1 / D2 8; Ryse, Tales ... | ?
+- fa7_ BUG-5 XeSS LOD BIAS log2 - 1 by default; Intel's rule is log2 only (every g ... | XeSS owner
+- fa7_ BUG-6 DLSS L / M CREATED AT THE OPTIMAL SIZE (66.7 %) while the active size ... | ?
+- fa7_ BUG-1 DLSS EXPOSURE A/B DEAD: main.cpp never reads shared->dlss_exposure, A ... | ?
+- fa7_ BUG-7 NVAPI Reflex Off = no Sleep and no markers (reflex.hpp:79 / 98); NVID ... | ?
+- fa7_ BUG-8 UE infinite-far depth gets far = 1e5 every frame via the fallback (up ... | ?
+- fa7_ UNKNOWNs: U1 ATN'S WORD: Attila's DLSS default preset L at every scale vs N ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -17398,6 +17407,36 @@ heading text are in HANDOFF_ARCHIVE.md)
         brute-force judge; U6 E5 share / light not wired (REF_REFLECT sums weights only); U7 no paired 'same picture'
         tool; U8 G0 open's cube uniform? Water: Schlick gives 0.051 / 0.34 / 0.60 at n.v 0.5 / 0.2 / 0.1 vs our 0.02.
         Owner: critic -> owners
+        fa7_ DONE (27 min; fidelity\upscalers_fg_latency.md; atn-mods 55ba8f107, branches differ only in dlaa_bridge.h
+        comments): src/utils/dlss = upstream, used only by src/addons/dlssfix (n/a). 26 guards with causes: only GC5
+        fires in normal frames (= BUG-8); GC20 R.U.S.E. far = 0 trigger unknown. Odd literals = provenance watermarks.
+        Version gaps SAME at ABI level (SL headers '2.12' differ from 2.14.16 in 5 unused headers; NGX 310.7.0 headers vs
+        310.9.16 DLLs). 5 uncited blocks, 6 'inspired by' (binary UI alpha, DRS key 0x10E41DF1 proven for 310.9.16 only,
+        cross-process markers, scRGB -> HDR10 before FG).
+        - [ ] fa7_ BUG-9 FSR viewSpaceToMetersFactor = 1 always (upscale_d3d12.hpp:321, fg_proxy_d3d12.hpp:354); UE games
+        use cm (talesofarise/dlss_graphics.hpp:144) -> FSR's 1 / 20 / 100 m thresholds see depth 100x too far in Tales +
+        Expeditions. Owner: FSR owner (helper)
+        - [ ] fa7_ BUG-2 FSR SHARPENING ROW DEAD: helper hardcodes enableSharpening = false (upscale_d3d12.hpp:314), never
+        reads shared->fsr_sharpness; the row (feature_settings.hpp:430) is in the TW set, WH3, Rome R, D1, D2, Tales,
+        Expeditions. Owner: FSR owner
+        - [ ] fa7_ BUG-3 RR WITH < 32 JITTER PHASES outside the TW set: D1 / D2 8; Ryse, Tales, Expeditions 8 at 100 %;
+        Shogun 2 16 above 50 %; WH3 the game's 16. BUG-4 Rome R fixed 8 phases even when upscaling (dlaa.hpp:71).
+        Owner: each port (jitter)
+        - [ ] fa7_ BUG-5 XeSS LOD BIAS log2 - 1 by default; Intel's rule is log2 only (every game). Owner: XeSS owner
+        - [ ] fa7_ BUG-6 DLSS L / M CREATED AT THE OPTIMAL SIZE (66.7 %) while the active size is larger (Ultra Quality
+        77 %, Custom): DLSS guide 3.2.2.1 (3) = expensive buffer reallocation (ngx_backend.hpp:660-661); cost unmeasured.
+        Owner: DLSS owner (+ a cost check)
+        - [ ] fa7_ BUG-1 DLSS EXPOSURE A/B DEAD: main.cpp never reads shared->dlss_exposure, AutoExposure always set ->
+        fa4_ D1's 'CHOSEN pending A/B' can't run. Owner: DLSS owner
+        - [ ] fa7_ BUG-7 NVAPI Reflex Off = no Sleep and no markers (reflex.hpp:79 / 98); NVIDIA: always call them.
+        Owner: Reflex owner
+        - [ ] fa7_ BUG-8 UE infinite-far depth gets far = 1e5 every frame via the fallback (upscale_d3d12.hpp:319), FSR
+        never given DEPTH_INFINITE (a guard firing in normal frames, ATN's rule). Owner: FSR owner
+        - [ ] fa7_ UNKNOWNs: U1 ATN'S WORD: Attila's DLSS default preset L at every scale vs NVIDIA's K default and WH3's
+        Auto; U2 markers at Sleep return = zero simulation time; U3 no PCL ping; U4 child-window swap chain composed vs
+        independent flip (PresentMon); U5 FSR FG gets no HDR metadata; U6 Shogun 2's own jitter count at 100 %; U7
+        sl.log warnings (out-of-order frame x4, async-present mutex x4, GetState sync, invalid back-buffer extent); U8 SL's
+        eOnlyValidNow copies' cost. Owner: critic -> owners; U1 -> ATN (morning)
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
