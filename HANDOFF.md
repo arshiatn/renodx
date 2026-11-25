@@ -17553,6 +17553,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         stays the row decision to ATN; MB gate 9 baseline = PG1a's parent. 4 SHOULD (vMF switch at kappa 0.02 + own
         sampling series; gate 10 first-ray only, CI-low > 2x; gate 1b same-sign growth named; pt_di_rtxdi.md:219-220
         stale cites) + 6 NIT. -> rpg2_ resumed (v2.1, est 10 / deadline 20; also nv_speedups.md C5 line). Owner: rpg2_
+        rpg2_ v2.1 DONE 01:4x (4 min): MA gate 2b (arm S at equal settings; only a 2b fail hides the row under Own Sky
+        Rays; gate 2 equal time = the row decision, numbers to ATN), MB gate 9 vs PG1a's parent, SA kappa 0.02 + own
+        sampling series (re-derived), SB, SC, non-guards renamed, split-pass cost re-derived (40-48 B / +0.05..0.10 ms:
+        weaker fallback), G22 5.6 row; pt_di_rtxdi.md R2.7 G2 = Eq. 37 + G4 24 B + section 5 old line superseded;
+        nv_speedups C5; unified (c) 3661 + 'five flags', (d) G22 section 8 uses Eq. 38 spatial / Eq. 36 temporal -> ours
+        marked a deviation from the paper's own choice. Hours 33.5 h unchanged. PG DESIGN CLOSED: builds start after
+        U3 (PG0 = U3 brief text). Eq. 38 glyphs still unverified (no PDF renderer). Owner: done
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
