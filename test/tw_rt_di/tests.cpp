@@ -10,6 +10,11 @@
 //    members off (every light a member, the lists as before) must put unlisted lights in the output.
 // 3. The shading: every pixel's two DI lights finite and >= 0, the slm one > 0 at every pixel (all lights visible), the
 //    skinlm one 0 (no skin pixel).
+// 0. rt_di_temporal's DXIL traces the temporal bias ray (2 TraceRayInline: StartPast's and the bias ray's; 1 when
+//    RTXDI_ALLOWED_BIAS_CORRECTION is left undefined and the pass compiles 1/M alone).
+// 4. The temporal pass (DI_HISTORY, spatial off) over a last trace whose surface no light reaches (100 m below; the light
+//    places the same; its reservoirs empty with M 20, as after a disocclusion's fallback): ray traced and basic bias
+//    correction keep the one-frame light (within 1 %); CONTROL: OFF (1/M) divides it by 21. Today's 1/M-only build fails.
 // tests.exe <repository> <folder of dxcompiler.dll and dxil.dll> <RTXDI Include folder>
 #include <windows.h>
 #include <d3d12.h>
@@ -47,7 +52,10 @@ constexpr uint32_t FRAMES = 16;
 constexpr uint32_t OFFSETS = 1024;
 constexpr uint32_t MASK_ROWS = SIDE + (SIDE / TILE) * 2;  // the pixels, then the tiles' lists (dlaa_bridge.h LightTileRows)
 constexpr uint32_t RECONSTRUCTED = 256u;
+constexpr uint32_t DI_HISTORY = 1u;
+constexpr uint32_t DI_BIAS_SHIFT = 1u;
 constexpr uint32_t DI_NO_TEMPORAL = 8u;
+constexpr uint32_t DI_NO_SPATIAL = 16u;
 
 // A binding by name: its resource, the view's format and, for buffers, its elements and stride.
 struct Bound {
@@ -275,6 +283,7 @@ int main(int argc, char** argv) {
   };
 
   ComPtr<ID3D12Resource> positions_texture = texture(SIDE, SIDE, DXGI_FORMAT_R32G32B32A32_FLOAT);
+  ComPtr<ID3D12Resource> last_positions_texture = texture(SIDE, SIDE, DXGI_FORMAT_R32G32B32A32_FLOAT);
   ComPtr<ID3D12Resource> sun_texture = texture(16, 1, DXGI_FORMAT_R32G32B32A32_FLOAT);
   ComPtr<ID3D12Resource> surface_texture = texture(SIDE, SIDE, DXGI_FORMAT_R32G32B32A32_UINT);
   ComPtr<ID3D12Resource> previous_surface_texture = texture(SIDE, SIDE, DXGI_FORMAT_R32G32B32A32_UINT);
@@ -298,6 +307,12 @@ int main(int argc, char** argv) {
   list->ResourceBarrier(1, &offsets_ready);
   const std::vector<uint32_t> zero_history(size_t{SIDE} * MASK_ROWS, 0u);
   fill(positions_texture.Get(), positions.data(), 16);
+  std::vector<std::array<float, 4>> last_positions = positions;
+  for (auto& last : last_positions) {
+    last[1] = -100.f;
+    last[3] *= 3.f;
+  }
+  fill(last_positions_texture.Get(), last_positions.data(), 16);
   fill(sun_texture.Get(), sun.data(), 16);
   fill(surface_texture.Get(), surface.data(), 16);
   fill(previous_surface_texture.Get(), surface.data(), 16);
@@ -313,6 +328,7 @@ int main(int argc, char** argv) {
     ComPtr<ID3D12DescriptorHeap> heap;
     std::map<std::string, ComPtr<ID3D12Resource>> constants;
     std::map<std::string, uint8_t*> mapped;
+    std::string disassembly;
   };
   const std::wstring rtxdi_wide(rtxdi.begin(), rtxdi.end());
   const auto make_pass = [&](const wchar_t* file, Pass* pass) {
@@ -337,6 +353,11 @@ int main(int argc, char** argv) {
     result->GetOutput(DXC_OUT_REFLECTION, IID_PPV_ARGS(&reflection_blob), nullptr);
     const DxcBuffer reflection_buffer = {.Ptr = reflection_blob->GetBufferPointer(), .Size = reflection_blob->GetBufferSize()};
     if (FAILED(utils->CreateReflection(&reflection_buffer, IID_PPV_ARGS(&pass->reflection)))) return false;
+    const DxcBuffer object_buffer = {.Ptr = object->GetBufferPointer(), .Size = object->GetBufferSize()};
+    ComPtr<IDxcResult> disassembled;
+    ComPtr<IDxcBlobUtf8> text;
+    if (SUCCEEDED(compiler->Disassemble(&object_buffer, IID_PPV_ARGS(&disassembled)))) disassembled->GetOutput(DXC_OUT_DISASSEMBLY, IID_PPV_ARGS(&text), nullptr);
+    if (text != nullptr) pass->disassembly.assign(text->GetStringPointer(), text->GetStringLength());
     D3D12_SHADER_DESC shader_desc = {};
     pass->reflection->GetDesc(&shader_desc);
     std::vector<D3D12_DESCRIPTOR_RANGE> ranges;
@@ -462,6 +483,14 @@ int main(int argc, char** argv) {
   const std::array<const wchar_t*, 4> files = {L"rt_di_initial.cs_6_5.hlsl", L"rt_di_temporal.cs_6_5.hlsl", L"rt_di_spatial.cs_6_5.hlsl", L"rt_di_shade.cs_6_5.hlsl"};
   for (size_t pass = 0; pass < passes.size(); ++pass) CHECK(make_pass(files[pass], &passes[pass]));
   std::printf("compiled: rt_di_initial, rt_di_temporal, rt_di_spatial, rt_di_shade (PATH_DI, PATH_REGIR)\n");
+  uint32_t bias_rays = 0;
+  for (size_t at = passes[1].disassembly.find("call void @dx.op.rayQuery_TraceRayInline"); at != std::string::npos;
+       at = passes[1].disassembly.find("call void @dx.op.rayQuery_TraceRayInline", at + 1)) {
+    ++bias_rays;
+  }
+  const bool part0 = bias_rays >= 2;
+  std::printf("%s 0 temporal bias ray built: %u TraceRayInline calls in rt_di_temporal (needs 2)\n", part0 ? "PASS" : "FAIL", bias_rays);
+  failures += part0 ? 0 : 1;
 
   // Every light at one place, 2 m over the floor's middle (each the same target at a pixel), white, smooth, reach 20 m.
   std::array<std::array<float, 4>, 128> lights = {};
@@ -472,8 +501,8 @@ int main(int argc, char** argv) {
   }
   std::array<uint32_t, 32> previous = {};
   std::fill(previous.begin(), previous.end(), 0xFFFFFFFFu);
-  const auto run = [&](bool members_off, uint32_t frame, std::vector<RTXDI_PackedDIReservoir>* initial, std::vector<RTXDI_PackedDIReservoir>* shaded,
-                       std::vector<uint8_t>* slm, std::vector<uint8_t>* skin) {
+  const auto run = [&](bool members_off, uint32_t frame, uint32_t di_flags, std::vector<RTXDI_PackedDIReservoir>* initial,
+                       std::vector<RTXDI_PackedDIReservoir>* shaded, std::vector<uint8_t>* slm, std::vector<uint8_t>* skin) {
     std::vector<uint32_t> mask;
     std::vector<std::array<uint32_t, 4>> members;
     mask_and_members(members_off, &mask, &members);
@@ -482,6 +511,7 @@ int main(int argc, char** argv) {
     if (!execute()) return false;
     const std::map<std::string, Bound> bound = {
         {"positions", {positions_texture.Get()}},
+        {"ambient_positions", {last_positions_texture.Get(), DXGI_FORMAT_R32G32B32A32_FLOAT}},
         {"sun", {sun_texture.Get()}},
         {"light_mask", {mask_texture.Get(), DXGI_FORMAT_R32_UINT}},
         {"light_history[0]", {history_textures[0].Get(), DXGI_FORMAT_R32_UINT}},
@@ -509,7 +539,7 @@ int main(int argc, char** argv) {
       set_bytes(&pass, "Lights", "light_previous", previous.data(), sizeof(previous));
       set_uint(&pass, "DiPass", "di_block_row_pitch", layout.reservoirBlockRowPitch);
       set_uint(&pass, "DiPass", "di_array_pitch", layout.reservoirArrayPitch);
-      set_uint(&pass, "DiPass", "di_flags", DI_NO_TEMPORAL);
+      set_uint(&pass, "DiPass", "di_flags", di_flags);
       set_uint(&pass, "DiPass", "di_uniform_random", frame * 2654435761u);
       set_uint(&pass, "DiPass", "di_offset_mask", OFFSETS - 1);
     }
@@ -558,7 +588,7 @@ int main(int argc, char** argv) {
       std::vector<RTXDI_PackedDIReservoir> shaded;
       std::vector<uint8_t> slm;
       std::vector<uint8_t> skin;
-      CHECK(run(members_off, frame, &initial, &shaded, &slm, &skin));
+      CHECK(run(members_off, frame, DI_NO_TEMPORAL, &initial, &shaded, &slm, &skin));
       for (uint32_t y = 0; y < SIDE; ++y) {
         for (uint32_t x = 0; x < SIDE; ++x) {
           const RTXDI_PackedDIReservoir& first = initial[place(x, y)];
@@ -610,6 +640,50 @@ int main(int argc, char** argv) {
   failures += part1 ? 0 : 1;
   failures += part2 ? 0 : 1;
   failures += part3 ? 0 : 1;
+
+  // 4. The last trace's lights the same (light_previous: each its own place), its reservoirs empty with M 20 (the shading's
+  // array, the temporal pass's history); this frame without temporal reuse is the reference.
+  for (uint32_t light = 0; light < LIGHTS; ++light) {
+    previous[light >> 2] = (previous[light >> 2] & ~(0xFFu << ((light & 3) * 8))) | (light << ((light & 3) * 8));
+  }
+  const auto mean_slm = [&](uint32_t di_flags, double* mean) {
+    std::vector<RTXDI_PackedDIReservoir> history(size_t{layout.reservoirArrayPitch} * 3, RTXDI_PackedDIReservoir{});
+    for (RTXDI_PackedDIReservoir& reservoir : history) reservoir.mVisibility = 20u << 18;
+    ComPtr<ID3D12Resource> history_upload = upload(history.data(), history.size() * sizeof(RTXDI_PackedDIReservoir));
+    std::array<D3D12_RESOURCE_BARRIER, 2> states = {};
+    for (size_t at = 0; at < states.size(); ++at) {
+      states[at] = {.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+                    .Transition = {.pResource = reservoirs.Get(), .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                                   .StateBefore = (at == 0) ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_COPY_DEST,
+                                   .StateAfter = (at == 0) ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_UNORDERED_ACCESS}};
+    }
+    list->ResourceBarrier(1, &states[0]);
+    list->CopyBufferRegion(reservoirs.Get(), 0, history_upload.Get(), 0, history.size() * sizeof(RTXDI_PackedDIReservoir));
+    list->ResourceBarrier(1, &states[1]);
+    std::vector<RTXDI_PackedDIReservoir> initial;
+    std::vector<RTXDI_PackedDIReservoir> shaded;
+    std::vector<uint8_t> slm;
+    std::vector<uint8_t> skin;
+    if (!run(false, FRAMES + 1, di_flags | DI_NO_SPATIAL, &initial, &shaded, &slm, &skin)) return false;
+    double sum = 0.0;
+    for (size_t pixel = 0; pixel < size_t{SIDE} * SIDE; ++pixel) sum += half(slm, pixel * 4);
+    *mean = sum / (SIDE * SIDE);
+    return true;
+  };
+  double reference = 0.0;
+  double ray_traced = 0.0;
+  double basic = 0.0;
+  double off = 0.0;
+  CHECK(mean_slm(DI_NO_TEMPORAL, &reference));
+  CHECK(mean_slm(DI_HISTORY | (0u << DI_BIAS_SHIFT), &ray_traced));
+  CHECK(mean_slm(DI_HISTORY | (1u << DI_BIAS_SHIFT), &basic));
+  CHECK(mean_slm(DI_HISTORY | (3u << DI_BIAS_SHIFT), &off));
+  const auto ratio = [&](double value) { return (reference > 0.0) ? value / reference : 0.0; };
+  const bool part4 = reference > 0.0 && std::abs(ratio(ray_traced) - 1.0) <= 0.01 && std::abs(ratio(basic) - 1.0) <= 0.01 && ratio(off) < 0.1;
+  std::printf("%s 4 temporal bias correction: the light over the one-frame reference: ray traced %.4f, basic %.4f (each within 1 %%); CONTROL off %.4f "
+              "(1/21 = 0.0476, must be < 0.1)\n",
+              part4 ? "PASS" : "FAIL", ratio(ray_traced), ratio(basic), ratio(off));
+  failures += part4 ? 0 : 1;
   std::printf(failures == 0 ? "ALL PASSED\n" : "FAILED\n");
   return failures == 0 ? 0 : 1;
 }
