@@ -759,9 +759,33 @@ struct Reservoir {
   float count;    // M: the samples it stands for
 };
 
-// The target function at a receiver: the sample's light (luminance) by the cosine toward it (the integrand without 1/pi).
+// What a camera ray meets right beside its start lies in that start's own shade, which the light it brings back does not
+// know: the underside of a dead body saw the ground under it as lit as the open ground, the body's lower edges glowed in
+// the shade and no contact shadow showed (ATN's debug36 list).
+float ContactShade(float hit_distance) {
+  if ((reuse_tests & REUSE_TEST_NO_CONTACT) != 0u) return 1.f;
+  return saturate(hit_distance / CONTACT_RANGE);
+}
+
+// The target function at a receiver: the sample's light (luminance) by the cosine toward it (the integrand without 1/pi),
+// for a sample made at this receiver (its own, its history: the merges' and Finish's).
 float ReuseTarget(float3 receiver, float3 receiver_normal, Reservoir reservoir) {
   return Luminance(reservoir.light) * max(dot(receiver_normal, normalize(reservoir.hit - receiver)), 0.f);
+}
+
+// The same target for a sample made from another start (`sample_origin`: a neighbour's rays' start), whose light first moves
+// to this receiver's ContactShade, kept in `reservoir` so the merge and the shading use the target's integrand: its light
+// carried ContactShade at the neighbour's distance to the hit (a sample beside the neighbour's start, far from this one,
+// stayed dark here; one beside this start lit it as if far). A surface's only (the sky's carried none); not in Lean Reuse,
+// whose neighbour origin is its position, not its rays' start.
+float ReuseTarget(float3 receiver, float3 receiver_normal, float3 sample_origin, inout Reservoir reservoir) {
+#if !defined(REUSE_LEAN)
+  const float contact_there = ContactShade(distance(reservoir.hit, sample_origin));
+  if (any(reservoir.hit_normal != 0.f) && contact_there > 1e-3f) {
+    reservoir.light *= ContactShade(distance(reservoir.hit, receiver)) / contact_there;
+  }
+#endif
+  return ReuseTarget(receiver, receiver_normal, reservoir);
 }
 
 // Takes `other`'s sample with probability `weight` over the sum so far; M adds up.
@@ -804,14 +828,6 @@ void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 
                       f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
                       (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? OctahedralEncode(reservoir.hit_normal) : 0u,
                       (dot(receiver_normal, receiver_normal) > 0.f) ? OctahedralEncode(receiver_normal) : 0u);
-}
-
-// What a camera ray meets right beside its start lies in that start's own shade, which the light it brings back does not
-// know: the underside of a dead body saw the ground under it as lit as the open ground, the body's lower edges glowed in
-// the shade and no contact shadow showed (ATN's debug36 list).
-float ContactShade(float hit_distance) {
-  if ((reuse_tests & REUSE_TEST_NO_CONTACT) != 0u) return 1.f;
-  return saturate(hit_distance / CONTACT_RANGE);
 }
 
 // Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
@@ -1103,17 +1119,11 @@ void ReuseTexel(uint2 id) {
     if (other.count <= 0.f) continue;
     const float jacobian = ReuseJacobian(other, other_origin, origin);
     if (!(jacobian > 0.1f && jacobian < 10.f)) continue;
-#if !defined(REUSE_LEAN)
-    // Its light carries ContactShade at the neighbour's distance to the hit: this receiver's instead (a sample beside the
-    // neighbour's start, far from this one, stayed dark here; one beside this start lit it as if far). A surface's only
-    // (the sky's carried none); not in Lean Reuse, whose neighbour origin is its position, not its rays' start.
-    const float contact_there = ContactShade(distance(other.hit, other_origin));
-    if (any(other.hit_normal != 0.f) && contact_there > 1e-3f) {
-      other.light *= ContactShade(distance(other.hit, origin)) / contact_there;
-    }
-#endif
-    Merge(combined, other, ReuseTarget(origin, normal, other) * other.weight * other.count * jacobian,
-          Random(uint4(id, frame, DIM_REUSE_MERGE + neighbour)));
+    // The target moves `other`'s light to this receiver's ContactShade before the merge, which keeps that light (the random
+    // number first: the order the merge's arguments had before, so the compiled shader stays the same).
+    const float random = Random(uint4(id, frame, DIM_REUSE_MERGE + neighbour));
+    const float target = ReuseTarget(origin, normal, other_origin, other);
+    Merge(combined, other, target * other.weight * other.count * jacobian, random);
   }
   Finish(combined, ReuseTarget(origin, normal, combined));
   // The chosen surface in view of this one (no light through walls); the integrand over its density.
