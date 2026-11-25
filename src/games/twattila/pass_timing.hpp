@@ -82,6 +82,8 @@ struct State {
 static State state;
 
 inline ID3D11DeviceContext* ImmediateContext(reshade::api::command_list* cmd_list) {
+  // The timed frame's draws on another API's device (the port's other routes) are not D3D11 contexts.
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return nullptr;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr || context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return nullptr;

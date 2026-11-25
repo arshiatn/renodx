@@ -1820,7 +1820,9 @@ inline bool OnUpdateOverlay(reshade::api::device* device, const reshade::api::su
   std::ranges::transform(bytes, rows.begin(), [](uint8_t value) { return HALVES[value]; });
   device->update_texture_region({.data = rows.data(), .row_pitch = 8 * width, .slice_pitch = 8 * width * height}, target, 0, dest_box);
   if (to_picture) {
-    if (!picture_overlay_logged.exchange(true)) renodx::utils::log::i("[Total War] 64-bit Attila: the loader's 8-bit overlay converted (picture)");
+    if (!picture_overlay_logged.exchange(true)) {
+      renodx::utils::log::i("[Total War] 64-bit Attila: the loader's 8-bit overlay converted (picture)");
+    }
   } else if (!buffer_overlay_logged.exchange(true)) {
     renodx::utils::log::i("[Total War] 64-bit Attila: the loader's 8-bit overlay converted (buffer)");
   }

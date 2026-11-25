@@ -112,8 +112,8 @@ foreach ($name in $Cases) {
   $log = if (Test-Path -LiteralPath (Join-Path $dir 'ReShade.log')) { Get-Content -LiteralPath (Join-Path $dir 'ReShade.log') -Raw } else { '' }
   # The control add-on may crash in the driver (scRGB, the overlay into the buffer): the loader's overlay writes 4-byte
   # rows into the RGBA16F buffer, and the driver reads them as 8-byte pixels, past the rows. Only that site counts as the
-  # control's bug; any other crash fails.
-  $controlCrash = $case.addon -eq 'c2' -and $process.ExitCode -eq -1073741819 -and $log.Contains('Unhandled exception 0xC0000005 at nvwgf2umx.dll')
+  # control's bug, in C2_scrgb_1320 only; any other crash fails.
+  $controlCrash = $name -eq 'C2_scrgb_1320' -and $process.ExitCode -eq -1073741819 -and $log.Contains('Unhandled exception 0xC0000005 at nvwgf2umx.dll')
   if ($controlCrash) { "  ${name}: the control crashed in the driver's overlay copy (access violation): broken" }
   elseif ($process.ExitCode -ne 0) { $problems += "exit $($process.ExitCode)" }
   # zz_capture's present callback must run after RenoDX's: it loaded after it (registration order = load order).
