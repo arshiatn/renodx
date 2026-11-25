@@ -1,6 +1,7 @@
 // Attila wind motion (anti_aliasing.hpp): the game's 0xAB20418F with its wind at this frame's and last frame's time; outputs SV_Position as the game's, this frame's
 // and last frame's clip positions without the jitter.
-// Made by tools\tw\attila_motion\make_wind_motion_vs.py.
+// Made by tools\tw\attila_motion\make_wind_motion_vs.py; its land sink guarded by hand after (OCEAN_KEEP_OVER_LAND:
+// The Dawnless Days' 0xF80C6EEE, the _tdd file).
 
 cbuffer camera_VS_PS : register(b0)
 {
@@ -91,11 +92,18 @@ void GameMain(
   r0.z = cmp(0 != r0.z);
   r0.w = r0.y + -r0.x;
   r0.w = saturate(0.0500000007 * r0.w);
+#ifndef OCEAN_KEEP_OVER_LAND
   r0.x = saturate(r0.x + r0.x);
+#endif
   r1.x = v0.y + -r0.y;
   r0.y = r0.w * r1.x + r0.y;
+#ifndef OCEAN_KEEP_OVER_LAND
   r0.w = -4 + -r0.y;
   r0.x = r0.x * r0.w + r0.y;
+#else
+  // The water stays at the blended wave / mesh height over land (no sink toward -4 m where the seabed map says land).
+  r0.x = r0.y;
+#endif
   r0.y = r0.z ? r0.x : v0.y;
   r0.xzw = v0.xzw;
   o0.x = dot(r0.xyzw, motion_rows[0]);

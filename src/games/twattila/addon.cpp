@@ -1472,7 +1472,7 @@ constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {
 // sails, sail symbols, ropes) and the ocean's (ocean2: deep, shallow, coast; their displacement textures' slots), and
 // their motion versions (rigid: and records; deformed: and captures).
 using twattila::anti_aliasing::MotionKind;
-constexpr auto MOTION_SHADERS = WithTwins<8, &twattila::anti_aliasing::MotionShader::hash>(std::array<twattila::anti_aliasing::MotionShader, 32>{{
+constexpr auto MOTION_SHADERS = WithTwins<8, &twattila::anti_aliasing::MotionShader::hash>(std::array<twattila::anti_aliasing::MotionShader, 33>{{
     {.hash = 0xF3741248, .motion_shader = __motion_grass00, .draw_shader = __motion_draw_grass00},
     {.hash = 0x01FA9CDE, .motion_shader = __motion_grass01, .draw_shader = __motion_draw_grass01},
     {.hash = 0x46C616F0, .motion_shader = __motion_leaf_sm3, .draw_shader = __motion_draw_leaf_sm3},
@@ -1510,6 +1510,8 @@ constexpr auto MOTION_SHADERS = WithTwins<8, &twattila::anti_aliasing::MotionSha
      .record_shader = __motion_record_rigid_blend_wind_sm3,
      .draw_shader = __motion_draw_rigid_blend_wind_sm3},
     {.hash = 0xAB20418F, .motion_shader = __motion_ocean, .draw_shader = __motion_draw_ocean},
+    // The Dawnless Days' old ocean: the game's without the sink over land (TDD_TWINS), its own motion versions.
+    {.hash = 0xF80C6EEE, .motion_shader = __motion_ocean_tdd, .draw_shader = __motion_draw_ocean_tdd},
     {.hash = 0x772B26FF, .motion_shader = __motion_cloth_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_cloth_sm3, .draw_shader = __motion_draw_cloth_sm3},
     {.hash = 0x902253FD, .motion_shader = __motion_cloth_sm41, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_cloth_sm41, .draw_shader = __motion_draw_cloth_sm41},
     {.hash = 0xD11B5EC7, .motion_shader = __motion_sail_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_sail_sm3, .draw_shader = __motion_draw_sail_sm3},
