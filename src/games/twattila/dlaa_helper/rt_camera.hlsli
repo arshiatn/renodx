@@ -24,7 +24,7 @@ cbuffer Paths : register(b3) {
   uint previous_square_root;  // 1: last frame's colour holds the light's square root (rt_path.hlsli PreviousLight)
   uint previous_positions_slice;  // last frame's positions' slice of previous_positions (rt_path.hlsli)
   uint lights_in_bounce;          // Torch and Fire Light in the Light Bounce: LIGHTS_* below (rt_path.hlsli, rt_lights)
-  uint reuse_tests;               // tests only: ReSTIR GI's parts left out, REUSE_TEST_* (rt_path.hlsli; 0: none)
+  uint reuse_tests;               // ReSTIR GI's test switches, REUSE_TEST_* (rt_reuse_bits.h; Balanced ReSTIR Light's kept light too; 0: none)
 #if defined(PATH_PROBE)
   uint probe_mode;  // RENODX_TW_PATH_PROBE (tests): rt_path.hlsli ProbeTexel's mode, its rays a texel << 8
 #endif
