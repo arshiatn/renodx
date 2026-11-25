@@ -1781,15 +1781,16 @@ inline bool OnCopyPresentPicture(reshade::api::command_list* cmd_list, reshade::
                             desc.texture.width, "x", desc.texture.height, ") has no upgrade: the HDR output stays black");
     }
   }
-  // HDR10 / SDR: buffer 0's clone is on, utils copies clone to clone next. scRGB: buffer 0 is the real RGBA16F, and the swap
-  // chain pass keeps its copy of it as the buffer's clone (off); utils would copy the picture there, which that pass then
-  // overwrites with the real buffer (black). So the picture's clone goes into the real buffer here (utils' copy into the
-  // pass's copy still runs: one copy too many, overwritten). Only into a buffer the copy is valid for (RGBA16F, the
-  // clone's size); any other is left to utils.
+  // utils copies next: HDR10 / SDR clone to clone; scRGB the picture's clone into the real RGBA16F buffer 0 (its clone,
+  // the swap chain pass's copy, is off and left alone). Only when another add-on's utils copies (the first RenoDX add-on
+  // loaded handles the events, for example a DevKit built before f3dc754dd) does the copy also happen here: that one may
+  // copy into the pass's copy, which the pass then overwrites with the real buffer (black). Only into a buffer the copy is
+  // valid for (RGBA16F, the clone's size); any other is left to utils.
   const bool same_layout = dest_desc.texture.format == reshade::api::format::r16g16b16a16_float
                            && dest_desc.texture.width == clone_desc.texture.width
                            && dest_desc.texture.height == clone_desc.texture.height;
-  if (!dest_clone_on && source_clone.handle != 0u && same_layout) {
+  if (!dest_clone_on && source_clone.handle != 0u && same_layout
+      && !renodx::utils::resource::upgrade::shared.IsEventHandler()) {
     cmd_list->copy_resource(source_clone, dest);
     return true;
   }
