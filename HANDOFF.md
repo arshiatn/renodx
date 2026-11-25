@@ -825,7 +825,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-BIT CPU DESIGNS STARTED 10:4x (Opus xHigh, read only, no builds; each -> Opus ... | ?
 - S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate ... | ?
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
-- BALANCED DEFAULT, before any default On (pds2_ 'pds2_ balanced numbers'): the Ne ... | ?
 - LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_f ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
@@ -15773,7 +15772,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Path-Traced AO, Own Sky Rays or sun light and skipped the reflections request (not the RT/PT preset). pds2_ told
         16:4x: use the preset's flags (86020209 / 354455665) or the recording's own flags with only the tested bit changed;
         list the affected gate ids (rerun only those feeding a pending decision). Owner: pds2_
-        - [ ] BALANCED DEFAULT, before any default On (pds2_ 'pds2_ balanced numbers'): the Near cost pair in the preset
+        - [x] BALANCED DEFAULT, before any default On (pds2_ 'pds2_ balanced numbers'): the Near cost pair in the preset
         config + a KEEP_LIGHT-on-both-arms job to split the 'faster' effect; the DIMMING case (green -> red, light off;
         red -> green tested only the brightening branch; by reading On keeps ~1/2, 1/3, 1/4 of the old light over the
         next frames). Then ATN decides (coord pick: keep Off until seen in game). Owner: pds2_, then ATN
@@ -15786,6 +15785,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         k16; brightening k4 0.67 / 0.50. = the afterglow brr_ predicted. Coord pick stays: keep Off (Experimental
         opt-in). LAB METHOD DONE: affected gates 11-25 G-1125-3 .. -30 listed; -24 / -27 replaced by -35 / -44, -30 by
         3b's rerun; the rest feed no pending decision. Owner: ATN (the default)
+        ATN 11-25 evening: 'Keep it Off'. DECIDED: Balanced ReSTIR Light stays an opt-in Experimental row, default Off
+        (already so in code; nothing to change).
         - [ ] LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_flags@bounce), so a lab arm
         cannot change one bounce bit while keeping the recording's other requests (pds2_ used scratch recorder
         builds). Add after PT DI step 3 merges (pdi3_ owns rt_serve.h now). Owner: coord (after pdi3_ merge)
