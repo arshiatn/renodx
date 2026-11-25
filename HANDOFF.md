@@ -850,6 +850,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
+- pds2_ S4 FIX STARTED 10:0x (branch pds2_s4 off atn-mods; + the review's 2 left n ... | ?
 - S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner ... | ?
 - ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0 ... | ?
 - 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for ... | ?
@@ -16013,7 +16014,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] (PASS 09:3x after the reboot, row below) twattila amd64 add-on build check of the merged tree (only credits.hpp's string changed: '..., SHaRC, RTXDI
         and NRD') WAITING: free RAM 11.5 GB < 12 GB (kernel pools 4.0 GB nonpaged + 5.9 GB paged = the zombie
         processes / GPU resets; needs ATN's reboot). gated_build waits on its own; it respects quiet_run.lock.
-        - [ ] S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner coord, after the merge):
+        - [ ] pds2_ S4 FIX STARTED 10:0x (branch pds2_s4 off atn-mods; + the review's 2 left nits; proof = reflection
+        HARNESS_DUMP modes + rec_compare + DXIL compare, no game). THEN on the helper lane, serially (one writer for
+        rt_path.hlsli / rt_d3d12.hpp): PT DI 4b / 4c -> vMF S2 (+ VMF RHO SKY TEST) -> SHaRC depth 4.
+        64-bit lane: a3f_ -> C8 wave 2 (tweak rows, then hook rows) after a3f_ merges (addon.cpp); l2bd_ design ->
+        review -> L2B waves; C3 (RT on the port) design. Game starts: none needed now; ATN 11-25: trim every game batch.
+        - [ ] S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner pds2_ since 10:0x):
         Attila / Thrones copy the t6 light -> RT_REFLECTIONS_LIGHT -> HitLight returns before the NaN route. Reached
         only with no light copy (other format / MSAA / small, or water_reflections.hpp without a light buffer: Troy,
         Pharaoh Dynasties; pdsr_: also Rome II twrome2/addon.cpp:486 and Shogun 2 addon.cpp:837 / ray_tracing.hpp:928,
