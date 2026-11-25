@@ -242,6 +242,8 @@ static int RunSetFile(const std::string& mode) {
   path.resize(GetModuleFileNameA(nullptr, path.data(), static_cast<DWORD>(path.size())));
   path = path.substr(0, path.find_last_of('\\') + 1) + ((mode == "nofile") ? "missing_set_file.txt" : "set_file.txt");
   std::remove(path.c_str());
+  // A marker an earlier mode or run left would make the line read "over one not read yet".
+  std::filesystem::remove(std::filesystem::path(path).parent_path() / L"renodx_pass_dump_now");
   if (mode != "nofile") {
     // Blanks after an entry's ';' are no second entry; line 806's second entry is warned about and not used.
     std::string text = "0:bloom=0.5; \r\n0:env.RENODX_TEST_ENV=1:4,2:2;\r\n0:mt_trace=20;\r\n0:pass_dump=2 c1;\r\n\r\n";
