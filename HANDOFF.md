@@ -15824,6 +15824,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         'Faster Battle Step' + tooltip, drop the thread-count start, init / README wording, Stage B at all / when,
         offer A to Sol (MIT, credit RenoDX / ATN). -> p8r_ REVIEW (Opus xHigh) STARTED 12:5x ->
         designs\pk8_design_review.md (incl. kind names vs p6d_, v2 vs v3 block fields).
+        p8r_ REVIEW 15:0x: GO WITH CHANGES for Stage A (hand-back p8r_review_handback.md): M1 fingerprint included our
+        own jump (hash 0x79a695+0x328 = 27126785e1b2538d), M2 P3 = hard gate before W-A2 + widened (id store, vptr,
+        indirect create sites, ctor call, re-entry), M3 never admit the render thread / main; S1 no v3 (PK8 fields
+        into B0 v2: offset 84 engine_status, CORE_STEP / CORE_SPLIT), S2 CORRECTION A gives ~188 s, not real time,
+        S3 S-C replaces PK8's batch (0 extra starts), S5 W-A0 DEFERRED to Stage B (l2b section 8 item 4, map 3.3
+        updated), S6 T-A2 may need a Bitdefender exception (ATN only), S9 bounds (id >= 65536, p >= count). Stage B
+        design-only until its proofs. -> p8d_ FIX ROUND STARTED 15:0x (+ an F1 section for C8 B0).
         - [x] p9d_ PK9 EFFECTS DESIGN DONE 13:3x (designs\pk9_effects_64.md 515 lines, hand-back p9d_design_handback.md):
         ROUTE A recommended = keep Sol's own parallel effect update, no hook / patch: A1 note to Sol (race census N1-N12,
         C10, soak list, ask for a settings.txt key where 0 = off: today any value even 0 turns it on; credit RenoDX /
