@@ -880,6 +880,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BALANCED RAYTRACED CHOICE: bal3_ (Opus High, worktree, branch bal3_raytraced) ST ... | ?
 - bal3_ route-b cost numbers (after 'bal3_ resume') -> review (Opus xHigh) -> merg ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
+- ATN NUMBERS (morning): Torch Light in PT GI (Experimental, off) = B12C2: +0.06 d ... | ?
+- pdi3_ OPEN: multi-ray builds (rt_path, rt_path_sharc, rt_path_ser) never reached ... | ?
+- pd3c_ RE-CHECK (Opus xHigh, read-only, STARTED 00:2x, est 20 / deadline 40) of t ... | ?
 - ATN NUMBERS (if no step-3 variant meets total +0.05 / ReGIR 0.02 on the final he ... | ?
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_t ... | ?
@@ -931,6 +934,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered pen ... | ?
 - fa4_ RR PLACEMENT: RR runs after the tone mapper; DPG + RRG 3.1 say before. CHOS ... | ?
 - ATN Q AFTER THE CRITIC (fa4_ B3 + RRG p22): under RR / NRD, hide AO Quarter (rt_ ... | ?
+- fa3_ B1 TWO VISIBILITY KINDS IN ONE STREAM (bias): in OMM builds TRACE_SURFACE c ... | ?
+- fa3_ B2 LIGHT LEAKS THROUGH SOLID CUT-OUTS (thatch, fences) in GI / bounce / SHa ... | ?
+- fa3_ B3 F16 RUNNING AVERAGES DRIFT DARK (D3D11.3 3.2.2): ambient_history (-0.12. ... | ?
+- fa3_ B4 TMin > TMax (spec RT:2564 undefined): SunRay layered loop (met + 0.01), ... | ?
+- fa3_ B5 SER NOT AS RTXPT'S: maybeReorderThread with a NOP hit object + 1-bit hin ... | ?
+- fa3_ B6 OMM BAKE vs ALPHA TEST AT THE CUTOFF (omm.h:406 '>' vs AlphaPasses '>=') ... | ?
+- fa3_ B7 stale comment rt_d3d12.hpp:9365-9368 ('Grass ... 2-state for every ray') ... | next twattila writer
+- fa3_ UNKNOWNs: rt_reference cs_6_5 RayQuery on an OMM TLAS without the opt-in (r ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -16304,6 +16315,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         it merges; pds2_ is LAB-ONLY: Balanced numbers (running) -> 3a fog reuse reference -> 3b G1 Raytraced cost
         -> the affected-gate list; code fixes it finds become boxes.
         - [ ] PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twattila builds). Owner: pdi3_
+        pdi3_ DONE 00:0x: FINAL HEAD ec96c503c (149e75363 S4 + nits; 0d4c64016 S1 fix: E4 night128 0.9814 -> 0.9908
+        SHaRC off, 0.9889 -> 0.9944 on; 61d4e6445 SHaRC update twin, plain build byte-identical, lmem 20.8 MB; ec96c503c
+        ReGIR B12C2 = 16 lights / cell, 8 build samples, 2 candidates). NO VARIANT MEETS BOTH BUDGETS -> the cheapest
+        ships, row Experimental OFF: B12C2 total +0.06 day [G-1125-123] (budget +0.05) / +0.04 night [G-1125-126], ReGIR
+        0.010 ms (budget 0.02); B12C +0.07 / +0.07 [G-1125-129] [G-1126-3]; calibrations pass [G-1125-121..128]
+        [G-1126-1] [G-1126-2]. Noise p75 x1.001 (29) / x1.071 (128), both below row-off base (x1.149 / x1.229). E4 128:
+        paired -0.0105 +- 0.036 (contains 0) but mean 0.980 below the base's replicate interval 0.984-0.998 (~1 % darker);
+        29: +0.0004. Gates: all_modes rows off 0 real changes; probe x0.975 / x1.004 / x0.995; f128a1cc1^ control fails;
+        plays 17 / 17; rec_scan 0. Hand-back handoff_plan\handbacks\pdi3_handback.md.
+        - [ ] ATN NUMBERS (morning): Torch Light in PT GI (Experimental, off) = B12C2: +0.06 day / +0.04 night vs
+        +0.05 budget; E4 at 128 lights ~1 % darker (inside the paired CI). Keep as is, or ask for more? Owner: ATN
+        - [ ] pdi3_ OPEN: multi-ray builds (rt_path, rt_path_sharc, rt_path_ser) never reached by the harness, even at
+        4 rays -> registers / lmem unmeasured. Owner: Nsight sweep (NSR1)
+        - [ ] pd3c_ RE-CHECK (Opus xHigh, read-only, STARTED 00:2x, est 20 / deadline 40) of the fix round
+        149e75363..ec96c503c -> pt_di_step3_review.md '## Re-check' -> MERGE step 3. Owner: pd3c_, coord
+        GPU 00:1x: gsi_ SWAP DONE at a safe moment (swap.ps1 sha ok, 20 files hash-checked, backups *.bak_gsi_1125;
+        test_gpu_queue 29 / 29) -> 'pdi5_ GPU go' sent (+ the typed-R16F rounding fact for fa3_ B3 if <= 10 min);
+        pdi4c_ told: rebase onto ec96c503c, 2.9a, then fa1_ B1 / B2 / parameters / DiMotion comment, builds beside
+        pdi5_, waits for 'pdi4c_ GPU go'. Owner: coord
         pdi3_ HAND-BACK 11-25 20:2x (handoff_plan\handbacks\pdi3_handback.md; 200 min incl. GPU-lock waits): branch
         pdi3_step3 = f23d665ca (T2 ReGIR + T1 traced torch light), 3cfde60e7 (RTXDI-less: #define TorchLight LocalLights
         = byte for byte), ceecd4b84 (T1 in twins rt_lights_torch / rt_lights_bounce_torch + _omm under TORCH_IRRADIANCE,
@@ -17115,6 +17145,36 @@ heading text are in HANDOFF_ARCHIVE.md)
         each 2x2 a frame = checkerboard-like; NRD README:930) and the bounce's Half / Quarter, like checkerboard?
         Owner: ATN (morning)
         - B2 (IGN dither under RR) = NV9 -> numbers to ATN.
+        fa3_ DONE (21 min; fidelity\rt_core.md; trees atn-mods 8e1888043 + 4c dd727e871; 41 rows: 21 SAME, 9 CHOSEN,
+        8 BUG, 3 UNKNOWN; uncited 3 of 16 blocks). nvs_ corrections: N2 Fast Leaf Shadows' 2-state reaches ONLY rt_trace
+        + rt_lights (SceneRayFlags never called in paths / reflections / reuse / SHaRC update / fog / bounce); IGN does
+        animate (frame & 63, rt_scene.hlsli:435). NV1 compiled-in check = pdi4c_'s nv1_r2 header diff (rt_di_shade
+        byte-identical). Memory reference_omm_opaque_states reworded 11-26 (spec RT:1446 contradicts it).
+        - [ ] fa3_ B1 TWO VISIBILITY KINDS IN ONE STREAM (bias): in OMM builds TRACE_SURFACE culls non-opaque (holes in
+        leaves / cut-outs) while Validate, shifts and RAB Occluded are alpha-tested 4-state (DXIL path_omm 2 vs 12,
+        reflect_omm 1 vs 9) -> samples through a hole dropped every 3rd frame / zero target when shifted. X4 (gpu_plan:26)
+        is the fix: judge it as a BUG FIX, not a look-risk speed-up. Owner: next RT writer after the merges
+        - [ ] fa3_ B2 LIGHT LEAKS THROUGH SOLID CUT-OUTS (thatch, fences) in GI / bounce / SHaRC / reflections:
+        TRACE_SURFACE culls 'unknown opaque' wall triangles (rt_omm_uvs); only the sun + first sky miss are patched
+        (rt_path.hlsli:661-668). Fix: a CUT_OUTS-only alpha-tested nearest query in TRACE_SURFACE, keep the nearer hit.
+        Owner: with B1
+        - [ ] fa3_ B3 F16 RUNNING AVERAGES DRIFT DARK (D3D11.3 3.2.2): ambient_history (-0.12..-0.24 %), light_ratio
+        (rt_path.hlsli:1424), specular_accumulated / meta (:1797-1798, -0.3..-1.2 %) -> f16tof32(F32ToF16Nearest(x)).
+        First the GPU fact: does a typed R16F store truncate on NVIDIA (asked of pdi5_, <= 10 min, else a box). = the
+        F16 audit box's RT sites. Owner: F16 fixer after steps 3 + 5
+        - [ ] fa3_ B4 TMin > TMax (spec RT:2564 undefined): SunRay layered loop (met + 0.01), LeafHit(leaf + 0.01, 1e4).
+        Owner: next RT writer
+        - [ ] fa3_ B5 SER NOT AS RTXPT'S: maybeReorderThread with a NOP hit object + 1-bit hint at the first surface
+        only; RTXPT reorders FromRayQuery + hint every bounce -> dx::HitObject::FromRayQuery(query) (SER:739). With NV5
+        before the SER re-measure. Owner: R2 / R3 owner
+        - [ ] fa3_ B6 OMM BAKE vs ALPHA TEST AT THE CUTOFF (omm.h:406 '>' vs AlphaPasses '>='): bake with
+        nextafter(cutoff, 0). Owner: OMM owner
+        - [ ] fa3_ B7 stale comment rt_d3d12.hpp:9365-9368 ('Grass ... 2-state for every ray'). Owner: next twattila writer
+        - B8 PTLAS env-only (siege stall, cause unknown) -> fa6_ with fa3_'s leads (instanceMask 0xFF at
+        rt_d3d12.hpp:8012; cluster + units BLAS all place MAX_INSTANCES -> one slot at :7976).
+        - [ ] fa3_ UNKNOWNs: rt_reference cs_6_5 RayQuery on an OMM TLAS without the opt-in (read or build cs_6_9);
+        COMMON resting state (Nsight barrier / wait-for-idle count); IGN uniformity over 64 frames (CPU histogram).
+        Owner: critic -> owners
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
