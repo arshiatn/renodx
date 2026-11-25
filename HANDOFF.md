@@ -835,6 +835,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
 - PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; ... | ?
 - NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\rou ... | ?
+- tw_scene_coverage crashes at start (exit 139, nothing printed; last PASS 11-17; ... | ?
+- ta_ O6 waits for gpu_job.lock (pds2_): T7 short GPU runs rt_shadows_test / trace ... | ?
+- ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales mult ... | ?
+- ta_ QUESTIONS FOR ATN (ta_'s pick first): (1) Attila rows for Tales: Upscaling D ... | ?
 - ry_ QUESTIONS FOR ATN (ry_'s pick first): (1) Ryse's rays are sharper than the g ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
@@ -15986,6 +15990,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         Ryse parts done in mixed boxes: Video AutoHDR 0.2 21c698806 (L63), CheckBound order 499ad555c (R7 / TEST BOXES),
         parity letters (All three box). LEFT for coord: skips.tsv (G13 rest); Expeditions' g13_ ledger conversion into
         tools\nontw\expeditions (ta_ does tales.tsv).
+        ta_ DONE 14:1x (hand-back tools\nontw\round_1125\handbacks\ta_handback.md; list scratch\ta_\list.md: OFFLINE-NOW 6,
+        DONE ALREADY 18, NEEDS A RUN 18, ATN 11, SHARED 10; plan.md 'State 2026-11-25 (ta_)': T2-T5, T8-T16, T19-T21 were
+        done already). Branch nt_ta1 (not merged): afd5da80a scRGB copy out of buffer 0 now turns the capture's clone on
+        (CPU test 8 / 8; whether the game makes that copy is unverified: no copies in the 27 G1 / G2 traces);
+        dbe88a833 helper scene: leaf_cutoff 0.3333 (the masked prepass's own clip) + mask_uv_scales (37 masks at a
+        scaled UV were missing; build only, helper route never run); fa7fb9559 SDR encode WARP (<= 0.499 / 0.592 steps,
+        control HDR10 523 off); a18803590 torch shadows' traced branch WARP 13 / 13 bit-exact (control fails).
+        talesofarise build exit 0 (61 warnings = baseline), tw_tales_unit 5 / 5. tales.tsv: open 151 -> 0 (waiting 38,
+        settled 233; started from g13_'s stage, not its draft). -> rvt_ REVIEW (Opus xHigh) STARTED 14:1x ->
+        tools\nontw\round_1125\reviews\rvt_nt_ta1_review.md -> merge -> tick the scRGB box (in-game check stays open).
+        - [ ] tw_scene_coverage crashes at start (exit 139, nothing printed; last PASS 11-17; rt_core + test unchanged on
+        nt_ta1): rvt_ checks atn-mods vs nt_ta1, then owner = rt_core lane (pds2_ / next shared round). Owner: coord
+        - [ ] ta_ O6 waits for gpu_job.lock (pds2_): T7 short GPU runs rt_shadows_test / trace_test / omm_test + the T6
+        removal run (RENODX_TW_TEST_REMOVAL); resume ta_ when the lock is free. Owner: coord
+        - [ ] ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales multiplies mask alpha by a
+        material constant); step 5 equality harness (one Tales frame in-process vs helper) = GPU plan; 'needs box'
+        lines in tales.tsv -> boxes (coord, later cleanup). Owner: coord
+        - [ ] ta_ QUESTIONS FOR ATN (ta_'s pick first): (1) Attila rows for Tales: Upscaling Debug View, Light Bounce
+        Resolution, Directional Light Bounce, path-traced torch rows, Bend Debug View / Distance Softness / Foliage
+        (port in the next Tales round, debug views first); (2) landscape LOD bias, 44 sampler copies, low value
+        (WON'T GET). Owner: ATN
+        SEARCH NOTE 2 (reported to ATN): before the rule reached it, ta_ ran one file-NAME search for parity_check.py
+        that probably walked all of tools\tw (names only, no contents; nothing opened in the two excluded folders).
         - [ ] ry_ QUESTIONS FOR ATN (ry_'s pick first): (1) Ryse's rays are sharper than the game's own blurred
         reflections: keep unless rough surfaces look too sharp in game (keep); (2) FSR Sharpening + Directional Light
         Bounce rows to Ryse in the next Ryse round (yes, FSR Sharpening first); (3) SSR hierarchical march / SSSR as a
