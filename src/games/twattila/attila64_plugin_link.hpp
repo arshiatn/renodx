@@ -47,12 +47,13 @@ namespace plugin = twattila::attila64_plugin;
 // Lookup, Update and Uninstall one at a time (init_device, the present and the detach may run on different threads).
 // Never taken by a callback, so Unregister's wait may run under it.
 static std::shared_mutex mutex;
-// The lookup's result, stored once final (release, after `block` and shadow_pass's install): readers load it with acquire.
+// The lookup's result, stored once final (release, after `block` and shadow_pass's install): readers load it with
+// acquire.
 static std::atomic<Found> found = Found::PENDING;
 // Found READY: the plugin is pinned and never unloads, so the block stays valid for the process.
 static plugin::Block* block = nullptr;
-// A test's RENODX_TW_PLUGIN_WANT=<row bits>, read at the READY lookup: wanted at every present as well (F7's registration
-// case: its harness has no feature that wants a row); never a player's.
+// A test's RENODX_TW_PLUGIN_WANT=<row bits>, read at the READY lookup: wanted at every present as well (F7's
+// registration case: its harness has no feature that wants a row); never a player's.
 static uint32_t test_wanted = 0;
 // Under the mutex: the rows wanted now, whether CALLBACKS is registered, and the module reference it holds.
 static uint32_t wanted = 0;
@@ -62,7 +63,8 @@ static bool registered_logged = false;
 static HMODULE module_reference = nullptr;
 // Written into each measured call's PassMeasure::reserved at pass_begin: a pass_end of another registration is ignored.
 static std::atomic<uint32_t> epoch = 0;
-// A callback caught an exception: logged once at the next present (the callbacks log only shadow_pass's learned-kind line).
+// A callback caught an exception: logged once at the next present (the callbacks log only shadow_pass's learned-kind
+// line).
 static std::atomic_bool callback_failed = false;
 static bool callback_failure_logged = false;
 
@@ -97,7 +99,8 @@ static void PassEnd(uint32_t pass_kind, const plugin::PassMeasure& measure) noex
   }
 }
 
-static constexpr plugin::Callbacks CALLBACKS = {.before_pack = &BeforePack, .pass_begin = &PassBegin, .pass_end = &PassEnd};
+static constexpr plugin::Callbacks CALLBACKS = {
+    .before_pack = &BeforePack, .pass_begin = &PassBegin, .pass_end = &PassEnd};
 
 // Under the mutex. The hooks see no callback after this returns, unless the wait ran out (then this add-on stays
 // loaded). Never from a callback, or under a lock a callback takes (object_motion's, rt_core's): the wait would count
@@ -149,7 +152,8 @@ inline void Lookup(bool last) {
     found_block = (block_export != nullptr ? block_export() : nullptr);
     outcome = Found::OTHER_VERSION;
     outcome_text = "of another version";
-    if (found_block != nullptr && found_block->version >= plugin::OLDEST_VERSION && found_block->bytes >= plugin::BlockBytes(plugin::OLDEST_VERSION)) {
+    if (found_block != nullptr && found_block->version >= plugin::OLDEST_VERSION
+        && found_block->bytes >= plugin::BlockBytes(plugin::OLDEST_VERSION)) {
       switch (found_block->status.load(std::memory_order_acquire)) {
         case plugin::STATUS_READY:
           outcome = Found::READY;
@@ -183,17 +187,19 @@ inline void Lookup(bool last) {
     internal::block = found_block;
     rows = RowsOffered();
     std::array<char, 16> value = {};
-    const DWORD length = GetEnvironmentVariableA("RENODX_TW_PLUGIN_WANT", value.data(), static_cast<DWORD>(value.size()));
+    const DWORD length =
+        GetEnvironmentVariableA("RENODX_TW_PLUGIN_WANT", value.data(), static_cast<DWORD>(value.size()));
     if (length != 0 && length < value.size()) {
       std::from_chars(value.data(), value.data() + length, internal::test_wanted);
     }
     shadow_pass::Install();
   }
   internal::found.store(outcome, std::memory_order_release);
-  renodx::utils::log::i(std::format("[Total War] 64-bit Attila: engine plugin {}, rows offered {:#x}", outcome_text, rows));
+  renodx::utils::log::i(
+      std::format("[Total War] 64-bit Attila: engine plugin {}, rows offered {:#x}", outcome_text, rows));
   if (internal::test_wanted != 0) {
-    renodx::utils::log::i(std::format("[Total War] 64-bit Attila: rows {:#x} wanted from RENODX_TW_PLUGIN_WANT (tests only)",
-                                      internal::test_wanted));
+    renodx::utils::log::i(std::format(
+        "[Total War] 64-bit Attila: rows {:#x} wanted from RENODX_TW_PLUGIN_WANT (tests only)", internal::test_wanted));
   }
 }
 
@@ -206,7 +212,8 @@ inline void Update(uint32_t rows_wanted) {
   if (internal::found.load(std::memory_order_relaxed) != Found::READY) return;
   if (internal::callback_failed.load(std::memory_order_relaxed) && !internal::callback_failure_logged) {
     internal::callback_failure_logged = true;
-    renodx::utils::log::e("[Total War] 64-bit Attila: an engine plugin callback failed (its work skipped for that call)");
+    renodx::utils::log::e(
+        "[Total War] 64-bit Attila: an engine plugin callback failed (its work skipped for that call)");
   }
   const uint32_t rows = (rows_wanted | internal::test_wanted) & RowsOffered();
   if (rows == internal::wanted) return;
@@ -224,19 +231,22 @@ inline void Update(uint32_t rows_wanted) {
                             GetLastError(), ")");
       return;
     }
-    // A new epoch for each registration, seeded from the clock: an add-on loaded again at the same address starts elsewhere.
+    // A new epoch for each registration, seeded from the clock: an add-on loaded again at the same address starts
+    // elsewhere.
     const uint32_t last_epoch = internal::epoch.load(std::memory_order_relaxed);
     internal::epoch.store((last_epoch == 0 ? (GetTickCount() | 1u) : last_epoch + 1), std::memory_order_relaxed);
     const internal::plugin::Callbacks* expected = nullptr;
     if (!block->callbacks.compare_exchange_strong(expected, &internal::CALLBACKS)) {
       FreeLibrary(std::exchange(internal::module_reference, nullptr));
       internal::lost = true;
-      renodx::utils::log::w("[Total War] 64-bit Attila: another add-on holds the engine plugin's callbacks: left to it");
+      renodx::utils::log::w(
+          "[Total War] 64-bit Attila: another add-on holds the engine plugin's callbacks: left to it");
       return;
     }
     internal::registered = true;
     if (!std::exchange(internal::registered_logged, true)) {
-      renodx::utils::log::i(std::format("[Total War] 64-bit Attila: engine plugin callbacks registered (rows wanted {:#x})", rows));
+      renodx::utils::log::i(
+          std::format("[Total War] 64-bit Attila: engine plugin callbacks registered (rows wanted {:#x})", rows));
     }
   }
   block->hooks_wanted.store(rows);
@@ -254,8 +264,8 @@ inline void Install() {
 inline void Uninstall() {
   const std::unique_lock lock(internal::mutex);
   internal::Unregister();
+  // The block stays: the plugin is pinned, and a reader that saw READY (a row's visibility, a note) may still read it.
   internal::found.store(Found::DETACHED, std::memory_order_relaxed);
-  internal::block = nullptr;
   internal::test_wanted = 0;
   internal::lost = false;
   internal::registered_logged = false;

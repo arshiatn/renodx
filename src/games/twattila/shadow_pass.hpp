@@ -63,8 +63,8 @@ struct Kind {
   bool mixed = false;       // a call that bound another target, or ran with the map not bound
   uint32_t calls = 0;       // this frame's
   uint32_t last_calls = 0;  // the last frame's that drew this kind
-  // Frames that drew this kind: the kept call turns with them. The 64-bit loader's shadow refresh rests the shadow view on
-  // some frames (no call then); turning with the present count would keep the same call on every drawn frame.
+  // Frames that drew this kind: the kept call turns with them. The 64-bit loader's shadow refresh rests the shadow view
+  // on some frames (no call then); turning with the present count would keep the same call on every drawn frame.
   uint32_t drawn_frames = 0;
   bool logged = false;
 };
@@ -92,8 +92,8 @@ inline bool Counting() {
          && GetCurrentThreadId() == internal::render_thread.load(std::memory_order_relaxed);
 }
 
-// Before a pass draw that is Counting, its node enabled: skip it, draw it, or draw and measure it (then PassEnd with the
-// same `measure`, after the draw). Leaves measure->reserved alone (the 64-bit link's).
+// Before a pass draw that is Counting, its node enabled: skip it, draw it, or draw and measure it (then PassEnd with
+// the same `measure`, after the draw). Leaves measure->reserved alone (the 64-bit link's).
 inline attila64_plugin::PassAction PassBegin(uint32_t kind_index, attila64_plugin::PassMeasure* measure) {
   if (kind_index >= internal::PASS_KINDS) return attila64_plugin::PASS_DRAW;
   auto& kind = internal::kinds[kind_index];
@@ -114,7 +114,8 @@ inline void PassEnd(uint32_t kind_index, const attila64_plugin::PassMeasure& mea
   auto& kind = internal::kinds[kind_index];
   if (kind.mixed) return;
   if (internal::other_binds == measure.other_binds_before
-      && (measure.sun_at_start != 0u || internal::sun_binds != measure.sun_binds_before) && rt_scene::SkippingCasters()) {
+      && (measure.sun_at_start != 0u || internal::sun_binds != measure.sun_binds_before)
+      && rt_scene::SkippingCasters()) {
     ++kind.sun_only;
   } else {
     kind.mixed = true;

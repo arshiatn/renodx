@@ -3,11 +3,11 @@
  * SPDX-License-Identifier: MIT
  */
 
-// renodx_attila64.dll for F7's plugin cases: the 64-bit engine plugin's block (plugin_block.h) and, in place of its game
-// hooks, one thread that calls the add-on's callbacks through the hooks' guard while any row is wanted (no game code:
-// pass_begin finds nothing counted and answers PASS_DRAW). The test exe loads it where the loader loads its plugins
-// (after a plugin's test device, before the game's device). RENODX_F7_PLUGIN="<status> <rows_applied> <rows_changed>"
-// (attila64_plugin::Status and Row bits; default "1 3 0").
+// renodx_attila64.dll for F7's plugin cases: the 64-bit engine plugin's block (plugin_block.h) and, in place of its
+// game hooks, one thread that calls the add-on's callbacks through the hooks' guard while any row is wanted (no game
+// code: pass_begin finds nothing counted and answers PASS_DRAW). The test exe loads it where the loader loads its
+// plugins (after a plugin's test device, before the game's device).
+// RENODX_F7_PLUGIN="<status> <rows_applied> <rows_changed>" (attila64_plugin::Status and Row bits; default "1 3 0").
 
 #include <windows.h>
 

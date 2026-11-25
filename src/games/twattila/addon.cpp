@@ -1222,22 +1222,29 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
 
 // A game-code row on the port: shown once the 64-bit engine plugin is ready and offers its row.
 inline bool GameCodeRowShown(PluginRow row) {
+  static_assert(twattila::attila64_plugin::ROW_COUNT <= 32, "a row's bit in a 32-bit mask");
   if constexpr (PLUGIN_READY_FORCED) return true;
-  return row != PluginRow::NONE && twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY
+  return row != PluginRow::NONE
+         && twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY
          && (twattila::attila64_plugin_link::RowsOffered() & (1u << static_cast<uint32_t>(row))) != 0;
 }
 
 // The note rows in graphics_status's place on the port, one per final lookup result: READY's shows while any of the
 // plugin's rows is not offered (its hook refused or changed), whether a settings row reads it or not.
 constexpr std::array<std::pair<twattila::attila64_plugin_link::Found, const char*>, 6> PLUGIN_NOTES = {{
-    {twattila::attila64_plugin_link::Found::NOT_INSTALLED, "Engine options: the 64-bit engine plugin is not installed."},
-    {twattila::attila64_plugin_link::Found::OFF, "Engine options: the 64-bit engine plugin is turned off in ReShade.ini."},
-    {twattila::attila64_plugin_link::Found::WRONG_GAME, "Engine options: the 64-bit engine plugin does not support this game version."},
-    {twattila::attila64_plugin_link::Found::WRONG_LOADER, "Engine options: the 64-bit engine plugin does not support this loader version."},
-    {twattila::attila64_plugin_link::Found::OTHER_VERSION, "Engine options: the 64-bit engine plugin does not match this add-on's version."},
-    {twattila::attila64_plugin_link::Found::READY, "Engine options: the 64-bit engine plugin could not turn on every engine option."},
+    {twattila::attila64_plugin_link::Found::NOT_INSTALLED,
+     "Engine options: the 64-bit engine plugin is not installed."},
+    {twattila::attila64_plugin_link::Found::OFF,
+     "Engine options: the 64-bit engine plugin is turned off in ReShade.ini."},
+    {twattila::attila64_plugin_link::Found::WRONG_GAME,
+     "Engine options: the 64-bit engine plugin does not support this game version."},
+    {twattila::attila64_plugin_link::Found::WRONG_LOADER,
+     "Engine options: the 64-bit engine plugin does not support this loader version."},
+    {twattila::attila64_plugin_link::Found::OTHER_VERSION,
+     "Engine options: the 64-bit engine plugin does not match this add-on's version."},
+    {twattila::attila64_plugin_link::Found::READY,
+     "Engine options: the 64-bit engine plugin could not turn on every engine option."},
 }};
-
 
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
 // pass (whose replacement is the game's code only).
@@ -1866,8 +1873,8 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
 void OnInitDevice(reshade::api::device* device) {
   if constexpr (ATTILA64) {
     if (StandsDown(device)) return;
-    // The plugin publishes its block before the game's device: this is the normal lookup (and shadow_pass's install), the
-    // first present the fallback.
+    // The plugin publishes its block before the game's device: this is the normal lookup (and shadow_pass's install),
+    // the first present the fallback.
     if (twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::PENDING) {
       twattila::attila64_plugin_link::Lookup(false);
     }
@@ -2025,21 +2032,24 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         renodx::utils::log::w("[Total War] 64-bit Attila: game code not readable at the first present");
       }
     }
-    // The plugin's lookup, final here when init_device did not find it READY. Present runs on the loader's drawing thread
-    // between frames (never Install from a bind or draw callback).
+    // The plugin's lookup, final here when init_device did not find it READY. Present runs on the loader's drawing
+    // thread between frames (never Install from a bind or draw callback).
     if (twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::PENDING) {
       twattila::attila64_plugin_link::Lookup(true);
     }
     if (twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY) {
       namespace plugin = twattila::attila64_plugin;
-      // shadow_pass's Update runs every present (it ends the frame's counts), here its second site: the 32-bit one below
-      // waits for the at-start tests; the port has none.
-      const bool pass_draw = twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped(), true);
-      // Bone flush: before each bone pack, limb motion vectors' unit records (object_motion's own switch: FlushUnitRecords
-      // has work only while it is on). Batched Unit Capture batches only where the host flushes it
+      // shadow_pass's Update runs every present (it ends the frame's counts), here its second site: the 32-bit one
+      // below waits for the at-start tests; the port has none.
+      const bool pass_draw =
+          twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped(), true);
+      // Bone flush: before each bone pack, limb motion vectors' unit records (object_motion's own switch:
+      // FlushUnitRecords has work only while it is on). Batched Unit Capture batches only where the host flushes it
       // (Host::flushes_unit_captures, PacksHooked: never on the port yet); C3 adds its term when that flag is wired.
       twattila::attila64_plugin_link::Update(
-          (twattila::object_motion::internal::active.load(std::memory_order_relaxed) ? plugin::RowBit(plugin::ROW_BONE_FLUSH) : 0u)
+          (twattila::object_motion::internal::active.load(std::memory_order_relaxed)
+               ? plugin::RowBit(plugin::ROW_BONE_FLUSH)
+               : 0u)
           | (pass_draw ? plugin::RowBit(plugin::ROW_PASS_DRAW) : 0u));
     }
     // Everything below writes the 32-bit game's code or values.

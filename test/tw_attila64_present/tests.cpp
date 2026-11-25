@@ -16,8 +16,8 @@
 // 4. Window, device, flip swap chain (RGBA8, 2 buffers), the picture (RGBA8, SRV | RT) and its depth.
 // 5-7. Frames into the picture, the loader's copy into buffer 0 and its 8-bit overlay, a mode change, a new window.
 // Then the captures (zz_capture) against the reference of the swap chain proxy.
-// Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8] [image_none|image_badmagic|image_table]
-//        [plugin [plugin_calls]] [gpu]
+// Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8]
+//        [image_none|image_badmagic|image_table] [plugin [plugin_calls]] [gpu]
 //        attila64.exe d3d12 [gpu]   (C4: frames written; run.ps1 compares them with a run without the add-on)
 //        attila64.exe opengl        (C6: as C4, GPU only)
 
@@ -931,7 +931,8 @@ int main(int argc, char** argv) {
     const twattila::attila64_plugin::Block* block = (block_export != nullptr ? block_export() : nullptr);
     if (block == nullptr) {
       Fail("renodx_attila64.dll has no block");
-    } else if (block->callbacks.load() != nullptr || block->hooks_wanted.load() != 0 || block->calls_in_flight.load() != 0) {
+    } else if (block->callbacks.load() != nullptr || block->hooks_wanted.load() != 0
+               || block->calls_in_flight.load() != 0) {
       Fail("the plugin's block still holds the add-on's callbacks or hooks after its unload");
     }
     // plugin_calls: the add-on registered (RENODX_TW_PLUGIN_WANT) and the fake hooks called into it before its unload.
