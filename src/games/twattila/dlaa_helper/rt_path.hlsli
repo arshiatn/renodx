@@ -890,6 +890,25 @@ bool Merge(inout Reservoir reservoir, Reservoir other, float weight, float rando
   return false;
 }
 
+// G2, pairwise MIS (Bitterli 2022, thesis 9.1, Eq. 9.10 and Alg. 8; RTXDI's RTXDI_StreamNeighborWithPairwiseMIS read as
+// the formula's reference, not copied): `neighbour` merged with the balance heuristic between its technique and the
+// canonical one (the receiver's own reservoir), each counted M_i x `neighbours` (the neighbours streamed) and M_c
+// (`canonical_count`). The targets, in the receiver's domain: `targets` x = p_i(y_i), the neighbour's sample at its own
+// receiver; y = p_c(T(y_i)) |J|, at this one (0 where the shift is cut); z = p_i(T^-1(y_c)) |J^-1|, the canonical sample
+// at the neighbour (0 likewise); w = p_c(y_c). Adds the canonical sample's share against this neighbour (1 - its weight)
+// to `canonical_share`: the caller merges the canonical sample last with W x p_c(y_c) x that share, then takes W = the sum
+// over (the kept sample's target x the techniques streamed). The one form of the ReSTIR streams' pairwise MIS (ReuseTexel;
+// unified U3 / U5a call it). True: `neighbour`'s sample taken.
+bool PairwiseMerge(inout Reservoir reservoir, inout float canonical_share, Reservoir neighbour, float4 targets, float neighbours,
+                   float canonical_count, float random) {
+  const float neighbour_count = neighbour.count * neighbours;
+  const float neighbour_sum = neighbour_count * targets.x + canonical_count * targets.y;
+  const float canonical_sum = neighbour_count * targets.z + canonical_count * targets.w;
+  canonical_share += (canonical_sum > 0.f) ? canonical_count * targets.w / canonical_sum : 1.f;
+  const float weight = (neighbour_sum > 0.f) ? targets.y * neighbour.weight * neighbour_count * targets.x / neighbour_sum : 0.f;
+  return Merge(reservoir, neighbour, weight, random);
+}
+
 // W = the weights' sum over M times `target` (the sample kept's at the receiver; 0: nothing to show).
 void Finish(inout Reservoir reservoir, float target) {
   reservoir.weight = (reservoir.count > 0.f && target > 0.f) ? reservoir.weight / (reservoir.count * target) : 0.f;
@@ -1354,12 +1373,16 @@ void ReuseTexel(uint2 id) {
 #else
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
   const Reservoir own = LoadReservoir(reuse_samples[set], reuse_data[set], id);
+  // G2 (pairwise MIS): the texel's own reservoir merged last, its share known once every neighbour was streamed.
+  const bool pairwise = (REUSE_SUSPECTS & REUSE_BIAS_PAIRWISE) != 0u;
   Reservoir combined = (Reservoir)0;
-  Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * own.count, Random(uint4(id, frame, DIM_REUSE_OWN)));
+  if (!pairwise) Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * own.count, Random(uint4(id, frame, DIM_REUSE_OWN)));
   const uint neighbours = ((reuse_tests & REUSE_TEST_NO_SPATIAL) != 0u) ? 0u : REUSE_NEIGHBOURS;
   const bool jacobian_cut = (REUSE_SUSPECTS & REUSE_TEST_NO_JACOBIAN_CUT) == 0u;
   uint merged = 0u;   // the neighbours merged (bits), for the bias correction's second walk
   uint chosen = ~0u;  // the one whose sample was kept (~0: the texel's own)
+  float canonical_share = 0.f;  // G2: the own sample's shares against the neighbours streamed
+  uint streamed = 0u;           // G2: the neighbours streamed
   [loop]
   for (uint neighbour = 0u; neighbour < neighbours; ++neighbour) {
     const int2 texel = ReuseNeighbourTexel(id, neighbour);
@@ -1381,20 +1404,49 @@ void ReuseTexel(uint2 id) {
     Reservoir other = LoadReservoir(reuse_samples[set], reuse_data[set], uint2(texel));
     if (other.count <= 0.f) continue;
     const float jacobian = ReuseJacobian(other, other_origin, origin);
-    if (!(jacobian > 0.1f && jacobian < 10.f) && (jacobian_cut || !(jacobian > 0.f && jacobian < 1e30f))) continue;
+    // G2 streams a neighbour whose shift is cut too: its sample adds nothing, but the own sample's share counts it.
+    if (!pairwise && !(jacobian > 0.1f && jacobian < 10.f) && (jacobian_cut || !(jacobian > 0.f && jacobian < 1e30f))) continue;
     // The target moves `other`'s light to this receiver's ContactShade before the merge, which keeps that light (the random
     // number first: the order the merge's arguments had before, so the compiled shader stays the same).
     const float random = Random(uint4(id, frame, DIM_REUSE_MERGE + neighbour));
+    float4 pair_targets = 0.f;
+    if (pairwise) {
+#if defined(REUSE_LEAN)
+      const float3 other_normal = LoadReceiverNormal(reuse_data[set], uint2(texel));
+#else
+      const float3 other_normal = surface_normal[uint2(texel)].xyz;
+#endif
+      // p_i(y_i) before the move; the own sample moved to that receiver (as the merge moves a sample here), 0 where cut.
+      pair_targets.x = ReuseTarget(other_origin, other_normal, other);
+      Reservoir own_there = own;
+      const float own_jacobian = ReuseJacobian(own, origin, other_origin);
+      if ((own_jacobian > 0.1f && own_jacobian < 10.f) || (!jacobian_cut && own_jacobian > 0.f && own_jacobian < 1e30f)) {
+        pair_targets.z = ReuseTarget(other_origin, other_normal, origin, own_there) * own_jacobian;
+      }
+      pair_targets.w = ReuseTarget(origin, normal, own);
+    }
     float target = ReuseTarget(origin, normal, other_origin, other);
     if ((REUSE_SUSPECTS & REUSE_TEST_NEIGHBOUR_VISIBILITY) != 0u && target > 0.f) {
       const float3 to_other = other.hit - origin;
       if (Occluded(origin, normalize(to_other), length(to_other) * 0.99f, NO_GRASS_SMOKE)) target = 0.f;
     }
     merged |= 1u << neighbour;
-    if (Merge(combined, other, target * other.weight * other.count * jacobian, random)) chosen = neighbour;
+    if (pairwise) {
+      if ((jacobian > 0.1f && jacobian < 10.f) || (!jacobian_cut && jacobian > 0.f && jacobian < 1e30f)) pair_targets.y = target * jacobian;
+      ++streamed;
+      PairwiseMerge(combined, canonical_share, other, pair_targets, (float)neighbours, own.count, random);
+    } else if (Merge(combined, other, target * other.weight * other.count * jacobian, random)) {
+      chosen = neighbour;
+    }
+  }
+  if (pairwise) {
+    Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * ((streamed > 0u) ? canonical_share : 1.f),
+          Random(uint4(id, frame, DIM_REUSE_OWN + 1u)));
   }
   const float target = ReuseTarget(origin, normal, combined);
-  if ((REUSE_SUSPECTS & (REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED)) == 0u || !(target > 0.f)) {
+  if (pairwise) {
+    combined.weight = (target > 0.f) ? combined.weight / (target * (float)max(streamed, 1u)) : 0.f;
+  } else if ((REUSE_SUSPECTS & (REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED)) == 0u || !(target > 0.f)) {
     Finish(combined, target);
   } else {
     // G1 (RTXDI's GI bias correction, our Jacobian rule): W = the weights' sum x p_chosen / (target x the sum of M_k p_k),

@@ -3983,7 +3983,7 @@ class RtScene12 {
         // RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY / _NO_CONTACT / _SEEN_LIGHTS_FRAME (tests, read once): ReSTIR GI's
         // parts left out (the last two the raw paths' too); _SPATIAL_CLAMP / _SKY_DIRECTION / _NO_JACOBIAN_CUT / _HISTORY_PLAIN /
         // _NEIGHBOUR_VISIBILITY / _JACOBIAN_SATURATE its bias suspects (PT DI step 2's G0); RENODX_TW_REUSE_BIAS=1 / 2 the spatial
-        // merge's bias correction, Basic / Raytraced (G1); _BOIL the boiling filter's pass, _BOIL_PLANT its test texel;
+        // merge's bias correction, Basic / Raytraced (G1), 3 its pairwise MIS (step 5's G2); _BOIL the boiling filter's pass, _BOIL_PLANT its test texel;
         // _RTXDI (the reference build) RTXDI's spatial resampling in the reuse's place, its bias correction RENODX_TW_REUSE_BIAS's;
         // _VALIDATE_* Validate's parts and _NO_HISTORY_CLAMP the history's ClampWeight (part C's bisection) (rt_path.hlsli).
         // The suspects', G1's and Validate's switches (REUSE_SUSPECT_BITS) run only in the reference build's REUSE_TESTS
@@ -4021,8 +4021,11 @@ class RtScene12 {
             if (mode == 1) {
               tests |= REUSE_BIAS_BASIC;
             }
-            if (mode >= 2) {
+            if (mode == 2) {
               tests |= REUSE_BIAS_RAYTRACED;
+            }
+            if (mode == 3) {
+              tests |= REUSE_BIAS_PAIRWISE;
             }
           }
           return tests;
@@ -4777,7 +4780,8 @@ class RtScene12 {
                                                  | REUSE_TEST_NEIGHBOUR_VISIBILITY | REUSE_TEST_JACOBIAN_SATURATE | REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED
                                                  | REUSE_TEST_VALIDATE_NO_DROP | REUSE_TEST_VALIDATE_KEEP_LIGHT | REUSE_TEST_VALIDATE_NO_CUTS
                                                  | REUSE_TEST_VALIDATE_RESCALE | REUSE_TEST_VALIDATE_NO_INVALIDITY
-                                                 | REUSE_TEST_VALIDATE_KEEP_CHROMA | REUSE_TEST_NO_HISTORY_CLAMP | REUSE_TEST_VALIDATE_NO_CACHE;
+                                                 | REUSE_TEST_VALIDATE_KEEP_CHROMA | REUSE_TEST_NO_HISTORY_CLAMP | REUSE_TEST_VALIDATE_NO_CACHE
+                                                 | REUSE_BIAS_PAIRWISE;
   static constexpr UINT RTXDI_RESERVOIR_BYTES = 32;  // RTXDI_PackedGIReservoir
   static constexpr UINT RTXDI_OFFSET_COUNT = 1024;   // rt_path.hlsli RTXDI_NEIGHBOUR_OFFSETS
   static constexpr uint32_t LIGHTS_IN_PATHS = 128;  // rt_camera.hlsli (PathConstants::lights_in_bounce)
