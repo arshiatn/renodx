@@ -126,12 +126,14 @@ if (Test-Path "$sharc\include\SharcCommon.h") {
   foreach ($sharc_shader in @(@('rt_path.cs_6_5', 'SHARC_QUERY=1', 'rt_path_sharc', 'RT_PATH_SHARC'), @('rt_path.cs_6_5', 'SHARC_QUERY=1 PATH_ONE_SAMPLE', 'rt_path_sharc_one', 'RT_PATH_SHARC_ONE'),
                               @('rt_sharc_update', 'SHARC_UPDATE=1 SHARC_PROPAGATION_DEPTH=2', 'rt_sharc_update', 'RT_SHARC_UPDATE'), @('rt_sharc_resolve', '', 'rt_sharc_resolve', 'RT_SHARC_RESOLVE'))) {
     $defines = $sharc_shader[1].Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { '-D', $_ }
-    Dxc @sharc_flags @defines @regir -Fh "$out\$($sharc_shader[2]).h" -Vn $sharc_shader[3] "$PSScriptRoot\$($sharc_shader[0]).hlsl"
+    $sharc_regir = if ($sharc_shader[2] -eq 'rt_sharc_update') { @() } else { $regir }  # rt_sharc_update today's (its twin below)
+    Dxc @sharc_flags @defines @sharc_regir -Fh "$out\$($sharc_shader[2]).h" -Vn $sharc_shader[3] "$PSScriptRoot\$($sharc_shader[0]).hlsl"
   }
 }
 # RTXDI's builds (old outputs removed first): ReSTIR GI's boiling filter (REUSE_BOIL, rt_path.hlsli BoilTexel) and
-# Torch Light in Path-Traced GI's ReGIR build (rt_regir_presample) and rt_lights' twins with its T1 (TORCH_IRRADIANCE).
-Remove-Item "$out\rt_reuse_boil.h", "$out\rt_regir_presample.h", "$out\rt_lights_torch*.h", "$out\rt_lights_bounce_torch*.h" -ErrorAction SilentlyContinue
+# Torch Light in Path-Traced GI's ReGIR build (rt_regir_presample), rt_lights' twins with its T1 (TORCH_IRRADIANCE) and
+# rt_sharc_update's with its T2 (PATH_REGIR: in rt_sharc_update it took local memory from every SHaRC update).
+Remove-Item "$out\rt_reuse_boil.h", "$out\rt_regir_presample.h", "$out\rt_lights_torch*.h", "$out\rt_lights_bounce_torch*.h", "$out\rt_sharc_update_regir.h" -ErrorAction SilentlyContinue
 if ($rtxdi_found) {
   Dxc -nologo -T cs_6_5 -E main -O3 @regir -D REUSE_BOIL -Fh "$out\rt_reuse_boil.h" -Vn RT_REUSE_BOIL "$PSScriptRoot\rt_path.cs_6_5.hlsl"
   Dxc -nologo -T cs_6_5 -E main -O3 @regir -Fh "$out\rt_regir_presample.h" -Vn RT_REGIR_PRESAMPLE "$PSScriptRoot\rt_regir_presample.cs_6_5.hlsl"
@@ -139,6 +141,9 @@ if ($rtxdi_found) {
   Dxc -nologo -T cs_6_9 -E main -O3 @regir -D TORCH_IRRADIANCE -D OPACITY_MICROMAPS -Fh "$out\rt_lights_torch_omm.h" -Vn RT_LIGHTS_TORCH_OMM "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
   Dxc -nologo -T cs_6_5 -E main -O3 @regir -D TORCH_IRRADIANCE -D TORCHES_IN_BOUNCE -Fh "$out\rt_lights_bounce_torch.h" -Vn RT_LIGHTS_BOUNCE_TORCH "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
   Dxc -nologo -T cs_6_9 -E main -O3 @regir -D TORCH_IRRADIANCE -D TORCHES_IN_BOUNCE -D OPACITY_MICROMAPS -Fh "$out\rt_lights_bounce_torch_omm.h" -Vn RT_LIGHTS_BOUNCE_TORCH_OMM "$PSScriptRoot\rt_lights.cs_6_5.hlsl"
+  if ($sharc_flags) {
+    Dxc @sharc_flags -D SHARC_UPDATE=1 -D SHARC_PROPAGATION_DEPTH=2 @regir -Fh "$out\rt_sharc_update_regir.h" -Vn RT_SHARC_UPDATE_REGIR "$PSScriptRoot\rt_sharc_update.hlsl"
+  }
 }
 # The reference build's RTXDI GI contest (RENODX_TW_REUSE_RTXDI; rt_path.hlsli RtxdiPackTexel, ReuseTexel with REUSE_RTXDI).
 Remove-Item "$out\rt_reuse_rtxdi_pack.h", "$out\rt_reuse_rtxdi.h", "$out\rt_reuse_rtxdi_omm.h" -ErrorAction SilentlyContinue

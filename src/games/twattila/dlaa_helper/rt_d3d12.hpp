@@ -135,6 +135,9 @@
 #include "rt_lights_torch.h"
 #include "rt_lights_torch_omm.h"
 #include "rt_regir_presample.h"
+#if defined(RENODX_SHARC)
+#include "rt_sharc_update_regir.h"
+#endif
 #define RENODX_REGIR 1
 #endif
 // RENODX_TW_PATH_PROBE (tests only: build.ps1 compiles these with RENODX_TW_PATH_PROBE_BUILD set): rt_path.hlsli ProbeTexel.
@@ -805,6 +808,12 @@ class RtScene12 {
         state.Reset();
       }
     }
+#if defined(RENODX_SHARC)
+    // rt_sharc_update's twin with T2 (none: the update keeps LocalLights' torch light while the paths take T2).
+    if (!(dxr12_ && pipeline(RT_SHARC_UPDATE_REGIR, sizeof(RT_SHARC_UPDATE_REGIR), &sharc_update_regir_pipeline_))) {
+      sharc_update_regir_pipeline_.Reset();
+    }
+#endif
 #endif
 #if defined(RENODX_RTXDI_GI)
     // The RTXDI GI contest's (REUSE_RTXDI_PACK: no ray tracing, one build; REUSE_RTXDI: the reuse's).
@@ -4177,7 +4186,8 @@ class RtScene12 {
             const uint32_t blocks_x = (shared.rt_bounce_width + SHARC_BLOCK - 1) / SHARC_BLOCK;
             const uint32_t blocks_y = (shared.rt_bounce_height + SHARC_BLOCK - 1) / SHARC_BLOCK;
             Mark(list, L"SHaRC");
-            list->SetPipelineState(sharc_update_pipeline_.Get());
+            const ComPtr<ID3D12PipelineState>& update_state = ((regir && sharc_update_regir_pipeline_) ? sharc_update_regir_pipeline_ : sharc_update_pipeline_);
+            list->SetPipelineState(update_state.Get());
             list->Dispatch((blocks_x + 7) / 8, (blocks_y + 7) / 8, 1);
             list->ResourceBarrier(1, &uav_barrier);
             list->SetPipelineState(sharc_resolve_pipeline_.Get());
@@ -10670,6 +10680,7 @@ class RtScene12 {
   // the last trace that wrote it.
   ComPtr<ID3D12PipelineState> regir_pipeline_;
   std::array<ComPtr<ID3D12PipelineState>, 2> lights_torch_pipelines_;  // rt_lights' and rt_lights_bounce's twins with T1
+  ComPtr<ID3D12PipelineState> sharc_update_regir_pipeline_;            // rt_sharc_update's twin with T2 (SHaRC builds)
   ComPtr<ID3D12Resource> regir_cells_;
   ComPtr<ID3D12Resource> torch_irradiance_;
   uint32_t torch_light_frame_ = UINT32_MAX;
