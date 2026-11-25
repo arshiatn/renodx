@@ -15707,6 +15707,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         lane), M2 (start 1 seeds audio rows at 2x, two sliders only go to 1.11x / 1.43x), S1-S16, N1-N7.
         -> c8f_ FIX ROUND (Opus xHigh, design only) STARTED 11:3x: all Musts / Shoulds + section 8 (CPU page section)
         -> then ATN's C8 questions -> W0.
+        - [x] ucr_ UTILS CLONE FIX REVIEW 11:4x: GO, no Musts (study_1124\ucf_clone_fix_review.md, hand-back
+        ucr_review_handback.md). MERGED f3dc754dd (6eacd8a84) + twattila amd64 build check. Follow-ups -> ucf_ (branch
+        ucf_follow): S1 twattila OnCopyPresentPicture comment wrong now; drop the duplicate full-frame scRGB copy (~66 MB
+        a frame at 4K) unless another add-on's handler can win the election (cross_addon.hpp:139-142); S2 re-run + SAVE
+        the 5 F7 cases (fix alone shows the picture); S3 Tales OnCopyResource (talesofarise/addon.cpp:938-942) needs
+        !info->is_swap_chain (same black-frame mechanism, predates the fix); S4 F7 log key = handle + size (addon.cpp:1775).
+        Upstream main still has the old ternary (2719 / 3608 / 3893): a merge conflict there resolves to ours.
+        - [x] p2d_ PK2P DESIGN DONE 11:4x (designs\pk2p_main_core_64.md 509 lines, hand-back p2d_design_handback.md):
+        GO; render (main) thread = the game_started thread, own whole core (ATN's PC: step 14 + 15, render 12 + 13,
+        0-11 for the rest), never an E-core / the LLC's lowest 2 cores, off where L2B is off; E fps +3..+8 % big
+        battles; pass fps >= +2 %, window <= +2 %, same final state. Block v2: offset 76 = render_core_status, bits
+        CORE_BATTLE / CORE_RENDER, one enum (sent to c8f_). Map 3.2 writer chains updated. ATN questions (held for the
+        round's list): when to decide (pick (c) one arm after L2B S2), row text / default rule, battle-only v1, 2 rule
+        lines. -> p2r_ REVIEW (Opus xHigh) STARTED 11:4x -> designs\pk2p_design_review.md.
         - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
         09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
