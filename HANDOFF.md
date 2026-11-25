@@ -826,7 +826,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
-- MERGED LOCALLY fa46e4dad (Merge a64p1_wave1, clean) -> coord builds twattila add ... | ?
+- A1 add-on lane (Opus High) after a64b_'s merge -> R1 -> T1 smoke + C2 trace (sha ... | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
 - AFTER WINDOW 1 (started 23:5x): gbf gates (gbf_gpu_gates.ps1, coord, quiet GPU w ... | ?
@@ -15446,8 +15446,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         check + catch gate over indirect calls (10 sites, all the never-set allocation hook 0x4c0c680; gate PASS).
         patcher_test 114 / 0 (DLL's own bodies + 10 DLL cases), elf_sites_test 28 / 0, SKIPPED now exits 77. DLL
         sha256 b3d6e146212540a8... Left for ATN: 4 patcher helpers with one production caller (tests = 2nd caller).
-        - [ ] MERGED LOCALLY fa46e4dad (Merge a64p1_wave1, clean) -> coord builds twattila addon64 + addon32 + twrome2
-        addon32 (buffer_pool.hpp changed) -> push -> A1 add-on lane after a64b_'s merge -> T1 smoke.
+        - [x] MERGED fa46e4dad (Merge a64p1_wave1, clean); coord build check 02:09-02:2x: twattila addon64 + addon32 +
+        twrome2 addon32 exit 0 (61 / 61 / 62 warnings = before). Pushed.
+        - [ ] A1 add-on lane (Opus High) after a64b_'s merge -> R1 -> T1 smoke + C2 trace (shadow_refresh=2).
         - [ ] AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> designs/plugin_design_review.md)
         + C8 census agent (read-only Opus xHigh, brief section 15 -> census/c8_rows.tsv + c8_notes.md).
         - [x] gated_build.ps1 UNIFIED 00:3x (coord): takes testbin\scratch\build_slots\slot1-4.lock as gpu_lock v1
