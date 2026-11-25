@@ -4122,8 +4122,13 @@ class RtScene12 {
         const bool lights_possible = reuse_lights_pipeline_ && path_traced && reuse && light_count != 0;
         const bool ratio_written = lights_possible && lights_asked == 3u && EnsureHistory(HISTORY_RATIO, frame);
         const uint32_t lights_mode = (lights_possible && (lights_asked != 3u || ratio_written)) ? lights_asked : 0u;
+        // Ours (design 2.9a): mode 1 carries its lights only when this frame's trace left them dark: not under Path-Traced
+        // Torch Light (its DI pixels' light DI's, the others' exact bits), nor the frame it is first asked, after a bounce
+        // gap or a remade reuse history (the game lit them: today's one-frame doubles). reuse_lights_mode_ keeps the asked
+        // mode for the next trace. Mode 2 (a measurement) always carries.
+        const uint32_t carried_mode = (lights_mode == 1u && lights_dark_frame_ != frame) ? 0u : lights_mode;
         // Their soft shadows under Ray Reconstruction: the lights' radius (rt_path.hlsli ReuseTexel's rays to their disk).
-        if (lights_mode != 0 && (requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) {
+        if (carried_mode != 0 && (requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) {
           list->SetComputeRoot32BitConstant(ROOT_SETTINGS, std::bit_cast<uint32_t>(std::clamp(shared.rt_light_size, 0.f, 2.f)), 8);
         }
         // Their ratio's history shorter while the camera moves (RT_PATH_RATIO_FOLLOW): its registers changed since the last
@@ -4258,7 +4263,7 @@ class RtScene12 {
             // Torch and Fire Light in the Light Bounce: ReuseTexel shades the lights' samples (the paths with ReSTIR GI), or
             // keeps their shadow ratio (ratio_written below). Torch Light in Path-Traced GI (RT_PATH_TORCH_LIGHT): the
             // local lights on the screen's surfaces a path meets too (LIGHTS_IN_PATHS).
-            .lights_in_bounce = lights_mode | ((ratio_written && ratio_parity_ != 0) ? 16u : 0u)
+            .lights_in_bounce = carried_mode | ((ratio_written && ratio_parity_ != 0) ? 16u : 0u)
                                 | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
                                 | (ratio_follows ? 64u : 0u)
                                 | (torch_light ? LIGHTS_IN_PATHS : 0u) | (regir ? LIGHTS_REGIR : 0u) | (torch_traced ? LIGHTS_TORCH_IRRADIANCE : 0u),
@@ -4430,7 +4435,7 @@ class RtScene12 {
           // The RTXDI GI contest (the reference build): this frame's reservoirs in RTXDI's format and its neighbour offsets
           // (u73 / u74, rt_path.hlsli RtxdiPackTexel; made at the shared textures' size when first asked for), then RTXDI's
           // spatial resampling in the reuse's place.
-          bool rtxdi = lights_mode == 0 && reuse_rtxdi_pipeline_ && (reuse_tests & REUSE_TEST_RTXDI) != 0;
+          bool rtxdi = carried_mode == 0 && reuse_rtxdi_pipeline_ && (reuse_tests & REUSE_TEST_RTXDI) != 0;
           if (rtxdi && !rtxdi_reservoirs_) {
             const D3D12_RESOURCE_DESC positions = positions_->GetDesc();
             const uint64_t reservoirs = ((positions.Width + 15) / 16) * ((positions.Height + 15) / 16) * 256;  // RTXDI's 16 x 16 blocks
@@ -4477,7 +4482,7 @@ class RtScene12 {
                               && ((version >= 31 && (requested & dlaa_bridge::RT_PATH_REUSE_NEAR) != 0)
                                   || GetEnvironmentVariableW(L"RENODX_TW_REUSE_NEAR", nullptr, 0) != 0);
           ID3D12PipelineState* reuse_state = reuse_pipeline_.Get();
-          if (lights_mode != 0) {
+          if (carried_mode != 0) {
             reuse_state = reuse_lights_pipeline_.Get();
           } else if (rtxdi) {
             reuse_state = reuse_rtxdi_pipeline_.Get();
@@ -8605,7 +8610,6 @@ class RtScene12 {
     const bool lights_asked = local_lights && lights_bounce_pipeline_ && ((shared.rt_flags & dlaa_bridge::RT_LIGHTS_IN_BOUNCE) != 0 || LightsInBounceTest() != 0);
     const bool light_ratio = lights_asked && ((shared.rt_flags & dlaa_bridge::RT_LIGHT_RATIO) != 0 || LightsInBounceTest() == 3u);
     const bool lights_in_bounce = light_ratio || (lights_asked && reuse_lights_mode_ != 0 && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 >= frame);
-    const uint32_t lights_mode = light_ratio ? 3u : (lights_in_bounce ? 1u : 0u);
     const bool ratio_kept = light_ratio && light_ratio_[0] && EnsureHistory(HISTORY_RATIO, frame) && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame;
     // Its pixels the ratio can't serve traced, their own bits (the addon's light shaders read them: RT_SCENE_LIGHT_BITS).
     const bool ratio_bits = light_ratio && ((shared.rt_scene_flags & dlaa_bridge::RT_SCENE_LIGHT_BITS) != 0 || LightsInBounceTest() == 3u);
@@ -8657,11 +8661,11 @@ class RtScene12 {
     // Path-Traced Torch Light (v32 RT_DI_LIGHTS, PT DI step 4c): rt_lights' LIGHTS_DI build (its DI pixels: a tile listing
     // more than four lights they reach), then RTXDI's DI passes there, their light into the addon's two DI textures. With
     // Torch and Fire Shadows from the Light Bounce (mode 3) it wins in its pixels (design 2.9: rt_lights_di_bounce, their
-    // words the ratio 0; that bounce leaves the lights out). Not with Torch and Fire Light in the Light Bounce (mode 1:
-    // the bounce carries those lights, and would count them again). A switch of it drops the lights' kept bits once
-    // (their mode).
+    // words the ratio 0; that bounce leaves the lights out). With Torch and Fire Light in the Light Bounce (mode 1) too
+    // (design 2.9a): this trace is then mode 0's (each listed light DI's or exact bits) and the frame's bounce leaves the
+    // lights out (lights_dark below). A switch of it drops the lights' kept bits once (their mode).
 #if defined(RENODX_RTXDI_DI)
-    const bool di_asked = version >= 32 && (shared.rt_di_flags & dlaa_bridge::RT_DI_LIGHTS) != 0 && lights_kept && lights_mode != 1u
+    const bool di_asked = version >= 32 && (shared.rt_di_flags & dlaa_bridge::RT_DI_LIGHTS) != 0 && lights_kept
                           && lights_di_pipelines_[0] && light_surface_ && di_light_[1];
     // Its own resources, made at the first request (released after HISTORY_FRAMES unused: ExpireHistory): the tiles'
     // members, the light surface's copy (its own desc), the reservoirs and the neighbour offsets (uploaded once). A piece
@@ -8730,7 +8734,10 @@ class RtScene12 {
 #else
     constexpr bool di = false;
 #endif
-    const uint32_t traced_mode = lights_mode | (di ? 4u : 0u);
+    // Ours (design 2.9a): Torch and Fire Light in the Light Bounce leaves its lights dark for this frame's bounce only
+    // without DI (under DI the settings' RT_LIGHTS_IN_BOUNCE bit is unread: rt_lights_di has no TORCHES_IN_BOUNCE code).
+    const bool lights_dark = lights_in_bounce && !light_ratio && !di;
+    const uint32_t traced_mode = (lights_dark ? 1u : (light_ratio ? 3u : 0u)) | (di ? 4u : 0u);
     [[maybe_unused]] bool di_history = false;
     {
       // RENODX_TW_NO_TRACE_HISTORY=1 (the quality scorer's raw AO and torches with every other history kept: frame numbers
@@ -8794,6 +8801,9 @@ class RtScene12 {
 #endif
       list->SetPipelineState(lights_state.Get());
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+      if (lights_dark) {
+        lights_dark_frame_ = frame;
+      }
     }
 #if defined(RENODX_RTXDI_DI)
     if (di) {
@@ -11129,7 +11139,10 @@ class RtScene12 {
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_surface_;  // the bounce texels' rays' origins and normals (SURFACE_ORIGIN, SURFACE_NORMAL)
   uint32_t reuse_frame_ = UINT32_MAX;  // the frame the reservoirs were last made in
-  uint32_t reuse_lights_mode_ = 0;     // its Torch and Fire Light in the Light Bounce mode (rt_camera.hlsli LIGHTS_MODE; 0: none)
+  uint32_t reuse_lights_mode_ = 0;     // its Torch and Fire Light in the Light Bounce mode as asked, carried or not (rt_camera.hlsli LIGHTS_MODE; 0: none)
+  // The last trace whose rt_lights left Torch and Fire Light in the Light Bounce's lights dark (mode 1 without Path-Traced
+  // Torch Light): that frame's bounce carries them (design 2.9a; not recorded, as torch_irradiance_frame_).
+  uint32_t lights_dark_frame_ = UINT32_MAX;
   uint32_t reuse_parity_ = 0;          // this frame's set
   std::array<uint32_t, 3> reuse_size_ = {};  // the bounce's size and scale they are at
   std::array<ComPtr<ID3D12Resource>, 2> own_sky_;  // Path-Traced Ambient's own sky at the bounce texels (rt_path.hlsli ScreenSky)
