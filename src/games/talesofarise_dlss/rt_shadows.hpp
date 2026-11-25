@@ -934,6 +934,12 @@ inline bool Fail(const std::string& reason) {
   return false;
 }
 
+// The D3D12 queue stopped (a wait, reset or signal failed): with the device's removed reason when it was removed.
+inline bool QueueStopped(HRESULT removed) {
+  return Fail(FAILED(removed) ? std::format("the D3D12 queue stopped (0x{:08X}).", static_cast<uint32_t>(removed))
+                              : std::string("the D3D12 queue stopped."));
+}
+
 // The D3D11 and D3D12 objects, made on first use (false and the status say why when the GPU or driver cannot).
 inline bool Initialize(ID3D11Device* game_device) {
   Gpu& gpu = state.gpu;
@@ -1716,10 +1722,10 @@ inline bool Trace(ID3D11DeviceContext* context) {
   const size_t ring = state.frame % internal::FRAMES_IN_FLIGHT;
   // The frame FRAMES_IN_FLIGHT back is done: its characters' records and pool ranges are free, its compacted sizes
   // readable. A removed device passes the waits (its fences read all ones) and the resets: its removed reason says it.
-  if (FAILED(gpu.device12->GetDeviceRemovedReason()) || !internal::WaitFor(gpu.allocator_values[slot])
-      || !internal::WaitFor(gpu.frame_fences[ring]) || FAILED(gpu.allocators[slot]->Reset())
-      || FAILED(gpu.list->Reset(gpu.allocators[slot].Get(), nullptr))) {
-    return internal::Fail("the D3D12 queue stopped.");
+  const HRESULT removed = gpu.device12->GetDeviceRemovedReason();
+  if (FAILED(removed) || !internal::WaitFor(gpu.allocator_values[slot]) || !internal::WaitFor(gpu.frame_fences[ring])
+      || FAILED(gpu.allocators[slot]->Reset()) || FAILED(gpu.list->Reset(gpu.allocators[slot].Get(), nullptr))) {
+    return internal::QueueStopped(removed);
   }
   auto* list = gpu.list.Get();
   const auto uav_barrier = internal::UavBarrier();
@@ -2302,7 +2308,7 @@ inline bool Trace(ID3D11DeviceContext* context) {
   gpu.queue->Wait(gpu.fence12.Get(), inputs_ready);
   gpu.queue->ExecuteCommandLists(1, lists);
   if (FAILED(gpu.queue->Signal(gpu.fence12.Get(), ++gpu.fence_value))) {
-    return internal::Fail("the D3D12 queue stopped.");
+    return internal::QueueStopped(gpu.device12->GetDeviceRemovedReason());
   }
   gpu.allocator_values[slot] = gpu.fence_value;
   gpu.frame_fences[ring] = gpu.fence_value;
@@ -2440,9 +2446,10 @@ inline LightingResult TraceLighting(ID3D11DeviceContext* context, const std::arr
   context->Flush();
 
   const uint32_t slot = gpu.submissions % internal::FRAMES_IN_FLIGHT;
-  if (FAILED(gpu.device12->GetDeviceRemovedReason()) || !internal::WaitFor(gpu.allocator_values[slot])
-      || FAILED(gpu.allocators[slot]->Reset()) || FAILED(gpu.list->Reset(gpu.allocators[slot].Get(), nullptr))) {
-    internal::Fail("the D3D12 queue stopped.");
+  const HRESULT removed = gpu.device12->GetDeviceRemovedReason();
+  if (FAILED(removed) || !internal::WaitFor(gpu.allocator_values[slot]) || FAILED(gpu.allocators[slot]->Reset())
+      || FAILED(gpu.list->Reset(gpu.allocators[slot].Get(), nullptr))) {
+    internal::QueueStopped(removed);
     return {};
   }
   auto* list = gpu.list.Get();
@@ -2526,7 +2533,7 @@ inline LightingResult TraceLighting(ID3D11DeviceContext* context, const std::arr
   gpu.queue->Wait(gpu.fence12.Get(), inputs_ready);
   gpu.queue->ExecuteCommandLists(1, lists);
   if (FAILED(gpu.queue->Signal(gpu.fence12.Get(), ++gpu.fence_value))) {
-    internal::Fail("the D3D12 queue stopped.");
+    internal::QueueStopped(gpu.device12->GetDeviceRemovedReason());
     return {};
   }
   gpu.allocator_values[slot] = gpu.fence_value;
@@ -2575,7 +2582,10 @@ inline void CaptureSceneColor(ID3D11DeviceContext* context, ID3D11Texture2D* col
   D3D11_TEXTURE2D_DESC desc = {};
   color->GetDesc(&desc);
   const std::unique_lock lock(state.mutex);
-  if (!gpu.device12 || !gpu.previous_positions.texture || desc.MipLevels != 1 || desc.ArraySize != 1 || desc.SampleDesc.Count != 1) return;
+  if (state.failed || !gpu.device12 || !gpu.previous_positions.texture || desc.MipLevels != 1 || desc.ArraySize != 1
+      || desc.SampleDesc.Count != 1) {
+    return;
+  }
   if (D3D11_TEXTURE2D_DESC current = {}; gpu.previous_color.texture) {
     gpu.previous_color.texture->GetDesc(&current);
     if (current.Width != desc.Width || current.Height != desc.Height || current.Format != desc.Format) {
@@ -2686,6 +2696,10 @@ inline bool ReflectingRecently() {
 inline void Retry() {
   const std::unique_lock lock(internal::state.mutex);
   if (internal::state.failed) {
+    // A removed device stays removed: released (its fences read all ones, no wait), the next trace makes a new one.
+    if (internal::state.gpu.device12 && FAILED(internal::state.gpu.device12->GetDeviceRemovedReason())) {
+      internal::ReleaseGpu();
+    }
     internal::state.failed = false;
     internal::state.status = "Off.";
   }
