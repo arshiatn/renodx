@@ -919,7 +919,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a v ... | ?
 - nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guid ... | ?
 - SOURCE FIDELITY AUDIT (ATN 11-26 ~00:1x: 'if we were not doing this paper's meth ... | ?
-- rpg_ ReSTIR PG DESIGN (ATN 11-25 ~23:4x 'can we design it now or wait?'; coord: ... | ?
+- rpgr_ PG REVIEW (Opus xHigh, read-only, STARTED 00:2x, est 30 / deadline 60): re ... | ?
+- ATN Q (rpg_ Q1): Guided Light Bounce row in today's hybrid ReSTIR GI too, or onl ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
@@ -17019,13 +17020,40 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> deviation chosen (reason / ATN's word) or BUG. Then one Opus xHigh critic (missing sources, unproven V's) ->
         every BUG = its own box + owner; chosen deviations into their design files. Skill rule added: game-port-method
         'Every cited source gets a fidelity table'. Owner: coord, fa1_..fa4_, critic
-        - [ ] rpg_ ReSTIR PG DESIGN (ATN 11-25 ~23:4x 'can we design it now or wait?'; coord: design NOW, build after
+        - [x] rpg_ ReSTIR PG DESIGN (ATN 11-25 ~23:4x 'can we design it now or wait?'; coord: design NOW, build after
         unified U3, because PG's needs must go into U3's reservoir layout before U3 is built; Opus xHigh, STARTED
         23:4x, est 60 / deadline 120): downloads zeng2025 into tools\refcode\papers\restir_pg_1125\ (untrusted, own
         implementation unless a licence allows code) -> plan_1117\designs\restir_pg.md: streams guided, guide data +
         VRAM, MIS with Lambert / vMF, RR temporal behaviour (no coverage flicker, no feedback boiling), U3 REQUIREMENTS
         addendum (coord merges into unified_pt.md), cost + gates + row, build steps after U3, risks, <= 2 ATN Qs.
         Then an Opus xHigh review. Owner: rpg_, coord
+        rpg_ DONE 00:0x (16 min vs 60; plan_1117\designs\restir_pg.md). Paper zeng2025 (SIGGRAPH Asia 2025, NVIDIA's
+        authors' copy, 198 MB, 'personal use, not for redistribution' -> local only) in tools\refcode\papers\
+        restir_pg_1125\; no code; the supplemental (E- / M-step formulas) only on ACM (403) -> own fit from the paper +
+        Ruppert 2020 + Banerjee kappa. Guides PG1 = the GI stream's first direction at the bounce texel (main), PG2 later
+        vertices (small), PG3 SHaRC update paths (optional); not specular / fog / sun / direct torch. Gain claims: ~0 on
+        sunlit open ground (cost 0.2-0.45 ms), -10..-25 % shaded streets / forests, -20..-35 % night torches (Torch
+        Light in PT GI on), -25..-40 % torch-lit interiors; under RR mostly fewer boiling blotches. Guide = a 2nd SHaRC
+        hash grid, 4 vMF lobes / cell (108 B), 2^19 cells = 56.6 MB any resolution; reuse pass splats, a fit pass refits.
+        One-sample MIS 0.5 / 0.5 cosine / guided; no bias claimed; may shrink today's W-clamp darkening (E4 brighter =
+        the clamp's bias); Own Sky Rays noise up to sqrt(2) unless arm S. Temporal: hysteresis, level fallback, kappa
+        cap + prior, FOREIGN bit vs lock-on. U3 REQUIREMENTS A1-A10 (section 5): A1 suffix_direction oct 2x8 +
+        SUFFIX_VALID + FOREIGN (+ opt 4-bit share); A2-A4 Merge copies / Validate clears / PathRadiance out-values; A5
+        candidate weight = target / source density; A6 reconnection-only GI shifts; A7 segment weights f16; A8-A9 reuse
+        order; A10 reserved bits / rt_di_ok 64 / UAV slots / DIM kinds; U3 +2-3 h. Row 'Guided Light Bounce
+        (Experimental)' PathTracedGuiding off. PG0-PG3 ~30 h (+3) + ~3 h reviews + 3-5 GPU-h; PG1 after U3 / U3d before
+        U4, PG2 after U5. ATN Qs: Q1 hybrid ReSTIR GI too or the mode only (rpg_: mode first); Q2 keep as an off row if
+        it loses on sunlit ground (= standing rule 'unproven work ships as an Experimental row, off').
+        COORD FINDING: A1's '0 MB in G4's 20 B form' is WRONG: G4 on origin/pdi5_step5 is 24 B and FULL (uint4 hit + f16
+        sqrt W | M16, uint2 RGB9E5 + two 16-bit normals) -> A1 needs its own form; pdi5_'s G4 unchanged now (PG builds
+        after U3).
+        - [ ] rpgr_ PG REVIEW (Opus xHigh, read-only, STARTED 00:2x, est 30 / deadline 60): restir_pg.md '## Review':
+        A1 fix, a FIDELITY TABLE (paper claim -> ours: same / chosen / unknown; own E / M-step without the supplemental
+        + its known-answer tests), MIS pdf normalisation, the claims (clamp, sqrt(2), gains, cost, 2nd SHaRC grid), RR
+        temporal rules, A1-A10 vs unified v2.7, gates, steps, Q1 / Q2. Then the U3 addendum merged into unified_pt.md
+        by the coord. Owner: rpgr_, coord
+        - [ ] ATN Q (rpg_ Q1): Guided Light Bounce row in today's hybrid ReSTIR GI too, or only in the Unified PT mode
+        (rpg_: the mode first)? Ask after rpgr_'s review. Owner: ATN
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
