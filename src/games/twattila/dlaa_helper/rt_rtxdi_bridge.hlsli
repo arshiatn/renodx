@@ -247,6 +247,44 @@ uint DiBiasCorrection() {
          : (mode == 2u) ? RTXDI_BIAS_CORRECTION_PAIRWISE
                         : RTXDI_BIAS_CORRECTION_OFF;
 }
+
+// The temporal reuse's settings (the split temporal pass's and the fused pass's): 20 frames of history, nine tries
+// around the reprojected pixel and a fallback, the permutation.
+RTXDI_DITemporalResamplingParameters DiTemporalParameters() {
+  RTXDI_DITemporalResamplingParameters parameters = (RTXDI_DITemporalResamplingParameters)0;
+  parameters.maxHistoryLength = 20u;
+  parameters.biasCorrectionMode = DiBiasCorrection();
+  parameters.depthThreshold = 0.1f;
+  parameters.normalThreshold = 0.5f;
+  parameters.enablePermutationSampling = 1u;
+  parameters.uniformRandomNumber = di_uniform_random;
+  parameters.enableFallbackSampling = 1u;
+  return parameters;
+}
+// The spatial reuse's (the split spatial pass's and the fused pass's): two neighbours within 32 pixels, eight on a
+// history under four, the same light model and gloss, stratified offsets; none with DI_NO_SPATIAL.
+RTXDI_DISpatialResamplingParameters DiSpatialParameters() {
+  RTXDI_DISpatialResamplingParameters parameters = (RTXDI_DISpatialResamplingParameters)0;
+  const bool spatial = (di_flags & DI_NO_SPATIAL) == 0u;
+  parameters.numSamples = spatial ? 2u : 0u;
+  parameters.numDisocclusionBoostSamples = spatial ? 8u : 0u;
+  parameters.samplingRadius = 32.f;
+  parameters.biasCorrectionMode = DiBiasCorrection();
+  parameters.depthThreshold = 0.1f;
+  parameters.normalThreshold = 0.5f;
+  parameters.targetHistoryLength = 4u;
+  parameters.enableMaterialSimilarityTest = 1u;
+  parameters.neighborOffsetSamplingMode = RTXDI_DI_NEIGHBOR_OFFSET_SAMPLING_MODE_STRATIFIED_LOW_DISCREPANCY;
+  return parameters;
+}
+// The pixel's motion to where the last trace's camera saw its surface (pixel centres), and its depth's change (0: behind
+// that camera).
+float3 DiMotion(uint2 pixel, RAB_Surface surface) {
+  const float4 clip = ClipOf(surface.position, previous_view_projection);
+  if (!(clip.w > 0.f)) return 0.f;
+  const float2 seen = (clip.xy / clip.w * float2(0.5f, -0.5f) + 0.5f) * float2(width, height) - 0.5f;
+  return float3(seen - float2(pixel), clip.w - ClipOf(surface.position, view_projection).w);
+}
 #endif
 
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_RTXDI_BRIDGE_HLSLI_
