@@ -15834,6 +15834,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         on the plugin DLL; A14 ini lifetime; analyze_d0.py S5 / S6 applied (self-test 11 / 11; 15 pairs unchanged).
         5 ATN questions (vfx in S-A, drop ep8tt8, CPU Set Setter rule for run_rs_b64p, camera key, options).
         -> p6r_ RE-CHECK STARTED 16:0x; p2d_ renamed pk8 -> ep8 in pk2p_main_core_64.md (DONE 16:1x, 11 lines).
+        p6r_ RE-CHECK 16:3x: GO (hand-back p6r_recheck_handback.md; self-test 11 / 11, 15 pairs same over 3749 ticks,
+        NOPROBE no). R1 S-A fallback = ep1c,ep1cvfx (coord decision: a real L2B-only start), R2 key -> literal table
+        incl. GameCode, R3 A11 lists the -ReShade blocks + w3 checks the 16 applied lines, R4 per-start keep list ->
+        p6d_ LAST TOUCH (text only). Camera key confirmed (same physical key): that ATN question is dropped. PK6-64
+        DESIGN = GO.
         - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
         p8d_design_handback.md): main win SERIAL: Stage A exact group index replaces the quadratic pair search at
         0x79a690 (~89 % of seg 0), identical results by construction, fingerprint self-off, fallback; E -21..-24 ms /
