@@ -23,6 +23,7 @@
 #include "../../utils/directx.hpp"
 #include "../../utils/log.hpp"
 #include "./frame_history.hpp"
+#include "./pass_timing.hpp"
 
 // The screen-space reflections' depth pyramid (ssr_hiz.hlsli's hierarchical march): on the game's reflection draw
 // (ssr00 / ssr01, its replaced shaders' on_draw), once a frame, the depth it reads (t3, the scene's depth) copied into
@@ -185,6 +186,12 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
 // This frame's pyramid from `depth_view`, the compute stage's bindings put back after.
 inline void Build(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth_view) {
   auto& objects = runtime.objects;
+  // Pass dump (test only): the depth and the pyramid before and after.
+  const pass_dump::Pass dump(native, "ssr.build");
+  if (pass_dump::Recording()) {
+    pass_dump::Resource(native, "ssr.depth", depth_view);
+    pass_dump::Resource(native, "ssr.pyramid", objects.pyramid.Get());
+  }
   ComPtr<ID3D11ComputeShader> game_shader;
   native->CSGetShader(game_shader.GetAddressOf(), nullptr, nullptr);
   ComPtr<ID3D11ShaderResourceView> game_view;
@@ -206,6 +213,7 @@ inline void Build(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth_v
     }
     const UINT width = std::max(objects.width >> level, 1u);
     const UINT height = std::max(objects.height >> level, 1u);
+    const pass_timing::OwnPass mark(native, (level == 0) ? "ssr_hiz_copy" : "ssr_hiz_reduce", pass_timing::Stage::COMPUTE);
     native->Dispatch((width + 7) / 8, (height + 7) / 8, 1);
   }
   ID3D11UnorderedAccessView* no_uav = nullptr;
@@ -276,6 +284,29 @@ inline bool PrepareResolve(ID3D11Device* device, const D3D11_TEXTURE2D_DESC& des
 inline void Resolve(ID3D11DeviceContext* native, ID3D11Resource* target, ID3D11ShaderResourceView* depth_view,
                     ID3D11Buffer* camera) {
   auto& objects = runtime.objects;
+  // Pass dump (test only): the inputs, the outputs before (and after) and the CPU state the replay sets.
+  const pass_dump::Pass dump(native, "ssr.resolve");
+  if (pass_dump::Recording()) {
+    pass_dump::Value("ssr.frame", runtime.frame);
+    pass_dump::Value("ssr.resolved_frame", runtime.resolved_frame);
+    pass_dump::Value("ssr.history_index", runtime.history_index);
+    pass_dump::Value("ssr.history_valid", runtime.history_valid);
+    pass_dump::Value("ssr.reset", runtime.reset);
+    pass_dump::Value("ssr.denoise", runtime.denoise);
+    pass_dump::Value("frame_history.render_width", frame_history::render_width.load());
+    pass_dump::Value("frame_history.render_height", frame_history::render_height.load());
+    pass_dump::Camera(native, camera);
+    pass_dump::Resource(native, "ssr.target", target);
+    pass_dump::Resource(native, "ssr.depth", depth_view);
+    pass_dump::Resource(native, "ssr.camera", camera);
+    pass_dump::Resource(native, "ssr.hit", objects.hit_srv.Get());
+    pass_dump::Resource(native, "ssr.reflection_copy", objects.reflection_copy.Get());
+    pass_dump::Resource(native, "ssr.result", objects.result.Get());
+    pass_dump::Resource(native, "ssr.history_0", objects.histories[0].Get());
+    pass_dump::Resource(native, "ssr.history_1", objects.histories[1].Get());
+    pass_dump::Resource(native, "ssr.last_camera", objects.last_camera.Get());
+    pass_dump::Resource(native, "ssr.previous_camera", objects.previous_camera.Get());
+  }
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
   if (runtime.resolved_frame != runtime.frame) {
@@ -285,7 +316,10 @@ inline void Resolve(ID3D11DeviceContext* native, ID3D11Resource* target, ID3D11S
     runtime.history_index ^= 1;
     runtime.resolved_frame = runtime.frame;
   }
-  native->CopyResource(objects.reflection_copy.Get(), target);
+  {
+    const pass_timing::OwnPass mark(native, "ssr_resolve_copy", pass_timing::Stage::NONE);
+    native->CopyResource(objects.reflection_copy.Get(), target);
+  }
   // The view's part of the target (DLSS below 100%: its top-left, the render size's share of the display, the scene
   // depth's size).
   std::array<UINT, 2> view = {objects.target_width, objects.target_height};
@@ -306,6 +340,7 @@ inline void Resolve(ID3D11DeviceContext* native, ID3D11Resource* target, ID3D11S
       .history_weight = HISTORY_WEIGHT,
       .texture_inverse_size = {1.f / static_cast<float>(objects.target_width), 1.f / static_cast<float>(objects.target_height)},
   };
+  if (!pass_dump::Bytes("ssr.resolve_settings", &settings, sizeof(settings))) return;
   native->UpdateSubresource(objects.resolve_settings.Get(), 0, nullptr, &settings, 0, 0);
 
   ComPtr<ID3D11ComputeShader> game_shader;
@@ -323,13 +358,16 @@ inline void Resolve(ID3D11DeviceContext* native, ID3D11Resource* target, ID3D11S
                                                           objects.history_srvs[runtime.history_index ^ 1].Get()};
   const std::array<ID3D11Buffer*, 3> constants = {camera, objects.previous_camera.Get(), objects.resolve_settings.Get()};
   constexpr std::array<ID3D11ShaderResourceView*, 4> NO_VIEWS = {};
-  native->CSSetShader(objects.resolve.Get(), nullptr, 0);
-  native->CSSetShaderResources(0, 4, NO_VIEWS.data());
-  native->CSSetUnorderedAccessViews(0, 1, objects.result_uav.GetAddressOf(), nullptr);
-  native->CSSetShaderResources(0, 4, views.data());
-  native->CSSetConstantBuffers(0, 3, constants.data());
-  native->CSSetSamplers(0, 1, objects.linear_clamp.GetAddressOf());
-  native->Dispatch((objects.target_width + 7) / 8, (objects.target_height + 7) / 8, 1);
+  {
+    const pass_timing::OwnPass mark(native, "ssr_resolve", pass_timing::Stage::COMPUTE);
+    native->CSSetShader(objects.resolve.Get(), nullptr, 0);
+    native->CSSetShaderResources(0, 4, NO_VIEWS.data());
+    native->CSSetUnorderedAccessViews(0, 1, objects.result_uav.GetAddressOf(), nullptr);
+    native->CSSetShaderResources(0, 4, views.data());
+    native->CSSetConstantBuffers(0, 3, constants.data());
+    native->CSSetSamplers(0, 1, objects.linear_clamp.GetAddressOf());
+    native->Dispatch((objects.target_width + 7) / 8, (objects.target_height + 7) / 8, 1);
+  }
   ID3D11UnorderedAccessView* no_uav = nullptr;
   native->CSSetUnorderedAccessViews(0, 1, &no_uav, nullptr);
 
@@ -347,8 +385,11 @@ inline void Resolve(ID3D11DeviceContext* native, ID3D11Resource* target, ID3D11S
   }
   if (game_sampler != nullptr) game_sampler->Release();
 
-  native->CopyResource(target, objects.result.Get());
-  native->CopyResource(objects.histories[runtime.history_index].Get(), objects.result.Get());
+  {
+    const pass_timing::OwnPass mark(native, "ssr_resolve_copy_back", pass_timing::Stage::NONE);
+    native->CopyResource(target, objects.result.Get());
+    native->CopyResource(objects.histories[runtime.history_index].Get(), objects.result.Get());
+  }
   frame_history::KeepCamera(device.Get(), native, camera, std::addressof(objects.last_camera));
   runtime.history_valid = true;
 }
@@ -414,6 +455,7 @@ inline bool OnReflectionDraw(reshade::api::command_list* cmd_list, UINT depth_sl
     if (desc.Width != 0 && desc.SampleDesc.Count == 1 && internal::PrepareResolve(device.Get(), desc)) {
       if (runtime.cleared_frame != runtime.frame) {
         constexpr FLOAT NOT_DRAWN[4] = {0.f, -2.f, 0.f, 0.f};
+        const pass_timing::OwnPass mark(native, "ssr_hit_clear", pass_timing::Stage::NONE);
         native->ClearRenderTargetView(runtime.objects.hit_rtv.Get(), NOT_DRAWN);
         runtime.cleared_frame = runtime.frame;
       }

@@ -267,8 +267,9 @@ inline void Write(ID3D11DeviceContext* context, const D3D11_QUERY_DATA_TIMESTAMP
 // in a timed frame two commands, the pass (kind `name`, the host's shaders and target: the Passes and Shaders sections
 // stay as without it) and the rest of the host command (REST, count 0), so the game's draw after the pass isn't booked
 // on it; in a counting frame 2. `name` must outlive the run (a literal): the pass's shader by its embed name (the pass
-// dump's uses.tsv stem), `stage` the one whose bindings that row lists. Marks don't nest (an inner one does nothing).
-enum class Stage : uint8_t { COMPUTE, PIXEL };
+// dump's uses.tsv stem), `stage` the one whose bindings its rows list (NONE: clears, copies, or a pass that puts its
+// bindings back itself: no rows). Marks don't nest (an inner one does nothing).
+enum class Stage : uint8_t { COMPUTE, PIXEL, NONE };
 
 class OwnPass {
  public:
@@ -304,7 +305,7 @@ class OwnPass {
     own_index_ = state.commands.size() - 1;
   }
   ~OwnPass() {
-    pass_dump::OwnPassDone(native_, name_, stage_ == Stage::COMPUTE);
+    if (stage_ != Stage::NONE) pass_dump::OwnPassDone(native_, name_, stage_ == Stage::COMPUTE);
     if (!timed_) return;
     auto& state = internal::state;
     const std::lock_guard lock(state.mutex);

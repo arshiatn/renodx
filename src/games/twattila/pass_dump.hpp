@@ -30,6 +30,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -1153,7 +1154,9 @@ inline void Resource(ID3D11DeviceContext* native, const char* name, ID3D11View* 
 }
 
 // A CPU value of the open event (else of the frame) that feeds a constant buffer or a branch.
-inline void Value(const char* name, double value) {
+template <typename T>
+  requires std::is_arithmetic_v<T>
+inline void Value(const char* name, T value) {
   using namespace internal;
   if (!recording.load(std::memory_order_relaxed)) return;
   const std::unique_lock lock(state.mutex);
@@ -1162,7 +1165,17 @@ inline void Value(const char* name, double value) {
   values += std::format("{}{}:{}", (values.empty() ? "" : ","), Quoted(name), value);
 }
 
-// Constant bytes a site builds (`name`, before it uploads them): kept with the open event. False: the replay's expected
+// CPU bytes of the open event (`name`: a module's runtime settings, a struct the replay sets as they were), kept as they
+// are.
+inline void Keep(const char* name, const void* data, size_t size) {
+  using namespace internal;
+  if (!recording.load(std::memory_order_relaxed)) return;
+  const std::unique_lock lock(state.mutex);
+  if (state.frame == nullptr || !state.open) return;
+  state.event.bytes += std::format("{}{}:{}", (state.event.bytes.empty() ? "" : ","), Quoted(name), Index(KeepBytes("bytes", data, size)));
+}
+
+// Constant bytes a site builds (`name`, before it uploads them): kept with the open event (Keep). False: the replay's expected
 // bytes differ (test/tw_d3d11_replay's check before a dispatch), the pass must not run. True in the game.
 [[nodiscard]] inline bool Bytes(const char* name, const void* data, size_t size) {
   using namespace internal;
@@ -1178,10 +1191,7 @@ inline void Value(const char* name, double value) {
       }
     }
   }
-  if (!recording.load(std::memory_order_relaxed)) return true;
-  const std::unique_lock lock(state.mutex);
-  if (state.frame == nullptr || !state.open) return true;
-  state.event.bytes += std::format("{}{}:{}", (state.event.bytes.empty() ? "" : ","), Quoted(name), Index(KeepBytes("bytes", data, size)));
+  Keep(name, data, size);
   return true;
 }
 

@@ -27,6 +27,7 @@
 #include "../../utils/log.hpp"
 #include "./frame_history.hpp"
 #include "./light_bounce.hpp"
+#include "./pass_timing.hpp"
 
 // AO filter: the ambient occlusion's Temporal Smoothing and Denoiser for the games whose AO ao_pass.hpp does not draw
 // (Troy, Pharaoh, Warhammer I-III: their own passes and line sweeps). Before the frame's first sun light draw of the main
@@ -161,6 +162,28 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
 inline void Filter(ID3D11DeviceContext* native, ID3D11ShaderResourceView* game_ao, ID3D11ShaderResourceView* depth,
                    bool msaa, ID3D11Buffer* camera, ID3D11Buffer* sun_mapping) {
   auto& objects = runtime.objects;
+  // Pass dump (test only): the inputs, the outputs before (and after) and the CPU state the replay sets.
+  const pass_dump::Pass dump(native, "ao_filter.filter");
+  if (pass_dump::Recording()) {
+    pass_dump::Keep("ao_filter.settings_cpu", &runtime.settings, sizeof(runtime.settings));
+    pass_dump::Value("ao_filter.frame", runtime.frame);
+    pass_dump::Value("ao_filter.filtered_frame", runtime.filtered_frame);
+    pass_dump::Value("ao_filter.history_index", objects.history_index);
+    pass_dump::Value("ao_filter.filtered_width", objects.filtered_size[0]);
+    pass_dump::Value("ao_filter.filtered_height", objects.filtered_size[1]);
+    pass_dump::Value("ao_filter.msaa", msaa);
+    pass_dump::Value("frame_history.render_width", frame_history::render_width.load());
+    pass_dump::Value("frame_history.render_height", frame_history::render_height.load());
+    pass_dump::Camera(native, camera);
+    pass_dump::Resource(native, "ao_filter.game_ao", game_ao);
+    pass_dump::Resource(native, "ao_filter.depth", depth);
+    pass_dump::Resource(native, "ao_filter.camera", camera);
+    pass_dump::Resource(native, "ao_filter.previous_camera", objects.previous_camera.Get());
+    pass_dump::Resource(native, "ao_filter.sun_mapping", sun_mapping);
+    pass_dump::Resource(native, "ao_filter.history_0", objects.history[0].texture.Get());
+    pass_dump::Resource(native, "ao_filter.history_1", objects.history[1].texture.Get());
+    pass_dump::Resource(native, "ao_filter.output", objects.output.texture.Get());
+  }
   // Last frame's history only if it was made last frame at this 3D size (DLSS: the textures' top-left corner).
   const auto size = frame_history::RenderSize(objects.width, objects.height);
   const bool history = runtime.settings.temporal && runtime.filtered_frame + 1 == runtime.frame && size == objects.filtered_size;
@@ -176,6 +199,7 @@ inline void Filter(ID3D11DeviceContext* native, ID3D11ShaderResourceView* game_a
       .texture_inverse_width = 1.f / static_cast<float>(objects.width),
       .texture_inverse_height = 1.f / static_cast<float>(objects.height),
   };
+  if (!pass_dump::Bytes("ao_filter.shader_settings", &settings, sizeof(settings))) return;
   if (std::memcmp(&settings, &objects.uploaded, sizeof(ShaderSettings)) != 0) {
     native->UpdateSubresource(objects.settings.Get(), 0, nullptr, &settings, 0, 0);
     objects.uploaded = settings;
@@ -202,7 +226,9 @@ inline void Filter(ID3D11DeviceContext* native, ID3D11ShaderResourceView* game_a
   const std::array<ID3D11Buffer*, 3> constants = {camera, objects.previous_camera.Get(), objects.settings.Get()};
   native->CSSetConstantBuffers(0, 3, constants.data());
   native->CSSetSamplers(0, 1, objects.sampler.GetAddressOf());
-  const auto pass = [&](ID3D11ComputeShader* shader, ID3D11ShaderResourceView* history_view, ID3D11UnorderedAccessView* output) {
+  // Each pass a Time Each Pass line (`name`: its shader's).
+  const auto pass = [&](const char* name, ID3D11ComputeShader* shader, ID3D11ShaderResourceView* history_view, ID3D11UnorderedAccessView* output) {
+    const pass_timing::OwnPass mark(native, name, pass_timing::Stage::COMPUTE);
     constexpr UINT KEEP_COUNT = UINT_MAX;
     ID3D11UnorderedAccessView* no_uav = nullptr;
     native->CSSetUnorderedAccessViews(0, 1, &no_uav, &KEEP_COUNT);
@@ -212,9 +238,9 @@ inline void Filter(ID3D11DeviceContext* native, ID3D11ShaderResourceView* game_a
     native->CSSetShader(shader, nullptr, 0);
     native->Dispatch((size[0] + 7) / 8, (size[1] + 7) / 8, 1);
   };
-  pass((msaa ? objects.resolve_msaa : objects.resolve).Get(), objects.history[previous_index].srv.Get(),
-       objects.history[objects.history_index].uav.Get());
-  pass(objects.denoise.Get(), objects.history[objects.history_index].srv.Get(), objects.output.uav.Get());
+  pass(msaa ? "ao_filter_resolve_ms" : "ao_filter_resolve", (msaa ? objects.resolve_msaa : objects.resolve).Get(),
+       objects.history[previous_index].srv.Get(), objects.history[objects.history_index].uav.Get());
+  pass("ao_filter_denoise", objects.denoise.Get(), objects.history[objects.history_index].srv.Get(), objects.output.uav.Get());
   frame_history::KeepCamera(objects.device.Get(), native, camera, std::addressof(objects.previous_camera));
 
   constexpr UINT KEEP_COUNT = UINT_MAX;
