@@ -10,7 +10,8 @@
 // everywhere (visibility 1).
 //   W1 fxc   point_light_ps.hlsl at the variant's own target (fxc /O3), every pixel the variant's model (stencil & 3):
 //            4 seeds x HDR on / off; bit-exact on every rgba value (both NaN counts as equal), else at most 2 ulp
-//            with the instruction named (no row needs it today). Shadow variants: the hard path (g_shadow_soft_edges
+//            with the instruction named in ULP_INSTRUCTIONS (empty: no row needs it today; a row over 0 ulp without
+//            its entry fails). Shadow variants: the hard path (g_shadow_soft_edges
 //            0); the soft path (PCF) is printed as information (its lit sum need not be exactly 1).
 //   W1 dxc   point_light_cs.hlsl (dxc cs_6_5 -O3, D3D12 WARP, the helper's compiler) on records of what the pixel
 //            probe read, against the same game outputs (rgb): the same bar. The include spells out the DXBC's mad()s
@@ -20,7 +21,9 @@
 //   static   fxc ps_4_0 / ps_4_1 / ps_5_0 / cs_5_0 and dxc cs_6_5 / cs_6_9 compile the include without warnings.
 //   table    each variant's DXBC binds s_ssao exactly when the table says slm (the table's model is the shader's).
 // Controls (each must change the light on lit pixels; CONTROL lines): the falloff kind swapped (every variant), the
-// albedo squared on skinlm (Revision 1 S6, the 20 skinlm variants), the model swapped (every variant).
+// albedo squared on skinlm (Revision 1 S6, the 20 skinlm variants), the model swapped (every variant), lowdef
+// swapped (every variant, on the SDR run, where the light goes above 1). A control draw that fails is a setup failure,
+// never a control that fails as it must.
 // tests.exe <repository> <the dump's cso folder> <folder of dxcompiler.dll and dxil.dll>; exit 0 when every gate passes
 // and every control fails.
 #include <windows.h>
@@ -60,6 +63,8 @@ constexpr uint32_t GROUP = 64;
 constexpr uint32_t MODEL_SLM = 1;
 constexpr uint32_t MODEL_SKIN = 3;
 constexpr uint32_t BAR_ULP = 2;
+// hash -> the instruction behind its <= BAR_ULP difference (W1's "with the instruction named").
+const std::map<uint32_t, const char*> ULP_INSTRUCTIONS = {};
 
 // The 40 (shaders/pointlightNN_<hash>.<target>.hlsl; names.tsv's fxc names): "shadow" = the point-shadow family's
 // shadowed draw (the gather ones sample the game's point shadow map), lowdef = the draw's output saturated.
@@ -116,12 +121,16 @@ constexpr std::array<Variant, 40> VARIANTS = {{
     {.index = 39, .hash = 0x5C3798EA, .target = "ps_5_0", .linear_falloff = false, .skin = false, .low_def = true, .shadow = true},
 }};
 
+// "linear shadow slm lowdef": the table's variant column and the gates' names.
+std::string Label(const Variant& variant) {
+  return std::string(variant.linear_falloff ? "linear" : "smooth") + (variant.shadow ? " shadow " : " ")
+         + (variant.skin ? "skinlm " : "slm ") + (variant.low_def ? "lowdef" : "highdef");
+}
+
 std::string Name(const Variant& variant) {
-  char text[96];
-  std::snprintf(text, sizeof(text), "pointlight%02d 0x%08X %s %s%s %s %s", variant.index, variant.hash, variant.target,
-                variant.linear_falloff ? "linear" : "smooth", variant.shadow ? " shadow" : "",
-                variant.skin ? "skinlm" : "slm", variant.low_def ? "lowdef" : "highdef");
-  return text;
+  char text[32];
+  std::snprintf(text, sizeof(text), "pointlight%02d 0x%08X %s ", variant.index, variant.hash, variant.target);
+  return text + Label(variant);
 }
 
 // One draw's inputs: textures (rgba32f, W x H), the light, and every constant by its reflected name (32-bit words).
@@ -134,13 +143,14 @@ struct Inputs {
   std::map<std::string, std::vector<uint32_t>> constants;
 };
 
-std::vector<uint32_t> Words(std::initializer_list<float> values) {
-  std::vector<uint32_t> words;
-  for (const float value : values) words.push_back(std::bit_cast<uint32_t>(value));
-  return words;
-}
-
 Inputs MakeInputs(uint32_t seed, bool hdr, bool soft_shadows) {
+  const auto bits = [](std::initializer_list<float> values) {
+    std::vector<uint32_t> words;
+    for (const float value : values) {
+      words.push_back(std::bit_cast<uint32_t>(value));
+    }
+    return words;
+  };
   std::mt19937 rng(seed * 7919u + 17u);
   const auto unit = [&](float lo, float hi) { return std::uniform_real_distribution<float>(lo, hi)(rng); };
   // A texel value in [lo, hi], or (1 in 16) exactly lo or hi.
@@ -155,17 +165,24 @@ Inputs MakeInputs(uint32_t seed, bool hdr, bool soft_shadows) {
     auto& data = inputs.channels[channel];
     data.resize(PIXELS * 4);
     for (size_t i = 0; i < data.size(); ++i) {
-      data[i] = texel(0.f, 1.f);
-      if (channel == 3) data[i] = unit(0.05f, 0.95f);  // .x the depth
+      if (channel == 3) {
+        data[i] = unit(0.05f, 0.95f);  // .x the depth
+      } else {
+        data[i] = texel(0.f, 1.f);
+      }
     }
   }
   inputs.ssao.resize(PIXELS * 4);
-  for (float& value : inputs.ssao) value = texel(0.f, 1.f);
+  for (float& value : inputs.ssao) {
+    value = texel(0.f, 1.f);
+  }
   inputs.models.resize(PIXELS);
-  for (uint32_t& model : inputs.models) model = rng() % 4u;
+  for (uint32_t& model : inputs.models) {
+    model = rng() % 4u;
+  }
   // World = (ndc x 2.0, ndc y 1.5, depth x 2) + offsets, a little skewed, w near 1 (row j: dp4 of (ndc, depth, 1)).
   const std::array<float, 3> offset = {unit(-1.f, 1.f), unit(-1.f, 1.f), unit(-0.5f, 0.5f)};
-  const std::vector<uint32_t> matrix = Words({2.f, unit(-0.1f, 0.1f), unit(-0.1f, 0.1f), offset[0],
+  const std::vector<uint32_t> matrix = bits({2.f, unit(-0.1f, 0.1f), unit(-0.1f, 0.1f), offset[0],
                                               unit(-0.1f, 0.1f), 1.5f, unit(-0.1f, 0.1f), offset[1],
                                               unit(-0.1f, 0.1f), unit(-0.1f, 0.1f), 2.f, offset[2],
                                               unit(-0.02f, 0.02f), unit(-0.02f, 0.02f), unit(-0.02f, 0.02f), 1.f});
@@ -175,18 +192,18 @@ Inputs MakeInputs(uint32_t seed, bool hdr, bool soft_shadows) {
   inputs.light = {2.f * ndc_x + offset[0] + unit(-0.5f, 0.5f), 1.5f * ndc_y + offset[1] + unit(-0.5f, 0.5f),
                   1.f + offset[2] - unit(0.4f, 1.6f), unit(1.5f, 4.f)};
   inputs.colour = {unit(0.f, 3.f), unit(0.f, 3.f), unit(0.f, 3.f), 1.f};
-  inputs.constants["camera_position"] = Words({unit(-1.f, 1.f), unit(-1.f, 1.f), unit(-4.f, -2.f)});
+  inputs.constants["camera_position"] = bits({unit(-1.f, 1.f), unit(-1.f, 1.f), unit(-4.f, -2.f)});
   inputs.constants["inv_view_projection"] = matrix;
-  inputs.constants["g_screen_size"] = Words({float(W), float(H), 1.f / float(W), 1.f / float(H)});
-  inputs.constants["g_vpos_texel_offset"] = Words({0.f});
-  inputs.constants["g_viewport_offset_scale"] = Words({0.f, 0.f, 1.f, 1.f});
-  inputs.constants["g_hdr_on"] = Words({hdr ? 1.f : 0.f});
-  inputs.constants["g_shadow_buffer_size"] = Words({32.f, 32.f, 1.f / 32.f, 1.f / 32.f});
-  inputs.constants["g_shadow_soft_edges"] = Words({soft_shadows ? 1.f : 0.f});
-  inputs.constants["g_light_proj_zw"] = Words({1.001f, -0.1f});
-  inputs.constants["g_point_light_shadow_map_sample_bias"] = Words({0.001f});
+  inputs.constants["g_screen_size"] = bits({float(W), float(H), 1.f / float(W), 1.f / float(H)});
+  inputs.constants["g_vpos_texel_offset"] = bits({0.f});
+  inputs.constants["g_viewport_offset_scale"] = bits({0.f, 0.f, 1.f, 1.f});
+  inputs.constants["g_hdr_on"] = bits({hdr ? 1.f : 0.f});
+  inputs.constants["g_shadow_buffer_size"] = bits({32.f, 32.f, 1.f / 32.f, 1.f / 32.f});
+  inputs.constants["g_shadow_soft_edges"] = bits({soft_shadows ? 1.f : 0.f});
+  inputs.constants["g_light_proj_zw"] = bits({1.001f, -0.1f});
+  inputs.constants["g_point_light_shadow_map_sample_bias"] = bits({0.001f});
   // The probe's: the sun texture's texel 2 w (rt_sun.cs_5_0.hlsl: 0.004 with g_hdr_on, else 1).
-  inputs.constants["probe_diffuse_scale"] = Words({hdr ? 0.004f : 1.f});
+  inputs.constants["probe_diffuse_scale"] = bits({hdr ? 0.004f : 1.f});
   return inputs;
 }
 
@@ -230,8 +247,9 @@ std::vector<std::vector<float>> Draw(ID3D11PixelShader* ps, ID3DBlob* code, cons
     std::printf("FAIL setup: vertex shader %s\n", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
     return {};
   }
+  // Every Create* below that fails returns {} (the callers' "FAIL setup: a draw").
   ComPtr<ID3D11VertexShader> vs;
-  device->CreateVertexShader(vs_code->GetBufferPointer(), vs_code->GetBufferSize(), nullptr, &vs);
+  if (FAILED(device->CreateVertexShader(vs_code->GetBufferPointer(), vs_code->GetBufferSize(), nullptr, &vs))) return {};
   context->ClearState();
   std::vector<ComPtr<ID3D11Buffer>> buffers;
   std::vector<ComPtr<ID3D11ShaderResourceView>> views;
@@ -246,7 +264,7 @@ std::vector<std::vector<float>> Draw(ID3D11PixelShader* ps, ID3DBlob* code, cons
                                        .Format = format, .SampleDesc = {.Count = 1}, .Usage = D3D11_USAGE_DEFAULT,
                                        .BindFlags = D3D11_BIND_SHADER_RESOURCE};
     ComPtr<ID3D11Texture2D> made;
-    device->CreateTexture2D(&desc, initial.data(), &made);
+    if (FAILED(device->CreateTexture2D(&desc, initial.data(), &made))) return static_cast<ID3D11ShaderResourceView*>(nullptr);
     D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {.Format = format};
     if (array) {
       view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
@@ -255,7 +273,9 @@ std::vector<std::vector<float>> Draw(ID3D11PixelShader* ps, ID3DBlob* code, cons
       view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
       view_desc.Texture2D = {.MostDetailedMip = 0, .MipLevels = 1};
     }
-    device->CreateShaderResourceView(made.Get(), &view_desc, views.emplace_back().GetAddressOf());
+    if (FAILED(device->CreateShaderResourceView(made.Get(), &view_desc, views.emplace_back().GetAddressOf()))) {
+      return static_cast<ID3D11ShaderResourceView*>(nullptr);
+    }
     return views.back().Get();
   };
   // The point shadow map: 32 x 32 x 6, lit everywhere (the depth far past every pixel's).
@@ -281,7 +301,7 @@ std::vector<std::vector<float>> Draw(ID3D11PixelShader* ps, ID3DBlob* code, cons
       const D3D11_BUFFER_DESC buffer_desc = {.ByteWidth = desc.Size, .Usage = D3D11_USAGE_DEFAULT,
                                              .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
       const D3D11_SUBRESOURCE_DATA initial = {.pSysMem = data.data()};
-      device->CreateBuffer(&buffer_desc, &initial, buffers.emplace_back().GetAddressOf());
+      if (FAILED(device->CreateBuffer(&buffer_desc, &initial, buffers.emplace_back().GetAddressOf()))) return {};
       context->PSSetConstantBuffers(bind.BindPoint, 1, buffers.back().GetAddressOf());
     } else if (bind.Type == D3D_SIT_SAMPLER) {
       D3D11_SAMPLER_DESC desc = {.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT, .AddressU = D3D11_TEXTURE_ADDRESS_CLAMP,
@@ -291,7 +311,7 @@ std::vector<std::vector<float>> Draw(ID3D11PixelShader* ps, ID3DBlob* code, cons
         desc.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT;
         desc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
       }
-      device->CreateSamplerState(&desc, samplers.emplace_back().GetAddressOf());
+      if (FAILED(device->CreateSamplerState(&desc, samplers.emplace_back().GetAddressOf()))) return {};
       context->PSSetSamplers(bind.BindPoint, 1, samplers.back().GetAddressOf());
     } else if (bind.Type == D3D_SIT_TEXTURE) {
       ID3D11ShaderResourceView* view = nullptr;
@@ -323,8 +343,10 @@ std::vector<std::vector<float>> Draw(ID3D11PixelShader* ps, ID3DBlob* code, cons
   std::vector<ID3D11RenderTargetView*> bound(target_count);
   const float clear[4] = {-7.f, -7.f, -7.f, -7.f};
   for (UINT t = 0; t < target_count; ++t) {
-    device->CreateTexture2D(&target_desc, nullptr, &targets[t]);
-    device->CreateRenderTargetView(targets[t].Get(), nullptr, &target_views[t]);
+    if (FAILED(device->CreateTexture2D(&target_desc, nullptr, &targets[t]))
+        || FAILED(device->CreateRenderTargetView(targets[t].Get(), nullptr, &target_views[t]))) {
+      return {};
+    }
     context->ClearRenderTargetView(target_views[t].Get(), clear);
     bound[t] = target_views[t].Get();
   }
@@ -343,7 +365,7 @@ std::vector<std::vector<float>> Draw(ID3D11PixelShader* ps, ID3DBlob* code, cons
   read_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
   for (UINT t = 0; t < target_count; ++t) {
     ComPtr<ID3D11Texture2D> staging;
-    device->CreateTexture2D(&read_desc, nullptr, &staging);
+    if (FAILED(device->CreateTexture2D(&read_desc, nullptr, &staging))) return {};
     context->CopyResource(staging.Get(), targets[t].Get());
     D3D11_MAPPED_SUBRESOURCE mapped = {};
     if (FAILED(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return {};
@@ -356,23 +378,22 @@ std::vector<std::vector<float>> Draw(ID3D11PixelShader* ps, ID3DBlob* code, cons
   return results;
 }
 
-// Monotonic key of a float's bits (+0 and -0 the same), for ulp distances.
-int64_t OrderKey(float value) {
-  const uint32_t bits = std::bit_cast<uint32_t>(value);
-  return ((bits & 0x80000000u) != 0) ? -int64_t(bits & 0x7FFFFFFFu) : int64_t(bits);
-}
-
 struct Distance {
   size_t values = 0;
   size_t apart = 0;  // bits differ (both NaN: equal)
   uint64_t max_ulp = 0;
-  size_t lit = 0;  // pixels with a non-zero rgb in the game's output
+  size_t lit = 0;  // pixels whose rgb in the game's output is finite, >= 0 (not the clear value -7) and not 0
 
   void Add(float game, float ours) {
     ++values;
     if (std::bit_cast<uint32_t>(game) == std::bit_cast<uint32_t>(ours) || (std::isnan(game) && std::isnan(ours))) return;
     ++apart;
-    const uint64_t ulp = (std::isnan(game) || std::isnan(ours)) ? UINT64_MAX : uint64_t(std::llabs(OrderKey(game) - OrderKey(ours)));
+    // Monotonic key of a float's bits (+0 and -0 the same).
+    const auto order_key = [](float value) {
+      const uint32_t bits = std::bit_cast<uint32_t>(value);
+      return ((bits & 0x80000000u) != 0) ? -int64_t(bits & 0x7FFFFFFFu) : int64_t(bits);
+    };
+    const uint64_t ulp = (std::isnan(game) || std::isnan(ours)) ? UINT64_MAX : uint64_t(std::llabs(order_key(game) - order_key(ours)));
     max_ulp = std::max(max_ulp, ulp);
   }
   void Add(const Distance& other) {
@@ -400,15 +421,14 @@ Distance Compare(const std::vector<float>& game, const std::vector<float>& ours,
   for (size_t pixel = 0; pixel < PIXELS; ++pixel) {
     const float* g = &game[pixel * 4];
     const float* o = &ours[pixel * 4];
-    distance.lit += (g[0] != 0.f || g[1] != 0.f || g[2] != 0.f) ? 1 : 0;
-    for (int channel = 0; channel < (rgb_only ? 3 : 4); ++channel) distance.Add(g[channel], o[channel]);
+    const bool valid = std::isfinite(g[0]) && std::isfinite(g[1]) && std::isfinite(g[2]) && g[0] >= 0.f && g[1] >= 0.f
+                       && g[2] >= 0.f;
+    distance.lit += (valid && (g[0] != 0.f || g[1] != 0.f || g[2] != 0.f)) ? 1 : 0;
+    for (int channel = 0; channel < (rgb_only ? 3 : 4); ++channel) {
+      distance.Add(g[channel], o[channel]);
+    }
   }
   return distance;
-}
-
-std::vector<uint8_t> ReadFile(const std::filesystem::path& path) {
-  std::ifstream file(path, std::ios::binary);
-  return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
 
 std::string Format(const char* format, auto... values) {
@@ -458,6 +478,13 @@ int main(int argc, char** argv) {
     std::printf("FAIL setup: %s\n", what);
     return 1;
   };
+  // W1's bar: bit-exact, else <= BAR_ULP with the instruction named; and the gate line's text.
+  const auto bar = [](const Variant& variant, const Distance& total) {
+    const auto named = ULP_INSTRUCTIONS.find(variant.hash);
+    if (total.apart == 0) return std::pair{true, total.Text()};
+    if (named == ULP_INSTRUCTIONS.end()) return std::pair{false, total.Text() + ", no instruction named"};
+    return std::pair{total.max_ulp <= BAR_ULP, total.Text() + ", the instruction: " + named->second};
+  };
   if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr, &context))) {
     return setup_failed("no D3D11 WARP device");
   }
@@ -485,8 +512,8 @@ int main(int argc, char** argv) {
   // The game's 40.
   std::vector<std::pair<ComPtr<ID3DBlob>, ComPtr<ID3D11PixelShader>>> games(VARIANTS.size());
   for (const Variant& variant : VARIANTS) {
-    const std::filesystem::path path = cso_folder / Format("0x%08X.%s.cso", variant.hash, variant.target);
-    const std::vector<uint8_t> bytes = ReadFile(path);
+    std::ifstream file(cso_folder / Format("0x%08X.%s.cso", variant.hash, variant.target), std::ios::binary);
+    const std::vector<uint8_t> bytes = {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
     ComPtr<ID3DBlob> code;
     ComPtr<ID3D11PixelShader> ps;
     if (bytes.empty() || FAILED(D3DCreateBlob(bytes.size(), &code))) return setup_failed("a game shader's DXBC");
@@ -507,10 +534,14 @@ int main(int argc, char** argv) {
   };
   std::vector<Run> runs;
   for (uint32_t seed = 1; seed <= SEEDS; ++seed) {
-    for (const bool hdr : {true, false}) runs.push_back({.seed = seed, .hdr = hdr});
+    for (const bool hdr : {true, false}) {
+      runs.push_back({.seed = seed, .hdr = hdr});
+    }
   }
   std::vector<Inputs> run_inputs;
-  for (const Run& run : runs) run_inputs.push_back(MakeInputs(run.seed, run.hdr, false));
+  for (const Run& run : runs) {
+    run_inputs.push_back(MakeInputs(run.seed, run.hdr, false));
+  }
   // game_outputs[variant][run]: target 0.
   std::vector<std::vector<std::vector<float>>> game_outputs(VARIANTS.size());
   // The dxc records' position / SSAO, light and colour per run (the probe's targets 1-3).
@@ -537,12 +568,14 @@ int main(int argc, char** argv) {
       if (game.size() != 1 || ours.size() != 4) return setup_failed("a draw");
       total.Add(Compare(game[0], ours[0], false));
       game_outputs[variant.index].push_back(game[0]);
-      if (read_back[r].empty()) read_back[r] = {ours[1], ours[2], ours[3]};
+      if (read_back[r].empty()) {
+        read_back[r] = {ours[1], ours[2], ours[3]};
+      }
     }
     fxc_distances[variant.index] = total;
-    const bool within = total.apart == 0 || (total.max_ulp <= BAR_ULP);
+    const auto [within, text] = bar(variant, total);
     gate("W1 fxc " + Name(variant), within && total.lit > total.values / 16,
-         total.Text() + Format(", %.0f%% of pixels lit", 100.0 * double(total.lit) / double(total.values / 4)));
+         text + Format(", %.0f%% of pixels lit", 100.0 * double(total.lit) / double(total.values / 4)));
     if (variant.shadow) {
       // The soft path (PCF over the lit map), information only.
       Distance soft;
@@ -557,20 +590,40 @@ int main(int argc, char** argv) {
       soft_text[variant.index] = soft.Text();
       std::printf("INFO soft shadows (PCF, lit map) %s: %s\n", Name(variant).c_str(), soft.Text().c_str());
     }
-    // Controls on run 0's inputs (rgb).
-    const auto& game = game_outputs[variant.index][0];
-    const auto control_draw = [&](uint32_t control_model, bool linear_falloff, bool squared_albedo) {
+    // Controls (rgb) on run 0's inputs; lowdef swapped on run 1's (SDR) with the colour x 16, so that the light goes
+    // above 1 (the random lights seldom do). A draw that fails is a setup failure, not a control that fails.
+    Inputs bright = run_inputs[1];
+    for (int i = 0; i < 3; ++i) {
+      bright.colour[i] *= 16.f;
+    }
+    const auto bright_game = Draw(game_ps.Get(), game_code.Get(), bright);
+    if (bright_game.size() != 1) return setup_failed("a control draw");
+    bool control_draw_failed = false;
+    const auto control_draw = [&](const Inputs& inputs, const std::vector<float>& game, uint32_t control_model,
+                                  bool linear_falloff, bool low_def, bool squared_albedo) {
       const auto ours = Draw(probe_ps.Get(), probe_code.Get(),
-                             probe_constants(run_inputs[0], control_model, linear_falloff, variant.low_def, squared_albedo));
-      return Compare(game, ours.empty() ? std::vector<float>(PIXELS * 4, 0.f) : ours[0], true);
+                             probe_constants(inputs, control_model, linear_falloff, low_def, squared_albedo));
+      if (ours.size() != 4) {
+        control_draw_failed = true;
+        return Distance{};
+      }
+      return Compare(game, ours[0], true);
     };
-    const Distance swapped_kind = control_draw(model, !variant.linear_falloff, false);
+    const auto& game = game_outputs[variant.index][0];
+    const Distance swapped_kind = control_draw(run_inputs[0], game, model, !variant.linear_falloff, variant.low_def, false);
+    const Distance swapped_model = control_draw(run_inputs[0], game, variant.skin ? MODEL_SLM : MODEL_SKIN,
+                                                variant.linear_falloff, variant.low_def, false);
+    const Distance swapped_low_def =
+        control_draw(bright, bright_game[0], model, variant.linear_falloff, !variant.low_def, false);
+    const Distance squared =
+        variant.skin ? control_draw(run_inputs[0], game, model, variant.linear_falloff, variant.low_def, true) : Distance{};
+    if (control_draw_failed) return setup_failed("a control draw");
     control("kind swapped " + Name(variant), swapped_kind.apart > 0, swapped_kind.Text());
-    const Distance swapped_model = control_draw(variant.skin ? MODEL_SLM : MODEL_SKIN, variant.linear_falloff, false);
     control("model swapped " + Name(variant), swapped_model.apart > 0, swapped_model.Text());
-    control_text[variant.index] = Format("kind %zu, model %zu", swapped_kind.apart, swapped_model.apart);
+    control("lowdef swapped " + Name(variant), swapped_low_def.apart > 0, swapped_low_def.Text());
+    control_text[variant.index] =
+        Format("kind %zu, model %zu, lowdef %zu", swapped_kind.apart, swapped_model.apart, swapped_low_def.apart);
     if (variant.skin) {
-      const Distance squared = control_draw(model, variant.linear_falloff, true);
       control("albedo squared on skinlm " + Name(variant), squared.apart > 0, squared.Text());
       control_text[variant.index] += Format(", squared albedo %zu", squared.apart);
     }
@@ -663,7 +716,9 @@ int main(int argc, char** argv) {
           std::memcpy(record.light.data(), &read_back[r][1][p * 4], 16);
           std::memcpy(record.colour_scale.data(), &read_back[r][2][p * 4], 16);
           record.colour_scale[3] = std::bit_cast<float>(inputs.constants.at("probe_diffuse_scale")[0]);
-          for (int i = 0; i < 3; ++i) record.camera_position[i] = std::bit_cast<float>(inputs.constants.at("camera_position")[i]);
+          for (int i = 0; i < 3; ++i) {
+            record.camera_position[i] = std::bit_cast<float>(inputs.constants.at("camera_position")[i]);
+          }
           record.model = ((c & 1u) != 0) ? MODEL_SKIN : MODEL_SLM;
           record.linear_falloff = (c >> 1) & 1u;
           record.low_def = (c >> 2) & 1u;
@@ -754,16 +809,16 @@ int main(int argc, char** argv) {
         const std::vector<float> ours(lights.begin() + ptrdiff_t((r * 8 + c) * PIXELS * 4), lights.begin() + ptrdiff_t((r * 8 + c + 1) * PIXELS * 4));
         total.Add(Compare(game_outputs[variant.index][r], ours, true));
       }
-      dxc_text[variant.index] = total.Text();
-      gate("W1 dxc cs_6_5 (D3D12 WARP, rgb) " + Name(variant), total.apart == 0 || total.max_ulp <= BAR_ULP, total.Text());
+      const auto [within, text] = bar(variant, total);
+      dxc_text[variant.index] = text;
+      gate("W1 dxc cs_6_5 (D3D12 WARP, rgb) " + Name(variant), within, text);
     }
   }
 
   std::printf("\n| # | hash | target | variant | W1 fxc (WARP) | dxc cs_6_5 (WARP, rgb) | soft PCF | controls apart |\n|---|---|---|---|---|---|---|---|\n");
   for (const Variant& variant : VARIANTS) {
-    std::printf("| %02d | 0x%08X | %s | %s%s %s %s | %s | %s | %s | %s |\n", variant.index, variant.hash, variant.target,
-                variant.linear_falloff ? "linear" : "smooth", variant.shadow ? " shadow" : "", variant.skin ? "skinlm" : "slm",
-                variant.low_def ? "lowdef" : "highdef", fxc_distances[variant.index].Text().c_str(), dxc_text[variant.index].c_str(),
+    std::printf("| %02d | 0x%08X | %s | %s | %s | %s | %s | %s |\n", variant.index, variant.hash, variant.target,
+                Label(variant).c_str(), bar(variant, fxc_distances[variant.index]).second.c_str(), dxc_text[variant.index].c_str(),
                 soft_text[variant.index].empty() ? "-" : soft_text[variant.index].c_str(), control_text[variant.index].c_str());
   }
   const bool all_ok = gates_failed == 0 && controls_passed == 0;
