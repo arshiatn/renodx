@@ -15846,7 +15846,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         for w3 only, per-start ini keep list, A8 Bitdefender processes, WPR data option on ep8. Plan unchanged.
         ATN adds a CPU Set Setter rule (16 V-cache threads) for run_rs_b64p\attila64.exe (his tool; question 14).
         - [ ] ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questions_1125.md, 18 rows with coord
-        picks: C8, L2B, PK2P, PK6, PK8). Part 2 (PK1-64 + PK9, rows 19-32) sent; part 3 PK5-64 after p5d_. No rule lines /
+        picks: C8, L2B, PK2P, PK6, PK8). Part 2 (PK1-64 + PK9, rows 19-32) + part 3 (PK5-64, rows 33-36) sent. No rule lines /
         exceptions needed today (lines given when the code exists). Owner: coord.
         - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
         p8d_design_handback.md): main win SERIAL: Stage A exact group index replaces the quadratic pair search at
@@ -15937,6 +15937,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         all-or-nothing row, S3 near-page budget (PK5 last), S6 A1 sqrtf gate, S7 0xa4fdb0 site owned by C8 W4 (map
         section 6 item 15), S9 / S10 gain wording. -> p5d_ FIX ROUND STARTED 16:1x. ALL SIX REVIEWS BACK; fix rounds
         running: p1d_, p5d_, p8d_, p9d_; p6r_ re-check.
+        p5d_ FIX ROUND DONE (hand-back p5d_fix_round_handback.md): M1 row holds the half (only our H bytes differ); M2
+        hashes skip own bytes (half 60bdddb446795942, rows 8d9bee2c05a30924); M3 value key FasterGameCpuCode + install key
+        GameCode (SHADOW_MAP pattern); M4 tests T1-T11 to the part-11 standard; S2 one near block (0xaff / 0x6ff) with
+        rollback; S6 sqrtf gate + GOT checks; S7 64 B from W4's 0xa5049c. GO for implementation after C8 W4p (harness
+        -> H -> R). E -0.9..-1.3 ms / frame main. 4 ATN questions (rows 33-36 of the list). -> p5r_ RE-CHECK STARTED.
         - [ ] vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md R2.9), before vMF S2:
         Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
         Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
