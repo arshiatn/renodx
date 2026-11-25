@@ -843,6 +843,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
 - CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ?
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
+- src/games/backup.zip is TRACKED in atn-mods (rvs_): keep or remove? (deletion = ... | ATN
 - PARITY LEDGER LINES for the waiting rows (Directional Light Bounce; PT Reflectio ... | ?
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - rtp_ REVISION 1 (M1-M8 + SHOULDs) -> the exact rule-line list for ATN + the run ... | ?
@@ -15996,6 +15997,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         shaders-ui lessons; game-port-method 'Device removal and resource clones', review on top, standing trace / dump
         OK, non-TW ledgers. parity same except Shogun 2 1/12/132 -> 2/16/272 (its partial dump now read). -> rvs_
         REVIEW (Opus xHigh) STARTED -> handoff_plan\sku_review.md -> merge.
+        rvs_ DONE (evening): MERGE AFTER FIXES (handoff_plan\sku_review.md). Sound, follows the authoring rules,
+        nothing private; MUST: M1 testing.md:52 cost-job word (see LAB METHOD CORRECTION), M2 the 'Time a row'
+        example (right word: total unchanged; faster reuse = G1 twin, kept light ~+0.01 ms), M3 Balanced row stale,
+        M4 Rome Remastered / Divinity 2 finish binds t0-t6, M5 Divinity 2 / Tales / Expeditions erase two Bend rows on
+        purpose, M6 S4 host list (+ Divinity 2, Tales?; Troy / Pharaoh unproven). SHOULDs: false settles (Shogun 2
+        L90 / L92, R.U.S.E. L58-L60), DO NOW ledger lines vs 'ports wait', clone rule + 185ab5554, load limits 4 / -j 4
+        / 12 GB, lessons since 11-22, parity_check silent on a truncated dump. 44 exact ledger lines proposed (open
+        waiting rows -> 0 in 12 / 15 games). -> sku_ FIX ROUND (resumed; applies the 44 lines; 64-bit not public yet;
+        generic mod-shader lesson) -> merge.
+        - [ ] src/games/backup.zip is TRACKED in atn-mods (rvs_): keep or remove? (deletion = ATN's yes). Owner: ATN
+        - [x] LAB METHOD CORRECTION (rvs_ M1, evening): the 16:4x rule 'use the preset's flags 86020209 / 354455665'
+        was WRONG: config path_flags overwrites rt_path_flags of EVERY request kind (rt_serve.h:897); the preset word
+        = the bounce word without the square-root bit (recorded 86151281) and has no reflections / spec-occ bits ->
+        strips the reflections request (recorded 134158). RULE: path_flags null; change only the tested bit of only
+        the tested kind via rt_path_flags@<trace|bounce|reflections> (pdi5_ 0654684a2; lab schema accepts it;
+        scratch lab helpers may cherry-pick it) or pds2_'s forced builds. pds2_'s numbers stand (it kept the
+        recording's words). pdi3_ / pdi4c_ / pdi5_ / bal3_ / u6f_ told to redo jobs that used the preset word and
+        list replaced ids.
         - [ ] PARITY LEDGER LINES for the waiting rows (Directional Light Bounce; PT Reflection Occlusion; Sharp RT
         Reflections in WH1 / WH2 / Shogun 2 / Expeditions / Divinity 1 + 2; FSR Sharpening in Shogun 2 / R.U.S.E.) so
         parity_check reads them as waiting (rvs_ proposes the lines). Pre-existing: Shogun 2's page dump crashes
