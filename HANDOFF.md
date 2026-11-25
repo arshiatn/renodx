@@ -360,7 +360,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SER IN FORESTS (11-24: WH3 part DONE, SER on by default in WH3 492d08fc6; LEFT: ... | plan step 6
 - MIRRORS OF MADNESS START (run2_ 20:4x): game_startup_mode battle_benchmark / ben ... | next run batch
 - STEP 4 TRACES (nsr_ Low STARTED 22:2x): all 15 recordings BASE + SER on + SHaRC ... | nsr_, coordinator
-- RT / PT SETTINGS SWEEP (ATN 20:0x: "we are testing every RT and PT setting ... o ... | gpr_, coordinator
+- RT / PT SETTINGS SWEEP (ATN 20:0x: "we are testing every RT and PT setting ... o ... | gpr_, coordinator ADDENDUM 11-25 night (ATN: 'for nsight rou
+- NSR1 sweep_coverage.py (offline, python -I): every rt_flags / rt_path_flags / rt ... | ?
+- NSR2 Nsight MCP readiness. Coord smoke 11-25 19:4x: list families OK (capture, r ... | ?
+- NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, lin ... | ?
+- NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
+- F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ c ... | coord (audit), each file's owner
+- LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
 - GPU PLAN (11-24 status: plan_1117/resume_1124.md: fix1_, G1, SHaRC 1.8.3, SER R1 ... | coordinator
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
@@ -3408,6 +3414,46 @@ heading text are in HANDOFF_ARCHIVE.md)
         (NaN / Inf, black / bright pixels, outputs changing with the option off), rec_compare / references; options a play
         cannot toggle -> player support or new recordings (NRD, RR). gpr_ adds the list + job plan to gpu_plan.md; then a
         Low runner, an xHigh read, High fixers. Owner: gpr_, coordinator
+        ADDENDUM 11-25 night (ATN: 'for nsight round we are checking every single RT/PT stuff? Did you add the new
+        ones (unified PT, PT DI ...)? Do we have the new tools and Forge's strict rules built in?'; then 'making sure
+        nsight is ready to go'): gpu_plan.md's sweep table is from 11-17 and misses the new rows -> gpu_plan.md
+        '## Settings sweep addendum 11-25' (PT DI steps 1-5 + torch / DI twins, unified PT U1-U13 incl. fog ReSTIR U6
+        and PTLAS U12b, G1 + KEEP_LIGHT row, Own ReSTIR lobe twins + reflect_fog_reuse, S4 zero-normal / contact path,
+        Balanced Off / Basic / Raytraced, vMF (+ Callisto if built), the f16 rounding fix, RT on the 64-bit add-on).
+        RULE: the row list is re-derived FROM THE CODE at sweep start (NSR1); an unmapped row = no sweep. By-eye rule =
+        looks only; Nsight / cost / bug checks stay measured (ATN looks only where the tools can't settle an issue).
+        - [ ] NSR1 sweep_coverage.py (offline, python -I): every rt_flags / rt_path_flags / rt_scene_flags bit, Shared
+        field and player RT / PT row -> a sweep group or 'not offline: why' -> plan_1117\settings_sweep_rows.md; run
+        on atn-mods now and again at sweep start. Owner: nsr_
+        - [ ] NSR2 Nsight MCP readiness. Coord smoke 11-25 19:4x: list families OK (capture, replay 36 tools, gpu_trace
+        19, crash dumps 6); gpu_trace.open_trace on nsight\runs\pdi3_base_4465 OK; shader profiler hotspots_global
+        works on DXIL lines only (39 hot spots + stall reasons; top = shader 6 DXIL line 2082, 15.9 %); source_type
+        'source' = 0 records (helper shaders carry no debug info); sass_counters.available = false. TO DO: (a) a
+        PROFILE build of the helper shaders with embedded debug info (new folder; shipping build unchanged) so hot
+        spots map to HLSL lines; (b) a trace metric set with SASS counters (gpu_trace.get_metric_sets) as an
+        ns_trace_run.py option; (c) subagent access to ngfx-native in this session (11-24 subagents had none); (d) one
+        Graphics Debugger capture + replay of a helper play (one event's CBs) and Aftermath status (monitor on for
+        the whole sweep); (e) is gto_ S4 (in-process Nsight) moot now that gpu_trace can attach? New switches /
+        scripts -> exact rule lines for ATN; nothing runs without them. Owner: nsr_
+        - [ ] NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, linear lights and P2
+        (upscaler / RR / FG request) need NEW recordings from the 64-bit game -> the run window after PT DI (ATN's
+        rule lines). P1: add the new Shared fields (PT DI, fog ReSTIR, vMF) to the resident's 15. Owner: coord (run
+        window), gpr_ (P1 / P2)
+        - [ ] NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frames relMSE / SMAPE /
+        HDR-FLIP / flicker / lag; 6 known-answer scenes + pbrt-v4; dead_outputs.py). Forge 2 gate_hook LIVE IN SHADOW
+        (logs, does not block); ENFORCE = ATN's yes (open since round 22). Every sweep number has a gate id; every
+        fix cites its paper / spec. Owner: ATN (enforce), coord
+      - [ ] F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ cites D3D11.3 spec 3.2.2;
+        the reviewer checks the cite), so a value stored again every frame drifts down = G4's darkening; round to
+        nearest fixes it (E4 lum cand / ref, R = 4: day 49 0.98417 -> 0.98450, day 36913 0.99671 -> 0.99675, night40
+        0.99592 -> 0.99598). pdi5_ fixes StoreReservoir (own bug-fix commit, ONE named function). OPEN: every other
+        f32tof16 / R16F history write (GI / reflection / ambient / fog / SHaRC histories, typed R16F UAV stores):
+        read-only audit lists sites + owners after this wave merges, then each owner reuses the one function.
+        Owner: coord (audit), each file's owner
+      - [ ] LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is open (it closed pdi5_'s
+        pdi5_g7_cb01_dump; pdi5_'s old chain also called -Stop at ~19:03, 19:14, 19:15, 19:20, 19:25, 19:33,
+        19:35:31). Fix: -Stop takes the owner tag and refuses another owner's session (pds2_lab_br.ps1 has the same
+        pattern). Running agents told: no -Stop in chains; pdi5_ reruns its jobs. Owner: gtl_ (lab), next tooling slot
       - [x] REC_COMPARE SIZE: rec_compare.py counts differing words only; add the size of a change per chunk (mean /
         max relative difference of float outputs, mean luminance shift) so fixes like fix1_'s brightening are measured,
         not just counted. Owner: next recorder touch (tools)
