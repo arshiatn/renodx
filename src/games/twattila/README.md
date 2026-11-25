@@ -1,5 +1,23 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, The Dawnless Days support (2026-11-25; built only, not stamped, not installed, not run in game)
+
+- New: the add-on works with The Dawnless Days (TDD v1.1.0), whose shader pack rebuilds 37 of the game shaders the
+  add-on hooks. `TDD_TWINS` in `addon.cpp` lists 36 of them with TDD's hash; `WithTwins` adds each table row of a listed
+  shader again under TDD's hash: the RT scene (8 terrain, 8 unit, 3 far-tree shaders), object motion (8 unit shaders),
+  the render scale's shadow analysis, the capture-point flags, the campaign's shroud and Grass Height Distance's 13 grass
+  shaders. No TDD shader is copied, and TDD's own changes stay in effect.
+- New: TDD's old ocean (0xF80C6EEE) has its own motion shaders, `motion_ocean_tdd` and `motion_draw_ocean_tdd`: the
+  game's ocean code without its sink toward -4 m over land, which TDD leaves out (`OCEAN_KEEP_OVER_LAND`). The game's
+  two ocean motion shaders compile to the same bytes as before.
+- Credits: The Dawnless Days (TDD) team: thanks for permission to build on their shaders (About).
+- Checked offline: the twin tables at compile time (36 distinct pairs, no twin a game hash, every twin in a table, no
+  table with a hash twice); TDD's ocean vertex shader against ours on WARP (`tools\tw\testbin\scratch\tddi_`).
+- Verification in game (TDD on): ReShade.log `Grass fade: grass shader 0xA196A465 patched.` and the other 12;
+  `Render scale: pixel shader 0x16390F4F patched`; RT Log Details lists TDD's terrain, unit and far-tree hashes; the
+  motion debug view shows units and the old ocean's waves.
+- A TDD release with other shader bytes needs `TDD_TWINS` again (tools/tw/round_notes/mod_shaders/tdd_shaders.md).
+
 ## Dev, 64-bit Attila engine plugin link (2026-11-25; built only, not stamped, not installed, not run in game)
 
 - New: the 64-bit add-on finds the engine plugin's block (`renodx_attila64.dll` in `attila64\plugins\`,

@@ -3036,6 +3036,11 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
+          .label = "The Dawnless Days (TDD) team: thanks for permission to build on their shaders.",
+          .section = "About",
+      },
+      new renodx::utils::settings::Setting{
+          .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = std::string("Build Date: ") + BUILD_DATE + " - " + BUILD_TIME,
           .section = "About",
       },
