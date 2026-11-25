@@ -882,6 +882,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_t ... | ?
 - CLEANUP after steps 3 + 5 merge: one shared OctahedralFold / OctahedralUnfold in ... | ?
 - PITFALL (pd4r_): RTXDI_ALLOWED_BIAS_CORRECTION is a user macro only SpatialResam ... | ?
+- PITFALL (pdi4c_): a Python rewrite of a CRLF working file left mixed line ending ... | ?
 - PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row ... | ?
 - PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
@@ -912,6 +913,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
+- ATN Q (pdi4c_ [Q-]): DI is off under mode 1 (Torch / Fire Light carried by the L ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
@@ -16357,6 +16359,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         prove player DXIL unchanged with the listings. Owner: coord (next helper writer slot)
         - [ ] PITFALL (pd4r_): RTXDI_ALLOWED_BIAS_CORRECTION is a user macro only SpatialResampling.hlsli defaults ->
         define it in the bridge; check the temporal DXIL for its ray. Next pitfall pass. Owner: coord
+        - [ ] PITFALL (pdi4c_): a Python rewrite of a CRLF working file left mixed line endings -> patch scripts keep
+        the file's endings (open newline=''), check before commit. Next pitfall pass. Owner: coord
         - [ ] PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row from 'suspected' + add
         'run a rotation in the same session as its calibration' (next pitfall pass). Owner: coord
         - [x] PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ReGIR presample are
@@ -16421,7 +16425,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         -13 % at 176 sigma); N6 SetBit fold after pdi4c_; a u84 filler if pdi4c_ leaves it unused.
         - [ ] U6 PART 1 MERGE (origin/u6f_fog bc623e2d3) together with part 2. Owner: coord (after steps 3 + 5)
         SLOTS CLAIMED (coord): fog u85-u86 reservoirs, u87-u88 sun history (UAV table contiguous from u10; pdi3_
-        u75-76, pdi4c_ u77-u84 with u84 reserved; part 2 adds one filler if u84 stays unused).
+        u75-76, pdi4c_ u77-u83 (DESCRIPTOR_COUNT = DI_LIGHT + 2), u84 FREE -> part 2 adds one filler; DIM kinds 37-39,
+        DIM 40 free; lowdef lights never sent with RT_DI_LIGHTS; DI wins over the ratio row, off under mode 1 alone).
         - [ ] U6 PART 2 MUSTS (u6f_part1_review.md): P1 FOG_HISTORY = shade ran last trace at this size AND
         PATH_LIGHT_HISTORY's condition (rt_d3d12.hpp:8233); P2 FOG_SUN_VALID needs last_frame (b3's previous camera
         updates only under ambient_kept, :8245 / :8301); P3 UAV barrier on light_mask_ between rt_lights and fog
@@ -16877,6 +16882,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         follow design 2.9 (DI wins, no double count) if contained, else keep + ATN question; ONE rebase onto pdi3_'s
         FINAL step-3 head as origin/pdi4c_step4c_r3; GPU turn (item 4) adds M1 controls, S1, S2, cost with the bias ray.
         Owner: pdi4c_, coord
+        pdi4c_ FIX ROUND CODE DONE 22:53 (21 min vs 40): origin/pdi4c_step4c_r2 632b30c86 (6 commits on 1abc8c505).
+        M1 b160976a3 (temporal DXIL 2 TraceRayInline, 2745 lines vs 1878) + 02e85b06f W4 part 0 (>= 2 rays) / part 4
+        (unreached history, M 20: RAY_TRACED + BASIC within 1 %, OFF < 0.1; pre-M1 tree must fail both); 929298d9b S3
+        inline + named failure, S5 = PlaybackBlock zeroes the 3 DI handles (array: no pointer-to-member), N2 / N5 / N6;
+        75f563764 RATIO ROW: DI wins under mode 3 (bounce leaves listed lights out, word 0 = ratio 0 for listed lights
+        only, + rt_lights_di_bounce / _torch + OMM, exe +105 KB); MODE 1 keeps DI off (needs rt_path = step 3) -> ATN
+        question below; 88b296e7b N1 / N4; 632b30c86 4b contracts in dlaa_bridge.h. N9 (NOT in git): the SHARED
+        tools\tw\rt_harness\tw_rt_harness.cpp prepare now Clears di_injector before bridge::Prepare (no DI = no-op;
+        harness hash changes for the next builds). Offline: helper 0 warnings, 7 player rt_lights + rt_lights_di /
+        _torch DXIL byte-identical, h0i_test 72 / 72, static_checks same 5 old findings; committed rt_d3d12.hpp LF
+        only (coord checked). Not done: N3, N7 (GPU init log), light_previous decode DRY (touches player sources).
+        WAITS: pdi3_'s FINAL step-3 head -> rebase to _r3; then 'pdi4c_ GPU go' (adds a mode 3 DI run). Owner: pdi4c_
+        - [ ] ATN Q (pdi4c_ [Q-]): DI is off under mode 1 (Torch / Fire Light carried by the Light Bounce, no ratio).
+        Accept, or a step-3 change so the paths skip DI pixels' torches and DI runs under mode 1 too? Coord: the
+        step-3 change after step 3 merges ('every setting'). Owner: ATN, coord
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
