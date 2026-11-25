@@ -3246,6 +3246,13 @@ class RtScene12 {
       *why = "rt_lights' twins (rt_lights_torch) run in its place while Torch Light in PT GI (bit 27) is on";
       return false;
     }
+#if defined(RENODX_RTXDI_DI)
+    // So do Path-Traced Torch Light's rt_lights_di builds while its resources are held (asked within HISTORY_FRAMES).
+    if (stem == "rt_lights" && !code.empty() && di_reservoirs_) {
+      *why = "rt_lights_di runs in rt_lights' place while Path-Traced Torch Light (rt_di_flags) is on";
+      return false;
+    }
+#endif
     ComPtr<ID3D12PipelineState>& pipeline = this->*found->second;
     const auto base = base_pipelines_.try_emplace(std::string(stem), pipeline).first;
     if (code.empty()) {
