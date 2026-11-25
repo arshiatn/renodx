@@ -841,6 +841,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
 - PARITY LEDGER LINES for the waiting rows (Directional Light Bounce; PT Reflectio ... | ?
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
+- rtp_ QUESTIONS (rtp_'s pick first): R1 census trace now (yes); helper staged in ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
@@ -15899,6 +15900,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         RT on the port + the shader hash census, NOT for Friday's Fable work, which is CPU only): rtp_ (Opus xHigh,
         text only) STARTED: designs\rt_port_64.md (what works / breaks on Sol's port, helper vs in-process route,
         bridge v33, everything 4b needs, 64-bit recordings, steps + gates, the exact game runs for ATN's OK). Owner: rtp_
+        rtp_ DONE 19:xx (designs\rt_port_64.md, hand-back designs\rtp_design_handback.md): route HELPER + bridge (in-process
+        = ~700 KB port or a 2nd RT stack, no latency gain, D3D12 / NGX faults under Sol's crash filter). Works: capture
+        by hash + stream output, AO-pass hook, units, index rewrites, camera, point lights, helper start. Breaks /
+        unproven: (1) Batched Unit Capture never on (host hook not wired, addon.cpp:3141 / 2055-2062); (2) the
+        dynamic-buffer rule vs Sol's DEFAULT instance streams (stale pieces); (3) IA slot 15 under our redraws; (4) Sol's
+        shadow refresh 2 may pulse out-of-view casters; (5) flag packs on C4; (6) nothing ran with RT yet (helper banned
+        from -ReShade starts). v33 only if PT DI picks a 'lowdef' bit. 4b: stencil via X24_TYPELESS_G8_UINT on Sol's
+        R24G8_TYPELESS depth; MSAA = no DI. Recordings: v32 blocks from 64-bit, ~6.7 GB / 2-frame recording on D:. Steps
+        S0-S9; runs R1 census trace (3 starts, no helper, ~15 min; = B1's land-battle part), R2 RT on the port (3-4
+        starts, ~13 GB recordings), R3 PT DI in game (2). Writer order: addon.cpp / attila64_plugin_link.hpp at the
+        tail of cpu_plan_64_map 3.3 (never during Friday's CPU work); rt_core / rt_scene after pdi3_ / pdi5_; a64_ab.ps1
+        after PK6-64. RULE SLIP (reported to ATN): one recursive NAME listing over testbin\attila64_1124 (contains
+        perffix_src\); names only, nothing opened. -> rtpr_ REVIEW (Opus xHigh) STARTED -> rt_port_64_review.md.
+        - [ ] rtp_ QUESTIONS (rtp_'s pick first): R1 census trace now (yes); helper staged in our test run folder (yes);
+        lowdef on R1's data; recordings on D: (yes); shadow refresh 2 pulsing: fix in the add-on. Owner: ATN after rtpr_
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
