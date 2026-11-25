@@ -386,7 +386,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ c ... | coord (audit), each file's owner
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
 - GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job ... | gtl_ (lab), next tooling slot pdi5_ GPU DONE 21:14 (last ses
-- GPU CHECK SPEED (ATN 11-25 ~21:5x: 'for nsight we check why x took y time; what ... | gsp_, then gtl_ / coord
+- GPU CHECK SPEED (ATN 11-25 ~21:5x: 'for nsight we check why x took y time; what ... | gsi_, coord
 - WORKTREE BUILDS NEED slangc (pdi5_ 22:1x): gated_build twattila configure fails ... | coord (next tooling slot)
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
 - Caesar's test build (Flag Wave export + heapfix.ini key append) -> ATN relays -> ... | ?
@@ -3686,6 +3686,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         21:5x -> plan_1117\gpu_check_speed.md: ranked fixes with savings + validity gates (keep the recording loaded
         across arms with a proven reset, faster load, FIFO + automatic hand-over, E4 reference cache, sample counts,
         build / GPU scheduling); changes to tools in use only at a wave boundary. Owner: gsp_, then gtl_ / coord
+        gsp_ DONE 22:2x (plan_1117\gpu_check_speed.md + gsp_handback.md; 23 min): ~551 GPU-lock min today (9.2 h, plays
+        not counted): lab 264 (load 84, rotation warm frames ~37, calibrations 36, timed frames ~22, burst re-measures
+        ~10, resident_start 15), E4 208 (1712 runs: 119 run + 89 per-run lock / start overhead), all_modes 63, Nsight 16.
+        Real load 0.32-0.35 GB/s = host copies, not disk (state.bin read twice 2.35 GB each into zero-filled vectors, a
+        2.1 GB host snapshot thrown away, 1 s idle heartbeat) -> ~5 s instead of 12.2 s. One resident per lifetime MUST
+        stay (between-lifetime spread 2.2x the blocks' -> a reset would understate sigma ~2x). Keepers starve: E4 / plays
+        lock every ~4 s, keeper polls 2.3 s + gives up at 22.5 s. Shared lab\job.json can race (one agent could run
+        another's job). 93 % of E4 references are byte-repeats (cache saves only 10-25 min; ref_cache.py crashes on
+        today's meta.json). Helper start ~2.4 s per E4 / all_modes run (RR open 1.2 s). Measure phase already at the
+        gate's minimums. Memory: 3 keeper stops at 56.8-59.2 GB (gated_build checks 45 GB only at start).
+        RANKED (min / day): 1 E4 lock per <= 5-min chunk ~80; 2 helper load path ~47 (+3-5 GB less commit); 3 RR lazy
+        open + pipeline library ~35-45; 4 FIFO ~30-45; 5 settled recordings ~29; 6 one A arm for several B ~24; 7
+        calibration reuse ~17; 8 keeper 50 ms poll ~13 -> ~4.5 h / day for the top 8.
+        -> gsi_ (Opus High) STARTED 22:3x: STAGED lab-side fixes (FIFO + hand-over + chain hold command, per-job file,
+        E4 chunk runner, calibration keep, 50 ms poll, alive.json, meta hashes, ref_cache audit, gated_build memory
+        rule), backward compatible, CPU tests only -> swap by the coord between two GPU turns. Helper-side 2 / 3 / QW3
+        after steps 3 / 5 / 4c merge (rt_d3d12.hpp / rt_serve.h owners); 5 / 6 later. Owner: gsi_, coord
       - [ ] WORKTREE BUILDS NEED slangc (pdi5_ 22:1x): gated_build twattila configure fails in a worktree ('Could not find
         SLANGC_BIN'): CMake looks only in <tree>in and worktrees never link bin. Coord: copy slangc.exe + its DLLs as
         plain files (never a bin junction). Fix tooling: gated_build copies the bin tools CMake needs into a worktree's
