@@ -33,8 +33,9 @@
 // Arise's scene through the Total War helper (twattila/rt_core.hpp; renodx-tw-dlaa64.exe, its own D3D12 device), in
 // metres (Unreal's centimetres / 100). The scene: the depth prepass's draws into the scene depth (no target, depth
 // written): the opaque prepass's vertex shaders (rt_shadows::DEPTH_SHADERS; the characters' dynamic) and the masked
-// prepass's (rt_core's SceneCoverage: an alpha test at a texture coordinate as drawn, a dithered fade solid, a mask read
-// at a scaled coordinate left out; the characters' by rt_shadows::SKINNED_MASKED_SHADERS dynamic). The trace at Bandai's
+// prepass's (rt_core's SceneCoverage: an alpha test at a texture coordinate as drawn or times a material register, at
+// the game's 0.3333, without the material's opacity factor; a dithered fade solid; the characters' by
+// rt_shadows::SKINNED_MASKED_SHADERS dynamic). The trace at Bandai's
 // sun shadow mask (cs 0x2084C889: the scene depth at t0, ScreenToShadow at b0 c28-c30, the View at b1): the camera
 // (TranslatedWorldToClip c0-c3 and PreViewTranslation c62 in metres), the direction toward the sun (0x7A1E0D12's
 // TowardSun, here on the CPU); then the traced sun at t40 for sunshadow00 (its texture's top-left the render pixels it
@@ -238,6 +239,10 @@ inline const twattila::rt_scene::Host HOST = {
     },
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
+    // The masked prepass's clip value (0x7A1E0D11's, the in-process rays'), and its 37 masks read at the UV times a
+    // material register (rt_vertices.cs_5_0.hlsl's RT_VERTICES_UV_SCALES): in the scene, not left out.
+    .leaf_cutoff = 0.3333f,
+    .mask_uv_scales = true,
     .characters_dynamic = true,
 };
 
