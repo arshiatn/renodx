@@ -15949,6 +15949,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         starts): p8c_ PK8 P3 census -> designs\pk8_p3_census.md; c8w_ C8 W0 offline (E9 sim / display per row + a
         reliable MP-battle check for ATN's single-player answer, + E1-E5 / E8 if time) -> designs\c8_w0_offline.md;
         p9v_ PK9 N13 virtual paths (offline test 9.3) -> designs\pk9_n13_virtual.md. STARTED ~12:5x. Owner: coord.
+        p8c_ DONE 13:4x (hand-back designs\p8c_census_handback.md, note designs\pk8_p3_census.md, hex only): P3 HOLDS (M),
+        rows a-h all M, no OPEN item -> W-A2 not gated on new P3 work (W-A1 checks the note against G1's fingerprints).
+        Closure 37 functions, 22 / 22 indirect sites resolved; destroy has exactly 5 callers, each unlists first. N2
+        ADOPTED into the PK8 design (addendum 'P3 census done before Friday'): W-A2 goes plain when a group with
+        members is listed twice (T-A1 duplicate family tests it). N1 row-h wording, N3 post-loop info only.
         - [ ] NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\round_1125\brief.md): the
         11-15 plans are STALE (Ryse / Tales are one add-on each now, most plan steps in). ry_ (Opus High, worktree, branch
         nt_ry1) and ta_ (branch nt_ta1) each list every open HANDOFF box + ledger row of their game as OFFLINE-NOW / NEEDS A
