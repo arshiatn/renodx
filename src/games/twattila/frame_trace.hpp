@@ -789,6 +789,9 @@ struct MapTrace {
   // The exe; the engine (empire.retail.dll) where the game has one. Written once, before `tracing` is first set.
   std::vector<MapModule> modules;
   std::vector<MapCode> code;
+  // Game code that is no PE image (SetGameCode), merged into `modules` and `code` where each window starts.
+  MapModule game_code;
+  std::vector<std::pair<uintptr_t, uintptr_t>> game_code_ranges;
   // The caller scan's stack limits (a test seam: test/tw_map_trace points it at limits that exclude the callback's
   // frame; set only while no callback runs).
   void(WINAPI* stack_limits)(PULONG_PTR, PULONG_PTR) = GetCurrentThreadStackLimits;
@@ -1408,6 +1411,14 @@ inline bool Tracing() {
   return internal::state.tracing.load(std::memory_order_relaxed);
 }
 
+// The game's code where it is no PE image (the 64-bit port's, mapped by its loader): the map trace's callers name it
+// `name`, offsets from `base`, inside `ranges` ([begin, end) each). From the next window on; empty ranges: none.
+inline void SetGameCode(std::string name, uintptr_t base, std::vector<std::pair<uintptr_t, uintptr_t>> ranges) {
+  const std::unique_lock lock(internal::map_trace.mutex);
+  internal::map_trace.game_code = {.name = std::move(name), .base = base};
+  internal::map_trace.game_code_ranges = std::move(ranges);
+}
+
 // A mark in the traced frame (the anti-aliasing's tone mapper end, DLSS).
 inline void Mark(std::string_view text) {
   if (internal::state.tracing.load(std::memory_order_relaxed)) internal::Append(std::string("MARK ") + std::string(text));
@@ -1479,6 +1490,10 @@ inline void OnPresent(bool scaled, bool view_3d = false) {
             }
             trace.modules.push_back({.name = module_name(module), .base = base});
           }
+          for (const auto& [begin, end] : trace.game_code_ranges) {
+            trace.code.push_back({.begin = begin, .end = end, .module = trace.modules.size()});
+          }
+          if (!trace.game_code_ranges.empty()) trace.modules.push_back(trace.game_code);
         } catch (const std::bad_alloc&) {
           trace.code.clear();
           renodx::utils::log::w("[Total War] Map trace: no memory for the game's module list: the callers left out.");

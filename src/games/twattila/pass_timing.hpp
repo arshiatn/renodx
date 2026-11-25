@@ -82,6 +82,8 @@ struct State {
 static State state;
 
 inline ID3D11DeviceContext* ImmediateContext(reshade::api::command_list* cmd_list) {
+  // The timed frame's draws on another API's device (the port's other routes) are not D3D11 contexts.
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return nullptr;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr || context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return nullptr;
@@ -248,6 +250,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   auto& state = internal::state;
   const std::lock_guard lock(state.mutex);
   if (state.phase == Phase::IDLE) return;
+  // The button and RENODX_TW_SET ask on any device: only a D3D11 queue is a context.
+  if (queue->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&context);
   if (context == nullptr || context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;

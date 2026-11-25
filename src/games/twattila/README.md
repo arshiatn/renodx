@@ -1,5 +1,31 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, 64-bit Attila bring-up (2026-11-25; built only, not stamped, not installed, not run in game)
+
+- New: the 64-bit add-on (`renodx-twattila.addon64`) runs under the 64-bit port of Attila (`attila64.exe`), HDR only.
+  `ATTILA64` (a 64-bit build) keeps every port line inside `if constexpr`: the 32-bit add-on is unchanged (page dump
+  identical but the build date; none of the port's log lines in the binary).
+- Attach logs the exe and its loader version (`[Total War] 64-bit Attila: attila64.exe, loader a.b.c.d`). Devices other
+  than D3D11 (the port's OpenGL fallback, a D3D12 route) are left alone, one line per API; their swap chains too.
+  Handlers that read native D3D11 objects check the API first; Time Each Pass and the anti-aliasing buffer handlers too
+  (both reachable on any device).
+- Every row whose reader is the 32-bit game's code (engine tweaks, the presets, Faster / Parallel CPU rows, Shadow Map
+  Size and its UI 4K lock, the cascades, the grass trace / dump, the at-start tests) is hidden on the port, keys kept; a
+  note says "Engine options: the 64-bit engine plugin is not installed.". The engine plugin's slot (shadow_pass's install
+  and update) is in place; nothing fills it yet.
+- The first present reads the game's image (build id, code ranges: `game code mapped, ...`) for the map trace's callers
+  (`frame_trace::SetGameCode`, test `tw_map_trace` part 15).
+- HDR output: the loader draws into its own RGBA8 picture and copies it into buffer 0; the picture's clone turns on at its
+  first copy (`the game's picture upgraded (WxH)`); its first frame after each creation is black. The loader's 8-bit
+  overlay (frame-rate number, Discord button) is converted to the 16-bit targets (`the loader's 8-bit overlay converted`).
+- Checked in `test/tw_attila64_present` (F7: the port's loader order and present path on a GPU, all three outputs, both
+  overlay forms, a D3D12 and an OpenGL device, the game's image unreadable or malformed, with controls; zz_capture.addon64
+  reads the frames).
+- Verification on the port: never list the add-on in `[ADDON] LoadFromDllMain` (the add-on removes its own entry there on the port).
+  HDR-only manual check: no helper; the menu in HDR (not black); the frame-rate number and the Discord button visible.
+- Build: `cmake --build build --config Release --target renodx-twattila.addon64` (the port), `cmake --build build32
+  --config Release --target renodx-twattila.addon32` (the 32-bit game).
+
 ## Dev, Fewer Constant Uploads Off after a restart (2026-11-20; built only, not stamped, not installed, not run in game)
 
 - Fixed: **Fewer Constant Uploads** turned Off after On cost +47 ms a frame until the battle ended (batch 2b): ReShade's

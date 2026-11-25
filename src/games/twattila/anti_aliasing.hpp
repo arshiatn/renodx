@@ -469,12 +469,14 @@ inline bool JitterCamera(ID3D11Buffer* buffer, std::byte* data) {
   return true;
 }
 
-inline void OnMapBufferRegion(reshade::api::device*, reshade::api::resource resource, uint64_t offset, uint64_t,
+inline void OnMapBufferRegion(reshade::api::device* device, reshade::api::resource resource, uint64_t offset, uint64_t,
                               reshade::api::map_access access, void** data) {
   if (!temporal.load(std::memory_order_relaxed) || access == reshade::api::map_access::read_only || offset != 0
       || data == nullptr || *data == nullptr) {
     return;
   }
+  // The flag is the D3D11 device's: another API's device in the same process (an overlay, a second route) is not.
+  if (device->get_api() != reshade::api::device_api::d3d11) return;
   auto* buffer = reinterpret_cast<ID3D11Buffer*>(resource.handle);
   if (!CameraSized(buffer)) return;
   mapped_buffer = buffer;
@@ -493,6 +495,7 @@ inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
 inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data, reshade::api::resource resource,
                                  uint64_t offset, uint64_t size) {
   if (!temporal.load(std::memory_order_relaxed) || data == nullptr || offset != 0) return false;
+  if (device->get_api() != reshade::api::device_api::d3d11) return false;
   auto* buffer = reinterpret_cast<ID3D11Buffer*>(resource.handle);
   if (!CameraSized(buffer)) return false;
   D3D11_BUFFER_DESC desc = {};
