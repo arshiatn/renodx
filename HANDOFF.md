@@ -919,6 +919,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 4b ROW LINES (graphics_page.hpp): grey 'Torch and Fire Light from Path Tracing ( ... | ?
 - FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a v ... | ?
 - SOURCE FIDELITY AUDIT (ATN 11-26 ~00:1x: 'if we were not doing this paper's meth ... | ?
+- CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
+- WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
+- 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
+- CLEANUP on ATN's yes: testbin\scratch\pd4r_\ (fz\, fused_check.sh, multiset_cmp. ... | ATN
 - NV1 CONSERVATIVE VISIBILITY for DI initial + bias rays (RtxdiApplicationBridge.m ... | ?
 - NV2 OMM 2-STATE ON SECONDARY RAYS ONLY, 4-state on visible sun / torch shadows ( ... | ?
 - NV3 SHaRC UPDATE CHEAP LIGHT-SHADOW VISIBILITY (whitepaper 5090 case: 0.69 -> 0. ... | ?
@@ -17047,6 +17051,38 @@ heading text are in HANDOFF_ARCHIVE.md)
         read-only, est 50 / deadline 100): fa1_ pt_di_rtxdi.md, fa2_ restir_gi_sharc_fog.md, fa3_ rt_core.md, fa4_
         denoisers.md, fa5_ screen_space.md (ADDED by the coord: GT-VBAO / VBGI, XeGTAO, Bend SSS, SSSR, vMF design: 'all
         papers'). Then the critic. Owner: fa1_..fa5_, coord
+        FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
+        citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
+        deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
+        be reworked from the ground up'. DONE now: game-port-method skill (code cites + deviation comments, reviewers
+        open the source; new 'Fix it at the source, don't guard and cope' bullet), memory feedback_cite_and_deviate.md,
+        the audit brief's addendum (uncited blocks + every guard with its root cause; unknown cause / guard around our
+        own bug = BUG) sent to fa1_..fa5_; fa5_ also audits OUR Bend SSS changes ('changed a bit because it seemed buggy
+        in Attila': Bend really wrong, or our inputs differ?) and our FidelityFX SSSR changes vs AMD's.
+        - [ ] CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates) to source cites -
+        changed estimator blocks in dlaa_helper HLSL / C++ must carry a source tag (key in a sources registry with the
+        local path + section) or 'ours: why', departures a deviation tag; shadow first, then ATN installs. Design AFTER
+        the audit (its tables backfill the tags for today's code). Owner: coord -> gate tool owner -> ATN (ATN's go
+        asked 11-26)
+        pd4r_ CHECKS DONE 00:4x (22 min; pt_di_step4c_review.md '## 2.9a check' + '## Fused DI pass check'), both GO
+        WITH CHANGES, no MUST. 2.9a: option C proof holds (lights < 32 always tile members; WH2 shadows_only dropped
+        under mode 1 = one owner); handshake order right (trace then paths, same queue, shared.rt_frame); today's double
+        REAL (also after a bounce gap and a resize; 2.9a removes all 3); no shader change confirmed; G1 M1-energy gate
+        (E_A / E_0) + G2 M1-trans (rt_reuse vs rt_reuse_lights not guaranteed bit-identical) + skipped bounce + resize;
+        mode-2 'M1-eq fails' half proves nothing. U1 (unified): the mode must set runtime.lights_in_bounce = 0 (paths
+        request reads RT_PATH_LIGHTS_IN_BOUNCE / RATIO from it, rt_core.hpp:3857-3859); S12 checks both requests -> NV8
+        addendum. FUSED: estimator CORRECT vs 3.2 DI temporal / spatial + GI SpatioTemporal (RTXDI 2's DI version NOT on
+        disk: RTXPT External\Rtxdi empty); no ping-pong race in the variant; F1 committed file alone races (both arrays
+        2) -> define + #error; F2 DI_NO_TEMPORAL kills the whole fused reuse (W4 spatial-only measures nothing); F3 S2
+        now covers every spatial neighbour; DIM 40 free -> DIM_DI_SPATIOTEMPORAL; refactor PURE in DXIL (632b30c86 vs
+        d3a0ba2e3, cs_6_5 + OMM cs_6_9: temporal reordered, spatial loop exit 2 instructions, same trip count). -> pdi4c_
+        RESUMED 00:5x: F1 + NV1 conservative-visibility variant now; G1 / G2 into the 2.9a commit; GPU turn = A/A first,
+        then the refactor gate (both DI textures + 3 reservoir arrays, bias 0 + 3, +- DI_NO_SPATIAL), F2 / F3 notes,
+        split vs NV1. Owner: pdi4c_
+        - [ ] WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed with colour 0 -> DI pixels
+        would lose them. Owner: WH2 port of PT DI
+        - [ ] 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its paths still run. Owner: 4b
+        - [ ] CLEANUP on ATN's yes: testbin\scratch\pd4r_\ (fz\, fused_check.sh, multiset_cmp.py, sec_*.md). Owner: ATN
         nvs_ DONE 23:43 (19 min vs 45; plan_1117\nv_speedups.md). NEW speed-ups (all fit unified with section 3's
         order), each its own box:
         - [ ] NV1 CONSERVATIVE VISIBILITY for DI initial + bias rays (RtxdiApplicationBridge.md:170 'can skip
