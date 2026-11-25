@@ -919,6 +919,18 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 4b ROW LINES (graphics_page.hpp): grey 'Torch and Fire Light from Path Tracing ( ... | ?
 - FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a v ... | ?
 - SOURCE FIDELITY AUDIT (ATN 11-26 ~00:1x: 'if we were not doing this paper's meth ... | ?
+- fa1_ B1 DI NEIGHBOUR RAY ORIGIN (bias, new): spatial bias ray + fused neighbour ... | ?
+- fa1_ B2 DiStore ZEROES THE PIXEL (rt_di_shade:23) on any negative / NaN / >= 655 ... | ?
+- fa1_ UNCITED PARAMETERS: targetHistoryLength 4 (RTXDI 0: its disocclusion boost ... | ?
+- fa1_ UNCITED BLOCKS: T1 (probe gate x1.07 at 29 / 128 not met) + camera-only DiM ... | ?
+- fa4_ B1 NRD IN_VIEWZ = CAMERA DISTANCE, not view Z (rt_nrd_front.hlsl:76 <- rt_p ... | ?
+- fa4_ B4 SKY GUIDES: cleared G-buffer decodes to normalize(-1,-1,-1), roughness 1 ... | ?
+- fa4_ B5 ReSTIR GI's chosen-sample hitT into REBLUR unfiltered (rt_path.hlsli:143 ... | ?
+- fa4_ B6 aa_dlaa_prepare:56 zeroes non-finite motion, cause unnamed (Forge lens): ... | ?
+- fa4_ B7 rr_d3d12.hpp:32-33 cites the deleted talesofarise_dlss/rr_d3d12.hpp (ae8 ... | ?
+- fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered pen ... | ?
+- fa4_ RR PLACEMENT: RR runs after the tone mapper; DPG + RRG 3.1 say before. CHOS ... | ?
+- ATN Q AFTER THE CRITIC (fa4_ B3 + RRG p22): under RR / NRD, hide AO Quarter (rt_ ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -17059,6 +17071,50 @@ heading text are in HANDOFF_ARCHIVE.md)
         rejected / parked / capped RT-PT decision re-checked (REASON HOLDS / WRONG / STALE / CAUSE UNKNOWN; e.g. SHaRC
         depth 2 cap = guard with an unknown cause); D NVIDIA RTX catalogue (in code / designed / rejected / never
         considered). fa3_ told the split. Owner: fa6_
+        PLAN: everything new from tonight is listed in plan_1117\plan.md 'Night 11-25 / 26 addendum' (ATN 01:2x: 'add
+        them to the plan and / or handoff ... so we don't forget after the autocompact').
+        fa1_ DONE (19 min; fidelity\pt_di_rtxdi.md; trees hd 8e1888043, s3 61d4e6445, r2 a60be72b7, s5 f370cd3bd):
+        rest SAME / CHOSEN; RTXDI copy = tools\nvsdk (diff clean); bias correction 3 in all 5 DI passes (2 rays each,
+        cs_6_5 + OMM); REGIR_MODE 2 via rt_scene.hlsli:83; DI boiling filter not built (CHOSEN); C1 one visibility
+        function (except B1), C2 no DI visibility reaches T1, C3 G2 / G5 only in ReSTIR GI (nothing built twice).
+        U1-U9 in the file -> critic.
+        - [ ] fa1_ B1 DI NEIGHBOUR RAY ORIGIN (bias, new): spatial bias ray + fused neighbour rays start at
+        RAB_GetGBufferSurface's RayOrigin(.., false) (rt_rtxdi_bridge.hlsli:175), the pixel's own rays at
+        DiCentreSurface StartPast (:189-197); RtxdiApplicationBridge.md 'computed in the same way'. Shows with Rays Start
+        Past Hidden Shapes + planar pixels. Fix: store each DI pixel's ray origin once, read it in RAB_GetGBufferSurface.
+        Test: spatial vs DI_NO_SPATIAL within the A/A floor; today's r2 must fail. Owner: pdi4c_ after 2.9a (critic may
+        veto)
+        - [ ] fa1_ B2 DiStore ZEROES THE PIXEL (rt_di_shade:23) on any negative / NaN / >= 65504 channel, cause unnamed:
+        find the source (TwPointLight at distance 0? colours), fix there, clamp not zero. Owner: pdi4c_ after B1
+        - [ ] fa1_ UNCITED PARAMETERS: targetHistoryLength 4 (RTXDI 0: its disocclusion boost never runs), neighbour
+        offsets 1024 (RTXDI 8192): find the reason or align (A/B within the floor). Owner: pdi4c_
+        - [ ] fa1_ UNCITED BLOCKS: T1 (probe gate x1.07 at 29 / 128 not met) + camera-only DiMotion get 'ours: why' +
+        their proof. Owner: pdi3_ (T1) / pdi4c_ (DiMotion)
+        - B3 = REUSE_W_CLAMP (step 2 GI, temporary guard) -> fa2_'s table.
+        fa4_ DONE (18 min; fidelity\denoisers.md; 63 rows, 7 BUG, 9 UNKNOWN): RR inputs SAME except B4; pcg4d +
+        permutation SAME; RR route does NOT force Full (Half / Quarter selectable, default Full); NRD params SAME;
+        NGX / Streamline states SAME; FRR (design only, not in any tree) SAME on paper. nvs_ lead corrections: IGN
+        already animates (5.588 x (frame & 63)); the 8-frame branch is NRD-only.
+        - [ ] fa4_ B1 NRD IN_VIEWZ = CAMERA DISTANCE, not view Z (rt_nrd_front.hlsl:76 <- rt_positions.cs_5_0.hlsl:38;
+        NRD README:462-464): corners ~1.38x too deep at 50 deg; also GetNormHitDist's viewZ. Same in Ryse, D1, Rome R.
+        U11 must not reuse positions.w for FRR depth. Owner: NRD route owner after the merges, then the ports
+        - [ ] fa4_ B4 SKY GUIDES: cleared G-buffer decodes to normalize(-1,-1,-1), roughness 1; RRG says 0 / 0; the
+        (0,1,0) fallback is dead (aa_rr_guides:48-56). Owner: RR guide owner
+        - [ ] fa4_ B5 ReSTIR GI's chosen-sample hitT into REBLUR unfiltered (rt_path.hlsli:1433; NRD README:521). Owner:
+        NRD route owner
+        - [ ] fa4_ B6 aa_dlaa_prepare:56 zeroes non-finite motion, cause unnamed (Forge lens): find the source. Owner:
+        coord -> owner
+        - [ ] fa4_ B7 rr_d3d12.hpp:32-33 cites the deleted talesofarise_dlss/rr_d3d12.hpp (ae86e8603): fix the comment
+        (memory note fixed 11-26). Owner: next twattila writer
+        - [ ] fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered penumbra 0.1 / 1.1 reads
+        0.47 not 0.60 (-22 %). HARNESS_RR synthetic bit image linear vs sqrt, constant 0.60 control. Owner: GPU queue
+        after pdi4c_
+        - [ ] fa4_ RR PLACEMENT: RR runs after the tone mapper; DPG + RRG 3.1 say before. CHOSEN as architecture, no ATN
+        cite found -> critic: find the decision or design the move. Owner: critic -> coord
+        - [ ] ATN Q AFTER THE CRITIC (fa4_ B3 + RRG p22): under RR / NRD, hide AO Quarter (rt_trace:388-417, one pixel of
+        each 2x2 a frame = checkerboard-like; NRD README:930) and the bounce's Half / Quarter, like checkerboard?
+        Owner: ATN (morning)
+        - B2 (IGN dither under RR) = NV9 -> numbers to ATN.
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
