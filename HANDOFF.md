@@ -851,7 +851,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- pdsr_ RE-CHECK SENT 07:4x (4 fix commits) -> merge pds2_step2 (merge message car ... | ?
+- twattila amd64 add-on build check of the merged tree (only credits.hpp's string ... | ?
 - S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner ... | ?
 - ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0 ... | ?
 - 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for ... | ?
@@ -15950,14 +15950,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         all 0.99924 -> 0.99953, edge 0.99559 -> 0.99724, concave 0.99500 -> 0.99870, boxes 1.00414 -> 1.00587; cfg 49
         all 0.99680 -> 0.99700, edge 0.97852 -> 0.97986; default unchanged; no thin-card scene in E4. Not done:
         BOIL_PLANT on a live texel.
-        - [ ] pdsr_ RE-CHECK SENT 07:4x (4 fix commits) -> merge pds2_step2 (merge message carries the f01f1a95c DXIL
-        correction paragraph from the fix hand-back) -> helper build check -> push. Then build.ps1 / rt_d3d12.hpp free
-        (SHaRC depth 4 may start).
+        - [x] pdsr_ RE-CHECK GO 07:5x (hand-back handoff_plan/handbacks/pdsr_step2_recheck_handback.md; '## Re-check' in
+        pt_di_step2_review.md): M1 / S1 fixed, rt_reuse_bits.h the only copy (23 old values match, 4096 new), S5 folds
+        away without REUSE_TESTS, its S3 was wrong (E4 already runs PATH_SUN_LIGHT; reference/harness copy at
+        quality_mode.hpp:902), S4 facts right. Nits left (later, owner coord): rt_path.hlsli:115 comment still says
+        suspect bits '32-2048, 65536 up' (4096 is one now); rt_reuse_bits.h is included inside a class but has an
+        include guard (a file-level include first would break the build); BOIL_PLANT not run.
+        - [x] coord MERGED e85bd48f9 (pds2_step2 --no-ff; the message carries the part B DXIL correction + S2 cost).
+        Helper x64 from the merged tree builds (testbin\scratch\merge_pds2_helper: 5729280 B = pds2_'s size, e25b73e75839,
+        0 tests headers). build.ps1 / rt_d3d12.hpp FREE (SHaRC depth 4 may start).
+        - [ ] twattila amd64 add-on build check of the merged tree (only credits.hpp's string changed: '..., SHaRC, RTXDI
+        and NRD') WAITING: free RAM 11.5 GB < 12 GB (kernel pools 4.0 GB nonpaged + 5.9 GB paged = the zombie
+        processes / GPU resets; needs ATN's reboot). gated_build waits on its own; it respects quiet_run.lock.
         - [ ] S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner coord, after the merge):
         Attila / Thrones copy the t6 light -> RT_REFLECTIONS_LIGHT -> HitLight returns before the NaN route. Reached
         only with no light copy (other format / MSAA / small, or water_reflections.hpp without a light buffer: Troy,
-        Pharaoh Dynasties) + Own ReSTIR on (WH3 hard-sets reflection_own, addon.cpp:3514) + PT Ambient
-        (RT_PATH_SUN_LIGHT) + PATH_LIGHT + sun texel 6 w != 0. FIRST: check whether WH3 copies the light. Smallest
+        Pharaoh Dynasties; pdsr_: also Rome II twrome2/addon.cpp:486 and Shogun 2 addon.cpp:837 / ray_tracing.hpp:928,
+        :999 bind reflections without a light buffer) + Own ReSTIR on (WH3 hard-sets reflection_own, addon.cpp:3514) +
+        PT Ambient (RT_PATH_SUN_LIGHT) + PATH_LIGHT + sun texel 6 w != 0. WH3 CHECKED (coord): it passes .light_copy =
+        __rt_light_copy (addon.cpp:3328), so its R16G16B16A16F light is copied when single-sample and big enough
+        (rt_core.hpp:4190-4215) -> RT_REFLECTIONS_LIGHT (:4235); WH3 reaches it only with MSAA / a small light. Smallest
         fix: first_normal = normal at vertex 0 for every caller, OR Validate returns 0 on a zero hit_normal under
         SunLightGiven(); prove with the reflection HARNESS_DUMP modes.
         - [ ] ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0.996, cfg 49 0.992 ->
