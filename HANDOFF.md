@@ -823,7 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
-- a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
+- a64br_ (Opus xHigh) R1 REVIEW STARTED 03:0x -> designs/bringup_review.md -> fixe ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
 - A1 add-on lane (Opus High) after a64b_'s merge -> R1 -> T1 smoke + C2 trace (sha ... | ?
@@ -15404,8 +15404,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         AntiAliasing=0); steps 0 F7 -> 1 A1a -> 2 A1b -> 3 A1c -> 4 A2a (keep as C5 control) -> 5 A2b -> 6 README + sweep.
         Proposed rule lines: -Smoke -ReShade (A3 a, gate for B1), -ReShade -PerfFix, -ReShade -Warp, -ReShade -Package
         ... -Exe64Sha a75c1b8a63a267d6 (or -Package * wildcard) - ATN adds them when A3 is near.
-        - [ ] a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00:3x: steps 0-6 -> R1 xHigh
-        review -> merge -> PA1 plugin add-on lane -> A3 Smoke (ATN's -ReShade lines).
+        - [x] a64b_ BRING-UP DONE (hand-back attila64/a64b_bringup_handback.md): branch a64b_bringup = 7 commits
+        2199e6f0c..a0bbdabff on 43af1e1e4 (addon.cpp +472, frame_trace.hpp +15, README, test/tw_attila64_present new,
+        tw_map_trace part 15); merge-tree with atn-mods clean. F7 on the GPU 18 / 18 (hdr10 / scrgb / sdr x both overlay
+        forms 0 pixels off; C3, C4 D3D12 stand-down, C5 + both controls, C1, C2 hdr10 = black as the old add-on);
+        C2 scRGB control crashed in the driver (old add-on's RGBA8 copy into the 16-bit buffer) and could not re-run
+        (zombie attila64.exe 32564 holds its exe). x86 page dump = baseline except Build Date; a64 / a64r dumps hide
+        the 41 + 6 game-code rows; HDR-only items hold. Suites: tw_map_trace x86 + amd64, tw_device_loss,
+        tw_output_encoding (table unchanged), tw_test_hooks; static_checks = base's 5; sweep 17 / 17 builds. Final
+        addon64 328f9d84cfdc5a15 / addon32 e9f681639bf2be45 (testbin attila64_present\final\). A3 STAGED in
+        a3_smoke\: dxgi.dll 0cee63f9 (ReShade 6.8.0.2155), addon64 328f9d84, zz_capture fa2515d7. Deviations: scRGB
+        copy done in the add-on's own handler (utils' OnCopyResource uses a DISABLED clone if it exists = likely shared
+        bug, NOT changed -> ATN's call); F7 scRGB tolerance 2^-8; map-trace name game_code_64bit; FasterGameCpuCode
+        hidden too; MAKEINTRESOURCEW(16) for RT_VERSION. Not done: plugin lookup (plugin_ready stays false), A3 runs.
+        Notes: bin\ReShade64.dll doesn't exist (design 10.1 item 2 -> reshade680_amd64 copy); an A3 case with
+        ATTILA_DX11_WARP runs without the add-on (ReShade skips WARP). Junctions removed (links only).
+        - [ ] a64br_ (Opus xHigh) R1 REVIEW STARTED 03:0x -> designs/bringup_review.md -> fixes -> merge a64b_bringup
+        -> build check -> A1 add-on lane -> A3 Smoke (ATN's 4 -ReShade lines).
         - [x] a64ab_ -ReShade PASS DONE 01:0x (hand-back attila64/study_1124/a64ab_reshade_pass_handback.md): own run
         folders run_rs_c64 / run_rs_b64p / run_rs_pkg_<sha16>; fresh ReShade.ini (TutorialProgress=4 only); env per
         10.1 (RENODX_TW_SET=0:AntiAliasing=0;140:Time Each Pass (One Frame)=1); pictures only from zz_capture; ~4 min a
