@@ -830,6 +830,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
 - ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back | ?
 - TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a sour ... | ?
+- p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
@@ -15805,6 +15806,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         det_pair 'same' only with the same X tick + done 1 + x_hash; --out=<dir>; self-test p0\test_analyze_d0.py 6/6.
         Re-run: NO past determinism verdict changes (6 probe starts, 15 pairs all same at tick 3749); only the false
         NOPROBE lines of window 3 / L2C go away. Outputs testbin\scratch\p6d_\fix_1125\. pk6 items B1 / B2 done.
+        - [ ] p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-back p6r_review_handback.md):
+        M1 fps gates compared unlike starts (WPR vs non-WPR, det vs full: tooling, not the change) -> like-for-like on
+        the full window, WPR only on data starts; M2 kinds / order vs map 3.3 + PK8 Stage A on by default -> S-C control
+        with BattleStep='0'. S1-S12 (C10 unpark NOT met; memcpy 1.71 ms; golden gate pinned by sha; analyzer wording /
+        X fnv / NOPROBE refs bound to build shas; w3 capture / affinity; settings.txt snapshot; #8 can go). PK4 MOOT
+        confirmed; no past verdict changes. Plan now 8 starts ~57 min (5 new). Decisions (map section 6 item 11): ep
+        names, like-for-like gates, PK2P render thread on its own log line. -> p6d_ FIX ROUND STARTED 14:5x; p2r_ /
+        p9r_ / p8r_ told the items that touch them.
         - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
         p8d_design_handback.md): main win SERIAL: Stage A exact group index replaces the quadratic pair search at
         0x79a690 (~89 % of seg 0), identical results by construction, fingerprint self-off, fallback; E -21..-24 ms /
