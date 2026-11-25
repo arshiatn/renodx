@@ -1262,7 +1262,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
   // Global Illumination; without it the rays' rows for it kept hidden (their saved values stay).
   if (!b.has_gi) {
     for (const auto* key : {"RayTracedLightBounceRays", "RayTracedLightBounceResolution", "RayTracedLightBounceRange", "PathTracingBounces",
-                            "RayTracedPathSer", "RayTracedSharc", "RayTracedReuseLean", "RayTracedReuseNear"}) {
+                            "RayTracedPathSer", "RayTracedSharc", "RayTracedReuseLean", "RayTracedReuseNear", "RayTracedReuseBalanced"}) {
       page.Keep(key);
     }
   } else {
@@ -1321,6 +1321,7 @@ inline void Apply(std::vector<Setting*>* settings, const Bindings& b) {
     page.Take({.match = "RayTracedSharc", .section = section, .shown = more_paths, .label = "SHaRC Radiance Cache"});
     page.Take({.match = "RayTracedReuseLean", .section = section, .shown = more_paths});
     page.Take({.match = "RayTracedReuseNear", .section = section, .shown = more_paths});
+    page.Take({.match = "RayTracedReuseBalanced", .section = section, .shown = more_paths});
     page.Add(EmptyLine(section));
   }
 
