@@ -27,17 +27,19 @@ inline constexpr uintptr_t GAME_RESERVE_END = 0x527d000;  // the last load segme
 
 enum HookMode : uint8_t { HOOK_NORMAL, HOOK_NO_MEMORY, HOOK_WRITE_FAILS };
 
+static int checks = 0;
 static int failures = 0;
 static std::vector<std::string> log_lines;
 static HookMode hook_mode = HOOK_NORMAL;
 
 static void Expect(bool ok, const char* what) {
+  ++checks;
   if (ok) return;
   ++failures;
   std::printf("FAIL: %s\n", what);
 }
 
-static void FakeLog(const char* format, ...) {
+static void FakeLog(const char* format, ...) noexcept {
   char line[1024];
   va_list arguments;
   va_start(arguments, format);
@@ -55,7 +57,7 @@ static bool Logged(const char* text) {
 }
 
 // One 8 KB execute-read-write page in rel32 reach of the game, handed out front to back.
-static void* FakeCodeNearGame(size_t n) {
+static void* FakeCodeNearGame(size_t n) noexcept {
   static uint8_t* page = nullptr;
   static size_t used = 0;
   for (uintptr_t at = 0x5300000; page == nullptr && at < 0x60000000; at += 0x10000) {
@@ -67,7 +69,7 @@ static void* FakeCodeNearGame(size_t n) {
   return page + used - n;
 }
 
-static int FakePatch(uintptr_t at, const uint8_t* expect, const uint8_t* bytes, size_t len) {
+static int FakePatch(uintptr_t at, const uint8_t* expect, const uint8_t* bytes, size_t len) noexcept {
   if (std::memcmp(reinterpret_cast<void*>(at), expect, len) != 0) return 0;
   std::memcpy(reinterpret_cast<void*>(at), bytes, len);
   return 1;
@@ -75,7 +77,7 @@ static int FakePatch(uintptr_t at, const uint8_t* expect, const uint8_t* bytes, 
 
 // 32 bytes near the game: [0, len) the copied bytes, then jmp rel32 to at + len; at 16 the way in to fn. The site gets
 // a jmp rel32 to the way in. Lengths 12..15 would overlap the way in, so this stand-in refuses them.
-static void* FakeHook(uintptr_t at, const uint8_t* expect, int len, void* fn) {
+static void* FakeHook(uintptr_t at, const uint8_t* expect, int len, void* fn) noexcept {
   auto* site = reinterpret_cast<uint8_t*>(at);
   if (hook_mode == HOOK_NO_MEMORY || len < 5 || len > 11 || std::memcmp(site, expect, len) != 0) return nullptr;
   if (hook_mode == HOOK_WRITE_FAILS) {
@@ -135,20 +137,39 @@ static int ApplyStackRule(uint8_t* begin, const uint8_t* end) {
   return rewritten;
 }
 
-// The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window.
-static void ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
+// One loaded copy of the plugin DLL (a copy at another path is another module with its own globals).
+struct Plugin {
+  int (*init)(const LoaderApi*) = nullptr;
+  void (*game_started)(const LoaderApi*) = nullptr;
+  Block* block = nullptr;
+};
+
+// The DLL loaded and its three exports found; all nullptr (and a failure) otherwise.
+static Plugin LoadPlugin(const wchar_t* dll_path) {
   HMODULE dll = LoadLibraryW(dll_path);
   Expect(dll != nullptr, "the plugin DLL loads");
-  if (dll == nullptr) return;
-  const auto init = reinterpret_cast<int (*)(const LoaderApi*)>(GetProcAddress(dll, "attila64_plugin_init"));
-  const auto game_started = reinterpret_cast<void (*)(const LoaderApi*)>(GetProcAddress(dll, "attila64_plugin_game_started"));
+  if (dll == nullptr) return {};
   const auto block_export = reinterpret_cast<BlockExportFn>(GetProcAddress(dll, BLOCK_EXPORT));
-  Expect(init != nullptr && game_started != nullptr && block_export != nullptr, "the plugin DLL has its three exports");
-  if (init == nullptr || game_started == nullptr || block_export == nullptr) return;
+  Plugin plugin = {
+      .init = reinterpret_cast<int (*)(const LoaderApi*)>(GetProcAddress(dll, "attila64_plugin_init")),
+      .game_started = reinterpret_cast<void (*)(const LoaderApi*)>(GetProcAddress(dll, "attila64_plugin_game_started")),
+      .block = (block_export != nullptr) ? block_export() : nullptr,
+  };
+  if (plugin.init == nullptr || plugin.game_started == nullptr || plugin.block == nullptr) {
+    Expect(false, "the plugin DLL has its three exports");
+    return {};
+  }
+  return plugin;
+}
+
+// The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window.
+static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
+  const Plugin plugin = LoadPlugin(dll_path);
+  if (plugin.init == nullptr) return plugin;
 
   log_lines.clear();
-  Expect(init(&api) == 0, "the plugin's init accepts the game");
-  const Block* shared = block_export();
+  Expect(plugin.init(&api) == 0, "the plugin's init accepts the game");
+  const Block* shared = plugin.block;
   Expect(shared->version == VERSION && shared->bytes == BlockBytes(VERSION), "the block's version and size");
   Expect(shared->status.load(std::memory_order_acquire) == STATUS_READY, "the block is READY after init");
   Expect(shared->rows_applied == (RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW)) && shared->rows_refused == 0,
@@ -159,8 +180,9 @@ static void ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   for (const Site& site : SITES) {
     Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each site jumps to the hook");
   }
-  game_started(&api);
+  plugin.game_started(&api);
   Expect(shared->rows_changed.load() == 0 && Logged("game started: 2 sites unchanged"), "game start finds both sites unchanged");
+  return plugin;
 }
 
 }  // namespace twattila::attila64_plugin::test

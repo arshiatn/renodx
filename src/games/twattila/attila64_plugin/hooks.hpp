@@ -22,15 +22,17 @@
 namespace twattila::attila64_plugin {
 
 static Block block;
-// What to call for each row's original function (the loader's trampoline), set at init before any game code runs.
+// What to call for each row's original function (the loader's trampoline). Set at init right after the loader's hook
+// made the site live: safe because no game code runs before the plugins' inits have returned.
 static std::array<void*, ROW_COUNT> originals = {};
 // For the first-call lines; the loader's interface stays valid for the process.
 static const LoaderApi* loader = nullptr;
 static std::array<std::atomic_bool, ROW_COUNT> first_call_logged = {};
 
-// The game functions' prototypes. Typed noexcept: a C++ exception in game code is unwound by the game's own unwinder,
-// which cannot pass a frame of ours, and no frame above either hook catches one (the generator's catch gate), so a
-// landing pad here would only stop the tail calls.
+// The game functions' prototypes, typed noexcept: a C++ exception in game code is unwound by the game's own unwinder,
+// which cannot pass a frame of ours. The pack hook leaves no frame of ours while its original runs (a tail call); the
+// pass hook does on measured calls only, and no frame above it catches (the generator's catch gate on its site). So the
+// hook bodies need no landing pads, and every function they call is noexcept.
 using PackFn = bool(ATTILA64_GAME_CALL*)(void* self, void* context, bool flag, void* list, uint32_t first,
                                          uint32_t* cursor, uint32_t count, uint32_t* written) noexcept;
 using ViewDrawFn = void(ATTILA64_GAME_CALL*)(void* node, void* context, void* view) noexcept;
@@ -39,10 +41,11 @@ using ViewKindFn = uint32_t(ATTILA64_GAME_CALL*)(void* view) noexcept;
 inline constexpr size_t NODE_ENABLED_OFFSET = 0x28;             // a byte; the game returns at once when it is 0
 inline constexpr size_t VIEW_KIND_SLOT = 0x80 / sizeof(void*);  // the view's pass kind, a virtual
 
-// The add-on's unregister stores nullptr into `callbacks`, then waits (bounded) until `calls_in_flight` is 0: with
-// this increment-then-load (seq_cst on both sides) no callback starts after that wait ends. Two atomics instead of a
-// std::shared_mutex because of that bounded wait: an exclusive SRW acquire would hang at exit behind a thread that
-// died inside a callback, or behind a lock a callback takes. Close it before calling the game's original.
+// The add-on's unregister stores nullptr into `callbacks`, then waits (bounded) until `calls_in_flight` is 0
+// (plugin_block.h has its rules): with this increment-then-load (seq_cst on both sides) no callback starts after that
+// wait ends. Two atomics instead of the style guide's std::shared_mutex, the one case where that rule does not fit,
+// because of the bounded wait: an exclusive SRW acquire would hang at exit behind a thread that died inside a callback,
+// or behind a lock a callback takes. Close it before calling the game's original.
 struct CallbackScope {
   CallbackScope() noexcept {
     block.calls_in_flight.fetch_add(1);
@@ -82,8 +85,9 @@ static ATTILA64_GAME_CALL bool PackEntry(void* self, void* context, bool flag, v
 }
 
 // ROW_PASS_DRAW, in the game's own order: a node the game would skip never reaches the add-on; then pass_begin decides.
-// Only a measured call keeps this frame around the original, and its pass_end runs only with the same callbacks as
-// its pass_begin (an add-on that unregistered or registered again in between gets none).
+// Only a measured call keeps this frame around the original, and its pass_end runs only with the same Callbacks pointer
+// as its pass_begin: an add-on that unregistered, or registered another Callbacks, in between gets none (one that
+// registered the same address again tells by its epoch in PassMeasure::reserved).
 static ATTILA64_GAME_CALL void ViewDrawEntry(void* node, void* context, void* view) {
   const auto original = reinterpret_cast<ViewDrawFn>(originals[ROW_PASS_DRAW]);
   LogFirstCall(ROW_PASS_DRAW);

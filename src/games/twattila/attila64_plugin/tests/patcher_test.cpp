@@ -4,8 +4,10 @@
  */
 
 // The plugin's unit test on a fake game image at the game's addresses (no game file needed): identity, the site checks
-// and their refusals, the loader's hook and the re-check, the stack-check rule, the shipped hook bodies on synthetic
-// game functions with the add-on's callbacks, the callback drain, and the built DLL's init.
+// and their refusals, the loader's hook and the re-check, the stack-check rule, the hook bodies on synthetic game
+// functions at the real sites (this file's copy of hooks.hpp and the built DLL's own) with the add-on's callbacks, the
+// callback drain, and the built DLL's init with each refusal (copies of the DLL under dll_cases\, a ReShade.ini next to
+// this exe for the ini keys).
 // patcher_test.exe <renodx_attila64.dll>; exit code = failures.
 
 #include <windows.h>
@@ -17,9 +19,9 @@
 #include <cstdio>
 #include <cstring>
 #include <span>
+#include <string>
 #include <thread>
-#include <tuple>
-#include <vector>
+#include <utility>
 
 #include "../hooks.hpp"
 #include "../patcher.hpp"
@@ -30,11 +32,8 @@ namespace {
 using namespace twattila::attila64_plugin;
 using namespace twattila::attila64_plugin::test;
 
-// Synthetic game functions, Linux calling convention, with the real sites' prologues.
-inline constexpr uintptr_t PACK_FUNCTION = 0x600000;  // stores its 8 arguments at PACK_RECORD, counts, returns true
-inline constexpr uintptr_t PACK_RECORD = 0x610000;
-inline constexpr uintptr_t DRAW_FUNCTION = 0x620000;  // stores its 3 arguments at DRAW_RECORD, counts
-inline constexpr uintptr_t DRAW_RECORD = 0x630000;
+inline constexpr uintptr_t PACK_RECORD = 0x610000;  // the synthetic pack stores its 8 arguments here and counts
+inline constexpr uintptr_t DRAW_RECORD = 0x630000;  // the synthetic draw stores its 3 arguments here and counts
 inline constexpr uintptr_t RULE_SITE = 0x640000;
 
 struct PackRecord {
@@ -46,47 +45,38 @@ struct DrawRecord {
   uint32_t calls;
 };
 
-std::vector<uint8_t> PackFunctionBytes() {
-  std::vector<uint8_t> code = {0x55, 0x41, 0x57, 0x41, 0x56, 0x48, 0xb8};  // push rbp / r15 / r14; mov rax, PACK_RECORD
-  for (int i = 0; i < 8; ++i) code.push_back(static_cast<uint8_t>(PACK_RECORD >> (8 * i)));
-  code.insert(code.end(), {
-                              0x48, 0x89, 0x38,              // mov [rax], rdi
-                              0x48, 0x89, 0x70, 0x08,        // mov [rax+8], rsi
-                              0x48, 0x89, 0x50, 0x10,        // mov [rax+16], rdx
-                              0x48, 0x89, 0x48, 0x18,        // mov [rax+24], rcx
-                              0x4c, 0x89, 0x40, 0x20,        // mov [rax+32], r8
-                              0x4c, 0x89, 0x48, 0x28,        // mov [rax+40], r9
-                              0x4c, 0x8b, 0x74, 0x24, 0x20,  // mov r14, [rsp+32]: the 7th argument
-                              0x4c, 0x89, 0x70, 0x30,        // mov [rax+48], r14
-                              0x4c, 0x8b, 0x74, 0x24, 0x28,  // mov r14, [rsp+40]: the 8th
-                              0x4c, 0x89, 0x70, 0x38,        // mov [rax+56], r14
-                              0xff, 0x40, 0x40,              // inc dword [rax+64]
-                              0x41, 0x5e, 0x41, 0x5f, 0x5d,  // pop r14 / r15 / rbp
-                              0xb0, 0x01, 0xc3,              // mov al, 1; ret
-                          });
-  return code;
-}
-
-std::vector<uint8_t> DrawFunctionBytes() {
-  std::vector<uint8_t> code = {0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x48, 0xb8};  // push r15 / r14 / r13; mov rax, ..
-  for (int i = 0; i < 8; ++i) code.push_back(static_cast<uint8_t>(DRAW_RECORD >> (8 * i)));
-  code.insert(code.end(), {
-                              0x48, 0x89, 0x38,                    // mov [rax], rdi
-                              0x48, 0x89, 0x70, 0x08,              // mov [rax+8], rsi
-                              0x48, 0x89, 0x50, 0x10,              // mov [rax+16], rdx
-                              0xff, 0x40, 0x18,                    // inc dword [rax+24]
-                              0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f,  // pop r13 / r14 / r15
-                              0xc3,
-                          });
-  return code;
-}
-
-// A site record for code in the fake image, its window read from memory as the generator would.
-Site SiteAt(uintptr_t address, uint8_t length, Row row, SiteLabel label) {
-  Site site = {.address = static_cast<uint32_t>(address), .length = length, .row = static_cast<uint8_t>(row), .label = label};
-  std::memcpy(site.window.data(), reinterpret_cast<const void*>(address - SITE_MARGIN), (2 * SITE_MARGIN) + length);
-  return site;
-}
+// The synthetic game functions are the real sites' bytes (each window's site and its 16 bytes after) followed by these
+// tails, Linux calling convention. The pack window ends inside mov [rsp+disp8], r9: its tail starts with the disp8.
+// Pack: push rbp / r15 / r14 / r13 / r12 / rbx, sub rsp 0x128, so the 7th and 8th arguments sit at rsp+0x160 / 0x168.
+inline constexpr std::array<uint8_t, 81> PACK_TAIL = {
+    0x08,                                                  // the window's mov [rsp+8], r9
+    0x48, 0xb8, 0x00, 0x00, 0x61, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rax, PACK_RECORD
+    0x48, 0x89, 0x38,                                      // mov [rax], rdi
+    0x48, 0x89, 0x70, 0x08,                                // mov [rax+8], rsi
+    0x48, 0x89, 0x50, 0x10,                                // mov [rax+16], rdx
+    0x48, 0x89, 0x48, 0x18,                                // mov [rax+24], rcx
+    0x4c, 0x89, 0x40, 0x20,                                // mov [rax+32], r8
+    0x4c, 0x89, 0x48, 0x28,                                // mov [rax+40], r9
+    0x4c, 0x8b, 0xb4, 0x24, 0x60, 0x01, 0x00, 0x00,        // mov r14, [rsp+0x160]: the 7th argument
+    0x4c, 0x89, 0x70, 0x30,                                // mov [rax+48], r14
+    0x4c, 0x8b, 0xb4, 0x24, 0x68, 0x01, 0x00, 0x00,        // mov r14, [rsp+0x168]: the 8th
+    0x4c, 0x89, 0x70, 0x38,                                // mov [rax+56], r14
+    0xff, 0x40, 0x40,                                      // inc dword [rax+64]
+    0x48, 0x81, 0xc4, 0x28, 0x01, 0x00, 0x00,              // add rsp, 0x128
+    0x5b, 0x41, 0x5c, 0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f, 0x5d,  // pop rbx / r12 / r13 / r14 / r15 / rbp
+    0xb0, 0x01, 0xc3,                                      // mov al, 1; ret
+};
+// Draw: push r15 / r14 / r13 / r12 / rbx, sub rsp 0x130, mov r15, rdx, mov r14, rsi (all in the window).
+inline constexpr std::array<uint8_t, 42> DRAW_TAIL = {
+    0x48, 0xb8, 0x00, 0x00, 0x63, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rax, DRAW_RECORD
+    0x48, 0x89, 0x38,                                      // mov [rax], rdi
+    0x4c, 0x89, 0x70, 0x08,                                // mov [rax+8], r14 (rsi)
+    0x4c, 0x89, 0x78, 0x10,                                // mov [rax+16], r15 (rdx)
+    0xff, 0x40, 0x18,                                      // inc dword [rax+24]
+    0x48, 0x81, 0xc4, 0x30, 0x01, 0x00, 0x00,              // add rsp, 0x130
+    0x5b, 0x41, 0x5c, 0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f,  // pop rbx / r12 / r13 / r14 / r15
+    0xc3, 0xcc,                                            // ret
+};
 
 // The fake view: its vtable's pass-kind slot returns `kind`.
 struct FakeView {
@@ -95,13 +85,14 @@ struct FakeView {
 };
 ATTILA64_GAME_CALL uint32_t FakeViewKind(void* view) noexcept { return static_cast<FakeView*>(view)->kind; }
 
-// The add-on's side.
+// The add-on's side. Atomics: the drain runs them on two game threads.
+Block* active_block = nullptr;  // the block whose hooks run (this exe's or a DLL copy's)
 std::atomic<uint32_t> before_pack_calls = 0;
-uint32_t pass_begin_calls = 0;
-uint32_t pass_end_calls = 0;
-uint32_t last_kind = 0;
-bool end_measure_ok = false;
-PassAction next_action = PASS_DRAW;
+std::atomic<uint32_t> pass_begin_calls = 0;
+std::atomic<uint32_t> pass_end_calls = 0;
+std::atomic<uint32_t> last_kind = 0;
+std::atomic_bool end_measure_ok = false;
+std::atomic<PassAction> next_action = PASS_DRAW;
 const Callbacks* swap_in_begin = nullptr;  // stored into the block by pass_begin when set (a re-register in between)
 std::atomic_bool drained = false;
 std::atomic<uint32_t> calls_after_drain = 0;
@@ -112,14 +103,16 @@ void BeforePack() noexcept {
 }
 
 PassAction PassBegin(uint32_t pass_kind, PassMeasure* measure) noexcept {
+  if (drained.load()) ++calls_after_drain;
   ++pass_begin_calls;
   last_kind = pass_kind;
   *measure = {.sun_binds_before = 11, .other_binds_before = 22, .sun_at_start = 33, .reserved = 0};
-  if (swap_in_begin != nullptr) block.callbacks.store(swap_in_begin);
-  return next_action;
+  if (swap_in_begin != nullptr) active_block->callbacks.store(swap_in_begin);
+  return next_action.load();
 }
 
 void PassEnd(uint32_t pass_kind, const PassMeasure& measure) noexcept {
+  if (drained.load()) ++calls_after_drain;
   ++pass_end_calls;
   end_measure_ok = pass_kind == last_kind && measure.sun_binds_before == 11 && measure.other_binds_before == 22
                    && measure.sun_at_start == 33;
@@ -135,21 +128,36 @@ int wmain(int argc, wchar_t** argv) {
     std::printf("FAIL: the game range 0x400000..0x527d000 is taken\n");
     return 1;
   }
+  if (argc < 2) {
+    std::printf("FAIL: patcher_test.exe <renodx_attila64.dll>\n");
+    return 1;
+  }
   char exe_dir[MAX_PATH];
   GetModuleFileNameA(nullptr, exe_dir, MAX_PATH);
   *std::strrchr(exe_dir, '\\') = '\0';
+  wchar_t exe_dir_wide[MAX_PATH];
+  GetModuleFileNameW(nullptr, exe_dir_wide, MAX_PATH);
+  *std::wcsrchr(exe_dir_wide, L'\\') = L'\0';
   LoaderApi api = MakeApi(exe_dir, GAME_HI_MIN);
   loader = &api;
 
-  const auto write_game = [] {
-    std::memcpy(reinterpret_cast<void*>(GAME_LO), ELF_MAGIC.data(), ELF_MAGIC.size());
-    std::memcpy(reinterpret_cast<void*>(BUILD_ID_NOTE_ADDRESS), BUILD_ID_NOTE.data(), BUILD_ID_NOTE.size());
+  const auto at = [](uintptr_t address) { return reinterpret_cast<uint8_t*>(address); };
+  const auto write_game = [&] {
+    std::memcpy(at(GAME_LO), ELF_MAGIC.data(), ELF_MAGIC.size());
+    std::memcpy(at(BUILD_ID_NOTE_ADDRESS), BUILD_ID_NOTE.data(), BUILD_ID_NOTE.size());
     for (const Site& site : SITES) {
-      std::memcpy(reinterpret_cast<void*>(site.address - SITE_MARGIN), site.window.data(), (2 * SITE_MARGIN) + site.length);
+      std::memcpy(at(site.address - SITE_MARGIN), site.window.data(), (2 * SITE_MARGIN) + site.length);
     }
+    const uintptr_t pack_end = SITES[ROW_BONE_FLUSH].address + SITES[ROW_BONE_FLUSH].length + SITE_MARGIN;
+    const uintptr_t draw_end = SITES[ROW_PASS_DRAW].address + SITES[ROW_PASS_DRAW].length + SITE_MARGIN;
+    std::memcpy(at(pack_end), PACK_TAIL.data(), PACK_TAIL.size());
+    std::memcpy(at(draw_end), DRAW_TAIL.data(), DRAW_TAIL.size());
+    FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
+  };
+  const auto site_untouched = [&](const Site& site) {
+    return std::memcmp(at(site.address), site.window.data() + SITE_MARGIN, site.length) == 0;
   };
   write_game();
-  const auto at = [](uintptr_t address) { return reinterpret_cast<uint8_t*>(address); };
 
   // Identity.
   Expect(CheckIdentity(api) == STATUS_READY, "identity: accepted");
@@ -220,7 +228,6 @@ int wmain(int argc, wchar_t** argv) {
     Expect(CheckSite(site, {}).refusal == REFUSAL_DIFFERS, "apply: a second check sees our bytes");
     *at(site.address + 4) ^= 1;
     Expect(!SiteUnchanged(site, applied), "apply: a later change is seen");
-    write_game();
   }
 
   // The stack-check rule: the windows hold its result.
@@ -231,31 +238,19 @@ int wmain(int argc, wchar_t** argv) {
     std::memcpy(at(RULE_SITE - 16), before.data(), before.size());
     std::memcpy(at(RULE_SITE), SITES[0].window.data() + SITE_MARGIN, 5);
     std::memcpy(at(RULE_SITE + 5), left_alone.data(), left_alone.size());
-    Site site = SiteAt(RULE_SITE, 5, ROW_BONE_FLUSH, LABEL_PACK_ENTRY);
+    Site site = {.address = static_cast<uint32_t>(RULE_SITE), .length = 5, .row = ROW_BONE_FLUSH, .label = LABEL_PACK_ENTRY};
+    std::memcpy(site.window.data(), at(RULE_SITE - SITE_MARGIN), (2 * SITE_MARGIN) + 5);
     site.window[7] = 0x65;
     Expect(CheckSite(site, {}).refusal == REFUSAL_NEIGHBOUR, "stack rule: the raw file bytes differ from the window");
     Expect(ApplyStackRule(at(RULE_SITE - 16), at(RULE_SITE + 16 + 5)) == 1, "stack rule: one read rewritten");
     Expect(CheckSite(site, {}).refusal == REFUSAL_NONE, "stack rule: the rewritten bytes match");
   }
 
-  // The shipped hook bodies on synthetic game functions.
-  const std::vector<uint8_t> pack_code = PackFunctionBytes();
-  const std::vector<uint8_t> draw_code = DrawFunctionBytes();
-  std::memcpy(at(PACK_FUNCTION), pack_code.data(), pack_code.size());
-  std::memcpy(at(DRAW_FUNCTION), draw_code.data(), draw_code.size());
-  for (const auto& [address, row, label, length] :
-       {std::tuple{PACK_FUNCTION, ROW_BONE_FLUSH, LABEL_PACK_ENTRY, uint8_t{5}},
-        std::tuple{DRAW_FUNCTION, ROW_PASS_DRAW, LABEL_VIEW_DRAW_ENTRY, uint8_t{6}}}) {
-    const Site site = SiteAt(address, length, row, label);
-    Expect(CheckSite(site, {}).refusal == REFUSAL_NONE, "hooks: synthetic site accepted");
-    AppliedSite applied;
-    Expect(ApplySite(api, site, REPLACEMENTS[row], &applied) == REFUSAL_NONE, "hooks: synthetic site hooked");
-    originals[row] = applied.original;
-  }
-  const auto* pack_record = reinterpret_cast<const PackRecord*>(PACK_RECORD);
-  const auto* draw_record = reinterpret_cast<const DrawRecord*>(DRAW_RECORD);
-  const auto pack = reinterpret_cast<PackFn>(PACK_FUNCTION);
-  const auto draw = reinterpret_cast<ViewDrawFn>(DRAW_FUNCTION);
+  // The hook bodies, called through the real sites as the game calls them.
+  auto* pack_record = reinterpret_cast<PackRecord*>(PACK_RECORD);
+  auto* draw_record = reinterpret_cast<DrawRecord*>(DRAW_RECORD);
+  const auto pack = reinterpret_cast<PackFn>(SITES[ROW_BONE_FLUSH].address);
+  const auto draw = reinterpret_cast<ViewDrawFn>(SITES[ROW_PASS_DRAW].address);
   const auto pack_once = [&] {
     uint32_t cursor = 0;
     uint32_t written = 0;
@@ -268,54 +263,90 @@ int wmain(int argc, wchar_t** argv) {
            && static_cast<uint32_t>(pack_record->arguments[6]) == 0x7777
            && pack_record->arguments[7] == reinterpret_cast<uint64_t>(&written);
   };
-
-  // Bone flush: bit clear, bit set without callbacks, bit set with them.
-  Expect(pack_once() && pack_record->calls == 1 && before_pack_calls == 0, "pack: bit clear, original with its arguments");
-  Expect(Logged("PACK_ENTRY: first call"), "pack: first-call line");
-  block.hooks_wanted.store(RowBit(ROW_BONE_FLUSH));
-  Expect(pack_once() && pack_record->calls == 2 && before_pack_calls == 0, "pack: no callbacks registered");
-  block.callbacks.store(&CALLBACKS);
-  Expect(pack_once() && pack_record->calls == 3 && before_pack_calls == 1, "pack: before_pack, then the original");
-  Expect(block.calls_in_flight.load() == 0, "pack: guard closed");
-
-  // Pass draw.
   std::array<void*, VIEW_KIND_SLOT + 1> slots = {};
   slots[VIEW_KIND_SLOT] = reinterpret_cast<void*>(&FakeViewKind);
   FakeView view = {.vtable = slots.data(), .kind = 7};
   std::array<uint8_t, 0x40> node = {};
-  node[NODE_ENABLED_OFFSET] = 1;
   const auto draw_once = [&] {
     draw(node.data(), reinterpret_cast<void*>(0x2222), &view);
     return draw_record->arguments[0] == reinterpret_cast<uint64_t>(node.data()) && draw_record->arguments[1] == 0x2222
            && draw_record->arguments[2] == reinterpret_cast<uint64_t>(&view);
   };
-  Expect(draw_once() && draw_record->calls == 1 && pass_begin_calls == 0, "draw: bit clear");
-  block.hooks_wanted.store(RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW));
-  node[NODE_ENABLED_OFFSET] = 0;
-  Expect(draw_once() && draw_record->calls == 2 && pass_begin_calls == 0, "draw: a disabled node never reaches the add-on");
-  node[NODE_ENABLED_OFFSET] = 1;
-  next_action = PASS_SKIP;
-  draw(node.data(), nullptr, &view);
-  Expect(draw_record->calls == 2 && pass_begin_calls == 1 && last_kind == 7 && pass_end_calls == 0, "draw: skipped");
-  next_action = PASS_DRAW;
-  Expect(draw_once() && draw_record->calls == 3 && pass_begin_calls == 2 && pass_end_calls == 0, "draw: drawn");
-  next_action = PASS_DRAW_MEASURED;
-  view.kind = 9;
-  Expect(draw_once() && draw_record->calls == 4 && pass_end_calls == 1 && end_measure_ok && last_kind == 9,
-         "draw: measured, PassMeasure round trip");
-  swap_in_begin = &OTHER_CALLBACKS;
-  Expect(draw_once() && draw_record->calls == 5 && pass_begin_calls == 4 && pass_end_calls == 1,
-         "draw: re-registered between begin and end, no end");
-  swap_in_begin = nullptr;
-  block.callbacks.store(&CALLBACKS);
-  Expect(draw_once() && pass_end_calls == 2 && block.calls_in_flight.load() == 0, "draw: measured again, guard closed");
-  Expect(Logged("VIEW_DRAW_ENTRY: first call"), "draw: first-call line");
+  // Every path of both bodies, through the given block (this exe's hooks.hpp copy or a DLL copy's).
+  const auto expect_hook_bodies = [&](Block* shared) {
+    active_block = shared;
+    *pack_record = {};
+    *draw_record = {};
+    before_pack_calls = 0;
+    pass_begin_calls = 0;
+    pass_end_calls = 0;
+    shared->hooks_wanted.store(0);
+    shared->callbacks.store(nullptr);
 
-  // Drain: a game thread packs while the add-on unregisters (store nullptr, then a bounded wait for no calls in flight).
+    Expect(pack_once() && pack_record->calls == 1 && before_pack_calls == 0, "pack: bit clear, original with its arguments");
+    Expect(Logged("PACK_ENTRY: first call"), "pack: first-call line");
+    shared->hooks_wanted.store(RowBit(ROW_BONE_FLUSH));
+    Expect(pack_once() && pack_record->calls == 2 && before_pack_calls == 0, "pack: no callbacks registered");
+    shared->callbacks.store(&CALLBACKS);
+    Expect(pack_once() && pack_record->calls == 3 && before_pack_calls == 1, "pack: before_pack, then the original");
+    Expect(shared->calls_in_flight.load() == 0, "pack: guard closed");
+
+    view.kind = 7;
+    node[NODE_ENABLED_OFFSET] = 1;
+    Expect(draw_once() && draw_record->calls == 1 && pass_begin_calls == 0, "draw: bit clear");
+    shared->hooks_wanted.store(RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW));
+    shared->callbacks.store(nullptr);
+    Expect(draw_once() && draw_record->calls == 2 && pass_begin_calls == 0, "draw: bit set, no callbacks registered");
+    shared->callbacks.store(&CALLBACKS);
+    node[NODE_ENABLED_OFFSET] = 0;
+    Expect(draw_once() && draw_record->calls == 3 && pass_begin_calls == 0, "draw: a disabled node never reaches the add-on");
+    node[NODE_ENABLED_OFFSET] = 1;
+    next_action = PASS_SKIP;
+    draw(node.data(), nullptr, &view);
+    Expect(draw_record->calls == 3 && pass_begin_calls == 1 && last_kind == 7 && pass_end_calls == 0, "draw: skipped");
+    next_action = PASS_DRAW;
+    Expect(draw_once() && draw_record->calls == 4 && pass_begin_calls == 2 && pass_end_calls == 0, "draw: drawn");
+    next_action = PASS_DRAW_MEASURED;
+    view.kind = 9;
+    Expect(draw_once() && draw_record->calls == 5 && pass_end_calls == 1 && end_measure_ok && last_kind == 9,
+           "draw: measured, PassMeasure round trip");
+    swap_in_begin = &OTHER_CALLBACKS;
+    Expect(draw_once() && draw_record->calls == 6 && pass_begin_calls == 4 && pass_end_calls == 1,
+           "draw: another Callbacks registered between begin and end, no end");
+    swap_in_begin = nullptr;
+    shared->callbacks.store(&CALLBACKS);
+    Expect(draw_once() && pass_end_calls == 2 && shared->calls_in_flight.load() == 0, "draw: measured again, guard closed");
+    Expect(Logged("VIEW_DRAW_ENTRY: first call"), "draw: first-call line");
+    shared->hooks_wanted.store(0);
+    shared->callbacks.store(nullptr);
+  };
+
+  // This exe's copy of hooks.hpp.
+  std::printf("  hooks: the test's copy\n");
+  write_game();
+  for (const Site& site : SITES) {
+    AppliedSite applied;
+    Expect(ApplySite(api, site, REPLACEMENTS[site.row], &applied) == REFUSAL_NONE, "hooks: site hooked");
+    originals[site.row] = applied.original;
+  }
+  expect_hook_bodies(&block);
+
+  // Drain: two game threads (a pack and a measured pass) while the add-on unregisters as plugin_block.h says: store
+  // nullptr (the bits stay set here, so the hooks keep entering the guard), then wait for the first 0. On x86 this would
+  // also pass with a release store; the seq_cst rule is the header's, this shows the first-zero wait.
   {
+    block.hooks_wanted.store(RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW));
+    next_action = PASS_DRAW_MEASURED;
     std::atomic_bool running = true;
-    std::thread game_thread([&] {
-      while (running.load()) pack_once();
+    std::thread pack_thread([&] {
+      while (running.load()) {
+        pack_once();
+      }
+    });
+    std::thread draw_thread([&] {
+      while (running.load()) {
+        draw_once();
+      }
     });
     int undrained = 0;
     for (int cycle = 0; cycle < 200; ++cycle) {
@@ -324,31 +355,139 @@ int wmain(int argc, wchar_t** argv) {
       std::this_thread::sleep_for(std::chrono::microseconds(200));
       block.callbacks.store(nullptr);
       const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
-      // The first 0 seen ends the wait: a hook that enters after it loads nullptr and calls nothing.
       bool zero_seen = false;
       while (!zero_seen && std::chrono::steady_clock::now() < deadline) {
-        zero_seen = block.calls_in_flight.load() == 0;
-        if (!zero_seen) Sleep(0);
+        zero_seen = (block.calls_in_flight.load() == 0);
+        if (!zero_seen) {
+          Sleep(0);
+        }
       }
-      if (!zero_seen) ++undrained;
+      if (!zero_seen) {
+        ++undrained;
+      }
       drained.store(true);
       std::this_thread::sleep_for(std::chrono::microseconds(200));
     }
     running.store(false);
-    game_thread.join();
+    pack_thread.join();
+    draw_thread.join();
     Expect(undrained == 0, "drain: every wait ended within 1 s");
     Expect(calls_after_drain.load() == 0, "drain: no callback after the wait");
-    std::printf("  drain: %u before_pack calls over 200 cycles\n", before_pack_calls.load());
+    std::printf("  drain: %u before_pack, %u pass_begin, %u pass_end calls over 200 cycles\n", before_pack_calls.load(),
+                pass_begin_calls.load(), pass_end_calls.load());
+    drained.store(false);
+    block.hooks_wanted.store(0);
   }
 
-  // The built DLL's init on the real sites.
-  if (argc < 2) {
-    Expect(false, "patcher_test.exe <renodx_attila64.dll>: no DLL given");
+  // The built DLL: copies under dll_cases\<case>\ (each its own module and globals).
+  const std::wstring cases_dir = std::wstring(exe_dir_wide) + L"\\dll_cases";
+  const std::wstring ini_path = std::wstring(exe_dir_wide) + L"\\ReShade.ini";
+  CreateDirectoryW(cases_dir.c_str(), nullptr);
+  const auto copy_plugin = [&](const wchar_t* folder, const wchar_t* file_name) {
+    const std::wstring directory = cases_dir + L"\\" + folder;
+    CreateDirectoryW(directory.c_str(), nullptr);
+    std::wstring target = directory + L"\\" + file_name;
+    Expect(CopyFileW(argv[1], target.c_str(), FALSE) != FALSE, "a copy of the plugin DLL");
+    return target;
+  };
+  const auto set_ini_key_off = [&](const wchar_t* key) {
+    DeleteFileW(ini_path.c_str());
+    if (key != nullptr) {
+      WritePrivateProfileStringW(INI_SECTION, key, L"0", ini_path.c_str());
+    }
+  };
+  const auto init_copy = [&](const wchar_t* folder, const wchar_t* file_name, const LoaderApi& case_api) {
+    const Plugin plugin = LoadPlugin(copy_plugin(folder, file_name).c_str());
+    log_lines.clear();
+    return std::pair{plugin, (plugin.init != nullptr) ? plugin.init(&case_api) : -1};
+  };
+  const auto status_of = [](const Plugin& plugin) {
+    return (plugin.block != nullptr) ? plugin.block->status.load(std::memory_order_acquire) : uint32_t{STATUS_LOADING};
+  };
+  set_ini_key_off(nullptr);
+
+  std::printf("  hooks: the DLL's own\n");
+  write_game();
+  const Plugin main_plugin = ExpectPluginDll(api, copy_plugin(L"main", MODULE_NAME).c_str());
+  if (main_plugin.block != nullptr) {
+    expect_hook_bodies(main_plugin.block);
+  }
+
+  write_game();
+  if (const auto [plugin, result] = init_copy(L"changed", MODULE_NAME, api); result == 0) {
+    Expect(plugin.block != main_plugin.block, "dll: each copy has its own block");
+    *at(SITES[ROW_PASS_DRAW].address + 1) ^= 1;
+    plugin.game_started(&api);
+    Expect(plugin.block->rows_changed.load() == RowBit(ROW_PASS_DRAW) && Logged("VIEW_DRAW_ENTRY changed after we patched it")
+               && Logged("game started: 1 sites unchanged"),
+           "dll: game start finds a site changed after init");
   } else {
-    write_game();
-    ExpectPluginDll(api, argv[1]);
+    Expect(false, "dll: init for the changed-later case");
   }
 
-  std::printf("%s: %d failure(s)\n", (failures == 0) ? "PASS" : "FAIL", failures);
+  set_ini_key_off(INI_ENABLED);
+  write_game();
+  {
+    const auto [plugin, result] = init_copy(L"off", MODULE_NAME, api);
+    Expect(result == 1 && status_of(plugin) == STATUS_OFF && Logged("Enabled=0") && site_untouched(SITES[0])
+               && site_untouched(SITES[1]),
+           "dll: Enabled=0 refuses and writes nothing");
+  }
+  for (const Row row : {ROW_BONE_FLUSH, ROW_PASS_DRAW}) {
+    set_ini_key_off(ROW_INI_KEYS[row]);
+    write_game();
+    const auto [plugin, result] = init_copy(ROW_INI_KEYS[row], MODULE_NAME, api);
+    const Row other = (row == ROW_BONE_FLUSH) ? ROW_PASS_DRAW : ROW_BONE_FLUSH;
+    Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == RowBit(other)
+               && plugin.block->rows_refused == RowBit(row) && Logged("skipped (OFF)") && site_untouched(SITES[row])
+               && !site_untouched(SITES[other]),
+           "dll: a row's install key 0 leaves that row out");
+  }
+  set_ini_key_off(nullptr);
+
+  write_game();
+  *at(SITES[ROW_BONE_FLUSH].address) ^= 1;
+  {
+    const auto [plugin, result] = init_copy(L"differs", MODULE_NAME, api);
+    Expect(result == 0 && plugin.block->rows_applied == RowBit(ROW_PASS_DRAW)
+               && plugin.block->rows_refused == RowBit(ROW_BONE_FLUSH) && Logged("PACK_ENTRY 0x3416d50: skipped (DIFFERS)"),
+           "dll: a site whose bytes differ is left out");
+  }
+
+  write_game();
+  hook_mode = HOOK_NO_MEMORY;
+  {
+    const auto [plugin, result] = init_copy(L"no_memory", MODULE_NAME, api);
+    Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == 0
+               && plugin.block->rows_refused == (RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW)) && Logged("skipped (NO_MEMORY)"),
+           "dll: no memory near the game leaves both rows out");
+  }
+  hook_mode = HOOK_NORMAL;
+
+  write_game();
+  *at(BUILD_ID_NOTE_ADDRESS + 20) ^= 1;
+  {
+    const auto [plugin, result] = init_copy(L"wrong_game", MODULE_NAME, api);
+    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_GAME && site_untouched(SITES[0]) && site_untouched(SITES[1]),
+           "dll: another game build refuses and writes nothing");
+  }
+
+  write_game();
+  {
+    LoaderApi short_range = api;
+    short_range.game_hi = GAME_HI_MIN - 1;
+    const auto [plugin, result] = init_copy(L"wrong_loader", MODULE_NAME, short_range);
+    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_LOADER && site_untouched(SITES[0]),
+           "dll: a short game range refuses");
+  }
+  {
+    const auto [plugin, result] = init_copy(L"renamed", L"renodx_attila64_old.dll", api);
+    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_LOADER && Logged("renamed") && site_untouched(SITES[0])
+               && site_untouched(SITES[1]),
+           "dll: a renamed file refuses and writes nothing");
+  }
+  set_ini_key_off(nullptr);
+
+  std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
   return failures;
 }

@@ -37,6 +37,15 @@ struct SiteCheck {
   uint8_t owner = OWNER_COUNT;  // the ForeignOwner of a FOREIGN refusal
 };
 
+// The loader's entry hook copies the first bytes into 32 bytes near the game, the jump back right after them and its
+// way in at +16: lengths 12..15 would overlap that (a sites.h row of that length needs the plugin's own trampoline).
+static_assert([] {
+  for (const Site& site : SITES) {
+    if (site.length < 5 || site.length > 11) return false;
+  }
+  return true;
+}(), "every site is 5..11 bytes, what the loader's entry hook can take");
+
 // What the loader's hook left at a site: what to call for the original, and the site's bytes right after (its jump
 // plus any stale tail byte), for the re-check at game start.
 struct AppliedSite {
@@ -45,7 +54,7 @@ struct AppliedSite {
 };
 
 // READY when the loader and the game build are the ones the sites were made for.
-static Status CheckIdentity(const LoaderApi& api) {
+[[nodiscard]] inline Status CheckIdentity(const LoaderApi& api) {
   if (api.api_version < LOADER_API_VERSION || api.game_lo != GAME_LO || api.game_hi < GAME_HI_MIN) {
     return STATUS_WRONG_LOADER;
   }
@@ -56,7 +65,7 @@ static Status CheckIdentity(const LoaderApi& api) {
   return STATUS_READY;
 }
 
-static SiteCheck CheckSite(const Site& site, std::span<const Foreign> foreign) {
+[[nodiscard]] inline SiteCheck CheckSite(const Site& site, std::span<const Foreign> foreign) {
   const uintptr_t window_start = site.address - SITE_MARGIN;
   const uintptr_t window_end = site.address + site.length + SITE_MARGIN;
   if (std::memcmp(reinterpret_cast<const void*>(site.address), site.window.data() + SITE_MARGIN, site.length) != 0) {
@@ -66,27 +75,27 @@ static SiteCheck CheckSite(const Site& site, std::span<const Foreign> foreign) {
     return {.refusal = REFUSAL_NEIGHBOUR};
   }
   for (const Foreign& entry : foreign) {
-    const bool hit = (entry.kind == FOREIGN_RANGE)
-                         ? (entry.length != 0 && entry.address < window_end && entry.address + entry.length > window_start)
-                         : (entry.address > site.address && entry.address < site.address + site.length);
+    const bool hit = ((entry.kind == FOREIGN_RANGE)
+                          ? (entry.length != 0 && entry.address < window_end && entry.address + entry.length > window_start)
+                          : (entry.address > site.address && entry.address < site.address + site.length));
     if (hit) return {.refusal = REFUSAL_FOREIGN, .owner = entry.owner};
   }
   return {};
 }
 
 // The loader's hook on a site CheckSite accepted; on success *applied holds the original and the bytes written.
-static Refusal ApplySite(const LoaderApi& api, const Site& site, void* replacement, AppliedSite* applied) {
+[[nodiscard]] inline Refusal ApplySite(const LoaderApi& api, const Site& site, void* replacement, AppliedSite* applied) {
   const uint8_t* expect = site.window.data() + SITE_MARGIN;
   applied->original = api.hook(site.address, expect, site.length, replacement);
   if (applied->original == nullptr) {
-    return (std::memcmp(reinterpret_cast<const void*>(site.address), expect, site.length) == 0) ? REFUSAL_NO_MEMORY
-                                                                                                : REFUSAL_WRITE_FAILED;
+    const bool unchanged = std::memcmp(reinterpret_cast<const void*>(site.address), expect, site.length) == 0;
+    return (unchanged ? REFUSAL_NO_MEMORY : REFUSAL_WRITE_FAILED);
   }
   std::memcpy(applied->bytes.data(), reinterpret_cast<const void*>(site.address), site.length);
   return REFUSAL_NONE;
 }
 
-static bool SiteUnchanged(const Site& site, const AppliedSite& applied) {
+[[nodiscard]] inline bool SiteUnchanged(const Site& site, const AppliedSite& applied) {
   return std::memcmp(reinterpret_cast<const void*>(site.address), applied.bytes.data(), site.length) == 0;
 }
 

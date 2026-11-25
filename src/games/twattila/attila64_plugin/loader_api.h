@@ -11,7 +11,7 @@
 // The 64-bit Attila loader's plugin interface, version 1, declared from its documented layout (the loader is MIT; its
 // header is not copied). The loader calls attila64_plugin_init(api) once, after the game is mapped and before any game
 // code runs, and attila64_plugin_game_started(api) once the game has set up its settings. Every pointer here is the
-// loader's own (Windows calling convention); game functions use the Linux one (ATTILA64_GAME_CALL).
+// loader's own (Windows calling convention; C, so none throws); game functions use the Linux one (ATTILA64_GAME_CALL).
 #define ATTILA64_GAME_CALL __attribute__((sysv_abi))
 
 namespace twattila::attila64_plugin {
@@ -24,14 +24,14 @@ struct LoaderApi {
   uintptr_t game_lo;           // the game's code and data in memory
   uintptr_t game_hi;
   const char* plugin_dir;  // the plugins folder, no trailing slash
-  void (*log)(const char* format, ...);
+  void (*log)(const char* format, ...) noexcept;
   // 1 = the len bytes at `at` were exactly `expect` and are now `bytes`; 0 = left alone.
-  int (*patch)(uintptr_t at, const uint8_t* expect, const uint8_t* bytes, size_t len);
+  int (*patch)(uintptr_t at, const uint8_t* expect, const uint8_t* bytes, size_t len) noexcept;
   // The game function at `at` (first len bytes == expect, whole instructions, nothing position-dependent) calls fn
   // instead; returns what to call for the original, nullptr when the bytes differ or there is no memory near the game.
-  void* (*hook)(uintptr_t at, const uint8_t* expect, int len, void* fn);
+  void* (*hook)(uintptr_t at, const uint8_t* expect, int len, void* fn) noexcept;
   // n bytes within reach of the game's 32-bit jumps; nullptr when there is none left.
-  void* (*code_near_game)(size_t n);
+  void* (*code_near_game)(size_t n) noexcept;
 };
 static_assert(offsetof(LoaderApi, api_version) == 0);
 static_assert(offsetof(LoaderApi, engine_version) == 8);

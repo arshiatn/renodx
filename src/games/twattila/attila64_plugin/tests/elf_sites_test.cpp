@@ -6,7 +6,8 @@
 // The plugin's sites against the game file itself: maps the Linux build's load segments at their addresses (read and
 // write, never executed), applies the loader's stack-check rewrite, and checks the build id and every site's window,
 // the hook through the fake loader, controls that must be refused, and the built DLL's init.
-// elf_sites_test.exe <renodx_attila64.dll> <game ELF>; SKIPPED (exit 0) without the ELF or when the range is taken.
+// elf_sites_test.exe <renodx_attila64.dll> <game ELF>; SKIPPED (exit 77, reported by build.ps1 as not run)
+// without the ELF or when the game's range is taken.
 
 #include <windows.h>
 
@@ -20,6 +21,8 @@
 #include "../patcher.hpp"
 #include "fake_loader.hpp"
 
+inline constexpr int EXIT_SKIPPED = 77;
+
 int wmain(int argc, wchar_t** argv) {
   using namespace twattila::attila64_plugin;
   using namespace twattila::attila64_plugin::test;
@@ -27,17 +30,17 @@ int wmain(int argc, wchar_t** argv) {
   // First, before anything else can map there.
   if (!ReserveGame(PAGE_READWRITE)) {
     std::printf("SKIPPED: the game range 0x400000..0x527d000 is taken\n");
-    return 0;
+    return EXIT_SKIPPED;
   }
   if (argc < 3) {
     std::printf("SKIPPED: elf_sites_test.exe <renodx_attila64.dll> <game ELF>\n");
-    return 0;
+    return EXIT_SKIPPED;
   }
   HANDLE file = CreateFileW(argv[2], GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
   LARGE_INTEGER size = {};
   if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &size)) {
     std::printf("SKIPPED: the game ELF could not be opened (error %lu)\n", GetLastError());
-    return 0;
+    return EXIT_SKIPPED;
   }
   std::vector<uint8_t> elf(static_cast<size_t>(size.QuadPart));
   DWORD got = 0;
@@ -54,7 +57,9 @@ int wmain(int argc, wchar_t** argv) {
   // p_filesz 32, p_memsz 40.
   const auto field = [&]<typename T>(size_t offset) {
     T value = {};
-    if (offset + sizeof(T) <= elf.size()) std::memcpy(&value, elf.data() + offset, sizeof(T));
+    if (offset + sizeof(T) <= elf.size()) {
+      std::memcpy(&value, elf.data() + offset, sizeof(T));
+    }
     return value;
   };
   uintptr_t game_end = 0;
@@ -93,7 +98,8 @@ int wmain(int argc, wchar_t** argv) {
   for (const Site& site : SITES) {
     std::printf("  site %s %#x\n", LABEL_WORDS[site.label], site.address);
     Expect(CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the site's window is the game's");
-    for (const uint32_t address : {site.address - SITE_MARGIN, site.address + site.length - 1, site.address + site.length + SITE_MARGIN - 1}) {
+    const uint32_t window_last = site.address + site.length + SITE_MARGIN - 1;
+    for (const uint32_t address : {site.address - SITE_MARGIN, site.address + site.length - 1, window_last}) {
       *at(address) ^= 1;
       Expect(CheckSite(site, FOREIGN).refusal != REFUSAL_NONE, "control: one byte changed in the window");
       *at(address) ^= 1;
@@ -111,6 +117,6 @@ int wmain(int argc, wchar_t** argv) {
 
   ExpectPluginDll(api, argv[1]);
 
-  std::printf("%s: %d failure(s)\n", (failures == 0) ? "PASS" : "FAIL", failures);
+  std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
   return failures;
 }
