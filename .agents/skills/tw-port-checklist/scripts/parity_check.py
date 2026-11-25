@@ -6,7 +6,7 @@ Per game, four sources against one ledger:
               the Two ways rule; listed, not open)
   casters     caster_census.py --whole-dump over the game's decompiler dump: every NOT HELD vertex shader needs a ledger line
   ledger      <tools>/parity/<game>.tsv: key or hash <TAB> status <TAB> owner, scene or proof [<TAB> source]; '#' starts a comment.
-              The key column holds one or more page keys or 8-digit hashes (space-separated: one row of a parity table), a
+              Ryse, Tales and Expeditions keep theirs beside their plans: <tools>/../nontw/<game>/<game>.tsv. The key column holds one or more page keys or 8-digit hashes (space-separated: one row of a parity table), a
               glob (Audio*), section:<Attila section> (every Attila-only key of that section), feature:<words> (a feature
               without a row, checked on its own), or skip:<key> (one of Attila's pass skips / CPU wins).
   skips       <tools>/parity/skips.tsv, Attila's canonical skip list (key <TAB> kind <TAB> Attila file:line <TAB> default <TAB>
@@ -80,6 +80,8 @@ NOT_TOTAL_WAR = ('d1', 'd2', 'ru', 'ry', 'ta', 'exr')
 # Pages dumped in the helper-present state (dump_any.py --helper): Ryse's hand-drawn Graphics 1 of 2 / 2 of 2 list their
 # anti-aliasing and frame-generation widgets only with the helper beside the add-on.
 HELPER_PAGE = ('ry',)
+# Ledgers kept beside the game's plan, <tools>/../nontw/<ledger name>/<ledger name>.tsv (one copy, the game's round writes it).
+PLAN_LEDGERS = ('ry', 'ta', 'exr')
 SETTLED = ('HAVE', 'DONE', 'AS ATTILA', "WON'T GET")
 WAITING = ('NEEDS A TRACE', 'SHARED STEP')
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -186,7 +188,8 @@ def check_line(line):
 
 def check_game(args, letter, tools, attila_rows, out):
     name = GAMES[letter][0]
-    ledger_path = os.path.join(tools, 'parity', f'{name}.tsv')
+    ledger_path = (os.path.join(os.path.dirname(tools), 'nontw', name, f'{name}.tsv') if letter in PLAN_LEDGERS
+                   else os.path.join(tools, 'parity', f'{name}.tsv'))
     ledger = read_ledger(ledger_path)
     used = set()
     opened, waiting, settled = [], [], collections.Counter()
