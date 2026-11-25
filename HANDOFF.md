@@ -850,7 +850,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
 - pds2_ (Opus High, worktree, branch pds2_step2) PT DI STEP 2 STARTED 01:3x (resum ... | ?
-- pdw1_ FIX ROUND SENT 02:5x (S1-S5 + Nits, docs + one control, API unchanged) -> ... | ?
+- 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for ... | ?
 - QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes ... | ?
 - a64ab_ FIX ROUND (after a64abr_): a64abr_'s findings + window 1 = stage A only: ... | ?
 - PARKED (ATN hold): coord's 5090 re-time (run.ps1 -BlockSkipGpu, then -Time; line ... | ?
@@ -15784,8 +15784,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         ssao = 1 + later composite = different; low_def has no v32 transport), S2 V comment + light centre, S3 texel 2
         w = 0 = don't shade (else 250x / 273x in HDR), S4 a lowdef-swapped control, S5 'game's bits' = WARP only
         (game DXBC refactoringAllowed). Nits: failed control draw counted as a pass, unchecked Create*, style.
-        - [ ] pdw1_ FIX ROUND SENT 02:5x (S1-S5 + Nits, docs + one control, API unchanged) -> merge pdw1_step4a alone
-        -> push. S1 / S3 also go into the 4b / 4c brief.
+        - [x] pdw1_ FIX ROUND DONE (hand-back handoff_plan/handbacks/pdw1_step4a_fix_handback.md): 2e8b0c033; S1-S5
+        documented in the include + README, lowdef-swapped control added (needs seed 1 SDR x 16 light colour + one
+        extra game draw: plain SDR failed only 2 / 40), failed control draw = setup failure, Create* checked, <= 2 ulp
+        needs a named instruction (none needed), style. Final WARP run ALL OK: 146 gates, W1 fxc + dxc 40 / 40
+        BIT-EXACT, 140 / 140 controls fail (kind 40, model 40, lowdef 40, albedo 20); values-apart counts changed
+        (random inputs moved), results not. Left: last_run.txt UTF-16 (Tee-Object); reach-0 light / zero normal only
+        listed as not covered.
+        - [x] MERGED d38762e05 (Merge pdw1_step4a alone, 6 new files, no CMake target) + pushed 03:0x. Worktree
+        agent-aaed1d920c1bc4f3c left in place (no junctions per pdw1_).
+        - [ ] 4b / 4c brief MUST carry: S1 lowdef saturates after SSAO + no v32 transport for low_def (second bit /
+        no DI for lowdef / stated delta); S3 texel 2 w = 0 = skip DI that frame; V multiplied after the result; the
+        light's centre; 64-bit hash census -> W1 re-run on any changed hash.
         - [ ] QUIET RULE sent to a64b_ / pds2_ / pdw1_: no builds / WARP / harness / test exes while quiet_run.lock
         exists (window 3).
         ATN 11-24 ~23:xx: 'should we let the current subagents finish (not add anymore) then run your bench then
