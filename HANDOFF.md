@@ -16984,6 +16984,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         code ~30 / 60 min on _r2 (moves with the rebase). GPU turn adds split vs fused: cost day + night 3 / 29 / 128
         lights + DI passes' Nsight ms, E4 / E6 + per-texel noise; fused default only if cheaper with E4 in base CI and
         noise no worse. Owner: pdi4c_
+        pdi4c_ FUSED CODE DONE 23:36 (13 min vs 30): origin/pdi4c_step4c_r2 a60be72b7. DEVIATION: RTXDI 3.2 (b67f61cd)
+        has NO DI spatiotemporal function (only GI's; the coord's 'NVIDIA has a fused pass' held for GI only) ->
+        rt_di_spatiotemporal = OUR OWN function from 3.2's DI temporal + spatial code in the loop shape of 3.2's GI one
+        and RTXDI 2's DI one, NVIDIA notice; same RAY_TRACED bias, translation, previous surface, tries / neighbours /
+        radius / M cap via the new shared DiTemporalParameters / DiSpatialParameters / DiMotion (d3a0ba2e3, DRY);
+        reservoir arrays 1 + 2 in turns (one array races); DIM kind 40; h0i_test 72 / 72. Split passes' DXIL after the
+        refactor 'equivalent' (temporal reordered, spatial 2 loop-counter forms) -> NOT trusted until proven. Variant =
+        scratch fused_variant.py via build_helper.ps1 -Edit (text substitution, restored; no env var); player build
+        stays split (build.ps1 doesn't build it). Both builds exit 0 (scratch\pdi4c_\split_r2_run, fused_r2_run).
+        -> pd4r_ checks the fused estimator (MIS / bias weights over current + temporal + spatial, ping-pong race,
+        DIM 40, the refactor's purity) after 2.9a; fused numbers count only after its GO. GPU TURN ADDS: REFACTOR GATE
+        (W4 + E6 DI dumps of the split passes, 1abc8c505 + M1 vs a60be72b7, BYTE-EQUAL) and fused RAY_TRACED vs BASIC.
+        Pitfalls (next pass): HLSL has no ?: on structs; a failing cd in a 'cd ...; grep -r' chain greps the whole
+        tree. Owner: pd4r_, pdi4c_
         - [ ] nvs_ NVIDIA SPEED-UP SWEEP (ATN 11-25 ~23:4x 'any more speedups from nvidia guides and sdks for all of
         our RT/PT stuffs? how do they work with our unified PT?'; Opus xHigh, read-only, STARTED 23:4x, est 45 /
         deadline 90): plan_1117\nv_speedups.md = every NVIDIA-documented speed-up for RT shadows / AO / GI / PT bounce
