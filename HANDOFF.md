@@ -823,6 +823,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
+- a64ab3_ (Opus High) STARTED 06:1x: a64_ab.ps1 -EnginePlugin for -Smoke -ReShade ... | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
@@ -15496,6 +15497,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] MERGED 35b5e715a (Merge a64a1_lane) + coord build check on the merged tree: twattila addon64 + addon32,
         twrome2 addon32, twthronesofbritannia addon32, twwarhammer3 addon64 exit 0 (61 / 61 / 62 / 61 / 61 warnings =
         before). Pushed 06:0x.
+        - [ ] a64ab3_ (Opus High) STARTED 06:1x: a64_ab.ps1 -EnginePlugin for -Smoke -ReShade (T1) + the C2 hook trace
+        (RT shadows + shadow row, shadow_refresh=2, limb MVs) + -Analyze checks + DryRun self-tests + ATN's exact rule
+        lines in study_1124\a64ab_window1_rules.md (drops '-ReShade -Warp'). 10.1 item 3 bans renodx_attila64.dll in
+        every other -ReShade folder. ONE WRITER: the prepared L2B patch (attila64\ab\a64_ab_l2b_patch.py) applies only
+        after a64ab3_ is done (re-dry-test it then).
         - [ ] COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-on in the 64-bit port; only
         -Smoke without ReShade exists). The 32-bit S4-rotation trace gates the next 32-bit Attila / Thrones / Rome II
         release (none planned now). T1 ReShade.log must NOT contain the RENODX_TW_PLUGIN_WANT line. Checks: 32-bit S4-rotation trace
