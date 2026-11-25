@@ -21,6 +21,8 @@
 // _VALIDATE_NO_CACHE asks the screen only (no cache answer: the stored light stays); _NO_HISTORY_CLAMP: no ClampWeight after
 // the history merge. _BOIL the boiling filter's pass (BoilTexel), _BOIL_PLANT its pass plants a texel 100 x too bright
 // first; _RTXDI RTXDI's spatial resampling in the reuse's place (the reference build; the host's only).
+// Balanced ReSTIR Light (bridge RT_PATH_REUSE_BALANCED, the player's row): REUSE_BIAS_BASIC in its REUSE_BALANCED reuse builds,
+// _VALIDATE_KEEP_LIGHT set by the host: the only one the player's paths read (rt_path.hlsli REUSE_SUSPECTS).
 #ifndef SRC_GAMES_TWATTILA_DLAA_HELPER_RT_REUSE_BITS_H_
 #define SRC_GAMES_TWATTILA_DLAA_HELPER_RT_REUSE_BITS_H_
 

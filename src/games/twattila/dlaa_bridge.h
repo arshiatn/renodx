@@ -309,6 +309,10 @@ constexpr uint32_t RT_PATH_REUSE_NEAR = 1u << 26;
 // Torch Light in Path-Traced GI (Experimental; a path-traced Light Bounce request's with the trace's local lights, older
 // helpers ignore it): the local lights on the screen's surfaces a path meets too, not only on those nobody saw.
 constexpr uint32_t RT_PATH_TORCH_LIGHT = 1u << 27;
+// Balanced ReSTIR Light (Experimental; a path-traced Light Bounce request's with RT_PATH_REUSE, older helpers ignore it):
+// ReSTIR GI's spatial merge weighs the neighbours that could have made its sample (RTXDI's Basic bias correction), and
+// its history keeps a sample's stored light when it is checked again.
+constexpr uint32_t RT_PATH_REUSE_BALANCED = 1u << 28;
 // Scene flags (Shared::rt_scene_flags, a trace request's). Smoke BLAS Fast Build (helpers before 113 ignore it): the smoke's
 // BLAS, built anew each request, built for a fast build, not fast rays (which particles a ray meets first, and so counts, can
 // change: Smoke Shadow Quality's count).

@@ -94,6 +94,14 @@
 #include "rt_reuse_lean_omm.h"    // dxc -Fh (build.ps1)
 #include "rt_reuse_near.h"        // dxc -Fh (build.ps1)
 #include "rt_reuse_near_omm.h"    // dxc -Fh (build.ps1)
+#include "rt_reuse_balanced.h"         // dxc -Fh (build.ps1)
+#include "rt_reuse_balanced_omm.h"     // dxc -Fh (build.ps1)
+#include "rt_reuse_lights_balanced.h"  // dxc -Fh (build.ps1)
+#include "rt_reuse_lights_balanced_omm.h"  // dxc -Fh (build.ps1)
+#include "rt_reuse_lean_balanced.h"    // dxc -Fh (build.ps1)
+#include "rt_reuse_lean_balanced_omm.h"    // dxc -Fh (build.ps1)
+#include "rt_reuse_near_balanced.h"    // dxc -Fh (build.ps1)
+#include "rt_reuse_near_balanced_omm.h"    // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir.h"      // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir_omm.h"  // dxc -Fh (build.ps1)
 #include "rt_scene_data.h"        // dxc -Fh (build.ps1)
@@ -741,6 +749,20 @@ class RtScene12 {
     if (!(dxr12_ ? pipeline(RT_REUSE_NEAR_OMM, sizeof(RT_REUSE_NEAR_OMM), &reuse_near_pipeline_)
                  : pipeline(RT_REUSE_NEAR, sizeof(RT_REUSE_NEAR), &reuse_near_pipeline_))) {
       reuse_near_pipeline_.Reset();
+    }
+    // Balanced ReSTIR Light's reuse builds (REUSE_BALANCED: G1 Basic), the plain, Torch and Fire Light, Lean and Near
+    // reuse's (none: the row keeps only Validate's kept light).
+    const std::array<std::array<std::span<const unsigned char>, 2>, 4> balanced_code = {{
+        {RT_REUSE_BALANCED, RT_REUSE_BALANCED_OMM},
+        {RT_REUSE_LIGHTS_BALANCED, RT_REUSE_LIGHTS_BALANCED_OMM},
+        {RT_REUSE_LEAN_BALANCED, RT_REUSE_LEAN_BALANCED_OMM},
+        {RT_REUSE_NEAR_BALANCED, RT_REUSE_NEAR_BALANCED_OMM},
+    }};
+    for (size_t kind = 0; kind < balanced_code.size(); ++kind) {
+      const std::span<const unsigned char> code = balanced_code[kind][dxr12_ ? 1 : 0];
+      if (!pipeline(code.data(), code.size(), &reuse_balanced_pipelines_[kind])) {
+        reuse_balanced_pipelines_[kind].Reset();
+      }
     }
 #if defined(RENODX_REUSE_TESTS)
     // ReSTIR GI's test switches' builds (REUSE_TESTS: the paths', the reuse's; none: those switches do nothing).
@@ -3919,7 +3941,8 @@ class RtScene12 {
         // _RTXDI (the reference build) RTXDI's spatial resampling in the reuse's place, its bias correction RENODX_TW_REUSE_BIAS's;
         // _VALIDATE_* Validate's parts and _NO_HISTORY_CLAMP the history's ClampWeight (part C's bisection) (rt_path.hlsli).
         // The suspects', G1's and Validate's switches (REUSE_SUSPECT_BITS) run only in the reference build's REUSE_TESTS
-        // shaders, which take the place of Near / Lean Reuse. Without a log line: in any other build the usual shaders run;
+        // shaders, which take the place of Near / Lean Reuse; the usual paths read only _VALIDATE_KEEP_LIGHT's (Balanced
+        // ReSTIR Light's, with its REUSE_BALANCED reuse builds). Without a log line: in any other build the usual shaders run;
         // with SHaRC its paths do (the reuse is the tests'), with Torch and Fire Light in the Light Bounce its reuse does
         // (the paths are the tests').
         static const uint32_t reuse_tests = [] {
@@ -3978,7 +4001,10 @@ class RtScene12 {
                                 | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
                                 | (ratio_follows ? 64u : 0u)
                                 | ((path_traced && light_count != 0 && (requested & dlaa_bridge::RT_PATH_TORCH_LIGHT) != 0) ? LIGHTS_IN_PATHS : 0u),
-            .reuse_tests = reuse_tests,
+            // Balanced ReSTIR Light (RT_PATH_REUSE_BALANCED, older addons never set it): Validate's kept light, the test bit the
+            // player's paths read (rt_path.hlsli REUSE_SUSPECTS; its G1 Basic is the reuse's REUSE_BALANCED build, the
+            // tests pipelines' choice stays).
+            .reuse_tests = reuse_tests | (((requested & dlaa_bridge::RT_PATH_REUSE_BALANCED) != 0) ? REUSE_TEST_VALIDATE_KEEP_LIGHT : 0u),
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -4153,17 +4179,22 @@ class RtScene12 {
           const bool nearer = reuse_near_pipeline_
                               && ((version >= 31 && (requested & dlaa_bridge::RT_PATH_REUSE_NEAR) != 0)
                                   || GetEnvironmentVariableW(L"RENODX_TW_REUSE_NEAR", nullptr, 0) != 0);
-          ID3D12PipelineState* reuse_state = reuse_pipeline_.Get();
+          // Balanced ReSTIR Light (RT_PATH_REUSE_BALANCED): each usual reuse's REUSE_BALANCED build (G1 Basic) where made.
+          const bool balanced = (requested & dlaa_bridge::RT_PATH_REUSE_BALANCED) != 0;
+          const auto usual = [&](const ComPtr<ID3D12PipelineState>& state, size_t kind) {
+            return (balanced && reuse_balanced_pipelines_[kind]) ? reuse_balanced_pipelines_[kind].Get() : state.Get();
+          };
+          ID3D12PipelineState* reuse_state = usual(reuse_pipeline_, 0);
           if (lights_mode != 0) {
-            reuse_state = reuse_lights_pipeline_.Get();
+            reuse_state = usual(reuse_lights_pipeline_, 1);
           } else if (rtxdi) {
             reuse_state = reuse_rtxdi_pipeline_.Get();
           } else if (reuse_suspects) {
             reuse_state = reuse_tests_pipeline_.Get();
           } else if (nearer) {
-            reuse_state = reuse_near_pipeline_.Get();
+            reuse_state = usual(reuse_near_pipeline_, 3);
           } else if (lean) {
-            reuse_state = reuse_lean_pipeline_.Get();
+            reuse_state = usual(reuse_lean_pipeline_, 2);
           }
           list->SetPipelineState(reuse_state);
           list->Dispatch((shared.rt_bounce_width + 7) / 8, (shared.rt_bounce_height + 7) / 8, 1);
@@ -4641,7 +4672,7 @@ class RtScene12 {
     uint32_t previous_square_root = 0;  // RT_PATH_COLOR_SQUARE_ROOT
     uint32_t previous_positions_slice = 0;  // kept_positions_' slice with last frame's
     uint32_t lights_in_bounce = 0;  // rt_camera.hlsli LIGHTS_*: the mode (RT_PATH_LIGHTS_IN_BOUNCE 1, with RT_PATH_LIGHT_RATIO 3), the ratio's set and validity
-    uint32_t reuse_tests = 0;  // REUSE_TEST_* (tests; 0: none)
+    uint32_t reuse_tests = 0;  // REUSE_TEST_* (tests, and RT_PATH_REUSE_BALANCED's kept light; 0: none)
 #if defined(RENODX_PATH_PROBE)
     uint32_t probe_mode = 0;  // RENODX_TW_PATH_PROBE: rt_path.hlsli ProbeTexel's mode | its rays a texel << 8
 #endif
@@ -10450,6 +10481,8 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> reuse_pipeline_;  // ReSTIR GI's spatial reuse
   ComPtr<ID3D12PipelineState> reuse_lean_pipeline_;  // its Lean Reuse build (REUSE_LEAN)
   ComPtr<ID3D12PipelineState> reuse_near_pipeline_;  // its Near Reuse build (REUSE_NEAR)
+  // Balanced ReSTIR Light's builds (REUSE_BALANCED) of reuse_pipeline_, reuse_lights_pipeline_, _lean_, _near_.
+  std::array<ComPtr<ID3D12PipelineState>, 4> reuse_balanced_pipelines_;
   ComPtr<ID3D12PipelineState> path_tests_pipeline_;   // the paths' build with ReSTIR GI's test switches (REUSE_TESTS)
   ComPtr<ID3D12PipelineState> reuse_tests_pipeline_;  // the reuse's (REUSE_TESTS)
   ComPtr<ID3D12PipelineState> reuse_boil_pipeline_;  // its boiling filter (REUSE_BOIL; RTXDI builds)
