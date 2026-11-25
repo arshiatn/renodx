@@ -820,13 +820,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- NOPROBE base start: coord drains (quiet_run.lock 01:56) -> `-AB -Arms base` -> p ... | ?
+- a64wpr_ (Opus xHigh) WPR ETL analysis STARTED 02:0x -> attila64\wpr\window3_wpr. ... | ?
 - WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling oc ... | ?
 - ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a ... | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
-- a64p1_ WAVE 1 FIX ROUND SENT 01:4x (both reviews' Shoulds, layout unchanged, bui ... | ?
+- MERGED LOCALLY fa46e4dad (Merge a64p1_wave1, clean) -> coord builds twattila add ... | ?
 - AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> desig ... | ?
 - a64ab_ fix round SENT (M1 / M2, stage A = base, inline, inline + a 4th base only ... | ?
 - AFTER WINDOW 1 (started 23:5x): gbf gates (gbf_gpu_gates.ps1, coord, quiet GPU w ... | ?
@@ -15347,7 +15347,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         5cb10f, 5cb150 (L1 seg), b99cc3 (ptick) - data gaps to explain. TRIGGERS: TT8 no; L2B FIRES (migrations >= 3)
         -> needs ATN's yes + a rule line; NOPROBE FIRES (247.0 vs 243.0 s, limit 3 s) -> one `-AB -Arms base` (ATN's
         line) after a drain.
-        - [ ] NOPROBE base start: coord drains (quiet_run.lock 01:56) -> `-AB -Arms base` -> probe cost vs drift.
+        - [x] NOPROBE base DONE 02:03-02:09 (ab_runs\20261125_020316_AB, drained 377 s, CPU 1 %): window 247.5 s, 7.35
+        steps/s, 63.7 fps, p99 26.3 ms = the probe starts (247.0 / 247.5) -> the probe costs ~0; +4 s vs window 1's
+        243.0 = batch drift (11-24 20:34: 249.1 / 249.5). Window 3's probe numbers stand.
+        - [ ] a64wpr_ (Opus xHigh) WPR ETL analysis STARTED 02:0x -> attila64\wpr\window3_wpr.md (private) + HANDOFF-safe
+        answers (CPUs, SMT sibling, ready delay, clocks, hot functions, best first placement arm).
         - [ ] WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling occupancy, CCD, clocks,
         render-thread placement during s 100-160 -> decides what L2B should test.
         - [ ] ATN (morning): L2B = a CPU-placement arm for the step thread (needs his yes + a new rule line); the
@@ -15435,8 +15439,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         real. Shoulds: S1 header comments + unregister rules before A1, S3 tests of the DLL's own bodies / refusals,
         S5 catch gate must follow indirect calls before C8 uses it, S2 / S4 / S6 / S7. Disclosure: a broad grep
         printed 2 lines of tools\tw\heapfix\pkg_1124\...\x87_sites.h (maybe PerfFix-derived); not opened or used.
-        - [ ] a64p1_ WAVE 1 FIX ROUND SENT 01:4x (both reviews' Shoulds, layout unchanged, builds after window 3) ->
-        merge a64p1_wave1 -> A1 add-on lane (after a64b_'s merge) -> T1 smoke.
+        - [x] a64p1_ WAVE 1 FIX ROUND DONE (hand-back attila64/a64p1_fix_round_handback.md): 9e4e85990 on
+        a64p1_wave1; block v1 layout unchanged (+ BlockBytes(1) == 40 assert); add-on protocol rules in plugin_block.h
+        (seq_cst unregister, first zero, 1 s bound, epoch in PassMeasure::reserved); sites 5..11 B assert; module path
+        checks; build.ps1 -Out; style; new shared twattila/module_version.hpp (main.cpp + buffer_pool.hpp); generator x87
+        check + catch gate over indirect calls (10 sites, all the never-set allocation hook 0x4c0c680; gate PASS).
+        patcher_test 114 / 0 (DLL's own bodies + 10 DLL cases), elf_sites_test 28 / 0, SKIPPED now exits 77. DLL
+        sha256 b3d6e146212540a8... Left for ATN: 4 patcher helpers with one production caller (tests = 2nd caller).
+        - [ ] MERGED LOCALLY fa46e4dad (Merge a64p1_wave1, clean) -> coord builds twattila addon64 + addon32 + twrome2
+        addon32 (buffer_pool.hpp changed) -> push -> A1 add-on lane after a64b_'s merge -> T1 smoke.
         - [ ] AFTER WINDOW 1: Opus xHigh review of plugin_design.md (brief section 18 -> designs/plugin_design_review.md)
         + C8 census agent (read-only Opus xHigh, brief section 15 -> census/c8_rows.tsv + c8_notes.md).
         - [x] gated_build.ps1 UNIFIED 00:3x (coord): takes testbin\scratch\build_slots\slot1-4.lock as gpu_lock v1
