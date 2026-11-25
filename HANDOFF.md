@@ -16003,6 +16003,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         STARTED: classes shared-source / needs a 32-bit port / moot / 64-bit-only runs, revive order, Friday's CPU
         wave's 32-bit cost, cheapest proofs of the port). Lines: the 32-bit D3D11 pass capture (d11s_'s original run);
         the 32-bit S4-rotation trace before any 32-bit release; 32-bit TDD twins ship only with a 32-bit release.
+        b32_ DONE (attila64\designs\backup_32bit.md, 52 items: 14 shared (builds both: port lines sit in if constexpr
+        (ATTILA64), the plugin is its own 64-bit DLL), 5 need a 32-bit port, 26 moot / blocked, 7 runs to redo).
+        Lines added from its 2.6: F4 32-bit HEAD never ran in game (173 commits since v169: Exit Job Drain,
+        Automatic L1, worker budget, PK4 S1 stub pages, PK3 S1, mem_fix): first one 32-bit smoke, then the FCA -Data
+        session + verify bench v170 waited for; F5 parked 32-bit work (fca_pk1 6 commits, fca_pk4 2, the Friday
+        32-bit items: pk4_ NITs + flip, pk5_ A2-1..6 + implementer + S0 microbench, pk3_ R3-M1 / M2 + implementer,
+        PK2 implementer); F6 PT DI 4b's 32-bit stencil / depth route + the A1 VMMap gate; F7 L2B (~1.5-2 days) and
+        PK8 Stage A (~3-4 days) have no 32-bit design, PK8 Stage B blocked on x87 (don't plan); F8 32-bit
+        determinism (stress_test_log2 desyncs at tick 1928: sim rows need an in-sync replay + final-state hash); F9
+        D3D11 pass speed reaches 32-bit only with a 32-bit release; F10 PK2P on 32-bit = an A/B of Keep Render Core
+        Free; F11 PerfFix version for a 32-bit release (7.0 P vs 7.5: PK4 H1). Revive order = its section 5 (x86
+        build + tests + page-dump diff vs v169 -> 32-bit smoke + S4-rotation trace -> -Data + verify bench + v170 ->
+        parked packages -> KRCF A/B, L2B-32, PK8 A-32, 4b-32). Top risks: untested 32-bit HEAD, 4 GB (37 MB largest
+        free block once), no 32-bit CPU gate. RULE FOR 4b's S8 IMPLEMENTER (b32_): keep the pack + composite shared,
+        gate only the port's depth format (keeps 4b-32 cheap).
         Owner: coord (keep current) / ATN (revive)
         d11r_ REVIEW: GO WITH CHANGES (designs\d3d11_pass_speed_review.md; hand-back d11r_review_handback.md). MUST
         M1 per-event copies on change; M2 CPU state dump + CB equality; M3 full own-state list; M4 Bend double-write
