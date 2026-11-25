@@ -2583,11 +2583,13 @@ class RtScene12 {
     }
     const std::unique_ptr<dlaa_bridge::Shared> block = PlaybackBlock(request, frame_offset);
     edit(block.get());
+    // An edited newer field lifted the block's version (rt_serve.h's SHARED_FIELDS): read as that version.
+    const uint32_t version = std::max(playback_.version, block->version);
     if (request.header.request == 1) {
       before_trace();
-      Trace(*block, playback_.version, std::span<const uint8_t>(request.data).subspan(request.block_bytes));
+      Trace(*block, version, std::span<const uint8_t>(request.data).subspan(request.block_bytes));
     } else {
-      Paths(*block, playback_.version, request.header.request == 3);
+      Paths(*block, version, request.header.request == 3);
     }
     if (Lost()) {
       *report = std::format("the device was lost at {}", request.path.filename().string());
