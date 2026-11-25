@@ -880,6 +880,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BALANCED RAYTRACED CHOICE: bal3_ (Opus High, worktree, branch bal3_raytraced) ST ... | ?
 - bal3_ route-b cost numbers (after 'bal3_ resume') -> review (Opus xHigh) -> merg ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
+- ATN NUMBERS (if no step-3 variant meets total +0.05 / ReGIR 0.02 on the final he ... | ?
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_t ... | ?
 - CLEANUP after steps 3 + 5 merge: one shared OctahedralFold / OctahedralUnfold in ... | ?
@@ -16340,6 +16341,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         RTXDI block; rt_d3d12.hpp = one Init line + one SetPipelineState choice, like lights_torch_pipelines_, one
         commit; Nsight both). Variants B1 / B2 / C / B1C running (final4), B2C built. Then FINAL head -> pdi4c_ rebase.
         Owner: pdi3_, coord
+        pdi3_ 00:2x VARIANTS (scratch on ceecd4b84: no S1 fix, no twin; Torch on vs off, calibrations pass, burn
+        +-0.33 ms; day | night): B1 samples 8: ReGIR 0.0215 | 0.0214, path +0.08, total +0.10 [G-1125-99] [-102]; B2 16
+        a cell: 0.025 | 0.026, +0.07, +0.10 [-105] [-108]; C candidates 4: 0.066, +0.05, +0.13 | +0.10 [-111] [-114];
+        B1C: 0.0215 | 0.0216, +0.05, +0.07 | +0.07 [-117] [-120] (closest, over both); current 0.065, +0.08, +0.15. E4 29
+        lights all +-0.0002; 128: C -0.0064 +- 0.0004 (S1's darkening; the fix should take most back), B1 -0.0033 +-
+        0.017, B2 -0.0064 +- 0.028, B1C -0.0100 +- 0.017 (frozen ReGIR changes -> own references move, weak pairing). Noise
+        (p75 batch rel sd): 29 lights x1.000-1.001; 128: B1 1.004, B2 1.014, C 1.018, B1C 1.024; base without the row
+        x1.144 (29) / x1.213 (128) -> every variant less noisy than no row. Building B12C + B12C2 (estimate path ~+0.03,
+        ReGIR ~0.01) -> final8. Head 61d4e6445 = rt_sharc_update twin (plain header SHA-256 67056FF2... = e52ec9e28's;
+        RTXDI-less build 60 / 73 headers = base). COORD 00:3x: budgets stay; the pick counts only RE-RUN on the FINAL
+        head (S1 fix + twin + variant: cost, E4, noise); none meets both -> the cheapest with E4 in base CI + noise <=
+        no-row base ships (row Experimental, off) + numbers to ATN; no variants past B12C2.
+        - [ ] ATN NUMBERS (if no step-3 variant meets total +0.05 / ReGIR 0.02 on the final head): cost vs budget,
+        noise, E4 for 'Torch Light in Path-Traced GI' with T2. Owner: pdi3_, coord -> ATN
         - [ ] PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbours, G7 report): pdi5_ (Opus
         High, worktree, branch pdi5_step5) STARTED beside step 3: owns ReuseTarget, the GI reuse merge, Reservoir /
         Load / Store, the neighbour choice, reservoir formats, rt_restir_flags, G5's PT-header stubs; no new slots
