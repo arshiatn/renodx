@@ -15753,6 +15753,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         PK9 Sol-switch start with L2B S2?, keep / drop #8 (pk8tt8), 'key z 6' as W3-64 camera. -> p6r_ REVIEW
         (Opus xHigh) STARTED 12:3x -> designs\pk6_design_review.md. -> p6d_ fixes 2 analyzer bugs NOW (Python only:
         stale 243.0 NOPROBE check; det_pair 'same state' when X ticks differ) + re-checks window 1 / 3, L2B, L2C.
+        - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
+        p8d_design_handback.md): main win SERIAL: Stage A exact group index replaces the quadratic pair search at
+        0x79a690 (~89 % of seg 0), identical results by construction, fingerprint self-off, fallback; E -21..-24 ms /
+        step (L2B median 121.64 -> ~98-101 = real time; window 220.2 -> ~185-195 s; floor = 180 s). Stage B split
+        contact test (seg 29, 0x5df300) on the game's task threads, Experimental, high risk, after A. W-A0 = L2B W2's
+        battle_core.hpp as a SET (STEP / GUEST, up to 4; written into l2b_product_design.md section 8). Starts: S-A 2
+        (ep8, ep8tt8; 1 if ATN drops the thread-count start). ATN questions held for the list: A default on + row
+        'Faster Battle Step' + tooltip, drop the thread-count start, init / README wording, Stage B at all / when,
+        offer A to Sol (MIT, credit RenoDX / ATN). -> p8r_ REVIEW (Opus xHigh) STARTED 12:5x ->
+        designs\pk8_design_review.md (incl. kind names vs p6d_, v2 vs v3 block fields).
         - [ ] vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md R2.9), before vMF S2:
         Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
         Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
