@@ -234,6 +234,9 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     }
     light_mask[id.xy] = word;
     light_history[parity_written][id.xy] = 0xFFFFFFFFu;
+#if defined(PATH_REGIR)
+    if ((lights_in_bounce & LIGHTS_TORCH_IRRADIANCE) != 0u) torch_irradiance[id.xy] = 0.f;  // its lights the bounce's: T2
+#endif
     return;
   }
 #endif
@@ -330,6 +333,27 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     }
     if ((float)reached_rays <= threshold * (float)rays) lit &= ~(1u << slot);
   }
+#if defined(PATH_REGIR)
+  // Torch Light in Path-Traced GI's torch light here (PT DI step 3, T1: the paths' hits the screen shows take it,
+  // rt_path.hlsli SeenDiffuseLight): the listed lights' light by their bits, kept ones too; its a 1 where the list held
+  // every light reaching the tile (and none left to the Light Bounce), else the paths trace their own (T2).
+  if ((lights_in_bounce & LIGHTS_TORCH_IRRADIANCE) != 0u) {
+    float3 torch = 0.f;
+    [loop]
+    for (uint slot = 0u; slot < size; ++slot) {
+      float3 direction;
+      float light_distance;
+      if ((((reached_slots & lit) >> slot) & 1u) != 0u) torch += LightArriving(ListLight(slot), light_origin, normal, direction, light_distance);
+    }
+    const uint reaching = tiled ? countbits(tile_reach[0]) + countbits(tile_reach[1]) + countbits(tile_reach[2]) + countbits(tile_reach[3]) : count;
+#if defined(TORCHES_IN_BOUNCE)
+    const bool listed = reaching <= TILE_LIGHTS && bounce_slots == 0u;
+#else
+    const bool listed = reaching <= TILE_LIGHTS;
+#endif
+    torch_irradiance[id.xy] = float4(torch, listed ? 1.f : 0.f);
+  }
+#endif
 #if defined(TORCHES_IN_BOUNCE)
   light_mask[id.xy] = lit & ~bounce_slots;
 #else

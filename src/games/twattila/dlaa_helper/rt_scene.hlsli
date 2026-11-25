@@ -77,6 +77,19 @@ static const uint RECORD_LEAF = 16u;   // a leaves' mesh (its instances LEAF_INS
 static const float LEAF_TRANSMITTANCE = 0.25f;
 static const float THIN_TRANSMITTANCE = 0.35f;  // cloth and sails
 
+// Torch Light in Path-Traced GI's builds (PATH_REGIR: build.ps1 with its RTXDI copy): NVIDIA's RTXDI-Library ReGIR
+// parameters (rt_rtxdi_bridge.hlsli) after the lights, and the torch light rt_lights found at each render pixel.
+#if defined(PATH_REGIR)
+#define RTXDI_REGIR_MODE RTXDI_REGIR_ONION
+#include "Rtxdi/ReGIR/ReGIRParameters.h"
+// rgb: the listed lights' light there (LightArriving x their bits); a: 1 where the tile listed every light reaching it.
+RWTexture2D<float4> torch_irradiance : register(u75);
+// rt_camera.hlsli's lights_in_bounce: a paths request's ReGIR cells built (u76), and torch_irradiance this frame's (a
+// trace's: rt_lights writes it).
+static const uint LIGHTS_REGIR = 512u;
+static const uint LIGHTS_TORCH_IRRADIANCE = 1024u;
+#endif
+
 // The local lights (bridge v9; their colours v11, for the paths; up to 128 v31, the paths and the fog the first 32):
 // world position and reach (metres), their count.
 cbuffer Lights : register(b4) {
@@ -85,6 +98,9 @@ cbuffer Lights : register(b4) {
   float4 light_colours[128];  // rgb
   uint4 light_previous[8];    // each light's place in the last trace's list, a byte each (255: new)
   uint4 light_kinds[8];       // each light's falloff, a byte each (bridge v32 RT_LIGHT_*: 0 smooth, 1 linear)
+#if defined(PATH_REGIR)
+  ReGIR_Parameters regir;  // a paths request's onion around the camera (rt_d3d12.hpp REGIR_OFFSET)
+#endif
 };
 
 static const uint LIGHT_LINEAR = 1u;  // dlaa_bridge.h RT_LIGHT_LINEAR
@@ -514,6 +530,10 @@ static const uint DIM_SHARC_DIRECTION = 32u << 12;   // a vertex's next directio
 static const uint DIM_SHARC_LIGHTS = 33u << 12;      // a vertex's LocalLights picks (vertex x 2 + 0 / 1)
 static const uint DIM_CACHE_LIGHTS = 34u << 12;      // rt_cache_fill: a cell's SeenDiffuseLight picks (0 / 1)
 static const uint DIM_RTXDI_GI_SPATIAL = 35u << 12;  // ReuseTexel's RTXDI GI contest: its RTXDI sampler's seed (Pcg4d lane .y)
+static const uint DIM_REGIR_BUILD = 36u << 12;       // rt_regir_presample: a ReGIR cell slot's RTXDI sampler (lanes the slot's)
+// Torch Light in Path-Traced GI's ReGIR picks (rt_path.hlsli TorchLight): its caller's seed with the kind moved up by this,
+// so each caller's kind k takes kind k + 64 of its own (every kind above stays below 64).
+static const uint TORCH_KIND_SHIFT = 64u << 12;
 
 // A number in [0, 1) of lanes (x, y, frame, dimension): pcg4d's lane .y (the reference's RefRandom reads lane .x, a
 // stream of its own).
