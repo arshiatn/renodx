@@ -15847,6 +15847,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questions_1125.md, 18 rows with coord
         picks: C8, L2B, PK2P, PK6, PK8). Part 2 (PK1-64 + PK9, rows 19-32) + part 3 (PK5-64, rows 33-36) sent. No rule lines /
         exceptions needed today (lines given when the code exists). Owner: coord.
+        ATN ANSWERS 11-25: all coord picks for rows 1-36 except: PK9 access = LIVE SWITCH built now (hidden on Sol's
+        no); PK5 builds BOTH H and R; Sol offers (rows 17 / 26 / 27 / 29 / 36) pending ATN (coord: Stage A not
+        offered; one note = census + auto heads-up + upload tip); PK2P default rule explained (ATN may keep it on);
+        ATN adds the run_rs_b64p CPU Set Setter rule; 'Caesar' asked. Map section 6 item 16.
         - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
         p8d_design_handback.md): main win SERIAL: Stage A exact group index replaces the quadratic pair search at
         0x79a690 (~89 % of seg 0), identical results by construction, fingerprint self-off, fallback; E -21..-24 ms /
@@ -15899,6 +15903,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         full, no WPR; loader gate rule for C8's CP (Sol's key list, else a per-row min loader version from the exe's
         version resource, else hidden); N13 closure clean (virtual paths -> offline test 9.3). 7 ATN questions.
         -> p9r_ RE-CHECK STARTED.
+        p9r_ RE-CHECK: GO WITH CHANGES (hand-back p9r_recheck_handback.md): RM1 PK9's P2 would refuse PK6's ep1cvfx
+        fallback -> {vfx, ep1cvfx} both parallel kinds; RS1 guard / flag_read tags can't live in foreign_sites.tsv
+        (generator rebuilds it) -> CURATED list + refusal < 5 + static_assert; RS2 reuse addon.cpp's version read +
+        a 'Sol Invictus' check; RS3 node+0x128 confirmed, cost per capacity, hysteresis per node, vfxauto paired
+        in-batch. -> p9d_ LAST TOUCH (+ ATN's live-switch answer).
         - [x] p1d_ PK1-64 UPLOADS DESIGN DONE 13:3x (designs\pk1_uploads_64.md, hand-back p1d_design_handback.md): FCU
         default On on the port only after an offline T-test (tw_injection_buffers case 8 -Hardware; bytes identical;
         E +0.35..+1 % fps; ~540 ReShade pushes / frame gone); FDW hidden + forced off on the port (Sol's device never
@@ -15923,6 +15932,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         p1r_ RE-CHECK: GO (hand-back p1r_recheck_handback.md); K0 GO. R-S1 C8 T0 entries -> 125 / 127 / 130,3 with one
         home (applied to c8_wave2_plan.md by coord); R-S2 trap sub-rule B: a step in both starts = UNSURE, at a WPR
         start / stop or focus change = FOUND -> p1d_ LAST TOUCH (text only). PK1-64 DESIGN = GO.
+        p1d_ LAST TOUCH DONE (hand-back p1d_lasttouch_handback.md): one home for the entries, sub-rule B order, nits.
         - [x] p5d_ PK5-64 GAME CODE DESIGN DONE 13:4x (designs\pk5_game_code_64.md 628 lines, hand-back
         p5d_design_handback.md): R = one SSE2 stub for the 20 calls to the half 0x3009b90 in the sprite row loop
         (site 0x32d9de5, held 0x32d9d60..0x32da032; denormal class / overlap -> the game's code), H = register-exact twin
