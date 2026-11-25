@@ -112,7 +112,11 @@ foreach ($name in $Cases) {
   if ($case.compare) {
     $other = Join-Path $stage "run\$($case.compare)"
     $mine = @(Get-ChildItem -LiteralPath $dir -Filter 'capture_*.raw' | Sort-Object Name)
-    if ($mine.Count -eq 0) { $problems += 'no captures' }
+    $theirCount = @(Get-ChildItem -LiteralPath $other -Filter 'capture_*.raw' -ErrorAction SilentlyContinue).Count
+    # OpenGL: ReShade loaded as dxgi.dll may not hook GL at all (no captures with or without the add-on): recorded, and
+    # the run must still end cleanly.
+    if ($mine.Count -eq 0 -and $theirCount -eq 0 -and $case.args -eq 'opengl') { "  ${name}: ReShade (as dxgi.dll) did not hook OpenGL: no frames to compare" }
+    elseif ($mine.Count -eq 0) { $problems += 'no captures' }
     foreach ($file in $mine) {
       $theirs = Join-Path $other $file.Name
       if (-not (Test-Path -LiteralPath $theirs)) { $problems += "$($file.Name) missing in $($case.compare) (run it first)"; continue }
