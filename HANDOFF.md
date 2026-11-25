@@ -992,7 +992,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
 - crit_ CRITIC (Opus xHigh, read-only, STARTED 00:4x, est 60 / deadline 120) over ... | ?
 - LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'licens ... | ?
-- fa8_ B1 CREDITS: when the Shadertoy-derived code ships, credits name Mirko Salm ... | ?
+- fa5_ SHADERTOY CREDITS: when the Shadertoy-derived code ships, credits name Mirk ... | ?
 - LANE I (end of the GPU plan, ATN 11-26): 1 smoke / fire as Linear Swept Spheres ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
@@ -17517,7 +17517,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'license: unclear' (interleaved
         gradient noise, Sobol 3lcczS, 3ldXzM, 3 more); check that our bitmask.hlsli / ports copied none of them (or that
         ours come from a licensed source: Jimenez 2014 IGN formula). Owner: crit_ (section E)
-        - [ ] fa8_ B1 CREDITS: when the Shadertoy-derived code ships, credits name Mirko Salm (GT-VBAO / GT-VBGI) and
+        - [ ] fa5_ SHADERTOY CREDITS: when the Shadertoy-derived code ships, credits name Mirko Salm (GT-VBAO / GT-VBGI) and
         Bjorn Ottosson (thickness heuristic) under CC0. Owner: crit_ E -> credits owner
         - [ ] LANE I (end of the GPU plan, ATN 11-26): 1 smoke / fire as Linear Swept Spheres (Blackwell NVAPI; fa6_ D8),
         2 NRC (fa6_ D10, vs SHaRC), 3 DDGI (fa6_ D12, low relevance: design decides) -> designs (Opus xHigh) after
