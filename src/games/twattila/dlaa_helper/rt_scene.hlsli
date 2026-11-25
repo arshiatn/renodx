@@ -352,6 +352,16 @@ float3 OctahedralDecode(uint packed) {
   return normalize(normal);
 }
 
+// f32tof16 rounds toward zero (D3D11.3 3.2.2), so a value stored again each frame would drift toward 0. This returns
+// the nearer of the truncated half and the next one away from zero (a tie keeps the truncated one, not the even one).
+// From 65504 on, inf and NaN come back as f32tof16 gives them, and the result stays within 16 bits.
+uint F32ToF16Nearest(float value) {
+  const uint truncated = f32tof16(value);
+  if ((truncated & 0x7FFFu) >= 0x7BFFu) return truncated;
+  const float magnitude = abs(value);
+  return (magnitude - abs(f16tof32(truncated)) > abs(f16tof32(truncated + 1u)) - magnitude) ? truncated + 1u : truncated;
+}
+
 // A hit triangle's normal (the record's pool, in its BLAS's space: turned by the instance's transform), facing back
 // along the ray.
 float3 HitNormal(uint record_index, uint primitive, float3 direction, float3x4 object_to_world) {

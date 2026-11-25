@@ -935,13 +935,6 @@ void ClampWeight(inout Reservoir reservoir, float3 origin, float3 normal) {
   reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP * 3.14159265f / max(dot(normal, normalize(reservoir.hit - origin)), 1e-3f));
 }
 
-// f32tof16 rounds toward zero (D3D's float conversions): a value stored again each frame would drift down. Nearest of
-// the truncated half and the next one up (value >= 0).
-uint F32ToF16Nearest(float value) {
-  const uint truncated = f32tof16(value);
-  return (value - f16tof32(truncated) > f16tof32(truncated + 1u) - value) ? truncated + 1u : truncated;
-}
-
 #if RT_RESERVOIR_COMPACT
 // G4's 16-bit octahedral normal (8 + 8; 0: none, never a normal's: -z itself is 1).
 uint PackNormal16(float3 normal) {
