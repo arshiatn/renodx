@@ -16416,6 +16416,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         come (after PT DI), or the a64_ab wildcard from proposed_rules_1125.md. Owner: ATN (at run time)
         - [ ] 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt_di_light[0 / 1]) at
         dlaa_helper/main.cpp ~:1112 (no other branch touches main.cpp), own commit + handle-leak test. Owner: pdi4c_
+        pdi4c_ 11-25 20:5x: REBASED onto pdi3_'s ceecd4b84 as a NEW branch origin/pdi4c_step4c_r2 (tip 1abc8c505; no
+        force push, old pdi4c_step4c stays at 174beab36 = stale). rt_lights.cs's DI-pixel T2 write under
+        TORCH_IRRADIANCE; SetPipelineState line in the coord's form; 1abc8c505 adds rt_lights_di_torch (+ _omm) as
+        lights_di_pipelines_[torch_written], all-or-none with the DI builds. Rebased builds + header bytes check +
+        gates running. REVIEW / MERGE USE _r2. Owner: pdi4c_, coord
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
