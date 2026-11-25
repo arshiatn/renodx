@@ -15933,6 +15933,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         main; P4 set b2 (ROOT_BOUNCE, shared) right before both fog dispatches; P5 measure FOG_TILES on vs off (sky
         tiles / R7 far walls get only uniform picks); P6 shade's dispatch condition = main's glowing terms. Plus
         H0 dimension table: kind 27 indices 8-20. Owner: u6f_ (part 2, after steps 3 + 5)
+        pdi5_ STATUS (evening): G2 ab5432a79, v32 lift bbf51c3ff, rt_path_flags@kind 0654684a2, G5 ed3aed117 pushed;
+        G4 (RT_RESERVOIR_COMPACT, build option 0 unless the lab proves it) in the tree, waits for lab + E4; lab jobs
+        1-5 / 8 / 10-15 rerun when the GPU frees. OWNER MAP ADD (coord, checked: no branch / worktree touches it):
+        pdi5_ owns the REF_OUT_REUSE census case (~:108) of rt_reference.cs_6_5.hlsl (read via LoadReservoir, 2
+        lines; gates: reference build with COMPACT 0 and 1, census output identical at 0). rt_reference.hlsli stays
+        pdi3_ / pdi4c_.
         Still waiting: U1-U3 / U5 (need PT DI), U6p (bridge + rt_lights), U12a / U12d (add-on files Friday's CPU builders
         use), U11 / U11h (AMD only), SHaRC depth 4 (hang risk: quiet GPU + ATN home).
         - [ ] D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record it in game, then
