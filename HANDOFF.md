@@ -820,6 +820,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
+- L2B NEXT: W0 (block v2 agreed with C8 wave 2, 6 points in the design; plugin_des ... | ?
+- ATN 10:2x: ONE 'CPU' PAGE for 64-bit Attila (ours live / restart per row; PerfFi ... | ?
+- D: FULL 10:17 (0 bytes; C: 12.6 GB): pds2_'s HARNESS_DUMP verify dumps in its wo ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
 - COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-o ... | ?
@@ -15605,6 +15608,47 @@ heading text are in HANDOFF_ARCHIVE.md)
         never widen per thread, block v2 items for W0, RowsOffered mask test, drop dead switches, S2 fail branch,
         offline live Win32 tests, honest fps wording) + 10 nits. -> l2bd_ FIX ROUND STARTED 10:1x (same agent, with
         the L2C result + ATN's answers) -> recheck -> W0 with C8 wave 2.
+        - [x] l2bd_ fix round DONE 10:2x (design 559 lines, 'Changes 11-25'; hand-back l2bd_fix_round_handback.md) ->
+        l2br_ RECHECK = GO 10:3x (review 'Re-check 11-25'; hand-back l2br_recheck_handback.md). Only start left: S2
+        '-AB -Arms ep1 -EnginePlugin -Probe full' (+ -DryRun) after the code = NEW ATN RULE LINES then.
+        - [ ] L2B NEXT: W0 (block v2 agreed with C8 wave 2, 6 points in the design; plugin_design.md:152-153 wording) when
+        c8p_'s c8_wave2_plan.md lands -> W1 generator, W2 plugin, W3 add-on (carry recheck R1 v1-plugin note wording,
+        R2 own is_visible -> GameCodeRowShown (32-bit must not show it), R3 write core_wanted at READY + on change,
+        R4 'rarely' wording), W4 a64ab_ ep1 kind. 3 small ATN questions (init line, status texts / page, smoke toggles
+        the row off ~s 20 / on ~s 35): coord default = the CPU page below + smoke toggle (no extra start).
+        - [ ] ATN 10:2x: ONE 'CPU' PAGE for 64-bit Attila (ours live / restart per row; PerfFix heapfix.ini + Sol
+        settings.txt rows, restart-only, our page writes their files; FrameBridge shown forced off with our helper).
+        Facts: both read their files only at start; PerfFix writes heapfix.ini ONCE and never appends new keys (ATN's
+        own ini lacks culling / battle_ui_cache / flag_wave / parallel_sort / sound_crash_guard); his log names no keys.
+        WAITS FOR ATN: semi-auto (keys in the file + a known 7.5 list + ask JSa25 to append missing keys on update) vs a
+        fixed list we update. Owner after his answer: C8 wave 2 (addon.cpp one writer).
+        - [ ] D: FULL 10:17 (0 bytes; C: 12.6 GB): pds2_'s HARNESS_DUMP verify dumps in its worktree
+        build\pds2play ~309 GB (1.22 GB per buffer): rbase1 / rbase2 / rnew / rsn 204 GB = step 2 verify (merged,
+        recorded), ra39a / b / c + rs4 105 GB = the S4 verify (cut at 10:17). No links inside. pds2_ + ucf_ PAUSED.
+        ASKED ATN 10:3x to delete the 4 step 2 folders. Then: the verify script compares each pair and drops it (hashes
+        kept), S4 verify rerun of the cut part, 'go on' to ucf_ (needs 3-5 GB).
+        -> ATN 11:0x YES to 'old check dumps' only: rbase1 / rbase2 / rnew / rsn / ra39b DELETED (no links; checked gone).
+        D: free 0 -> 616 GB (more than the 210 GB: ~400 GB released elsewhere, likely Windows shadow copies / previous
+        versions dropped while full, or a dead process's temp; NOT checked). C: 12.6 GB (no file > 300 MB of ours
+        written since 11-24 22:00; cause unknown). NOT deleted (ATN did not pick them): D:\scratch_t4i_etlproof 87 GB
+        (ETL text exports + pkl), old merged worktrees ~25 GB, S4 dumps ra39a / rs4 / ra39c ~100 GB (ask again after
+        S4 is verified). Lost: nothing of ATN's; ours = one HANDOFF commit (redone), pds2_ rs4 wh3_forest_unit + ra39c +
+        verify_s4b 12 modes (rerun), ucf_ build outputs (rebuild); ucf_ 6eacd8a84 and pds2_'s S4 working tree intact
+        (byte-identical to rt_path.hlsli.s4fix). pds2_ 'go on' 11:0x: commit S4 FIRST, dump-and-drop + D: < 100 GB
+        guard, then reruns. ucf_ 'go on'.
+        - [x] c8p_ C8 WAVE 2 PLAN DONE 10:4x (designs\c8_wave2_plan.md 413 lines; hand-back c8p_plan_handback.md): 21
+        graphics rows + presets + 58 test rows, block v2 one layout (B0 writer first; L2B W2 drops plugin_block.h), E1-E8
+        + N9 decisions, waves W0 / B0 / B0a / W1-W4 / T0 / R, ONE game batch (-Smoke -ReShade -EnginePlugin -C2, 2
+        starts), 6 ATN questions (campaign rows proof, optional PerfFix start + 2 rule lines, init wording, Big Battle
+        Fix if no rest pack, sim-reaching rows hide vs warn, FrameBridge / Waving Flags note texts). -> c8r_ REVIEW
+        (Opus xHigh, read only) STARTED 10:5x -> designs\c8_wave2_plan_review.md.
+        - [x] f64m_ CPU PLAN 64-BIT MAP DONE 10:5x (designs\cpu_plan_64_map.md 522 lines; hand-back f64m_map_handback.md):
+        on 64-bit the battle STEP sets the wall clock (L2B 121.6 / base 138.9 ms, real time needs <= 100), main bounds
+        fps (99 % busy ~14.2 ms). Packages: L2B, PK8 Battle Step NEW (study first, bit-identical), PK9 effects on all
+        cores (Sol's parallel VFX is OFF by default), PK5-64 game-code leaves (half-float twin hot), PK2P main core (C07
+        becomes an L2B arm), PK1-64 uploads, PK4-64 census (likely moot), PK6-64 tooling first; parked PK2R / PK3 / H25;
+        census corrections C01 / C13 / C14. 6 ATN items (PK8 study go, PK9 route, C01 half-float row, W3-64 data start,
+        one placement owner, Friday only on his word). NEXT: per-package Opus xHigh design fixers (no builds).
         - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
         09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
