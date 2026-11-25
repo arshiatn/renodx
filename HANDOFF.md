@@ -15954,6 +15954,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         Closure 37 functions, 22 / 22 indirect sites resolved; destroy has exactly 5 callers, each unlists first. N2
         ADOPTED into the PK8 design (addendum 'P3 census done before Friday'): W-A2 goes plain when a group with
         members is listed twice (T-A1 duplicate family tests it). N1 row-h wording, N3 post-loop info only.
+        c8w_ DONE 13:5x (hand-back designs\c8w_w0_handback.md, note designs\c8_w0_offline.md, hex only): E9 EVERY row
+        is display, none sim (8465-function sim closure, 79 readers, 0 sim met) -> ATN's single-player rule needs no
+        MP code in wave 2. MP-battle check FOUND anyway (env field, read once per battle at the model ctor; an MP
+        replay reads as not-MP, so a future sim row also tests replay). E1 PASS (entry wrapper in W2), E2 8-byte stub
+        + H11 buildable (G-lane must decode-verify: false rip+0 xrefs), E3 / E4 / E5 / E8 M. Addendum in
+        c8_wave2_plan.md. INCIDENT (reported to ATN): one `grep -rln --include=*.py` over all of tools\tw also scanned
+        the 6 .py files in testbin\attila64_1124\perffix_src\ for a word; no match there, nothing shown or used,
+        stopped at once. Rule added to round_1125\brief.md + memory: never search tools\tw recursively as a whole.
         - [ ] NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\round_1125\brief.md): the
         11-15 plans are STALE (Ryse / Tales are one add-on each now, most plan steps in). ry_ (Opus High, worktree, branch
         nt_ry1) and ta_ (branch nt_ta1) each list every open HANDOFF box + ledger row of their game as OFFLINE-NOW / NEEDS A
