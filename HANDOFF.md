@@ -17062,8 +17062,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates) to source cites -
         changed estimator blocks in dlaa_helper HLSL / C++ must carry a source tag (key in a sources registry with the
         local path + section) or 'ours: why', departures a deviation tag; shadow first, then ATN installs. Design AFTER
-        the audit (its tables backfill the tags for today's code). Owner: coord -> gate tool owner -> ATN (ATN's go
-        asked 11-26)
+        the audit (its tables backfill the tags for today's code). Owner: coord -> gate tool owner -> ATN (ATN
+        11-26 night: 'After the audit' -> the design starts when fa1_..fa5_ + the critic are done)
         pd4r_ CHECKS DONE 00:4x (22 min; pt_di_step4c_review.md '## 2.9a check' + '## Fused DI pass check'), both GO
         WITH CHANGES, no MUST. 2.9a: option C proof holds (lights < 32 always tile members; WH2 shadows_only dropped
         under mode 1 = one owner); handshake order right (trace then paths, same queue, shared.rt_frame); today's double
