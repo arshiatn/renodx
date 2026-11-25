@@ -15955,14 +15955,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         with RT/PT. Script: new tools\tw\attila64\d11\d11_capture64.ps1 (lane I; a64_ab safety rules; Opus xHigh
         review before ATN's rule lines).
         ATN 11-25 ~18:xx: '32-bit then port is fine if better' -> coord: 64-bit directly (same shader bytes, tools
-        build the same, gains ship there). Foliage camera: day1, zoom in, turn 90-135 deg LEFT so trees + grass
+        build the same, gains ship there). Foliage camera: day1, zoom in, turn 90-135 deg RIGHT (ATN corrected 'left') so trees + grass
         fill the view; grass + model detail sliders max (fresh backup of the settings, restored after); CPU-limited
         is fine (offline replay). -> d11s_ REV 1 STARTED (evening) -> d11r_ RE-CHECK -> lane I implementer ->
         capture (ATN's rule lines: 4 script lines + env / set key / D:\Dev\d11_dumps / replay tools OKs).
         d11s_ REV 1 DONE (hand-back handoff_plan\handbacks\d11s_rev1_handback.md): all 10 MUSTs, all SHOULDs (S15 via
         a marker file: pass_dump.hpp must not include test_hooks.hpp) and NITs; S2 zero-write skip dropped (0.02 ms,
         race mixing). Costs ~0.4-0.8 ms No RT/PT 4K (+0.3-0.4 only if LDS-limited), < 0.1 ms RT/PT. Camera: wheel
-        zoom + Q presses to 90-135 deg left, checked by a test-only camera log line; port prefs copy already 3/3 for
+        zoom + E presses to 90-135 deg right, checked by a test-only camera log line; port prefs copy already 3/3 for
         grass / tree / unit / building / terrain; unit size kept at 2 (replay's soldier counts). day1 only (+ sea1 /
         stress_test_log2 on conditions), up to 25 GB dumps. Lane I outline: d11i_lane_i, Opus High, never touches
         addon.cpp / graphics_page / feature_settings / rt_scene.hpp / a64_ab.ps1 / presets.
@@ -15971,6 +15971,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (look-risk numbers for ATN); no later start for the add-on's grass / model rows; profile match only if H0
         fails; no Nsight probe now; WH3 only if needed. -> d11r_ RE-CHECK STARTED -> lane I implementer -> code +
         script review (Opus xHigh) -> ATN's rule lines (4 lines + env / SendInput / D: / offline-tool OKs).
+        d11r_ RE-CHECK: GO (d3d11_pass_speed_review.md '## Re-check 11-25'; hand-back d11r_recheck_handback.md); no
+        Rev 2. Into lane I's brief: R-M1 our own passes write through the native context (ReShade never sees them,
+        e.g. light_bounce.hpp:697-702 into the light buffer) -> copy everything each reading event reads, dedupe
+        identical copies by a byte hash; marker file: remove any leftover before each start, write temp + rename;
+        camera: each wheel notch / E pulse waits for a fresh camera line, camera done 10 s before C1 else STOP, C3
+        holds until the dump frames are copied; ao_filter.hpp + smoke_map.hpp into the write list (or mark at the
+        call sites); 'never' list names its files; race-map build = real build values + an overflow rule; S14 port
+        exe likely matches no NVIDIA profile: harness copy with the same name first. Still ATN's: the rule lines
+        (incl. SendInput), V3 on, any NVIDIA profile change. -> d11i_ LANE I IMPLEMENTER (Opus High) STARTED.
         - [ ] PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in
         tools\tw\round_notes\proposed_rules_1125.md; ATN pastes them himself. Owner: ATN
         - [ ] CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on the vMF paper: 'just
