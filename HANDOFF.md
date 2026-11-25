@@ -15761,6 +15761,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         CORE_BATTLE / CORE_RENDER, one enum (sent to c8f_). Map 3.2 writer chains updated. ATN questions (held for the
         round's list): when to decide (pick (c) one arm after L2B S2), row text / default rule, battle-only v1, 2 rule
         lines. -> p2r_ REVIEW (Opus xHigh) STARTED 11:4x -> designs\pk2p_design_review.md.
+        p2r_ REVIEW 13:5x: GO WITH CHANGES (hand-back p2r_review_handback.md): M1 render part own state + error bits +
+        CORE_NO_THREAD, a render failure never drops the battle core (c8 plan :132-133 'one FAILED for both' must go);
+        M2 core_wanted per bit (plugin & CORE_BATTLE, add-on fetch_or / fetch_and) from L2B W2 / W3 on; S1 render-thread
+        identity guard (liveness + busy check; ask Sol to document the thread); S2 window gate +1 %; S3 burst census
+        1.29 vs 1.42, window -1..+2 %; S4 split P1 (plugin P1p after L2B W2, add-on row later) so the A/B isn't blocked
+        by the CPU page; S5 ep1 ini after the run_1320 snapshot + refusals; S6 battle clock wins; S7 multi-LLC rows.
+        -> p2d_ FIX ROUND STARTED 13:5x; M1 / M2 written into l2b_product_design.md section 8 item 5 and sent to c8r_
+        (C8 B0 takes them in a short C8 fix round 2).
         - [x] p6d_ PK6-64 TOOLING + PK4 CENSUS DONE 12:3x (designs\pk6_tooling_64.md, hand-back p6d_design_handback.md):
         PK4-64 MOOT (main waits ~0.26 ms / frame = 1.6 % of main; 32-bit was 11.83 ms); S1 done by Sol; NEW: memcpy
         10.43 % of main (~1.6 ms / frame) -> M2 reopened under PK5-64 (p5d_ told); C10 unpark met -> PK9 stage 2
