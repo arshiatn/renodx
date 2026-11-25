@@ -3585,6 +3585,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> gte_ RESUMED 21:2x for the fix round into stage26b (gtw_'s section 5 + gpr_ MUST-1, S1 CLEAR-exit fix, S2 /
         S4 path_words matching for T01 / T04 / T09 with 0 false refusals on real traffic, final-config tests, commas,
         run_in_terminal support; item 12 rows out) -> gte_r2_handback.md -> gpr_ / gtw_ diff re-check -> ATN.
+        gte_ r2 DONE 21:50 (plan_1117\gte_r2_handback.md; 39 min): stage26b (gate_hook.py 4D7A47B9...; run_tests.py F1539BE2...;
+        stage26b.diff 247 lines): S1 CHAIN fix (:119, post() :1056); S2 path_rows() (:921-955) turns path_words' gone paths
+        (globs, parent folders, lock overwrite, Python delete / move, .Delete(), loop deletes, robocopy /MOVE, tar
+        --remove-files, variables) into rm lines for ATN's rows; NIT commas; S6 mcp__terminal__run_in_terminal (field
+        'command') checked as PowerShell; S5 final-config sandbox tests. Suites: live 1506 / 1506, stage26b 1633 / 1633
+        (gte section 127 / 127); gpr_'s 109 probes: 100 ok, 0 real gaps, the same 8 known false refusals (gpr_ S3);
+        888-call replay and 7317 real shell calls since 11-24: identical refusals to stage26 (0 differences); 4000
+        commit messages 0 refused. Paste text = gte_r2_handback.md section 3 (+ optional step 6: ATN's matcher line).
+        D1 (coord 21:5x): STRICT: LOCK_TEST deleted, hand-taken / hand-released gpu_job.lock refused by T09; the coord
+        uses gpu_lock.py / GpuLock.psm1 / the self-locking tools -> gte_ resumed (~10 min) -> gpr_ + gtw_ diff re-check.
         d11v_ (lane I review, Opus xHigh) STARTED 20:5x.
         - [ ] gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a non-leading cd); spec
         gate on scratch files; web list gaps (44 research hosts); agent rules (gte_handback section 4) into briefs.
