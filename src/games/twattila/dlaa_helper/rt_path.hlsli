@@ -870,6 +870,10 @@ float Validate(inout Reservoir previous, float3 origin, bool contact) {
     previous.count = 0.f;
     return 0.f;
   }
+  // A contact sample without a normal is the Light Bounce's sky sample (Own Sky Rays off; a path's surface sample keeps its
+  // normal): it keeps its light. HitLight would take a surface the screen shows beside its reach point for it (no sun), or
+  // where none, OpenSky(normalize(0)): NaN, a W-clamp firefly.
+  if (contact && all(previous.hit_normal == 0.f)) return 0.f;
   // The cache's answer at the face of its stored normal, from a cell's size away at least (a reflection sample the screen
   // answered stored none: no face to look up).
   float3 light_now;
