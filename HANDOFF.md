@@ -840,7 +840,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Other tests that load rt_core without ReShade's config export may crash the same ... | ?
 - HELPER IGNORES THE PER-MATERIAL OPACITY FACTOR (rvt_ S2): 51 of Tales' 55 masks ... | ?
 - rvt_ nits outside ta_'s files: rt_core.hpp:425 comment says 0.333 (game clips at ... | ?
-- ta_ O6 waits for gpu_job.lock (pds2_): T7 short GPU runs rt_shadows_test / trace ... | ?
+- TALES DEVICE REMOVAL NOT DETECTED (T6 removal run FAIL, DXR 1.2 + 1.1): after Re ... | ?
 - ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales mult ... | ?
 - ta_ QUESTIONS FOR ATN (ta_'s pick first): (1) Attila rows for Tales: Upscaling D ... | ?
 - ry_ QUESTIONS FOR ATN (ry_'s pick first): (1) Ryse's rays are sharper than the g ... | ?
@@ -16075,8 +16075,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] rvt_ nits outside ta_'s files: rt_core.hpp:425 comment says 0.333 (game clips at 0.3333, bit-exact
         -0.333299994); 8 Tales depth-only shaders clip at other values (0.44, red channel): check in the next Tales round.
         Owner: next shared round / next Tales round
-        - [ ] ta_ O6 waits for gpu_job.lock (pds2_): T7 short GPU runs rt_shadows_test / trace_test / omm_test + the T6
-        removal run (RENODX_TW_TEST_REMOVAL); resume ta_ when the lock is free. Owner: coord
+        - [x] ta_ O6 DONE 15:3x (hand-back round_1125\handbacks\ta_o6_handback.md; ~6 s GPU over 9 short runs): trace_test,
+        omm_test (Agility 1.619, 1024 micro-triangles, 0 mismatches), rt_shadows_test DXR 1.2 + DXR 1.1 all PASS.
+        - [ ] TALES DEVICE REMOVAL NOT DETECTED (T6 removal run FAIL, DXR 1.2 + 1.1): after RemoveDevice the fences read
+        all ones, so the fence wait passes and the list / allocator resets don't fail; status stays 'Running', 21 more
+        frames trace stale results (character shadow 1.00 vs < 0.3, paths 0.107 vs 0.269, 0 / 4 BLAS compacted); no
+        crash / hang. 264d1b51c's claim does not hold. Fix (Tales-only file: only talesofarise includes
+        talesofarise_dlss/rt_shadows.hpp): also Fail when GetDeviceRemovedReason() != S_OK or Close / Signal fail, both
+        trace paths (~:1716, ~:2438), then rerun the removal case (expect 'Failed: the D3D12 queue stopped.', rays off);
+        + rt_shadows.hpp:2624 uses utils::log without including log.hpp. Owner: ta_ (new branch after nt_ta1 merges) ->
+        rvt_ review
         - [ ] ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales multiplies mask alpha by a
         material constant); step 5 equality harness (one Tales frame in-process vs helper) = GPU plan; 'needs box'
         lines in tales.tsv -> boxes (coord, later cleanup). Owner: coord
