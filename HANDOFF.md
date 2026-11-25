@@ -825,7 +825,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-BIT CPU DESIGNS STARTED 10:4x (Opus xHigh, read only, no builds; each -> Opus ... | ?
 - S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate ... | ?
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
-- S4 follow-ups (owner pds2_, helper lane, with / right after the brightness row): ... | ?
+- pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
+- ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the n ... | ATN
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
 - ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back | ?
 - TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a sour ... | ?
@@ -15734,7 +15735,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         0.98746 (day 49) / 0.99822 (night40) from 0.98857 / 0.97905 / 0.98532. Add-on not compiled in the worktree (no
         bin) -> coord builds after the merge. -> brr_ REVIEW (Opus xHigh) STARTED 14:3x ->
         plan_1117\designs\bright_r2_review.md -> merge + add-on build -> ATN decides the default from these numbers.
-        - [ ] S4 follow-ups (owner pds2_, helper lane, with / right after the brightness row): R1 `sun_4_lobe_copy`
+        pds2_ S4 FOLLOW-UPS DONE 15:1x (hand-back handoff_plan\handbacks\pds2_s4_followups_handback.md; log
+        scratch\pds2_\progress.md; runs reference\runs p2_bc* / p2_r3* / p2_r2d* / verify_{bco,bcon,pq4,pq4c,pq2,pq2c,r1f}):
+        R3 Part C on round 2: darkening no longer grows with rays (Part C's premise out of date); Balanced on brings boxes
+        0.99368 -> 0.99870 (16 samples), 0.97987 -> 0.98584 (cfg 49); G1 Basic does almost all of it. R2 cause (diagnosis):
+        sky-facing box tops in cfg 49 (0.9514) = a VISIBILITY BIAS in the spatial merge with Own Sky Rays off (ground
+        neighbours that see less sky are merged in); G1 Raytraced (RENODX_TW_REUSE_BIAS=2) lifts them to 0.9889, overall
+        0.99963, cost unmeasured. R1 sun_4_lobe_copy wall b/r 0.6992 vs 0.7189 with the copy (0.9489 vs 1.1058 without).
+        R4 twins in all 4 lists; gpu3_probe.sh / gpu3_ns.ps1 send 17408 / 17536. Past proofs: 4bcc1a742 holds, 2e4c2a582
+        holds (vs 5f8f529c0^), f18fd4deb DOES NOT HOLD: reflect_fog_reuse_lobe vs reflect_fog_lobe reflection luminance
+        0.7362 (67 % of pixels > 20 %): Reflection Reuse darkens fog reflections; which side is right = reference run.
+        Kept (deletes need ATN): failed builds pds2_pp4a / pp4b / pp2a / pp2b (old helpers needed their own
+        talesofarise_dlss\ngx_backend.hpp; pds2_build.ps1 -Rev now checks it out). Worktree junctions removed (links only).
+        - [ ] pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflections with Reflection Reuse: which
+        side matches the reference; small fix only if clearly ours, branch pds2_fogreuse); (2) G1 Raytraced vs Basic cost
+        day + night (does Balanced want Raytraced? numbers for ATN); (3) PT DI 4b / 4c. brr_'s bright_r2 findings go to
+        pds2_ first when they land. Owner: pds2_
+        - [ ] ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the next cleanup list). Owner: ATN
+        - [x] DONE 15:1x (above) S4 follow-ups (owner pds2_, helper lane, with / right after the brightness row): R1 `sun_4_lobe_copy`
         row (18432 + sun env; Own ReSTIR wall b/r 0.944 vs 1.106 without); R2 faces that see the sky stay dark with Own
         Sky Rays off (cfg 49 box tops 0.951; pre-existing, S1 uncovered it); R3 Part C cause tests re-run on round 2
         (at least s16sn, s16snvl, s16snkc) and Balanced's E4 numbers for ATN (off 0.98857 / 0.97905 / 0.98532, on
