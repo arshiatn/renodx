@@ -15803,6 +15803,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> a64_ab.ps1:633's ';140:' entry can fire out of order (C8 T0 must fix; sent to c8r_); tw_render_mt_defaults
         has a STALE game_cpus check failing on HEAD. 6 ATN questions held. -> p1r_ REVIEW (Opus xHigh) STARTED 13:3x
         -> designs\pk1_design_review.md.
+        - [x] p5d_ PK5-64 GAME CODE DESIGN DONE 13:4x (designs\pk5_game_code_64.md 628 lines, hand-back
+        p5d_design_handback.md): R = one SSE2 stub for the 20 calls to the half 0x3009b90 in the sprite row loop
+        (site 0x32d9de5, held 0x32d9d60..0x32da032; denormal class / overlap -> the game's code), H = register-exact twin
+        of 0x3009b90 (ships only if >= 10 % faster per call), via api->patch; proofs offline over all 2^32 values + 8
+        MXCSR + mutants, golden state in game. E main -0.8..-1.2 ms / frame (+6..9 % fps, scales with sprite soldiers).
+        C01 row on the 64-bit CPU page, restart-only, default On; show rule fixed (today hidden once off). M2: memcpy
+        likely Sol's whole-buffer re-send (offer to Sol) + inline copies for small fixed game sites. A1 candidates
+        0x32d93a0, 0xa4fdb0, 0xac3430, sqrtss inlining. 0 new starts (rides S-C #6 / #9; optional gc0 ~7 min). 4 ATN
+        questions held. -> p5r_ REVIEW (Opus xHigh) STARTED 13:4x -> designs\pk5_design_review.md. ALL SIX 64-BIT CPU
+        DESIGNS NOW WRITTEN; reviews running: p2r_, p6r_, p8r_, p9r_, p1r_, p5r_ (+ c8r_ re-check).
         - [ ] vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md R2.9), before vMF S2:
         Forge's BxDF fit found EON ~ Lambert (roughness < 0.05 on 52 / 62) and Callisto best (per-material knobs). Rows:
         Lambert, EON, vMF, Callisto with FIXED knobs. Cheapest: ATN asks Forge to add the rows; else our own offline
