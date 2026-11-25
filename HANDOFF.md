@@ -15696,6 +15696,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         Experimental player row, default OFF (look change: ATN decides from numbers), bits into the player shaders;
         proofs: row OFF -Fc = fdfdd56d9, E4 ON vs OFF + luminance table, HARNESS_DUMP 53 modes, builds. If s4r_ asks
         for S4 changes: pds2_ fixes S4 first, rebases pds2_bright.
+        - [x] ATN 11:3x 'add them to their plans too': ATN's open items written into the plans themselves (coordinator
+        addenda 2026-11-25): cpu_plan_64_map.md section 6 (L2B + battle-step MT core budget / step thread SET, four-group
+        sort for every item built or not, CPU page, PerfFix overlaps, FrameBridge, credit, Friday process, Attila 64
+        only); c8_wave2_plan.md section 8 (CPU page incl. interface_size + heapfix.ini / settings.txt rows, cull vs
+        sprites, FrameBridge, L2B writers); l2b_product_design.md section 8; plan_1117\plan.md 'GPU ORDER 2026-11-25';
+        render_mt\plan.md pointer to the 64-bit map. The 6 designers told to fold section 6 in.
+        - [x] c8r_ C8 WAVE 2 REVIEW DONE 11:3x (designs\c8_wave2_plan_review.md, hand-back c8r_review_handback.md):
+        GO WITH CHANGES, M1 (KNOWN_ROWS includes the CPU row against L2B S4 + two writers per file: L2B W3 / W4 in no C8
+        lane), M2 (start 1 seeds audio rows at 2x, two sliders only go to 1.11x / 1.43x), S1-S16, N1-N7.
+        -> c8f_ FIX ROUND (Opus xHigh, design only) STARTED 11:3x: all Musts / Shoulds + section 8 (CPU page section)
+        -> then ATN's C8 questions -> W0.
         - [ ] l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_design_review.md. c8p_ told
         09:5x: ONE plugin_block.h v2 layout with ROW_CPU_PLACEMENT, one writer + order; fold optc_'s detection notes.
         (Time labels 10:1x-10:5x in this morning's earlier rows were ~1 h fast; the commit times are right.)
