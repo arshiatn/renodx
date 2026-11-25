@@ -33,13 +33,13 @@
 // Arise's scene through the Total War helper (twattila/rt_core.hpp; renodx-tw-dlaa64.exe, its own D3D12 device), in
 // metres (Unreal's centimetres / 100). The scene: the depth prepass's draws into the scene depth (no target, depth
 // written): the opaque prepass's vertex shaders (rt_shadows::DEPTH_SHADERS; the characters' dynamic) and the masked
-// prepass's (rt_core's SceneCoverage: an alpha test at a texture coordinate as drawn, a dithered fade solid, a mask read
-// at a scaled coordinate left out; the characters' by rt_shadows::SKINNED_MASKED_SHADERS dynamic). The trace at Bandai's
-// sun shadow mask (cs 0x2084C889: the scene depth at t0, ScreenToShadow at b0 c28-c30, the View at b1): the camera
-// (TranslatedWorldToClip c0-c3 and PreViewTranslation c62 in metres), the direction toward the sun (0x7A1E0D12's
-// TowardSun, here on the CPU); then the traced sun at t40 for sunshadow00 (its texture's top-left the render pixels it
-// loads) and the traced ambient copied to the scene depth's size for the lighting passes' t41 (rt_ambient.hlsli reads it
-// by UV), in rt_shadows' place. At the frame's first lighting or toon draw (its G-buffer at t1-t3, the View at b1): the
+// prepass's (rt_core's SceneCoverage: an alpha test at a texture coordinate as drawn or times a material register, at
+// the game's 0.3333, without the material's opacity factor; a dithered fade solid; the characters' by
+// rt_shadows::SKINNED_MASKED_SHADERS dynamic). The trace at Bandai's sun shadow mask (cs 0x2084C889: the scene depth at
+// t0, ScreenToShadow at b0 c28-c30, the View at b1): the camera (TranslatedWorldToClip c0-c3 and PreViewTranslation c62
+// in metres), the direction toward the sun (0x7A1E0D12's TowardSun, here on the CPU); then the traced sun at t40 for
+// sunshadow00 (its texture's top-left the render pixels it loads) and the traced ambient copied to the scene depth's
+// size for the lighting passes' t41 (rt_ambient.hlsli reads it by UV), in rt_shadows' place. At the frame's first lighting or toon draw (its G-buffer at t1-t3, the View at b1): the
 // G-buffer guides into the bridge (WriteGuides, the anti-aliasing's 0x7A1E0D31), then the reflections and the specular
 // occlusion traced (rt_scene::Reflections; their hits light from last frame's colour, the bridge's), copied for t43 /
 // t44. The light bounce and the paths: GT-VBGI's passes (talesofarise_dlss/ue_light_bounce.hpp: the prepare from the
@@ -238,6 +238,10 @@ inline const twattila::rt_scene::Host HOST = {
     },
     .capture_camera = [](ID3D11DeviceContext*, twattila::rt_scene::Camera*) { return true; },
     .scene_draw = internal::SceneDraw,
+    // The masked prepass's clip value (0x7A1E0D11's, the in-process rays'), and its 37 masks read at the UV times a
+    // material register (rt_vertices.cs_5_0.hlsl's RT_VERTICES_UV_SCALES): in the scene, not left out.
+    .leaf_cutoff = 0.3333f,
+    .mask_uv_scales = true,
     .characters_dynamic = true,
 };
 

@@ -24,6 +24,7 @@
 #include "../../mods/swapchain.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/resource.hpp"
+#include "../../utils/resource_upgrade.hpp"
 #include "../../utils/settings.hpp"
 #include "../../utils/swapchain.hpp"
 #include "../talesofarise_dlss/post_filters.hpp"
@@ -918,7 +919,7 @@ void ConfigureAddon() {
 
 // Pictures of the finished frame (ATN: loading and battle ends showed it clamped): once the tone mapper has drawn this
 // frame, a render target of the frame's kind bound after it (a capture or fade) switches to its 16-bit clone as well,
-// and so does the destination of a copy from an active clone (before, the swap chain module skipped that copy as
+// and so does the destination of a copy of the 16-bit frame (before, the swap chain module skipped that copy as
 // mismatched). Registered before the swap chain module's own handlers, which then bind / copy the clones.
 void OnBindRenderTargetsAndDepthStencil(reshade::api::command_list* cmd_list, uint32_t count,
                                         const reshade::api::resource_view* rtvs, reshade::api::resource_view) {
@@ -930,17 +931,24 @@ void OnBindRenderTargetsAndDepthStencil(reshade::api::command_list* cmd_list, ui
 
 bool OnCopyResource(reshade::api::command_list*, reshade::api::resource source, reshade::api::resource dest) {
   if (!frame_tonemapped.load(std::memory_order_relaxed)) return false;
-  bool source_cloned = false;
-  renodx::utils::resource::GetResourceInfo(source, [&source_cloned](const renodx::utils::resource::ResourceInfo& info) {
-    source_cloned = info.clone_enabled;
+  // The frame in 16 bits: an active clone, or in scRGB a swap chain buffer itself (RGBA16F; its clone, the swap chain
+  // pass's copy, stays off), else utils drops its copy into an 8-bit capture as mismatched (the capture stays stale).
+  bool source_16_bit = false;
+  renodx::utils::resource::GetResourceInfo(source, [&source_16_bit](const renodx::utils::resource::ResourceInfo& info) {
+    source_16_bit = info.clone_enabled
+                    || (info.is_swap_chain && info.desc.texture.format == reshade::api::format::r16g16b16a16_float);
   });
-  if (!source_cloned) return false;
+  if (!source_16_bit) return false;
   // Not a swap chain buffer: in scRGB its clone is the swap chain pass's copy (off), which that pass overwrites (black).
-  renodx::utils::resource::UpdateResourceInfo(dest, [](renodx::utils::resource::ResourceInfo* info) {
-    if (info->clone_target != nullptr && !info->is_swap_chain) {
-      info->clone_enabled = true;
-    }
+  bool activate = false;
+  renodx::utils::resource::GetResourceInfo(dest, [&activate](const renodx::utils::resource::ResourceInfo& info) {
+    activate = info.clone_target != nullptr && !info.is_swap_chain && !info.clone_enabled;
   });
+  if (activate) {
+    // utils' activation turns the destination's views on with it: made with the texture, they'd keep reading the 8-bit
+    // original, and a later render target bind could no longer hot-swap them. utils' copy makes the clone if missing.
+    renodx::utils::resource::upgrade::GetResourceClone(dest, {.require_enabled = false, .allow_create = false, .activate = true});
+  }
   return false;
 }
 

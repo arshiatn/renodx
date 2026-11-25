@@ -35,6 +35,10 @@ using Microsoft::WRL::ComPtr;
 
 extern "C" __declspec(dllexport) const char* const NAME = "Scene coverage test";
 extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char*) {}
+// InstallScene reads the log details key (reshade::get_config_value calls this export unchecked): none set.
+extern "C" __declspec(dllexport) bool ReShadeGetConfigValue(void*, reshade::api::effect_runtime*, const char*, const char*, char*, size_t*) {
+  return false;
+}
 
 namespace core = twattila::rt_scene::internal;
 using twattila::rt_scene::Host;
