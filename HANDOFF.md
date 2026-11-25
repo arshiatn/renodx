@@ -15934,6 +15934,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         index. S1 OMM cs_6_9 builds keep 4 allocas (rolled domain loop): float4 + dot, alloca check. S2 history
         preconditions; S3 test with ~100 lights / ids >= 32 / list slots 16-31; N1-N7. -> u6f_ FIX ROUND STARTED ->
         u6r_ RE-CHECK.
+        u6f_ FIX ROUND DONE: 3b8a837fd (M1 in_last_trace / last_trace / target 0; S1 float4 + dot; S2 precondition
+        comments; S4 u85-u88; N1-N3) + bc623e2d3 (alloca check over 4 builds: OMM main / shade 4 -> 0; S5 128 lights,
+        list ids up to 127, slots 16-31: all stages <= 2.4 sigma, no-defensive control 121.6 sigma; S6 new light:
+        fixed -0.29 % / 1.82 sigma, as-built control -39.99 % at 3550 sigma; N4 / N5). Define-off bytes identical;
+        helper build exit 0, headers = baseline; run PASS. u6f_'s own correction: part 1's 'no alloca' used a wrong
+        pattern. N6 (SetBit fold) waits for pdi4c_'s rt_light_tiles.hlsli. -> u6r_ RE-CHECK STARTED.
         SLOTS CLAIMED (coord): fog u85-u86 reservoirs, u87-u88 sun history (UAV table contiguous from u10; pdi3_
         u75-76, pdi4c_ u77-u84 with u84 reserved; part 2 adds one filler if u84 stays unused).
         - [ ] U6 PART 2 MUSTS (u6f_part1_review.md): P1 FOG_HISTORY = shade ran last trace at this size AND
