@@ -857,7 +857,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
-- TDD TWINS + OCEAN PORT: tddi_ (Opus High, worktree, branch tddi_twins) STARTED: ... | ?
+- CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
 - TDD AUTHORS' ANSWERS (1-4) -> tdd_shaders.md + any follow-up. Owner: ATN -> coor ... | ATN -> coord
 - C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
@@ -16240,7 +16240,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         soldiers + waves lose object motion, grass fade at 100 m, flags lose thin cloth, render-scale shadow analysis
         reads the wrong region. ~850 other TDD shaders: no broken pass offline (no post / lighting / fog / sky /
         particle / UI change; signatures + t0 / t1 + G-buffer kept).
-        - [ ] TDD TWINS + OCEAN PORT: tddi_ (Opus High, worktree, branch tddi_twins) STARTED: TDD_TWINS (36 pairs) +
+        - [x] TDD TWINS + OCEAN PORT: tddi_ (Opus High, worktree, branch tddi_twins) STARTED: TDD_TWINS (36 pairs) +
         compile-time twin rows into SCENE / MOTION / RENDER_SCALE_READS / flag lists / CAMPAIGN + grass_fade (no
         utils alias), ocean port + WARP equivalence vs TDD's VS, README / About credit (placeholder), x86 + amd64 +
         64-bit builds. addon.cpp reserved for Friday: push before 11-27. -> review -> merge. Owner: tddi_
@@ -16269,6 +16269,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         backup .bak_tddi). 4 ocean shaders byte-identical; WARP ALL PASS (rebuilt exe), plain-twin control 1024 / 1024
         land; twins_check + helper_check ALL PASS; x86 + amd64 exit 0, 61 warnings = baseline; diff --check clean.
         Test copies in mod_shaders\tddi_tests\. -> tddr_ RE-CHECK STARTED -> merge before 11-27.
+        tddr_ RE-CHECK: MERGE (tddi_review.md '## Re-check 11-25'; own decompile + regeneration byte-equal, asserts
+        fail on 0 / 2 sinks, 4 shaders byte-identical, WARP ALL PASS, WithTwins dup check enforced in all 7 tables).
+        MERGED fcbea9694 (15dccc93b) + twattila x86 (addon32) + amd64 (addon64) build check: exit 0, 61 warnings each
+        = baseline. addon.cpp free for Friday's chain.
+        - [ ] CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; testbin\scratch\tddr_\helper\
+        .obj leftovers. Owner: ATN (add to the agents' leftovers list)
         - [x] TDD RUN CHECKS (ATN 11-25: NOT NEEDED, dropped) (needs a TDD game run, ATN's OK): create-time patcher counts in ReShade.log on TDD's
         bytes; whether TDD's new values (rain gloss, near-leaf cull, billboard cull band) are ever set (named
         nowhere in empire.retail.dll / TDD packs); MSAA shadow-analysis PS 0x702B83B7 has no render-scale entry.
