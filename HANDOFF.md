@@ -827,6 +827,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
 - LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_f ... | ?
 - REFLECTION REUSE 'FROM ReSTIR GI' FIX (rt_path.hlsli ReflectPixel, PATH_REFLECT_ ... | ?
+- BALANCED RAYTRACED CHOICE: bal3_ (Opus High, worktree, branch bal3_raytraced) ST ... | ?
 - PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
@@ -15819,6 +15820,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] G1 RAYTRACED: +1.1 / +2.9 ms for box tops 0.95 -> 0.99. Coord pick: keep Basic in the Balanced row,
         Raytraced stays a test switch. Owner: ATN
         ATN 11-25 evening: 'Keep Basic'. DECIDED (no code change: Basic is what the row uses).
+        ATN later (evening), after 'On = Basic, Raytraced only a test switch': 'Yes, add it' -> the row becomes
+        Off / Basic / Raytraced (default Off, saved 1 = Basic).
+        - [ ] BALANCED RAYTRACED CHOICE: bal3_ (Opus High, worktree, branch bal3_raytraced) STARTED: new path flag
+        with bit 28 (older helpers = Basic), INTEGER row, helper route (a) runtime bit in the REUSE_BALANCED twins if
+        Basic stays bit-exact + same cost, else (b) 4 more twins; gates E4 cfg 49 ~0.989, Off / Basic unchanged,
+        cost day + night (preset flags), old-add-on case. Owns only REUSE_SUSPECTS's define, the Balanced blocks in
+        rt_d3d12.hpp, the REUSE_BALANCED build.ps1 entries, rt_scene.hpp / rt_core.hpp / dlaa_bridge.h; not the G1
+        merge (pdi5_), no rt_reuse_bits.h bits. -> review -> merge after steps 3 + 5; parity / skills row 'Off /
+        Basic / Raytraced' after the sku_ merge. Owner: bal3_
         - [x] Nit (brr_): rt_d3d12.hpp:757 conditional initializer without parentheses (CXX_STYLE) -> pds2_'s next branch.
         Owner: pds2_
         MERGED e52ec9e28 (pds2_nits 268b687f8; helper exit 0, 5,859,328 B), pushed.
