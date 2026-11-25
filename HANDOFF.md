@@ -15827,6 +15827,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         confirmed; no past verdict changes. Plan now 8 starts ~57 min (5 new). Decisions (map section 6 item 11): ep
         names, like-for-like gates, PK2P render thread on its own log line. -> p6d_ FIX ROUND STARTED 14:5x; p2r_ /
         p9r_ / p8r_ told the items that touch them.
+        p6d_ FIX ROUND DONE 16:0x (hand-back p6d_fix_round_handback.md): M1 every fps gate = same batch, probe full,
+        no WPR, full window (A5 det / A7 fps_ex dropped); plan 8 starts in 3 sittings ~57 min (5 new ~40 min): S-A
+        ep1 + vfx, S-B C8's two + w3 (WPR data start), S-C ep1c / ep8 / ep8p2; options on ATN's word (ep8p2 WPR data,
+        gc0, ep8tt8, way A). Kinds vfx / w3 / ep2 / ep1c / ep8 / ep8p2 / gc0 (+ ep8vfx fallback); A15 literal refusals
+        on the plugin DLL; A14 ini lifetime; analyze_d0.py S5 / S6 applied (self-test 11 / 11; 15 pairs unchanged).
+        5 ATN questions (vfx in S-A, drop ep8tt8, CPU Set Setter rule for run_rs_b64p, camera key, options).
+        -> p6r_ RE-CHECK STARTED 16:0x; p2d_ renames pk8 -> ep8 in pk2p_main_core_64.md.
         - [x] p8d_ PK8 BATTLE STEP DESIGN DONE 12:5x (designs\pk8_battle_step_64.md 702 lines, hand-back
         p8d_design_handback.md): main win SERIAL: Stage A exact group index replaces the quadratic pair search at
         0x79a690 (~89 % of seg 0), identical results by construction, fingerprint self-off, fallback; E -21..-24 ms /
