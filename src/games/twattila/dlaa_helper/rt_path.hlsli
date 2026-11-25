@@ -430,9 +430,10 @@ static const uint TORCH_CANDIDATES = 8u;  // a surface's picks from its cell, re
 // The local lights' light on a surface (`seed`: Random's lanes). With TORCH_REGIR all of them (not only the first 32):
 // TORCH_CANDIDATES of its ReGIR cell's picks (RTXDI's; the uniform pick of all lights outside the onion) resampled by
 // what each gives it (LightArriving, RTXDI's streaming RIS), the one kept weighted back by its RIS weight if a ray
-// reaches it; its numbers RTXDI's sampler on the seed's kind + TORCH_KIND_SHIFT. Else LocalLights.
-float3 TorchLight(float3 surface, float3 normal, uint4 seed) {
+// reaches it; its numbers RTXDI's sampler on the seed's kind + TORCH_KIND_SHIFT. Else LocalLights (the RTXDI-less builds:
+// LocalLights itself, today's shaders to the byte; a function around it reordered dxc's SHaRC paths).
 #if defined(PATH_REGIR)
+float3 TorchLight(float3 surface, float3 normal, uint4 seed) {
   if (TORCH_REGIR) {
     RTXDI_RandomSamplerState rng = RabSampler(seed + uint4(0u, 0u, 0u, TORCH_KIND_SHIFT));
     const RAB_Surface at = {surface, normal};
@@ -463,9 +464,11 @@ float3 TorchLight(float3 surface, float3 normal, uint4 seed) {
     }
     return kept_light * kept.weightSum;
   }
-#endif
   return LocalLights(surface, normal, seed);
 }
+#else
+#define TorchLight LocalLights
+#endif
 
 // The light a surface the screen never saw sends back (its base colour lit): the sun's (SunLit) and the local lights'
 // (LocalLights by `light_seed`). Not theirs where a surface the screen shows sends none of theirs back (SeenDiffuseLight,
