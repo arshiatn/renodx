@@ -15991,6 +15991,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         corrected everywhere (path_flags null; SHARED_FIELDS already take <field>@kind, only rt_path_flags bits wait
         for step 5). Pitfall: clip cosines to [0, 1] in double models (l = v gives pow of -2e-16 = NaN). RT AO loop
         owner check: pdi4c_ does not touch rt_trace's AO loop. cal1_ told R1.8 + R1.10 = final brief.
+        cal1_ C1 DONE (evening): origin/cal1_c1 (from a2dab9c75) e0c22ea57 callisto_diffuse.h / .hlsli, ff09d0df7
+        test/tw_callisto_diffuse (new files only; run ALL OK ~10 s, scratch cal1_\tw_callisto_diffuse). Sets A / A+F /
+        V16 / V16_DI / V40 / V40_DI + PLANTED (controls only); bonds unfaded 96^3 = cdr_'s Gauss; T3 exactly 1.0f;
+        T-vmf V16 1.53 / 37.6 %, V40 1.21 / 16.1 %; WARP vs twin 4.4e-7 (fxc / dxc); every control fails. Cost 42-56
+        DXIL per lobe (above the 25-40 estimate). Open: the cap acts on A+F (kept bond 0.9890; scoring-only set);
+        T-vmf depends on vmf_diffuse.hlsli (freeze points if vMF's header is removed). -> cdr_ C1 CODE REVIEW
+        STARTED -> designs\callisto_diffuse_c1_review.md -> merge (new files, no callers).
         - [ ] CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent (Opus xHigh, scratch
         only) after ATN's download yes (MERL BRDFDatabase.zip 1.3 GB + RGL; pick MERL + RGL) . Owner: coord (date)
         - [ ] CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mismatch measured. Owner: later
