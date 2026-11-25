@@ -2780,14 +2780,22 @@ inline bool OnCopyResource(
   }
 
   if (source_clone_enabled || destination_clone_enabled) {
-    auto source_clone =
-        source_clone_enabled && source_clone_existing.handle == 0u && !source_clone_attempted
-            ? CloneResource(source)
-            : source_clone_existing;
-    auto dest_clone =
-        destination_clone_enabled && destination_clone_existing.handle == 0u && !destination_clone_attempted
-            ? CloneResource(dest)
-            : destination_clone_existing;
+    // A disabled clone does not hold the resource's contents (for example the swap chain proxy's scratch copy of
+    // an scRGB back buffer), so only the enabled side is redirected to its clone.
+    reshade::api::resource source_clone = {0u};
+    if (source_clone_enabled) {
+      source_clone = source_clone_existing;
+      if (source_clone.handle == 0u && !source_clone_attempted) {
+        source_clone = CloneResource(source);
+      }
+    }
+    reshade::api::resource dest_clone = {0u};
+    if (destination_clone_enabled) {
+      dest_clone = destination_clone_existing;
+      if (dest_clone.handle == 0u && !destination_clone_attempted) {
+        dest_clone = CloneResource(dest);
+      }
+    }
 
     if (source_clone.handle != 0u) {
       if (source_clone_existing.handle == 0u) {
@@ -3669,14 +3677,21 @@ inline bool OnResolveTextureRegion(
   }
 
   if (source_clone_enabled || destination_clone_enabled) {
-    auto source_clone =
-        source_clone_enabled && source_clone_existing.handle == 0u && !source_clone_attempted
-            ? CloneResource(source)
-            : source_clone_existing;
-    auto dest_clone =
-        destination_clone_enabled && destination_clone_existing.handle == 0u && !destination_clone_attempted
-            ? CloneResource(dest)
-            : destination_clone_existing;
+    // Only the enabled side is redirected: a disabled clone does not hold the resource's contents.
+    reshade::api::resource source_clone = {0u};
+    if (source_clone_enabled) {
+      source_clone = source_clone_existing;
+      if (source_clone.handle == 0u && !source_clone_attempted) {
+        source_clone = CloneResource(source);
+      }
+    }
+    reshade::api::resource dest_clone = {0u};
+    if (destination_clone_enabled) {
+      dest_clone = destination_clone_existing;
+      if (dest_clone.handle == 0u && !destination_clone_attempted) {
+        dest_clone = CloneResource(dest);
+      }
+    }
 
     if (source_clone.handle != 0u) {
       if (source_clone_existing.handle == 0u) {
@@ -3954,14 +3969,21 @@ inline bool OnCopyTextureRegion(
   }
 
   if (source_clone_enabled || destination_clone_enabled) {
-    auto source_clone =
-        source_clone_enabled && source_clone_existing.handle == 0u && !source_clone_attempted
-            ? CloneResource(source)
-            : source_clone_existing;
-    auto dest_clone =
-        destination_clone_enabled && destination_clone_existing.handle == 0u && !destination_clone_attempted
-            ? CloneResource(dest)
-            : destination_clone_existing;
+    // Only the enabled side is redirected: a disabled clone does not hold the resource's contents.
+    reshade::api::resource source_clone = {0u};
+    if (source_clone_enabled) {
+      source_clone = source_clone_existing;
+      if (source_clone.handle == 0u && !source_clone_attempted) {
+        source_clone = CloneResource(source);
+      }
+    }
+    reshade::api::resource dest_clone = {0u};
+    if (destination_clone_enabled) {
+      dest_clone = destination_clone_existing;
+      if (dest_clone.handle == 0u && !destination_clone_attempted) {
+        dest_clone = CloneResource(dest);
+      }
+    }
 
     if (is_vulkan && source_clone.handle == 0u && dest_clone.handle == 0u) {
       return false;
