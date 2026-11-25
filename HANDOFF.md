@@ -842,7 +842,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mism ... | later
 - CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
 - CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ?
-- SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
+- SKILLS FOLLOW-UPS: F1 bringup's Balanced cell says Off / Basic / Raytraced: true ... | ?
 - PAGE DUMP TOOLING (testing.md's new trap row): root-cause Shogun 2's page-dump c ... | ?
 - src/games/backup.zip is TRACKED in atn-mods (rvs_): keep or remove? (deletion = ... | ATN
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
@@ -16001,7 +16001,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one row, no slider; reuse
         rt_diffuse_roughness (dlaa_bridge.h:589, never written) if vMF is dropped, else a v33 field via the port;
         Proxima out; raster only after ATN sees PT. Owner: ATN after cdr_'s review
-        - [ ] SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills as port rows, no ports
+        - [x] SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills as port rows, no ports
         yet; important lessons since the last content update 11-22): sku_ (Opus xHigh, worktree, branch
         sku_1125) STARTED -> review -> merge. The full skills double-check (11-17 step 9) comes after Attila +
         unified PT with every optimization is done, on ATN's word. Owner: sku_
@@ -16030,6 +16030,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         parity_check open -> 0 in 11 games; left: romeremastered 12 (terrain / grass caster census), ruse 1 (Time Each
         Pass DO NOW), divinity1 563 / divinity2 44 / expeditions 134 (old backlog, ledgers unconverted). -> rvs_
         RE-CHECK -> merge.
+        rvs_ RE-CHECK: MERGE (sku_review.md '## Re-check'; 44 lines byte for byte, merge-tree clean). MERGED
+        df1f42b4a (docs only, no build) + pushed; F2 clause added 3c7c37387 (changed mod shaders get twin rows where we
+        only patch / name the draw; outright replacement = a port on the mod's version with the authors' OK + credit).
+        - [ ] SKILLS FOLLOW-UPS: F1 bringup's Balanced cell says Off / Basic / Raytraced: true when bal3_ merges (if
+        bal3_ is dropped -> 'Off / On (On = Basic)'); NITs: bringup intro ';' between its two groups, testing.md's two
+        zero-thread lines -> one. Owner: coord (with bal3_'s merge)
         - [ ] PAGE DUMP TOOLING (testing.md's new trap row): root-cause Shogun 2's page-dump crash (0xC0000005,
         partial 201 keys; needs a Shogun 2 dump run) + parity_check refuses a dump without its end marker; then drop
         bringup.md's '(Shogun 2's dump crashed partway ...)' note. Owner: coord (tool fix) / ATN's OK (run)
