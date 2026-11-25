@@ -829,13 +829,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the n ... | ATN
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
 - ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back | ?
-- TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a sour ... | ?
 - FRIDAY 11-27, ONLY ON ATN'S GO (he wakes ~06:00, switches accounts): Fable 5.2 x ... | ?
 - 64-bit release: private release step, 64-bit map section 6 item 13 (before the f ... | ?
 - p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
 - ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
 - PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; ... | ?
 - NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\rou ... | ?
+- TALES CAPTURE FIX IN GAME: in SDR, HDR10 and scRGB, a loading screen / battle en ... | ?
 - tw_scene_coverage crashes at start on atn-mods too (rvt_: 0xC0000005; since a98c ... | ?
 - Other tests that load rt_core without ReShade's config export may crash the same ... | ?
 - HELPER IGNORES THE PER-MATERIAL OPACITY FACTOR (rvt_ S2): 51 of Tales' 55 masks ... | ?
@@ -15835,7 +15835,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         later (ATN's yes): worktree agent-ae7cab13600fa530f holds its own real bin\ copy (not a link).
         ucr_ RE-CHECK 13:2x: MERGE (Re-check 11-25 in ucf_clone_fix_review.md; hand-back ucr_recheck_handback.md).
         MERGED 1cd236071 (ucf_follow) + twattila / Tales amd64 build check.
-        - [ ] TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a source as cloned only when its
+        - [x] FIXED ad85b2142, merged c8519a50b (ta_ 11-25; in-game check = box 'TALES CAPTURE FIX IN GAME') TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a source as cloned only when its
         clone is on (talesofarise/addon.cpp:935); in scRGB buffer 0 is real RGBA16F with its clone off, so a copy from it
         into an RGBA8 capture texture is dropped as mismatched and the capture stays stale. Matters only if Tales copies
         out of buffer 0 (unproven); offline fix possible. Owner: next Tales round (tools\nontw\tales\plan.md).
@@ -16063,6 +16063,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         (parts 1-6 PASS, 37 / 37), ba8cbb8b2 tests tidy, b880a1fbb README_DLSS + comment. Build exit 0 (61 = baseline),
         tw_tales_unit 5 / 5. Not added: the optional FlushDescriptors (needs the in-game trace). -> rvt_ RE-CHECK sent 15:0x
         (incl. the HDR10 / SDR behaviour change and the skipped flush).
+        rvt_ RE-CHECK 15:4x: MERGE (Re-check 11-25 in rvt_nt_ta1_review.md; hand-back round_1125\handbacks\
+        rvt_recheck_handback.md): M1 / S1 / S3 / N1-N4 / N7 fixed; the HDR10 / SDR change is right and safe (before:
+        since e92046f68 only the resource flag, views read the stale 8-bit original; now the same state a render-target
+        hot swap gives; only off, non-swap-chain hot-swap targets copied from a 16-bit source after the tone mapper);
+        FlushDescriptors is a stub in utils (resource_upgrade.hpp:906-917), so leaving it out changes nothing. MERGED
+        c8519a50b + talesofarise amd64 build in the main tree exit 0 (61 warnings = baseline). New nits R1 (ray_tracing.hpp:42
+        181 chars), R2 (helper_kept.cpp braceless bodies), R3 (README_DLSS in-game check: add SDR + the fade's brightness vs
+        the stock game) -> ta_'s next branch with the device-removal fix.
+        - [ ] TALES CAPTURE FIX IN GAME: in SDR, HDR10 and scRGB, a loading screen / battle end / menu fade that copies
+        the frame shows the CURRENT frame (not a stale one), and the fade's brightness matches the stock game (8-bit
+        readers now get the frame unclamped; an _SRGB view loses its decode, as for every hot-swapped target). Owner: next
+        Tales data run (ATN's OK)
         - [ ] tw_scene_coverage crashes at start on atn-mods too (rvt_: 0xC0000005; since a98ca9fb3 11-22 InstallScene calls
         reshade::get_config_value and the test exports no ReShadeGetConfigValue, reshade.hpp:176-178 calls null): one-line
         export in test/tw_scene_coverage/tests.cpp -> ta_ fix round (coord OK, test-only). With it parts 1-6 PASS. Owner: ta_
