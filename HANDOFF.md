@@ -820,7 +820,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- a64pir_ (Opus xHigh) PROBE R1 REVIEW STARTED 00:5x -> probe\probe_review.md -> f ... | ?
+- a64pi_ probe fix round SENT 01:2x (M4-M9 + cheap Shoulds, rebuild + self-test, s ... | ?
+- a64ab_ -Probe / -Wpr pass SENT 01:2x (plan M1-M3, sha from the sidecar, locks fo ... | ?
 - a64b_ (Opus High, worktree reset onto atn-mods, branch a64b_bringup) STARTED 00: ... | ?
 - ATN (when A3 is near): add the 4 -ReShade rule lines (a64ab_window1_rules.md '-R ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
@@ -15296,8 +15297,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         probe\a64ab_plan.md (-Probe det|full, perffix64: log-line equality, refusals, -Wpr via schtasks /Run once each
         + Stop in finally). 10 E items (exception through a post-stub, CET, CPU Set Setter re-apply, QTCT units ...).
         Window 3 lines exist (ATN 11-24); new optional lines for ATN: probe\build.ps1 (+ -NoTest).
-        - [ ] a64pir_ (Opus xHigh) PROBE R1 REVIEW STARTED 00:5x -> probe\probe_review.md -> fixes -> a64ab_ -Probe /
-        -Wpr pass (after its -ReShade pass) -> -DryRun -> window 3 round 1.
+        - [x] a64pir_ PROBE R1 REVIEW = GO WITH CHANGES (hand-back attila64/a64pir_probe_review_handback.md; review
+        probe\probe_review.md, private): no crash / game-state change found (stubs, LastError, TLS, shadow stack,
+        freeze, build-id, byte match, clock checked). Plan Musts: M1 ETL path = D:\RenoDX_WPR\attila_wpr.etl (rename
+        in place per start); M2 PerfFix compare without the 'stats' lines (24 other lines byte-equal over window 1's 3
+        starts); M3 no l2b / l2c kind (not one of ATN's lines). Probe Musts: M4 no cycle bracketing in the GOT-wait role
+        (the ~215 ns query runs under the mutex, +0.46 us / lock, inflates H1b); M5 task-fetch lock counted twice.
+        Analysis Musts M6-M8 (W0..W1 filter, NOPROBE from each start's window line, checksum compare informational);
+        M9 analyzer output stays in the batch folder (names), HANDOFF numbers + hex only.
+        - [ ] a64pi_ probe fix round SENT 01:2x (M4-M9 + cheap Shoulds, rebuild + self-test, sha sidecar) -> a64pir_
+        re-check.
+        - [ ] a64ab_ -Probe / -Wpr pass SENT 01:2x (plan M1-M3, sha from the sidecar, locks for the whole batch) ->
+        coord -DryRun (ATN's line) -> window 3 round 1 (base, inline, base + WPR s 100-160, ~21 min).
         - [x] a64bd_ BRING-UP DESIGN DONE (hand-back attila64/a64bd_design_handback.md; designs/bringup_design.md,
         PRIVATE): A2 required (Sol's RGBA8 picture never gets a clone -> black in HDR10 / scRGB / SDR); A2a copy_resource
         handler turns the clone on at the first copy into a swap buffer; A2b overlay rows -> halves; fixed loader's fix
