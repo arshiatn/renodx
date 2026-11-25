@@ -835,6 +835,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-bit release: private release step, 64-bit map section 6 item 13 (before the f ... | ?
 - p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
 - ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
+- PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
@@ -15943,6 +15944,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         coord added one line asking Sol's OK for the flag write) -> sent to ATN to paste; PK5 upload tip + C10 = a
         follow-up after C4. Coord answers: ep1cvfx + vfxauto once the code is in = yes (+14 min); the conditional WPR
         data start runs without asking (trace runs need no ask); default after the soak = ATN later.
+        - [ ] PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; Opus xHigh, no builds /
+        starts): p8c_ PK8 P3 census -> designs\pk8_p3_census.md; c8w_ C8 W0 offline (E9 sim / display per row + a
+        reliable MP-battle check for ATN's single-player answer, + E1-E5 / E8 if time) -> designs\c8_w0_offline.md;
+        p9v_ PK9 N13 virtual paths (offline test 9.3) -> designs\pk9_n13_virtual.md. STARTED ~12:5x. Owner: coord.
         - [x] p1d_ PK1-64 UPLOADS DESIGN DONE 13:3x (designs\pk1_uploads_64.md, hand-back p1d_design_handback.md): FCU
         default On on the port only after an offline T-test (tw_injection_buffers case 8 -Hardware; bytes identical;
         E +0.35..+1 % fps; ~540 ReShade pushes / frame gone); FDW hidden + forced off on the port (Sol's device never
