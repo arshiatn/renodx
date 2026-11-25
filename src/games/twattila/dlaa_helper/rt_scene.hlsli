@@ -84,10 +84,6 @@ static const float THIN_TRANSMITTANCE = 0.35f;  // cloth and sails
 #include "Rtxdi/ReGIR/ReGIRParameters.h"
 // rgb: the listed lights' light there (LightArriving x their bits); a: 1 where the tile listed every light reaching it.
 RWTexture2D<float4> torch_irradiance : register(u75);
-// rt_camera.hlsli's lights_in_bounce: a paths request's ReGIR cells built (u76), and torch_irradiance this frame's (a
-// trace's: rt_lights writes it).
-static const uint LIGHTS_REGIR = 512u;
-static const uint LIGHTS_TORCH_IRRADIANCE = 1024u;
 #endif
 
 // The local lights (bridge v9; their colours v11, for the paths; up to 128 v31, the paths and the fog the first 32):

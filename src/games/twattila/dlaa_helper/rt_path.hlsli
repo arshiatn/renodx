@@ -421,10 +421,10 @@ float3 LocalLights(float3 surface, float3 normal, uint4 seed) {
 #if defined(PATH_REGIR)
 #include "./rt_rtxdi_bridge.hlsli"
 #define TORCH_REGIR (TORCH_LIGHT_IN_PATHS && (lights_in_bounce & LIGHTS_REGIR) != 0u)
+static const uint TORCH_CANDIDATES = 8u;  // a surface's picks from its cell, resampled
 #else
 #define TORCH_REGIR false
 #endif
-static const uint TORCH_CANDIDATES = 8u;  // a surface's picks from its cell, resampled
 #define TORCH_LIGHT_COUNT (TORCH_REGIR ? 128u : 32u)  // the lights TorchLight covers (LocalLight's first 32)
 
 // The local lights' light on a surface (`seed`: Random's lanes). With TORCH_REGIR all of them (not only the first 32):

@@ -35,10 +35,7 @@ struct RAB_LightSample {
 #include "Rtxdi/Utils/RandomSamplerState.hlsli"
 #include "Rtxdi/DI/ReSTIRDIParameters.h"
 
-RAB_LightInfo RAB_LoadLightInfo(uint index, bool previous) {
-  const RAB_LightInfo light = {index};
-  return light;
-}
+RAB_LightInfo RAB_LoadLightInfo(uint index, bool previous) { return (RAB_LightInfo)index; }
 RAB_LightInfo RAB_EmptyLightInfo() { return (RAB_LightInfo)0; }
 // No compact copies in the cells: a light is its index.
 bool RAB_StoreCompactLightInfo(uint slot, RAB_LightInfo light) { return false; }

@@ -3072,6 +3072,12 @@ class RtScene12 {
       *why = std::format("unknown stem {}", stem);
       return false;
     }
+    // While Torch Light in PT GI's T1 is held (asked within HISTORY_FRAMES), rt_lights' twins run in its place: a swap of
+    // it would measure the twin on both sides. Lab jobs that swap rt_lights keep bit 27 clear (the twins are no stems).
+    if (stem == "rt_lights" && !code.empty() && lights_torch_pipelines_[0] && torch_irradiance_) {
+      *why = "rt_lights' twins (rt_lights_torch) run in its place while Torch Light in PT GI (bit 27) is on";
+      return false;
+    }
     ComPtr<ID3D12PipelineState>& pipeline = this->*found->second;
     const auto base = base_pipelines_.try_emplace(std::string(stem), pipeline).first;
     if (code.empty()) {
@@ -4018,7 +4024,7 @@ class RtScene12 {
         // Torch Light in Path-Traced GI's ReGIR (PT DI step 3, T2): RTXDI's onion of cells around the camera (its defaults,
         // 5 detail and 10 coverage layers, the radii in cells: REGIR_CELL_SIZE), REGIR_LIGHTS_PER_CELL lights a cell picked
         // uniformly from REGIR_BUILD_SAMPLES, no jitter (every cell's lights all that may reach it); uniform outside.
-        static const std::pair<ReGIR_Parameters, uint32_t> onion = [] {
+        static const auto [onion_parameters, onion_slots] = [] {
           rtxdi::RISBufferSegmentAllocator cells;
           const rtxdi::ReGIRContext context({.mode = rtxdi::ReGIRMode::Onion, .lightsPerCell = REGIR_LIGHTS_PER_CELL}, cells);
           const rtxdi::ReGIROnionCalculatedParameters calculated = context.GetReGIROnionCalculatedParameters();
@@ -4040,10 +4046,13 @@ class RtScene12 {
           parameters.onionParams.linearFactor = calculated.regirOnionLinearFactor;
           return std::pair{parameters, context.GetReGIRLightSlotCount()};
         }();
-        const bool regir = torch_light && regir_pipeline_ && GrowBuffer(std::addressof(regir_cells_), uint64_t{onion.second} * 8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        // T1: the trace's torch light at the render pixels this frame (the last paths' row on).
-        if (torch_light) torch_light_frame_ = frame;
-        const bool torch_traced = torch_light && torch_irradiance_frame_ == frame && torch_irradiance_;
+        const bool regir = torch_light && regir_pipeline_ && GrowBuffer(std::addressof(regir_cells_), uint64_t{onion_slots} * 8, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        // T1: the trace's torch light at the render pixels this frame (the last paths' row on); only with T2, which covers
+        // the same lights (without ReGIR TorchLight is LocalLights: the first 32).
+        if (torch_light) {
+          torch_light_frame_ = frame;
+        }
+        const bool torch_traced = regir && torch_irradiance_frame_ == frame && torch_irradiance_;
 #else
         constexpr bool regir = false;
         constexpr bool torch_traced = false;
@@ -4092,7 +4101,7 @@ class RtScene12 {
         if (regir) {
           // The onion's centre: the camera, where the clip's x, y and w are 0 (rows 0, 1, 3; Cramer's rule; at the origin
           // for a view without one: the cells then off centre, still unbiased).
-          ReGIR_Parameters parameters = onion.first;
+          ReGIR_Parameters parameters = onion_parameters;
           const float* vp = shared.rt_view_projection;
           const auto row = [&](size_t index) { return std::array<double, 4>{vp[index * 4], vp[(index * 4) + 1], vp[(index * 4) + 2], vp[(index * 4) + 3]}; };
           const std::array<std::array<double, 4>, 3> rows = {row(0), row(1), row(3)};
@@ -4109,14 +4118,16 @@ class RtScene12 {
           }
           std::memcpy(slot.light_data + REGIR_OFFSET, &parameters, sizeof(parameters));
           const D3D12_UNORDERED_ACCESS_VIEW_DESC cells_view = {.Format = DXGI_FORMAT_R32G32_UINT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
-                                                               .Buffer = {.NumElements = onion.second}};
+                                                               .Buffer = {.NumElements = onion_slots}};
           device_->CreateUnorderedAccessView(regir_cells_.Get(), nullptr, &cells_view, Descriptor(REGIR_CELLS));
           Mark(list, L"ReGIR cells");
           list->SetPipelineState(regir_pipeline_.Get());
-          list->Dispatch((onion.second + 63) / 64, 1, 1);
+          list->Dispatch((onion_slots + 63) / 64, 1, 1);
           list->ResourceBarrier(1, &uav_barrier);
         }
-        if (torch_traced) Written(torch_irradiance_.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, TORCH_IRRADIANCE);
+        if (torch_traced) {
+          Written(torch_irradiance_.Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, TORCH_IRRADIANCE);
+        }
 #endif
         // The radiance cache once a frame: filled (from the prepared light, else last frame's colour; with the guides each
         // cell's owner), resolved (the owners' base colours).
@@ -5414,6 +5425,9 @@ class RtScene12 {
                                                                         .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY,
                                                                         .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
                                                                         .Texture2DArray = {.MipLevels = 1, .ArraySize = 2}};
+  // The ReGIR cells' view without them (a buffer, as RWBuffer<uint2> regir_cells declares it).
+  static constexpr D3D12_UNORDERED_ACCESS_VIEW_DESC NO_REGIR_CELLS = {.Format = DXGI_FORMAT_R32G32_UINT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                                                                      .Buffer = {.NumElements = 1}};
   // The paths' textures not shared (yet): null views, so their descriptors are always valid (the cache's too until
   // EnsureCache makes it).
   void WriteNullPathDescriptors() {
@@ -5445,6 +5459,7 @@ class RtScene12 {
     for (UINT descriptor = unused_from; descriptor < DESCRIPTOR_COUNT; ++descriptor) {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
+    device_->CreateUnorderedAccessView(nullptr, nullptr, &NO_REGIR_CELLS, Descriptor(REGIR_CELLS));
     if (cache_keys_) return;
     const D3D12_UNORDERED_ACCESS_VIEW_DESC buffer_written = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
                                                              .Buffer = {.NumElements = 1}};
@@ -6312,7 +6327,8 @@ class RtScene12 {
     if (own_sky_[0] && unused(HISTORY_SKY)) release("own sky's", {std::addressof(own_sky_[0]), std::addressof(own_sky_[1])}, {OWN_SKY, OWN_SKY + 1});
     // Torch Light in Path-Traced GI's torch light and ReGIR cells: their row's paths' frame (no history kind of their own).
     if ((torch_irradiance_ || regir_cells_) && (torch_light_frame_ == UINT32_MAX || torch_light_frame_ + HISTORY_FRAMES < frame)) {
-      release("torch light's", {std::addressof(torch_irradiance_), std::addressof(regir_cells_)}, {TORCH_IRRADIANCE, REGIR_CELLS});
+      release("torch light's", {std::addressof(torch_irradiance_), std::addressof(regir_cells_)}, {TORCH_IRRADIANCE});
+      device_->CreateUnorderedAccessView(nullptr, nullptr, &NO_REGIR_CELLS, Descriptor(REGIR_CELLS));
     }
     if (light_ratio_[0] && unused(HISTORY_RATIO)) {
       release("torch shadow ratio's", {std::addressof(light_ratio_[0]), std::addressof(light_ratio_[1])}, {LIGHT_RATIO, LIGHT_RATIO + 1});
@@ -8375,8 +8391,7 @@ class RtScene12 {
                                           | (tint_guides ? PATH_TINT_GUIDES : 0u) | (history_kept ? PATH_AMBIENT_KEPT : 0u),
                                  .previous_positions_slice = history_kept ? trace_positions_slice_ : 0u,
                                  // The last bounce's shadow ratio: its texels, the set it wrote.
-                                 .lights_in_bounce = (light_ratio ? (3u | ((ratio_parity_ == 0) ? 16u : 0u) | (ratio_kept ? 32u : 0u) | (ratio_bits ? LIGHTS_RATIO_BITS : 0u)) : 0u)
-                                                     | (torch_written ? LIGHTS_TORCH_IRRADIANCE : 0u)};
+                                 .lights_in_bounce = (light_ratio ? (3u | ((ratio_parity_ == 0) ? 16u : 0u) | (ratio_kept ? 32u : 0u) | (ratio_bits ? LIGHTS_RATIO_BITS : 0u)) : 0u)};
       if (light_ratio) {
         constants.bounce_width = ratio_size_[0];
         constants.bounce_height = ratio_size_[1];
@@ -8412,7 +8427,9 @@ class RtScene12 {
     // twin with T1 while torch_written.
     if (local_lights) {
       Mark(list, L"local lights");
-      list->SetPipelineState((torch_written ? lights_torch_pipelines_[lights_in_bounce ? 1 : 0] : (lights_in_bounce ? lights_bounce_pipeline_ : lights_pipeline_)).Get());
+      const ComPtr<ID3D12PipelineState>& lights_state = (torch_written ? lights_torch_pipelines_[lights_in_bounce ? 1 : 0]
+                                                                       : (lights_in_bounce ? lights_bounce_pipeline_ : lights_pipeline_));
+      list->SetPipelineState(lights_state.Get());
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
     }
     if (ambient_kept) {
@@ -10649,7 +10666,7 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> reuse_tests_pipeline_;  // the reuse's (REUSE_TESTS)
   ComPtr<ID3D12PipelineState> reuse_boil_pipeline_;  // its boiling filter (REUSE_BOIL; RTXDI builds)
   // Torch Light in Path-Traced GI (PT DI step 3; RTXDI builds): the ReGIR build, its cells (u76), rt_lights' torch light at
-  // the render pixels (u75, made while the row asked within NRD_RELEASE_FRAMES), the last paths request that asked and
+  // the render pixels (u75, made while the row asked within HISTORY_FRAMES), the last paths request that asked and
   // the last trace that wrote it.
   ComPtr<ID3D12PipelineState> regir_pipeline_;
   std::array<ComPtr<ID3D12PipelineState>, 2> lights_torch_pipelines_;  // rt_lights' and rt_lights_bounce's twins with T1
