@@ -835,6 +835,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
 - ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
 - PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; ... | ?
+- NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\rou ... | ?
 - vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
 - CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
@@ -15948,6 +15949,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         starts): p8c_ PK8 P3 census -> designs\pk8_p3_census.md; c8w_ C8 W0 offline (E9 sim / display per row + a
         reliable MP-battle check for ATN's single-player answer, + E1-E5 / E8 if time) -> designs\c8_w0_offline.md;
         p9v_ PK9 N13 virtual paths (offline test 9.3) -> designs\pk9_n13_virtual.md. STARTED ~12:5x. Owner: coord.
+        - [ ] NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\round_1125\brief.md): the
+        11-15 plans are STALE (Ryse / Tales are one add-on each now, most plan steps in). ry_ (Opus High, worktree, branch
+        nt_ry1) and ta_ (branch nt_ta1) each list every open HANDOFF box + ledger row of their game as OFFLINE-NOW / NEEDS A
+        RUN / ATN / SHARED / DONE (scratch\<prefix>\list.md + a 'State 2026-11-25' section in their plan.md), then do
+        the OFFLINE-NOW items. ry_ first: G08 dlss_capture.hpp:28 name, parity_check / dump_any letters ry / ta / exr
+        (one writer), ryse.tsv. ta_ first: TALES scRGB COPY OUT OF BUFFER 0, tw_tales_unit link check, dead-files
+        check, open T-steps from data on disk. No game runs, no shared files. STARTED ~13:2x -> Opus xHigh review ->
+        merge one at a time. If ATN says 'let the subagents finish': finish the item, hand back 'part'. Owner: coord.
         - [x] p1d_ PK1-64 UPLOADS DESIGN DONE 13:3x (designs\pk1_uploads_64.md, hand-back p1d_design_handback.md): FCU
         default On on the port only after an offline T-test (tw_injection_buffers case 8 -Hardware; bytes identical;
         E +0.35..+1 % fps; ~540 ReShade pushes / frame gone); FDW hidden + forced off on the port (Sol's device never
