@@ -754,7 +754,7 @@ class RtScene12 {
     const std::array<BalancedTwin, 4> twins = BalancedTwins();
     bool balanced_made = true;
     for (size_t kind = 0; kind < twins.size(); ++kind) {
-      const std::span<const unsigned char> code = dxr12_ ? twins[kind].code_omm : twins[kind].code;
+      const std::span<const unsigned char> code = (dxr12_ ? twins[kind].code_omm : twins[kind].code);
       balanced_made = balanced_made && pipeline(code.data(), code.size(), &reuse_balanced_pipelines_[kind]);
     }
     if (!balanced_made) {
