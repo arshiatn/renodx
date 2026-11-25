@@ -17158,6 +17158,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         guards STAY as safety nets even after the cause is fixed; the box is about finding + fixing the cause and a
         one-frame trace that shows when the guard fires, never about removing the guard; hang caps (SHaRC depth 2,
         PTLAS behind its switch) come off only once the cause is proven fixed.
+        ATN ADDED: '... as long they don't change the picture or the noise or Idk anything quality / speed related'
+        -> a guard stays ONLY if inert in normal frames (gate scenes byte-identical with / without it, no measurable
+        cost, a one-frame trace shows when it fires); one that changes picture / noise / quality / speed = a bug to fix
+        at the source. Today's six by that rule: FIX = motion isfinite (likely fires on sky every frame: confirm with a
+        one-frame trace), W clamp (biases), Validate occlusion drop (biases), SHaRC depth 2 cap (quality; stays until
+        the hang's cause is proven fixed), PTLAS switch (speed; same); CHECK = DiStore (NaN / Inf / negative = inert
+        if it never fires on valid light; its >= 65504 zeroing changes very bright pixels -> clamp). Skill, memory and
+        the audit brief carry the rule; the critic classifies every guard row as inert / output-changing.
         - [ ] fa4_ B7 rr_d3d12.hpp:32-33 cites the deleted talesofarise_dlss/rr_d3d12.hpp (ae86e8603): fix the comment
         (memory note fixed 11-26). Owner: next twattila writer
         - [ ] fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered penumbra 0.1 / 1.1 reads
