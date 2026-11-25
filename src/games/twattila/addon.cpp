@@ -1797,6 +1797,13 @@ inline bool OnCopyPresentPicture(reshade::api::command_list* cmd_list, reshade::
   return false;
 }
 
+// The loader frees its picture right before it makes the next (mode change, new window), which can get the same handle:
+// forgotten here, the next picture is logged and its overlay found.
+inline void OnDestroyPresentPicture(reshade::api::device* /*device*/, reshade::api::resource resource) {
+  uint64_t picture = resource.handle;
+  present_picture.compare_exchange_strong(picture, 0u);
+}
+
 // The loader's 8-bit overlay (the frame-rate number, the Discord button) comes as 4-byte rows: into buffer 0 after the
 // copy (1.3.20) or into the picture before it (the fixed loader). Under the add-on both are RGBA16F there (their clones, or
 // scRGB's real buffer), 8 bytes a pixel: the rows are converted, else scRGB reads past them and HDR10 / SDR lose them. No
@@ -3056,6 +3063,7 @@ bool AttachAddon() {
   if constexpr (ATTILA64) {
     // Before swapchain::Use's resource upgrade registers its copy_resource: the clone is on when it copies.
     reshade::register_event<reshade::addon_event::copy_resource>(OnCopyPresentPicture);
+    reshade::register_event<reshade::addon_event::destroy_resource>(OnDestroyPresentPicture);
     reshade::register_event<reshade::addon_event::update_texture_region>(OnUpdateOverlay);
   }
   // A bench's live env keys bump the pool's env generation; its mt_trace key opens one pool trace window.
@@ -3194,6 +3202,7 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   if constexpr (ATTILA64) {
     reshade::unregister_event<reshade::addon_event::copy_resource>(OnCopyPresentPicture);
+    reshade::unregister_event<reshade::addon_event::destroy_resource>(OnDestroyPresentPicture);
     reshade::unregister_event<reshade::addon_event::update_texture_region>(OnUpdateOverlay);
     // Before the modules its callbacks call are uninstalled (a present still in flight looks up and registers nothing
     // after it).
