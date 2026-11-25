@@ -843,8 +843,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
 - CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ?
 - SKILLS INTERIM UPDATE (ATN 11-25 evening: Attila's newer rows go into the skills ... | ?
+- PAGE DUMP TOOLING (testing.md's new trap row): root-cause Shogun 2's page-dump c ... | ?
 - src/games/backup.zip is TRACKED in atn-mods (rvs_): keep or remove? (deletion = ... | ATN
-- PARITY LEDGER LINES for the waiting rows (Directional Light Bounce; PT Reflectio ... | ?
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
@@ -16016,6 +16016,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         / 12 GB, lessons since 11-22, parity_check silent on a truncated dump. 44 exact ledger lines proposed (open
         waiting rows -> 0 in 12 / 15 games). -> sku_ FIX ROUND (resumed; applies the 44 lines; 64-bit not public yet;
         generic mod-shader lesson) -> merge.
+        sku_ FIXES DONE (evening): origin/sku_1125 head 729102c46 (f61f482c3 testing.md M1 / M2 / S5 / S6,
+        cc18f5d67 bringup / SKILL / README M3-M5 + S1 / S2, 600d89815 game-port-method load limits 4 / -j 4 / 12 GB,
+        clone guard 185ab5554, lessons since 11-22, generic 'Mods that ship shaders' rule, 729102c46 S4 host list
+        (+ Divinity 2 / Tales / Ryse / Expeditions; Troy / Pharaoh out) + nits); docs only, merge clean (atn-mods'
+        newer commits don't touch .agents/). rvs_'s 44 ledger lines applied (backups scratchpad\sku_ledgers_backup\).
+        parity_check open -> 0 in 11 games; left: romeremastered 12 (terrain / grass caster census), ruse 1 (Time Each
+        Pass DO NOW), divinity1 563 / divinity2 44 / expeditions 134 (old backlog, ledgers unconverted). -> rvs_
+        RE-CHECK -> merge.
+        - [ ] PAGE DUMP TOOLING (testing.md's new trap row): root-cause Shogun 2's page-dump crash (0xC0000005,
+        partial 201 keys; needs a Shogun 2 dump run) + parity_check refuses a dump without its end marker; then drop
+        bringup.md's '(Shogun 2's dump crashed partway ...)' note. Owner: coord (tool fix) / ATN's OK (run)
         - [ ] src/games/backup.zip is TRACKED in atn-mods (rvs_): keep or remove? (deletion = ATN's yes). Owner: ATN
         - [x] LAB METHOD CORRECTION (rvs_ M1, evening): the 16:4x rule 'use the preset's flags 86020209 / 354455665'
         was WRONG: config path_flags overwrites rt_path_flags of EVERY request kind (rt_serve.h:897); the preset word
@@ -16025,7 +16036,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         scratch lab helpers may cherry-pick it) or pds2_'s forced builds. pds2_'s numbers stand (it kept the
         recording's words). pdi3_ / pdi4c_ / pdi5_ / bal3_ / u6f_ told to redo jobs that used the preset word and
         list replaced ids.
-        - [ ] PARITY LEDGER LINES for the waiting rows (Directional Light Bounce; PT Reflection Occlusion; Sharp RT
+        - [x] PARITY LEDGER LINES for the waiting rows (Directional Light Bounce; PT Reflection Occlusion; Sharp RT
         Reflections in WH1 / WH2 / Shogun 2 / Expeditions / Divinity 1 + 2; FSR Sharpening in Shogun 2 / R.U.S.E.) so
         parity_check reads them as waiting (rvs_ proposes the lines). Pre-existing: Shogun 2's page dump crashes
         (0xC0000005, partial 201 keys); Divinity 1 ledger / census behind (570 open); Expeditions ledger unconverted
