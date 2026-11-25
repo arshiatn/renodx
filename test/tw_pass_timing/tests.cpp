@@ -236,7 +236,7 @@ static int Body() {
     CHECK(SUCCEEDED(first.device.native->CreateRenderTargetView(texture.Get(), nullptr, &rtv)));
     ComPtr<ID3D11DeviceContext> deferred;
     CHECK(SUCCEEDED(first.device.native->CreateDeferredContext(0, &deferred)));
-    { const timing::OwnPass idle(first.commands.native.Get(), "idle"); }
+    { const timing::OwnPass idle(first.commands.native.Get(), "idle", timing::Stage::PIXEL); }
     constexpr float CLEAR[4] = {};
     timing::Request();
     int presents = 0;
@@ -247,12 +247,12 @@ static int Body() {
       for (int draw = 0; draw < 300; ++draw) {
         timing::internal::OnDraw(&first.commands, 3, 1, 0, 0);
         {
-          const timing::OwnPass mark(first.commands.native.Get(), "own_a");
-          const timing::OwnPass nested(first.commands.native.Get(), "nested");
-          const timing::OwnPass other_context(deferred.Get(), "deferred");
+          const timing::OwnPass mark(first.commands.native.Get(), "own_a", timing::Stage::COMPUTE);
+          const timing::OwnPass nested(first.commands.native.Get(), "nested", timing::Stage::COMPUTE);
+          const timing::OwnPass other_context(deferred.Get(), "deferred", timing::Stage::COMPUTE);
           first.commands.native->ClearRenderTargetView(rtv.Get(), CLEAR);
         }
-        const timing::OwnPass mark(first.commands.native.Get(), "own_b");
+        const timing::OwnPass mark(first.commands.native.Get(), "own_b", timing::Stage::COMPUTE);
       }
       if (Phase() == timing::internal::Phase::COUNTING) {
         const std::lock_guard lock(timing::internal::state.mutex);

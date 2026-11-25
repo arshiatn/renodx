@@ -28,6 +28,7 @@
 #include "../../utils/log.hpp"
 #include "../../utils/settings.hpp"
 #include "../../utils/state.hpp"
+#include "./pass_dump.hpp"
 
 // Time Each Pass (a button): one frame's GPU time of every draw and dispatch, from a timestamp at each, into
 // <prefix>_pass_timing.txt next to the exe, summed by pass (the same targets in a row) and by shader. Its events are the
@@ -265,10 +266,13 @@ inline void Write(ID3D11DeviceContext* context, const D3D11_QUERY_DATA_TIMESTAMP
 // An add-on pass's native calls inside a game command (ReShade never sees them, so no event stamps them), around them:
 // in a timed frame two commands, the pass (kind `name`, the host's shaders and target: the Passes and Shaders sections
 // stay as without it) and the rest of the host command (REST, count 0), so the game's draw after the pass isn't booked
-// on it; in a counting frame 2. `name` must outlive the run (a literal). Marks don't nest (an inner one does nothing).
+// on it; in a counting frame 2. `name` must outlive the run (a literal): the pass's shader by its embed name (the pass
+// dump's uses.tsv stem), `stage` the one whose bindings that row lists. Marks don't nest (an inner one does nothing).
+enum class Stage : uint8_t { COMPUTE, PIXEL };
+
 class OwnPass {
  public:
-  OwnPass(ID3D11DeviceContext* native, const char* name) {
+  OwnPass(ID3D11DeviceContext* native, const char* name, Stage stage) : native_(native), name_(name), stage_(stage) {
     auto& state = internal::state;
     if (!state.in_frame.load(std::memory_order_relaxed)) return;
     // The device's API: a native D3D11 context, the immediate one (as Stamp's ImmediateContext).
@@ -278,7 +282,7 @@ class OwnPass {
     if (state.phase == internal::Phase::COUNTING) {
       state.counted += 2;
       state.own_open = true;
-      native_ = native;
+      timed_ = true;
       return;
     }
     if (state.phase != internal::Phase::TIMING || state.commands.empty()) return;
@@ -296,11 +300,12 @@ class OwnPass {
     native->End(state.stamps[state.commands.size()].Get());
     state.commands.push_back(own);
     state.own_open = true;
-    native_ = native;
+    timed_ = true;
     own_index_ = state.commands.size() - 1;
   }
   ~OwnPass() {
-    if (native_ == nullptr) return;
+    pass_dump::OwnPassDone(native_, name_, stage_ == Stage::COMPUTE);
+    if (!timed_) return;
     auto& state = internal::state;
     const std::lock_guard lock(state.mutex);
     state.own_open = false;
@@ -317,8 +322,11 @@ class OwnPass {
   OwnPass& operator=(const OwnPass&) = delete;
 
  private:
-  ID3D11DeviceContext* native_ = nullptr;  // set: this mark is open
-  size_t own_index_ = SIZE_MAX;            // its OWN command (none in a counting frame)
+  ID3D11DeviceContext* native_;
+  const char* name_;
+  Stage stage_;
+  bool timed_ = false;           // this mark is open in Time Each Pass
+  size_t own_index_ = SIZE_MAX;  // its OWN command (none in a counting frame)
 };
 
 // The button: counts the next frame's commands, makes their stamps, then times a whole frame.
@@ -466,6 +474,7 @@ inline void OnDestroyDevice(reshade::api::device* destroyed) {
 // Before any other draw, dispatch or present hook of the addon (their run order is registration order). `prefix`: the
 // file's name before _pass_timing.txt.
 inline void Install(const std::string& prefix) {
+  pass_dump::Install();
   {
     const std::lock_guard lock(internal::state.mutex);
     internal::state.prefix = prefix;
@@ -486,6 +495,7 @@ inline void Uninstall() {
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
   reshade::unregister_event<reshade::addon_event::destroy_device>(OnDestroyDevice);
   OnDestroyDevice(nullptr);
+  pass_dump::Uninstall();
 }
 
 // The add-on's button in `section` (Graphics 1 of 2 moves it under Ray Tracing Extra Options by its label).
