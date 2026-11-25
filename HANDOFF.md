@@ -15367,8 +15367,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         two find scans 1.09 % of 16 CPUs; 24 leftover tail | grep monitor pairs -> coord stopped this session's 11-24
         ones (46 processes) at 02:4x.
         - [ ] L2B ARM (ATN's yes): the probe already has it (RENODX_A64P_CPUSET=b); a64_ab.ps1 has no l2b kind (review
-        Must 3) -> on ATN's yes coord backs up a64_ab.ps1 and applies scratchpad a64_ab_l2b_patch.py (kind l2b +
-        PROBE_LINES base,l2b + refused without -Probe full) -> ATN adds `a64_ab.ps1 -AB -Arms base,l2b -Probe full` (+
+        Must 3) -> on ATN's yes coord backs up a64_ab.ps1 and applies attila64\ab\a64_ab_l2b_patch.py (PREPARED,
+        dry-tested on a copy, 0 parse errors: kind l2b + PROBE_LINES base,l2b + refused without -Probe full) -> ATN adds `a64_ab.ps1 -AB -Arms base,l2b -Probe full` (+
         the same with -DryRun) -> DryRun -> drain -> run (~13 min) -> python -I p0\analyze_d0.py -> L2C only if L2B
         gains > 3 % and more than the A/A.
         - [ ] WPR ETL analysis (after NOPROBE; D0.5 route): step thread's CPUs, SMT sibling occupancy, CCD, clocks,
