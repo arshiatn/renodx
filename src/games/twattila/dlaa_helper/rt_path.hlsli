@@ -416,6 +416,60 @@ float3 LocalLights(float3 surface, float3 normal, uint4 seed) {
   return 0.5f * (LocalLight(surface, normal, Random(seed)) + LocalLight(surface, normal, Random(seed + uint4(0u, 0u, 0u, 1u))));
 }
 
+// Torch Light in Path-Traced GI's ReGIR (PT DI step 3, T2; the PATH_REGIR builds): the paths request built its cells
+// (rt_regir_presample.cs_6_5.hlsl, LIGHTS_REGIR).
+#if defined(PATH_REGIR)
+#include "./rt_rtxdi_bridge.hlsli"
+#define TORCH_REGIR (TORCH_LIGHT_IN_PATHS && (lights_in_bounce & LIGHTS_REGIR) != 0u)
+static const uint TORCH_CANDIDATES = 2u;  // a surface's picks from its cell, resampled
+#else
+#define TORCH_REGIR false
+#endif
+#define TORCH_LIGHT_COUNT (TORCH_REGIR ? 128u : 32u)  // the lights TorchLight covers (LocalLight's first 32)
+
+// The local lights' light on a surface (`seed`: Random's lanes). With TORCH_REGIR all of them (not only the first 32):
+// TORCH_CANDIDATES of its ReGIR cell's picks (RTXDI's; the uniform pick of all lights outside the onion) resampled by
+// what each gives it (LightArriving, RTXDI's streaming RIS), the one kept weighted back by its RIS weight if a ray
+// reaches it; its numbers RTXDI's sampler on the seed's kind + TORCH_KIND_SHIFT. Else LocalLights (the RTXDI-less builds:
+// LocalLights itself, today's shaders to the byte; a function around it reordered dxc's SHaRC paths).
+#if defined(PATH_REGIR)
+float3 TorchLight(float3 surface, float3 normal, uint4 seed) {
+  if (TORCH_REGIR) {
+    RTXDI_RandomSamplerState rng = RabSampler(seed + uint4(0u, 0u, 0u, TORCH_KIND_SHIFT));
+    const RAB_Surface at = {surface, normal};
+    const RTXDI_LocalLightSelectionContext cell =
+        RTXDI_InitializeLocalLightSelectionContextReGIRRIS(rng, RegirLights(), (RTXDI_RISBufferSegmentParameters)0, regir, at);
+    RTXDI_DIReservoir kept = RTXDI_EmptyDIReservoir();
+    float3 kept_light = 0.f;
+    float3 kept_direction = 0.f;
+    float kept_distance = 0.f;
+    [loop]
+    for (uint candidate = 0u; candidate < TORCH_CANDIDATES; ++candidate) {
+      RAB_LightInfo light;
+      uint index;
+      float weight;
+      RTXDI_SelectNextLocalLight(cell, RTXDI_GetNextRandom(rng), light, index, weight);
+      float3 direction;
+      float light_distance;
+      const float3 arriving = (weight > 0.f) ? LightArriving(index, surface, normal, direction, light_distance) : 0.f;
+      if (RTXDI_StreamSample(kept, index, 0.f, RTXDI_GetNextRandom(rng), Luminance(arriving), weight / (float)TORCH_CANDIDATES)) {
+        kept_light = arriving;
+        kept_direction = direction;
+        kept_distance = light_distance;
+      }
+    }
+    RTXDI_FinalizeResampling(kept, 1.f, 1.f);
+    if (kept.weightSum <= 0.f || Occluded(surface, kept_direction, kept_distance - min(LIGHT_CLEARANCE, 0.5f * kept_distance), NO_GRASS_SMOKE)) {
+      return 0.f;
+    }
+    return kept_light * kept.weightSum;
+  }
+  return LocalLights(surface, normal, seed);
+}
+#else
+#define TorchLight LocalLights
+#endif
+
 // The light a surface the screen never saw sends back (its base colour lit): the sun's (SunLit) and the local lights'
 // (LocalLights by `light_seed`). Not theirs where a surface the screen shows sends none of theirs back (SeenDiffuseLight,
 // with the game's sun light, without Torch Light in Path-Traced GI): a surface out of sight sent more than it did once
@@ -425,7 +479,7 @@ float3 LocalLights(float3 surface, float3 normal, uint4 seed) {
 float3 UnseenLight(float3 surface, float3 behind, float3 normal, float3 albedo, float transmittance, uint4 light_seed) {
   float3 emitted = SunLit(surface, behind, normal, albedo, transmittance, -1.f);
   const bool seen_without_lights = SeenLightRelit() && !TORCH_LIGHT_IN_PATHS;
-  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u && !seen_without_lights) emitted += albedo * LocalLights(surface, normal, light_seed);
+  if ((path_flags & PATH_LOCAL_LIGHTS) != 0u && !seen_without_lights) emitted += albedo * TorchLight(surface, normal, light_seed);
   return emitted;
 }
 
@@ -491,12 +545,19 @@ float3 ScreenSky(float3 world, float3 normal) {
 // sun and sky specular toward the camera (Attila's sun light shaders add them to the diffuse light), not toward a path's
 // start: taken as the light a surface sends everywhere, the faces in shade came out 14 to 22% brighter seen from a view
 // toward the sun than from beside it (harness HARNESS_PEDESTAL; ATN 2026-11-13). With Torch Light in Path-Traced GI
-// (LIGHTS_IN_PATHS) the local lights' too, as an unseen surface's (LocalLights by `light_seed`).
+// (LIGHTS_IN_PATHS) the local lights' too, as an unseen surface's (TorchLight by `light_seed`), or (T1, the PATH_REGIR
+// builds) rt_lights' torch light at `pixel` where its tile listed every light reaching it: no rays.
 float3 SeenDiffuseLight(uint2 pixel, float3 world, float3 normal, float3 albedo, uint4 light_seed) {
   const float visibility = ((path_flags & PATH_SUN_TRACED) != 0u) ? traced_visibility[pixel] : -1.f;
   const float3 surface = world + normal * SurfaceOffset(distance(world, Camera()));
   float3 light_leaving = SunLit(surface, world, normal, albedo, 0.f, visibility) + albedo * ScreenSky(world, normal);
-  if (TORCH_LIGHT_IN_PATHS && (path_flags & PATH_LOCAL_LIGHTS) != 0u) light_leaving += albedo * LocalLights(surface, normal, light_seed);
+  if (TORCH_LIGHT_IN_PATHS && (path_flags & PATH_LOCAL_LIGHTS) != 0u) {
+#if defined(PATH_REGIR)
+    const float4 traced = ((lights_in_bounce & LIGHTS_TORCH_IRRADIANCE) != 0u) ? torch_irradiance[pixel] : 0.f;
+    if (traced.a > 0.f) return light_leaving + albedo * traced.rgb;
+#endif
+    light_leaving += albedo * TorchLight(surface, normal, light_seed);
+  }
   return light_leaving;
 }
 
@@ -577,8 +638,9 @@ static const uint PROBE_ALBEDO_SEEN = 13u;    // the guide's base colour at the 
 static const uint PROBE_ALBEDO_UNSEEN = 14u;  // HitAlbedo's at its surface
 static const uint PROBE_UNSEEN_SUN = 15u;     // UnseenLight's parts at its surface: the sun's (its shadow ray)
 static const uint PROBE_UNSEEN_LOCAL = 16u;   // the local lights'
-// The local lights at the texel's surface x its base colour: LocalLights' two picks (the paths' estimator), and every light
-// with a shadow ray of its own, summed (pbrt's sum over all lights: for point lights the exact direct light).
+// The local lights at the texel's surface x its base colour: TorchLight's (the paths' estimator), and every light it
+// covers (the first 32, all with TORCH_REGIR) with a shadow ray of its own, summed (pbrt's sum over all lights: for point
+// lights the exact direct light).
 static const uint PROBE_LIGHTS_PICKED = 17u;
 static const uint PROBE_LIGHTS_ALL = 18u;
 static const uint PROBE_REFERENCE_BOUNCES = 6u;
@@ -867,7 +929,7 @@ void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 
 }
 
 // Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
-// screen or the cache knows it) takes the stored light's place, and a change shortens the history (bright changes
+// screen or the cache knows it; not with TORCH_REGIR) takes the stored light's place, and a change shortens the history (bright changes
 // dimmed until they settle). The change (0: none, 1: all of the history goes). `contact`: its light in ContactShade's.
 float Validate(inout Reservoir previous, float3 origin, bool contact) {
   const float3 to_hit = previous.hit - origin;
@@ -904,7 +966,9 @@ float Validate(inout Reservoir previous, float3 origin, bool contact) {
   }
   if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_RESCALE) != 0u) previous.weight *= ratio;
   if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_KEEP_CHROMA) != 0u) light_now = previous.light / max(ratio, 1e-8f);
-  if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_KEEP_LIGHT) == 0u) previous.light = light_now;
+  // With TORCH_REGIR the light now is a fresh T2 draw, not the one the sample's weight came from: it keeps its stored light
+  // (else the history darkens by T2's zero draws: E4 at 128 lights).
+  if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_KEEP_LIGHT) == 0u && !TORCH_REGIR) previous.light = light_now;
   if ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_INVALIDITY) != 0u) return 0.f;
   return smoothstep(0.1f, 0.5f, length(change) / 1.7320508f);
 }
@@ -1075,13 +1139,13 @@ void ProbeTexel(uint2 id) {
     if (kind == PROBE_LIGHTS_PICKED) {
       value = 0.f;
       [loop]
-      for (uint ray = 0u; ray < rays; ++ray) value += base * LocalLights(surface, normal, uint4(id, frame, DIM_PROBE_LIGHTS + ray * 2u));
+      for (uint ray = 0u; ray < rays; ++ray) value += base * TorchLight(surface, normal, uint4(id, frame, DIM_PROBE_LIGHTS + ray * 2u));
       value /= rays;
     }
     if (kind == PROBE_LIGHTS_ALL) {
       value = 0.f;
       [loop]
-      for (uint index = 0u; index < min(light_count, 32u); ++index) {
+      for (uint index = 0u; index < min(light_count, TORCH_LIGHT_COUNT); ++index) {
         float3 direction;
         float light_distance;
         const float3 arriving = LightArriving(index, surface, normal, direction, light_distance);

@@ -504,7 +504,7 @@ float3 RefRouteIncoming(float3 origin, float3 direction, float3 origin_normal, f
     const float3 albedo = HitAlbedo(hit, normal);
     const float transmittance = RefTransmittance(record_index);
     float3 emitted = SunLit(RefOffset(hit, normal), RefOffset(hit, -normal), normal, albedo, transmittance, -1.f);
-    if (unseen_lights) emitted += albedo * RefLights(RefOffset(hit, normal), normal, 32u, overflow);
+    if (unseen_lights) emitted += albedo * RefLights(RefOffset(hit, normal), normal, TORCH_LIGHT_COUNT, overflow);
     if (vertex == path_bounces) {
       radiance += throughput * (emitted + albedo * shade);
       break;

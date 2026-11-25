@@ -32,6 +32,10 @@ cbuffer Paths : register(b3) {
 // lights_in_bounce's LIGHTS_IN_PATHS (a paths request's, every build): Torch Light in Path-Traced GI, the local lights on
 // every surface a path meets, the screen's as well as one nobody saw (rt_path.hlsli SeenDiffuseLight, UnseenLight).
 static const uint LIGHTS_IN_PATHS = 128u;
+// A paths request's too (PATH_REGIR builds, rt_scene.hlsli): its ReGIR cells built (u76), and torch_irradiance (u75)
+// this frame's (rt_lights' twins write it).
+static const uint LIGHTS_REGIR = 512u;
+static const uint LIGHTS_TORCH_IRRADIANCE = 1024u;
 #if defined(TORCHES_IN_BOUNCE)
 // lights_in_bounce in the TORCHES_IN_BOUNCE builds: its mode (bits 0-1: 1
 // a local light's sample a bounce texel, its light in the bounce; 2 the bounce only theirs, a measurement; 3 Torch and
