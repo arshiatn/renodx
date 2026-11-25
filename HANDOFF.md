@@ -967,7 +967,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa5_ SS-B4 torch exactly on the camera plane -> inf / NaN depth (sss_lights.cs:2 ... | ?
 - fa5_ SS-B5 Softness proxy 1/(1 - d) ignores projection A -> same-surface test ~4 ... | ?
 - fa5_ SS-B2 LICENCE: repack_game.py:84 misses Attila's in-folder Bend header (Apa ... | ?
-- ATN LICENCE CHECK (fa5_ U-VB5): our comments call Shadertoy XXGSDd (GT-VBAO), lf ... | ?
 - fa5_ UNKNOWNs U-VB1 (thickness along the sample's own ray: Salm's or ours?), U-V ... | ?
 - STRAY FOLDER (coord's brief path error): D:\Dev\renodx\tools\tw\testbin\scratch\ ... | ?
 - fa9_ B2 THE JUDGES' CODE-BREAK CONTROLS DON'T EXIST: none of reference_suite 2.6 ... | ?
@@ -992,6 +991,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | ?
 - fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
 - crit_ CRITIC (Opus xHigh, read-only, STARTED 00:4x, est 60 / deadline 120) over ... | ?
+- LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'licens ... | ?
+- fa8_ B1 CREDITS: when the Shadertoy-derived code ships, credits name Mirko Salm ... | ?
+- LANE I (end of the GPU plan, ATN 11-26): 1 smoke / fire as Linear Swept Spheres ... | ?
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
@@ -17397,7 +17399,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         only from the old zip). VB-B2 CREDITS: Divinity 2 ships GT-VBAO + Auto Thickness, About page lacks Therrien /
         Salm / Ottosson. VB-B1 BitmaskDenoise miscited as XeGTAO's 5x5 (XeGTAO = 3x3 edge-aware; ours). Owner: next
         release round
-        - [ ] ATN LICENCE CHECK (fa5_ U-VB5): our comments call Shadertoy XXGSDd (GT-VBAO), lfdBWn (GT-VBGI), 3clGWB
+        - [x] ATN LICENCE CHECK (fa5_ U-VB5): our comments call Shadertoy XXGSDd (GT-VBAO), lfdBWn (GT-VBGI), 3clGWB
         (Auto Thickness) CC0, but Shadertoy's default licence is CC BY-NC-SA 3.0 unless the shader's header says
         otherwise. WebFetch 403; the browser pane got Cloudflare's bot check (not bypassed). ATN reads the 3 headers in
         his browser. Owner: ATN (morning)
@@ -17502,6 +17504,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         step, D one guard table (inert / output-changing / hang cap), E licences + credits, F never-considered NVIDIA
         ranking, G port propagation list (input for per-game agents), H fix order + open-branch overlap. Then: port
         propagation agents, then the citation blocker design. Owner: crit_
+        ATN 11-26 00:5x ANSWERS: (1) fa5_ U-VB5 CLOSED: the 3 Shadertoys are in C:\Users\arshi\Downloads\Shadertoy stuff\
+        (root = GT-VBAO, 'GT-VBAO thickness heuristic' = Ottosson's variation, 'GT-VBGI (diffuse)'); every header reads
+        'dual license, public domain and MIT, unless noted otherwise' (CC0 1.0 or MIT; Mirko Salm / TinyTexel, Ottosson's
+        file carries the same header) -> we take CC0, credit both anyway. (2) fa7_ U1 CLOSED: DLSS preset L at every scale
+        is on purpose (CHOSEN, ATN's word). (3) fa8_ B1: ATN asked whether Gamma Correction runs twice now the proxy
+        encodes 2.2 -> no: on an SDR display + Rendering Mode SDR it runs BACKWARDS (on = frame 2.0 -> proxy decode 2.0 /
+        encode 2.2 = undoes the display's 2.2 = the 11-01 lighter darks; off = raw = the 2.2 look the tooltip promises);
+        HDR modes on SDR displays apply it once (correct). Coord recommends fix A (drop the XOR); ATN picks. (4) LSS
+        smoke spheres / NRC / DDGI added as lane I at the END of the GPU plan (plan_1117\plan.md). (5) plan.md lane D now
+        lists every fa1_..fa9_ BUG. Owner: coord
+        - [ ] LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'license: unclear' (interleaved
+        gradient noise, Sobol 3lcczS, 3ldXzM, 3 more); check that our bitmask.hlsli / ports copied none of them (or that
+        ours come from a licensed source: Jimenez 2014 IGN formula). Owner: crit_ (section E)
+        - [ ] fa8_ B1 CREDITS: when the Shadertoy-derived code ships, credits name Mirko Salm (GT-VBAO / GT-VBGI) and
+        Bjorn Ottosson (thickness heuristic) under CC0. Owner: crit_ E -> credits owner
+        - [ ] LANE I (end of the GPU plan, ATN 11-26): 1 smoke / fire as Linear Swept Spheres (Blackwell NVAPI; fa6_ D8),
+        2 NRC (fa6_ D10, vs SHaRC), 3 DDGI (fa6_ D12, low relevance: design decides) -> designs (Opus xHigh) after
+        lanes A-H, then ATN's go. Owner: coord (later)
         FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Discord shots; 'pretty sure Forge is right'): 'citation blockers';
         citations 'for every piece of code or blocks of code'; 'every change has to be marked with an explicit
         deviation and why'; the model 'likes to ... guard and cope around [what X game does] even when that thing should
