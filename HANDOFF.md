@@ -15971,6 +15971,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] CALLISTO C1: cal1_ (Opus High, worktree, branch cal1_c1) STARTED: new files only (include + CPU twin +
         test/tw_callisto_diffuse), sets A / A+F / V16 / V40 + DI twins, NaN guards, static cost line. -> review ->
         merge after Forge's numbers or on ATN's word. cdr_ RE-CHECK of Rev 1 running. Owner: cal1_ / cdr_
+        cdr_ RE-CHECK DONE (evening): GO WITH CHANGES, gate texts only (review '## Re-check of Revision 1', scratch
+        cdr_\cdr_rev1.*). RM1 T-slides control can't fail -> 'theta_d / theta_h swapped in alpha_r'; RM2 T-vmf max
+        grid-dependent (V16 23.3 % coarse -> 37.6 % closed) -> grid 161x161x181 closed, rms <= 2 %, max 40 % V16 / 20 %
+        V40; RM3 integrals vs 3-4 printed decimals -> full-precision recompute; RM4 C3's 'lobe in initial target
+        only' control is unbiased -> lobe in candidate weights but not W (1/R bias). RS1 T-twin clamp / u >= 0.1, RS2
+        BIAS controls with an unkept planted set, RS3 bonds unfaded, defaults' inverse bond exactly 1. Verified:
+        bonds, fade <= 5e-4, T3 / T4, return 1 at n.l <= 0 safe (tw_point_light.hlsli:110 / :112), C2a / C2b split,
+        MERL record. cal1_ redirected (RM1-RM3, RS1, RS3, lab flags); cal_ writes Rev 1.1 (texts + RM4 + lab flags
+        correction).
         - [ ] CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent (Opus xHigh, scratch
         only) after ATN's download yes (MERL BRDFDatabase.zip 1.3 GB + RGL; pick MERL + RGL) . Owner: coord (date)
         - [ ] CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mismatch measured. Owner: later
