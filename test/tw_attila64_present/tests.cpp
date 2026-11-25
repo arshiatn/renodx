@@ -7,12 +7,13 @@
 // zz_capture.addon64 (run.ps1 stages and checks the logs). Steps in the loader's order:
 // 1. 0x400000 + 16 MB reserved no-access; a first vectored handler counts access violations inside it (any = fail).
 // 2. A probe device made and released: every add-on loaded and unloaded, its image freed.
-// 3. The loader's vectored handler and unhandled filter; 0x400000 committed with a synthetic ELF64 header.
+// 3. The loader's vectored handler and unhandled filter; 0x400000 committed with a synthetic ELF64 header (image_none:
+//    left reserved; image_badmagic: a wrong magic; image_table: a program header table past the page).
 // 3b. A plugin's test device (made and released): the same asserts.
 // 4. Window, device, flip swap chain (RGBA8, 2 buffers), the picture (RGBA8, SRV | RT) and its depth.
 // 5-7. Frames into the picture, the loader's copy into buffer 0 and its 8-bit overlay, a mode change, a new window.
 // Then the captures (zz_capture) against the reference of the swap chain proxy.
-// Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8] [gpu]
+// Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8] [image_none|image_badmagic|image_table] [gpu]
 //        attila64.exe d3d12 [gpu]   (C4: frames written; run.ps1 compares them with a run without the add-on)
 //        attila64.exe opengl        (C6: as C4, GPU only)
 
@@ -125,7 +126,7 @@ void CheckAddonsFreed(const char* step, size_t cycles) {
   std::cout << step << ": " << files.size() << " add-ons loaded / unloaded " << cycles << "x, freed\n";
 }
 
-void CommitSyntheticElf() {
+void CommitSyntheticElf(bool bad_magic, bool bad_table) {
   auto* base = static_cast<uint8_t*>(VirtualAlloc(reinterpret_cast<void*>(GAME_BASE), GAME_COMMIT, MEM_COMMIT, PAGE_READWRITE));
   if (base == nullptr) {
     Fail("commit of 0x400000 failed");
@@ -143,7 +144,7 @@ void CommitSyntheticElf() {
   put64(32, 64);      // e_phoff
   put16(52, 64);      // e_ehsize
   put16(54, 56);      // e_phentsize
-  put16(56, 2);       // e_phnum
+  put16(56, bad_table ? 0xFFFF : 2);  // e_phnum (0xFFFF: 3.6 MB of headers)
   // PT_LOAD, R + X, the whole committed range.
   put32(64, 1);
   put32(68, 5);
@@ -168,6 +169,7 @@ void CommitSyntheticElf() {
   put32(NOTE + 8, 3);  // NT_GNU_BUILD_ID
   std::memcpy(base + NOTE + 12, "GNU", 4);
   std::memcpy(base + NOTE + 16, TEST_BUILD_ID.data(), TEST_BUILD_ID.size());
+  if (bad_magic) base[3] = 'G';
   DWORD old_protect = 0;
   VirtualProtect(base, GAME_COMMIT, PAGE_EXECUTE_READ, &old_protect);
 }
@@ -446,7 +448,8 @@ void CheckFrame(const Frame& frame, Expect expect, const ProxySettings& settings
       for (int channel = 0; channel < 3; ++channel) {
         float channel_error = std::abs(got[channel] - want[channel]);
         if (expect != Expect::PLAIN && settings.encoding == 1) {
-          // 2^-8 relative (the half output's rounding and the GPU's pow: up to ~2 half ulps seen), 2^-14 absolute near zero.
+          // 2^-8 relative (a half-ulp flip of the input's half rounding, raised through gamma 2.2: ~2^-8.6), 2^-14 absolute
+          // near zero.
           channel_error /= std::max(std::abs(want[channel]) / 256.f, 1.f / 16384.f);
         }
         error = std::max(error, channel_error);
@@ -893,7 +896,7 @@ int main(int argc, char** argv) {
   // 3. The loader's handler and filter, then the game mapped.
   AddVectoredExceptionHandler(1, LoaderCrashFilter);
   SetUnhandledExceptionFilter(LoaderUnhandledNote);
-  CommitSyntheticElf();
+  if (!has("image_none")) CommitSyntheticElf(has("image_badmagic"), has("image_table"));
   // 3b. A plugin's test device.
   ShortDevice();
   CheckAddonsFreed("plugin test device", 2);
