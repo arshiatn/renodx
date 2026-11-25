@@ -162,7 +162,8 @@ RWTexture2D<float4> di_light[2] : register(u82);  // the light SSAO dims (slm), 
 // toward the camera, whose way is clear (DiCentreSurface: the pixel's own rays as rt_lights').
 RAB_Surface RAB_GetGBufferSurface(int2 pixel, bool previous) {
   RAB_Surface surface = (RAB_Surface)0;
-  if (any(pixel < 0) || pixel.x >= (int)width || pixel.y >= (int)height) return surface;
+  // (No DI surface without the game's HDR state: an exact pixel's history word can be DI_PIXEL_WORD then.)
+  if (any(pixel < 0) || pixel.x >= (int)width || pixel.y >= (int)height || !DiShadedFrame()) return surface;
   const uint2 at = uint2(pixel);
   const float4 position = previous ? LastTracePosition(at) : positions[at];
   if (!(position.w > 0.f) || light_history[previous ? 1u - DiParity() : DiParity()][at] != DI_PIXEL_WORD) return surface;
@@ -171,7 +172,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixel, bool previous) {
   const float3 normal = float3(texel.x & 0xFFu, (texel.x >> 8u) & 0xFFu, (texel.x >> 16u) & 0xFFu) * (2.f / 255.f) - 1.f;
   if ((model != TW_POINT_LIGHT_SLM && model != TW_POINT_LIGHT_SKIN) || !(dot(normal, normal) > 1e-6f)) return surface;
   surface.normal = normalize(normal);
-  surface.origin = position.xyz + normalize(sun[uint2(1, 0)].xyz - position.xyz) * SurfaceOffset(position.w);
+  surface.origin = RayOrigin(position, surface.normal, false);
   surface.position = position.xyz;
   surface.depth = position.w;
   surface.texel = texel;
@@ -217,7 +218,7 @@ int2 RAB_ClampSamplePositionIntoView(int2 pixel, bool previous) {
 // This trace's light index as the last trace's (b4's light_previous) or back (DiCurrentLight); -1: none.
 int RAB_TranslateLightIndex(uint index, bool current_to_previous) {
   if (index >= 128u) return -1;
-  const uint translated = current_to_previous ? PreviousLight(index) : DiCurrentLight(index);
+  const uint translated = current_to_previous ? LightInLastList(index) : DiCurrentLight(index);
   return (translated < 128u) ? (int)translated : -1;
 }
 

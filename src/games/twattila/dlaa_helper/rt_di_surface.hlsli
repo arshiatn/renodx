@@ -94,7 +94,7 @@ bool DiVisible(float3 origin, float3 light_point) {
 }
 
 // Light `light`'s place in the last trace's list (b4's light_previous; NO_LIGHT: new).
-uint PreviousLight(uint light) {
+uint LightInLastList(uint light) {
   // Its byte (selected, not indexed).
   const uint4 words = light_previous[light >> 4u];
   const uint lane = (light >> 2u) & 3u;
@@ -114,7 +114,7 @@ void DiCurrentBuild(uint index) {
   for (uint pair = 0u; pair < 2u; ++pair) {
     const uint light = index + (pair * 64u);
     if (light >= count) continue;
-    const uint previous = PreviousLight(light);
+    const uint previous = LightInLastList(light);
     if (previous != NO_LIGHT) InterlockedMin(di_current_of[previous], light);
   }
 }
