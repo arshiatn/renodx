@@ -880,6 +880,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
 - F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_t ... | ?
 - CLEANUP after steps 3 + 5 merge: one shared OctahedralFold / OctahedralUnfold in ... | ?
+- PITFALL (pd4r_): RTXDI_ALLOWED_BIAS_CORRECTION is a user macro only SpatialResam ... | ?
 - PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row ... | ?
 - PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
 - UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
@@ -910,7 +911,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
-- pd4r_ STEP 4c REVIEW (Opus xHigh, STARTED 22:2x) on origin/pdi4c_step4c_r2 -> pl ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
 - CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
@@ -16347,6 +16347,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] CLEANUP after steps 3 + 5 merge: one shared OctahedralFold / OctahedralUnfold in rt_scene.hlsli used by
         OctahedralEncode / Decode and G4's 8+8 pack (pd5r_ DRY nit; coord said no mid-round: pdi3_ owns Encode / Decode);
         prove player DXIL unchanged with the listings. Owner: coord (next helper writer slot)
+        - [ ] PITFALL (pd4r_): RTXDI_ALLOWED_BIAS_CORRECTION is a user macro only SpatialResampling.hlsli defaults ->
+        define it in the bridge; check the temporal DXIL for its ray. Next pitfall pass. Owner: coord
         - [ ] PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row from 'suspected' + add
         'run a rotation in the same session as its calibration' (next pitfall pass). Owner: coord
         - [x] PT DI STEP 4c STACKED: pdi3_ sends a checkpoint when rt_rtxdi_bridge.hlsli + the ReGIR presample are
@@ -16848,8 +16850,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         backup .before_pdi4c; exe not rebuilt; inert without HARNESS_DI). 4d needs: lowdef-never-reaches-DI harness
         check, the 4b fix, the R1 E6 / R3 composite. NOTE: pdi4c_ counted waiting as deadline time -> brief rule
         wording: 'waiting does not count' must be in every brief.
-        - [ ] pd4r_ STEP 4c REVIEW (Opus xHigh, STARTED 22:2x) on origin/pdi4c_step4c_r2 -> plan_1117/designs/
+        - [x] pd4r_ STEP 4c REVIEW (Opus xHigh, STARTED 22:2x) on origin/pdi4c_step4c_r2 -> plan_1117/designs/
         pt_di_step4c_review.md -> fix round -> merge after steps 3 + 5. Owner: pd4r_, pdi4c_
+        pd4r_ GO WITH CHANGES 22:33 (28 min). M1: the DI TEMPORAL pass runs WITHOUT bias correction:
+        RTXDI_ALLOWED_BIAS_CORRECTION is defaulted only in SpatialResampling.hlsli; rt_di_temporal.cs_6_5.hlsl:19 includes
+        only TemporalResampling.hlsli -> #if :194 / :213 = 0 -> divides by M, the bias ray is never traced (dxc: 1
+        TraceRayInline, 2 with -D ...=3). Dark-only bias: ~95 % of new light lost for a frame at disocclusions / moving
+        silhouettes / new lights -> RR dark trails. No gate caught it (W4 uses DI_NO_TEMPORAL, partial E6 is still).
+        Fix: #define ... RAY_TRACED in rt_rtxdi_bridge.hlsli PATH_DI block before :226. S1 BASIC vs RAY_TRACED measure;
+        S2 previous surface uses this trace's tile members: biased above 32 lights / tile -> measure, else u84 copy; S3
+        EnsureDi in the && chain + wrong message; S4 dlaa_bridge.h has none of the 4b contracts (no lowdef, surface
+        format / UAV / size, Publish rule, RR-only gate, no SSS contact shadow on DI pixels) + RATIO-ROW CONFLICT (4c
+        turns DI off under it, design 2.9 says DI wins); S5 PLAYER_HANDLES (rt_d3d12.hpp:10109) lacks the 3 DI handles;
+        S6 DI pixels send path hits to T2 even at 3-29 lights -> step 3's Validate fix before reading E4 / E6 with both
+        rows. Q2 every row combination binds an existing PSO; Q3 Publish = MUST for 4b, not 4c (+ 4b must put the 3
+        handles in Prepare's 'transferred'); Q4 DI off: only 8 rt_lights* change, pure refactor; Q6 harness patch inert.
+        -> pdi4c_ RESUMED 22:4x: code fixes on _r2 now (M1 + controls, S3, S4 contracts, S5, NITs); ratio row = coord:
+        follow design 2.9 (DI wins, no double count) if contained, else keep + ATN question; ONE rebase onto pdi3_'s
+        FINAL step-3 head as origin/pdi4c_step4c_r3; GPU turn (item 4) adds M1 controls, S1, S2, cost with the bias ray.
+        Owner: pdi4c_, coord
         - [x] 64-BIT SHADER CHECK OFFLINE: hsc_ (Opus xHigh, read-only) STARTED: does Sol's loader give D3D11 the same
         bytecode as 32-bit (src_1320 read-only, the game's shader files, our hash lists vs the 32-bit dumps)?
         designs\shader_hash_64.md; if not provable offline, the shortest in-game census for ATN's OK. Owner: hsc_
