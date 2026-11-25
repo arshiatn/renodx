@@ -1255,10 +1255,11 @@ constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
      .denoise = __ao_denoise, .blurs = {0xB4026AF2, 0x6203C824}},  // ssao00, its blur_x and blur_y
 }};
 
-// The Dawnless Days (TDD v1.1.0, tdd_pack1_main) rebuilds these game shaders. Ours apply to its builds as to the game's:
-// the same logic, or logic our hooks don't copy (they patch, name or mark its draws; TDD's change stays in effect).
-// tools/tw/round_notes/mod_shaders/tdd_shaders.md; a TDD release with other shader bytes needs this table again. Its old
-// ocean vertex shader has its own motion shaders (MOTION_SHADERS). Every module registers each twin row on its own.
+// The Dawnless Days (TDD 1.1.x: its shader pack tdd_pack1_main v1.1.0) rebuilds these game shaders. Ours apply to its
+// builds as to the game's: the same logic, or logic our hooks don't copy (they patch, name or mark its draws; TDD's
+// change stays in effect). tools/tw/round_notes/mod_shaders/tdd_shaders.md. Its old ocean vertex shader is no twin: its
+// own MOTION_SHADERS row (0xF80C6EEE, the motion_*ocean_tdd shaders). A TDD release with other shader bytes needs this
+// table, that row and the ocean's check again. Every module registers each twin row on its own.
 struct ShaderTwin {
   uint32_t game = 0;
   uint32_t twin = 0;
@@ -1290,7 +1291,7 @@ constexpr std::array<ShaderTwin, 36> TDD_TWINS = {{
     {.game = 0xED1DF335, .twin = 0xAAE52888},  // rigidstandard ps30_gbuffer_alpha_test (capture-point flag)
     {.game = 0xCE6F17A1, .twin = 0x0D90A81D},  // rigidstandard ps41_gbuffer_alpha_test_ms
     {.game = 0xB386A8BC, .twin = 0x16390F4F},  // shadow_map_depth_buffer_analysis ps30_downsize_store_data
-    // rigidgrass(wet): gbuffer_no_clip, gbuffer, gbuffer_ms, forward_lit_oit and forward_lit_aoit (grass_fade.hpp's order)
+    // rigidgrass(wet): gbuffer_no_clip, gbuffer, gbuffer_ms, forward_lit_oit, forward_lit_aoit (grass_fade.hpp's order)
     {.game = 0x7B0FF908, .twin = 0xA196A465},
     {.game = 0x39F985CD, .twin = 0x23A8968D},
     {.game = 0x57591D38, .twin = 0xF348EED4},
@@ -1306,8 +1307,18 @@ constexpr std::array<ShaderTwin, 36> TDD_TWINS = {{
     {.game = 0xF2C2DE70, .twin = 0xF411ABD8},
 }};
 
-// `game_rows`, then each row whose hash (HASH: its member, or the row itself) has a twin in TDD_TWINS again with the
-// twin's hash. TWIN_COUNT: how many rows get one; a stale count fails the build.
+// No hash twice in `rows` (HASH: the rows' hash member, or the row itself).
+template <auto HASH = std::identity{}, typename Row, size_t N>
+consteval bool DistinctHashes(const std::array<Row, N>& rows) {
+  std::array<uint32_t, N> hashes = {};
+  std::ranges::transform(rows, hashes.begin(), HASH);
+  std::ranges::sort(hashes);
+  return std::ranges::adjacent_find(hashes) == hashes.end();
+}
+
+// `game_rows`, then each row whose hash (HASH as DistinctHashes') has a twin in TDD_TWINS again with the twin's hash.
+// TWIN_COUNT: how many rows get one. A stale count, or a hash twice in the result (a twin among the game rows), fails
+// the build.
 template <size_t TWIN_COUNT, auto HASH = std::identity{}, typename Row, size_t N>
 consteval std::array<Row, N + TWIN_COUNT> WithTwins(const std::array<Row, N>& game_rows) {
   std::array<Row, N + TWIN_COUNT> rows = {};
@@ -1322,16 +1333,8 @@ consteval std::array<Row, N + TWIN_COUNT> WithTwins(const std::array<Row, N>& ga
     rows[count++] = row;
   }
   if (count != rows.size()) throw "WithTwins: fewer rows with a twin than TWIN_COUNT";
+  if (!DistinctHashes<HASH>(rows)) throw "WithTwins: a hash twice";
   return rows;
-}
-
-// No hash twice in `rows` (HASH as WithTwins').
-template <auto HASH = std::identity{}, typename Row, size_t N>
-consteval bool DistinctHashes(const std::array<Row, N>& rows) {
-  std::array<uint32_t, N> hashes = {};
-  std::ranges::transform(rows, hashes.begin(), HASH);
-  std::ranges::sort(hashes);
-  return std::ranges::adjacent_find(hashes) == hashes.end();
 }
 
 // Light Bounce (twattila/light_bounce.hpp): directionallight.hlsl ps30 slm / slm_reflection (standard) and
@@ -1344,7 +1347,8 @@ consteval bool DistinctHashes(const std::array<Row, N>& rows) {
 // vertex shader: no camera chain view_share finds. Their region reads take the share only while the overlay is
 // display-sized or a halving (the campaign's map-sized overlay, the battles' 1 x 1 stand-in: as at 100%). Whole-dump census:
 // tools/tw/round_notes/bugs_1117/bug4_census.py (DEBUG44 (f): ships' selection as stripes at DLSS Performance).
-constexpr auto RENDER_SCALE_READS = WithTwins<1, &twattila::view_share::RegionRead::shader_hash>(std::array<twattila::view_share::RegionRead, 50>{{
+constexpr auto RENDER_SCALE_READS = WithTwins<1, &twattila::view_share::RegionRead::shader_hash>(
+    std::array<twattila::view_share::RegionRead, 50>{{
     {.shader_hash = 0x781681E4, .slots = 0b1},   // luma / bloom downsample
     {.shader_hash = 0xB386A8BC, .slots = 0b11},  // shadow depth analysis
     {.shader_hash = 0xB4026AF2, .slots = 0b11, .whole = true},  // AO blur_x
@@ -1472,7 +1476,8 @@ constexpr std::array<twattila::light_bounce::SunDraw, 50> LIGHT_BOUNCE_DRAWS = {
 // sails, sail symbols, ropes) and the ocean's (ocean2: deep, shallow, coast; their displacement textures' slots), and
 // their motion versions (rigid: and records; deformed: and captures).
 using twattila::anti_aliasing::MotionKind;
-constexpr auto MOTION_SHADERS = WithTwins<8, &twattila::anti_aliasing::MotionShader::hash>(std::array<twattila::anti_aliasing::MotionShader, 33>{{
+constexpr auto MOTION_SHADERS = WithTwins<8, &twattila::anti_aliasing::MotionShader::hash>(
+    std::array<twattila::anti_aliasing::MotionShader, 33>{{
     {.hash = 0xF3741248, .motion_shader = __motion_grass00, .draw_shader = __motion_draw_grass00},
     {.hash = 0x01FA9CDE, .motion_shader = __motion_grass01, .draw_shader = __motion_draw_grass01},
     {.hash = 0x46C616F0, .motion_shader = __motion_leaf_sm3, .draw_shader = __motion_draw_leaf_sm3},
@@ -1510,7 +1515,8 @@ constexpr auto MOTION_SHADERS = WithTwins<8, &twattila::anti_aliasing::MotionSha
      .record_shader = __motion_record_rigid_blend_wind_sm3,
      .draw_shader = __motion_draw_rigid_blend_wind_sm3},
     {.hash = 0xAB20418F, .motion_shader = __motion_ocean, .draw_shader = __motion_draw_ocean},
-    // The Dawnless Days' old ocean: the game's without the sink over land (TDD_TWINS), its own motion versions.
+    // The Dawnless Days' old ocean, not a twin (TDD_TWINS' note): the game's without the sink over land, its own motion
+    // versions.
     {.hash = 0xF80C6EEE, .motion_shader = __motion_ocean_tdd, .draw_shader = __motion_draw_ocean_tdd},
     {.hash = 0x772B26FF, .motion_shader = __motion_cloth_sm3, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_cloth_sm3, .draw_shader = __motion_draw_cloth_sm3},
     {.hash = 0x902253FD, .motion_shader = __motion_cloth_sm41, .kind = MotionKind::DEFORMED, .record_shader = __motion_capture_cloth_sm41, .draw_shader = __motion_draw_cloth_sm41},
@@ -1643,7 +1649,8 @@ renodx::utils::settings::Setting* DrawRecordingGroupRow(const char* key, const c
 }
 #endif
 
-constexpr auto SCENE_SHADERS = WithTwins<19, &twattila::rt_scene::SceneShader::hash>(std::array<twattila::rt_scene::SceneShader, 44>{{
+constexpr auto SCENE_SHADERS = WithTwins<19, &twattila::rt_scene::SceneShader::hash>(
+    std::array<twattila::rt_scene::SceneShader, 44>{{
     {.hash = 0x51FCE4CC, .capture_shader = __rt_capture_terrain_sm3, .terrain = true},
     {.hash = 0x2FF76986, .capture_shader = __rt_capture_terrain_sm41, .terrain = true},
     {.hash = 0x6ECB6C09, .capture_shader = __rt_capture_terrain_old_sm41, .terrain = true},
@@ -1742,20 +1749,19 @@ constexpr auto OnCampaignDraw = []<typename Context>(Context&) -> renodx::utils:
 // Grass Height Distance's fade (grass_fade.hpp): Attila's grass pixel shaders and their TDD twins.
 constexpr auto GRASS_FADE_SHADERS = WithTwins<13>(twattila::grass_fade::HASHES);
 
-// TDD_TWINS: 36 distinct pairs, no twin one of their game hashes, every twin in a table, no table with a hash twice.
+// TDD_TWINS: 36 distinct pairs, no twin one of their game hashes, every twin in a table (WithTwins checks each table
+// for a hash twice).
 static_assert(DistinctHashes<&ShaderTwin::game>(TDD_TWINS) && DistinctHashes<&ShaderTwin::twin>(TDD_TWINS));
-static_assert(DistinctHashes<&twattila::rt_scene::SceneShader::hash>(SCENE_SHADERS)
-              && DistinctHashes<&twattila::anti_aliasing::MotionShader::hash>(MOTION_SHADERS)
-              && DistinctHashes<&twattila::view_share::RegionRead::shader_hash>(RENDER_SCALE_READS)
-              && DistinctHashes(FLAG_PIXEL_SHADERS) && DistinctHashes(FLAG_PIXEL_SHADERS_MS) && DistinctHashes(CAMPAIGN_SHADERS)
-              && DistinctHashes(GRASS_FADE_SHADERS));
 static_assert(std::ranges::all_of(TDD_TWINS, [](const ShaderTwin& pair) {
-  const auto listed = [&pair](const auto& table, auto hash) { return std::ranges::find(table, pair.twin, hash) != table.end(); };
+  const auto listed = [&pair](const auto& table, auto hash) {
+    return std::ranges::find(table, pair.twin, hash) != table.end();
+  };
   return std::ranges::find(TDD_TWINS, pair.twin, &ShaderTwin::game) == TDD_TWINS.end()
-         && (listed(SCENE_SHADERS, &twattila::rt_scene::SceneShader::hash) || listed(MOTION_SHADERS, &twattila::anti_aliasing::MotionShader::hash)
-             || listed(RENDER_SCALE_READS, &twattila::view_share::RegionRead::shader_hash) || listed(FLAG_PIXEL_SHADERS, std::identity{})
-             || listed(FLAG_PIXEL_SHADERS_MS, std::identity{}) || listed(CAMPAIGN_SHADERS, std::identity{})
-             || listed(GRASS_FADE_SHADERS, std::identity{}));
+         && (listed(SCENE_SHADERS, &twattila::rt_scene::SceneShader::hash)
+             || listed(MOTION_SHADERS, &twattila::anti_aliasing::MotionShader::hash)
+             || listed(RENDER_SCALE_READS, &twattila::view_share::RegionRead::shader_hash)
+             || listed(FLAG_PIXEL_SHADERS, std::identity{}) || listed(FLAG_PIXEL_SHADERS_MS, std::identity{})
+             || listed(CAMPAIGN_SHADERS, std::identity{}) || listed(GRASS_FADE_SHADERS, std::identity{}));
 }));
 
 // Grass Dump (graphics_hooks.hpp): the grass draws' instance rows in the two frames after the dumped scrub update.
@@ -3032,11 +3038,6 @@ void ConfigureAddon() {
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
           .label = twattila::credits::HELPER,
-          .section = "About",
-      },
-      new renodx::utils::settings::Setting{
-          .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = "The Dawnless Days (TDD) team: thanks for permission to build on their shaders.",
           .section = "About",
       },
       new renodx::utils::settings::Setting{
