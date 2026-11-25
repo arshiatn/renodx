@@ -39,6 +39,7 @@
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
 #include "../../utils/platform.hpp"
+#include "../../utils/resource_upgrade.hpp"
 #include "../../utils/settings.hpp"
 #include "../talesofarise_dlss/pixel_trace.hpp"
 #include "../twrome2/engine_tweaks.hpp"
@@ -83,6 +84,25 @@ namespace {
 // game's code is not empire.retail.dll, and every engine-code path stays off. Every port-only line sits inside
 // `if constexpr (ATTILA64)`, so the 32-bit add-on compiles none of it.
 constexpr bool ATTILA64 = sizeof(void*) == 8;
+
+// The port: a tone mapper target without an upgrade (a renderer asking for another 8-bit format) keeps the HDR output
+// 8-bit. Said once; reset at detach.
+std::atomic_bool tone_mapper_target_warned = false;
+
+inline void WarnToneMapperTarget(reshade::api::device* device, reshade::api::resource_view rtv) {
+  if (rtv.handle == 0u || tone_mapper_target_warned.load(std::memory_order_relaxed)) return;
+  const reshade::api::resource resource = device->get_resource_from_view(rtv);
+  if (resource.handle == 0u) return;
+  bool upgraded = true;
+  reshade::api::resource_desc desc = {};
+  renodx::utils::resource::GetResourceInfo(resource, [&](const renodx::utils::resource::ResourceInfo& info) {
+    upgraded = info.is_clone || info.clone_target != nullptr;
+    desc = info.desc;
+  });
+  if (upgraded || tone_mapper_target_warned.exchange(true)) return;
+  renodx::utils::log::w("[Total War] 64-bit Attila: the tone mapper's target (format ", static_cast<uint32_t>(desc.texture.format), ", ",
+                        desc.texture.width, "x", desc.texture.height, ") has no upgrade");
+}
 
 ShaderInjectData shader_injection;
 // Settings Mode: 0 HDR & Effects, 1 Graphics 1 of 2 (lighting), 2 Graphics 2 of 2 (engine graphics).
@@ -205,6 +225,9 @@ void ApplyRecommendedPreset() {
           .code = __##value,                                                                          \
           .on_draw = [](auto* cmd_list) {                                                             \
             auto rtvs = renodx::utils::swapchain::GetRenderTargets(cmd_list);                         \
+            if constexpr (ATTILA64) {                                                                 \
+              for (auto rtv : rtvs) WarnToneMapperTarget(cmd_list->get_device(), rtv);                \
+            }                                                                                         \
             bool changed = false;                                                                     \
             for (auto rtv : rtvs) {                                                                   \
               changed = renodx::mods::swapchain::ActivateCloneHotSwap(cmd_list->get_device(), rtv);   \
@@ -1120,6 +1143,9 @@ int ui_mod_compatibility = 0;  // its slider: written to ReShade.ini, used from 
 std::atomic<uint32_t> stood_down_apis = 0;
 // The game's image read at the first present (once).
 std::atomic_bool identity_read = false;
+// The loader's present picture (its resource handle) once its clone is on, and its no-upgrade warning (once).
+std::atomic<uint64_t> present_picture = 0;
+std::atomic_bool picture_warned = false;
 // The page dump's READY-forced variant (TWATTILA_PAGE_DUMP_PLUGIN_READY): the plugin ready, every game-code row offered.
 #if defined(TWATTILA_PAGE_DUMP_PLUGIN_READY)
 constexpr bool PLUGIN_READY_FORCED = true;
@@ -1695,6 +1721,48 @@ inline bool StandsDown(reshade::api::device* device) {
     renodx::utils::log::i("[Total War] 64-bit Attila: a ", name, " device: the add-on leaves it alone");
   }
   return true;
+}
+
+// The port's loader draws the frame into its own RGBA8 picture and copies it into buffer 0: the picture plays the swap
+// chain's part, so its clone turns on at its first copy (by resource: every view of it follows). The frame drawn before
+// that copy went to the 8-bit picture: one black frame per picture.
+inline bool OnCopyPresentPicture(reshade::api::command_list* cmd_list, reshade::api::resource source, reshade::api::resource dest) {
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11 || source.handle == 0u || dest.handle == 0u) return false;
+  bool to_swap_chain = false;
+  bool dest_clone_on = false;
+  renodx::utils::resource::GetResourceInfo(dest, [&](const renodx::utils::resource::ResourceInfo& info) {
+    to_swap_chain = info.is_swap_chain;
+    dest_clone_on = info.clone_enabled;
+  });
+  if (!to_swap_chain) return false;
+  reshade::api::resource source_clone = {0u};
+  reshade::api::resource_desc desc = {};
+  renodx::utils::resource::GetResourceInfo(source, [&](const renodx::utils::resource::ResourceInfo& info) {
+    if (info.clone_enabled) source_clone = info.clone;
+    desc = info.desc;
+  });
+  if (source_clone.handle == 0u) {
+    renodx::utils::resource::ResourceUpgradeInfo* target = nullptr;
+    source_clone = renodx::utils::resource::upgrade::GetResourceClone(
+        source, {.require_enabled = false, .allow_create = true, .activate = true}, &target);
+    if (target != nullptr) {
+      if (present_picture.exchange(source.handle) != source.handle) {
+        renodx::utils::log::i("[Total War] 64-bit Attila: the game's picture upgraded (", desc.texture.width, "x", desc.texture.height, ")");
+      }
+    } else if (!picture_warned.exchange(true)) {
+      renodx::utils::log::w("[Total War] 64-bit Attila: the game's picture (format ", static_cast<uint32_t>(desc.texture.format), ", ",
+                            desc.texture.width, "x", desc.texture.height, ") has no upgrade: the HDR output stays black");
+    }
+  }
+  // HDR10 / SDR: buffer 0's clone is on, utils copies clone to clone next. scRGB: buffer 0 is the real RGBA16F, and the swap
+  // chain pass keeps its copy of it as the buffer's clone (off); utils would copy the picture there, which that pass then
+  // overwrites with the real buffer (black). So the picture's clone goes into the real buffer here (utils' copy into the
+  // pass's copy still runs: one copy too many, overwritten).
+  if (!dest_clone_on && source_clone.handle != 0u) {
+    cmd_list->copy_resource(source_clone, dest);
+    return true;
+  }
+  return false;
 }
 
 void OnInitSwapchain(reshade::api::swapchain* swapchain, bool) {
@@ -2863,6 +2931,10 @@ bool AttachAddon() {
   reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::register_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::register_event<reshade::addon_event::present>(OnPresent);
+  if constexpr (ATTILA64) {
+    // Before swapchain::Use's resource upgrade registers its copy_resource: the clone is on when it copies.
+    reshade::register_event<reshade::addon_event::copy_resource>(OnCopyPresentPicture);
+  }
   // A bench's live env keys bump the pool's env generation; its mt_trace key opens one pool trace window.
   twattila::test_hooks::Install(&settings, true, "[Total War]",
                                 {.env_changed = [] { return worker_env_generation.fetch_add(1, std::memory_order_relaxed) + 1; },
@@ -2995,6 +3067,9 @@ void DetachAddon() {
   reshade::unregister_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
   reshade::unregister_event<reshade::addon_event::init_device>(OnInitDevice);
   reshade::unregister_event<reshade::addon_event::present>(OnPresent);
+  if constexpr (ATTILA64) {
+    reshade::unregister_event<reshade::addon_event::copy_resource>(OnCopyPresentPicture);
+  }
   twattila::cpu_sets::Stop();
   twattila::test_hooks::Uninstall();
   twattila::pass_timing::Uninstall();
@@ -3054,6 +3129,9 @@ void DetachAddon() {
     stood_down_apis = 0;
     identity_read = false;
     twattila::frame_trace::SetGameCode("", 0, {});
+    present_picture = 0;
+    picture_warned = false;
+    tone_mapper_target_warned = false;
     plugin_ready = PLUGIN_READY_FORCED;
     plugin_rows = 0;
     shadow_pass_installed = false;

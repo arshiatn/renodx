@@ -446,8 +446,8 @@ void CheckFrame(const Frame& frame, Expect expect, const ProxySettings& settings
       for (int channel = 0; channel < 3; ++channel) {
         float channel_error = std::abs(got[channel] - want[channel]);
         if (expect != Expect::PLAIN && settings.encoding == 1) {
-          // 2^-10 relative (one half ulp and the shader's rounding), 2^-14 absolute near zero.
-          channel_error /= std::max(std::abs(want[channel]) / 1024.f, 1.f / 16384.f);
+          // 2^-8 relative (the half output's rounding and the GPU's pow: up to ~2 half ulps seen), 2^-14 absolute near zero.
+          channel_error /= std::max(std::abs(want[channel]) / 256.f, 1.f / 16384.f);
         }
         error = std::max(error, channel_error);
       }
