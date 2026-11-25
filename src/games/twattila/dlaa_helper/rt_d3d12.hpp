@@ -3919,7 +3919,8 @@ class RtScene12 {
         // _RTXDI (the reference build) RTXDI's spatial resampling in the reuse's place, its bias correction RENODX_TW_REUSE_BIAS's;
         // _VALIDATE_* Validate's parts and _NO_HISTORY_CLAMP the history's ClampWeight (part C's bisection) (rt_path.hlsli).
         // The suspects', G1's and Validate's switches (REUSE_SUSPECT_BITS) run only in the reference build's REUSE_TESTS
-        // shaders, which take the place of Near / Lean Reuse. Without a log line: in any other build the usual shaders run;
+        // shaders, which take the place of Near / Lean Reuse; the usual shaders read only RENODX_TW_REUSE_BIAS=1's and
+        // _VALIDATE_KEEP_LIGHT's (Balanced ReSTIR Light's two). Without a log line: in any other build the usual shaders run;
         // with SHaRC its paths do (the reuse is the tests'), with Torch and Fire Light in the Light Bounce its reuse does
         // (the paths are the tests').
         static const uint32_t reuse_tests = [] {
@@ -3978,7 +3979,10 @@ class RtScene12 {
                                 | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
                                 | (ratio_follows ? 64u : 0u)
                                 | ((path_traced && light_count != 0 && (requested & dlaa_bridge::RT_PATH_TORCH_LIGHT) != 0) ? LIGHTS_IN_PATHS : 0u),
-            .reuse_tests = reuse_tests,
+            // Balanced ReSTIR Light (RT_PATH_REUSE_BALANCED, older addons never set it): G1 Basic and Validate's kept light,
+            // the two test bits the player's shaders read (rt_path.hlsli REUSE_SUSPECTS; not the tests pipelines' choice).
+            .reuse_tests = reuse_tests
+                           | (((requested & dlaa_bridge::RT_PATH_REUSE_BALANCED) != 0) ? (REUSE_BIAS_BASIC | REUSE_TEST_VALIDATE_KEEP_LIGHT) : 0u),
         };
         std::copy_n(shared.rt_view_projection, 16, constants.view_projection.begin());
         std::copy_n(previous_view_projection_.begin(), 16, constants.previous_view_projection.begin());
@@ -4641,7 +4645,7 @@ class RtScene12 {
     uint32_t previous_square_root = 0;  // RT_PATH_COLOR_SQUARE_ROOT
     uint32_t previous_positions_slice = 0;  // kept_positions_' slice with last frame's
     uint32_t lights_in_bounce = 0;  // rt_camera.hlsli LIGHTS_*: the mode (RT_PATH_LIGHTS_IN_BOUNCE 1, with RT_PATH_LIGHT_RATIO 3), the ratio's set and validity
-    uint32_t reuse_tests = 0;  // REUSE_TEST_* (tests; 0: none)
+    uint32_t reuse_tests = 0;  // REUSE_TEST_* (tests, and RT_PATH_REUSE_BALANCED's two; 0: none)
 #if defined(RENODX_PATH_PROBE)
     uint32_t probe_mode = 0;  // RENODX_TW_PATH_PROBE: rt_path.hlsli ProbeTexel's mode | its rays a texel << 8
 #endif

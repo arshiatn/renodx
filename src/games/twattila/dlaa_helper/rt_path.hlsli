@@ -113,11 +113,15 @@ static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this 
 static const uint REUSE_VALIDATION_PERIOD = 3u;
 #include "./rt_reuse_bits.h"  // reuse_tests' bits (RENODX_TW_REUSE_*, rt_d3d12.hpp)
 // The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
-// host takes them while one is set): every other build is the shipped code to the byte (0: their code compiled out).
+// host takes them while one is set). Every other build reads only Balanced ReSTIR Light's two (the host's, with
+// RT_PATH_REUSE_BALANCED: G1 Basic and Validate's kept light) for the paths and the reuse, none for Own ReSTIR's reservoirs
+// (0: the other bits' code compiled out).
 #if defined(REUSE_TESTS)
 #define REUSE_SUSPECTS reuse_tests
-#else
+#elif defined(REFLECT_RESERVOIR)
 #define REUSE_SUSPECTS 0u
+#else
+#define REUSE_SUSPECTS (reuse_tests & (REUSE_BIAS_BASIC | REUSE_TEST_VALIDATE_KEEP_LIGHT))
 #endif
 #if defined(REUSE_NEAR)
 // Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
@@ -1325,8 +1329,13 @@ void ReuseTexel(uint2 id) {
     for (uint neighbour = 0u; neighbour < neighbours; ++neighbour) {
       if ((merged & (1u << neighbour)) == 0u) continue;
       const uint2 texel = uint2(ReuseNeighbourTexel(id, neighbour));
+#if defined(REUSE_LEAN)
+      const float3 other_origin = positions[min(texel * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u)].xyz;
+      const float3 other_normal = LoadReceiverNormal(reuse_data[set], texel);
+#else
       const float3 other_origin = surface_origin[texel].xyz;
       const float3 other_normal = surface_normal[texel].xyz;
+#endif
       Reservoir there = combined;
       float target_there = ReuseTarget(other_origin, other_normal, origin, there);
       const float jacobian = ReuseJacobian(combined, origin, other_origin);
