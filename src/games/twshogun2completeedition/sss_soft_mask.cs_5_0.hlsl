@@ -17,13 +17,6 @@ cbuffer soft : register(b0)
   float g_most;  // the penumbras' most (render pixels: shared.h's SSS_MOST_PENUMBRA_2160 at this height); 0: none searched
 }
 
-// The pass's own sss constants (shaders/sss.hlsli's, copied at it): c1 Bend's light coordinate, its z the depth at
-// infinity (X30, as Attila's sss_blur: distance ~ 1 / (A - depth); 1 - depth was too strict near the far plane).
-cbuffer sss : register(b1)
-{
-  float4 g_sss_constants[2];
-}
-
 Texture2D<float> t_sss_depth : register(t0);
 Texture2D<float> t_bend : register(t1);
 Texture2D<float4> t_split : register(t2);
@@ -35,7 +28,7 @@ static const float GOLDEN_ANGLE = 2.39996323f;
 
 float SurfaceDistance(int2 pixel)
 {
-  return 1.f / max(abs(g_sss_constants[1].z - abs(t_sss_depth[pixel])), 1e-7f);
+  return 1.f / max(1.f - abs(t_sss_depth[pixel]), 1e-7f);
 }
 
 [numthreads(8, 8, 1)]
