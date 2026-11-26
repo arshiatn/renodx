@@ -16949,7 +16949,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         until 19:52:35 ('sharp text: first text drawn'); the battle loading screen 19:52:36 -> running 19:52:55 (~20 s
         real load). Sol's port has ATTILA_TEST_SKIP_MOVIES=1 (src_1320 effects_and_tests.inc:185, 'so unattended
         tests reach the main menu without the 2.5-minute intro'; SWITCHES.md:85 'once caused a sound crash at the
-        menu'). No runner sets it (d11, a64_ab, ebo_run). Owner: ATN (rule line + go) / d11fr_
+        menu'). No runner sets it (d11, a64_ab, ebo_run).
+        d11fr_ RECHECK 10:00: GO (keeper: no take without a ticket, leave() wakes the head, finally with None OK; d11 v1:
+        own-record removal pid-exact, Release-Locks rethrow; edge: a 3rd failed delete at ~:489 exits 1 not 2). v1 LIVE
+        10:0x (sha256 DD666729..., 830 lines; .bak_v1 = 21F766FF... the 812-line one; no d11 process ran). Keeper test
+        live 09:59 (33 / 33; .bak_d11k). ATN 10:1x: (a) movies = 3 min, a waste -> a64_ab.ps1 ALREADY skips them with
+        'movie keys' (ATN 11-24: Space every 1.5 s via PostMessage into our own window; Escape 30..75 s; stop 200 s);
+        coord forgot them in d11 -> d11f_ ports them into d11_capture64.mk.ps1 (est 15 / deadline 30), C1At default 180
+        rechecked; then review -> live -> START 3 with the existing rule line (-Replay day1.replay, no C1At). (b) 'for
+        runs you don't need to ask me' (memory updated): start 3 runs without a go. Owner: d11f_ -> coord
         - [ ] SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATTILA_TEST_SKIP_MOVIES=1 =
         a new env var -> ATN's rule line per runner switch; first ONE test start (menu reached, no sound crash, replay
         loads) because of SWITCHES.md's sound-crash note; then d11 C1At back near 180 - 60 and a64_ab / ebo_run timing
@@ -16988,7 +16996,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         lines, 5 unstick). Proof in use = the first tools\tw\hooks\agent_prompt_log.tsv line.
         ATN ~10:0x: copied the hook into gates (coord sha256 check: 882a9dc3... = the source) + pasted; coord check:
         all 10 allow lines of sections 2-5 present (allow 73 -> 84), JSON valid, but the PermissionRequest block is NOT
-        in "hooks" yet -> asked again (paste file 1b now says: right below `"hooks": {`). Section B (4 game-run
+        in "hooks" yet -> asked again (paste file 1b now says: right below `"hooks": {`). 10:1x: ATN pasted it at the
+        TOP level (settings.local.json :100-110, between "permissions" and "hooks") -> not a hook; ATN got pdi4c_'s
+        lab5 prompt again (redirect path 'near a sensitive file'); told him to move :100-110 below :111. Section B (4 game-run
         wildcards + 4 Edit denies, ATN's choice) now written out in the paste file. Owner: ATN (hook block) -> coord
         (proof)
         - [ ] P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): list them when fx1_
