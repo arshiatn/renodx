@@ -160,7 +160,7 @@
 #define RENODX_REUSE_COMPATIBLE 1
 #endif
 // Its DI for Path-Traced Torch Light (PT DI step 4c; build.ps1 adds RtxdiUtils.cpp with the build): rt_lights' LIGHTS_DI
-// build and the four DI passes (rt_di_*.cs_6_5.hlsl), each with its OMM twin.
+// build and the four DI passes (rt_di_*.hlsl), each with its OMM twin.
 #if defined(RENODX_REGIR) && __has_include("rt_di_shade.h")
 #include <Rtxdi/RtxdiUtils.h>
 
@@ -901,18 +901,18 @@ class RtScene12 {
       ComPtr<ID3D12PipelineState>* state;
     };
     const std::array<DiBuild, 8> di_builds = {{
-        {RT_LIGHTS_DI, RT_LIGHTS_DI_OMM, &lights_di_pipelines_[0]},
-        {RT_LIGHTS_DI_TORCH, RT_LIGHTS_DI_TORCH_OMM, &lights_di_pipelines_[1]},
-        {RT_LIGHTS_DI_BOUNCE, RT_LIGHTS_DI_BOUNCE_OMM, &lights_di_pipelines_[2]},
-        {RT_LIGHTS_DI_BOUNCE_TORCH, RT_LIGHTS_DI_BOUNCE_TORCH_OMM, &lights_di_pipelines_[3]},
-        {RT_DI_INITIAL, RT_DI_INITIAL_OMM, &di_initial_pipeline_},
-        {RT_DI_TEMPORAL, RT_DI_TEMPORAL_OMM, &di_temporal_pipeline_},
-        {RT_DI_SPATIAL, RT_DI_SPATIAL_OMM, &di_spatial_pipeline_},
-        {RT_DI_SHADE, RT_DI_SHADE_OMM, &di_shade_pipeline_},
+        {.code = RT_LIGHTS_DI, .code_omm = RT_LIGHTS_DI_OMM, .state = &lights_di_pipelines_[0]},
+        {.code = RT_LIGHTS_DI_TORCH, .code_omm = RT_LIGHTS_DI_TORCH_OMM, .state = &lights_di_pipelines_[1]},
+        {.code = RT_LIGHTS_DI_BOUNCE, .code_omm = RT_LIGHTS_DI_BOUNCE_OMM, .state = &lights_di_pipelines_[2]},
+        {.code = RT_LIGHTS_DI_BOUNCE_TORCH, .code_omm = RT_LIGHTS_DI_BOUNCE_TORCH_OMM, .state = &lights_di_pipelines_[3]},
+        {.code = RT_DI_INITIAL, .code_omm = RT_DI_INITIAL_OMM, .state = &di_initial_pipeline_},
+        {.code = RT_DI_TEMPORAL, .code_omm = RT_DI_TEMPORAL_OMM, .state = &di_temporal_pipeline_},
+        {.code = RT_DI_SPATIAL, .code_omm = RT_DI_SPATIAL_OMM, .state = &di_spatial_pipeline_},
+        {.code = RT_DI_SHADE, .code_omm = RT_DI_SHADE_OMM, .state = &di_shade_pipeline_},
     }};
     bool di_made = true;
     for (const DiBuild& build : di_builds) {
-      const std::span<const unsigned char> code = dxr12_ ? build.code_omm : build.code;
+      const std::span<const unsigned char> code = (dxr12_ ? build.code_omm : build.code);
       di_made = di_made && pipeline(code.data(), code.size(), build.state);
     }
     if (!di_made) {
@@ -4127,7 +4127,7 @@ class RtScene12 {
         // Torch Light (its DI pixels' light DI's, the others' exact bits), nor the frame it is first asked, after a bounce
         // gap or a remade reuse history (the game lit them: today's one-frame doubles). reuse_lights_mode_ keeps the asked
         // mode for the next trace. Mode 2 (a measurement) always carries.
-        const uint32_t carried_mode = (lights_mode == 1u && lights_dark_frame_ != frame) ? 0u : lights_mode;
+        const uint32_t carried_mode = (lights_mode == 1u && lights_dark_frame_ != frame ? 0u : lights_mode);
         // Their soft shadows under Ray Reconstruction: the lights' radius (rt_path.hlsli ReuseTexel's rays to their disk).
         if (carried_mode != 0 && (requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) {
           list->SetComputeRoot32BitConstant(ROOT_SETTINGS, std::bit_cast<uint32_t>(std::clamp(shared.rt_light_size, 0.f, 2.f)), 8);
@@ -8799,9 +8799,9 @@ class RtScene12 {
       Mark(list, L"local lights");
 #if defined(RENODX_RTXDI_DI)
       const ComPtr<ID3D12PipelineState>& lights_state =
-          di ? lights_di_pipelines_[(light_ratio ? 2 : 0) + (torch_written ? 1 : 0)]
-             : (lights_in_bounce ? (torch_written ? lights_torch_pipelines_[1] : lights_bounce_pipeline_)
-                                 : (torch_written ? lights_torch_pipelines_[0] : lights_pipeline_));
+          (di ? lights_di_pipelines_[(light_ratio ? 2 : 0) + (torch_written ? 1 : 0)]
+              : (lights_in_bounce ? (torch_written ? lights_torch_pipelines_[1] : lights_bounce_pipeline_)
+                                  : (torch_written ? lights_torch_pipelines_[0] : lights_pipeline_)));
 #else
       const ComPtr<ID3D12PipelineState>& lights_state = (torch_written ? lights_torch_pipelines_[lights_in_bounce ? 1 : 0]
                                                                        : (lights_in_bounce ? lights_bounce_pipeline_ : lights_pipeline_));
@@ -8855,7 +8855,9 @@ class RtScene12 {
       di_frame_ = frame;
     }
 #endif
-    di_ok_ = di ? 1u : 0u;
+    // Before the list is closed and submitted: a failed submit is fatal to the device (rendering stops), so no stale 1
+    // reaches a working frame.
+    di_ok_ = (di ? 1u : 0u);
     if (ambient_kept) {
       // This trace's positions for the next one (copy_kept: in the slices' turn, as the paths' first request's copy).
       std::swap(history_read.Transition.StateBefore, history_read.Transition.StateAfter);

@@ -42,9 +42,9 @@ patch('rt_d3d12.hpp', [
 #include "rt_di_spatiotemporal_omm.h"
 """),
     ("const std::array<DiBuild, 8> di_builds = {{", "const std::array<DiBuild, 7> di_builds = {{"),
-    ("""        {RT_DI_TEMPORAL, RT_DI_TEMPORAL_OMM, &di_temporal_pipeline_},
-        {RT_DI_SPATIAL, RT_DI_SPATIAL_OMM, &di_spatial_pipeline_},
-""", """        {RT_DI_SPATIOTEMPORAL, RT_DI_SPATIOTEMPORAL_OMM, &di_temporal_pipeline_},
+    ("""        {.code = RT_DI_TEMPORAL, .code_omm = RT_DI_TEMPORAL_OMM, .state = &di_temporal_pipeline_},
+        {.code = RT_DI_SPATIAL, .code_omm = RT_DI_SPATIAL_OMM, .state = &di_spatial_pipeline_},
+""", """        {.code = RT_DI_SPATIOTEMPORAL, .code_omm = RT_DI_SPATIOTEMPORAL_OMM, .state = &di_temporal_pipeline_},
 """),
     ("{di_initial_pipeline_.Get(), di_temporal_pipeline_.Get(), di_spatial_pipeline_.Get(), di_shade_pipeline_.Get()}",
      "{di_initial_pipeline_.Get(), di_temporal_pipeline_.Get(), di_shade_pipeline_.Get()}"),
