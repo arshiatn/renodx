@@ -41,14 +41,17 @@ cbuffer aa_taa : register(b1)
 
 // The passes that raise the tone mapper's output to the frame's gamma and take the root back (DLAA's prepare and
 // finish, CMAA2's): 2.2 with Gamma Correction on (the swap chain's decode; Attila and Thrones hand it over), else 2.0
-// (square and square root). Attila's t00 writes linear (rrbi_ G0): they see t00^2 / t00^2.2 and give t00 back.
+// (square and square root). Attila's t00 writes linear (rrbi_ G0): in SDR, and for Ray Reconstruction, FSR and XeSS in
+// HDR, they see t00^2 / t00^2.2 and give t00 back (the HDR modes' others: AaFrameLinear).
 bool AaFrameGamma22()
 {
   return g_aa_frame_gamma == 2.2f;
 }
 
-// DLAA's prepare and finish on the lit scene before the tone mapper (anti_aliasing.hpp Apply's scene_linear: Ray
-// Reconstruction there), linear. Ours: the constant that carries the encoding says it, gamma 1 being linear.
+// The passes' colour linear, taken as it is: DLAA's prepare and finish on the lit scene before the tone mapper
+// (anti_aliasing.hpp Apply's scene_linear: Ray Reconstruction there); SMAA's edges (their root), CMAA2's and DLSS's
+// passes on Attila's / Thrones' t00 in the HDR modes (Settings::linear_frame, aaf_ 11-26). Ours: the constant that
+// carries the encoding says it, gamma 1 being linear.
 bool AaFrameLinear()
 {
   return g_aa_frame_gamma == 1.f;

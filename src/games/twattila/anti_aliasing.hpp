@@ -131,6 +131,9 @@ struct Settings {
   // The frame's gamma (frame_gamma.hlsli TW_FRAME_GAMMA): 2.2, DLAA's and CMAA2's passes decode and encode at it (aa.hlsli
   // AaFrameGamma22: the frame's own curve with Gamma Correction on); 2, their 2.0.
   float frame_gamma = 2.f;
+  // The tone mapper writes linear (Attila's and Thrones' t00 in the HDR modes, rrbi_ G0): SMAA, CMAA2 and DLSS take it as
+  // it is (Apply; aaf_ 11-26), Ray Reconstruction, FSR and XeSS stay at `frame_gamma`.
+  bool linear_frame = false;
 };
 
 namespace internal {
@@ -1136,14 +1139,14 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   const UINT input_height = (scaled ? runtime.render_height : objects.height);
   // Presets L and M (always auto-exposed) and Ray Reconstruction flatten dark tones given linear colour (ATN debug11:
   // shadows one flat grey with coloured fringes; debug28: Ray Reconstruction's a flat violet veil): they get the square
-  // root of aa_dlaa_prepare's colour (Attila: t00 itself, ~t00^1.1 with Gamma Correction on, rrbi_ G0; Pharaoh / Troy:
-  // the root of their linear output). RRG (DLSS-RR Integration Guide) 3.1 p10: RR before tone mapping. In Attila it
-  // already runs before PsychoV35 (after t00, feed ~t00^1.1); the Experimental row Denoise Before Tone Mapping moves it
+  // root of aa_dlaa_prepare's colour (Attila / Thrones HDR: t00's root, Settings::linear_frame; Ray Reconstruction there
+  // and SDR: t00 itself, ~t00^1.1 with Gamma Correction on, rrbi_ G0; Pharaoh / Troy: the root of their linear output).
+  // RRG (DLSS-RR Integration Guide) 3.1 p10: RR before tone mapping. In Attila it already runs before PsychoV35 (after t00, feed ~t00^1.1); the Experimental row Denoise Before Tone Mapping moves it
   // before t00: `scene_linear` (Settings::rr_before_tone_map, OnToneMapperDraw), the lit scene as it is (no square
   // root).
+  const bool reconstruct = runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame;
   const bool square_root = !scene_linear && method == Method::DLAA
-                           && (runtime.settings.dlaa_preset == 12u || runtime.settings.dlaa_preset == 13u
-                               || (runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame));
+                           && (runtime.settings.dlaa_preset == 12u || runtime.settings.dlaa_preset == 13u || reconstruct);
   dlaa_bridge::bridge.color_square_root = square_root;
   const ShaderSettings settings = {
       .metrics = {1.f / static_cast<float>(objects.width), 1.f / static_cast<float>(objects.height),
@@ -1155,7 +1158,13 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       .cmaa2_edge_threshold = CMAA2_THRESHOLDS[quality],
       .cmaa2_local_contrast = (sharp ? 0.15f : 0.1f),
       .cmaa2_simple_shape_blur = (sharp ? 0.07f : 0.1f),
-      .frame_gamma = (scene_linear ? 1.f : runtime.settings.frame_gamma),  // aa.hlsli AaFrameLinear at 1
+      // aa.hlsli AaFrameLinear at 1. Settings::linear_frame (ours, ATN's word 11-26, aaf_'s 4K table): presets K / L / M
+      // get the light (K) or its root (L / M; darkest tenth PQ code 11 -> 7, truth 5.6), SMAA's edges the root. Ray
+      // Reconstruction keeps ~t00^1.1 (on the root: 2x the noise, fireflies 25 % darker); FSR / XeSS not measured.
+      .frame_gamma = ((scene_linear
+                       || (runtime.settings.linear_frame && ((method == Method::DLAA) ? !reconstruct : !Upscales(method))))
+                          ? 1.f
+                          : runtime.settings.frame_gamma),
       .smaa_subsample_indices = subsample_indices,
       .dlaa_debug = {static_cast<float>(runtime.settings.debug_view), static_cast<float>(input_width),
                      static_cast<float>(input_height), (square_root ? 1.f : 0.f)},
@@ -1305,7 +1314,6 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
     // registers' matrices act on column vectors), given NVIDIA as row-vector matrices (their transposes). FSR and XeSS: the
     // projection alone.
     dlaa_bridge::RayReconstruction reconstruction = {.preset = runtime.settings.ray_reconstruction_preset};
-    const bool reconstruct = runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame;
     if (reconstruct || method != Method::DLAA) {
       const Camera& camera = runtime.camera;
       for (size_t row = 0; row < 4; ++row) {

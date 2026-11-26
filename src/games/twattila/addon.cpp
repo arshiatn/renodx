@@ -2068,6 +2068,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   aa_settings.frame_gamma = TW_FRAME_GAMMA;
+  aa_settings.linear_frame = IsHDRMode();  // t00 writes linear in the HDR modes (rrbi_ G0); SDR as before (aaf_ 11-26)
   aa_settings.rr_before_tone_map = ATTILA64 && rr_before_tone_map_row != 0.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
