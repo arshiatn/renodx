@@ -904,6 +904,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ?
 - d11f_ SCRIPT FIX STARTED 06:2x (Opus High, CPU only, .bak_d11f): Note never thro ... | ?
 - d11 SCRIPT v1 LOCK RECORDS (cost of the 06:10 crash: every build / GPU job waite ... | ?
+- d11 CAPTURE RETRY (ATN 09:3x 'Yes, retry'): d11c_ resumed; START 2 of the round ... | ?
+- gpu_lock.py UNSTICK (ATN 09:4x 'Yes, build it': a backup for stale locks while h ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
 - RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait ... | ?
 - CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | ?
@@ -16900,6 +16902,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         text that gpu_lock.py never takes over): d11f_ 09:3x makes Take-Locks write gpu_lock.py's v1 record for both locks
         (a dead owner taken over automatically), Locks-Held / Release-Locks by pid + start; other quiet_run.lock readers
         listed read-only first. Owner: d11f_ -> coord
+        - [ ] d11 CAPTURE RETRY (ATN 09:3x 'Yes, retry'): d11c_ resumed; START 2 of the round (start 1 void 06:10); the
+        reviewed 812-line script (06:34), dry run first, the run in the background, no log reads until exit. d11f_'s v1
+        change goes to a copy (testbin\scratch\d11f_\d11_capture64.v1.ps1) until the run ends. Owner: d11c_ -> coord
+        - [ ] gpu_lock.py UNSTICK (ATN 09:4x 'Yes, build it': a backup for stale locks while he's away): unst_ STARTED
+        (Opus High; est 30 / deadline 60): `gpu_lock.py unstick` moves aside gpu_job.lock / quiet_run.lock ONLY when the
+        owner pid is gone (old text: the pid must not exist at all; v1: dead / reused, no live residents), mtime >= 10 min,
+        nothing of ours runs (attila*, harness, helper, PresentMon, ngfx, lab_keeper, live queue tickets), file unchanged
+        at the move; never deletes; logs lab\unstick_log.tsv. Developed in a copy, swapped atomically with .bak_unst when
+        no queue exists. Coord runs it ONLY through ATN's exact rule line (round_notes\unstick_rule_line.md). Owner: unst_
+        -> ATN (paste) 
         - [ ] BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the deadline (bal3_ waited 3 h
         silently). Owner: every brief
         - [ ] RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait for the exit notice
@@ -18055,7 +18067,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         bal3_ 06:2x (est 15 / deadline 30; identity must stay byte-equal).
         bal3_ FIXES DONE 09:28 (bb5cfbe4c, rt_d3d12.hpp + rt_reuse_bits.h +11 / -8; committed 06:18, its builds WAITED
         06:18-09:26 on the stale quiet_run.lock): player 81 / 81, reference 95 / 95, lab 84 / 84 headers identical to
-        1f88af2dd's (no shader byte moved); merge-tree vs 5783b1d58 clean. MERGED c5ffa9deb (builds running).
+        1f88af2dd's (no shader byte moved); merge-tree vs 5783b1d58 clean. MERGED c5ffa9deb (gated twattila amd64 + x86
+        61 warnings + helper build pass, 10 Raytraced twins; pushed 09:4x).
         Owner: coord
         COORD GPU 03:5x: d11 5090 REPLAY SELF TEST PASS (test\tw_d3d11_replay run.ps1 -Architecture amd64, hardware, under
         Enter-GpuLock; log testbin\scratch\coord_d11hw_amd64.log): 3 frames x 4 events all equal, race pixels 226 / 665
