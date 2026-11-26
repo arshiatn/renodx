@@ -17886,7 +17886,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: done (P1-P3) / see boxes
         - [ ] PLAYER HOLD-FRAME MODE (reference_suite.md 2.3.1, repeat frame N+2): no RENODX_TW_PLAY_* option holds one
         frame, so a route-B reference drops every slice (fx1_ P4) -> player code change; then P4 (inside share + texel map
-        by record class) decides whether route B may ever use dark. Owner: gate tooling slot
+        by record class) decides whether route B may ever use dark. hfp_ STARTED 05:0x (Opus High, worktree, branch hfp_hold
+        on atn-mods; CPU only; proposed RENODX_TW_PLAY_HOLD=<frames>, reference / recorder builds only, plain headers
+        identical; est 40 / deadline 80; the P4 rerun needs ATN's rule line). fx1_ rerunning P3 contact at R = 8.
+        Owner: hfp_ -> coord
         - [ ] CONTACT BOXES BIAS AT R = 4 (fx1_ P3: 0.99306, r/g 0.9916, outliers 14 vs 3; not X49's, 11-17 had R = 1): a
         real candidate bias in contact shading on boxes or an outlier-rule artefact? Rerun at R = 8 in the next judge
         wave. Owner: wave 2 judge set
