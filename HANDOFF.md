@@ -962,6 +962,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATTILA AA FEED (aaf_ 11-26, measured only; testbin\scratch\aaf_\table_out.txt): ... | ?
 - gts_ FOLLOW-UPS (11-26 17:22, scratch\gts_\pc\compare_c.txt): DI hashing on a wo ... | ?
 - pdi4c_ r6 FINAL (origin/pdi4c_step4c_r6 148731b35; hand-back pdi4c_handback.md:5 ... | ?
+- GAME BLOCK 11-26 17:23-18:18 (11 starts, all clean exits): (a) 1.3.28 smoke with ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17561,6 +17562,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         atn_torch_light_gi_every_frame = the 2.9a trade (harness-only periodic case by reading; M1 / 2.9a box). all_modes_check
         -Rev 148731b35 NOT RUN yet (h0_gpu_runs.ps1 $HelperPaths lacked tw_point_light.hlsli: fixed, dry run OK) -> coord runs
         it after tonight's game block; merge (gated amd64 + x86 + helper) only on its PASS, then sdku_omm_dxc. Owner: coord
+        - [ ] GAME BLOCK 11-26 17:23-18:18 (11 starts, all clean exits): (a) 1.3.28 smoke with add-on + plugin PASS (plugin ready,
+        rows 0x3, 0 trouble lines, no WER / dumps). (b) b1 menu A/B (A B B A, last 120 s, 4K): A stdev 1.57 / 1.56 ms, 3571 / 3578
+        heavy-then-short frames, |anim err| p90 4.95 / 4.89 ms; b1 stdev 0.19 / 0.19, 0 / 0, 0.74 / 0.74; fps 227 both -> b1 PASS
+        (A/A agrees). b1 only matters while the loader cap is on; b1_for_sol_1328.diff could go upstream (ATN's word). (c) CPU
+        step 0: see cpu_plan_64_map.md STEP 0 RESULT (spin off -4.7 %; L2B wins only with the spin on) -> step 0b 'fastl2b'.
+        Owner: coord / ATN (b1 upstream, 0b yes)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
