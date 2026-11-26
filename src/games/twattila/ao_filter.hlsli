@@ -164,7 +164,7 @@ void FilterResolve(int2 pixel)
   u_output[pixel] = float4(value, distance, min(frames + 1.f, 32.f), 0.f);
 }
 
-// The Denoiser (XeGTAO's 5 x 5 depth-aware filter, as Attila's): this frame's history around the pixel by binomial weights,
+// The Denoiser (ours, as Attila's BitmaskDenoise; not XeGTAO's): this frame's history around the pixel by binomial weights,
 // only where its distance is within 3% of this one's. Into the sun draws' AO: the result where the game's has its AO,
 // the game's other channels kept.
 void FilterDenoise(int2 pixel)

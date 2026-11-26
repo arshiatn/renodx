@@ -324,9 +324,9 @@ float4 BitmaskResolve(float4 v0)
   return float4(value, current.y, min(frames + 1.f, 32.f), 0.f);
 }
 
-// The Denoiser (Intel XeGTAO's 5 x 5 depth-aware filter, written here): the 5 x 5 results around this one (t40), each by
-// its distance (binomial weights) and only where its distance from the camera is within 3% of this one's (no blending
-// across edges). The result and its distance.
+// The Denoiser, ours (not XeGTAO's: XeGTAO_Denoise is a 3 x 3 kernel on packed depth edges): the 5 x 5 results around
+// this one (t40), each by its distance (binomial weights) and only where its distance from the camera is within 3% of
+// this one's (no blending across edges; no edges texture to pack). The result and its distance.
 float4 BitmaskDenoise(float4 v0)
 {
   const int2 texel = int2(v0.xy);
