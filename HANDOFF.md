@@ -991,7 +991,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa8_ B4 upstream colorcorrect GammaSafe float4 overload calls Gamma (not sign-sa ... | ?
 - fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | ?
 - fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
-- crit_ CRITIC (Opus xHigh, read-only, STARTED 00:4x, est 60 / deadline 120) over ... | ?
+- FIX WAVE 0 (no picture change, one commit a lane): X15, X25 (+ coord's memory li ... | ?
+- FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
+- CRITIC QUESTIONS FOR ATN (01:1x): Q2 RR after the tone mapper (O-RR12): one line ... | ?
+- LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner ... | done
 - LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'licens ... | ?
 - fa5_ SHADERTOY CREDITS: when the Shadertoy-derived code ships, credits name Mirk ... | ?
 - LANE I (end of the GPU plan, ATN 11-26): 1 smoke / fire as Linear Swept Spheres ... | ?
@@ -17513,11 +17516,39 @@ heading text are in HANDOFF_ARCHIVE.md)
         Musa's containment assumes an interior mean, human_gamut_conditioning never tried -> rerun tw_psychov35 edge
         cases on his unmodified copy with conditioning, or guard only in ApplyPsychoV35; U6 which passes make the NaN /
         Inf ApplyPsychoV35's guard catches (one-frame census = the inert check). Owner: critic -> owners
-        - [ ] crit_ CRITIC (Opus xHigh, read-only, STARTED 00:4x, est 60 / deadline 120) over all nine tables at
+        - [x] crit_ CRITIC (Opus xHigh, read-only, STARTED 00:4x, est 60 / deadline 120) over all nine tables at
         769ee4a15 -> fidelity\critic.md: A BUG verdicts (refute, merged ids), B contradictions, C open items + settle
         step, D one guard table (inert / output-changing / hang cap), E licences + credits, F never-considered NVIDIA
         ranking, G port propagation list (input for per-game agents), H fix order + open-branch overlap. Then: port
         propagation agents, then the citation blocker design. Owner: crit_
+        crit_ DONE 01:1x (33 min; fidelity\critic.md A-H): 55 BUG rows re-read at 769ee4a15 -> 49 confirmed, 5 partial, 0
+        refuted -> 51 ids X01-X51 (merges: X22 = fa4 B4 + fa9 B3 / B4 RR guides; X24 = fa4 B6 + every motion isfinite; X08
+        = fa1 B3 + fa2 G-1 + REUSE_W_CLAMP; O-HANG = the 3 hang caps from the GrowBuffer(&) window). 72 open items (38
+        reading, 22 GPU, 10 game run, 2 ATN). 76 guards: 26 inert (none byte-proven yet, 9 need a count), 41 output-changing
+        (12 BUG, 6 open, 22 CHOSEN with a reason, 1 replaced on r4), 5 hang-cap rows. Shadertoy 'unclear' helpers: none
+        copied (our IGN = Jimenez 2014; Hilbert loop textbook); credits name Salm + Ottosson; fa5 U-VB1 (Salm's own) and
+        U-VB2 (= 3clGWB) closed. zeng2025 never committed / shipped. Worst 5: X10 OMM light leaks through solid cut-outs
+        (rt_scene.hlsli:322-323), X05 temporal reservoir's own texel no depth test (rt_path.hlsli:1080-1096), X22 RR
+        guides, X02 no FirstRange test (rt_path.hlsli:855-878, in ATN's Rays preset), X19 NRD view Z = distance. Then X41
+        FSR metres, X08 W clamp every frame. FIX LIST + ORDER = critic.md H (plan.md lane D). Owner: done
+        - [ ] FIX WAVE 0 (no picture change, one commit a lane): X15, X25 (+ coord's memory line), X31, X13's comment,
+        B13 / B14 comments, O-CO15, O-CO7; LICENCES L1 release_zip.py ships no RTXDI licence (credits.hpp: 'Every license
+        ships'), L3 = X28 Attila's Apache / SMAA / SSSR / MiniEngine files reach its zip only by carry-over (repack_game.py),
+        L4 = X32 Divinity 1 / 2 credit no Bend (D2 also no GT-VBAO / Auto Thickness); X45 upstream report. Owner: wave 0
+        - [ ] FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are scored; pdi5 edits
+        rt_reference.cs). WAVE 2 = review + merge r4 (X50 / X51). WAVE 3 PT estimator X01, X02, X05, X04 (+ Talbot), X06,
+        then X08 (pdi5_step5 owns those sites: REBASE pdi5 onto the step 3 merge first). WAVE 4 X09 + X10, X18, X12, X14,
+        X11. WAVE 5 X22, X19, X23, X40, X41, X34 + X33, X37, X35, X36, X39 (X22 = RR look change: HARNESS_RR numbers).
+        WAVE 6 X26, X27, X29, X30. WAVE 7 X43, X44 (X42 done cccc66497). GPU WINDOW: O-HANG (a) trace wait (costs
+        speed every frame), (b) SHaRC depth 4, (c) SHaRC reflections; X16 + X17 then O-PTLAS. LAST: X38 (Nsight gate),
+        X07 (after rpg2_). Port copies per id = critic.md G, fixed in the same wave. Owner: coord (waves)
+        - [ ] CRITIC QUESTIONS FOR ATN (01:1x): Q2 RR after the tone mapper (O-RR12): one line of reason or a HARNESS_RR
+        A/B? Q3 X20 IGN dither under RR: NV9 numbers then eye? Q4 O-SS5: does SSS thickness / share (below 100 %) keep
+        'Bend thickness stays 0.005'? Q5 written cost caps (MAX_CANDIDATES 64, smoke caps, SurfaceOffset; 22 rows): bugs
+        under the guard rule or CHOSEN? Q6 X48 back-facing shading normals: RTXPT / Falcor bend or pbrt mirror? Q7 L5
+        Musa's copyright line into a shipped notice file? Q8 one LSS smoke-sphere harness probe? (Q1 = fix A, done.)
+        Owner: ATN
+        - [ ] LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner: done
         ATN 11-26 00:5x ANSWERS: (1) fa5_ U-VB5 CLOSED: the 3 Shadertoys are in C:\Users\arshi\Downloads\Shadertoy stuff\
         (root = GT-VBAO, 'GT-VBAO thickness heuristic' = Ottosson's variation, 'GT-VBGI (diffuse)'); every header reads
         'dual license, public domain and MIT, unless noted otherwise' (CC0 1.0 or MIT; Mirko Salm / TinyTexel, Ottosson's
