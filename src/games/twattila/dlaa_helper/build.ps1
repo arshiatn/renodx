@@ -163,10 +163,13 @@ foreach ($variant in $compatible) {
   Dxc -nologo -T cs_6_5 -E main -O3 @defines -I "$rtxdi\Include" -Fh "$out\$($variant[1]).h" -Vn $variant[2] "$PSScriptRoot\rt_path.cs_6_5.hlsl"
   Dxc -nologo -T cs_6_9 -E main -O3 @defines -D OPACITY_MICROMAPS -I "$rtxdi\Include" -Fh "$out\$($variant[1])_omm.h" -Vn "$($variant[2])_OMM" "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 }
-# Path-Traced Torch Light (PT DI step 4c): rt_lights' LIGHTS_DI build (the tiles' members, the DI pixels' words) and its
-# twin with T1 (rt_lights_di_torch), and the DI passes (PATH_DI: rt_di_initial, rt_di_temporal, rt_di_spatial,
-# rt_di_shade), each with its OMM twin.
+# Path-Traced Torch Light (PT DI step 4c): rt_lights' LIGHTS_DI build (the tiles' members, the DI pixels' words), its
+# twin with T1 (rt_lights_di_torch), both with Torch and Fire Shadows from the Light Bounce (rt_lights_di_bounce,
+# rt_lights_di_bounce_torch), and the DI passes (PATH_DI: rt_di_initial, rt_di_temporal, rt_di_spatial, rt_di_shade),
+# each with its OMM twin.
 $di_builds = @(@('rt_lights', 'LIGHTS_DI', 'rt_lights_di', 'RT_LIGHTS_DI'), @('rt_lights', 'LIGHTS_DI TORCH_IRRADIANCE', 'rt_lights_di_torch', 'RT_LIGHTS_DI_TORCH'),
+               @('rt_lights', 'LIGHTS_DI TORCHES_IN_BOUNCE', 'rt_lights_di_bounce', 'RT_LIGHTS_DI_BOUNCE'),
+               @('rt_lights', 'LIGHTS_DI TORCHES_IN_BOUNCE TORCH_IRRADIANCE', 'rt_lights_di_bounce_torch', 'RT_LIGHTS_DI_BOUNCE_TORCH'),
                @('rt_di_initial', 'PATH_DI', 'rt_di_initial', 'RT_DI_INITIAL'),
                @('rt_di_temporal', 'PATH_DI', 'rt_di_temporal', 'RT_DI_TEMPORAL'), @('rt_di_spatial', 'PATH_DI', 'rt_di_spatial', 'RT_DI_SPATIAL'),
                @('rt_di_shade', 'PATH_DI', 'rt_di_shade', 'RT_DI_SHADE'))
