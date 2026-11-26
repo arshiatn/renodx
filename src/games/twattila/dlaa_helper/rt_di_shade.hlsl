@@ -30,10 +30,11 @@ void DiStore(uint2 pixel, uint model, float3 light) {
   // ~0.58 % of DI's luminance (DI-interior E against the bits 0.9933 -> 0.9986, review pdi4cr_ M2 C5), into
   // R16G16B16A16's 10 ~0.04 %.
   const float3 binade = exp2(floor(log2(max(kept, exp2(-14.f)))));
-  const float3 slm_bits = (((di_flags & DI_LIGHT_R11G11B10) != 0u) ? float3(6.f, 6.f, 5.f) : 10.f);
-  const float3 skin_bits = (((di_flags & (DI_LIGHT_R11G11B10 << 1)) != 0u) ? float3(6.f, 6.f, 5.f) : 10.f);
-  di_light[0][pixel] = float4((model == TW_POINT_LIGHT_SLM) ? kept + 0.5f * binade * exp2(-slm_bits) : 0.f, 0.f);
-  di_light[1][pixel] = float4((model == TW_POINT_LIGHT_SKIN) ? kept + 0.5f * binade * exp2(-skin_bits) : 0.f, 0.f);
+  // src: spec:dxspecs@ba0b51c:d3d/archive/D3D11_3_FunctionalSpec.htm:553 each texture's mantissa bits: R11G11B10's 6 / 6 / 5, else R16G16B16A16's 10 (IEEE half).
+  const float3 bits[2] = {(((di_flags & DI_LIGHT_R11G11B10) != 0u) ? float3(6.f, 6.f, 5.f) : 10.f),
+                          (((di_flags & (DI_LIGHT_R11G11B10 << 1)) != 0u) ? float3(6.f, 6.f, 5.f) : 10.f)};
+  di_light[0][pixel] = float4((model == TW_POINT_LIGHT_SLM) ? kept + 0.5f * binade * exp2(-bits[0]) : 0.f, 0.f);
+  di_light[1][pixel] = float4((model == TW_POINT_LIGHT_SKIN) ? kept + 0.5f * binade * exp2(-bits[1]) : 0.f, 0.f);
 }
 
 // src: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/DI/ShadeSamples.hlsl:33 the shading pass: the reservoir's light times its weight, behind a final visibility ray.
