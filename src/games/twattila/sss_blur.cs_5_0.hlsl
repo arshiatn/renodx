@@ -22,7 +22,7 @@ void main(uint2 pixel : SV_DispatchThreadID)
   const int2 size = int2(g_sss_render_size);
   if (any(int2(pixel) >= size)) return;
   const float infinity = asfloat(t_sss_parameters[0].z);
-  const float center_distance = 1.f / max(abs(infinity - abs(t_sss_depth[pixel])), 1e-7f);
+  const float center_distance = 1.f / max(abs(infinity - abs(t_sss_depth[pixel])), 9.99876e-8f);
   const int spacing = (int)g_sss_softness;
   float sum = 0.f;
   float total = 0.f;

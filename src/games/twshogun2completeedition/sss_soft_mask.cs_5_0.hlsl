@@ -35,7 +35,7 @@ static const float GOLDEN_ANGLE = 2.39996323f;
 
 float SurfaceDistance(int2 pixel)
 {
-  return 1.f / max(abs(g_sss_constants[1].z - abs(t_sss_depth[pixel])), 1e-7f);
+  return 1.f / max(abs(g_sss_constants[1].z - abs(t_sss_depth[pixel])), 9.9995766e-8f);
 }
 
 [numthreads(8, 8, 1)]
