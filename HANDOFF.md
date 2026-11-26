@@ -1008,6 +1008,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FIX WAVE 1 (judges: X46 judge's back-face flip rt_reference.hlsli:312 + HitNorma ... | ?
 - PLAYER HOLD-FRAME MODE (reference_suite.md 2.3.1, repeat frame N+2): no RENODX_T ... | ?
 - CONTACT BOXES BIAS AT R = 4 (fx1_ P3: 0.99306, r/g 0.9916, outliers 14 vs 3; not ... | ?
+- OUTLIER RULE READS r0 vs r1 ONLY (ref_compare.py:426-436): R >= 8 adds nothing t ... | ?
 - DELETE fx1_ P4 PLAY DUMP (2.9 GB, testbin\scratch\fx1_\runs\p4_day1_battle_0\pla ... | ?
 - BASE HARNESS BUILD (tools\tw\reference\harness): stale include of a deleted work ... | ?
 - WAVE 2-6 JUDGE VERDICT SETS AT R >= 8 (fx1r_ power: R = 4 catches a 2 % bias 26 ... | wave briefs
@@ -17892,7 +17893,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: hfp_ -> coord
         - [ ] CONTACT BOXES BIAS AT R = 4 (fx1_ P3: 0.99306, r/g 0.9916, outliers 14 vs 3; not X49's, 11-17 had R = 1): a
         real candidate bias in contact shading on boxes or an outlier-rule artefact? Rerun at R = 8 in the next judge
-        wave. Owner: wave 2 judge set
+        wave. -> fx1_ R = 8 DONE 05:12 (runs\p3c8_contact_r0..r7, GPU 34 s): REAL, SMALL CANDIDATE DEFICIT: boxes 0.99294 +-
+        0.00015 (~47 SE), r/g 0.9916 (dark + red-short), every run order BIAS (each run alone 8-14 outliers vs 0-2);
+        under the 1 % tolerance, so the verdict is the outlier rule's; both ref_compare versions agree; own references
+        byte-repeat and match the cache within 1e-3. Map (outlier_map.py): low texels 0.87-0.95 on side-4 faces (likely
+        tops, unchecked) + the close-standing boxes 1-3 cluster (grid x 150-195, y 80-105: contact / occlusion between
+        them); deficit box 0 side 4 0.34 %, box 3 side 4 0.10 % (face 0.9794). Other masks PASS (all 0.99780, closed
+        0.99689, edge 0.99493). Owner: the ContactShade (H9) / GI energy wave -> cause before any fix
+        - [ ] OUTLIER RULE READS r0 vs r1 ONLY (ref_compare.py:426-436): R >= 8 adds nothing to it; pool the count over
+        all replicates against all pairwise baselines (design, later wave). Owner: gate tooling slot
         - [ ] DELETE fx1_ P4 PLAY DUMP (2.9 GB, testbin\scratch\fx1_\runs\p4_day1_battle_0\play; not a reference run, no
         slices) on ATN's yes. Owner: ATN
         - [ ] BASE HARNESS BUILD (tools\tw\reference\harness): stale include of a deleted worktree's dlaa_bridge.hpp; repoint
