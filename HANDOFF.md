@@ -1005,6 +1005,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coor ... | ?
 - LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\s ... | ?
 - LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a c ... | ?
+- R4 REPLAY TRACE (sass_counters): the tooling slot finds ngfx's option for the at ... | ?
 - LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner ... | done
 - LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'licens ... | ?
 - fa5_ SHADERTOY CREDITS: when the Shadertoy-derived code ships, credits name Mirk ... | ?
@@ -17716,6 +17717,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         the calibration across a batch's ab jobs (or one session per batch); (2) the timing-total refusal (decide must be
         ['total'] only) -> say so in the job schema error; (3) the dump kind runs every arm on build A -> a per-arm
         build. Fix-tooling-now rule: lab owner, after pdi5_'s GPU turn. Owner: coord (lab owner slot)
+        COORD R2-R4 02:56-03:0x (pdi5_ GPU done 02:56, lock free): R2 PASS (gpu_trace.ps1 nsr_profile_smoke: 27.3 ms, 1
+        frame; ns_hotspots on build\nsr_profile_1 gives HLSL lines for every helper shader, e.g. rt_trace_omm
+        rt_scene.hlsli:276 15.8 % of samples, rt_reuse_omm rt_path.hlsli:1377 10.3 %, :911 5.2 %; the harness's 'DLAA:
+        the helper did not answer (off)' is in older runs too). R3 PASS (nsr_cap\renodx-tw-dlaa64_2026_11_26_02_58_46
+        .ngfx-capture, 507 MiB / 4.38 GiB raw, frame 300; Nsight: 'D3D11 Device Creation is not supported', 'open of
+        shared resource' -> replay may not work; harness exit 1 not 119). R4 FAILED twice, no trace: (1) ns_trace_run.py's
+        --sass-counters sent a bare --per-line-active-threads-per-warp, which swallowed '--limit-to-frames' as its value ->
+        coord fixed it to '=true' (tools\tw\nsight\ns_trace_run.py:302, backup .before_coord_sass; ngfx then parsed
+        per-line-active-threads-per-warp --> 1); (2) the rerun: ngfx-replay loaded the capture, then GPU Trace's attach
+        timed out ('Operation timeout, consider retrying with timeouts disabled') -> no trace; the orphaned ngfx-replay
+        (pid 34700, from coord's run) stopped. Owner: done
+        - [ ] R4 REPLAY TRACE (sass_counters): the tooling slot finds ngfx's option for the attach timeout (or timeouts
+        off) + checks ngfx-replay alone plays nsr_cap's capture (D3D11 device + shared-resource warnings), adds it to
+        ns_trace_run.py --replay; then ATN's rule line for the changed R4 (a new switch = ATN's line), one GPU run.
+        Owner: tooling slot (gti_ / gtl_) -> ATN
         - [ ] LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner: done
         ATN 11-26 00:5x ANSWERS: (1) fa5_ U-VB5 CLOSED: the 3 Shadertoys are in C:\Users\arshi\Downloads\Shadertoy stuff\
         (root = GT-VBAO, 'GT-VBAO thickness heuristic' = Ottosson's variation, 'GT-VBGI (diffuse)'); every header reads
