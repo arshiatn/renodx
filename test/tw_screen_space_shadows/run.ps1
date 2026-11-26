@@ -50,7 +50,8 @@ foreach ($shader in @('sss_distance.cs_5_0', 'sss_distance_cascades.cs_5_0')) {
 # sss_bend: its plain march takes the counts in fours too (X27); case 1 compares it with fc24dbce's at 100% (counts in fours)
 # to the bit, and below 100% against fc24dbce's with the odd counts (its CONTROL). O-SS5 (bend_sss_gpu.hlsli's screen steps)
 # changes sss_bend's and sss00-02's bytes too: case 1 and case 8 hold them to the bit at 100% / Shogun 2's step 1.
-$allowed = @('sss_setup', 'sss_depth', 'sss_depth_ms', 'sss_bend', 'sss00_0x34ECD06E', 'sss01_0x1B529672', 'sss02_0x78E88E1D')
+# X30: sss_blur and sss_soft read the depth at infinity (t3); case 12 holds sss_blur against bc423ef9d's.
+$allowed = @('sss_setup', 'sss_depth', 'sss_depth_ms', 'sss_bend', 'sss_blur', 'sss_soft', 'sss00_0x34ECD06E', 'sss01_0x1B529672', 'sss02_0x78E88E1D')
 if (($changed | Where-Object { $_ -notin $allowed }).Count -ne 0) { throw "Plain shader bytes changed: $($changed -join ', ')" }
 # sss_lights as f6408aa1 had it (before its repeat test read a light's position only where the scores match): case 9
 # compares its output with today's on WARP, --time both on the hardware GPU.
@@ -73,7 +74,7 @@ New-Item -ItemType Directory -Force -Path $stepsBefore | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
 & (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $archive -C $stepsBefore
 if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
-foreach ($shader in @('sss_bend', 'sss_bend_extended_find')) {
+foreach ($shader in @('sss_bend', 'sss_bend_extended_find', 'sss_blur')) {
   & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect -Fo (Join-Path $beforeShaders "${shader}_bc423ef9d.cso") (Join-Path $stepsBefore "src\games\twattila\$shader.cs_5_0.hlsl") | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "fxc failed: bc423ef9d $shader" }
 }

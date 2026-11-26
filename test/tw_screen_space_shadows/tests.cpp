@@ -45,6 +45,9 @@
 //     one sample a screen pixel between the render texels against the 100% march (A/A: half a render pixel's jitter);
 //     each with a CONTROL that must fail (today's form C, render steps, or the module's shader with a test define), but
 //     W6 (near the light: its controls numbers only, their difference under a render pixel by geometry).
+// 12. Same surface near the far plane (X30): Softness's sss_blur keeps every tap on flat ground at 40-55% of a 16 m far
+//     plane (its distance from the depth at infinity, A, sss_setup's); CONTROL (must fail): bc423ef9d's (1 / (1 - depth))
+//     rejects some.
 // --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, the CPU
 // time of a later light draw, and a battle's light draws with today's sss_lights and f6408aa1's. --time-only: that alone.
 #include <windows.h>
@@ -215,7 +218,7 @@ struct Camera {
   float jitter = 0.f;  // Trace's rays this many pixels right and down of the pixels' centres (case 11's A/A noise)
 };
 
-static Camera MakeCamera(UINT width, UINT height, float tilt_degrees = 25.f) {
+static Camera MakeCamera(UINT width, UINT height, float tilt_degrees = 25.f, float far_plane = FAR_PLANE) {
   const float tilt = tilt_degrees * 3.14159265f / 180.f;
   const float c = std::cos(tilt);
   const float s = std::sin(tilt);
@@ -224,8 +227,8 @@ static Camera MakeCamera(UINT width, UINT height, float tilt_degrees = 25.f) {
   camera.view = {{{1, 0, 0, 0}, {0, c, -s, 0}, {0, s, c, 0}, {0, 0, 0, 1}}};
   camera.projection = {{{1.f / tan_half_x, 0, 0, 0},
                         {0, 1.f / TAN_HALF_Y, 0, 0},
-                        {0, 0, FAR_PLANE / (FAR_PLANE - NEAR_PLANE), 1},
-                        {0, 0, -NEAR_PLANE * FAR_PLANE / (FAR_PLANE - NEAR_PLANE), 0}}};
+                        {0, 0, far_plane / (far_plane - NEAR_PLANE), 1},
+                        {0, 0, -NEAR_PLANE * far_plane / (far_plane - NEAR_PLANE), 0}}};
   camera.view_projection = Multiply(camera.view, camera.projection);
   return camera;
 }
@@ -388,8 +391,9 @@ struct Frame {
   Texture thin;
 };
 
-static Frame MakeFrame(UINT width, UINT height, std::span<const Box> boxes, const Vector& sun, float jitter = 0.f, float tilt_degrees = 25.f) {
-  Frame frame = {.camera = MakeCamera(width, height, tilt_degrees), .sun = Normalize(sun)};
+static Frame MakeFrame(UINT width, UINT height, std::span<const Box> boxes, const Vector& sun, float jitter = 0.f, float tilt_degrees = 25.f,
+                       float far_plane = FAR_PLANE) {
+  Frame frame = {.camera = MakeCamera(width, height, tilt_degrees, far_plane), .sun = Normalize(sun)};
   frame.camera.jitter = jitter;
   frame.picture = Trace(frame.camera, boxes);
   frame.depth = MakeTexture(width, height, DXGI_FORMAT_R32_FLOAT, frame.picture.depth.data(), width * 4);
@@ -2071,6 +2075,86 @@ static void TraceHeight(Frame* frame, Height height) {
   frame->depth = MakeTexture(w, h, DXGI_FORMAT_R32_FLOAT, picture.depth.data(), w * 4);
 }
 
+// Case 12 (X30, fidelity screen_space.md SS-B5): Softness's sss_blur near the far plane. A projection whose far plane is
+// 16 m (A = F / (F - N) = 1.0063), the camera level: flat ground 5 to 9 m out (40% to 55% of the far plane, where Bend's
+// shadows fade out and 1 - depth is about half of A - depth), posts' shadows on it. Every ground pixel whose 9 taps
+// (Softness 2) all lie on the ground within 2% of its distance (98% of it: float margin) keeps them all: its blurred
+// occlusion the tent's mean of the 9 (1 / 255 apart at most). CONTROL (must fail): bc423ef9d's sss_blur (1 / (1 - depth),
+// about a 1% test there) rejects taps on that ground.
+static void TestSameSurface(const std::string& before_folder) {
+  std::printf("12. same surface near the far plane (X30)\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const auto code = ReadFile(before_folder + "\\sss_blur_bc423ef9d.cso");
+  REQUIRE(!code.empty());
+  ComPtr<ID3D11ComputeShader> today;
+  REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, today.GetAddressOf())));
+  constexpr UINT W = 960;
+  constexpr UINT H = 540;
+  constexpr int SPACING = 2;
+  const std::array<Box, 4> posts = {{{.low = {-2.f, -2.f, 6.f}, .high = {-1.8f, 0.f, 6.2f}},
+                                     {.low = {0.f, -2.f, 7.f}, .high = {0.2f, 0.f, 7.2f}},
+                                     {.low = {1.5f, -2.f, 5.5f}, .high = {1.7f, 0.f, 5.7f}},
+                                     {.low = {-0.8f, -2.f, 8.f}, .high = {-0.6f, 0.f, 8.2f}}}};
+  const Frame frame = MakeFrame(W, H, posts, {1.f, -0.5f, 0.3f}, 0.f, 0.f, 16.f);
+  sss::Settings settings = Defaults();
+  settings.softness = static_cast<float>(SPACING);
+  auto& objects = sss::internal::runtime.objects;
+  // Pixels apart from the mean of all 9 taps, of those whose taps all lie on the ground within 2% of its distance; how
+  // many of those have taps of other occlusion (`varied`).
+  const auto apart = [&](int* checked, int* varied) {
+    REQUIRE(sss::internal::Prepare(device.Get(), W, H));
+    RunFrame(frame, settings);
+    const auto occlusion = ReadView<uint8_t>(objects.occlusion_srv.Get());
+    const auto soft = ReadView<uint8_t>(objects.soft_srv.Get());
+    int count = 0;
+    *checked = 0;
+    *varied = 0;
+    for (int y = 0; y < static_cast<int>(H); ++y) {
+      for (int x = 0; x < static_cast<int>(W); ++x) {
+        const size_t pixel = (static_cast<size_t>(y) * W) + x;
+        if (frame.picture.hit[pixel] != -1) continue;
+        const float distance = frame.picture.position[pixel][2];
+        double sum = 0.0;
+        double total = 0.0;
+        bool kept = true;
+        for (int dy = -1; dy <= 1 && kept; ++dy) {
+          for (int dx = -1; dx <= 1; ++dx) {
+            const int tx = std::clamp(x + (dx * SPACING), 0, static_cast<int>(W) - 1);
+            const int ty = std::clamp(y + (dy * SPACING), 0, static_cast<int>(H) - 1);
+            const size_t tap = (static_cast<size_t>(ty) * W) + tx;
+            if (frame.picture.hit[tap] != -1 || std::abs(frame.picture.position[tap][2] - distance) > 0.98f * 0.02f * distance) {
+              kept = false;
+              break;
+            }
+            const double tent = 1.0 / static_cast<double>(1 << (std::abs(dx) + std::abs(dy)));
+            sum += tent * occlusion[tap];
+            total += tent;
+          }
+        }
+        if (!kept) continue;
+        ++*checked;
+        *varied += (occlusion[pixel] * total != sum) ? 1 : 0;
+        count += (std::abs(static_cast<double>(soft[pixel]) - (sum / total)) > 1.0) ? 1 : 0;
+      }
+    }
+    return count;
+  };
+  int checked = 0;
+  int varied = 0;
+  const int ours = apart(&checked, &varied);
+  const ComPtr<ID3D11ComputeShader> module_blur = objects.blur;
+  objects.blur = today;
+  int control_checked = 0;
+  int control_varied = 0;
+  const int control = apart(&control_checked, &control_varied);
+  objects.blur = module_blur;
+  std::printf("   ground pixels with every tap on the surface %d (%d with taps of other occlusion): apart from all 9 taps' mean ours %d, CONTROL bc423ef9d's %d\n",
+              checked, varied, ours, control);
+  CHECK(checked > 10000 && varied > 100 && control_checked == checked);
+  CHECK(ours == 0);
+  CHECK(control > varied / 10);
+}
+
 static void TestScreenSteps(const std::string& before_folder) {
   std::printf("11. screen steps (O-SS5)\n");
   MakeDevice(D3D_DRIVER_TYPE_WARP);
@@ -2516,6 +2600,7 @@ int main(int argc, char** argv) {
     TestShogun2(argv[1]);
     TestShogun2Banners(argv[1]);
     TestScreenSteps(argv[1]);
+    TestSameSurface(argv[1]);
   }
   if (mode == "--time" || mode == "--time-only") Time(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
