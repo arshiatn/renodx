@@ -3298,7 +3298,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     // Vegetation detail at the display width while rendering below it (VEGETATION_SCREEN_RES).
     auto& pin = screen_res_pin;
     const bool below = rendering.controlling && rendering.target[0] > 0 && rendering.target[0] < static_cast<int>(display_width);
-    // Texture LOD bias below the display width: log2(render / display width), minus 1 (Sharper) or 2 (Sharpest), in the
+    // Texture LOD bias below the display width: log2(render / display width), minus 1 (Sharper) or 2 (Sharpest; XeSS 0 or 1), in the
     // main view. The render size: the addon's Rendering Resolution, or with AA mode Off the game's own while it upscales
     // natively (Native Upscaling on, fullscreen or borderless: windowed it renders at the window's size).
     std::array<int, 2> render_size = {};
@@ -3308,10 +3308,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                && (GetCvar(rendering.fullscreen) != 0 || GetCvar(rendering.fullscreen_window) != 0)) {
       render_size = {GetCvar(rendering.width), GetCvar(rendering.height)};
     }
+    // XeSS: src: XeSS SR developer guide 3.0.2 (doc/xess_sr_developer_guide_english.md:90-94, :495-502), its bias is
+    // log2(render / display) with no -1, so the default (Sharper) gives Intel's and Sharpest one step past it.
+    const bool xess = mode != AAMode::OFF && ChosenUpscaler() == static_cast<int>(twattila::dlaa_bridge::UPSCALER_XESS);
     float bias = 0.f;
     if (texture_lod_bias_choice != 0 && render_size[0] > 0 && render_size[1] > 0 && render_size[0] < static_cast<int>(display_width)) {
       bias = std::log2(static_cast<float>(render_size[0]) / static_cast<float>(display_width))
-             - static_cast<float>(texture_lod_bias_choice - 1);
+             - static_cast<float>(xess ? std::max(texture_lod_bias_choice - 2, 0) : (texture_lod_bias_choice - 1));
     }
     main_view_size.store((bias != 0.f ? (uint64_t{static_cast<uint32_t>(render_size[0])} << 32) | static_cast<uint32_t>(render_size[1]) : 0u),
                          std::memory_order_relaxed);
