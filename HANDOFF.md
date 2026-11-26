@@ -965,6 +965,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GAME BLOCK 11-26 17:23-18:18 (11 starts, all clean exits): (a) 1.3.28 smoke with ... | ?
 - NEXT MERGE sdku_omm_dxc: its G1-G3 (Nsight DXC speed gate, OMM grass recording p ... | ?
 - CPU STEP 0b (19:30): spin on + L2B 134.72 = base 134.74 ms in one batch -> nothi ... | ?
+- PT DI S5G: the light_count mins' guard proofs (rt_di_surface.hlsli DiCurrentBuil ... | pdi4c_ follow-up (11-27+)
+- PT DI S6: DiStore's NaN / Inf / 65504 net, a one-frame count proving it inert (p ... | pdi4c_ follow-up (11-27+)
+- PT DI S7, S9, S11 / E5 judge: as in the pdi4cr_ review (pdi4c_handback.md:564 'B ... | pdi4c_ follow-up (11-27+)
+- PT DI S10: the d = 0 guard's proof (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c ... | pdi4c_ follow-up (11-27+)
+- PT DI S4 motion A/B: targetHistoryLength 4 vs RTXDI's default with a moving came ... | pdi4c_ follow-up (11-27+)
+- PT DI E3 planar census (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up ... | pdi4c_ follow-up (11-27+)
+- PT DI M2 remainder: the last 0.14 % of DI-interior E after C5 (not blocking) (pd ... | pdi4c_ follow-up (11-27+)
+- PT DI switch-off transient (M1-trans): frames the bits mask needs to settle afte ... | pdi4c_ follow-up (11-27+)
+- R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17586,6 +17595,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] CPU STEP 0d (21:0x, repeat under the rule): base 134.0 (4 starts), spin on 137.5, L2B 121.35, spin on + L2B 122.0
         ms -> the spin adds nothing to L2B; keep the loader's spin off; L2B = the lever (-9.4 %); C03-64 design target = beat
         L2B without spinning (start_1127.md). Owner: Friday CPU wave
+        - [ ] PT DI S5G: the light_count mins' guard proofs (rt_di_surface.hlsli DiCurrentBuild, rt_rtxdi_bridge.hlsli RAB_SamplePolymorphicLight) (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
+        - [ ] PT DI S6: DiStore's NaN / Inf / 65504 net, a one-frame count proving it inert (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
+        - [ ] PT DI S7, S9, S11 / E5 judge: as in the pdi4cr_ review (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
+        - [ ] PT DI S10: the d = 0 guard's proof (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
+        - [ ] PT DI S4 motion A/B: targetHistoryLength 4 vs RTXDI's default with a moving camera (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
+        - [ ] PT DI E3 planar census (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
+        - [ ] PT DI M2 remainder: the last 0.14 % of DI-interior E after C5 (not blocking) (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
+        - [ ] PT DI switch-off transient (M1-trans): frames the bits mask needs to settle after DI turns off, at 4K (bits light 0.795 -> 0.832 in the last frames) (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
+        - [ ] R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli:53 (prepared light ~-0.58 %), rt_light_copy.cs_5_0.hlsl:19 (rays' hit light ~-0.55 %); Attila's rt_light copy + vendored CMAA2 not ours (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
