@@ -313,6 +313,9 @@ constexpr uint32_t RT_PATH_TORCH_LIGHT = 1u << 27;
 // ReSTIR GI's spatial merge weighs the neighbours that could have made its sample (RTXDI's Basic bias correction), and
 // its history keeps a sample's stored light when it is checked again.
 constexpr uint32_t RT_PATH_REUSE_BALANCED = 1u << 28;
+// With RT_PATH_REUSE_BALANCED, Balanced ReSTIR Light Raytraced (older helpers ignore it: Basic): a neighbour could have made
+// the merge's sample only where it sees the sample's surface (RTXDI's ray-traced bias correction, one shadow ray a neighbour).
+constexpr uint32_t RT_PATH_REUSE_BALANCED_RAYTRACED = 1u << 29;
 // Scene flags (Shared::rt_scene_flags, a trace request's). Smoke BLAS Fast Build (helpers before 113 ignore it): the smoke's
 // BLAS, built anew each request, built for a fast build, not fast rays (which particles a ray meets first, and so counts, can
 // change: Smoke Shadow Quality's count).

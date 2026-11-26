@@ -51,7 +51,8 @@ Dxc -nologo -T cs_6_9 -E main -O3 @regir -D REFLECT_RESERVOIR -D OPACITY_MICROMA
 # (TORCHES_IN_BOUNCE: the reuse with a local light's sample a bounce texel, the local lights' trace that leaves them to it)
 # Lean Reuse (REUSE_LEAN: the reuse's neighbours with fewer fetches), Near Reuse (REUSE_NEAR: fewer, nearer neighbours),
 # the reflections of one sample a pixel (REFLECT_ONE_SAMPLE) and the paths of one ray a texel (PATH_ONE_SAMPLE): the same
-# picture in fewer registers; Balanced ReSTIR Light's reuse (REUSE_BALANCED: G1 Basic) as each of the four reuse builds.
+# picture in fewer registers; Balanced ReSTIR Light's reuse (REUSE_BALANCED: G1 Basic; REUSE_BALANCED_RAYTRACED: G1
+# Raytraced) as each of the four reuse builds.
 # RENODX_TW_REFERENCE_BUILD set: ReSTIR GI's test switches' too (REUSE_TESTS: the paths and the
 # reuse with PT DI step 2's suspects and bias correction, rt_path.hlsli REUSE_SUSPECTS; tests only, a player's helper has none).
 $variants = @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights', 'RT_REUSE_LIGHTS'), @('rt_lights', 'TORCHES_IN_BOUNCE', 'rt_lights_bounce', 'RT_LIGHTS_BOUNCE'),
@@ -60,6 +61,10 @@ $variants = @(@('rt_path', 'TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights', 'RT_REU
               @('rt_path', 'REUSE_BALANCED TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights_balanced', 'RT_REUSE_LIGHTS_BALANCED'),
               @('rt_path', 'REUSE_BALANCED REUSE_LEAN REUSE', 'rt_reuse_lean_balanced', 'RT_REUSE_LEAN_BALANCED'),
               @('rt_path', 'REUSE_BALANCED REUSE_NEAR REUSE', 'rt_reuse_near_balanced', 'RT_REUSE_NEAR_BALANCED'),
+              @('rt_path', 'REUSE_BALANCED_RAYTRACED REUSE', 'rt_reuse_balanced_raytraced', 'RT_REUSE_BALANCED_RAYTRACED'),
+              @('rt_path', 'REUSE_BALANCED_RAYTRACED TORCHES_IN_BOUNCE REUSE', 'rt_reuse_lights_balanced_raytraced', 'RT_REUSE_LIGHTS_BALANCED_RAYTRACED'),
+              @('rt_path', 'REUSE_BALANCED_RAYTRACED REUSE_LEAN REUSE', 'rt_reuse_lean_balanced_raytraced', 'RT_REUSE_LEAN_BALANCED_RAYTRACED'),
+              @('rt_path', 'REUSE_BALANCED_RAYTRACED REUSE_NEAR REUSE', 'rt_reuse_near_balanced_raytraced', 'RT_REUSE_NEAR_BALANCED_RAYTRACED'),
               @('rt_path', 'REFLECT_ONE_SAMPLE REFLECT', 'rt_reflect_one', 'RT_REFLECT_ONE'), @('rt_path', 'PATH_ONE_SAMPLE', 'rt_path_one', 'RT_PATH_ONE'))
 Remove-Item "$out\rt_path_tests.h", "$out\rt_path_tests_omm.h", "$out\rt_reuse_tests.h", "$out\rt_reuse_tests_omm.h" -ErrorAction SilentlyContinue
 if ($env:RENODX_TW_REFERENCE_BUILD) {
@@ -146,9 +151,10 @@ if ($rtxdi_found) {
   }
 }
 # Matched ReSTIR Neighbours' reuse (REUSE_COMPATIBLE, PT DI step 5's G5: RTXDI's compatibility score; its PT header's
-# uncalled selection pass gets its surface read and buffer name from rt_path.hlsli) and its Balanced ReSTIR Light twin.
+# uncalled selection pass gets its surface read and buffer name from rt_path.hlsli) and its Balanced ReSTIR Light twins.
 $compatible = @(@('REUSE_COMPATIBLE REUSE', 'rt_reuse_compatible', 'RT_REUSE_COMPATIBLE'),
-                @('REUSE_BALANCED REUSE_COMPATIBLE REUSE', 'rt_reuse_compatible_balanced', 'RT_REUSE_COMPATIBLE_BALANCED'))
+                @('REUSE_BALANCED REUSE_COMPATIBLE REUSE', 'rt_reuse_compatible_balanced', 'RT_REUSE_COMPATIBLE_BALANCED'),
+                @('REUSE_BALANCED_RAYTRACED REUSE_COMPATIBLE REUSE', 'rt_reuse_compatible_balanced_raytraced', 'RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED'))
 foreach ($variant in $compatible) {
   Remove-Item "$out\$($variant[1]).h", "$out\$($variant[1])_omm.h" -ErrorAction SilentlyContinue
   if (-not $rtxdi_found) { continue }
