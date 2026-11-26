@@ -959,6 +959,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - tw_rt_open_sky's default -Expect is outdated (the 'exact' values already hold): ... | ?
 - TEST DUMP DIGESTS (gts_ 11-26): the harness hashes / checks the frames in RAM an ... | ?
 - W8 RE-LANDED, MERGED 5c2c5042f (fx8_reland 498a63470): A' code only in 5 new sss ... | ?
+- ATTILA AA FEED (aaf_ 11-26, measured only; testbin\scratch\aaf_\table_out.txt): ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17538,6 +17539,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         240 samples always, 4 DepthData + 1-2 LightData + ~25 ALU incl. a divide per between-entry sample; one-surface test
         once per entry as a flag; raw depth kept; divide -> increment; screen steps only for the first N samples), then W2 /
         W4 + G1; the SSS private-round items. Owner: coord / 11-27 design
+        - [ ] ATTILA AA FEED (aaf_ 11-26, measured only; testbin\scratch\aaf_\table_out.txt): HDR t00 is linear but mode 0 feeds
+        K t00^2.2, L / M / RR t00^1.1, SMAA edges linear -> darks wrong on every preset. Darkest-tenth PQ code (truth 5.6) mode 0 ->
+        1: K 11.3 -> 7.5, L 11.0 -> 6.8, M 10.9 -> 6.9, RR 16.3 -> 6.6. L also flicker mean 1.27 -> 1.00. Costs: K sub-pixel
+        flicker mean 0.96 -> 0.81; RR (= rrbi_'s H arm) 2x noise + fireflies 25 % darker. SMAA (CPU): linear misses dark edges
+        and over-blurs bright detail; CMAA2 same family (not measured). SDR's t00 is linear too (product choice, not measured).
+        Thrones same mismatch (same fix); WH3 OK; Rome II OK pending one log line (t09 / t10 never draw into a display-size
+        RGBA16 target). Candidate patch (all to mode 1 in HDR incl. RR) scratch\aaf_\aaf_candidate_attila_hdr_mode1.patch,
+        applies clean on 505959548. Recommendation: L yes; K likely (ATN's eye); M darks only; RR keep today's feed (better
+        RR path = Denoise Before Tone Mapping); SMAA + CMAA2 root edges. Owner: ATN (which presets) / 11-27 implementer
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
