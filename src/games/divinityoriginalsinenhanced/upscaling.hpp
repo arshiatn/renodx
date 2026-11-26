@@ -37,7 +37,7 @@
 // D3D12 device; twattila/dlaa_bridge.hpp) in place of the game's FXAA / SMAA, which run on the tone-mapped picture. The
 // game has no jitter and no motion vectors: the main view's camera (b12 PerView, GlobalConstants_DX11.shdh: a perspective
 // projection at the display's size) is jittered as the game uploads it (Map / Unmap or UpdateSubresource; Halton (2, 3)
-// over 8 frames), its depth comes from gBuffer1's linear depth (kept at the sun's light pass 0xCCCB7253, t1) and the
+// over 8 frames, 32 under Ray Reconstruction), its depth comes from gBuffer1's linear depth (kept at the sun's light pass 0xCCCB7253, t1) and the
 // camera's motion from that depth and both frames' cameras without the jitter (d1_upscale_inputs). At the tone mapper's
 // draw (0x30A1D40D) its Base (t0: the exposed scene, bloom and god rays in, linear) goes through the upscaler and the
 // result is written back into it (d1_upscale_output) before the tone mapper reads it: everything after it (fog of war,
@@ -79,6 +79,9 @@ constexpr size_t VIEW_PROJECTION = 8;
 constexpr size_t VIEW_POSITION = 12;
 constexpr size_t VIEW_INFO = 13;
 constexpr uint32_t JITTER_PHASES = 8;  // DLAA's (NVIDIA: 8 x (output / input)^2)
+// src: NVIDIA's DLSS-RR integration guide 3.6 (at least 32 phases under Ray Reconstruction), as
+// twattila/anti_aliasing.hpp:183 RR_PHASES.
+constexpr uint32_t RR_PHASES = 32;
 constexpr size_t MAX_UPLOADS = 32;     // b12 buffers kept for the capture camera
 
 // A b12 buffer as last uploaded (the jitter in): its view-projection and camera position.
@@ -269,7 +272,7 @@ inline void Update(const Settings& settings, bool cameras_wanted) {
   state.settings = settings;
   const bool resulted = settings.upscaling && state.evaluated_frame != UINT64_MAX && state.evaluated_frame + 1 >= state.frame;
   if (resulted) {
-    state.phase = (state.phase + 1) % internal::JITTER_PHASES;
+    state.phase = (state.phase + 1) % (settings.ray_reconstruction ? internal::RR_PHASES : internal::JITTER_PHASES);
     state.jitter = {internal::Halton(state.phase + 1, 2) - 0.5f, internal::Halton(state.phase + 1, 3) - 0.5f};
   } else {
     state.jitter = {};

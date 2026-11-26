@@ -453,7 +453,7 @@ constexpr std::string_view JITTER_SCALE =
     "41 83 BE ?? ?? 00 00 05 75 ?? F3 41 0F 10 86 ?? ?? 00 00 F3 0F 59 F8 F3 44 0F 59 C0 F3 41 0F 11 BE ?? ?? 00 00";
 constexpr size_t JITTER_SCALE_BRANCH = 8;
 // DLAA / DLSS use NVIDIA's pattern instead: Halton (2, 3) over the whole pixel, 8 * (output / input)^2 positions (8 for
-// DLAA; UE's is a Gaussian inside a circle, denser in the middle, r.TemporalAASamples positions, and it keeps the
+// DLAA, at least 32 under Ray Reconstruction; UE's is a Gaussian inside a circle, denser in the middle, r.TemporalAASamples positions, and it keeps the
 // position in a signed byte: at most 127, too few below 25%). The skipped multiply becomes two loads of the addon's sample, written every present
 // next to the code (rip-relative reach), and the jmp's displacement 0x12 becomes 0 (it then falls through):
 //   movss xmm7, [rip + x]; movss xmm8, [rip + y]; nop
@@ -461,6 +461,9 @@ constexpr size_t JITTER_SCALE_BRANCH = 8;
 // TemporalJitterPixels are computed from xmm7 / xmm8 after it, so DLSS reads the same jitter from the View as always.
 constexpr size_t JITTER_SCALE_MULTIPLY = 10;
 constexpr size_t JITTER_SCALE_MULTIPLY_SIZE = 18;
+// src: NVIDIA's DLSS-RR integration guide 3.6 (at least 32 phases under Ray Reconstruction), as
+// twattila/anti_aliasing.hpp:183 RR_PHASES.
+constexpr uint32_t RR_JITTER_POSITIONS = 32;
 struct CameraJitter {
   talesofarise::code_patch::CodePatch patch;
   talesofarise::code_patch::CodePatch halton_multiply;
@@ -2536,7 +2539,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   const bool upscaling = expected[0] != 0 && (expected[0] < width || expected[1] < height);
   const bool halton = jitter && expected[0] != 0 && camera_jitter.halton_sample != nullptr;
   if (halton) {
-    const auto positions = static_cast<uint32_t>(std::ceil(8. * width * height / (static_cast<double>(expected[0]) * expected[1])));
+    const auto positions = std::max((talesofarise::upscaling::Use().ray_reconstruction != 0 ? RR_JITTER_POSITIONS : 1u),
+                                    static_cast<uint32_t>(std::ceil(8. * width * height / (static_cast<double>(expected[0]) * expected[1]))));
     if (positions != camera_jitter.halton_positions) {
       camera_jitter.halton_positions = positions;
       camera_jitter.halton_index = 0;
@@ -2693,13 +2697,16 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   if (wrote) graphics.console.Refresh();
   // Texture LOD bias at every render scale below 100%, from the next View upload on: the row's choice while upscaling,
-  // log2(scale) (Matched) at the game's own scale.
-  talesofarise::dlss::constants::ViewMipBias mip_bias = {.size_vector = VIEW_SIZE_AND_INV_SIZE, .bias_vector = VIEW_MATERIAL_TEXTURE_MIP_BIAS};
+  // log2(scale) (Matched) at the game's own scale. XeSS: src: XeSS SR developer guide 3.0.2
+  // (doc/xess_sr_developer_guide_english.md:90-94, :495-502), its bias is log2(scale) with no -1, so the default (Sharper)
+  // gives Intel's and Sharpest one step past it.
+  const bool xess = requested_upscaler.load() == twattila::dlaa_bridge::UPSCALER_XESS;
+  talesofarise::dlss::constants::ViewMipBias mip_bias ={.size_vector = VIEW_SIZE_AND_INV_SIZE, .bias_vector = VIEW_MATERIAL_TEXTURE_MIP_BIAS};
   if (below_native && texture_lod_bias != 0) {
     mip_bias.width = render_size[0];
     mip_bias.height = render_size[1];
     mip_bias.bias = std::log2(std::min(static_cast<float>(render_size[0]) / static_cast<float>(width), static_cast<float>(render_size[1]) / static_cast<float>(height)))
-                    - (upscaling ? static_cast<float>(texture_lod_bias - 1) : 0.f);
+                    - (upscaling ? static_cast<float>(xess ? std::max(texture_lod_bias - 2, 0) : (texture_lod_bias - 1)) : 0.f);
   }
   if (mip_bias.width != applied_mip_bias.width || mip_bias.height != applied_mip_bias.height || mip_bias.bias != applied_mip_bias.bias) {
     talesofarise::dlss::constants::SetViewMipBias(mip_bias);

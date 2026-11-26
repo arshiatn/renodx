@@ -480,6 +480,27 @@ int main(int argc, char** argv) {
       CHECK(std::ranges::find(seen, state.jitter) == seen.end());
       seen.push_back(state.jitter);
     }
+    // Ray Reconstruction off: the 9th position is the 1st again (8 phases).
+    state.evaluated_frame = state.frame;
+    dlaa::internal::OnPresent(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
+    CHECK(state.jitter == seen[0]);
+    // X35: Ray Reconstruction with the rays: 32 distinct positions, the 33rd the 1st again (RRG 3.6); CONTROL: the 8
+    // phases before X35 repeat at the 9th.
+    {
+      dlaa::sliders.ray_reconstruction = 1.f;
+      dlaa::rays = true;
+      std::vector<std::array<float, 2>> reconstructed;
+      for (int frame = 0; frame <= 32; ++frame) {
+        state.evaluated_frame = state.frame;
+        dlaa::internal::OnPresent(nullptr, nullptr, nullptr, nullptr, 0, nullptr);
+        reconstructed.push_back(state.jitter);
+      }
+      CHECK(reconstructed[32] == reconstructed[0]);
+      CHECK(std::ranges::find(reconstructed.begin() + 1, reconstructed.begin() + 32, reconstructed[0]) == reconstructed.begin() + 32);
+      std::printf("jitter: 8 phases, 32 under Ray Reconstruction\n");
+      dlaa::rays = false;
+      dlaa::sliders.ray_reconstruction = 0.f;
+    }
     dlaa::sliders.method = 0.f;
     state.evaluated_frame = state.frame;
     dlaa::internal::OnPresent(nullptr, nullptr, nullptr, nullptr, 0, nullptr);

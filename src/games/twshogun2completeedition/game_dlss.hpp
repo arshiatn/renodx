@@ -31,6 +31,7 @@
 #include "../twattila/frame_history.hpp"
 #include "../twattila/native_hook_lifetime.hpp"
 #include "./engine.hpp"
+#include "./upscaling.hpp"
 
 // The game's own DLSS: empire.retail.x64.dll links NVIDIA's NGX SDK (3.10.4). It runs DLSS as DLAA: the feature is
 // created with the display size as input and output (PerfQualityValue 5, DLAA) and evaluated with the display size as
@@ -201,14 +202,18 @@ inline float Halton(uint32_t index, uint32_t base) {
   return result - 0.5f;
 }
 
-// The game's jitter at full size; below it the addon's: Halton in render pixels, 8 / scale^2 phases (at least 16).
+// The game's jitter at full size; below it the addon's: Halton in render pixels, 8 / scale^2 phases (at least 16, 32
+// under Ray Reconstruction).
 inline void OnJitter(uint8_t* camera, int32_t frame, int32_t width, int32_t height) {
   const float scale = active_scale.load(std::memory_order_relaxed);
   if (scale >= 0.999f || !dlss_running.load(std::memory_order_relaxed) || width <= 0 || height <= 0) {
     original_jitter(camera, frame, width, height);
     return;
   }
-  const auto phases = std::max(16u, static_cast<uint32_t>(std::ceil(8.f / (scale * scale))));
+  // src: NVIDIA's DLSS-RR integration guide 3.6 (at least 32 phases under Ray Reconstruction), as
+  // twattila/anti_aliasing.hpp:183 RR_PHASES.
+  const uint32_t least = (twshogun2::upscaling::Reconstructing() ? 32u : 16u);
+  const auto phases = std::max(least, static_cast<uint32_t>(std::ceil(8.f / (scale * scale))));
   const auto render = twattila::frame_history::AspectSize(static_cast<uint32_t>(width), static_cast<uint32_t>(height), scale);
   const auto render_width = static_cast<float>(render[0]);
   const auto render_height = static_cast<float>(render[1]);

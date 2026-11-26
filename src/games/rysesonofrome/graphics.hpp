@@ -243,6 +243,9 @@ constexpr size_t PAUSE_FLAG_CHECK = 84;
 constexpr int GAME_JITTER_MODE = 6;  // r_PostAAMode: Halton 8x
 // The addon's own jitter: Halton (2, 3), NVIDIA's at least 8 positions per (output / input)^2; DLAA: 8.
 constexpr uint32_t JITTER_PHASES = 8;
+// src: NVIDIA's DLSS-RR integration guide 3.6 (at least 32 phases under Ray Reconstruction), as
+// twattila/anti_aliasing.hpp:183 RR_PHASES.
+constexpr uint32_t RR_PHASES = 32;
 constexpr uint32_t MAX_JITTER_PHASES = 1 << 16;
 
 // Must match PassConstants (b12) in the private shaders.
@@ -3123,9 +3126,11 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       height = state.render_height;
       display_width = state.display_width;
     }
-    // 8 x (display / render)^2 positions (NVIDIA): 8 for DLAA, 32 at 50%, 72 at 33%.
+    // 8 x (display / render)^2 positions (NVIDIA): 8 for DLAA, 32 at 50%, 72 at 33%; at least 32 while the helper runs
+    // Ray Reconstruction (the last UpdateHelper's use).
     const float ratio = (width != 0 && display_width > width ? static_cast<float>(display_width) / static_cast<float>(width) : 1.f);
-    const uint32_t phases = std::clamp(static_cast<uint32_t>(std::ceil(JITTER_PHASES * ratio * ratio - 0.01f)), JITTER_PHASES, MAX_JITTER_PHASES);
+    const uint32_t least = (upscaling::CurrentUse().ray_reconstruction != 0 ? RR_PHASES : JITTER_PHASES);
+    const uint32_t phases = std::clamp(static_cast<uint32_t>(std::ceil(JITTER_PHASES * ratio * ratio - 0.01f)), least, MAX_JITTER_PHASES);
     const auto halton = [](uint32_t index, uint32_t base) {
       float fraction = 1.f;
       float value = 0.f;
@@ -3293,7 +3298,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     // Vegetation detail at the display width while rendering below it (VEGETATION_SCREEN_RES).
     auto& pin = screen_res_pin;
     const bool below = rendering.controlling && rendering.target[0] > 0 && rendering.target[0] < static_cast<int>(display_width);
-    // Texture LOD bias below the display width: log2(render / display width), minus 1 (Sharper) or 2 (Sharpest), in the
+    // Texture LOD bias below the display width: log2(render / display width), minus 1 (Sharper) or 2 (Sharpest; XeSS 0 or 1), in the
     // main view. The render size: the addon's Rendering Resolution, or with AA mode Off the game's own while it upscales
     // natively (Native Upscaling on, fullscreen or borderless: windowed it renders at the window's size).
     std::array<int, 2> render_size = {};
@@ -3303,10 +3308,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                && (GetCvar(rendering.fullscreen) != 0 || GetCvar(rendering.fullscreen_window) != 0)) {
       render_size = {GetCvar(rendering.width), GetCvar(rendering.height)};
     }
+    // XeSS: src: XeSS SR developer guide 3.0.2 (doc/xess_sr_developer_guide_english.md:90-94, :495-502), its bias is
+    // log2(render / display) with no -1, so the default (Sharper) gives Intel's and Sharpest one step past it.
+    const bool xess = mode != AAMode::OFF && ChosenUpscaler() == static_cast<int>(twattila::dlaa_bridge::UPSCALER_XESS);
     float bias = 0.f;
     if (texture_lod_bias_choice != 0 && render_size[0] > 0 && render_size[1] > 0 && render_size[0] < static_cast<int>(display_width)) {
       bias = std::log2(static_cast<float>(render_size[0]) / static_cast<float>(display_width))
-             - static_cast<float>(texture_lod_bias_choice - 1);
+             - static_cast<float>(xess ? std::max(texture_lod_bias_choice - 2, 0) : (texture_lod_bias_choice - 1));
     }
     main_view_size.store((bias != 0.f ? (uint64_t{static_cast<uint32_t>(render_size[0])} << 32) | static_cast<uint32_t>(render_size[1]) : 0u),
                          std::memory_order_relaxed);
