@@ -17299,7 +17299,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (memory note fixed 11-26). Owner: next twattila writer
         - [ ] fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered penumbra 0.1 / 1.1 reads
         0.47 not 0.60 (-22 %). HARNESS_RR synthetic bit image linear vs sqrt, constant 0.60 control. Owner: GPU queue
-        after pdi4c_
+        after pdi4c_ -> hrr_ RUNNING 04:0x
         - [ ] fa4_ RR PLACEMENT: RR runs after the tone mapper; DPG + RRG 3.1 say before. CHOSEN as architecture, no ATN
         cite found -> critic: find the decision or design the move. Owner: critic -> coord
         - [x] ATN Q (ANSWERED 11-26 ~00:4x: 'Not for now'; rows stay as they are) (fa4_ B3 + RRG p22): under RR / NRD, hide AO Quarter (rt_trace:388-417, one pixel of
@@ -17520,7 +17520,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         twrome2 x86 (62 = before) exit 0. Effect: SDR monitor + Rendering Mode SDR + on (every preset) = the game's own
         picture (2.2 look); off = gamma 2.0. Owner: done
         - [ ] fa8_ B1 GPU + EYE: tw_attila64_present (F7, GPU window) with an SDR-output Rendering Mode SDR Gamma
-        Correction on case: screen = stock^2.2 within 1 code; control cccc66497^ must give stock^2.0. ATN's eye on an SDR
+        Correction on case: screen = stock^2.2 within 1 code [F7 PASS 04:0x, sdr_fixed worst 1.00 code]; control
+        cccc66497^ must give stock^2.0 [not run: no old-commit arm]. ATN's eye on an SDR
         output once (Windows HDR off). Release notes line 'Fixed: Gamma Correction on SDR monitors darkens as promised'
         in the 8 games' next releases. Owner: GPU queue (after pdi4c_) / ATN / release owner
         - [ ] STRAY TEST BUILD: a tw_psychov35 run without -OutDir (coord's bash quoting) built and ran psychov35.exe in
@@ -17700,7 +17701,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Q8 'sure'. Owner: done
         - [ ] O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 feed rules; noise, darks,
         ghosting) in the HARNESS_RR job with fa4_ U1's sqrt check; the winner = the default with its cite. Owner: GPU queue
-        (with fa4_ U1)
+        (with fa4_ U1) -> hrr_ RUNNING 04:0x
         - [ ] X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither in sampling): under RR the
         default sampler drops IGN for NVIDIA's advice; IGN stays a row for ATN's eye; NV9 numbers in the report. Owner:
         wave 5 (with X22)
@@ -17869,6 +17870,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         Enter-GpuLock; log testbin\scratch\coord_d11hw_amd64.log): 3 frames x 4 events all equal, race pixels 226 / 665
         with 0 outputs no writer gives, CONTROL fewer samples DIFFERS (occlusion 72 B, penumbra 241 B) + changed constant
         byte found -> 'PASS (0 failures)'; S-12 closed. F7 present test (fa8_ B1 fix A) started via f7_gpu.sh. Owner: coord
+        COORD GPU 04:0x: F7 PASS 31 / 31 (f7_gpu.sh, self-locking; log testbin\scratch\coord_f7_0355.log): sdr_fixed =
+        Gamma Correction on (run.ps1 gamma_correction=1; model tests.cpp:294-305 = fix A: SDR at 2.2 = saturate(x), else
+        encode 2.2) 0 of 921600 / 1440000 pixels off (worst 1.00 code), 0 black; hdr10 / scrgb / plugin / C1-C6 / image
+        all PASS. The cccc66497^ control (stock^2.0) was NOT run (the test has no old-commit arm). Owner: done
+        HARNESS_RR JOB (fa4_ U1 sqrt feed + O-RR12 before / after the tone mapper) STARTED 04:0x: hrr_ (Opus High; tools
+        only, test-only helper variants in its own outdir; scratch testbin\scratch\hrr_\; GPU via Enter-GpuLock, holds
+        < 15 min; est 60 / deadline 120). Look moves -> ATN's eye with numbers; no product default flip. Owner: hrr_
         - [ ] ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 baseline -> move it to the M1 run
         (f370cd3bd vs e52ec9e28) once step 5 merges. Owner: gate tooling slot
         - [ ] wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 of 1 M SHaRC keys / 6
