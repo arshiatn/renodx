@@ -906,6 +906,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - d11 SCRIPT v1 LOCK RECORDS (cost of the 06:10 crash: every build / GPU job waite ... | ?
 - d11 CAPTURE RETRY (ATN 09:3x 'Yes, retry'): d11c_ resumed; START 2 of the round ... | ?
 - gpu_lock.py UNSTICK (ATN 09:4x 'Yes, build it': a backup for stale locks while h ... | ?
+- PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
+- P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
 - RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait ... | ?
 - CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | ?
@@ -16937,7 +16939,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         nothing of ours runs (attila*, harness, helper, PresentMon, ngfx, lab_keeper, live queue tickets), file unchanged
         at the move; never deletes; logs lab\unstick_log.tsv. Developed in a copy, swapped atomically with .bak_unst when
         no queue exists. Coord runs it ONLY through ATN's exact rule line (round_notes\unstick_rule_line.md). Owner: unst_
-        -> ATN (paste) 
+        -> ATN (paste)
+        unst_ DONE 09:45 (9 min vs est 30): `gpu_lock.py unstick` LIVE (sha1 4557efa5; .bak_unst = the original; 824 ->
+        936 lines; Aside() shared with Takeover); new tests 23 / 23, old suites 60 / 29 / 9; real-path call 09:44:52
+        refused (gpu_job.lock = live v1 pdi4c_; quiet_run.lock free; row 1 of lab\unstick_log.tsv). Added beyond the
+        brief: refuses while live shared holders exist. OPEN POINT (unst_): the live-queue-ticket refusal blocks the
+        06:10 case (waiters always queue) -> coord: drop it (old text is never taken over, so no waiter writes the file;
+        Aside() moves only an unchanged file), keep holders / ours / age / pid checks; unst_ round 2 09:4x (est 8 /
+        deadline 16; .bak_unst2). Rule line = ONE Bash line, paste_for_atn_1126.md section 5 (the change is told
+        there). Owner: unst_ -> ATN (paste)
+        - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
+        tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
+        (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
+        command); main session, bad or empty input -> no output = the normal prompt; never allows. Docs read 09:4x in
+        the browser (hooks reference: 'PermissionRequest' input + decision control, 'agent_id' common field). Pipe
+        tests 12 / 12. ATN copies it into tools\tw\gates\ (protected) + pastes the block: round_notes\
+        paste_for_atn_1126.md (1 hook, 2 d11 -C1At 400 lines, 3 five safe lab wildcards, 4 P1 / P2 dark + P4 hold
+        lines, 5 unstick). Proof in use = the first tools\tw\hooks\agent_prompt_log.tsv line. Owner: ATN (paste) ->
+        coord (proof)
+        - [ ] P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): list them when fx1_
+        resumes (paste file section 4 says so). Owner: coord
         - [ ] BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the deadline (bal3_ waited 3 h
         silently). Owner: every brief
         - [ ] RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait for the exit notice
