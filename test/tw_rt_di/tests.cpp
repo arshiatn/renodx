@@ -495,7 +495,7 @@ int main(int argc, char** argv) {
        at = passes[1].disassembly.find("call void @dx.op.rayQuery_TraceRayInline", at + 1)) {
     ++bias_rays;
   }
-  const bool part0 = bias_rays >= 1;
+  const bool part0 = bias_rays == 1;
   std::printf("%s 0 temporal bias ray built: %u TraceRayInline calls in rt_di_temporal (needs 1)\n", part0 ? "PASS" : "FAIL", bias_rays);
   failures += part0 ? 0 : 1;
 
