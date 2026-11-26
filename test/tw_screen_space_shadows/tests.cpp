@@ -9,8 +9,9 @@
 //    foliage marked (by the depth copies, Warhammer III's material byte, and Pharaoh's bytes with bit 128; CONTROL: its
 //    water's bit 64 must differ). Pixels Bend's waves write twice in one dispatch vary between runs of the same shaders on WARP (both
 //    sides', under 0.2% of the picture): 8 runs each in turns, a pixel apart where no value of one side's is the other's.
-//    At 50% and 58% render scale (30 and 35 samples, fade-outs 14 and 19 after 16 hard ones) the extended march's counts
-//    in fours: the plain march's with 32 and 36, 12 and 16, to the bit.
+//    At 50%, 58% and 77% render scale (30, 35 and 46 samples, fade-outs 14, 19 and 30 after 16 hard ones) both marches
+//    take the counts in fours (X27): the plain march's with 32, 36 and 48, 12, 16 and 28, to the bit. CONTROL (must
+//    differ): fc24dbce's plain march with the odd counts.
 // 2. Auto Thickness: a deep box and a thick wall the sun shines past towards the camera leak less light behind their
 //    fronts (fewer ground pixels wrong against the reference), a pole no worse (5% + 20 pixels).
 // 3. A red banner: its shadow lets Light Through Banners of the sun through (its occlusion its solid one's x 0.65, within
@@ -35,7 +36,8 @@
 //    differ): Bend's contrast row at 2 (sss00, sss01), the shadow map stability row at 2 (sss02).
 // 9. Torch and Fire Shadows at a battle's light count (5120 instances in 128 draws, repeats and mirrored lights): every
 //    output as f6408aa1's sss_lights gives it (run.ps1's sss_lights_f6408aa1.cso), the pick the CPU's. CONTROL: the CPU's
-//    pick without the repeat test must differ.
+//    pick without the repeat test must differ. A torch on the camera's plane (clip w 0): its coordinate finite (X29, Bend's
+//    w == 0 guard); CONTROL (must fail): f6408aa1's gives an infinite depth.
 // 10. Shogun 2's Light Through Banners and Coloured Shadows through its extended passes (sss_distance / _cascades from this
 //     tree) on case 3's banner: its shadow keeps the row's share of the sun, its filter is its colour, the cascades' version
 //     the same; rows off the game's sss01 to the bit. CONTROLS (must fail): the banners' depth or the filter's target unbound.
@@ -598,10 +600,10 @@ static void TestRowsOff(const std::string& before_folder) {
   }
   CompareRuns("extended march with nothing to do against the plain one", extended, plain);
 
-  // Below 100% (the render the top-left of the display's textures, 960 x 540): the sun's 60 samples are 30 at 50% and 35
-  // at 58% (557 x 313), their fade-outs (32 after 16 hard ones) 14 and 19. The extended march (nothing to do) takes them
-  // in fours: the plain march's with 32 and 36 samples, fade-outs 12 and 16 (which differs from the plain one's with the
-  // odd counts).
+  // Below 100% (the render the top-left of the display's textures, 960 x 540): the sun's 60 samples are 30 at 50%, 35 at
+  // 58% (557 x 313) and 46 at 77% (739 x 416), their fade-outs (32 after 16 hard ones) 14, 19 and 30. Both marches take
+  // them in fours (X27): the plain march's with 32, 36 and 48 samples, fade-outs 12, 16 and 28. CONTROL (must differ):
+  // fc24dbce's plain march (today's before X27) with the odd counts.
   struct Scale {
     UINT width;
     UINT height;
@@ -610,7 +612,11 @@ static void TestRowsOff(const std::string& before_folder) {
   };
   // The box, a wall behind it and a pole beside it.
   const std::array<Box, 3> casters = {{BOX_SCENE[0], {.low = {-6.f, -2.f, 20.f}, .high = {6.f, 0.f, 22.f}}, {.low = {3.f, -2.f, 10.f}, .high = {3.2f, 2.f, 10.2f}}}};
-  for (const auto& scale : {Scale{480, 270, 64.f, 12.f}, Scale{557, 313, 62.f, 16.f}}) {
+  const auto unrounded_code = ReadFile(before_folder + "\\sss_bend.cso");
+  REQUIRE(!unrounded_code.empty());
+  ComPtr<ID3D11ComputeShader> unrounded_bend;
+  REQUIRE(SUCCEEDED(device->CreateComputeShader(unrounded_code.data(), unrounded_code.size(), nullptr, unrounded_bend.GetAddressOf())));
+  for (const auto& scale : {Scale{480, 270, 64.f, 12.f}, Scale{557, 313, 62.f, 16.f}, Scale{739, 416, 62.f, 28.f}}) {
     const Frame render = MakeFrame(scale.width, scale.height, casters, BOX_SUN);
     Frame scaled = MakeFrame(960, 540, {}, BOX_SUN);  // the display's size; its banners' depth all far
     std::vector<float> depth(960 * 540, 1.f);
@@ -633,16 +639,22 @@ static void TestRowsOff(const std::string& before_folder) {
     std::vector<std::vector<uint8_t>> odd_plain;
     std::vector<std::vector<uint8_t>> rounded_plain;
     std::vector<std::vector<uint8_t>> rounded_extended;
+    std::vector<std::vector<uint8_t>> unrounded_plain;
+    const ComPtr<ID3D11ComputeShader> module_bend = objects.bend;
     for (int run = 0; run < RUNS; ++run) {
       odd_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, odd)));
       rounded_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, rounded)));
       rounded_extended.push_back(ReadView<uint8_t>(RunFrame(scaled, odd_extended, true)));
+      objects.bend = unrounded_bend;
+      unrounded_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, odd)));
+      objects.bend = module_bend;
     }
     std::printf("   %u x %u of 960 x 540: the module's %.0f samples, fade-out %.0f\n", scale.width, scale.height, objects.uploaded.samples,
                 objects.uploaded.fade_samples);
     CHECK(objects.uploaded.samples == std::round(60.f * static_cast<float>(scale.width) / 960.f) && std::fmod(objects.uploaded.samples, 4.f) != 0.f);
     CompareRuns("   extended march in fours against the plain one's with the counts in fours", rounded_extended, rounded_plain);
-    CompareRuns("   the plain march's with the counts in fours against its own with the odd ones", rounded_plain, odd_plain, false);
+    CompareRuns("   the plain march's with the counts in fours against its own with the odd ones", rounded_plain, odd_plain);
+    CompareRuns("   CONTROL the plain march's with the counts in fours against fc24dbce's with the odd ones", rounded_plain, unrounded_plain, false);
   }
   twattila::frame_history::render_width = 0;
   twattila::frame_history::render_height = 0;
@@ -1168,6 +1180,21 @@ static void TestBattleLights(const std::string& before) {
               cpu ? "yes" : "NO", mirrored, control ? "THE SAME (no repeat in the pick)" : "differs");
   CHECK(cpu && mirrored > 0);
   CHECK(!control);
+  // X29: a torch on the camera's plane (view z 0, on the camera's x axis: clip w exactly 0): its Bend coordinate finite
+  // (Bend's w == 0 guard, bend_sss_cpu.h). CONTROL (must fail): f6408aa1's sss_lights, without the guard, bound above.
+  const LightInstance on_plane = {.colour = {4.f, 2.f, 0.5f, 0.f}, .light = {3.f, 0.f, 0.f, 6.f}};
+  const auto plane_coordinate = [&] {
+    REQUIRE(LightFrames(frame, std::span(&on_plane, 1), 4));
+    return ReadBuffer<std::array<float, 4>>(objects.lights.coordinates.Get())[0];
+  };
+  const auto finite = [](const std::array<float, 4>& coordinate) { return std::ranges::all_of(coordinate, [](float value) { return std::isfinite(value); }); };
+  const auto unguarded = plane_coordinate();
+  REQUIRE(SUCCEEDED(device->CreateComputeShader(__sss_lights.data(), __sss_lights.size(), nullptr, objects.lights.shader.ReleaseAndGetAddressOf())));
+  const auto guarded = plane_coordinate();
+  std::printf("   a torch on the camera's plane: coordinate (%g, %g, %g, %g); CONTROL f6408aa1's (%g, %g, %g, %g)\n", guarded[0], guarded[1], guarded[2],
+              guarded[3], unguarded[0], unguarded[1], unguarded[2], unguarded[3]);
+  CHECK(finite(guarded));
+  CHECK(!finite(unguarded));
 }
 
 static void TestReplay() {

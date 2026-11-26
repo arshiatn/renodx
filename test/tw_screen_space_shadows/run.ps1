@@ -47,7 +47,9 @@ foreach ($shader in @('sss_distance.cs_5_0', 'sss_distance_cascades.cs_5_0')) {
 # sss_depth (and its MSAA form): the G-buffer's foliage mark (Warhammer III); its output against fc24dbce's on WARP too.
 # Shogun 2's sss00-02: Bend's parameters as rows and Light Through Foliage (its shader_injection grew): case 8 compares their
 # output at the rows' defaults with fc24dbce's on WARP.
-$allowed = @('sss_setup', 'sss_depth', 'sss_depth_ms', 'sss00_0x34ECD06E', 'sss01_0x1B529672', 'sss02_0x78E88E1D')
+# sss_bend: its plain march takes the counts in fours too (X27); case 1 compares it with fc24dbce's at 100% (counts in fours)
+# to the bit, and below 100% against fc24dbce's with the odd counts (its CONTROL).
+$allowed = @('sss_setup', 'sss_depth', 'sss_depth_ms', 'sss_bend', 'sss00_0x34ECD06E', 'sss01_0x1B529672', 'sss02_0x78E88E1D')
 if (($changed | Where-Object { $_ -notin $allowed }).Count -ne 0) { throw "Plain shader bytes changed: $($changed -join ', ')" }
 # sss_lights as f6408aa1 had it (before its repeat test read a light's position only where the scores match): case 9
 # compares its output with today's on WARP, --time both on the hardware GPU.
