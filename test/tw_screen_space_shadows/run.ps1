@@ -65,8 +65,8 @@ if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
 & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect -Fo (Join-Path $beforeShaders 'sss_lights_f6408aa1.cso') (Join-Path $lightsBefore 'src\games\twattila\sss_lights.cs_5_0.hlsl') | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'fxc failed: f6408aa1 sss_lights' }
 # Case 11 (O-SS5): sss_bend and sss_bend_extended_find as bc423ef9d had them (before O-SS5: a sample a render pixel; control
-# C and W1's today) and this tree's with BEND_SSS_STEP_CONTROL 1, 2, 4 (sss_bend) and 3 (the find variant): the W tests'
-# CONTROLS.
+# C and W1's today) and this tree's steps shaders (below 100%) with BEND_SSS_STEP_CONTROL 1, 2, 4 (sss_bend_steps) and 3
+# (the find variant): the W tests' CONTROLS.
 $stepsBefore = Join-Path $testBuild 'before_bc423ef9d'
 if (Test-Path -LiteralPath $stepsBefore) { Remove-Item -LiteralPath $stepsBefore -Recurse -Force -Confirm:$false }
 New-Item -ItemType Directory -Force -Path $stepsBefore | Out-Null
@@ -79,7 +79,7 @@ foreach ($shader in @('sss_bend', 'sss_bend_extended_find', 'sss_blur')) {
   if ($LASTEXITCODE -ne 0) { throw "fxc failed: bc423ef9d $shader" }
 }
 foreach ($control in @(@{ Shader = 'sss_bend'; Value = 1 }, @{ Shader = 'sss_bend'; Value = 2 }, @{ Shader = 'sss_bend_extended_find'; Value = 3 }, @{ Shader = 'sss_bend'; Value = 4 })) {
-  & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect /D "BEND_SSS_STEP_CONTROL=$($control.Value)" -Fo (Join-Path $beforeShaders "$($control.Shader)_control$($control.Value).cso") (Join-Path $repairRoot "src\games\twattila\$($control.Shader).cs_5_0.hlsl") | Out-Null
+  & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect /D "BEND_SSS_STEP_CONTROL=$($control.Value)" -Fo (Join-Path $beforeShaders "$($control.Shader)_control$($control.Value).cso") (Join-Path $repairRoot "src\games\twattila\$($control.Shader)_steps.cs_5_0.hlsl") | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "fxc failed: $($control.Shader) control $($control.Value)" }
 }
 

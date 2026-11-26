@@ -654,16 +654,16 @@ static void TestRowsOff(const std::string& before_folder) {
     std::vector<std::vector<uint8_t>> rounded_extended;
     std::vector<std::vector<uint8_t>> unrounded_plain;
     std::vector<std::vector<uint8_t>> unrounded_rounded;
-    const ComPtr<ID3D11ComputeShader> module_bend = objects.bend;
+    const ComPtr<ID3D11ComputeShader> module_bend = objects.bend_steps;
     sss::internal::scale_control = {.samples_by_share = true, .thickness_by_share = true};
     for (int run = 0; run < RUNS; ++run) {
       odd_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, odd)));
       rounded_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, rounded)));
       rounded_extended.push_back(ReadView<uint8_t>(RunFrame(scaled, odd_extended, true)));
-      objects.bend = unrounded_bend;
+      objects.bend_steps = unrounded_bend;
       unrounded_rounded.push_back(ReadView<uint8_t>(RunFrame(scaled, rounded)));
       unrounded_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, odd)));
-      objects.bend = module_bend;
+      objects.bend_steps = module_bend;
     }
     sss::internal::scale_control = {};
     std::printf("   %u x %u of 960 x 540: the module's %.0f samples, fade-out %.0f\n", scale.width, scale.height, objects.uploaded.samples,
@@ -1861,15 +1861,17 @@ static void Time(const std::string& before) {
       twattila::frame_history::render_height = (w != 3840) ? h : 0;
       for (const auto* row : {&base, &softer}) {
         const double ours = GpuMilliseconds([&] { RunFrame(display, *row); });
-        const ComPtr<ID3D11ComputeShader> module_plain = objects.bend;
-        const ComPtr<ID3D11ComputeShader> module_find = objects.bend_extended[2];
-        objects.bend = today;
-        objects.bend_extended[2] = today_find;
+        const std::array<ComPtr<ID3D11ComputeShader>, 4> module_shaders = {objects.bend, objects.bend_steps, objects.bend_extended[2],
+                                                                           objects.bend_extended_steps[2]};
+        objects.bend = objects.bend_steps = today;
+        objects.bend_extended[2] = objects.bend_extended_steps[2] = today_find;
         sss::internal::scale_control = {.samples_by_share = true, .thickness_by_share = true};
         const double before_form = GpuMilliseconds([&] { RunFrame(display, *row); });
         sss::internal::scale_control = {};
-        objects.bend = module_plain;
-        objects.bend_extended[2] = module_find;
+        objects.bend = module_shaders[0];
+        objects.bend_steps = module_shaders[1];
+        objects.bend_extended[2] = module_shaders[2];
+        objects.bend_extended_steps[2] = module_shaders[3];
         std::printf("   render scale %3.0f%% %-11s A' %.3f ms, C %.3f ms (%+.3f)\n", share * 100.f, (row == &base) ? "plain" : "Softer 0.5", ours,
                     before_form, ours - before_form);
       }
@@ -2043,13 +2045,15 @@ static StepResult MarchAt(const Frame& render, const sss::Settings& settings, co
   twattila::frame_history::render_height = scaled ? h : 0;
   sss::internal::scale_control = form.control;
   REQUIRE(sss::internal::Prepare(device.Get(), DISPLAY_W, DISPLAY_H));
-  const ComPtr<ID3D11ComputeShader> module_plain = objects.bend;
-  const ComPtr<ID3D11ComputeShader> module_find = objects.bend_extended[2];
-  if (form.plain != nullptr) objects.bend = form.plain;
-  if (form.find != nullptr) objects.bend_extended[2] = form.find;
+  const std::array<ComPtr<ID3D11ComputeShader>, 4> module_shaders = {objects.bend, objects.bend_steps, objects.bend_extended[2],
+                                                                     objects.bend_extended_steps[2]};
+  if (form.plain != nullptr) objects.bend = objects.bend_steps = form.plain;
+  if (form.find != nullptr) objects.bend_extended[2] = objects.bend_extended_steps[2] = form.find;
   RunFrame(*frame, settings);
-  objects.bend = module_plain;
-  objects.bend_extended[2] = module_find;
+  objects.bend = module_shaders[0];
+  objects.bend_steps = module_shaders[1];
+  objects.bend_extended[2] = module_shaders[2];
+  objects.bend_extended_steps[2] = module_shaders[3];
   sss::internal::scale_control = {};
   twattila::frame_history::render_width = 0;
   twattila::frame_history::render_height = 0;
@@ -2248,8 +2252,9 @@ static void TestScreenSteps(const std::string& before_folder) {
                      .geometry = MarchAt(scene(w, h, 0.f), settings, {}, true).occlusion};
   };
 
-  // W1 identity: at 100% the plain and the extended march (with what Softer finds) as today's to the bit (case 1's 8 runs).
-  // CONTROL (must differ): half a render pixel a sample at 100%.
+  // W1 identity: at 100% the plain and the extended march (with what Softer finds) as today's to the bit (case 1's 8 runs),
+  // the hosts' 100% shaders (Bend's loops) and the steps' (sss_bend*_steps, ScreenStep 1) both. CONTROL (must differ):
+  // half a render pixel a sample at 100%.
   {
     const std::array<Box, 3> casters = {{BOX_SCENE[0], {.low = {-6.f, -2.f, 20.f}, .high = {6.f, 0.f, 22.f}}, {.low = {3.f, -2.f, 10.f}, .high = {3.2f, 2.f, 10.2f}}}};
     const Frame frame = MakeFrame(DISPLAY_W, DISPLAY_H, casters, BOX_SUN);
@@ -2259,10 +2264,14 @@ static void TestScreenSteps(const std::string& before_folder) {
     std::vector<std::vector<uint8_t>> today;
     std::vector<std::vector<uint8_t>> ours_extended;
     std::vector<std::vector<uint8_t>> today_extended;
+    std::vector<std::vector<uint8_t>> steps;
+    std::vector<std::vector<uint8_t>> steps_extended;
     std::vector<std::vector<uint8_t>> half_step;
     int penumbra_apart = 0;
     for (int run = 0; run < RUNS; ++run) {
       ours.push_back(MarchAt(frame, Defaults()).occlusion);
+      steps.push_back(MarchAt(frame, Defaults(), {.plain = sss::internal::runtime.objects.bend_steps.Get()}).occlusion);
+      steps_extended.push_back(MarchAt(frame, softer, {.find = sss::internal::runtime.objects.bend_extended_steps[2].Get()}).occlusion);
       today.push_back(MarchAt(frame, Defaults(), {.plain = shaders.today.Get()}).occlusion);
       const auto extended = MarchAt(frame, softer);
       const auto today_softer = MarchAt(frame, softer, {.find = shaders.today_find.Get()});
@@ -2277,6 +2286,8 @@ static void TestScreenSteps(const std::string& before_folder) {
     std::printf("   W1 at 100%%:\n");
     CompareRuns("   plain against today's (bc423ef9d)", ours, today);
     CompareRuns("   extended (Softer's find) against today's", ours_extended, today_extended);
+    CompareRuns("   steps' plain (sss_bend_steps) against today's", steps, today);
+    CompareRuns("   steps' extended (sss_bend_extended_find_steps) against today's", steps_extended, today_extended);
     std::printf("   extended's penumbra: %d pixel-runs apart from today's\n", penumbra_apart);
     CHECK(penumbra_apart < static_cast<int>(RUNS * DISPLAY_W * DISPLAY_H / 500));
     CompareRuns("   CONTROL half a render pixel a sample against today's", half_step, today, false);
