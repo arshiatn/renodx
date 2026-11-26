@@ -978,6 +978,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | ?
 - DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | ?
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | ?
+- SSS O2 BUILT, NOT MERGED (o2_ 11-26, origin/sss_o2_1126 3b18e4c39 on 92788fae8; ... | ?
+- SSS TEST FLAKE: test/tw_screen_space_shadows case 2 (100 %, Auto Thickness pole ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17640,6 +17642,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         merged code; 62 outputs differ for that reason only); m2c_bits_r11 (+ _matte) stay .bin (hand-run c1 / c5 / r13);
         scratch gts_\head_build2 + v13: DELETED 11-26 on ATN's yes (its 4 junction links removed alone first, no other links
         left, main checkout's bin / include / external / build\downloads checked intact). Owner: coord (verify base build)
+        - [ ] SSS O2 BUILT, NOT MERGED (o2_ 11-26, origin/sss_o2_1126 3b18e4c39 on 92788fae8; testbin\scratch\o2_\handback.md):
+        bend_sss_gpu.hlsli BEND_SSS_SCREEN_STEPS only (one shared screen grid + O2d: the light-free march when Light Through
+        Foliage is 0); plain sss_bend* + Shogun 2 sss00-02 byte-identical. G1 4K PASS in both runs: plain O2 / today's A'
+        0.286-0.464x, 100 % 0.812 = 0.812. Foliage > 0 (Attila default 0.5) runs plain O2: 0.328-0.507x (1/3 = 1.97x). 2304 slots
+        4-10 % slower -> 2048 stays. WARP: W1 0 px, W2-W8 = today's A', W12 0 px, CONTROL 5 differs, old controls fail. 11
+        builds at baseline. OPEN: W11 at 58 % misses the design's bounds (thin 1-render-px caster 0.205 vs 0.265, 34 % of its
+        shadow > 0.25 apart; 3-px 0.546 vs 0.523; 66.8 % passes) -> ATN: accept as numbers + eye check, or a fix design.
+        Not verified: game picture, AMD / Intel, torch light mode, 960 / 1920 samples, Tales at run time. Owner: ATN (W11) ->
+        coord merge
+        - [ ] SSS TEST FLAKE: test/tw_screen_space_shadows case 2 (100 %, Auto Thickness pole row, byte-identical plain shaders)
+        gave 182 vs bound 180 once on amd64 (o2_ 11-26), rerun 154: same bytes, different result = a nondeterministic test or
+        bound. Owner: next SSS test agent
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
