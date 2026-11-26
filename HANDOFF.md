@@ -17637,6 +17637,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         gpu_job.ps1 (GpuLock.psm1), ~2-4 min under the lock. Decides: spheres <= 0.5x quads ms -> helper design; 0.5-0.8x
         only if caps / shape win; > 0.8x drop; uncapped <= quads capped with err <= 0.02 -> retire the caps; backoff
         need; aabb fallback value; spheres_nv 0 mismatches. GPU ORDER: after pdi4c_ (2-4 min). Owner: lsp_ (waits)
+        GPU ORDER 11-26 02:0x (coord): coord R2 -> R4 stay BLOCKED (R1 must rerun first and refuses the existing
+        build\nsr_profile_1: ATN's deletion yes, box above) -> after pdi5_ GPU done: pdi4c_ (r4 1434dcf07) -> lsp_ (2-4
+        min) -> bal3_ -> d11 replay self-test -> d11 day1 capture -> HARNESS_RR (fa4_ U1 sqrt + O-RR12) -> fa8_ B1 F7 case
+        -> coord R1..R4 once ATN says yes. Owner: coord
         - [ ] LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner: done
         ATN 11-26 00:5x ANSWERS: (1) fa5_ U-VB5 CLOSED: the 3 Shadertoys are in C:\Users\arshi\Downloads\Shadertoy stuff\
         (root = GT-VBAO, 'GT-VBAO thickness heuristic' = Ottosson's variation, 'GT-VBGI (diffuse)'); every header reads
