@@ -919,6 +919,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - pdi4c_ r5 READY 12:2x: origin/pdi4c_step4c_r5 = 9bf2313a3 (27 commits on ce1f836 ... | ?
 - d11g_ DONE 12:3x (9 min; testbin\scratch\d11g_\report.md): ROOT CAUSE of start 3 ... | ?
 - FIX WAVES 11-26 (wvp_ DONE 12:2x, 24 min: plan_1117\fidelity\wave_plan_1126.md = ... | ?
+- ATN 11-26 ~13:0x: (1) paste 1126b ADDED (allow 91: fx1_run.ps1 wildcard + WebFet ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17129,6 +17130,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         smoke spheres (siege recording), 2 arrow trails as LSS capsules (probe first), 3 NRC vs SHaRC (gain unknown).
         Needs ATN: paste item 1, WH3 jitter under RR (ours or the game's 16), X45, siege runner + PNG eye, X03 only if he
         uses Reflection Reuse = From ReSTIR GI, OMM 1.12, look numbers after GPU. Owner: the wave agents -> coord
+        - [ ] ATN 11-26 ~13:0x: (1) paste 1126b ADDED (allow 91: fx1_run.ps1 wildcard + WebFetch github.com /
+        developer.nvidia.com) -> fx1_ P3 dark + P5 breaks may run (at 4K: wait for r4k_'s harness list). (2) 'Update OMM
+        and DXC please' = ATN's YES for vendored OMM 1.10.0 -> 1.12.0 + DXC 1.9.2602.17 -> 1.9.2609 (sdk_audit_1126.md;
+        grass + vegetation bakes) -> sdku_ implementer at the next free slot. (3) SMOKE 80 ms CORRECTION: the 80 ms
+        frames came from the OLD Mega Geometry smoke (one cluster structure as big as the whole map), replaced by
+        today's TLAS smoke without fixing that approach; PTLAS was never tested for smoke -> the siege recording is for
+        spheres vs today's quads under heavy smoke, not for 80 ms; + a PTLAS smoke row for D2 / lsp_. (4) saturate()
+        explained again (Q2 open). (5) watermarks: yes for add-on + helper (v132 marks, all games since 11-15, release
+        stamps); the 64-bit CPU plugin DLL gets its own group before its first release (open). (6) 1 s stutter = MENU /
+        FILMS (battle not sure) -> Sol's film path (s1s_): fix b1 in our own port copy (sol_fixes_1124) + 4K PresentMon
+        check, queued. ATN asked Sol to push 1.3.21-1.3.24 (no answer yet). (7) USAGE: max 6 running subagents until
+        11-27 06:00 (memory project_usage_cap_1126) -> PARKED 12:06-12:07 (context kept, resume later): rrb_ (research
+        done, D1-D9 left ~20 min), D2 (step 1 done; plan_1117\designs\cost_caps_q5.md), fx5b_ (no edit yet; worktree
+        fx5b_w5b from 4f90d9473), fx5a_ + D1 parking. Running: pdi4cr_, r4k_, fx0b_, fx3_, fxh_, fx7_. pdi4c_ HOLDS: its
+        4K groups 2-8 were DENIED by the prompt-deny hook (first real use: `run_4k.ps1 -First 2 -Last 8 *> run_4k.log`,
+        not retried in any form) -> ATN's rule line `PowerShell(& '...\scratch\pdi4c_\run_4k.ps1' *)`. Group 1 at 4K: A/A
+        + M1-eq PASS; E6 shadowed DI / bits 0.9859 -> 0.9376 (DI 6 % below the bits in shadow at 4K, 5.6 M px); noise
+        0.254 -> 0.118; mean DI 0.875 -> 0.919 (pdi4cr_ told). (8) rrb_ F1 (to confirm): in game RR ALREADY runs before
+        PsychoV35, after the game's t00, on a near-linear feed (t00^1.1); hrr_'s -22 % does not apply in game; the row
+        would move RR onto the lit scene before t00. d11 START 4 running 12:08 (restaged add-on 0ab54c8d = atn-mods
+        620049332; live script = g1, .bak_g1). Owner: coord / ATN (run_4k line)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
