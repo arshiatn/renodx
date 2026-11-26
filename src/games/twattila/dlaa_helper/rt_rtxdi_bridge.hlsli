@@ -211,9 +211,14 @@ int RAB_TranslateLightIndex(uint index, bool current_to_previous) {
   return (translated < 128u) ? (int)translated : -1;
 }
 
-// The temporal pass's bias ray: from this trace's surface toward the sample (this trace's scene: no previous TLAS kept).
+// The temporal pass's bias ray: from the history's surface, its own stored ray origin (di_origin of the last trace),
+// toward the sample.
+// src: RtxdiApplicationBridge.md RAB_GetTemporalConservativeVisibility (the previous surface against the previous scene).
+// dev: this trace's TLAS, not the last's (none is kept): exact for still shapes; a shape that moved since is tested where
+// it is now, RTXDI's "current scene" fallback for that part (review pdi4cr_ S1: from the current surface instead, a
+// permuted history pixel shadowed for the canonical light darkened W by up to 1 / (1 + M) that frame).
 bool RAB_GetTemporalConservativeVisibility(RAB_Surface current, RAB_Surface previous, RAB_LightSample light_sample) {
-  return DiVisible(current.origin, light_sample.position);
+  return DiVisible(previous.origin, light_sample.position);
 }
 
 #include "Rtxdi/DI/ReservoirStorage.hlsli"

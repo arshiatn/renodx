@@ -127,18 +127,13 @@ RTXDI_DIReservoir DiSpatioTemporalResampling(uint2 pixel, RAB_Surface surface, R
       for (uint sample = 0u; sample <= count; ++sample) {
         if ((merged & (1u << sample)) == 0u) continue;
         const int2 at = (sample == 0u) ? centre : DiSpatialNeighbour(centre, sequence, sample - 1u, count, runtime, spatial);
-        RAB_Surface neighbour = temporal_surface;
-        RAB_Surface from = surface;
-        if (sample != 0u) {
-          neighbour = RAB_GetGBufferSurface(at, true);
-          from = neighbour;
-        }
+        const RAB_Surface neighbour = (sample == 0u) ? temporal_surface : RAB_GetGBufferSurface(at, true);
         const RAB_LightSample at_neighbour = RAB_SamplePolymorphicLight(selected_light, neighbour, RTXDI_GetDIReservoirSampleUV(state));
         float ps = RAB_GetLightSampleTargetPdfForSurface(at_neighbour, neighbour);
 #if RTXDI_ALLOWED_BIAS_CORRECTION >= RTXDI_BIAS_CORRECTION_RAY_TRACED
-        // The temporal sample's ray from this trace's surface (as the split temporal pass), a neighbour's from its own.
+        // Each merged sample's ray from its own last-trace surface (the temporal sample's too, as the split temporal pass).
         if (temporal.biasCorrectionMode == RTXDI_BIAS_CORRECTION_RAY_TRACED && ps > 0.f
-            && !RAB_GetTemporalConservativeVisibility(from, neighbour, at_neighbour)) {
+            && !RAB_GetTemporalConservativeVisibility(surface, neighbour, at_neighbour)) {
           ps = 0.f;
         }
 #endif
