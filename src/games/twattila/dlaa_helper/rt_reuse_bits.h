@@ -16,7 +16,8 @@
 // RENODX_TW_REUSE_BIAS=1 / 2 (G1): the spatial merge's MIS-like normalization over the neighbours that could have made the
 // chosen sample (Basic), they also seeing it (Raytraced, a ray each), instead of 1 / M (RTXDI's GI bias correction modes).
 // RENODX_TW_REUSE_BIAS=3 (PT DI step 5's G2): pairwise MIS between each neighbour and the texel's own reservoir instead.
-// Validate's parts (part C, the bias that grows with the rays): _VALIDATE_NO_DROP keeps a history whose sample's ray is blocked, _VALIDATE_KEEP_LIGHT keeps its stored light, _VALIDATE_NO_CUTS its count and weight, _VALIDATE_RESCALE takes
+// Validate's parts (part C, the bias that grows with the rays): _VALIDATE_NO_DROP (inverted by X01: the history is kept by
+// default) drops a history whose sample's ray is blocked, today's old rule as the control, _VALIDATE_KEEP_LIGHT keeps its stored light, _VALIDATE_NO_CUTS its count and weight, _VALIDATE_RESCALE takes
 // the light now with its weight over the change (W x the target stays), _VALIDATE_NO_INVALIDITY returns no change (the
 // history cap stays whole), _VALIDATE_KEEP_CHROMA takes the light now's luminance in the stored light's colour,
 // _VALIDATE_NO_CACHE asks the screen only (no cache answer: the stored light stays); _NO_HISTORY_CLAMP: no ClampWeight after

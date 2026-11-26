@@ -1046,13 +1046,17 @@ void StoreReservoir(RWTexture2D<ReservoirPoint> samples, RWTexture2D<ReservoirDa
 #endif
 }
 
-// Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
-// screen or the cache knows it; not with TORCH_REGIR) takes the stored light's place, and a change shortens the history (bright changes
-// dimmed until they settle). The change (0: none, 1: all of the history goes). `contact`: its light in ContactShade's.
+// Validation of last frame's reservoir from `origin`: its light now (where the screen or the cache knows it; not with
+// TORCH_REGIR) takes the stored light's place, and a change shortens the history (bright changes dimmed until they
+// settle). The change (0: none, 1: all of the history goes). `contact`: its light in ContactShade's.
+// A sample out of view now keeps its history (X01): the final ray (ReuseTexel's, ReflectPixel's) shades it 0. src: Lin et
+// al. 2022, "Generalized Resampled Importance Sampling" (GRIS), as fidelity restir_gi_sharc_fog.md B1 derives it: dropping
+// a technique by its own sample's visibility biases, E = int f (1 + q m_h), q = P(occluded), m_h ~ 20 / 21. The drop stays
+// as the control: REUSE_TEST_VALIDATE_NO_DROP's bit now selects it (its name is today's host switch, rt_d3d12.hpp).
 float Validate(inout Reservoir previous, float3 origin, bool contact) {
   const float3 to_hit = previous.hit - origin;
   const float hit_distance = length(to_hit);
-  if (hit_distance <= 1e-3f || ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_DROP) == 0u && Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE))) {
+  if (hit_distance <= 1e-3f || ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_DROP) != 0u && Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE))) {
     previous.count = 0.f;
     return 0.f;
   }
