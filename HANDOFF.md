@@ -907,6 +907,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - d11 CAPTURE RETRY (ATN 09:3x 'Yes, retry'): d11c_ resumed; START 2 of the round ... | ?
 - SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATT ... | ?
 - gpu_lock.py UNSTICK (ATN 09:4x 'Yes, build it': a backup for stale locks while h ... | ?
+- ATN'S ANSWERS 11-26 ~10:5x (to the overnight report): (1) P3 dark + P5 rule line ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -926,7 +927,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ?
 - SKILLS FOLLOW-UPS: F1 bringup's Balanced cell says Off / Basic / Raytraced: true ... | ?
 - PAGE DUMP TOOLING (testing.md's new trap row): root-cause Shogun 2's page-dump c ... | ?
-- src/games/backup.zip is TRACKED in atn-mods (rvs_): keep or remove? (deletion = ... | ATN
 - RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
 - RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
 - 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
@@ -974,7 +974,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa5_ SS-B5 Softness proxy 1/(1 - d) ignores projection A -> same-surface test ~4 ... | ?
 - fa5_ SS-B2 LICENCE: repack_game.py:84 misses Attila's in-folder Bend header (Apa ... | ?
 - fa5_ UNKNOWNs U-VB1 (thickness along the sample's own ray: Salm's or ours?), U-V ... | ?
-- STRAY FOLDER (coord's brief path error): D:\Dev\renodx\tools\tw\testbin\scratch\ ... | ?
 - fa9_ B2 THE JUDGES' CODE-BREAK CONTROLS DON'T EXIST: none of reference_suite 2.6 ... | ?
 - fa9_ B6 '3 SIGMA' AT TINY DOF: ref_compare.py:403 3 SE at t(3 dof) = ~5.8 % fals ... | ?
 - fa9_ B1 JUDGE SHARES THE BACK-FACE FLIP: RefNearest uses HitNormal (flips every ... | ?
@@ -991,15 +990,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa7_ BUG-8 UE infinite-far depth gets far = 1e5 every frame via the fallback (up ... | ?
 - fa7_ UNKNOWNs: U1 ATN'S WORD: Attila's DLSS default preset L at every scale vs N ... | ?
 - fa8_ B1 GPU + EYE: tw_attila64_present (F7, GPU window) with an SDR-output Rende ... | ?
-- STRAY TEST BUILD: a tw_psychov35 run without -OutDir (coord's bash quoting) buil ... | ?
 - fa8_ B2 ToneMapperHdr 'Y > 0 ? n / Y : 1': luminance <= 0 passes unexposed (stoc ... | ?
 - fa8_ B3 Divinity 2 proxy scRGB branch lacks BT.2020 -> BT.709 (unreachable: Outp ... | ?
 - fa8_ B4 upstream colorcorrect GammaSafe float4 overload calls Gamma (not sign-sa ... | ?
 - fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | ?
 - fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
 - ROME REMASTERED PROXY CLAMP (coord 11-26, from fx0_): twromeremastered's swap ch ... | ?
-- X45 UPSTREAM REPORT (fx0_): src/shaders/colorcorrect.hlsl:41-42 GammaSafe(float4 ... | ?
-- fx0_ WORKTREE .claude\worktrees\agent-aa5c85a54b44e6397 (branch merged; build / ... | ?
 - cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR ... | ?
 - CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope. ... | ?
 - ATN INSTALLS CITATION BLOCKER v2: follow testbin\scratch\cbi_\install_steps.v2.m ... | ?
@@ -1018,14 +1014,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PLAYER HOLD-FRAME MODE (reference_suite.md 2.3.1, repeat frame N+2): no RENODX_T ... | ?
 - CONTACT BOXES BIAS AT R = 4 (fx1_ P3: 0.99306, r/g 0.9916, outliers 14 vs 3; not ... | ?
 - OUTLIER RULE READS r0 vs r1 ONLY (ref_compare.py:426-436): R >= 8 adds nothing t ... | ?
-- DELETE fx1_ P4 PLAY DUMP (2.9 GB, testbin\scratch\fx1_\runs\p4_day1_battle_0\pla ... | ?
 - BASE HARNESS BUILD (tools\tw\reference\harness): stale include of a deleted work ... | ?
 - WAVE 2-6 JUDGE VERDICT SETS AT R >= 8 (fx1r_ power: R = 4 catches a 2 % bias 26 ... | wave briefs
 - REF BREAKS MISSING (spec 9, built 5): offset20, fog_flat, clearance0, stale_bits ... | gate tooling slot
 - ATN RULE LINE: RENODX_TW_REF_BREAK + RENODX_TW_REF_INSIDE GPU proof runs (P5 bre ... | ?
 - G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
 - RR PLACEMENT CITE: the RR-after-tone-mapper comment (anti_aliasing.hpp aa_dlaa_p ... | ?
-- ATN LOOK: RR FEED ENCODING. Today's sqrt keeps darks right (x0.997) but darkens ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
 - wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
 - pdi5_ WORKTREE .claude\worktrees\agent-a04c344af00661e33 + the stale branches pd ... | ?
@@ -1038,22 +1032,18 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
 - WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
-- CLEANUP on ATN's yes: testbin\scratch\pd4r_\ (fz\, fused_check.sh, multiset_cmp. ... | ATN
 - NV1 CONSERVATIVE VISIBILITY for DI initial + bias rays (RtxdiApplicationBridge.m ... | ?
 - NV2 OMM 2-STATE ON SECONDARY RAYS ONLY, 4-state on visible sun / torch shadows ( ... | ?
 - NV3 SHaRC UPDATE CHEAP LIGHT-SHADOW VISIBILITY (whitepaper 5090 case: 0.69 -> 0. ... | ?
 - NV4 ASYNC COMPUTE: RT + AS builds of frame N+1 beside RR of frame N (RTXPT Desig ... | ?
 - NV5 LIVE-STATE CUTS + FP16 in path / reflection kernels (Indiana Jones -15 %, it ... | ?
 - NV6 SMALL: RR packed normals + roughness (< 0.03 ms); thread-group size test + c ... | ?
-- NV7 ATN NUMBERS: RR preset D / E 1.83 vs 2.12 ms at 4K Performance on the 5090 ( ... | ?
 - NV9 NVIDIA-SAYS-DON'T (section 4): TLAS fast-build (rt_d3d12.hpp:8069) = U12c; s ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
-- CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; tes ... | ?
 - TDD AUTHORS' ANSWERS (1-4) -> tdd_shaders.md + any follow-up. Owner: ATN -> coor ... | ATN -> coord
 - C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
-- ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the n ... | ATN
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
 - ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back | ?
 - FRIDAY 11-27, ONLY ON ATN'S GO (he wakes ~06:00, switches accounts): Fable 5.2 x ... | ?
@@ -17008,6 +16998,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         ticket + live holder = refused'; 24 / 24 (coord rerun from live 24 / 24), old suites 58 (+2 InUse skips: the
         harness was running) / 29 / 9. Rule line = ONE Bash line, paste_for_atn_1126.md section 5 (the change is told
         there). Owner: unst_ -> ATN (paste)
+        - [ ] ATN'S ANSWERS 11-26 ~10:5x (to the overnight report): (1) P3 dark + P5 rule lines: later. (2) the d11 -C1At
+        400 lines stay. (3) citation blocker: ONE-CLICK install for ATN = round_notes\install_citation_blocker_v2.ps1
+        (steps 2-6 + 9; step 1 ATN did 03:01; hash-checked base + stage, .bak_cb2, restores itself if the self-test or the
+        gate suite fails; -Check run by coord: 5 files 'to install'; suite baseline 1506 / 1506 in 4 min); stage
+        testbin\scratch\cb2_\stage. Q8 (ATN 'which one do you suggest? Take that'): (b) a resolving src: tag clears a
+        clamp (GUARD_TAGS + 'src'; mirror self-test 49 / 49 = same as the live checker in the mirror). Q1-Q7 asked in
+        chat with cbd_'s picks (baked into the install). (5) G4 COMPACT RESERVOIRS DEFAULT ON: 'Sure' -> the flip with
+        its needs (a) a G4 = 0 rec build kept in the gate set, (b) night torch-lit chroma + reflections check, (c) flip
+        gates on the head) after pdi4c_ + d11 start 3. (6) RR stays after the tone mapper with sqrt (NVIDIA's RRG 3.1
+        p10 says before, linear; hrr_: linear lifts darks x1.26 = ATN's 'black raise / purple'): cite box 'RR PLACEMENT
+        CITE' stays. (7) RR preset F = ATN's best + default; already what the RT presets pick (vendored header still says
+        F 'do not use'; the 310.9.16 runtime's F = the new transformer). (8) X45 text sent. (9) backup.zip already gone.
+        (10) fa8_ B1 SDR eye + (11) Balanced Raytraced eye: ATN's manual test session at the end. DELETIONS done (2.9 GB
+        P4 dump, psychov35 test build, stray fa6_ / pd3c_, pd4r_, pds2_ 4 builds, tddr_ .obj + .bak_tddi, the 2
+        *.stale-31492 locks, fx0_ worktree + branch); pdi5_step5_rb was already gone. HELD + ASKED: the pdi5_ worktree
+        holds 213 GB of step-5 play dumps (build\pdi5play: fx / pre1 / pre2 / rb / rb2). Owner: ATN (install, Q1-Q7,
+        pdi5play) / coord (G4 flip)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
@@ -17221,7 +17228,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] PAGE DUMP TOOLING (testing.md's new trap row): root-cause Shogun 2's page-dump crash (0xC0000005,
         partial 201 keys; needs a Shogun 2 dump run) + parity_check refuses a dump without its end marker; then drop
         bringup.md's '(Shogun 2's dump crashed partway ...)' note. Owner: coord (tool fix) / ATN's OK (run)
-        - [ ] src/games/backup.zip is TRACKED in atn-mods (rvs_): keep or remove? (deletion = ATN's yes). Owner: ATN
+        - [x] (already removed 11-25 a624fc939; box closed 11-26) src/games/backup.zip is TRACKED in atn-mods (rvs_): keep or remove? (deletion = ATN's yes). Owner: ATN
         - [x] LAB METHOD CORRECTION (rvs_ M1, evening): the 16:4x rule 'use the preset's flags 86020209 / 354455665'
         was WRONG: config path_flags overwrites rt_path_flags of EVERY request kind (rt_serve.h:897); the preset word
         = the bounce word without the square-root bit (recorded 86151281) and has no reflections / spec-occ bits ->
@@ -17636,7 +17643,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Ottosson), U-VB3 (GT-VBGI has no reference test), U-VB4 (GT-VBGI reads the light buffer with camera-facing
         specular, c592149c rule), U-SS2/4/5, U-SR1/2. Downloads to file: AMD SSSR in tools\refcode\ffx_sssr_1126\;
         d'Eon's vMF notebook still in the session's tool-results (move under tools\refcode). Owner: critic -> owners
-        - [ ] STRAY FOLDER (coord's brief path error): D:\Dev\renodx\tools\tw\testbin\scratch\{fa6_, pd3c_} (dxc
+        - [x] (DELETED 11-26 ~11:1x on ATN's yes) STRAY FOLDER (coord's brief path error): D:\Dev\renodx\tools\tw\testbin\scratch\{fa6_, pd3c_} (dxc
         listings, untracked) -> delete on ATN's yes; briefs use the C:\Users\...\tools\tw path (memory updated).
         Owner: ATN
         fa9_ DONE (22 min; fidelity\materials_lights_reference.md; atn-mods fcf71fc1e, the step 3 merge changes no audited
@@ -17722,7 +17729,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         cccc66497^ must give stock^2.0 [not run: no old-commit arm]. ATN's eye on an SDR
         output once (Windows HDR off). Release notes line 'Fixed: Gamma Correction on SDR monitors darkens as promised'
         in the 8 games' next releases. Owner: GPU queue (after pdi4c_) / ATN / release owner
-        - [ ] STRAY TEST BUILD: a tw_psychov35 run without -OutDir (coord's bash quoting) built and ran psychov35.exe in
+        - [x] (DELETED 11-26 ~11:1x on ATN's yes) STRAY TEST BUILD: a tw_psychov35 run without -OutDir (coord's bash quoting) built and ran psychov35.exe in
         D:\Dev\renodx\build\tw_psychov35_test_x86\ (outside testbin; nothing blocked it). The good runs are in
         testbin\scratch\sdrfix_\. Delete that folder only on ATN's yes. Owner: ATN
         - [ ] fa8_ B2 ToneMapperHdr 'Y > 0 ? n / Y : 1': luminance <= 0 passes unexposed (stock t00 -> black); use the
@@ -17781,10 +17788,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] ROME REMASTERED PROXY CLAMP (coord 11-26, from fx0_): twromeremastered's swap chain proxy has Clamp Peak and
         the negative-nits clamp commented out (its TODO 'renable when publishing'), the 8 other TW proxies have both on:
         port them or keep off with a reason. Owner: parity (critic G)
-        - [ ] X45 UPSTREAM REPORT (fx0_): src/shaders/colorcorrect.hlsl:41-42 GammaSafe(float4) calls Gamma, not GammaSafe
+        - [x] (ATN 11-26: 'give me a short report, I post it on lab' -> sent in chat) X45 UPSTREAM REPORT (fx0_): src/shaders/colorcorrect.hlsl:41-42 GammaSafe(float4) calls Gamma, not GammaSafe
         (negative channels -> NaN); no float4 caller in this fork; report text testbin\scratch\fx0_\x45_upstream_report.txt.
         Sending it to clshortfuse/renodx = ATN's call. Owner: ATN
-        - [ ] fx0_ WORKTREE .claude\worktrees\agent-aa5c85a54b44e6397 (branch merged; build / build32 output inside, no
+        - [x] (REMOVED 11-26 ~11:1x on ATN's yes, 0 links; branch fx0_wave0 deleted) fx0_ WORKTREE .claude\worktrees\agent-aa5c85a54b44e6397 (branch merged; build / build32 output inside, no
         links left per fx0_): delete on ATN's yes. Owner: ATN
         - [x] cbd_ CITATION BLOCKER DESIGN STARTED 01:2x (Opus xHigh, read-only; est 40 / deadline 80) ->
         plan_1117\designs\citation_blocker.md + shadow prototype in testbin\scratch\cbd_\ over the last ~30 commits;
@@ -18106,7 +18113,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         0.99689, edge 0.99493). Owner: the ContactShade (H9) / GI energy wave -> cause before any fix
         - [ ] OUTLIER RULE READS r0 vs r1 ONLY (ref_compare.py:426-436): R >= 8 adds nothing to it; pool the count over
         all replicates against all pairwise baselines (design, later wave). Owner: gate tooling slot
-        - [ ] DELETE fx1_ P4 PLAY DUMP (2.9 GB, testbin\scratch\fx1_\runs\p4_day1_battle_0\play; not a reference run, no
+        - [x] (DELETED 11-26 ~11:1x on ATN's yes) DELETE fx1_ P4 PLAY DUMP (2.9 GB, testbin\scratch\fx1_\runs\p4_day1_battle_0\play; not a reference run, no
         slices) on ATN's yes. Owner: ATN
         - [ ] BASE HARNESS BUILD (tools\tw\reference\harness): stale include of a deleted worktree's dlaa_bridge.hpp; repoint
         to src's bridge + fix extra_written, or retire it for the pdi1 fork. Owner: gate tooling slot
@@ -18222,7 +18229,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] RR PLACEMENT CITE: the RR-after-tone-mapper comment (anti_aliasing.hpp aa_dlaa_prepare / rr_d3d12.hpp) gets
         'ours: RRG 3.1 p10 says before tone mapping; measured hrr_ 11-26: no gain before at matched encoding, linear lifts
         darks x1.26'. Owner: next comment / cite wave
-        - [ ] ATN LOOK: RR FEED ENCODING. Today's sqrt keeps darks right (x0.997) but darkens two-level noise (penumbrae,
+        - [x] (ATN 11-26: keep sqrt - 'otherwise we get black raise / purple pictures') ATN LOOK: RR FEED ENCODING. Today's sqrt keeps darks right (x0.997) but darkens two-level noise (penumbrae,
         AO, fireflies) by 22 %; linear fixes that bias but lifts darks x1.26 (the violet veil). Sweep: no free middle;
         p 0.6 = darks +4-5 % / bias -18 %, p 0.7 = +7-10 % / -13 %, p 0.8 = +13-16 % / -9 %. ATN picks by eye (a product
         change only on his word; then a test build with the exponent for an in-game A/B). Owner: ATN
@@ -18309,7 +18316,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed with colour 0 -> DI pixels
         would lose them. Owner: WH2 port of PT DI
         - [ ] 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its paths still run. Owner: 4b
-        - [ ] CLEANUP on ATN's yes: testbin\scratch\pd4r_\ (fz\, fused_check.sh, multiset_cmp.py, sec_*.md). Owner: ATN
+        - [x] (DELETED 11-26 ~11:1x) CLEANUP on ATN's yes: testbin\scratch\pd4r_\ (fz\, fused_check.sh, multiset_cmp.py, sec_*.md). Owner: ATN
         nvs_ DONE 23:43 (19 min vs 45; plan_1117\nv_speedups.md). NEW speed-ups (all fit unified with section 3's
         order), each its own box:
         - [ ] NV1 CONSERVATIVE VISIBILITY for DI initial + bias rays (RtxdiApplicationBridge.md:170 'can skip
@@ -18332,7 +18339,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         after); adds to R2 / R3; est -0.15..0.45 (U); precondition for the SER re-measure. Owner: R2 / R3 owner
         - [ ] NV6 SMALL: RR packed normals + roughness (< 0.03 ms); thread-group size test + compile-time ray flags
         (U13); bounded VNDF (noise only; before U5a if done). Owner: U13 / U5a owners
-        - [ ] NV7 ATN NUMBERS: RR preset D / E 1.83 vs 2.12 ms at 4K Performance on the 5090 (another model = ATN's
+        - [x] (ATN 11-26: 'D and E don't really matter. F is the best and default'; our RT presets already switch RR to F, graphics_page.hpp:812 -> 4 = F) NV7 ATN NUMBERS: RR preset D / E 1.83 vs 2.12 ms at 4K Performance on the 5090 (another model = ATN's
         call). Owner: coord -> ATN
         - [x] NV8 UNIFIED ADDENDUM (DONE by rpg2_ 11-26, part (b); rpgc_ rechecks): C1-C14 choices (C2 visibility reuse stays off or T1 reads
         the same visibility; C3 decide split vs fused DI BEFORE G2 / G3 / G5 get a second implementation; C9 only the
@@ -18514,7 +18521,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         fail on 0 / 2 sinks, 4 shaders byte-identical, WARP ALL PASS, WithTwins dup check enforced in all 7 tables).
         MERGED fcbea9694 (15dccc93b) + twattila x86 (addon32) + amd64 (addon64) build check: exit 0, 61 warnings each
         = baseline. addon.cpp free for Friday's chain.
-        - [ ] CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; testbin\scratch\tddr_\helper\
+        - [x] (DELETED 11-26 ~11:1x: the .bak_tddi + tddr_ helper's 2 .obj) CLEANUP (ATN's yes): tools\tw\attila_motion\make_wind_motion_vs.py.bak_tddi; testbin\scratch\tddr_\helper\
         .obj leftovers. Owner: ATN (add to the agents' leftovers list)
         - [x] TDD RUN CHECKS (ATN 11-25: NOT NEEDED, dropped) (needs a TDD game run, ATN's OK): create-time patcher counts in ReShade.log on TDD's
         bytes; whether TDD's new values (rain gloss, near-leaf cull, billboard cull band) are ever set (named
@@ -18549,7 +18556,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         side matches the reference; small fix only if clearly ours, branch pds2_fogreuse); (2) G1 Raytraced vs Basic cost
         day + night (does Balanced want Raytraced? numbers for ATN); (3) PT DI 4b / 4c. brr_'s bright_r2 findings go to
         pds2_ first when they land. Owner: pds2_
-        - [ ] ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the next cleanup list). Owner: ATN
+        - [x] (DELETED 11-26 ~11:1x: pds2_nits worktree build\pds2_pp4a / 4b / 2a / 2b) ATN: delete pds2_'s failed builds pds2_pp4a / pp4b / pp2a / pp2b (sizes in the next cleanup list). Owner: ATN
         - [x] DONE 15:1x (above) S4 follow-ups (owner pds2_, helper lane, with / right after the brightness row): R1 `sun_4_lobe_copy`
         row (18432 + sun env; Own ReSTIR wall b/r 0.944 vs 1.106 without); R2 faces that see the sky stay dark with Own
         Sky Rays off (cfg 49 box tops 0.951; pre-existing, S1 uncovered it); R3 Part C cause tests re-run on round 2
