@@ -17582,6 +17582,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         (-9.4 %), spin on + L2B 120.8 ms; same battle state in all 5. L2B's premise holds on 1.3.28; keep the loader's spin
         off. Steps 0 / 0b (hard affinity) superseded. LESSON: a new exe path needs ATN's CPU Set Setter rule before any CPU
         run (dry run line 'CPU Set Setter rule: none'). Owner: Friday CPU wave (L2B, C03-64 design)
+        - [x] CPU STEP 0d (21:0x, repeat under the rule): base 134.0 (4 starts), spin on 137.5, L2B 121.35, spin on + L2B 122.0
+        ms -> the spin adds nothing to L2B; keep the loader's spin off; L2B = the lever (-9.4 %); C03-64 design target = beat
+        L2B without spinning (start_1127.md). Owner: Friday CPU wave
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
