@@ -981,6 +981,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SSS TEST FLAKE: test/tw_screen_space_shadows case 2 (100 %, Auto Thickness pole ... | ?
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ?
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | ?
+- AA FEED FIX BUILT, NOT MERGED (aaf2_ 11-26, origin/aafeed_1126 ecf627f09; testbi ... | ?
+- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | ?
+- RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17663,6 +17666,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one blocking background command, never
         poll; at most 2 agents queued at once, others do non-GPU steps first; GPU jobs batched at the end. Owner: coord (every
         brief from 11-27)
+        - [ ] AA FEED FIX BUILT, NOT MERGED (aaf2_ 11-26, origin/aafeed_1126 ecf627f09; testbin\scratch\aaf2_\handback.md):
+        Settings::linear_frame (Attila + Thrones HDR) -> g_aa_frame_gamma 1 except RR frames and FSR / XeSS; SMAA edges + CMAA2
+        on the root. 4K: K 11.3 -> 7.5, L 11.0 -> 6.8, M 10.9 -> 6.9, RR bit-identical (16.3). Other games unchanged (bytes /
+        branch never taken). tw_aa_frame_gamma PASS, control fails; 16 builds at baseline. Look changes: PT on-screen hits
+        brighter mid-tones under K / L / M; SMAA T2x root edges; CMAA2 Low misses a 0.6-stop edge at t00 0.5. Not verified:
+        game picture (ATN A/B), Thrones' t00 linear (from aaf_), CMAA2 on GPU (CPU model). Owner: ATN (merge) -> coord
+        - [ ] AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both take linear HDR (FFX HDR flag,
+        XeSS default) so likely K's mismatch -> 4K measurement like aaf_'s, then ATN's word. Owner: 11-27 GPU wave
+        - [x] rrbi_ RUNNER FIX (coord 11-26): gpu_job_g1.ps1 did not clear HARNESS_SR between runs (aaf2_'s first RR arms
+        inherited preset M; set aside in results_invalid\, re-run alone); now in its clear list (backup .bak_coord1126).
+        aaf_'s rows unaffected (every line set it). Owner: done
+        - [ ] RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; the real commit ran hooks). Briefs
+        already forbid skipping hooks; repeat it louder. Owner: coord (briefs)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
