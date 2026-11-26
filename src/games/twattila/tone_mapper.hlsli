@@ -36,6 +36,8 @@ float4 ToneMapperHdr(float4 scene_sample, float4 bloom_sample, float2 black_whit
   // upper clamp. Highlights and bloom therefore remain available to PsychoV30.
   float black_point = black_white_points.x;
   float white_point = black_white_points.y;
+  // ours: stock divides by the range unguarded (with its clamp to the points, equal points give 0 / 0, which its
+  // saturate makes 0); without that clamp equal points would give Inf / NaN here, so the range keeps a floor of 1e-6.
   float black_white_range = max(white_point - black_point, 0.000001f);
 
   float hdr_luminance = dot(hdr_color, float3(0.212599993, 0.715200007, 0.0722000003));

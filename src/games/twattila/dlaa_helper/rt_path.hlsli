@@ -700,10 +700,11 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     TRACE_SURFACE(query, ray)
     const bool hit = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 #if defined(PATH_REORDER)
-    // Shader execution reordering (DXR 1.2, rt_path_ser.lib_6_9.hlsl), as RTXPT's: only a path's first surface, before
-    // its state grows; a miss runs in place (RTXPT's inline miss). One bit: the surface is off the screen (the
-    // projection alone), so it takes the unseen route (its own sun and lights, the path going on) where an on-screen hit
-    // mostly ends on the screen's light. Every thread keeps its own path: the same light as without it.
+    // Shader execution reordering (DXR 1.2, rt_path_ser.lib_6_9.hlsl), ours: a 1-bit hint with no HitObject, at a path's
+    // first surface only, before its state grows (RTXPT reorders a HitObject::FromRayQuery hit + hint at every bounce:
+    // PathTracerSample.hlsl:152-154, SERUtils.hlsli:43-52); a miss runs in place. One bit: the surface is off the screen
+    // (the projection alone), so it takes the unseen route (its own sun and lights, the path going on) where an on-screen
+    // hit mostly ends on the screen's light. Every thread keeps its own path: the same light as without it.
     if (vertex == 0u && hit) {
       const float4 clip = ClipOf(origin + direction * query.CommittedRayT(), view_projection);
       const float2 uv = clip.xy / clip.w * float2(0.5f, -0.5f) + 0.5f;

@@ -16,7 +16,8 @@ namespace twattila::credits {
 // What a game ships of the methods several add-ons share (Methods' line names only those).
 struct Shipped {
   bool psycho_v30 = true;       // PsychoV30 (else the line names PsychoV31 and PsychoV35 alone)
-  bool gtvbao = false;          // Visibility Bitmask ambient occlusion
+  bool psycho_v31 = true;       // PsychoV31 (else Musa's custom PsychoV30 and PsychoV35: both Divinity games)
+  bool gtvbao = false;         // Visibility Bitmask ambient occlusion
   bool gtvbgi = false;          // Visibility Bitmask Light Bounce
   bool auto_thickness = false;  // their Auto Thickness rows
   bool ue_extended = false;     // UE Filmic Extended
@@ -29,9 +30,10 @@ struct Shipped {
 
 // About's line of those methods, with their authors and licences (Attila's texts; a game's own lines follow it).
 inline std::string Methods(const Shipped& shipped) {
-  std::string text = std::format("RenoDX, {}PsychoV31, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
-                                 "PsychoV31 and PsychoV35.",
-                                 (shipped.psycho_v30 ? "PsychoV30, " : ""));
+  std::string text = std::format("RenoDX, {}{}PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom "
+                                 "{} and PsychoV35.",
+                                 (shipped.psycho_v30 ? "PsychoV30, " : ""), (shipped.psycho_v31 ? "PsychoV31, " : ""),
+                                 (shipped.psycho_v31 ? "PsychoV31" : "PsychoV30"));
   if (shipped.gtvbao || shipped.gtvbgi) {
     const bool both = shipped.gtvbao && shipped.gtvbgi;
     text += std::format(" Visibility Bitmask {}: the method of Therrien, Levesque and Gilet (2023) on GTAO (Jimenez et al. 2016), as "
@@ -54,11 +56,6 @@ inline std::string Methods(const Shipped& shipped) {
   if (!libraries.empty()) text += "\n" + libraries;
   return text;
 }
-
-// The RenoDX line of the add-ons with PsychoV30 and PsychoV35 (both Divinity games).
-constexpr const char* RENODX_PSYCHO_V30_V35 =
-    "RenoDX, PsychoV30, PsychoV35 and Hue Clip Emulation by ShortFuse. This mod uses Musa's custom PsychoV30 and "
-    "PsychoV35.";
 
 constexpr const char* FULL_DOWNLOAD_NOTE = "DLSS, FSR, XeSS, Frame Generation and ray tracing need the full download from GitHub: github.com/arshiatn/renodx/releases";
 

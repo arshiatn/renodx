@@ -1050,7 +1050,8 @@ void ConfigureAddon() {
       },
       new renodx::utils::settings::Setting{
           .value_type = renodx::utils::settings::SettingValueType::TEXT,
-          .label = twattila::credits::RENODX_PSYCHO_V30_V35,
+          .label = twattila::credits::Methods({.psycho_v31 = false, .gtvbao = true, .gtvbgi = true, .auto_thickness = true,
+                                               .bend = true, .smaa = true, .cmaa2 = true}),
           .section = "About",
       },
       new renodx::utils::settings::Setting{

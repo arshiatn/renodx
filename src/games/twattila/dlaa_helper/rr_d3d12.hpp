@@ -29,8 +29,8 @@
 // The DLAA helper's Ray Reconstruction (NVIDIA's denoising DLAA / DLSS) through D3D12: D3D11's crashes in NVIDIA's D3D11
 // driver when the GPU is waited for right after it (as the bridge's fence makes the game wait), so this runs on a D3D12
 // queue of its own, which waits for the addon's fence value and signals the next. The addon's shared textures and
-// fence are opened in D3D12 as well (states: COMMON between the APIs). Tales' DLSS add-on runs it in the game's process
-// (talesofarise_dlss/rr_d3d12.hpp) for the same reason.
+// fence are opened in D3D12 as well (states: COMMON between the APIs). Tales' DLSS add-on goes through this helper too
+// (its own D3D12 copy in the game's process was deleted 2026-11-22: talesofarise_dlss/ngx_backend.hpp).
 namespace twattila::dlaa_helper {
 
 using Microsoft::WRL::ComPtr;

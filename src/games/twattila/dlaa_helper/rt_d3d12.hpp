@@ -214,7 +214,9 @@
 // (rt_compact.cs_6_5.hlsl). The partitioned TLAS (PTLAS: each frame
 // only the instances that changed written; only with RENODX_TW_PTLAS: it stalled a city siege) takes every change as a
 // whole instance write: NVAPI's update operation (a new BLAS for an instance) stalled the GPU 4-5 s a time after BLAS
-// compactions (GPU harness, helper19-21). Two PTLASes in turn, the operations in device memory, as NVAPI asks. Its
+// compactions (GPU harness, helper19-21). Two PTLASes in turn and the operations copied into device memory: ours, as first
+// written (a test path), not NVAPI's ask: nvapi.h's PARTITIONED_TLAS_INDIRECT_DESC allows a build in place (the old PTLAS
+// then invalid) and takes the operations in NON_PIXEL_SHADER_RESOURCE, which an upload buffer's GENERIC_READ holds. Its
 // queue waits for the addon's fence value and signals the next.
 namespace twattila::dlaa_helper {
 
@@ -282,8 +284,8 @@ class RtScene12 {
       record_removal(settings.Get());
     }
 #if defined(RENODX_OMM_SDK)
-    // Opacity micromaps for new leaves, baked on the CPU by NVIDIA's OMM SDK (the GPU bake it replaced stopped ATN's GPU
-    // three times, 2026-10-28): its omm-lib.dll next to the helper, its CPU baker.
+    // Opacity micromaps for new leaves, baked by NVIDIA's OMM SDK (its omm-lib.dll next to the helper): its CPU baker by
+    // default (the first GPU bake stopped ATN's GPU three times, 2026-10-28), its GPU baker with GPU Micromap Baking.
     if (HMODULE library = (omm_.library == nullptr) ? LoadLibraryW((folder / L"omm-lib.dll").c_str()) : nullptr; library != nullptr) {
       const auto load = [library](auto* function, const char* name) {
         *function = reinterpret_cast<std::remove_pointer_t<decltype(function)>>(GetProcAddress(library, name));
@@ -9534,9 +9536,9 @@ class RtScene12 {
   // A world-space BLAS into the slot's TLAS instances (leaves not opaque: their alpha is tested), its InstanceID its
   // first geometry's record; placed by `transform` (null: where it was captured); `place` its partitioned TLAS index
   // (kept in InstanceContributionToHitGroupIndex: no hit groups here).
-  // Grass with micromaps (DXR 1.2): 2-state for every ray (NVIDIA's OMM guide: 2-state for secondary rays), its unknown
-  // states opaque or transparent as they lean: no alpha tests (ATN's debug29: sun rays 22-27 ms zoomed into grass and over
-  // a river's grassy bed).
+  // Grass with micromaps (DXR 1.2) sets no 2-state flag here: it stays 4-state with its alpha tests (v108's 2-state grass
+  // went solid, fields black in ATN's debug31); only Fast Leaf Shadows forces 2-state, as a ray flag (rt_scene.hlsli
+  // SceneRayFlags).
   void AddInstance(Slot* slot, UINT* instance_count, D3D12_GPU_VIRTUAL_ADDRESS blas, uint32_t record, bool foliage,
                    const std::array<float, 12>* transform, uint32_t place, UINT mask) const {
     D3D12_RAYTRACING_INSTANCE_DESC& instance = slot->instance_data[(*instance_count)++];
