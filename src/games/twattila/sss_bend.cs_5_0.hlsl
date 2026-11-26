@@ -184,6 +184,13 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
   dp.InvDepthTextureSize = g_sss_inverse_size;
   dp.FullSize = g_sss_size;
   dp.RenderSize = g_sss_render_size;
+  // O-SS5 (sss_scale_thickness.md 2.2): below 100% one sample a screen pixel, g_sss_samples the length in screen pixels.
+#if BEND_SSS_STEP_CONTROL == 4
+  // Test only (tw_screen_space_shadows case 11, W1's CONTROL): half a render pixel a sample at any scale.
+  dp.ScreenStep = 0.5f;
+#else
+  dp.ScreenStep = g_sss_render_size.x / g_sss_size.x;
+#endif
   dp.DepthTexture = t_sss_depth;
   dp.OutputTexture = t_rw_occlusion;
   dp.PointBorderSampler = s_sss_depth;
@@ -227,7 +234,8 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
   }
 #endif
   // Bend's loops take four samples at a time (Hard Shadow Samples are fours, its fade lanes i & 3): the count rounded up
-  // to fours (below 100% render scale: 30 at 50%), the fade-out's down (4 at least, within those after the hard ones).
+  // to fours (a host that scales them by the render share: 30 at 50%), the fade-out's down (4 at least, within those
+  // after the hard ones).
   // ours (X27): both marches; the plain one took the hosts' odd counts as they were (up to 3 fade samples unfaded, the
   // fade lanes permuted). Every host's count is fours at 100%: there nothing changes.
   const int sample_count = ((int)g_sss_samples + 3) & ~3;
