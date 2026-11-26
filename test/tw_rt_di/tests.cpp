@@ -656,7 +656,7 @@ int main(int argc, char** argv) {
     previous[light >> 2] = (previous[light >> 2] & ~(0xFFu << ((light & 3) * 8))) | (light << ((light & 3) * 8));
   }
   const auto mean_slm = [&](uint32_t di_flags, double* mean) {
-    std::vector<RTXDI_PackedDIReservoir> history(size_t{layout.reservoirArrayPitch} * 3, RTXDI_PackedDIReservoir{});
+    std::vector<RTXDI_PackedDIReservoir> history(size_t{layout.reservoirArrayPitch} * 2, RTXDI_PackedDIReservoir{});
     for (RTXDI_PackedDIReservoir& reservoir : history) reservoir.mVisibility = 20u << 18;
     ComPtr<ID3D12Resource> history_upload = upload(history.data(), history.size() * sizeof(RTXDI_PackedDIReservoir));
     std::array<D3D12_RESOURCE_BARRIER, 2> states = {};
