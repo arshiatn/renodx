@@ -146,7 +146,10 @@ float2 SunRay(float3 origin, float3 direction, uint instances, uint sheet) {
         }
         if (thin) last_sheet = met;
       }
-      ray.TMin = met + 0.01f;
+      // TMin <= TMax always (X12): a hit within 1 cm of TMax made TMin > TMax, which the DXR spec's RayDesc rules out
+      // (src: DirectX Raytracing functional spec, RayDesc: 0 <= TMin <= TMax).
+      // An inert exact-limit guard: in every frame without a hit past 9,999.99 m the same rays.
+      ray.TMin = min(met + 0.01f, ray.TMax);
     }
     return float2(0.f, first);
   }
@@ -213,13 +216,15 @@ float2 SunRay(float3 origin, float3 direction, uint instances, uint sheet) {
         }
         if (thin) last_sheet = layered.CommittedRayT();
         if (layer + 1u == THIN_HITS) return float2(0.f, first);
-        ray.TMin = layered.CommittedRayT() + 0.01f;
+        ray.TMin = min(layered.CommittedRayT() + 0.01f, ray.TMax);  // TMin <= TMax (X12, as above)
       }
     }
   }
   const float leaf = (first_leaf >= 0.f) ? first_leaf : LeafHit(origin, direction, 0.f, 1.0e4f);
   if (leaf < 0.f) return float2(lit, first);
-  const bool more = (leaf > 0.02f && LeafHit(origin, direction, 0.f, leaf - 0.01f) >= 0.f) || LeafHit(origin, direction, leaf + 0.01f, 1.0e4f) >= 0.f;
+  // No LeafHit whose near >= far (X12: a leaf within 1 cm of 1e4 m; an inert exact-limit guard as above).
+  const bool more = (leaf > 0.02f && LeafHit(origin, direction, 0.f, leaf - 0.01f) >= 0.f)
+                    || (leaf + 0.01f < 1.0e4f && LeafHit(origin, direction, leaf + 0.01f, 1.0e4f) >= 0.f);
   return float2(lit * (more ? LEAF_TRANSMITTANCE * LEAF_TRANSMITTANCE : LEAF_TRANSMITTANCE),
                 NearestBlocker(origin, direction, instances, 0.f, (first > 0.f) ? min(first, leaf) : leaf));
 }
