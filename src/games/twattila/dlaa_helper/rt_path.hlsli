@@ -121,6 +121,13 @@ static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughnes
 static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x its sample's distance away
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this many times one ray's (kajiya's RESTIR_RESERVOIR_W_CLAMP; the bounce's: W x cos / pi)
+// X08 (fidelity restir_gi_sharc_fog.md G-1: an output-changing clamp over the estimator's biases, re-set where it cuts
+// nothing at PASS or dropped, by the GPU's numbers and ATN's word; no default change here). Builds of their own (never
+// in build.ps1; a lab stem swap): REUSE_W_CLAMP_OFF the clamp off (the history's ClampWeight, PathTraceTexel, and Own
+// ReSTIR's merge ratio, ReflectPixel; the spatial one is off already, REUSE_TEST_SPATIAL_CLAMP's), REUSE_CLAMP_TRACE a
+// one-frame trace of where it cuts: the bounce's w = 1 the history's clamp cut this texel's W, + 2 the spatial one would
+// have (its distance from the camera's place; ReuseTexel), specular_meta's x = 1 where Own ReSTIR clamped a merge (0
+// else; its open share's place). The bounce's other parts and every other output as without it.
 static const uint REUSE_VALIDATION_PERIOD = 3u;
 // The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set). Balanced ReSTIR Light (RT_PATH_REUSE_BALANCED): G1 Basic in the reuse's own builds
@@ -138,6 +145,11 @@ static const uint REUSE_VALIDATION_PERIOD = 3u;
 #else
 #define REUSE_SUSPECTS (reuse_tests & REUSE_TEST_VALIDATE_KEEP_LIGHT)
 #endif
+// The fidelity fixes' controls (11-26 wave 3; -D in a build of its own, never in build.ps1: a lab stem swap or the WARP
+// tests, one build A / B against the shipped one): CONTROL_TARGET_PAST_RANGE (X02, ReuseTarget), CONTROL_HISTORY_NO_DEPTH
+// (X05, HistoryDepthMatches' callers), CONTROL_TEMPORAL_NO_SHIFT (X04, PathTraceTexel), CONTROL_F16_STORE_RAW (X11,
+// StoredHalf; rt_trace.cs_6_5.hlsl's too), CONTROL_NRD_CHOSEN_HIT (X23), CONTROL_N_DOT_V_CLAMP (X48, ViewFacingNormal);
+// REUSE_W_CLAMP_OFF / REUSE_CLAMP_TRACE (X08, at REUSE_W_CLAMP). X01's and X06's are bits (rt_reuse_bits.h).
 #if defined(REUSE_NEAR)
 // Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
 // scored better, its pass about half the cost).
@@ -1286,7 +1298,14 @@ void PathTraceTexel(uint2 id) {
           Random(uint4(id, frame, DIM_HISTORY_MERGE)));
   }
   Finish(reservoir, ReuseTarget(origin, normal, reservoir));
+#if defined(REUSE_CLAMP_TRACE)
+  Reservoir history_clamped = reservoir;
+  ClampWeight(history_clamped, origin, normal);
+  surface_normal[id].w = (history_clamped.weight < reservoir.weight) ? 1.f : 0.f;  // ReuseTexel reads it into the bounce
+#endif
+#if !defined(REUSE_W_CLAMP_OFF)
   if ((REUSE_SUSPECTS & REUSE_TEST_NO_HISTORY_CLAMP) == 0u) ClampWeight(reservoir, origin, normal);
+#endif
   StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, normal);
   if (sky_apart) bounce[id] = float4(sky / samples, 0.f);
 }
@@ -1576,6 +1595,9 @@ void ReuseTexel(uint2 id) {
   combined.light = resampled.radiance;
   combined.weight = resampled.weightSum;
   combined.count = (float)resampled.M;
+#if defined(REUSE_CLAMP_TRACE)
+  const float clamp_marks = surface_normal[id].w;  // RTXDI's resampling has no spatial clamp of ours
+#endif
 #else
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
   const Reservoir own = LoadReservoir(reuse_samples[set], reuse_data[set], id);
@@ -1714,6 +1736,11 @@ void ReuseTexel(uint2 id) {
     }
     combined.weight = (targets > 0.f) ? combined.weight * chosen_target / (target * targets) : 0.f;
   }
+#if defined(REUSE_CLAMP_TRACE)
+  Reservoir spatial_clamped = combined;
+  ClampWeight(spatial_clamped, origin, normal);
+  const float clamp_marks = surface_normal[id].w + ((spatial_clamped.weight < combined.weight) ? 2.f : 0.f);
+#endif
   if ((REUSE_SUSPECTS & REUSE_TEST_SPATIAL_CLAMP) != 0u) ClampWeight(combined, origin, normal);
 #endif
   // The chosen surface in view of this one (no light through walls); the integrand over its density.
@@ -1782,7 +1809,11 @@ void ReuseTexel(uint2 id) {
     arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }
 #endif
+#if defined(REUSE_CLAMP_TRACE)
+  bounce[id] = float4(arriving, clamp_marks);
+#else
   bounce[id] = float4(arriving, distance(position.xyz, Camera()));
+#endif
 #if defined(CONTROL_NRD_CHOSEN_HIT)
   if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = (combined.weight > 0.f) ? hit_distance : bounce_range;
 #endif
@@ -2038,6 +2069,9 @@ void ReflectPixel(uint2 id) {
     }
   }
   float met_weights = weights;  // before the reuses below set `weights` to 1
+#if defined(REUSE_CLAMP_TRACE)
+  float clamp_mark = 0.f;  // 1: Own ReSTIR clamped a merge here (REUSE_W_CLAMP's trace)
+#endif
   // Reflection Reuse from ReSTIR GI (PATH_REFLECT_REUSE, rougher lobes): the Light Bounce's reservoir at this pixel's
   // texel as a second candidate, resampled with the rays' own light (generalized RIS, its weights 1/2: the rays' light
   // by its target over their density, the reservoir's by the lobe's density at it times its W); one ray to the chosen
@@ -2137,7 +2171,14 @@ void ReflectPixel(uint2 id) {
       }
       if (densities <= 0.f) continue;
       const float ratio = LobeDensity(origin, normal, view, alpha, other.hit) * jacobian * total_count / densities;
+#if defined(REUSE_CLAMP_TRACE)
+      if (ratio > REUSE_W_CLAMP) clamp_mark = 1.f;
+#endif
+#if defined(REUSE_W_CLAMP_OFF)
+      Merge(combined, other, other.weight * other.count * ratio, Random(uint4(id, frame, DIM_REFLECT_MERGE + index)));
+#else
       Merge(combined, other, other.weight * other.count * min(ratio, REUSE_W_CLAMP), Random(uint4(id, frame, DIM_REFLECT_MERGE + index)));
+#endif
       weight_sum += other.weight * other.count;
       counted += other.count;
     }
@@ -2178,7 +2219,11 @@ void ReflectPixel(uint2 id) {
   // share that met.
   const float share = lerp(previous.a, current.a, 1.f / frames);
   specular_accumulated[id] = StoredHalf(float4(lerp(previous.rgb, current.rgb, saturate(current.a / (frames * max(share, 1e-4f)))), share));
+#if defined(REUSE_CLAMP_TRACE)
+  specular_meta[id] = float2(clamp_mark, frames);
+#else
   specular_meta[id] = StoredHalf(float4(lerp(previous_meta.x, current_open, 1.f / frames), frames, 0.f, 0.f)).xy;
+#endif
 }
 
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_PATH_HLSLI_
