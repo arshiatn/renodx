@@ -16998,7 +16998,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         all 10 allow lines of sections 2-5 present (allow 73 -> 84), JSON valid, but the PermissionRequest block is NOT
         in "hooks" yet -> asked again (paste file 1b now says: right below `"hooks": {`). 10:1x: ATN pasted it at the
         TOP level (settings.local.json :100-110, between "permissions" and "hooks") -> not a hook; ATN got pdi4c_'s
-        lab5 prompt again (redirect path 'near a sensitive file'); told him to move :100-110 below :111. Section B (4 game-run
+        lab5 prompt again (redirect path 'near a sensitive file'); told him to move :100-110 below :111. 
+        10:06 FIXED by ATN: hooks = PermissionRequest + the 4 old; coord ran the exact settings command: subagent = deny
+        JSON, main = no output; log rows 10:06:11 'verify'. Proof in real use still = the first background prompt. Section B (4 game-run
         wildcards + 4 Edit denies, ATN's choice) now written out in the paste file. Owner: ATN (hook block) -> coord
         (proof)
         - [ ] P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): list them when fx1_
