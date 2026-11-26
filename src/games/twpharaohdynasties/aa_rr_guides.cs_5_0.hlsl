@@ -59,5 +59,5 @@ void main(uint3 id : SV_DispatchThreadID)
   diffuse_albedo[id.xy] = float4((emissive || water) ? 0.f : gbuffer_colour[id.xy].rgb * (1.f - specular), 1.f);
   specular_albedo[id.xy] = float4(emissive ? 0.f : (water ? 0.02f : saturate(reflection)), 1.f);
   normals[id.xy] = float4(sky ? (float3)0.f : normalize(world), 0.f);
-  roughness[id.xy] = sky ? 0.f : (water ? max(0.01f, g_water_roughness) : saturate(linear_roughness));
+  roughness[id.xy] = sky ? 0.f : (water ? max(0.009999897f, g_water_roughness) : saturate(linear_roughness));
 }

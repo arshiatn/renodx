@@ -54,5 +54,5 @@ void main(uint3 id : SV_DispatchThreadID)
   const float n_dot_v = dot(world_normal, normalize(g_camera_position - on_ray.xyz / on_ray.w));
   specular_albedo[id.xy] = float4(water ? (float3)0.02f : RrSpecularAlbedo(saturate(specular), linear_roughness, n_dot_v), 1.f);
   normals[id.xy] = float4(world_normal, 0.f);
-  roughness[id.xy] = sky ? 0.f : (water ? max(0.01f, g_water_roughness) : linear_roughness);
+  roughness[id.xy] = sky ? 0.f : (water ? max(0.0100012785f, g_water_roughness) : linear_roughness);
 }

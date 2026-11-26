@@ -170,7 +170,7 @@ void PathTracePixel(uint2 id) {
 #if !defined(CONTROL_N_DOT_V_CLAMP)
   const float3 across = normal - dot(normal, view) * view;
   if (dot(normal, view) < 1e-3f) {
-    reflect_normal = (length(across) > 1e-6f) ? 1e-3f * view + sqrt(1.f - 1e-6f) * normalize(across) : view;
+    reflect_normal = (length(across) > 1.0000067e-6f) ? 1e-3f * view + sqrt(1.f - 1e-6f) * normalize(across) : view;
   }
 #endif
   const float n_dot_v = max(dot(reflect_normal, view), 1e-3f);
