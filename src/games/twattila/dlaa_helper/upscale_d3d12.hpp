@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <limits>
 #include <string>
 #include <thread>
 #include <type_traits>
@@ -168,18 +169,24 @@ class Upscaler12 {
         if (backend_ == dlaa_bridge::UPSCALER_FSR) {
           ffxQueryGetProviderVersion provider = {.header = {.type = FFX_API_QUERY_DESC_TYPE_GET_PROVIDER_VERSION}};
           fsr_.Query(&fsr_context_, &provider.header);
-          status_ = std::format("AMD FSR Upscaling {} active (started in {:.1f} s)", (provider.versionName != nullptr ? provider.versionName : "?"), make_seconds_);
+          status_ = std::format("AMD FSR Upscaling {} active{} (started in {:.1f} s)", (provider.versionName != nullptr ? provider.versionName : "?"),
+                                (made_infinite_far_ ? ", infinite depth" : ""), make_seconds_);
         }
 #endif
         first_frame_ = true;
       }
-      // FSR: a context for each output size (any render size up to it). XeSS: one context, initialized for each output size
-      // and the setting that takes the render size (below).
-      if (made_width_ == 0 || (backend_ == dlaa_bridge::UPSCALER_FSR && (made_width_ != request.output_width || made_height_ != request.output_height))) {
+      // FSR: a context for each output size (any render size up to it) and depth kind (UE's infinite far plane: the
+      // projection's [10] is 1; it changes at load only). XeSS: one context, initialized for each output size and the setting
+      // that takes the render size (below).
+      const bool infinite_far = request.view_to_clip[10] == 1.f;
+      if (made_width_ == 0
+          || (backend_ == dlaa_bridge::UPSCALER_FSR
+              && (made_width_ != request.output_width || made_height_ != request.output_height || made_infinite_far_ != infinite_far))) {
         if (!WaitForGpu(own_fence_.Get(), event_, own_value_, GPU_WAIT_TIMEOUT)) return unfinished();
         DestroyContext();
         made_width_ = request.output_width;
         made_height_ = request.output_height;
+        made_infinite_far_ = infinite_far;
         status_ = "Upscaling starting";
         making_.store(true);
         maker_ = std::thread([this] {
@@ -201,8 +208,10 @@ class Upscaler12 {
           };
           ffxCreateContextDescUpscale create = {
               .header = {.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE, .pNext = &version.header},
-              // No depth flags: 0 near, a far plane. Dynamic resolution: any render size up to the output's.
-              .flags = FFX_UPSCALE_ENABLE_HIGH_DYNAMIC_RANGE | FFX_UPSCALE_ENABLE_AUTO_EXPOSURE | FFX_UPSCALE_ENABLE_DYNAMIC_RESOLUTION,
+              // Depth 0 near (no DEPTH_INVERTED); DEPTH_INFINITE for an infinite far plane (src: ffx_upscale.h:53, FSR SDK
+              // 2.4.0). Dynamic resolution: any render size up to the output's.
+              .flags = FFX_UPSCALE_ENABLE_HIGH_DYNAMIC_RANGE | FFX_UPSCALE_ENABLE_AUTO_EXPOSURE | FFX_UPSCALE_ENABLE_DYNAMIC_RESOLUTION
+                       | (made_infinite_far_ ? static_cast<uint32_t>(FFX_UPSCALE_ENABLE_DEPTH_INFINITE) : 0u),
               .maxRenderSize = {.width = made_width_, .height = made_height_},
               .maxUpscaleSize = {.width = made_width_, .height = made_height_},
           };
@@ -316,7 +325,10 @@ class Upscaler12 {
           .preExposure = 1.f,
           .reset = reset,
           .cameraNear = near_plane,
-          .cameraFar = (projection[10] != 1.f ? projection[10] * near_plane / (projection[10] - 1.f) : 100028.21f),
+          // Infinite: no far plane, not a made-up 100 km one (src: ffx_fsr3upscaler.cpp:717-756, its depth to view depth
+          // under DEPTH_INFINITE takes the near plane alone).
+          .cameraFar = (made_infinite_far_ ? std::numeric_limits<float>::max()
+                                           : projection[10] * near_plane / (projection[10] - 1.f)),
           .cameraFovAngleVertical = 2.f * std::atan(1.f / projection[5]),
           .viewSpaceToMetersFactor = 1.f,
       };
@@ -426,6 +438,7 @@ class Upscaler12 {
   float make_seconds_ = 0.f;
   uint32_t made_width_ = 0;
   uint32_t made_height_ = 0;
+  bool made_infinite_far_ = false;  // its FSR context's DEPTH_INFINITE
   uint32_t last_width_ = 0;
   uint32_t last_height_ = 0;
   std::chrono::steady_clock::time_point last_time_;
