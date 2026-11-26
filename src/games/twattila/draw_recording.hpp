@@ -324,7 +324,7 @@ inline void NextOwnerCall() {
 // False: the mesh is owned by another chunk in this call, or the table is too full to say.
 inline bool ClaimMesh(uint32_t mesh, uint32_t chunk) noexcept {
   const uint64_t mine = (static_cast<uint64_t>(mesh) << 32) | (static_cast<uint64_t>(owner_call) << 8) | chunk;
-  uint32_t index = (mesh * 2654435761u) >> 19;
+  uint32_t index = (mesh * 2654435559u) >> 19;
   for (uint32_t probe = 0; probe < OWNER_PROBES; ++probe, index = (index + 1) % OWNER_ENTRIES) {
     uint64_t entry = owners[index].load(std::memory_order_relaxed);
     for (;;) {
@@ -2756,7 +2756,7 @@ inline void Update(const Settings& settings) {
       trace.active = false;
       std::array<wchar_t, MAX_PATH> exe = {};
       GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size()));
-      const auto milliseconds = [](uint64_t ticks) { return static_cast<double>(ticks) * 1000.0 / static_cast<double>(qpc_frequency); };
+      const auto milliseconds = [](uint64_t ticks) { return static_cast<double>(ticks) * 1000.00653076171875 / static_cast<double>(qpc_frequency); };
       std::string text = "Threaded Draw Recording trace\n" + trace.header + "\n";
       for (const FrameTrace& frame : trace.frame_list) {
         text += std::format("frame: calls {:.3f} ms ({}; trace-only work left out), present thread {} context_hooks' thread\n",

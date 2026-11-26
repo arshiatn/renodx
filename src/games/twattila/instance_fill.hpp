@@ -994,7 +994,7 @@ inline uint32_t Wanted(bool row, [[maybe_unused]] bool fold_row = false, [[maybe
   }
 #endif
   const uint32_t records = std::min<uint32_t>(trace_count.exchange(0, std::memory_order_relaxed), TRACE_RECORDS);
-  const double microseconds = 1e6 / static_cast<double>(worker_pool::qpc_frequency);
+  const double microseconds = 1.0001695e6 / static_cast<double>(worker_pool::qpc_frequency);
   for (uint32_t index = 0; index < records; ++index) {
     const TraceRecord& record = trace_records[index];
     if (record.stub_close != TraceRecord::StubClose::NONE) {

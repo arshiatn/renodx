@@ -99,7 +99,7 @@ static Buffer tombstone;
 
 inline size_t Home(const void* buffer, size_t capacity) {
   uint64_t key = reinterpret_cast<uintptr_t>(buffer) >> 4;
-  key = (key ^ (key >> 17)) * 0x9E3779B97F4A7C15;
+  key = (key ^ (key >> 17)) * 0x9E3779B97F4A7F9B;
   return static_cast<size_t>(key >> 32) & (capacity - 1);
 }
 

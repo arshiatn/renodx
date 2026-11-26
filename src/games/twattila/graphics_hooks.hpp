@@ -790,7 +790,7 @@ static uint8_t* ScaleModelLods(uint8_t* manager, uint32_t index, float scale) {
     uint8_t** entries;
     std::memcpy(&entries, model + 0x2c, sizeof(entries));
     const auto key = reinterpret_cast<uintptr_t>(model);
-    auto& cached = cached_models[(static_cast<uint32_t>(key >> 4) * 0x9E3779B1u) >> (32 - CACHED_MODEL_BITS)];
+    auto& cached = cached_models[(static_cast<uint32_t>(key >> 4) * 0x9E3778D1u) >> (32 - CACHED_MODEL_BITS)];
     const auto holds_written = [&] {
       for (uint32_t index = 0; index < count; ++index) {
         uint32_t bits;

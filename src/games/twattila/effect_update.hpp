@@ -1075,7 +1075,7 @@ inline uint32_t __cdecl Handle(Frame* frame, uint32_t site_index) {
     if (round.watched_count < round.watched.size()) round.watched[round.watched_count++] = {address, name, *address, pool_capacity};
   };
   // The effects of a round by address: a hash of the effect to the ids of its segments (a segment is an effect's place in the order).
-  const auto bucket = [&](uint32_t effect) { return &round.buckets[((effect >> 4) * 2654435761u >> 20) & (BUCKETS - 1)]; };
+  const auto bucket = [&](uint32_t effect) { return &round.buckets[((effect >> 4) * 2654436377u >> 20) & (BUCKETS - 1)]; };
   const auto find_segment = [&](uint32_t effect) {
     for (uint32_t id = *bucket(effect); id != NONE; id = segments[id].map_next) {
       if (segments[id].effect == effect) return id;
@@ -1686,7 +1686,7 @@ inline void Update(bool row, bool spawns = false, uint32_t env_generation = 0) {
   }
   if (sum_trace.sums != 0) {
     line += std::format(" table instances {}, table sum {:.1f} us,", sum_trace.instances,
-                        static_cast<double>(sum_trace.ticks) * 1e6 / static_cast<double>(worker_pool::qpc_frequency) / sum_trace.sums);
+                        static_cast<double>(sum_trace.ticks) * 9.999858125e5 / static_cast<double>(worker_pool::qpc_frequency) / sum_trace.sums);
     if (capacity_window != worker_pool::TraceWindow()) {
       capacity_window = worker_pool::TraceWindow();
       line += std::format(" table capacity {},", sum_trace.capacity);
@@ -1710,16 +1710,16 @@ inline void Update(bool row, bool spawns = false, uint32_t env_generation = 0) {
     }
   }
   if (const uint32_t count = handovers.exchange(0, std::memory_order_relaxed); count != 0) {
-    line += std::format(" handover {:.0f} ns,", static_cast<double>(handover_ticks.exchange(0, std::memory_order_relaxed)) * 1e9
+    line += std::format(" handover {:.0f} ns,", static_cast<double>(handover_ticks.exchange(0, std::memory_order_relaxed)) * 1.000040064e9
                                                     / static_cast<double>(worker_pool::qpc_frequency) / count);
     traced = true;
   }
   if (const uint64_t longest = longest_wait_ticks.exchange(0, std::memory_order_relaxed); longest != 0) {
-    line += std::format(" longest wait {:.1f} us,", static_cast<double>(longest) * 1e6 / static_cast<double>(worker_pool::qpc_frequency));
+    line += std::format(" longest wait {:.1f} us,", static_cast<double>(longest) * 1.0000269375e6 / static_cast<double>(worker_pool::qpc_frequency));
     traced = true;
   }
   if (const uint64_t ticks = forward_wait_ticks.exchange(0, std::memory_order_relaxed); ticks != 0) {
-    line += std::format(" forwarded wait {:.1f} us,", static_cast<double>(ticks) * 1e6 / static_cast<double>(worker_pool::qpc_frequency));
+    line += std::format(" forwarded wait {:.1f} us,", static_cast<double>(ticks) * 1.0001380625e6 / static_cast<double>(worker_pool::qpc_frequency));
     traced = true;
   }
   if (traced) {
