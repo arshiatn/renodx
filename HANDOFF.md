@@ -16875,6 +16875,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         Set-Content of start.json / hashes without retry, ~200 ms per blocked write, STOP reason may name an earlier
         check, unreadable lock kept silently. d11fr_ REVIEW STARTED 06:2x (Opus xHigh, read only; est 15 / deadline 30)
         -> ATN: the diff + the one unchanged-command retry go. Owner: d11fr_ -> ATN
+        d11fr_ DONE 06:33 (10 min): FIX FIRST. (1) REQUIRED Close-Ours :253 `$_ -and -not $_.HasExited` (PS 5.1 @($null |
+        Where) = 1 $null -> a false close problem on every STOP before the game starts); (2) Restore-Now :218 each copy in
+        its own try + start.json step names 'a file did not come back' before any later reason (a void-pin STOP must not
+        hide an unrestored file: the retry's backup would save it as the original); (3) collect :730 guard $snapPkg /
+        $snapGame / $dirsGame non-null ($null -notcontains = True would move EVERY folder out of ATN's game folder; only the
+        step order prevents it today) + the game-folder part as its own step after restore. Checked right: all 11 contract
+        items; restore / collect touch disjoint files; dot-sourced steps keep script scope; Append-Line bytes = Add-Content's
+        (BOM + CRLF), bounded 150 ms; ROOT CAUSE CONFIRMED by probe: PS 5.1 Add-Content throws even beside a ReadWrite |
+        Delete reader; clean run exit 0 + same start.json keys; command forms unchanged; unit test uses the script's AST.
+        ATN's 16 files = 06:10 hashes (16 / 16, read 06:30), no used_mods_64 in the game folder. Items 1-3 + the fallback
+        count SENT to d11f_ 06:3x (est 12 / deadline 25); no second review needed. Owner: d11f_ -> ATN
         - [ ] RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait for the exit notice
         only. Owner: every run brief
         - [x] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
