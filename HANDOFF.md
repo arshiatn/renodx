@@ -994,7 +994,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FIX WAVE 0 (no picture change, one commit a lane): X15, X25 (+ coord's memory li ... | ?
 - cbd_ CITATION BLOCKER DESIGN STARTED 01:2x (Opus xHigh, read-only; est 40 / dead ... | ?
 - FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
-- CRITIC QUESTIONS FOR ATN (01:1x): Q2 RR after the tone mapper (O-RR12): one line ... | ?
+- O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 fe ... | ?
+- X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither ... | ?
+- O-SS5 SSS THICKNESS AT EVERY SCALE (ATN wants the picked thickness exact at any ... | ?
+- Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / ... | ?
+- X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coor ... | ?
+- L5 MUSA'S COPYRIGHT LINE into the shipped notice file (RENODX_LICENSE names only ... | ?
+- LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\s ... | ?
 - LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner ... | done
 - LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'licens ... | ?
 - fa5_ SHADERTOY CREDITS: when the Shadertoy-derived code ships, credits name Mirk ... | ?
@@ -17550,12 +17556,40 @@ heading text are in HANDOFF_ARCHIVE.md)
         WAVE 6 X26, X27, X29, X30. WAVE 7 X43, X44 (X42 done cccc66497). GPU WINDOW: O-HANG (a) trace wait (costs
         speed every frame), (b) SHaRC depth 4, (c) SHaRC reflections; X16 + X17 then O-PTLAS. LAST: X38 (Nsight gate),
         X07 (after rpg2_). Port copies per id = critic.md G, fixed in the same wave. Owner: coord (waves)
-        - [ ] CRITIC QUESTIONS FOR ATN (01:1x): Q2 RR after the tone mapper (O-RR12): one line of reason or a HARNESS_RR
+        - [x] CRITIC QUESTIONS FOR ATN (01:1x): Q2 RR after the tone mapper (O-RR12): one line of reason or a HARNESS_RR
         A/B? Q3 X20 IGN dither under RR: NV9 numbers then eye? Q4 O-SS5: does SSS thickness / share (below 100 %) keep
         'Bend thickness stays 0.005'? Q5 written cost caps (MAX_CANDIDATES 64, smoke caps, SurfaceOffset; 22 rows): bugs
         under the guard rule or CHOSEN? Q6 X48 back-facing shading normals: RTXPT / Falcor bend or pbrt mirror? Q7 L5
         Musa's copyright line into a shipped notice file? Q8 one LSS smoke-sphere harness probe? (Q1 = fix A, done.)
         Owner: ATN
+        ATN 11-26 01:3x ANSWERS (each now a box below): Q2 'take your advice' -> HARNESS_RR A/B; Q3 'make the Nvidia say
+        default but maybe I decide otherwise with my eyes'; Q4 'Cannot we fix it so it stays correct at the picked
+        thickness at any scaling?'; Q5 'Maybe they are bugs?'; Q6 'your advice' (RTXPT / Falcor bend); Q7 'yes please';
+        Q8 'sure'. Owner: done
+        - [ ] O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 feed rules; noise, darks,
+        ghosting) in the HARNESS_RR job with fa4_ U1's sqrt check; the winner = the default with its cite. Owner: GPU queue
+        (with fa4_ U1)
+        - [ ] X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither in sampling): under RR the
+        default sampler drops IGN for NVIDIA's advice; IGN stays a row for ATN's eye; NV9 numbers in the report. Owner:
+        wave 5 (with X22)
+        - [ ] O-SS5 SSS THICKNESS AT EVERY SCALE (ATN wants the picked thickness exact at any DLSS scale):
+        screen_space_shadows.hpp:1064-1080 today makes thickness 0.005 / share (50 % -> 0.01, i.e. THICKER, not thinner)
+        + samples x share + edge threshold / share, to stop combed fence / striped hill shadows at Ultra Performance
+        (debug19). So lower scales assume occluders up to 1 / share thicker. Fix at the source: keep the world-space
+        thickness = the picked value and remove the combing another way (sub-pixel steps, or a step-size-aware window that
+        is not a thickness change); first measure whether SSS really looks weaker at low scale and why (samples x share,
+        fade, DLSS softening thin contact shadows). Design (Opus xHigh) in wave 6; ATN's eye on the result. Owner: wave 6
+        - [ ] Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / SMOKE_FAINT, SurfaceOffset,
+        ...; critic.md D) move to output-changing: each gets a one-frame count of how often it fires + a source-fix
+        design (e.g. smoke = LSS spheres, grass = OMM); a cap stays until its source fix is proven (removing it alone
+        brings back e.g. the 80 ms smoke frames), like the hang caps. Owner: waves (per cap's area)
+        - [ ] X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coord's advice; cite the RTXPT
+        file:line), E5 numbers in the report. Owner: wave 3 / 4 (reflections + paths)
+        - [ ] L5 MUSA'S COPYRIGHT LINE into the shipped notice file (RENODX_LICENSE names only Carlos Lopez today): sent
+        to fx0_ (wave 0). Owner: fx0_
+        - [ ] LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\scratch\lsp_\ (no product
+        code): smoke as NVAPI spheres vs today's quads, sun-shadow trace time + transmittance picture; GPU job after
+        pdi4c_ on 'lsp_ GPU go'. Owner: lsp_
         - [ ] LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner: done
         ATN 11-26 00:5x ANSWERS: (1) fa5_ U-VB5 CLOSED: the 3 Shadertoys are in C:\Users\arshi\Downloads\Shadertoy stuff\
         (root = GT-VBAO, 'GT-VBAO thickness heuristic' = Ottosson's variation, 'GT-VBGI (diffuse)'); every header reads
