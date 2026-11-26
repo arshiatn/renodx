@@ -1202,11 +1202,12 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
       native->DispatchIndirect(objects.arguments.Get(), index * 12);
     }
   }
-  // Softer Away from the Caster (sss_soft), else Softness (sss_blur).
+  // Softer Away from the Caster (sss_soft), else Softness (sss_blur); t3 sss_setup's parameters (X30: the depth at infinity).
   if (soft || runtime.settings.softness > 0.f) {
     const pass_timing::OwnPass mark(native, soft ? "sss_soft" : "sss_blur", pass_timing::Stage::COMPUTE);
     const ComPtr<ID3D11ComputeShader>& smooth = (soft ? objects.soft : objects.blur);
-    ComputeState::Bind(native, smooth.Get(), {objects.depth_srv.Get(), objects.occlusion_srv.Get(), soft ? objects.penumbra_srv.Get() : nullptr},
+    ComputeState::Bind(native, smooth.Get(),
+                       {objects.depth_srv.Get(), objects.occlusion_srv.Get(), soft ? objects.penumbra_srv.Get() : nullptr, objects.parameters_srv.Get()},
                        {objects.soft_uav.Get()}, {nullptr, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
     native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
     runtime.soft_frame = runtime.frame;
