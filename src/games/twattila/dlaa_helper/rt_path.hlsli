@@ -1233,9 +1233,23 @@ void PathTraceTexel(uint2 id) {
     // Last frame's reservoir was made for a surface facing about the same way and at its depth (its texel's centre pixel;
     // CONTROL_HISTORY_NO_DEPTH: the normal alone, today's), else a new history starts.
     if (dot(LoadReceiverNormal(reuse_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
+    const float4 held = previous_positions[uint3(min(previous_texel * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u),
+                                                 previous_positions_slice)];
 #if !defined(CONTROL_HISTORY_NO_DEPTH)
-    const uint2 held_pixel = min(previous_texel * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
-    if (!HistoryDepthMatches(previous_positions[uint3(held_pixel, previous_positions_slice)], position.xyz)) previous.count = 0.f;
+    if (!HistoryDepthMatches(held, position.xyz)) previous.count = 0.f;
+#endif
+    // The temporal shift (X04): the history's sample was made from last frame's origin at its texel's centre, up to a texel
+    // from this one, so it moves here by the reconnection Jacobian and its 0.1-10 cut, as the spatial merge's. That origin
+    // is not stored: its position (`held`) plus this texel's offset from its surface to its rays' start (RayOrigin's,
+    // StartPast's; ours: the same offset, both texels on one surface by the tests above). src: RTXDI-Library
+    // GI/TemporalResampling.hlsli:151-156 (RTXDI_CalculateJacobian from the temporal surface, weightSum x J) and RTXDI
+    // FullSample RAB_SpatialHelpers.hlsli:37-40 (RAB_ValidateGISampleWithJacobian: 0.1-10); Ouyang et al. 2021 Eq. 11.
+    // CONTROL_TEMPORAL_NO_SHIFT: today's (no Jacobian, no cut).
+#if defined(CONTROL_TEMPORAL_NO_SHIFT)
+    const float jacobian = 1.f;
+#else
+    const float jacobian = ReuseJacobian(previous, held.xyz + (origin - position.xyz), origin);
+    if (ShiftCut(jacobian, (REUSE_SUSPECTS & REUSE_TEST_NO_JACOBIAN_CUT) == 0u)) previous.count = 0.f;
 #endif
     float invalidity = 0.f;
     if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u && (reuse_tests & REUSE_TEST_NO_VALIDATE) == 0u) {
@@ -1243,7 +1257,12 @@ void PathTraceTexel(uint2 id) {
     }
     // REUSE_TEST_HISTORY_PLAIN (G0): the cap without the rays.
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)) * (((REUSE_SUSPECTS & REUSE_TEST_HISTORY_PLAIN) != 0u) ? 1u : samples));
-    Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count,
+    // deviation: from G22 Eq. 36 (Talbot over {canonical, history}): 1 / M, because our target has no visibility and the
+    // history comes from a surface facing the same way at the reprojected point, so Talbot's weights reduce to 1 / M; the
+    // bias left is the visibility domain, RTXDI's Raytraced temporal's (unified_pt.md:1771-1784, fa2 B6). No Talbot code.
+    // deviation: the spatial merge's ContactShade move is not applied (the origins lie within a texel; Validate's frames
+    // take the light now at this origin's ContactShade).
+    Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count * jacobian,
           Random(uint4(id, frame, DIM_HISTORY_MERGE)));
   }
   Finish(reservoir, ReuseTarget(origin, normal, reservoir));
