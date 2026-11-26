@@ -526,7 +526,9 @@ static struct Graphics {
 // game's pixel shaders sample with View.MaterialTextureMipBias) by max(log2(scale) + r.ViewTextureMipBias.Offset,
 // r.ViewTextureMipBias.Min), read every frame (PreVisibilityFrameSetup); the game's -0.3 and -1 leave textures blurrier
 // than NVIDIA's log2(scale) - 1 below ~57%. While DLSS renders below 100%: offset 0 / -1 / -2 (Matched / Sharper /
-// Sharpest) and no minimum; otherwise the game's values.
+// Sharpest; XeSS 0 / 0 / -1) and no minimum; otherwise the game's values. XeSS: src: XeSS SR developer guide 3.0.2
+// (doc/xess_sr_developer_guide_english.md:90-94, :495-502), its bias is log2(scale) with no -1, so the default (Sharper)
+// gives Intel's and Sharpest one step past it.
 constexpr std::array<const wchar_t*, 2> TEXTURE_LOD_BIAS_CVARS = {L"r.ViewTextureMipBias.Offset", L"r.ViewTextureMipBias.Min"};
 constexpr float LOWEST_MIP_BIAS = -16.f;  // D3D11's lowest; no minimum in practice
 static struct TextureLodBias {
@@ -1630,7 +1632,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
       }
       texture_lod_bias.controlling = true;
     }
-    texture_lod_bias.cvars[0].Set(-static_cast<float>(texture_lod_bias.choice - 1));
+    const bool xess = requested_upscaler.load() == twattila::dlaa_bridge::UPSCALER_XESS;
+    texture_lod_bias.cvars[0].Set(-static_cast<float>(xess ? std::max(texture_lod_bias.choice - 2, 0) : (texture_lod_bias.choice - 1)));
     texture_lod_bias.cvars[1].Set(LOWEST_MIP_BIAS);
   } else {
     RestoreTextureLodBias();
