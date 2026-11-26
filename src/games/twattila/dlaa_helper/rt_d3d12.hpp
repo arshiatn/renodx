@@ -8712,6 +8712,8 @@ class RtScene12 {
         rtxdi::FillNeighborOffsetBuffer(offsets.data(), DI_OFFSET_COUNT, ReSTIRDI_SpatialSamplingMode::StratifiedLowDiscrepancy);
         auto* floats = static_cast<float*>(mapped);
         for (size_t index = 0; index < offsets.size(); ++index) {
+          // src: RG8_SNORM's v / 127 (RtxdiUtils.h FillNeighborOffsetBuffer); its StoreSnorm8Offset writes -127..127
+          // only, so SNORM's clamp of -128 never applies.
           floats[index] = static_cast<float>(static_cast<int8_t>(offsets[index])) / 127.f;
         }
         upload->Unmap(0, nullptr);
@@ -8767,9 +8769,11 @@ class RtScene12 {
       constants.previous_view_projection = ambient_view_projection_;
       std::memcpy(slot->paths_data, &constants, sizeof(constants));
       list->SetComputeRootConstantBufferView(ROOT_PATHS, slot->paths->GetGPUVirtualAddress());
-      // The DI passes' history: the last trace ran them with these lights' kept bits (their mode and places).
+      // The DI passes' history: the last trace ran them with these lights' kept bits (their mode and places), at this
+      // render size (its reservoirs and surfaces are at its pixels).
 #if defined(RENODX_RTXDI_DI)
-      di_history = di && (constants.flags & PATH_LIGHT_HISTORY) != 0 && di_frame_ != UINT32_MAX && di_frame_ + 1 == frame;
+      di_history = di && (constants.flags & PATH_LIGHT_HISTORY) != 0 && di_frame_ != UINT32_MAX && di_frame_ + 1 == frame
+                   && di_trace_size_ == std::array{shared.rt_width, shared.rt_height};
 #endif
     }
     // The last trace's positions for the trace's and the local lights' dispatches.
@@ -8853,6 +8857,7 @@ class RtScene12 {
       };
       list->ResourceBarrier(static_cast<UINT>(after_di.size()), after_di.data());
       di_frame_ = frame;
+      di_trace_size_ = {shared.rt_width, shared.rt_height};
     }
 #endif
     // Before the list is closed and submitted: a failed submit is fatal to the device (rendering stops), so no stale 1
@@ -11136,6 +11141,7 @@ class RtScene12 {
   ComPtr<ID3D12Resource> di_reservoirs_;
   ComPtr<ID3D12Resource> di_offsets_;
   uint32_t di_frame_ = UINT32_MAX;
+  std::array<uint32_t, 2> di_trace_size_ = {};  // di_frame_'s rt_width x rt_height
 #endif
   ComPtr<ID3D12PipelineState> reuse_rtxdi_pack_pipeline_;  // the RTXDI GI contest's pack (REUSE_RTXDI_PACK; the reference build)
   ComPtr<ID3D12PipelineState> reuse_rtxdi_pipeline_;       // its reuse (REUSE_RTXDI)
