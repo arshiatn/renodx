@@ -945,10 +945,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 4K REFERENCE SET: ATN ADDED THE RULE LINE 11-26 ~15:1x (ref_set.ps1 *). GPU orde ... | ?
 - cw1_ MERGED 8adf80664 (comments only, 9 files, every block keeps its line count) ... | ?
 - ATTILA AA FEED vs LINEAR t00 (found by cw1_'s comment pass, a PRODUCT question, ... | ?
-- W8 MERGED b9a5cf080 (fx8_w8 ac18984c9 / 11bd63924 / bc6d4d6e9 + fx8_x30 a0b82717 ... | ?
+- W8 MERGED b9a5cf080 -> REVERTED 182c83dc6 (see the G1 box below) (fx8_w8 ac18984 ... | ?
 - gts_ STARTED 16:0x (Opus High, est 120; ATN: outside the cap): GPU test speed + ... | ?
 - 4K M6 BASELINE PASS 16:07 (all_modes_check -NewBaseline -Rev ce1f83655, 85 min G ... | ?
 - 64-BIT LOADER 1.3.27 / 1.3.28 OUT (11-26, public repo 0af665a4ad76 / 6ef3e72bcca ... | ?
+- W8 G1 FAILED -> REVERTED 182c83dc6 (src / test = the pre-merge tree 505959548, b ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17441,7 +17442,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         HARNESS_RR_TONEMAP=attila from rrbi_: K / L / M / RR, mode 0 vs 1, darks + noise vs truth), then ATN's eye; WH3 /
         Thrones / Rome II mode 0 'not measured' -> one G0-style t00 check each. 32-bit: shared source (x86 builds it).
         Owner: next GPU-plan slot (Opus High), ATN (look)
-        - [ ] W8 MERGED b9a5cf080 (fx8_w8 ac18984c9 / 11bd63924 / bc6d4d6e9 + fx8_x30 a0b827172 / e927ff0ff, with fx8_'s
+        - [ ] W8 MERGED b9a5cf080 -> REVERTED 182c83dc6 (see the G1 box below) (fx8_w8 ac18984c9 / 11bd63924 / bc6d4d6e9 + fx8_x30 a0b827172 / e927ff0ff, with fx8_'s
         Tales host patches tales_o_ss5 + tales_x30 in the merge commit): O-SS5 Fix A' ON (Bend SSS marches one screen pixel
         per sample below 100 %; step 1 = Bend's output to the bit, so 100 % and Shogun 2 unchanged; hosts stop scaling
         samples x share / thickness / share, 0.005 stays; ours: 'one surface' also needs the step within one window of its
@@ -17470,6 +17471,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         needs a rebase. TODO: move our 64-bit base 1.3.20 -> 1.3.28 (fetch into a new dir, rebase sol_fixes_1124 (3 fixes now
         upstream) + b1, rebuild, a64_ab smoke with our add-on + plugin; test home settings.txt crash_reports=off so no run
         stops on that question; runs never answer Yes). Owner: coord (ATN: now or next slot)
+        - [ ] W8 G1 FAILED -> REVERTED 182c83dc6 (src / test = the pre-merge tree 505959548, byte-equal): G1 at 4K (16:14,
+        median of 30, both runs within 0.01 ms; scratch\fx8_\g1\results\20261126_153821): A' vs C plain 100 % 1.290 / 0.814 ms
+        (+58 %, same picture), 67 % 1.560 / 0.346, 58 % 1.231 / 0.280, 50 % 0.686 / 0.222, 33 % 0.537 / 0.158 (Softer 0.5:
+        1.891 / 1.352 at 100 %). Cause: ScreenSample's per-sample lerp path in every loop (fxc temps 10 -> 15, asm 326 -> 653
+        lines). LESSON (coord): a speed-gated change merges only after its GPU gate. RE-LAND (fx8_, branch fx8_reland from
+        182c83dc6): step 1 = Bend's loops at C's cost (uniform branch, else a second compiled variant per host), X30 + Tales
+        patches again, gate = 100 % within 1 % of C (+ Nsight strict if headless), below-100 % numbers for ATN (A' costs 3-4.5x
+        C there: on / off below 100 %, or a cheaper A' after an xHigh design). wm_ r3 told to skip the SSS files. Owner: fx8_ /
+        ATN (below-100 % default)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
