@@ -9,6 +9,8 @@
 #ifndef SRC_GAMES_TWATTILA_DLAA_HELPER_RT_CAMERA_HLSLI_
 #define SRC_GAMES_TWATTILA_DLAA_HELPER_RT_CAMERA_HLSLI_
 
+#include "../rr_specular.hlsli"  // ReflectAlphaOf, MIRROR_ROUGHNESS
+
 cbuffer Paths : register(b3) {
   float4 view_projection[4];           // this frame's camera registers: clip = (dot(position, [0]), ...)
   float4 previous_view_projection[4];  // last frame's
@@ -89,14 +91,11 @@ bool SeenByLastTrace(float3 world, out uint2 seen_pixel) {
 }
 
 static const uint PATH_SQUARED_LOBE = 536870912u;  // reflections: alpha = roughness^2 (ReflectAlpha)
-static const float MIRROR_ROUGHNESS = 0.05f;       // smoother reflections are traced as mirrors (one ray, a delta lobe)
 
-// A reflection's lobe by the G-buffer's roughness (1 - gloss): GGX as wide as the game's own lights' highlight on it (a
-// Gaussian whose share within 0.5 degrees is gloss^2). The reflections' rays and NRD's guide (rt_nrd_front.hlsl) both.
+// A reflection's lobe by the G-buffer's roughness (1 - gloss), and MIRROR_ROUGHNESS: rr_specular.hlsli, the formula the
+// add-ons' Ray Reconstruction roughness guide takes too.
 float ReflectAlpha(float roughness) {
-  if ((path_flags & PATH_SQUARED_LOBE) != 0u) return max(roughness * roughness, 0.0064f);
-  const float gloss = 1.f - roughness;
-  return 0.0064f / max(gloss * gloss, 0.0625f);
+  return ReflectAlphaOf(roughness, (path_flags & PATH_SQUARED_LOBE) != 0u);
 }
 
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_CAMERA_HLSLI_

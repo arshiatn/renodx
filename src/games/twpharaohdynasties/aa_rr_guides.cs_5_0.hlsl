@@ -12,6 +12,8 @@
 // Roughness: 1 - gloss, that reflection's. Emissive pixels (flags 2 + 8: the sun draws them 4 x their albedo, unlit):
 // neither. Water (flags 64 alone: water_troy 833E7963 writes its G-buffer after the sun draw, albedo 1 and gloss 1): no
 // diffuse albedo, its own Fresnel's 0.02, nearly smooth (Softer Water Reflections: at least g_water_roughness).
+// The sky (no G-buffer write: the cleared channel 1, xy 0, an encoding no normal has, |e|^2 = 2 > 1): src: RRG 3.4.3 /
+// 3.4.4: normal (0, 0, 0) and roughness 0 (it decoded to (0, -1, 0) and roughness 1 before).
 Texture2D<float4> gbuffer_normal : register(t0);     // world normal (encoded in xy), gloss
 Texture2D<float4> gbuffer_colour : register(t1);     // albedo (an sRGB view: linear here)
 Texture2D<float4> gbuffer_constants : register(t2);  // specular colour, flags (w x 255)
@@ -38,6 +40,7 @@ void main(uint3 id : SV_DispatchThreadID)
   const float3 specular = float3(constants.xy, ((flags & 128u) != 0u) ? constants.x : constants.z);
   const bool emissive = (flags & 10u) == 10u;
   const bool water = flags == 64u;
+  const bool sky = all(normal.xy == 0.f);
   const float2 encoded = normal.xy * 2.f - 1.f;
   const float y = max(0.f, 1.f - dot(encoded, encoded));
   const float3 world = float3(2.f * encoded.x * sqrt(y), 2.f * y - 1.f, 2.f * encoded.y * sqrt(y));
@@ -55,6 +58,6 @@ void main(uint3 id : SV_DispatchThreadID)
   const float3 reflection = ((1.f - specular) * fresnel * (1.f + sin(-1.57079637f * linear_roughness)) + specular) * visibility;
   diffuse_albedo[id.xy] = float4((emissive || water) ? 0.f : gbuffer_colour[id.xy].rgb * (1.f - specular), 1.f);
   specular_albedo[id.xy] = float4(emissive ? 0.f : (water ? 0.02f : saturate(reflection)), 1.f);
-  normals[id.xy] = float4(dot(world, world) > 0.f ? normalize(world) : float3(0.f, 1.f, 0.f), 0.f);
-  roughness[id.xy] = water ? max(0.01f, g_water_roughness) : saturate(linear_roughness);
+  normals[id.xy] = float4(sky ? (float3)0.f : normalize(world), 0.f);
+  roughness[id.xy] = sky ? 0.f : (water ? max(0.01f, g_water_roughness) : saturate(linear_roughness));
 }
