@@ -941,6 +941,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - h4k_ DONE ON THE CPU, GPU PARTS NOT RUN (14:26; hand-back handoff_plan\handbacks ... | ?
 - 11-26 14:3x-14:5x (ATN in a break): (1) 64-bit licence record saved: tools\tw\at ... | ?
 - sb1_ DONE (b1 in testbin\attila64_1124\sol_fixes_1124, out\b1_20261126_1433): So ... | ?
+- SOLCAP (ATN 11-26 ~15:0x: Sol's frame cap OFF by default, 'it would ruin our Ref ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17405,6 +17406,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         resume sb1_ with the batch folders. Films: not reachable by a64_ab (Space every 1.5 s) -> would need menu_stutter_1s.md
         section 4's rule lines (ATN). 32-bit: nothing (Sol's loader only). cw1_ STARTED 14:5x (Opus High, est 45): the RR
         PLACEMENT CITE + R3 comments box, own worktree, shader-blob proof. Running: pdi4c_, fx8_, cw1_. Owner: coord / cw1_
+        - [ ] SOLCAP (ATN 11-26 ~15:0x: Sol's frame cap OFF by default, 'it would ruin our Reflex + FG'): 64-bit row 'Loader
+        Frame Cap (restart)' Off (default) / On. The plugin sets ATTILA_FPS_CAP=0 at attila64_plugin_init (before frame 1;
+        Sol reads it once, on frame 1) with Sol's own 3 calls, unless the restart-only key SolFrameCap = 1; a player's own
+        env value wins. Live control = our Frame Rate Limit row (Reflex). Owner: Friday's C8 wave (addon.cpp + plugin
+        main.cpp have one writer there); design addendum in round_notes\attila64\designs\c8_wave2_plan.md (2026-11-26).
+        ATN QUESTION OPEN: our Frame Rate Limit default with his cap off (Off vs 240, so menus stay capped). Owner: C8 / ATN
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
