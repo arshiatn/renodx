@@ -72,6 +72,9 @@ constexpr size_t VIEW_PROJECTION = 32;
 constexpr size_t VIEW_POSITION = 48;
 constexpr size_t VIEW_INFO = 52;
 constexpr uint32_t JITTER_PHASES = 8;
+// src: NVIDIA's DLSS-RR integration guide 3.6 (at least 32 phases under Ray Reconstruction), as
+// twattila/anti_aliasing.hpp:183 RR_PHASES.
+constexpr uint32_t RR_PHASES = 32;
 constexpr UINT SRV_COUNT = 7;  // aa_dlaa_finish's t0-t6
 constexpr UINT UAV_COUNT = 3;  // aa_dlaa_prepare's u0-u2
 
@@ -296,7 +299,7 @@ inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data,
   return true;
 }
 
-// The next frame's jitter: Halton (2, 3) over 8 frames, centred, only after a frame DLAA ran (a frame without it would
+// The next frame's jitter: Halton (2, 3) over 8 frames (32 under Ray Reconstruction), centred, only after a frame DLAA ran (a frame without it would
 // shake); the display's size from the back buffer (R1: the scene draws at the window's size, the portrait's smaller).
 inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*,
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
@@ -314,7 +317,9 @@ inline void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swa
       const reshade::api::resource_desc desc = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
       state.display = {desc.texture.width, desc.texture.height};
     }
-    const uint32_t phase = static_cast<uint32_t>(state.frame % JITTER_PHASES) + 1u;
+    // Ray Reconstruction runs only with the rays (ray_tracing.hpp).
+    const uint32_t phases = ((rays && twattila::feature_settings::AaSettings(sliders).ray_reconstruction) ? RR_PHASES : JITTER_PHASES);
+    const uint32_t phase = static_cast<uint32_t>(state.frame % phases) + 1u;
     state.jitter = ((sliders.method != 0.f && state.evaluated_frame == state.frame)
                         ? std::array<float, 2>{halton(phase, 2) - 0.5f, halton(phase, 3) - 0.5f}
                         : std::array<float, 2>{});
