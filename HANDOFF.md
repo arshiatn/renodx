@@ -918,6 +918,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SOL'S PORT IS NEWER THAN OURS (coord 11-26 ~12:1x, ATN 'check if we got the newe ... | ?
 - pdi4c_ r5 READY 12:2x: origin/pdi4c_step4c_r5 = 9bf2313a3 (27 commits on ce1f836 ... | ?
 - d11g_ DONE 12:3x (9 min; testbin\scratch\d11g_\report.md): ROOT CAUSE of start 3 ... | ?
+- FIX WAVES 11-26 (wvp_ DONE 12:2x, 24 min: plan_1117\fidelity\wave_plan_1126.md = ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17113,6 +17114,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         +17 / -4: refuses add-on 060535d8..., zoom only after a first camera line, STOP before any input if none 20 s
         after the settle; movie keys unchanged; test_d11g.ps1 96 / 96, live 91 pass + 5 new fail) -> install as live
         (.bak_g1 = 76499BEE...) -> d11 start 4 (1 trimmed start, no ask). No rule line needed. Owner: coord
+        - [ ] FIX WAVES 11-26 (wvp_ DONE 12:2x, 24 min: plan_1117\fidelity\wave_plan_1126.md = state, waves, file-ownership
+        map, COMMON + 7 briefs, ranked NVIDIA items, needs-ATN). State: fx1_wave1 already merged (0a6e3e182; P3 / P5 GPU
+        proofs wait on paste 1126b item 1); wave 0, pdi5_, bal3_, X42 merged; X11 confirmed; L1 / L3 fixed in tools; wave 2
+        = pdi4c_ r5. STARTED 12:4x (Opus High, worktrees, own branches from origin/atn-mods, no GPU, 4K proof jobs written
+        only, never-drop, overlap check vs pdi4c_step4c_r5): fx0b_ W0b comments (est 20), fx3_ W3 PT estimator X01 / X02 /
+        X05 / X06 / X04 / X12 / X11 / X23 / X48 / X08 arms (est 170), fxh_ W-H X19 / X40 (est 50), fx5a_ W5a X22 + ports / X37
+        TW / X39 / RR placement cite (est 140; RR order + feed untouched), fx5b_ W5b X35 / X36 / X37 ports (est 75), fx7_ W7
+        X43 / X44 / O-CO16 (est 45); designs D1 O-SS5 SSS thickness at every scale + D2 Q5 cost caps (Opus xHigh, read
+        only). W6 (fx6_: X26 / X27 / X29 / X30, owns screen_space_shadows.hpp) starts after the coord commits the d11
+        camera edit. WAIT: on pdi4c_'s merge W2 (X50 / X51), W-H2 (X33 / X34 / X41), X20, W0c cites, the GPU window (O-HANG,
+        X16 / X17); on pdi4c_ + W3 W4b (X09 + X10, X14, X18); LAST X13 speed, X38, X07. Merge order: W0b, W7, W6, W5b, W-H,
+        W5a, W3 (then one helper build with pdi4c_ + W3: rt_path.hlsli includes rt_rtxdi_bridge.hlsli). Ranked NVIDIA: 1
+        smoke spheres (siege recording), 2 arrow trails as LSS capsules (probe first), 3 NRC vs SHaRC (gain unknown).
+        Needs ATN: paste item 1, WH3 jitter under RR (ours or the game's 16), X45, siege runner + PNG eye, X03 only if he
+        uses Reflection Reuse = From ReSTIR GI, OMM 1.12, look numbers after GPU. Owner: the wave agents -> coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
