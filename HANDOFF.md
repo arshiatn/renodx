@@ -905,6 +905,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - d11f_ SCRIPT FIX STARTED 06:2x (Opus High, CPU only, .bak_d11f): Note never thro ... | ?
 - d11 SCRIPT v1 LOCK RECORDS (cost of the 06:10 crash: every build / GPU job waite ... | ?
 - d11 CAPTURE RETRY (ATN 09:3x 'Yes, retry'): d11c_ resumed; START 2 of the round ... | ?
+- SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATT ... | ?
 - gpu_lock.py UNSTICK (ATN 09:4x 'Yes, build it': a backup for stale locks while h ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
@@ -16936,7 +16937,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         checks. Checks 2-6 clean (quiet_run.queue confuses no reader; Remove-Item leaves nothing stale; argv quoting
         exact; PS 5.1 probes OK; a64_ab / budget.py / keeper treat v1 as alive). Fixes -> d11f_ 09:4x (est 15 / deadline
         30; copies; lab_keeper.py swap with .bak_d11k) -> short d11fr_ recheck -> the v1 copy into the live script.
-        Until then: the live script keeps the old CreateNew locks. Owner: ATN (rule line + go) / d11f_
+        Until then: the live script keeps the old CreateNew locks.
+        d11f_ ROUND 7 DONE 09:57 (9 min): lab_keeper.py LIVE 09:56:35 (C33D607E..., .bak_d11k = 1B4CC54A...; no keeper
+        was running): at the queue head with quiet_run.lock present it leaves its ticket, polls, queues again after;
+        test_lab_keeper 33 / 33 incl. new test_quiet_run_wins_the_queue (FAILS on the old keeper; going into the live
+        tests), lab_jobs 40 / 40, lab_unit 42 / 42, unstick 24 / 24. d11 v1 copy 830 lines (+34 / -16 vs live): $taken,
+        own record removed on each not-taken path, Release-Locks 3 x 100 ms, gpu_lock.py in the dry-run checks; 69 / 69
+        incl. the keeper deadlock end to end (fixed: both locks 8.1 s; old: timeout). -> d11fr_ recheck 10:0x -> live.
+        LOAD TIME FOUND (ATN 10:0x 'because of the start cutscene? skip it?'): the ~175 s are the game's INTRO MOVIES,
+        not loading: GateR 1_C64 'front end screen: main' 19:49:40, then 2-draw frames at ~223 fps and NO text drawn
+        until 19:52:35 ('sharp text: first text drawn'); the battle loading screen 19:52:36 -> running 19:52:55 (~20 s
+        real load). Sol's port has ATTILA_TEST_SKIP_MOVIES=1 (src_1320 effects_and_tests.inc:185, 'so unattended
+        tests reach the main menu without the 2.5-minute intro'; SWITCHES.md:85 'once caused a sound crash at the
+        menu'). No runner sets it (d11, a64_ab, ebo_run). Owner: ATN (rule line + go) / d11fr_
+        - [ ] SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATTILA_TEST_SKIP_MOVIES=1 =
+        a new env var -> ATN's rule line per runner switch; first ONE test start (menu reached, no sound crash, replay
+        loads) because of SWITCHES.md's sound-crash note; then d11 C1At back near 180 - 60 and a64_ab / ebo_run timing
+        rechecked. Owner: coord -> ATN (rule line)
         d11f_ v1 LOCKS (copy, 09:36; diff testbin\scratch\d11f_\d11f_v1.diff, +21 / -17): Take-Locks = gpu_lock.py acquire
         --lock <each> --pid $PID (quiet_run then gpu_job; both or neither -> exit 2), Lock-Ours by 'renodx-lock v1
         pid=$PID start=$lockStart'; a dead owner is now taken over by the next taker. 59 / 59 tests; old 44 / 44 vs live.
