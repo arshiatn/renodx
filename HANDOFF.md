@@ -17941,14 +17941,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         0.0031 / 0.0024; dark ramp darkest tenth x3.09 / x10.55 / x3.09 / x10.55; ghost trails < 1 px all arms. -> ORDER
         MATTERS LITTLE AT MATCHED ENCODING (A ~ C); THE ENCODING IS THE LEVER (linear lifts darks x1.26-1.28 = debug28's
         violet veil). DEFAULT KEPT: after + sqrt. Caveats: stand-in is not PsychoV35 / grading; 640x360 no upscale;
-        presets 0 / E. FOLLOW-UP SENT 04:3x: encoding sweep p = 0.5 / 0.6 / 0.7 / 0.8 / 1.0 (same measures; est 15 /
-        deadline 30) -> a middle option for ATN. Owner: hrr_ -> ATN
+        presets 0 / E. SWEEP DONE 04:37 (HARNESS_RR_ENCODE=pow:<p>, 50 runs, GPU 324 s; p 0.5 = today's numbers exactly;
+        results\20261126_042343, sweep_table.py): preset 0 p 0.5 / 0.6 / 0.7 / 0.8 / 1.0: U1 x0.782 / 0.825 / 0.869 /
+        0.915 / 0.996; AO x4 darkest tenth x0.997 / 1.045 / 1.098 / 1.153 / 1.261; ramp darkest tenth x3.09 / 4.16 / 5.10
+        / 6.85 / 10.55; fireflies mean x0.693 / 0.707 / 0.711 / 0.726 / 0.753, time noise 0.00256 / 0.00204 / 0.00210 /
+        0.00230 / 0.00242. Preset E same shape (U1 x0.774 -> 0.990, darks x0.998 -> 1.213). NO p keeps darks within 3 %
+        while halving the U1 bias: the trade is ~linear (+0.1 p = ~4.4 points of bias back for ~4-5.5 points of dark
+        lift); p 0.6-0.7 also cut AO time noise ~8 % and firefly time noise ~20 %. Middle option for ATN's eye: p 0.6
+        (darks +4-5 %, bias -22 -> -18 %) or 0.7 (+7-10 %, -13 %). Owner: ATN
         - [ ] RR PLACEMENT CITE: the RR-after-tone-mapper comment (anti_aliasing.hpp aa_dlaa_prepare / rr_d3d12.hpp) gets
         'ours: RRG 3.1 p10 says before tone mapping; measured hrr_ 11-26: no gain before at matched encoding, linear lifts
         darks x1.26'. Owner: next comment / cite wave
         - [ ] ATN LOOK: RR FEED ENCODING. Today's sqrt keeps darks right (x0.997) but darkens two-level noise (penumbrae,
-        AO, fireflies) by 22 %; linear fixes that bias but lifts darks x1.26 (the violet veil). hrr_'s sweep adds middle
-        exponents; ATN picks by eye (a product change only on his word). Owner: ATN
+        AO, fireflies) by 22 %; linear fixes that bias but lifts darks x1.26 (the violet veil). Sweep: no free middle;
+        p 0.6 = darks +4-5 % / bias -18 %, p 0.7 = +7-10 % / -13 %, p 0.8 = +13-16 % / -9 %. ATN picks by eye (a product
+        change only on his word; then a test build with the exponent for an in-game A/B). Owner: ATN
         - [ ] ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 baseline -> move it to the M1 run
         (f370cd3bd vs e52ec9e28) once step 5 merges. Owner: gate tooling slot
         - [ ] wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 of 1 M SHaRC keys / 6
