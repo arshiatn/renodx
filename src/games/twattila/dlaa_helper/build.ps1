@@ -185,8 +185,10 @@ if (Test-Path "$nvapi\nvapi.h") {
   $nvapi_include = @("-imsvc$nvapi")
   $nvapi_library = @("$nvapi\amd64\nvapi64.lib")
 }
-# NVIDIA's Opacity Micro-Map SDK (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/OMM: its Windows release) for the
-# leaves' micromaps when it sits in build\downloads\omm\extracted; its omm-lib.dll (loaded at run time) ships next to the
+# NVIDIA's Opacity Micro-Map SDK 1.12.0 (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/Omm: its untagged main commit
+# b485825a, built from source as Release with OMM_ENABLE_PRECOMPILED_SHADERS_DXIL on and SPIR-V off; 1.12 has the CPU
+# Wrap fix for negative UVs on non-power-of-two textures) for the leaves' micromaps when it sits in
+# build\downloads\omm\extracted (bin\omm-lib.dll, include\omm.h); its omm-lib.dll (loaded at run time) ships next to the
 # helper.
 $omm = Join-Path $root "build\downloads\omm\extracted"
 $omm_include = @()
