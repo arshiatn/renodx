@@ -977,6 +977,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | ?
 - CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | ?
 - DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | ?
+- gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17629,6 +17630,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         while scaling (anti_aliasing.hpp:1469-1470; coord's reading, designer to confirm). Design (Opus xHigh, no code first):
         tone mapper at display size after RR, bloom / exposure read at the render share (effect_share), jitter ends at RR;
         gate = 4K harness G1 like rrbi_'s at 67 / 58 / 50 %. Owner: 11-27+ designer (start_1127.md 5b)
+        - [x] gts_ SWITCH B DONE (11-26, scratch\gts_\switch_b_changed.txt, backups .bak_gts / .bak_gts2): DI_FRAMES digest,
+        DI_E option 2 (Y runs get X's class maps; 48 real E files: digest sha256 = .bin, 54 energy lines identical in 3 forms,
+        controls fail), worker-thread hashing, ProbeMean from digests; E file 199 MB -> ~57 KB (+2 s a job). Harness
+        8F69F306F341 in 59 pdi4c_ run folders + pdi1 (amc hash 78CF138C010C, dry run clean). Fix: readers take a .bin only
+        when no newer digest sits beside it (stale-bin trap). Coord added rr_specular.hlsli to h0_gpu_runs.ps1 $HelperPaths
+        (needed since 3989d8a89; backup .bak_coord1126). Owner: done
+        - [ ] gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_run's helper E0D3C4484ACD is not the
+        merged code; 62 outputs differ for that reason only); m2c_bits_r11 (+ _matte) stay .bin (hand-run c1 / c5 / r13);
+        scratch gts_\head_build2 (4 junctions in JUNCTIONS.txt: links first) + v13 (302 MB) = delete on ATN's yes. Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
