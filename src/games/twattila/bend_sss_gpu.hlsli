@@ -5,7 +5,9 @@
 // RenoDX render scale (search "RenoDX"): the game builds the light coordinate and the dispatches for the full-size
 // screen, the DLSS addon draws the depth into its top-left render scale part. The rays stay in full-size pixels (the
 // same shadow length on screen as at full size), read the depth in the rendered part and write each rendered pixel
-// once. At full size the same as the game's.
+// once. At full size the same as the game's. Modified (O-SS5, 11-26): with ScreenStep below 1 the samples are screen
+// pixels between the rendered depth's texels (ScreenSample), so the shadows match 100%'s at every render scale; 1 (the
+// default, Shogun 2's) Bend's loops' values to the bit.
 
 // Copyright 2023 Sony Interactive Entertainment.
 //
@@ -126,6 +128,10 @@ struct DispatchParameters
 	bool MirrorEdges;
 	// RenoDX: the shadow fades out between these shares of the far plane's distance (y <= x: none).
 	float2 FarFade;
+	// RenoDX render scale (O-SS5): render pixels (groupshared entries) per sample, 1 = Bend's one sample per depth texel.
+	// Below 1 the march takes one sample per screen pixel (ScreenSample), so every count of Bend's (the length, hard,
+	// fade, its 4 lanes, the near-light window) means on screen what it means at 100%.
+	float ScreenStep;
 #ifdef BEND_SSS_LIGHT_CASTERS
 	// RenoDX (Attila's Light Through Foliage): what a depth marked negative shadows keeps this share of the light.
 	float CasterLight;
@@ -164,6 +170,7 @@ struct DispatchParameters
 		FadeOutSamples				= FADE_OUT_SAMPLES;
 		MirrorEdges					= false;
 		FarFade						= float2(0, 0);
+		ScreenStep					= 1;
 #ifdef BEND_SSS_EXTENDED
 		AutoThicknessScale			= 0;
 		ThinCasters					= false;
@@ -329,6 +336,74 @@ struct DispatchParameters
 #endif
 	groupshared bool LdsEarlyOut;
 
+	// RenoDX render scale (O-SS5, round_notes plan_1117 designs\sss_scale_thickness.md 2.2): sample `n` of the march,
+	// (n + 1) x ScreenStep render pixels from the pixel along the ray (groupshared from `sample_index` on, whose entry
+	// k lies k + 1 render pixels out: index -1 is the pixel's own read): x its parallel-space depth (Bend's stored depth),
+	// y its light casters' least delta (0 without BEND_SSS_LIGHT_CASTERS). On an entry (ScreenStep 1: always) the entry
+	// itself, Bend's to the bit. Between two entries:
+	// - on one surface (src: Bend's bilinear edge test, its BilinearThreshold of the remaining depth, here along the ray;
+	//   neither entry left out near the light, 1e10; and ours, deviation from the design: a step over one window,
+	//   SurfaceThickness of the remaining depth, within a window of the steps before and after it, since Bend's 2%
+	//   (/ share) took a caster up to 6 windows before the surface behind it for one surface and the lerp's ramp to it
+	//   shadowed what lies behind the caster, tw_screen_space_shadows W2; or a step within one window going the way
+	//   of both, a gap that small within Bend's own thickness, since the minor axis's staircase, F7, keeps sloped
+	//   ground's steps from equal (grazing ground near the light at 33%, WARP: mean occlusion 0.031 without this, 0.063
+	//   with it, 100%'s 0.083), while a thin caster's steps turn back, its lerp a tent narrower than the caster, W4):
+	//   ours, the raw depths lerped and projected again with the sample's own distance, exact on planes (z / w and the
+	//   distance are affine along the ray: their steps equal; a lerp of the stored depths is off by O(1 / distance^2));
+	// - across an edge: ours, the nearer entry (a point-sampled depth of the same edge at screen resolution; a lerp
+	//   across it would ramp from the caster to the background, an infinitely thick caster). Its stored depth as it is:
+	//   the march tests it against the pixel's own light ray, constant in this space, so it tests that texel as 100%
+	//   would (its raw depth at the sample's distance instead moves it off its light ray: near the light's point false
+	//   shadows, grazing ground's mean occlusion 0.57 at 33% against 100%'s 0.08).
+	// The light casters' delta is the nearer entry's (ours: a sub-sample takes the nearer texel's material, as a full
+	// size G-buffer read would).
+	float2 ScreenSample(DispatchParameters inParameters, int sample_index, int n, float first_sample_distance, float direction)
+	{
+		const float q = (float)(n + 1) * inParameters.ScreenStep - 1;
+		const float m = floor(q);
+		const float f = q - m;
+		const int a = sample_index + (int)m;
+		float stored = DepthData[a];
+#ifdef BEND_SSS_LIGHT_CASTERS
+		float light = LightData[a];
+#else
+		float light = 0;
+#endif
+		[branch] if (f != 0)
+		{
+			const float b_stored = DepthData[a + 1];
+			const float a_distance = first_sample_distance + (m + 1) * direction;
+			const float a_depth = stored * a_distance + inParameters.LightCoordinate.z;
+			const float b_depth = b_stored * (a_distance + direction) + inParameters.LightCoordinate.z;
+			const float step = b_depth - a_depth;
+			const float after_step = DepthData[a + 2] * (a_distance + 2 * direction) + inParameters.LightCoordinate.z - b_depth;
+			// The entry before a: the pixel before it on the ray (none before the first wave's own reads: the step after
+			// alone).
+			const float before_step = (a > 0) ? (a_depth - (DepthData[max(a - 1, 0)] * (a_distance - direction) + inParameters.LightCoordinate.z)) : step;
+			const float remaining = abs(inParameters.FarDepthValue - a_depth);
+			const float window = inParameters.SurfaceThickness * remaining;
+			const bool one_surface = abs(stored) < 1e9 && abs(b_stored) < 1e9 && abs(step) <= inParameters.BilinearThreshold * remaining
+			                         && ((abs(after_step - step) <= window && abs(step - before_step) <= window)
+			                             || (abs(step) <= window && step * after_step >= 0 && step * before_step >= 0));
+#if BEND_SSS_STEP_CONTROL == 1
+			// Test only (tw_screen_space_shadows case 11, W5's CONTROL): ATN debug14's staircase, the nearer texel's depth
+			// at the sample's own distance.
+			stored = (((f >= 0.5) ? b_depth : a_depth) - inParameters.LightCoordinate.z) / (first_sample_distance + (q + 1) * direction);
+#else
+			if (one_surface)
+				stored = (lerp(a_depth, b_depth, f) - inParameters.LightCoordinate.z) / (first_sample_distance + (q + 1) * direction);
+			else if (f >= 0.5)
+				stored = b_stored;
+#endif
+#ifdef BEND_SSS_LIGHT_CASTERS
+			if (f >= 0.5)
+				light = LightData[a + 1];
+#endif
+		}
+		return float2(stored, light);
+	}
+
 #ifdef BEND_SSS_EXTENDED
 	// RenoDX extended: what the loops carry between samples. Auto Thickness's run (its first sample, the depth and step of
 	// the sample before); the first shadowing sample (FindHit), the banner sample shadowing most and by how much (FindThin):
@@ -348,14 +423,17 @@ struct DispatchParameters
 	// thick as it is wide", CC0, as bitmask.hlsli's): a run starts where the depth jumps more than a window from the sample
 	// before or bends by more than half of one; a sample's back lies 2 (m - 1) windows further than Bend's, m growing along
 	// the run, its front edge Bend's; light casters (foliage, banners) stay thin.
+	// RenoDX render scale: the samples ScreenSample's (first_sample_distance, direction its ray's).
 	float4 ExtendedDeltas(DispatchParameters inParameters, inout ExtendedState state, int first, int sample_index, float start_depth,
-	                      float depth_scale, float z_sign)
+	                      float depth_scale, float z_sign, float first_sample_distance, float direction)
 	{
 		const int4 index = first + int4(0, 1, 2, 3);
-		const float4 sample_depth = float4(DepthData[sample_index + first], DepthData[sample_index + first + 1],
-		                                   DepthData[sample_index + first + 2], DepthData[sample_index + first + 3]) * depth_scale;
-		const float4 light_data = float4(LightData[sample_index + first], LightData[sample_index + first + 1],
-		                                 LightData[sample_index + first + 2], LightData[sample_index + first + 3]);
+		const float2 samples[4] = {ScreenSample(inParameters, sample_index, first, first_sample_distance, direction),
+		                           ScreenSample(inParameters, sample_index, first + 1, first_sample_distance, direction),
+		                           ScreenSample(inParameters, sample_index, first + 2, first_sample_distance, direction),
+		                           ScreenSample(inParameters, sample_index, first + 3, first_sample_distance, direction)};
+		const float4 sample_depth = float4(samples[0].x, samples[1].x, samples[2].x, samples[3].x) * depth_scale;
+		const float4 light_data = float4(samples[0].y, samples[1].y, samples[2].y, samples[3].y);
 		const float4 offset = start_depth - sample_depth;
 		float4 depth_delta = abs(offset);
 #ifdef BEND_SSS_AUTO_THICKNESS
@@ -406,7 +484,8 @@ struct DispatchParameters
 	//	(int)	inGroupThreadId:	Compute shader group thread id register (SV_GroupThreadID)
 	void WriteScreenSpaceShadow(DispatchParameters inParameters, int3 inGroupID, int inGroupThreadID, int inSampleCount)
 	{
-		const int read_count = inSampleCount / WAVE_SIZE + 2;
+		// RenoDX render scale: the reads cover the render pixels the samples span (ScreenStep 1: Bend's).
+		const int read_count = (int)((uint)ceil((float)inSampleCount * inParameters.ScreenStep) / WAVE_SIZE) + 2;
 		float2 xy_delta;
 		float2 pixel_xy;
 		float pixel_distance;
@@ -632,7 +711,14 @@ struct DispatchParameters
 		// The 1.0 / inParameters.SurfaceThickness is to adjust user selected thickness. So a 0.5% thickness will scale depth values from [0,1] to [0,200]. The shadow window is always 1 wide.
 		// 1.0 / depth_thickness_scale[0] is because SurfaceThickness is percentage of remaining depth between the sample and the far clip - not a percentage of the full depth range.
 		// The min() function is to make sure the window is a minimum width when very close to the light. The +direction term will bias the result so the pixel at the very center of the light is either fully lit or shadowed
+		// RenoDX render scale (deviation from Bend's line, O-SS5 F6): the distance in the minimum in screen pixels (Bend's own
+		// pixels at 100%), so the widened window keeps its radius on screen.
+#if BEND_SSS_STEP_CONTROL == 2
+		// Test only (tw_screen_space_shadows case 11, W6's numbers): the distance in render pixels.
 		float depth_scale = min(first_sample_distance + direction, 1.0 / inParameters.SurfaceThickness) * first_sample_distance / first_depth_thickness_scale;
+#else
+		float depth_scale = min(first_sample_distance / inParameters.ScreenStep + direction, 1.0 / inParameters.SurfaceThickness) * first_sample_distance / first_depth_thickness_scale;
+#endif
 
 		start_depth = start_depth * depth_scale - z_sign;
 
@@ -648,18 +734,18 @@ struct DispatchParameters
 		state.thin_weight = 0;
 		[loop] for (i = 0; i < inParameters.HardShadowSamples; i += 4)
 		{
-			const float4 depth_delta = ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign);
+			const float4 depth_delta = ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign, first_sample_distance, direction);
 			hard_shadow = min(hard_shadow, min(min(depth_delta.x, depth_delta.y), min(depth_delta.z, depth_delta.w)));
 		}
 		[loop] for (i = inParameters.HardShadowSamples; i < inSampleCount - inParameters.FadeOutSamples; i += 4)
 		{
-			shadow_value = min(shadow_value, ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign));
+			shadow_value = min(shadow_value, ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign, first_sample_distance, direction));
 		}
 		[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade += 4)
 		{
 			const float4 fade_out = (float4)(fade + int4(1, 2, 3, 4)) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
 			const float4 depth_delta = ExtendedDeltas(inParameters, state, inSampleCount - inParameters.FadeOutSamples + fade, sample_index,
-			                                          start_depth, depth_scale, z_sign);
+			                                          start_depth, depth_scale, z_sign, first_sample_distance, direction);
 			shadow_value = min(shadow_value, depth_delta + fade_out);
 		}
 		const int hit = state.hit;
@@ -667,11 +753,13 @@ struct DispatchParameters
 		float thin_weight = state.thin_weight;
 #else
 		// The first number of hard shadow samples, a single pixel can produce a full shadow
+		// (RenoDX render scale: every sample of the three loops ScreenSample's)
 		[loop] for (i = 0; i < inParameters.HardShadowSamples; i++)
 		{
-			float depth_delta = abs(start_depth - DepthData[sample_index + i] * depth_scale);
+			const float2 hard_sample = ScreenSample(inParameters, sample_index, i, first_sample_distance, direction);
+			float depth_delta = abs(start_depth - hard_sample.x * depth_scale);
 #ifdef BEND_SSS_LIGHT_CASTERS
-			depth_delta = max(depth_delta, LightData[sample_index + i]);
+			depth_delta = max(depth_delta, hard_sample.y);
 #endif
 
 			// We want to find the distance of the sample that is closest to the reference depth
@@ -684,11 +772,13 @@ struct DispatchParameters
 		// the sample counts are multiples of 4).
 		[loop] for (i = inParameters.HardShadowSamples; i < inSampleCount - inParameters.FadeOutSamples; i += 4)
 		{
-			float4 depth_delta = abs(start_depth - float4(DepthData[sample_index + i], DepthData[sample_index + i + 1],
-			                                              DepthData[sample_index + i + 2], DepthData[sample_index + i + 3]) * depth_scale);
+			const float2 main_samples[4] = {ScreenSample(inParameters, sample_index, i, first_sample_distance, direction),
+			                                ScreenSample(inParameters, sample_index, i + 1, first_sample_distance, direction),
+			                                ScreenSample(inParameters, sample_index, i + 2, first_sample_distance, direction),
+			                                ScreenSample(inParameters, sample_index, i + 3, first_sample_distance, direction)};
+			float4 depth_delta = abs(start_depth - float4(main_samples[0].x, main_samples[1].x, main_samples[2].x, main_samples[3].x) * depth_scale);
 #ifdef BEND_SSS_LIGHT_CASTERS
-			depth_delta = max(depth_delta, float4(LightData[sample_index + i], LightData[sample_index + i + 1],
-			                                      LightData[sample_index + i + 2], LightData[sample_index + i + 3]));
+			depth_delta = max(depth_delta, float4(main_samples[0].y, main_samples[1].y, main_samples[2].y, main_samples[3].y));
 #endif
 
 			// Do the same as the hard_shadow code above, but this will accumulate to 4 separate values.
@@ -699,9 +789,10 @@ struct DispatchParameters
 		// Final fade out samples (RenoDX: counted from the first, fade; Bend's i is inSampleCount - FADE_OUT_SAMPLES + fade)
 		[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade++)
 		{
-			float depth_delta = abs(start_depth - DepthData[sample_index + inSampleCount - inParameters.FadeOutSamples + fade] * depth_scale);
+			const float2 fade_sample = ScreenSample(inParameters, sample_index, inSampleCount - inParameters.FadeOutSamples + fade, first_sample_distance, direction);
+			float depth_delta = abs(start_depth - fade_sample.x * depth_scale);
 #ifdef BEND_SSS_LIGHT_CASTERS
-			depth_delta = max(depth_delta, LightData[sample_index + inSampleCount - inParameters.FadeOutSamples + fade]);
+			depth_delta = max(depth_delta, fade_sample.y);
 #endif
 
 			// Add the fade value to these samples
@@ -765,9 +856,16 @@ struct DispatchParameters
 #ifdef BEND_SSS_EXTENDED
 			ExtendedResult extended;
 			extended.hit = hit >= 0;
-			extended.hit_xy = own_xy + (float)(hit + 1) * step_xy;
+			// RenoDX render scale: a sample is ScreenStep render pixels (step_xy's) along the ray.
+#if BEND_SSS_STEP_CONTROL == 3
+			// Test only (tw_screen_space_shadows case 11, W8's CONTROL): one render pixel a sample.
+			const float sample_step = 1;
+#else
+			const float sample_step = inParameters.ScreenStep;
+#endif
+			extended.hit_xy = own_xy + (float)(hit + 1) * sample_step * step_xy;
 			extended.thin = thin_hit >= 0 && thin_weight > 0;
-			extended.thin_xy = own_xy + (float)(thin_hit + 1) * step_xy;
+			extended.thin_xy = own_xy + (float)(thin_hit + 1) * sample_step * step_xy;
 			extended.thin_weight = thin_weight;
 			extended.depth = first_sampling_depth;
 			WriteExtended(inParameters, (int2)write_xy, result, extended);

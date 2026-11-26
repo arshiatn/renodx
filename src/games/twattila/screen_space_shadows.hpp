@@ -161,6 +161,16 @@ struct ExtendedSettings {
 // The penumbra's most at 2160 render lines (Softer Away from the Caster; render pixels, by the render's height).
 constexpr float SOFT_RADIUS_2160 = 32.f;
 
+// Test only (test/tw_screen_space_shadows case 11's controls; the add-on keeps the defaults): which of Compute's
+// sss_bend settings below 100% render scale take the render share. With samples_by_share the test swaps in the sss_bend
+// before O-SS5 (one sample a render pixel); all three that and thickness_by_share: the form before O-SS5 (control C).
+struct ScaleControl {
+  bool samples_by_share = false;
+  bool thickness_by_share = false;
+  bool edge_threshold_by_share = true;
+};
+static ScaleControl scale_control;
+
 // A shadowed sun light shader with the screen-space shadow, its shadow x (1 - t49 at the pixel), rT = 1 - t49 from
 //   ftou rT.xy, vP.xyxx / mov rT.zw, l(0) / ld rT.x, rT.xyzw, t49.xyzw / mad rT.x, rT.x, l(-1), l(1)
 // first, with rT one more temp and t49 declared (texture2d, float):
@@ -1061,23 +1071,27 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
     pass_dump::Resource(native, "sss.soft", objects.soft_srv.Get());
     pass_dump::Resource(native, "sss.lights_camera", objects.lights.camera.Get());
   }
-  // DLSS below 100%: the shadows' length (in pixels) x the render size's share, the same length on screen as at 100%;
-  // Bend's per-pixel depth tolerances over it (a render pixel holds more of the scene: the depth steps between neighbours
-  // and along the ray grow by 1 / share): its surface thickness, else thin occluders fall between the samples of every
-  // other line, and its bilinear threshold, else slopes read as edges and shadow themselves (ATN debug19 at Ultra
-  // Performance: combed fence shadows, striped hills).
+  // DLSS below 100% (O-SS5, plan_1117 designs\sss_scale_thickness.md): sss_bend marches one sample a screen pixel
+  // between the render texels (its ScreenStep, the render share), so the samples, hard and fade counts are the rows' in
+  // screen pixels, as at 100%: the same shadow length, 4-lane average and fade on screen. The surface thickness is the
+  // row's (ours, F1: Bend's window is a share of the depth left to the far plane, no pixel size in it; ATN 11-25:
+  // 0.005); its x 1 / share made occluders 1 / share deeper, and render-pixel samples combed thin occluders' shadows
+  // (ATN debug19 at Ultra Performance). The bilinear threshold / share stays (F10): it classifies neighbouring render
+  // texels, whose depth steps on a plane are 1 / share of 100%'s, else slopes read as edges and shadow themselves
+  // (debug19's striped hills).
   const auto render = frame_history::RenderSize(objects.width, objects.height);
   const float share = static_cast<float>(render[0]) / static_cast<float>(objects.width);
-  const float samples = std::max(std::round(runtime.settings.samples * share), runtime.settings.hard_samples + 4.f);
+  const float samples = std::max(std::round(runtime.settings.samples * (scale_control.samples_by_share ? share : 1.f)),
+                                 runtime.settings.hard_samples + 4.f);
   const ShaderSettings settings = {
       .width = static_cast<float>(objects.width),
       .height = static_cast<float>(objects.height),
       .inverse_width = 1.f / static_cast<float>(objects.width),
       .inverse_height = 1.f / static_cast<float>(objects.height),
-      .thickness = runtime.settings.thickness / share,
+      .thickness = runtime.settings.thickness / (scale_control.thickness_by_share ? share : 1.f),
       .samples = samples,
       .contrast = runtime.settings.contrast,
-      .edge_threshold = runtime.settings.edge_threshold / share,
+      .edge_threshold = runtime.settings.edge_threshold / (scale_control.edge_threshold_by_share ? share : 1.f),
       .hard_samples = runtime.settings.hard_samples,
       // Within the samples left after the hard ones (Bend reads past them otherwise).
       .fade_samples = std::min(runtime.settings.fade_samples, samples - runtime.settings.hard_samples),
