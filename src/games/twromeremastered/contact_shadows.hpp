@@ -331,21 +331,22 @@ inline void Draw(ID3D11DeviceContext1* native, ID3D11ShaderResourceView* depth, 
       native->DispatchIndirect(objects.arguments.Get(), index * 12);
     }
     // The occlusion smoothed along surfaces: by each pixel's penumbra (sss_soft, Softness its least), else by Softness
-    // (sss_blur); their settings at b2 and b4 as above.
+    // (sss_blur); their settings at b2 and b4 as above, t3 sss_setup's parameters (X30: the depth at infinity).
     if (softened) {
       const std::array<ID3D11UnorderedAccessView*, 2> blur_outputs = {objects.soft_uav.Get(), nullptr};
-      const std::array<ID3D11ShaderResourceView*, 3> blur_inputs = {depth, objects.occlusion_srv.Get(), soft ? objects.penumbra_srv.Get() : nullptr};
+      const std::array<ID3D11ShaderResourceView*, 4> blur_inputs = {depth, objects.occlusion_srv.Get(), soft ? objects.penumbra_srv.Get() : nullptr,
+                                                                    objects.parameters_srv.Get()};
       native->CSSetShader((soft ? objects.soft : objects.blur).Get(), nullptr, 0);
       native->CSSetUnorderedAccessViews(0, 2, blur_outputs.data(), nullptr);
-      native->CSSetShaderResources(0, 3, blur_inputs.data());
+      native->CSSetShaderResources(0, 4, blur_inputs.data());
       native->Dispatch((depth_desc.Width + 7) / 8, (depth_desc.Height + 7) / 8, 1);
     }
     // Nothing of the game's or of the occlusion kept bound in the addon's state.
     constexpr std::array<ID3D11UnorderedAccessView*, 2> NO_OUTPUTS = {};
-    constexpr std::array<ID3D11ShaderResourceView*, 3> NO_INPUTS = {};
+    constexpr std::array<ID3D11ShaderResourceView*, 4> NO_INPUTS = {};
     constexpr std::array<ID3D11Buffer*, 5> NO_CONSTANTS = {};
     native->CSSetUnorderedAccessViews(0, 2, NO_OUTPUTS.data(), nullptr);
-    native->CSSetShaderResources(0, 3, NO_INPUTS.data());
+    native->CSSetShaderResources(0, 4, NO_INPUTS.data());
     native->CSSetConstantBuffers(0, 5, NO_CONSTANTS.data());
   }
   ray_tracing::internal::DrawMultiply(native, mask, (softened ? objects.soft_srv : objects.occlusion_srv).Get(), true);

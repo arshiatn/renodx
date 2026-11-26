@@ -41,8 +41,16 @@
 // 10. Shogun 2's Light Through Banners and Coloured Shadows through its extended passes (sss_distance / _cascades from this
 //     tree) on case 3's banner: its shadow keeps the row's share of the sun, its filter is its colour, the cascades' version
 //     the same; rows off the game's sss01 to the bit. CONTROLS (must fail): the banners' depth or the filter's target unbound.
-// --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, the CPU
-// time of a later light draw, and a battle's light draws with today's sss_lights and f6408aa1's. --time-only: that alone.
+// 11. Screen steps (O-SS5, plan_1117 designs\sss_scale_thickness.md W1-W8, W10): below 100% render scale the march
+//     one sample a screen pixel between the render texels against the 100% march (A/A: half a render pixel's jitter);
+//     each with a CONTROL that must fail (today's form C, render steps, or the module's shader with a test define), but
+//     W6 (near the light: its controls numbers only, their difference under a render pixel by geometry).
+// 12. Same surface near the far plane (X30): Softness's sss_blur keeps every tap on flat ground at 40-55% of a 16 m far
+//     plane (its distance from the depth at infinity, A, sss_setup's); CONTROL (must fail): bc423ef9d's (1 / (1 - depth))
+//     rejects some.
+// --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), sss_bend at 100% to 33% render
+// scale (O-SS5's A' against C, gate G1), torches near and far, the CPU time of a later light draw, and a battle's light
+// draws with today's sss_lights and f6408aa1's. --time-only: that alone.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -57,6 +65,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <mutex>
 #include <numeric>
@@ -207,10 +216,11 @@ struct Camera {
   Matrix view = {};
   Matrix projection = {};
   Matrix view_projection = {};
+  float jitter = 0.f;  // Trace's rays this many pixels right and down of the pixels' centres (case 11's A/A noise)
 };
 
-static Camera MakeCamera(UINT width, UINT height) {
-  const float tilt = 25.f * 3.14159265f / 180.f;
+static Camera MakeCamera(UINT width, UINT height, float tilt_degrees = 25.f, float far_plane = FAR_PLANE) {
+  const float tilt = tilt_degrees * 3.14159265f / 180.f;
   const float c = std::cos(tilt);
   const float s = std::sin(tilt);
   const float tan_half_x = TAN_HALF_Y * static_cast<float>(width) / static_cast<float>(height);
@@ -218,8 +228,8 @@ static Camera MakeCamera(UINT width, UINT height) {
   camera.view = {{{1, 0, 0, 0}, {0, c, -s, 0}, {0, s, c, 0}, {0, 0, 0, 1}}};
   camera.projection = {{{1.f / tan_half_x, 0, 0, 0},
                         {0, 1.f / TAN_HALF_Y, 0, 0},
-                        {0, 0, FAR_PLANE / (FAR_PLANE - NEAR_PLANE), 1},
-                        {0, 0, -NEAR_PLANE * FAR_PLANE / (FAR_PLANE - NEAR_PLANE), 0}}};
+                        {0, 0, far_plane / (far_plane - NEAR_PLANE), 1},
+                        {0, 0, -NEAR_PLANE * far_plane / (far_plane - NEAR_PLANE), 0}}};
   camera.view_projection = Multiply(camera.view, camera.projection);
   return camera;
 }
@@ -247,8 +257,8 @@ static Picture Trace(const Camera& camera, std::span<const Box> boxes) {
   Picture picture = {.depth = std::vector<float>(w * h, 1.f), .hit = std::vector<int>(w * h, -2), .position = std::vector<Vector>(w * h)};
   for (UINT y = 0; y < h; ++y) {
     for (UINT x = 0; x < w; ++x) {
-      const float ndc_x = ((static_cast<float>(x) + 0.5f) / static_cast<float>(w) * 2.f) - 1.f;
-      const float ndc_y = 1.f - ((static_cast<float>(y) + 0.5f) / static_cast<float>(h) * 2.f);
+      const float ndc_x = ((static_cast<float>(x) + 0.5f + camera.jitter) / static_cast<float>(w) * 2.f) - 1.f;
+      const float ndc_y = 1.f - ((static_cast<float>(y) + 0.5f + camera.jitter) / static_cast<float>(h) * 2.f);
       const Vector view_direction = {ndc_x * tan_half_x, ndc_y * TAN_HALF_Y, 1.f};
       Vector direction = {};
       for (int j = 0; j < 3; ++j) {
@@ -382,8 +392,10 @@ struct Frame {
   Texture thin;
 };
 
-static Frame MakeFrame(UINT width, UINT height, std::span<const Box> boxes, const Vector& sun) {
-  Frame frame = {.camera = MakeCamera(width, height), .sun = Normalize(sun)};
+static Frame MakeFrame(UINT width, UINT height, std::span<const Box> boxes, const Vector& sun, float jitter = 0.f, float tilt_degrees = 25.f,
+                       float far_plane = FAR_PLANE) {
+  Frame frame = {.camera = MakeCamera(width, height, tilt_degrees, far_plane), .sun = Normalize(sun)};
+  frame.camera.jitter = jitter;
   frame.picture = Trace(frame.camera, boxes);
   frame.depth = MakeTexture(width, height, DXGI_FORMAT_R32_FLOAT, frame.picture.depth.data(), width * 4);
   std::array<float, 30 * 4> constants = {};
@@ -475,10 +487,10 @@ static const Vector BOX_SUN = {0.6f, -0.5f, 0.6f};
 // Bend's waves near a quadrant's diagonal can write a pixel twice in one dispatch, and WARP runs the groups in any
 // order: such a pixel can differ between two runs of the same shaders (today's too). Both sides run RUNS times, in turns;
 // a pixel is apart when no run of one gives a value a run of the other gave. `same` false: the sides must differ (more
-// than 20 pixels apart).
+// than 20 pixels apart); `same` true: more than `least` pixels over half (the picture has shadows).
 constexpr int RUNS = 8;
 static void CompareRuns(const char* what, const std::vector<std::vector<uint8_t>>& ours, const std::vector<std::vector<uint8_t>>& theirs,
-                        bool same = true) {
+                        bool same = true, int least = 100) {
   int varying = 0;
   int apart = 0;
   int over_half = 0;
@@ -496,7 +508,7 @@ static void CompareRuns(const char* what, const std::vector<std::vector<uint8_t>
   std::printf("   %s: %d pixels over half the same, %d apart, %d varying between runs\n", what, over_half, apart, varying);
   if (same) {
     CHECK(apart == 0);
-    CHECK(over_half > 100 && varying < static_cast<int>(ours[0].size() / 500));
+    CHECK(over_half > least && varying < static_cast<int>(ours[0].size() / 500));
   } else {
     CHECK(apart > 20);
   }
@@ -600,10 +612,11 @@ static void TestRowsOff(const std::string& before_folder) {
   }
   CompareRuns("extended march with nothing to do against the plain one", extended, plain);
 
-  // Below 100% (the render the top-left of the display's textures, 960 x 540): the sun's 60 samples are 30 at 50%, 35 at
-  // 58% (557 x 313) and 46 at 77% (739 x 416), their fade-outs (32 after 16 hard ones) 14, 19 and 30. Both marches take
-  // them in fours (X27): the plain march's with 32, 36 and 48 samples, fade-outs 12, 16 and 28. CONTROL (must differ):
-  // fc24dbce's plain march (today's before X27) with the odd counts.
+  // Below 100% (the render the top-left of the display's textures, 960 x 540) with the counts a host scales by the render
+  // share (the UE hosts', the add-on's before O-SS5: scale_control.samples_by_share): the sun's 60 samples are 30 at 50%,
+  // 35 at 58% (557 x 313) and 46 at 77% (739 x 416), their fade-outs (32 after 16 hard ones) 14, 19 and 30. Both marches
+  // take them in fours (X27): the plain march's with 32, 36 and 48 samples, fade-outs 12, 16 and 28. CONTROL (must
+  // differ): fc24dbce's plain march (before X27) with the odd counts against its own with the counts in fours.
   struct Scale {
     UINT width;
     UINT height;
@@ -640,21 +653,26 @@ static void TestRowsOff(const std::string& before_folder) {
     std::vector<std::vector<uint8_t>> rounded_plain;
     std::vector<std::vector<uint8_t>> rounded_extended;
     std::vector<std::vector<uint8_t>> unrounded_plain;
+    std::vector<std::vector<uint8_t>> unrounded_rounded;
     const ComPtr<ID3D11ComputeShader> module_bend = objects.bend;
+    sss::internal::scale_control = {.samples_by_share = true, .thickness_by_share = true};
     for (int run = 0; run < RUNS; ++run) {
       odd_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, odd)));
       rounded_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, rounded)));
       rounded_extended.push_back(ReadView<uint8_t>(RunFrame(scaled, odd_extended, true)));
       objects.bend = unrounded_bend;
+      unrounded_rounded.push_back(ReadView<uint8_t>(RunFrame(scaled, rounded)));
       unrounded_plain.push_back(ReadView<uint8_t>(RunFrame(scaled, odd)));
       objects.bend = module_bend;
     }
+    sss::internal::scale_control = {};
     std::printf("   %u x %u of 960 x 540: the module's %.0f samples, fade-out %.0f\n", scale.width, scale.height, objects.uploaded.samples,
                 objects.uploaded.fade_samples);
     CHECK(objects.uploaded.samples == std::round(60.f * static_cast<float>(scale.width) / 960.f) && std::fmod(objects.uploaded.samples, 4.f) != 0.f);
-    CompareRuns("   extended march in fours against the plain one's with the counts in fours", rounded_extended, rounded_plain);
-    CompareRuns("   the plain march's with the counts in fours against its own with the odd ones", rounded_plain, odd_plain);
-    CompareRuns("   CONTROL the plain march's with the counts in fours against fc24dbce's with the odd ones", rounded_plain, unrounded_plain, false);
+    // Under O-SS5's screen steps these x share counts reach share x the length on screen: fewer shadow pixels (30 the least).
+    CompareRuns("   extended march in fours against the plain one's with the counts in fours", rounded_extended, rounded_plain, true, 30);
+    CompareRuns("   the plain march's with the counts in fours against its own with the odd ones", rounded_plain, odd_plain, true, 30);
+    CompareRuns("   CONTROL fc24dbce's plain march with the counts in fours against its own with the odd ones", unrounded_rounded, unrounded_plain, false);
   }
   twattila::frame_history::render_width = 0;
   twattila::frame_history::render_height = 0;
@@ -1814,6 +1832,51 @@ static void Time(const std::string& before) {
     if (&row == &rows[0]) off = milliseconds;
     std::printf("   %-34s %.3f ms (%+.3f)\n", row.name, milliseconds, milliseconds - off);
   }
+  // O-SS5 (G1, plan_1117 designs\sss_scale_thickness.md): sss_bend below 100% render scale, the render's depth in the
+  // top-left of the 3840 x 2160 screen's (as the DLSS addon draws it), A' (screen steps, the add-on's) against C (the form
+  // before O-SS5: bc423ef9d's sss_bend a sample a render pixel, samples x share, thickness / share), plain and with
+  // Softer Away from the Caster (the extended find variant). At 100% both are Bend's (the strict gate: within 1%).
+  {
+    const auto load = [&](const char* name) {
+      const auto code = ReadFile(before + "\\" + name + ".cso");
+      REQUIRE(!code.empty());
+      ComPtr<ID3D11ComputeShader> shader;
+      REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf())));
+      return shader;
+    };
+    const ComPtr<ID3D11ComputeShader> today = load("sss_bend_bc423ef9d");
+    const ComPtr<ID3D11ComputeShader> today_find = load("sss_bend_extended_find_bc423ef9d");
+    auto& objects = sss::internal::runtime.objects;
+    for (const float share : {1.f, 0.667f, 0.58f, 0.5f, 0.333f}) {
+      const UINT w = static_cast<UINT>(std::lround(3840.f * share));
+      const UINT h = static_cast<UINT>(std::lround(2160.f * share));
+      const Frame render = MakeFrame(w, h, boxes, {0.25f, -0.55f, -0.8f});
+      Frame display = MakeFrame(3840, 2160, {}, render.sun);
+      std::vector<float> depth(3840 * 2160, 1.f);
+      for (UINT y = 0; y < h; ++y) std::copy_n(render.picture.depth.begin() + (y * w), w, depth.begin() + (y * 3840));
+      display.depth = MakeTexture(3840, 2160, DXGI_FORMAT_R32_FLOAT, depth.data(), 3840 * 4);
+      display.camera_constants = render.camera_constants;
+      display.lighting = render.lighting;
+      twattila::frame_history::render_width = (w != 3840) ? w : 0;
+      twattila::frame_history::render_height = (w != 3840) ? h : 0;
+      for (const auto* row : {&base, &softer}) {
+        const double ours = GpuMilliseconds([&] { RunFrame(display, *row); });
+        const ComPtr<ID3D11ComputeShader> module_plain = objects.bend;
+        const ComPtr<ID3D11ComputeShader> module_find = objects.bend_extended[2];
+        objects.bend = today;
+        objects.bend_extended[2] = today_find;
+        sss::internal::scale_control = {.samples_by_share = true, .thickness_by_share = true};
+        const double before_form = GpuMilliseconds([&] { RunFrame(display, *row); });
+        sss::internal::scale_control = {};
+        objects.bend = module_plain;
+        objects.bend_extended[2] = module_find;
+        std::printf("   render scale %3.0f%% %-11s A' %.3f ms, C %.3f ms (%+.3f)\n", share * 100.f, (row == &base) ? "plain" : "Softer 0.5", ours,
+                    before_form, ours - before_form);
+      }
+    }
+    twattila::frame_history::render_width = 0;
+    twattila::frame_history::render_height = 0;
+  }
   // Torches: the frame's first light draw (the pick and the march over last frame's 16 lights), near (9 to 11 m: each
   // one's reach covers most of the screen) and at a battle's distance (40 to 60 m).
   for (const float distance : {9.f, 40.f}) {
@@ -1903,6 +1966,668 @@ static void Time(const std::string& before) {
   }
 }
 
+// ---- 11. Screen steps (O-SS5) ---------------------------------------------------------------------------------------
+// plan_1117 designs\sss_scale_thickness.md section 5. Each scene is traced at 960 x 540 (the reference: the 100% march)
+// and at 67%, 50% and 33% into the top-left of the display's depth; a render pixel is compared with the reference at
+// its centre's screen position. The A/A noise: the 100% march over a depth traced half a render pixel off (DLSS's
+// jitter), against the reference. W2, W4 and W6-W8 look straight ahead at walls facing the camera: their depth has no
+// step along the rays' minor axis, so Bend's minor-axis bias (the design's F7: a render texel's depth step, 1 / share of
+// 100%'s; no fix, W10 numbers it) stays out of what they measure.
+
+// Case 11's other shaders (run.ps1's csos): today's sss_bend and sss_bend_extended_find (bc423ef9d, before O-SS5: a
+// sample a render pixel) and the module's with BEND_SSS_STEP_CONTROL 1 (nearest sub-samples), 2 (the near-light window
+// in render pixels), 3 (the found caster in render steps), 4 (half a render pixel a sample at any scale).
+struct StepShaders {
+  ComPtr<ID3D11ComputeShader> today;
+  ComPtr<ID3D11ComputeShader> today_find;
+  ComPtr<ID3D11ComputeShader> nearest;
+  ComPtr<ID3D11ComputeShader> render_window;
+  ComPtr<ID3D11ComputeShader> render_find;
+  ComPtr<ID3D11ComputeShader> half_step;
+};
+
+// A march's form: its plain and find shaders (null: the module's) and the host's scale control (the add-on's by default).
+struct StepForm {
+  ID3D11ComputeShader* plain = nullptr;
+  ID3D11ComputeShader* find = nullptr;
+  sss::internal::ScaleControl control = {};
+};
+
+constexpr UINT DISPLAY_W = 960;
+constexpr UINT DISPLAY_H = 540;
+
+struct StepResult {
+  std::vector<uint8_t> occlusion;  // the render part's, row by row
+  std::vector<uint16_t> penumbra;  // with Softer Away from the Caster
+  std::array<float, 4> light = {};  // sss_setup's light coordinate (render pixels)
+};
+
+// A 960 x 540 picture's value at each render pixel's centre (w x h render).
+static std::vector<uint8_t> AtRenderPixels(const std::vector<uint8_t>& full, UINT w, UINT h) {
+  std::vector<uint8_t> values(w * h);
+  for (UINT y = 0; y < h; ++y) {
+    for (UINT x = 0; x < w; ++x) {
+      const auto fx = static_cast<UINT>((static_cast<float>(x) + 0.5f) * static_cast<float>(DISPLAY_W) / static_cast<float>(w));
+      const auto fy = static_cast<UINT>((static_cast<float>(y) + 0.5f) * static_cast<float>(DISPLAY_H) / static_cast<float>(h));
+      values[(y * w) + x] = full[(fy * DISPLAY_W) + fx];
+    }
+  }
+  return values;
+}
+
+// One frame of `render` at its share of 960 x 540 (its depth in the top-left of the display's); `full_steps`: its depth
+// nearest-upsampled to 960 x 540 and marched at 100% instead (its result still the render pixels', at their centres).
+static StepResult MarchAt(const Frame& render, const sss::Settings& settings, const StepForm& form = {}, bool full_steps = false) {
+  auto& objects = sss::internal::runtime.objects;
+  const UINT w = render.camera.width;
+  const UINT h = render.camera.height;
+  const Frame* frame = &render;
+  Frame display;
+  if (w != DISPLAY_W) {
+    display = MakeFrame(DISPLAY_W, DISPLAY_H, {}, render.sun);
+    std::vector<float> depth(DISPLAY_W * DISPLAY_H, 1.f);
+    if (full_steps) {
+      for (UINT y = 0; y < DISPLAY_H; ++y) {
+        for (UINT x = 0; x < DISPLAY_W; ++x) depth[(y * DISPLAY_W) + x] = render.picture.depth[((y * h / DISPLAY_H) * w) + (x * w / DISPLAY_W)];
+      }
+    } else {
+      for (UINT y = 0; y < h; ++y) std::copy_n(render.picture.depth.begin() + (y * w), w, depth.begin() + (y * DISPLAY_W));
+    }
+    display.depth = MakeTexture(DISPLAY_W, DISPLAY_H, DXGI_FORMAT_R32_FLOAT, depth.data(), DISPLAY_W * 4);
+    display.camera_constants = render.camera_constants;
+    display.lighting = render.lighting;
+    frame = &display;
+  }
+  const bool scaled = (w != DISPLAY_W) && !full_steps;
+  twattila::frame_history::render_width = scaled ? w : 0;
+  twattila::frame_history::render_height = scaled ? h : 0;
+  sss::internal::scale_control = form.control;
+  REQUIRE(sss::internal::Prepare(device.Get(), DISPLAY_W, DISPLAY_H));
+  const ComPtr<ID3D11ComputeShader> module_plain = objects.bend;
+  const ComPtr<ID3D11ComputeShader> module_find = objects.bend_extended[2];
+  if (form.plain != nullptr) objects.bend = form.plain;
+  if (form.find != nullptr) objects.bend_extended[2] = form.find;
+  RunFrame(*frame, settings);
+  objects.bend = module_plain;
+  objects.bend_extended[2] = module_find;
+  sss::internal::scale_control = {};
+  twattila::frame_history::render_width = 0;
+  twattila::frame_history::render_height = 0;
+  StepResult result;
+  const auto occlusion = ReadView<uint8_t>(objects.occlusion_srv.Get());
+  std::vector<uint16_t> penumbra;
+  if (settings.sun_disk > 0.f) penumbra = ReadView<uint16_t>(objects.penumbra_srv.Get());
+  if (full_steps) {
+    result.occlusion = AtRenderPixels(occlusion, w, h);
+    return result;
+  }
+  for (UINT y = 0; y < h; ++y) {
+    result.occlusion.insert(result.occlusion.end(), occlusion.begin() + (y * DISPLAY_W), occlusion.begin() + (y * DISPLAY_W) + w);
+    if (!penumbra.empty()) result.penumbra.insert(result.penumbra.end(), penumbra.begin() + (y * DISPLAY_W), penumbra.begin() + (y * DISPLAY_W) + w);
+  }
+  const auto parameters = ReadBuffer<float>(objects.parameters.Get());
+  std::copy_n(parameters.begin(), 4, result.light.begin());
+  return result;
+}
+
+// The ground y = GROUND_Y + height(z) alone (W5's slopes), ray-marched into `frame`'s picture and depth (the sky 1).
+template <typename Height>
+static void TraceHeight(Frame* frame, Height height) {
+  const UINT w = frame->camera.width;
+  const UINT h = frame->camera.height;
+  const float tan_half_x = TAN_HALF_Y * static_cast<float>(w) / static_cast<float>(h);
+  auto& picture = frame->picture;
+  for (UINT y = 0; y < h; ++y) {
+    for (UINT x = 0; x < w; ++x) {
+      const float ndc_x = ((static_cast<float>(x) + 0.5f + frame->camera.jitter) / static_cast<float>(w) * 2.f) - 1.f;
+      const float ndc_y = 1.f - ((static_cast<float>(y) + 0.5f + frame->camera.jitter) / static_cast<float>(h) * 2.f);
+      const Vector view_direction = {ndc_x * tan_half_x, ndc_y * TAN_HALF_Y, 1.f};
+      Vector direction = {};
+      for (int j = 0; j < 3; ++j) {
+        direction[j] = (view_direction[0] * frame->camera.view[j][0]) + (view_direction[1] * frame->camera.view[j][1])
+                       + (view_direction[2] * frame->camera.view[j][2]);
+      }
+      const auto above = [&](float t) { return (direction[1] * t) - (GROUND_Y + height(direction[2] * t)); };
+      float t0 = 0.f;
+      float t1 = 0.f;
+      bool hit = false;
+      for (float t = 0.1f; t < 300.f; t += 0.005f + (0.004f * t)) {
+        if (above(t) < 0.f) {
+          t1 = t;
+          hit = true;
+          break;
+        }
+        t0 = t;
+      }
+      const size_t pixel = (y * w) + x;
+      picture.depth[pixel] = 1.f;
+      picture.hit[pixel] = -2;
+      if (!hit) continue;
+      for (int step = 0; step < 30; ++step) {
+        const float middle = 0.5f * (t0 + t1);
+        if (above(middle) < 0.f) {
+          t1 = middle;
+        } else {
+          t0 = middle;
+        }
+      }
+      const Vector p = {direction[0] * t1, direction[1] * t1, direction[2] * t1};
+      const auto clip = Project(frame->camera, p);
+      picture.depth[pixel] = clip[2] / clip[3];
+      picture.hit[pixel] = -1;
+      picture.position[pixel] = p;
+    }
+  }
+  frame->depth = MakeTexture(w, h, DXGI_FORMAT_R32_FLOAT, picture.depth.data(), w * 4);
+}
+
+// Case 12 (X30, fidelity screen_space.md SS-B5): Softness's sss_blur near the far plane. A projection whose far plane is
+// 16 m (A = F / (F - N) = 1.0063), the camera level: flat ground 5 to 9 m out (40% to 55% of the far plane, where Bend's
+// shadows fade out and 1 - depth is about half of A - depth), posts' shadows on it. Every ground pixel whose 9 taps
+// (Softness 2) all lie on the ground within 2% of its distance (98% of it: float margin) keeps them all: its blurred
+// occlusion the tent's mean of the 9 (1 / 255 apart at most). CONTROL (must fail): bc423ef9d's sss_blur (1 / (1 - depth),
+// about a 1% test there) rejects taps on that ground.
+static void TestSameSurface(const std::string& before_folder) {
+  std::printf("12. same surface near the far plane (X30)\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const auto code = ReadFile(before_folder + "\\sss_blur_bc423ef9d.cso");
+  REQUIRE(!code.empty());
+  ComPtr<ID3D11ComputeShader> today;
+  REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, today.GetAddressOf())));
+  constexpr UINT W = 960;
+  constexpr UINT H = 540;
+  constexpr int SPACING = 2;
+  const std::array<Box, 4> posts = {{{.low = {-2.f, -2.f, 6.f}, .high = {-1.8f, 0.f, 6.2f}},
+                                     {.low = {0.f, -2.f, 7.f}, .high = {0.2f, 0.f, 7.2f}},
+                                     {.low = {1.5f, -2.f, 5.5f}, .high = {1.7f, 0.f, 5.7f}},
+                                     {.low = {-0.8f, -2.f, 8.f}, .high = {-0.6f, 0.f, 8.2f}}}};
+  const Frame frame = MakeFrame(W, H, posts, {1.f, -0.5f, 0.3f}, 0.f, 0.f, 16.f);
+  sss::Settings settings = Defaults();
+  settings.softness = static_cast<float>(SPACING);
+  auto& objects = sss::internal::runtime.objects;
+  // Pixels apart from the mean of all 9 taps, of those whose taps all lie on the ground within 2% of its distance; how
+  // many of those have taps of other occlusion (`varied`).
+  const auto apart = [&](int* checked, int* varied) {
+    REQUIRE(sss::internal::Prepare(device.Get(), W, H));
+    RunFrame(frame, settings);
+    const auto occlusion = ReadView<uint8_t>(objects.occlusion_srv.Get());
+    const auto soft = ReadView<uint8_t>(objects.soft_srv.Get());
+    int count = 0;
+    *checked = 0;
+    *varied = 0;
+    for (int y = 0; y < static_cast<int>(H); ++y) {
+      for (int x = 0; x < static_cast<int>(W); ++x) {
+        const size_t pixel = (static_cast<size_t>(y) * W) + x;
+        if (frame.picture.hit[pixel] != -1) continue;
+        const float distance = frame.picture.position[pixel][2];
+        double sum = 0.0;
+        double total = 0.0;
+        bool kept = true;
+        for (int dy = -1; dy <= 1 && kept; ++dy) {
+          for (int dx = -1; dx <= 1; ++dx) {
+            const int tx = std::clamp(x + (dx * SPACING), 0, static_cast<int>(W) - 1);
+            const int ty = std::clamp(y + (dy * SPACING), 0, static_cast<int>(H) - 1);
+            const size_t tap = (static_cast<size_t>(ty) * W) + tx;
+            if (frame.picture.hit[tap] != -1 || std::abs(frame.picture.position[tap][2] - distance) > 0.98f * 0.02f * distance) {
+              kept = false;
+              break;
+            }
+            const double tent = 1.0 / static_cast<double>(1 << (std::abs(dx) + std::abs(dy)));
+            sum += tent * occlusion[tap];
+            total += tent;
+          }
+        }
+        if (!kept) continue;
+        ++*checked;
+        *varied += (occlusion[pixel] * total != sum) ? 1 : 0;
+        count += (std::abs(static_cast<double>(soft[pixel]) - (sum / total)) > 1.0) ? 1 : 0;
+      }
+    }
+    return count;
+  };
+  int checked = 0;
+  int varied = 0;
+  const int ours = apart(&checked, &varied);
+  const ComPtr<ID3D11ComputeShader> module_blur = objects.blur;
+  objects.blur = today;
+  int control_checked = 0;
+  int control_varied = 0;
+  const int control = apart(&control_checked, &control_varied);
+  objects.blur = module_blur;
+  std::printf("   ground pixels with every tap on the surface %d (%d with taps of other occlusion): apart from all 9 taps' mean ours %d, CONTROL bc423ef9d's %d\n",
+              checked, varied, ours, control);
+  CHECK(checked > 10000 && varied > 100 && control_checked == checked);
+  CHECK(ours == 0);
+  CHECK(control > varied / 10);
+}
+
+static void TestScreenSteps(const std::string& before_folder) {
+  std::printf("11. screen steps (O-SS5)\n");
+  MakeDevice(D3D_DRIVER_TYPE_WARP);
+  const auto load = [&](const char* name) {
+    const auto code = ReadFile(before_folder + "\\" + name + ".cso");
+    REQUIRE(!code.empty());
+    ComPtr<ID3D11ComputeShader> shader;
+    REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf())));
+    return shader;
+  };
+  const StepShaders shaders = {.today = load("sss_bend_bc423ef9d"),
+                               .today_find = load("sss_bend_extended_find_bc423ef9d"),
+                               .nearest = load("sss_bend_control1"),
+                               .render_window = load("sss_bend_control2"),
+                               .render_find = load("sss_bend_extended_find_control3"),
+                               .half_step = load("sss_bend_control4")};
+  // C, the form before O-SS5: today's sss_bend, samples x share, thickness and threshold / share.
+  const StepForm before_form = {.plain = shaders.today.Get(), .find = shaders.today_find.Get(),
+                                .control = {.samples_by_share = true, .thickness_by_share = true}};
+  // Render steps with the row's thickness (W3's control): today's sss_bend, samples x share, threshold / share.
+  const StepForm render_steps = {.plain = shaders.today.Get(), .find = shaders.today_find.Get(), .control = {.samples_by_share = true}};
+  const auto ground_pixels = [](const Frame& frame) { return std::ranges::count(frame.picture.hit, -1); };
+  // The render sizes at 67%, 50% and 33% of 960 x 540.
+  struct Share {
+    UINT width;
+    UINT height;
+    const char* name;
+  };
+  constexpr std::array<Share, 3> SHARES = {{{640, 360, "67%"}, {480, 270, "50%"}, {320, 180, "33%"}}};
+  // The reference and its A/A noise at a render size: the 100% march resampled at the render pixels, and the 100% march
+  // over a depth traced half a render pixel off, resampled. `geometry` (ours, a deviation from the design's reference
+  // where the render's geometry dominates: W2, W4): the 100% march over the render's depth nearest-upsampled, so
+  // what a render pixel's point sample of thin geometry gains or loses (the design's F8, inherent) is in it too, and
+  // the comparison holds the march alone.
+  struct Reference {
+    std::vector<uint8_t> occlusion;
+    std::vector<uint8_t> jittered;
+    std::vector<uint8_t> geometry;
+  };
+  const auto reference = [&](const std::function<Frame(UINT, UINT, float)>& scene, const sss::Settings& settings, UINT w, UINT h) {
+    const auto full = MarchAt(scene(DISPLAY_W, DISPLAY_H, 0.f), settings).occlusion;
+    const auto jittered = MarchAt(scene(DISPLAY_W, DISPLAY_H, 0.5f * static_cast<float>(DISPLAY_W) / static_cast<float>(w)), settings).occlusion;
+    return Reference{.occlusion = AtRenderPixels(full, w, h),
+                     .jittered = AtRenderPixels(jittered, w, h),
+                     .geometry = MarchAt(scene(w, h, 0.f), settings, {}, true).occlusion};
+  };
+
+  // W1 identity: at 100% the plain and the extended march (with what Softer finds) as today's to the bit (case 1's 8 runs).
+  // CONTROL (must differ): half a render pixel a sample at 100%.
+  {
+    const std::array<Box, 3> casters = {{BOX_SCENE[0], {.low = {-6.f, -2.f, 20.f}, .high = {6.f, 0.f, 22.f}}, {.low = {3.f, -2.f, 10.f}, .high = {3.2f, 2.f, 10.2f}}}};
+    const Frame frame = MakeFrame(DISPLAY_W, DISPLAY_H, casters, BOX_SUN);
+    sss::Settings softer = Defaults();
+    softer.sun_disk = 2.f;
+    std::vector<std::vector<uint8_t>> ours;
+    std::vector<std::vector<uint8_t>> today;
+    std::vector<std::vector<uint8_t>> ours_extended;
+    std::vector<std::vector<uint8_t>> today_extended;
+    std::vector<std::vector<uint8_t>> half_step;
+    int penumbra_apart = 0;
+    for (int run = 0; run < RUNS; ++run) {
+      ours.push_back(MarchAt(frame, Defaults()).occlusion);
+      today.push_back(MarchAt(frame, Defaults(), {.plain = shaders.today.Get()}).occlusion);
+      const auto extended = MarchAt(frame, softer);
+      const auto today_softer = MarchAt(frame, softer, {.find = shaders.today_find.Get()});
+      ours_extended.push_back(extended.occlusion);
+      today_extended.push_back(today_softer.occlusion);
+      // The penumbra: today's (Bend's double writes aside, case 1's 0.2%).
+      for (size_t pixel = 0; pixel < extended.penumbra.size(); ++pixel) {
+        penumbra_apart += (extended.penumbra[pixel] != today_softer.penumbra[pixel]) ? 1 : 0;
+      }
+      half_step.push_back(MarchAt(frame, Defaults(), {.plain = shaders.half_step.Get()}).occlusion);
+    }
+    std::printf("   W1 at 100%%:\n");
+    CompareRuns("   plain against today's (bc423ef9d)", ours, today);
+    CompareRuns("   extended (Softer's find) against today's", ours_extended, today_extended);
+    std::printf("   extended's penumbra: %d pixel-runs apart from today's\n", penumbra_apart);
+    CHECK(penumbra_apart < static_cast<int>(RUNS * DISPLAY_W * DISPLAY_H / 500));
+    CompareRuns("   CONTROL half a render pixel a sample against today's", half_step, today, false);
+  }
+
+  // W2 thickness: a post 0.03 m deep before a wall 0.155 m behind its front (2.6 of Bend's windows at 100%, 0.005 of
+  // the depth left), the sun behind the camera's side: the rays from the wall come nearer as they go, and pass behind the
+  // post within the window only at some distance from it. Halo pixels: wall pixels occluded where the render geometry's
+  // 100% march is lit. A' within the A/A noise's (x 1.5 + 0.1% of the wall) at every share; CONTROL C (thickness /
+  // share) over it at 50% and 33%. Against the full depth's reference (numbers): the render's point-sampled post.
+  {
+    const std::array<Box, 2> post_wall = {{{.low = {-3.f, -2.f, 12.f}, .high = {-2.85f, 1.f, 12.03f}},
+                                           {.low = {-4.f, -2.f, 12.155f}, .high = {8.f, 2.f, 12.5f}}}};
+    const Vector sun = {1.f, -0.24f, 0.15f};
+    const auto scene = [&](UINT w, UINT h, float jitter) { return MakeFrame(w, h, post_wall, sun, jitter, 0.f); };
+    for (const auto& share : SHARES) {
+      const Frame render = scene(share.width, share.height, 0.f);
+      const auto ref = reference(scene, Defaults(), share.width, share.height);
+      const auto wall = std::ranges::count(render.picture.hit, 1);
+      const auto halo = [&](const std::vector<uint8_t>& occlusion, const std::vector<uint8_t>& lit) {
+        int count = 0;
+        for (size_t pixel = 0; pixel < occlusion.size(); ++pixel) {
+          count += (render.picture.hit[pixel] == 1 && occlusion[pixel] > 127 && lit[pixel] <= 127) ? 1 : 0;
+        }
+        return count;
+      };
+      const auto ours_occlusion = MarchAt(render, Defaults()).occlusion;
+      const auto before_occlusion = MarchAt(render, Defaults(), before_form).occlusion;
+      const int noise = halo(ref.jittered, ref.occlusion);
+      const int ours = halo(ours_occlusion, ref.geometry);
+      const int before = halo(before_occlusion, ref.geometry);
+      const double bound = (1.5 * noise) + (0.001 * static_cast<double>(wall));
+      std::printf("   W2 %s: halo pixels (of %lld wall pixels) A' %d, C %d, A/A %d (bound %.0f); against the full depth's A' %d, C %d\n", share.name,
+                  static_cast<long long>(wall), ours, before, noise, bound, halo(ours_occlusion, ref.occlusion), halo(before_occlusion, ref.occlusion));
+      CHECK(ours <= bound);
+      if (share.width < 640) CHECK(before > bound);
+    }
+  }
+
+  // W3 comb: posts one render pixel wide at 33% (0.064 m) every 0.5 m, the sun low from the side. A comb row: its
+  // shadow coverage (occluded ground pixels of the fence's shadow) differs from both neighbours' by more than half. A'
+  // within the reference's and A/A's most + 5% of the rows; CONTROL (render steps, the row's thickness) over it.
+  // W10 (numbers for ATN): the shadows' mass on it at 33% with Bend's BilinearSamplingOffsetMode off and on.
+  {
+    std::vector<Box> fence;
+    for (float x = -3.f; x <= 3.01f; x += 0.5f) fence.push_back({.low = {x, -2.f, 10.f}, .high = {x + 0.064f, -0.5f, 10.064f}});
+    const Vector sun = {0.9f, -0.3f, 0.3f};
+    const auto scene = [&](UINT w, UINT h, float jitter) { return MakeFrame(w, h, fence, sun, jitter); };
+    const Share& share = SHARES[2];
+    const Frame render = scene(share.width, share.height, 0.f);
+    const auto ref = reference(scene, Defaults(), share.width, share.height);
+    const auto in_shadow_area = [&](size_t pixel) {
+      const Vector& p = render.picture.position[pixel];
+      return render.picture.hit[pixel] == -1 && p[0] > -3.f && p[0] < 6.f && p[2] > 9.f && p[2] < 14.f;
+    };
+    const auto comb = [&](const std::vector<uint8_t>& occlusion) {
+      std::vector<int> coverage(share.height, 0);
+      for (size_t pixel = 0; pixel < occlusion.size(); ++pixel) {
+        if (in_shadow_area(pixel) && occlusion[pixel] > 127) ++coverage[pixel / share.width];
+      }
+      const auto apart = [](int a, int b) { return std::abs(a - b) > (0.5 * std::max(a, b)); };
+      int rows = 0;
+      int combed = 0;
+      for (UINT y = 1; y + 1 < share.height; ++y) {
+        if (std::max({coverage[y - 1], coverage[y], coverage[y + 1]}) == 0) continue;
+        ++rows;
+        combed += (apart(coverage[y], coverage[y - 1]) && apart(coverage[y], coverage[y + 1])) ? 1 : 0;
+      }
+      return (rows > 0) ? (static_cast<double>(combed) / rows) : 0.0;
+    };
+    const double reference_comb = comb(ref.occlusion);
+    const double noise = comb(ref.jittered);
+    const double ours = comb(MarchAt(render, Defaults()).occlusion);
+    const double control = comb(MarchAt(render, Defaults(), render_steps).occlusion);
+    const double before = comb(MarchAt(render, Defaults(), before_form).occlusion);
+    const double bound = std::max(reference_comb, noise) + 0.05;
+    std::printf("   W3 33%%: comb rows A' %.3f, render steps %.3f, C %.3f, reference %.3f, A/A %.3f (bound %.3f)\n", ours, control, before,
+                reference_comb, noise, bound);
+    CHECK(ours <= bound);
+    CHECK(control > bound);
+    const auto mass = [&](const std::vector<uint8_t>& occlusion) {
+      double sum = 0.0;
+      for (size_t pixel = 0; pixel < occlusion.size(); ++pixel) sum += in_shadow_area(pixel) ? (occlusion[pixel] / 255.0) : 0.0;
+      return sum;
+    };
+    sss::Settings along_ray = Defaults();
+    along_ray.sample_along_ray = true;
+    std::printf("   W10 33%%: the fence's shadow mass (render pixels) BilinearSamplingOffsetMode off %.1f, on %.1f; the reference %.1f\n",
+                mass(MarchAt(render, Defaults()).occlusion), mass(MarchAt(render, along_ray).occlusion), mass(ref.occlusion));
+  }
+
+  // W4 lanes: one post k = 1..4 render pixels wide at 33% (0.03 m deep, touching a wall behind it), the sun nearly
+  // parallel to the wall (towards the camera by 0.03: its rays from the wall run into the post). Its shadow's middle (the
+  // wall 0.35 to 1.2 m from the post, past both forms' hard samples): the mean occlusion the render geometry's 100%
+  // march's (a 3k-pixel post) within 0.05; CONTROL C at k = 1 apart (k / 4 of a shadow: Bend's 4 lanes).
+  for (int k = 1; k <= 4; ++k) {
+    const Share& share = SHARES[2];
+    // A render pixel's width at the post (view depth ~11 m).
+    const float view_z = 12.f;
+    const float width = 2.f * view_z * TAN_HALF_Y * static_cast<float>(share.width) / static_cast<float>(share.height) / static_cast<float>(share.width)
+                        * static_cast<float>(k);
+    const std::array<Box, 2> post_wall = {{{.low = {-3.f, -2.f, 12.f}, .high = {-3.f + width, 1.f, 12.03f}},
+                                           {.low = {-4.f, -2.f, 12.03f}, .high = {8.f, 2.f, 12.5f}}}};
+    const Vector sun = {1.f, -0.24f, 0.03f};
+    const auto scene = [&](UINT w, UINT h, float jitter) { return MakeFrame(w, h, post_wall, sun, jitter, 0.f); };
+    const Frame render = scene(share.width, share.height, 0.f);
+    const auto ref = reference(scene, Defaults(), share.width, share.height);
+    const Vector to_sun = {-render.sun[0], -render.sun[1], -render.sun[2]};
+    const auto middle = [&](const std::vector<uint8_t>& occlusion) {
+      double sum = 0.0;
+      int count = 0;
+      for (size_t pixel = 0; pixel < occlusion.size(); ++pixel) {
+        float distance = 0.f;
+        if (render.picture.hit[pixel] != 1 || Occluder(std::span(post_wall).first(1), render.picture.position[pixel], to_sun, 1e30f, &distance) < 0) continue;
+        if (distance < 0.35f || distance > 1.2f) continue;
+        sum += occlusion[pixel] / 255.0;
+        ++count;
+      }
+      return (count > 20) ? (sum / count) : -1.0;
+    };
+    const double reference_middle = middle(ref.geometry);
+    const double ours = middle(MarchAt(render, Defaults()).occlusion);
+    const double before = middle(MarchAt(render, Defaults(), before_form).occlusion);
+    std::printf("   W4 33%% post %d render px (%.3f m): mid-shadow occlusion A' %.3f, C %.3f, the render geometry's 100%% %.3f; the full depth's %.3f, A/A %.3f\n",
+                k, width, ours, before, reference_middle, middle(ref.occlusion), middle(ref.jittered));
+    CHECK(reference_middle > 0.f && std::abs(ours - reference_middle) <= 0.05);
+    if (k == 1) CHECK(std::abs(before - reference_middle) > 0.05);
+  }
+
+  // W5 slopes at 33%: a lit 30 degree ramp (the sun 10 degrees over it) and a sine hill (the sun 15 degrees up). False
+  // shadow: occluded where the CPU's ray to the sun is free for the pixel and its 8 neighbours (a render pixel off a
+  // shadow's edge). A' within the reference's + the A/A noise + 0.1% of the ground; CONTROLS over it: debug14's
+  // staircase (the nearer texel's depth at the sample's distance), on the hill the bilinear threshold not / share.
+  {
+    const float tan30 = 0.57735027f;
+    const auto ramp = [tan30](float z) { return (z > 4.f) ? (tan30 * (z - 4.f)) : 0.f; };
+    const auto hill = [](float z) { return 0.5f * std::sin(0.8f * z); };
+    // The ramp's rays up its slope on screen (debug14's staircase along them), the hill's across it (their minor axis
+    // along the slope: Bend's bilinear threshold at work).
+    const Vector ramp_sun = {-0.2f, -0.6428f, -0.7661f};
+    const Vector hill_sun = {0.6f, -0.26f, -0.76f};
+    for (const bool is_ramp : {true, false}) {
+      const Vector& sun = is_ramp ? ramp_sun : hill_sun;
+      const auto scene = [&](UINT w, UINT h, float jitter) {
+        Frame frame = MakeFrame(w, h, {}, sun, jitter);
+        if (is_ramp) {
+          TraceHeight(&frame, ramp);
+        } else {
+          TraceHeight(&frame, hill);
+        }
+        return frame;
+      };
+      const Share& share = SHARES[2];
+      const Frame render = scene(share.width, share.height, 0.f);
+      const auto ref = reference(scene, Defaults(), share.width, share.height);
+      const Vector to_sun = Normalize({-sun[0], -sun[1], -sun[2]});
+      std::vector<bool> lit(render.picture.hit.size(), false);
+      for (size_t pixel = 0; pixel < lit.size(); ++pixel) {
+        if (render.picture.hit[pixel] != -1) continue;
+        const Vector& p = render.picture.position[pixel];
+        bool free = true;
+        for (float t = 0.02f; t < 60.f && free; t += 0.02f) {
+          const float z = p[2] + (to_sun[2] * t);
+          free = (p[1] + (to_sun[1] * t)) > (GROUND_Y + (is_ramp ? ramp(z) : hill(z)));
+        }
+        lit[pixel] = free;
+      }
+      std::vector<bool> lit_around(lit.size(), false);
+      for (UINT y = 1; y + 1 < share.height; ++y) {
+        for (UINT x = 1; x + 1 < share.width; ++x) {
+          bool all = true;
+          for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) all = all && lit[((y + dy) * share.width) + x + dx];
+          }
+          lit_around[(y * share.width) + x] = all;
+        }
+      }
+      const auto false_share = [&](const std::vector<uint8_t>& occlusion) {
+        int count = 0;
+        int total = 0;
+        for (size_t pixel = 0; pixel < occlusion.size(); ++pixel) {
+          if (!lit_around[pixel]) continue;
+          ++total;
+          count += (occlusion[pixel] > 127) ? 1 : 0;
+        }
+        return static_cast<double>(count) / std::max(total, 1);
+      };
+      sss::internal::ScaleControl unscaled_threshold = {.edge_threshold_by_share = false};
+      const double reference_share = false_share(ref.occlusion);
+      const double noise = std::abs(false_share(ref.jittered) - reference_share);
+      const double ours = false_share(MarchAt(render, Defaults()).occlusion);
+      const double nearest = false_share(MarchAt(render, Defaults(), {.plain = shaders.nearest.Get()}).occlusion);
+      const double unscaled = false_share(MarchAt(render, Defaults(), {.control = unscaled_threshold}).occlusion);
+      const double before = false_share(MarchAt(render, Defaults(), before_form).occlusion);
+      const double bound = reference_share + noise + 0.001;
+      std::printf("   W5 33%% %s: false shadow on lit ground A' %.4f, nearest %.4f, threshold not / share %.4f, C %.4f, reference %.4f, A/A %.4f (bound %.4f)\n",
+                  is_ramp ? "ramp" : "hill", ours, nearest, unscaled, before, reference_share, noise, bound);
+      CHECK(ours <= bound);
+      CHECK(nearest > bound);
+      if (!is_ramp) CHECK(unscaled > bound);
+    }
+  }
+
+  // W6 near the light: the camera level, a wall facing it 12 m out, three posts 0.2 m before it (3.3 of Bend's windows
+  // at 100%), the sun behind the camera (its point on the wall among the posts; a wall seen face on, none of grazing
+  // ground's self-shadowing: Bend's acne there, run to run apart under WARP, was all W6's first scene measured). Wall
+  // pixels within 200 screen pixels of the point whose shadow differs from the reference's (over or under half): A'
+  // within the A/A noise's (x 1.5 + 0.1% of them) at every share. No CONTROL fails here (numbers for ATN, deviation from
+  // the design's W6): within 200 / k pixels of the point, where Bend's widened window (1 / its distance in pixels, F6)
+  // reaches a caster k windows out, the caster's shadow is under k x SurfaceThickness x 200 / k = 1 screen pixel long
+  // (a ray's screen length scales with its distance to the point), so the render-pixel distance's window (1 / share
+  // wider) adds at most a render pixel's fringe, within the A/A noise.
+  {
+    const std::array<Box, 4> wall_posts = {{{.low = {-6.f, -2.f, 12.f}, .high = {8.f, 4.f, 12.5f}},
+                                            {.low = {1.6f, -0.8f, 11.7f}, .high = {2.f, -0.2f, 11.8f}},
+                                            {.low = {3.2f, 0.3f, 11.7f}, .high = {3.6f, 0.9f, 11.8f}},
+                                            {.low = {4.6f, -1.5f, 11.7f}, .high = {5.f, -0.9f, 11.8f}}}};
+    const Vector sun = Normalize({0.25f, -0.05f, 1.f});
+    const auto scene = [&](UINT w, UINT h, float jitter) { return MakeFrame(w, h, wall_posts, sun, jitter, 0.f); };
+    for (const auto& share : SHARES) {
+      const Frame render = scene(share.width, share.height, 0.f);
+      const auto ref = reference(scene, Defaults(), share.width, share.height);
+      const auto ours_result = MarchAt(render, Defaults());
+      const float radius = 200.f * static_cast<float>(share.width) / static_cast<float>(DISPLAY_W);
+      int wall = 0;
+      const auto apart = [&](const std::vector<uint8_t>& occlusion) {
+        int count = 0;
+        wall = 0;
+        for (UINT y = 0; y < share.height; ++y) {
+          for (UINT x = 0; x < share.width; ++x) {
+            const size_t pixel = (y * share.width) + x;
+            const float dx = static_cast<float>(x) + 0.5f - ours_result.light[0];
+            const float dy = static_cast<float>(y) + 0.5f - ours_result.light[1];
+            if (render.picture.hit[pixel] != 0 || ((dx * dx) + (dy * dy)) > radius * radius) continue;
+            ++wall;
+            count += ((occlusion[pixel] > 127) != (ref.occlusion[pixel] > 127)) ? 1 : 0;
+          }
+        }
+        return count;
+      };
+      const int noise = apart(ref.jittered);
+      const int ours = apart(ours_result.occlusion);
+      const int control = apart(MarchAt(render, Defaults(), {.plain = shaders.render_window.Get()}).occlusion);
+      const int before = apart(MarchAt(render, Defaults(), before_form).occlusion);
+      const double bound = (1.5 * noise) + (0.001 * static_cast<double>(wall));
+      std::printf("   W6 %s: light at (%.0f, %.0f) render px; wall pixels within 200 screen px apart from the reference (of %d) A' %d, render-pixel window %d, C %d, A/A %d (bound %.0f)\n",
+                  share.name, ours_result.light[0], ours_result.light[1], wall, ours, control, before, noise, bound);
+      CHECK(ours_result.light[0] > 0.f && ours_result.light[0] < share.width && ours_result.light[1] > 0.f && ours_result.light[1] < share.height);
+      CHECK(ours <= bound);
+    }
+  }
+
+  // W7 fade and length: a tall post's shadow on a wall just behind it (0.5 windows), the sun parallel to the wall,
+  // past the march's reach (240 screen pixels). On each render row of it, the screen x of its end (over half the row's
+  // most occlusion) and of its fade's start (the last at 95% of it): their medians A' within 1 render pixel (+ the
+  // A/A's) of the reference's at every share; CONTROL C's fade start (Bend's 8 fade samples in render pixels) apart.
+  {
+    const std::array<Box, 2> post_wall = {{{.low = {-3.f, -2.f, 12.f}, .high = {-2.85f, 6.f, 12.03f}},
+                                           {.low = {-4.f, -2.f, 12.06f}, .high = {8.f, 2.f, 12.5f}}}};
+    const Vector sun = {1.f, -0.24f, 0.03f};
+    const auto scene = [&](UINT w, UINT h, float jitter) { return MakeFrame(w, h, post_wall, sun, jitter, 0.f); };
+    for (const auto& share : SHARES) {
+      const Frame render = scene(share.width, share.height, 0.f);
+      const auto ref = reference(scene, Defaults(), share.width, share.height);
+      const float to_screen = static_cast<float>(DISPLAY_W) / static_cast<float>(share.width);
+      // The medians over the rows of the end and the fade's start, screen pixels.
+      const auto ends = [&](const std::vector<uint8_t>& occlusion) {
+        std::vector<float> end_x;
+        std::vector<float> fade_x;
+        for (UINT y = 0; y < share.height; ++y) {
+          int most = 0;
+          for (UINT x = 0; x < share.width; ++x) {
+            const size_t pixel = (y * share.width) + x;
+            if (render.picture.hit[pixel] == 1) most = std::max<int>(most, occlusion[pixel]);
+          }
+          if (most < 64) continue;
+          int end = -1;
+          int fade = -1;
+          for (UINT x = 0; x < share.width; ++x) {
+            const size_t pixel = (y * share.width) + x;
+            if (render.picture.hit[pixel] != 1) continue;
+            if (occlusion[pixel] * 2 > most) end = static_cast<int>(x);
+            if (occlusion[pixel] * 100 >= most * 95) fade = static_cast<int>(x);
+          }
+          end_x.push_back((static_cast<float>(end) + 0.5f) * to_screen);
+          fade_x.push_back((static_cast<float>(fade) + 0.5f) * to_screen);
+        }
+        REQUIRE(end_x.size() > 5);
+        std::ranges::nth_element(end_x, end_x.begin() + static_cast<ptrdiff_t>(end_x.size() / 2));
+        std::ranges::nth_element(fade_x, fade_x.begin() + static_cast<ptrdiff_t>(fade_x.size() / 2));
+        return std::array<float, 2>{end_x[end_x.size() / 2], fade_x[fade_x.size() / 2]};
+      };
+      const auto reference_ends = ends(ref.occlusion);
+      const auto noise_ends = ends(ref.jittered);
+      const auto ours = ends(MarchAt(render, Defaults()).occlusion);
+      const auto before = ends(MarchAt(render, Defaults(), before_form).occlusion);
+      const float bound = to_screen + std::max(std::abs(noise_ends[0] - reference_ends[0]), std::abs(noise_ends[1] - reference_ends[1]));
+      std::printf("   W7 %s: end / fade start (screen px) A' %.1f / %.1f, C %.1f / %.1f, reference %.1f / %.1f, A/A %.1f / %.1f (bound %.1f)\n", share.name,
+                  ours[0], ours[1], before[0], before[1], reference_ends[0], reference_ends[1], noise_ends[0], noise_ends[1], bound);
+      CHECK(std::abs(ours[0] - reference_ends[0]) <= bound && std::abs(ours[1] - reference_ends[1]) <= bound);
+      if (share.width < 640) CHECK(std::abs(before[1] - reference_ends[1]) > bound);
+    }
+  }
+
+  // W8 extended at 50%: Softer Away from the Caster's penumbra over the reference caster's (case 4's rule) on W4's
+  // wall behind a 0.29 m post: its median within 25%; CONTROL (the found caster one render pixel a sample) outside.
+  {
+    const Vector sun = {1.f, -0.24f, 0.03f};
+    const std::array<Box, 2> pole = {{{.low = {-3.f, -2.f, 12.f}, .high = {-2.71f, 1.f, 12.03f}},
+                                      {.low = {-4.f, -2.f, 12.03f}, .high = {8.f, 2.f, 12.5f}}}};
+    const Share& share = SHARES[1];
+    const Frame render = MakeFrame(share.width, share.height, pole, sun, 0.f, 0.f);
+    sss::Settings settings = Defaults();
+    settings.sun_disk = 2.f;
+    const auto half_to_float = [](uint16_t half) {
+      const uint32_t sign = (half & 0x8000u) << 16;
+      const uint32_t exponent = (half >> 10) & 0x1Fu;
+      const uint32_t mantissa = half & 0x3FFu;
+      const uint32_t bits = (exponent == 0) ? sign : (sign | ((exponent + 112u) << 23) | (mantissa << 13));
+      float value = 0.f;
+      std::memcpy(&value, &bits, sizeof(value));
+      return value;
+    };
+    const Vector to_sun = {-render.sun[0], -render.sun[1], -render.sun[2]};
+    const float tangent = std::tan(1.f * 3.14159265f / 180.f);
+    const auto median_ratio = [&](const std::vector<uint16_t>& penumbra) {
+      std::vector<float> ratios;
+      for (size_t pixel = 0; pixel < penumbra.size(); ++pixel) {
+        float distance = 0.f;
+        if (render.picture.hit[pixel] != 1 || Occluder(std::span(pole).first(1), render.picture.position[pixel], to_sun, 1e30f, &distance) < 0) continue;
+        const float radius = half_to_float(penumbra[pixel]);
+        if (radius <= 0.f) continue;
+        const Vector& p = render.picture.position[pixel];
+        const float view_z = (p[1] * render.camera.view[1][2]) + (p[2] * render.camera.view[2][2]);
+        const float expected = distance * tangent * 0.5f * static_cast<float>(share.height) * render.camera.projection[1][1] / view_z;
+        if (expected >= sss::internal::SOFT_RADIUS_2160 * static_cast<float>(share.height) / 2160.f) continue;
+        ratios.push_back(radius / expected);
+      }
+      REQUIRE(ratios.size() > 20);
+      std::ranges::nth_element(ratios, ratios.begin() + static_cast<ptrdiff_t>(ratios.size() / 2));
+      return ratios[ratios.size() / 2];
+    };
+    const float ours = median_ratio(MarchAt(render, settings).penumbra);
+    const float control = median_ratio(MarchAt(render, settings, {.find = shaders.render_find.Get()}).penumbra);
+    std::printf("   W8 50%%: Softer's penumbra over the reference A' %.3f, CONTROL caster in render steps %.3f\n", ours, control);
+    CHECK(ours > 0.75f && ours < 1.25f);
+    CHECK(control <= 0.75f || control >= 1.25f);
+  }
+  sss::internal::runtime.objects = {};
+}
+
 int main(int argc, char** argv) {
   if (argc < 2) {
     std::printf("usage: tests.exe <fc24dbce's plain shaders> [--time]\n");
@@ -1920,6 +2645,8 @@ int main(int argc, char** argv) {
     TestRowsTurnedOff();
     TestShogun2(argv[1]);
     TestShogun2Banners(argv[1]);
+    TestScreenSteps(argv[1]);
+    TestSameSurface(argv[1]);
   }
   if (mode == "--time" || mode == "--time-only") Time(argv[1]);
   std::printf(failures == 0 ? "PASS\n" : "%d FAILED\n", failures);
