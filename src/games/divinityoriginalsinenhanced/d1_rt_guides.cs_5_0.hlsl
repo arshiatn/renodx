@@ -26,7 +26,7 @@ cbuffer rt_guides : register(b0) {
 void main(uint3 id : SV_DispatchThreadID) {
   if (any(float2(id.xy) >= g_size.xy)) return;
   const int3 pixel = int3(id.xy, 0);
-  if (!(t_linear_depth.Load(pixel) < 0.999f)) {
+  if (!(t_linear_depth.Load(pixel) < 0.99897784f)) {
     u_diffuse_albedo[id.xy] = 0.f;
     u_specular_albedo[id.xy] = 0.f;
     u_normals[id.xy] = 0.f;

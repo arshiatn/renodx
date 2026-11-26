@@ -39,7 +39,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 scene_before = max(t_before_particles[id.xy].rgb, 0.f);
   const float3 scene_after = scene_before * transmittance + max(particles.rgb, 0.f);
   // Before over after is at most 1 / T; a dark, thick puff over a bright ground would make the estimate many times the picture.
-  const float3 share = (any(particles.rgb > 0.f) || transmittance < 1.f) ? min(scene_before / max(scene_after, 1e-6f), 8.f) : 1.f;
+  const float3 share = (any(particles.rgb > 0.f) || transmittance < 1.f) ? min(scene_before / max(scene_after, 1.0001969e-6f), 8.f) : 1.f;
   const float3 encoded = sqrt(with_particles);
   const float3 encoded_before = sqrt(with_particles * share);
   u_color[id.xy] = float4((g_particle_layer != 0.f) ? encoded_before : encoded, picture.a);

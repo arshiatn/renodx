@@ -31,7 +31,7 @@ void main(
 {
   const float3 toward_sun = t_rt_sun.Load(int3(0, 0, 0)).xyz;
   const float across = length(toward_sun.xz);
-  const float3 right = (across > 1e-3f) ? float3(-toward_sun.z, 0.f, toward_sun.x) / across : float3(1.f, 0.f, 0.f);
+  const float3 right = (across > 9.999882e-4f) ? float3(-toward_sun.z, 0.f, toward_sun.x) / across : float3(1.f, 0.f, 0.f);
 
   // The game's card (standing, or flat on the ground with v2.w below 0), its right vector replaced.
   float3 standing = right * v3.z + v0.xyz;

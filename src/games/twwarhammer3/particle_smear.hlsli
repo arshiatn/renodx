@@ -23,7 +23,7 @@ float2 ParticleSmearMotion(int2 pixel, float2 motion, float2 render_size) {
   const int2 last_pixel = pixel + int2(round(motion));
   const float now = exp2(-1.44269502f * t_zeroth_moment.Load(int3(pixel, 0)).x);
   float lowest = ParticleSmearLast(last_pixel, render_size);
-  if (abs(now - lowest) <= 0.02f) return motion;
+  if (abs(now - lowest) <= 0.020002872f) return motion;
   float highest = lowest;
   for (int y = -2; y <= 2; y += 2) {
     for (int x = -2; x <= 2; x += 2) {

@@ -96,7 +96,7 @@ void main(uint3 coords : SV_DispatchThreadID, uint3 group : SV_GroupID, uint3 th
       sum_weight += weight;
     }
   }
-  const float value = exp2(log2(max(sum / sum_weight, 1e-4f)) * SI.ssao_strength);
+  const float value = exp2(log2(max(sum / sum_weight, 9.99931e-5f)) * SI.ssao_strength);
   [branch]
   if (scale > 1u) {
     t_rw_ssao_half[coords.xy] = float2(value, AoDistance((coords.xy * scale + 0.5f) * texel, tile_depth[center]));

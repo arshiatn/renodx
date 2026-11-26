@@ -22,7 +22,7 @@ cbuffer tree_billboard : register(b1) {
 float4 FarTreeWorldUv(float2 corner, float2 uv, float4 tree, float4 facing) {
   const float3 toward_sun = t_rt_sun.Load(int3(0, 0, 0)).xyz;
   const float across = length(toward_sun.xz);
-  const float2 from_tree = (across > 1e-3f) ? toward_sun.xz / across : float2(0.f, 1.f);
+  const float2 from_tree = (across > 1.0000619e-3f) ? toward_sun.xz / across : float2(0.f, 1.f);
   const float3 right = float3(from_tree.y, 0.f, -from_tree.x);
   const float3 world = (right * corner.x + float3(0.f, corner.y, 0.f)) * facing.w + tree.xyz;
 

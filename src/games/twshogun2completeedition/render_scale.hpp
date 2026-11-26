@@ -91,7 +91,7 @@ inline bool ScaledParticleSize(float width, float height, const uint32_t display
                                float* scaled_width, float* scaled_height) {
   const float fraction_x = width / static_cast<float>(display[0]);
   const float fraction_y = height / static_cast<float>(display[1]);
-  if (fraction_x < 0.29f || fraction_x >= 1.f || std::abs(fraction_x - fraction_y) > 1.5f / static_cast<float>(display[1])) {
+  if (fraction_x < 0.2899202f || fraction_x >= 1.f || std::abs(fraction_x - fraction_y) > 1.500209f / static_cast<float>(display[1])) {
     return false;
   }
   *scaled_width = width * static_cast<float>(render[0]) / static_cast<float>(display[0]);

@@ -50,7 +50,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       if (abs(ViewDepth(t_kept.Load(seen)) - expected) <= SAME_SURFACE * abs(expected)) {
         const float4 guide_normal = t_normal.Load(seen);
         const float length_normal = length(guide_normal.xyz);
-        if (length_normal > 0.25f) {
+        if (length_normal > 0.25006637f) {
           normal = guide_normal.xyz / length_normal;
           albedo = pow(saturate(t_albedo.Load(seen).rgb), 2.2f);
         }

@@ -919,7 +919,7 @@ inline void OnSeaDraw(reshade::api::command_list* cmd_list, bool bind) {
   if (ocean && talesofarise::dlss::constants::Read(ocean.Get(), 16, std::as_writable_bytes(std::span(plane)))) {
     const float length = std::sqrt((plane[0] * plane[0]) + (plane[1] * plane[1]) + (plane[2] * plane[2]));
     const float up = (plane[1] < 0.f) ? -length : length;
-    if (length > 0.f && std::abs(plane[1]) > 0.9f * length) {
+    if (length > 0.f && std::abs(plane[1]) > 0.90003914f * length) {
       const std::unique_lock lock(internal::state.mutex);
       internal::state.sea_plane = {plane[0] / up, plane[1] / up, plane[2] / up, plane[3] / up};
       internal::state.sea_frame = internal::state.frame;

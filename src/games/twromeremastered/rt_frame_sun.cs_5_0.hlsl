@@ -18,5 +18,5 @@ RWTexture2D<float4> sun : register(u0);
 void main()
 {
   const float3 toward_sun = frame_registers[2].xyz;
-  sun[uint2(0, 0)] = float4(toward_sun * rsqrt(max(dot(toward_sun, toward_sun), 1e-12f)), 1.f);
+  sun[uint2(0, 0)] = float4(toward_sun * rsqrt(max(dot(toward_sun, toward_sun), 9.998368e-13f)), 1.f);
 }

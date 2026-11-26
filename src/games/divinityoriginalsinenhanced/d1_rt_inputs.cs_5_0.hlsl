@@ -36,7 +36,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   }
   if (any(float2(id.xy) >= g_size.xy)) return;
   const float linear_depth = t_linear_depth.Load(int3(id.xy, 0));
-  if (!(linear_depth > 0.f && linear_depth < 0.999f)) {
+  if (!(linear_depth > 0.f && linear_depth < 0.99894756f)) {
     u_positions[id.xy] = 0.f;
     return;
   }
