@@ -1008,9 +1008,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STEP 5 FOLLOW-UPS (pd5c_): (1) build.ps1:156-157 G5's REUSE_COMPATIBLE builds la ... | ?
 - REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so ... | ?
 - FIX WAVE 1 (judges: X46 judge's back-face flip rt_reference.hlsli:312 + HitNorma ... | ?
+- BASE HARNESS BUILD (tools\tw\reference\harness): stale include of a deleted work ... | ?
 - WAVE 2-6 JUDGE VERDICT SETS AT R >= 8 (fx1r_ power: R = 4 catches a 2 % bias 26 ... | wave briefs
 - REF BREAKS MISSING (spec 9, built 5): offset20, fog_flat, clearance0, stale_bits ... | gate tooling slot
-- ATN RULE LINE: RENODX_TW_REF_BREAK GPU proof runs (exact job text in fx1_'s repo ... | ?
+- ATN RULE LINE: RENODX_TW_REF_BREAK + RENODX_TW_REF_INSIDE GPU proof runs (P5 bre ... | ?
 - G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
 - wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
@@ -17856,11 +17857,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         new harness PASS aux.w 0, P2 old-harness control FAIL, P3 quality full + contact vs 11-17 cache, P4 1-2 route-B
         snapshots aux.w share (> ~0.5 % or whole objects dark = stays count-only), P5 breaks --expect-fail (ATN's rule
         line). Owner: fx1_ -> coord merge
+        fx1_ FIXES DONE 04:09 (04:02-04:09 by `date`): origin/fx1_wave1 + f3b71a041 = inside hits COUNT-ONLY by default
+        (aux.w always; REF_INSIDE_DARK 1u<<14 ends the path only with RENODX_TW_REF_INSIDE=dark; no existing variable tells
+        route A from B; unknown / too long _INSIDE or _BREAK = run off; meta.json 'inside'; ref_cache key + inside_dark only
+        when dark: the 11-17 caches keep keys 54f366adff66 / 6526561dcf48, dark = e9513bbe9126 / 53f64ac6ceb0 -> never
+        serve a dark run). Tools (*.bak_fx1b): winding fixed in pdi1_harness_src reference_mode.hpp:168 + quality_mode.hpp:715
+        + harness\quality_mode.hpp:715; ref_compare G0 branch converts PASS -> CONTROL FAILED TO FAIL under --expect-fail;
+        gate_sim.py:267 label; sigma3_t docstring 3.0075. Builds: plain helper 71 / 71 identical, reference 83 / 85 (only
+        rt_reference_paths.h / _reflect.h); pdi1 harness rebuilt (testbin\scratch\fx1_\harness_pdi1, bridge v32). BASE
+        HARNESS (reference\harness) NO LONGER BUILDS: includes dlaa_bridge.hpp from a deleted worktree, fails on
+        RayReconstruction::extra_written (tw_rt_harness.cpp:3642) -> use the pdi1 fork. test_gpu_gate 30 OK; MC false BIAS
+        R=4 5.77 -> 0.30 %. MERGED 0a6e3e182 (gated twattila amd64 + x86 + helper build pass). GPU PROOF GO 04:1x
+        for P1 / P2 count parts + P3 + P4 (no new rule line); dark parts + P5 wait. Owner: fx1_ (P1-P4) -> coord
+        - [ ] BASE HARNESS BUILD (tools\tw\reference\harness): stale include of a deleted worktree's dlaa_bridge.hpp; repoint
+        to src's bridge + fix extra_written, or retire it for the pdi1 fork. Owner: gate tooling slot
         - [ ] WAVE 2-6 JUDGE VERDICT SETS AT R >= 8 (fx1r_ power: R = 4 catches a 2 % bias 26 %). Owner: wave briefs
         (coord)
         - [ ] REF BREAKS MISSING (spec 9, built 5): offset20, fog_flat, clearance0, stale_bits. Owner: gate tooling slot
-        - [ ] ATN RULE LINE: RENODX_TW_REF_BREAK GPU proof runs (exact job text in fx1_'s report above, after fx1r_).
-        Owner: ATN
+        - [ ] ATN RULE LINE: RENODX_TW_REF_BREAK + RENODX_TW_REF_INSIDE GPU proof runs (P5 breaks; P1 / P2 / P3 dark parts;
+        exact commands: tools\tw\round_notes\fx1_proof_commands.md). Owner: ATN
         - [ ] G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 same or nearer, reflections
         1.00000 -> the 'faster + same picture = on' rule (pd5r_: after S2 rows, S3, S1, new baselines) -> a flip commit
         + all_modes / rec_scan with G4 = 1 as the new baseline in the next GPU window. pd5c_ 03:2x: speed + E4 support it,
