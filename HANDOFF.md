@@ -17887,6 +17887,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         helpers run Basic). NEXT (sent 03:5x): rebase onto atn-mods (steps 3 + 5) as bal3_raytraced_rb if needed, CPU gates,
         then 'bal3_ GPU go' for gates_e4b + lab_b rotations + all_modes_check -Rev; then review (Opus xHigh) -> merge.
         Owner: bal3_
+        bal3_ REBASE DONE 04:06 (CPU 03:50-04:06): origin/bal3_raytraced_rb = 1f88af2dd on atn-mods f9109a377 (4fece72fb
+        add-on row, 9015b2972 route a, 4ae51473d route b, 1f88af2dd NEW: Raytraced twin for Matched ReSTIR Neighbours =
+        rt_reuse_compatible_balanced_raytraced (+ _omm); before it Matched + Raytraced ran Basic and logged 'off'; missing
+        twin -> Basic twin; log names the mode that runs). Old origin/bal3_raytraced c339d0eb0 kept (no force). Conflicts
+        rt_d3d12.hpp only (3 sites; atn-mods' side kept + bal3_ lines). Gates: player 71 / 71, reference 85 / 85, lab 74 /
+        74 headers identical + 10 new Raytraced twins each (Off / Basic = atn-mods bytes); twattila amd64 + x86 exit 0, 61
+        warnings (a first x86 fail = its own script swapping sources mid-build, rerun clean); h0i_test 72 / 72; @regir flags
+        byte-identical in reuse twins. RULE BREACH: 2 recursive Globs over tools\tw\round_notes and tools\tw (timed out
+        20 s, no results) -> told: one level at a time. 'bal3_ GPU go' SENT 04:1x (~90 min, deadline 180): (1) E4 rerun
+        gates_e4rb.txt 160 runs + e4_tables_rb.py (controls no-twins / no-Raytraced-twins = base; Raytraced = tests
+        picture; Matched Raytraced != Matched Basic); (2) lab_rb jobs 01-12 (day / night toggle + Basic / Off rotations
+        base vs new); (3) all_modes_check -Rev 1f88af2dd. Shares the GPU with hrr_ via the lock. Then review (Opus xHigh)
+        -> merge. Owner: bal3_
         COORD GPU 03:5x: d11 5090 REPLAY SELF TEST PASS (test\tw_d3d11_replay run.ps1 -Architecture amd64, hardware, under
         Enter-GpuLock; log testbin\scratch\coord_d11hw_amd64.log): 3 frames x 4 events all equal, race pixels 226 / 665
         with 0 outputs no writer gives, CONTROL fewer samples DIFFERS (occlusion 72 B, penumbra 241 B) + changed constant
