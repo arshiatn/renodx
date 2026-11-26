@@ -2,7 +2,8 @@
 // aa_dlaa_finish, CMAA2's aa_cmaa2_prepare / aa_cmaa2_resolve; Attila and Thrones hand them frame_gamma.hlsli's
 // TW_FRAME_GAMMA) on WARP, their built csos against the builds before the change.
 // 1. g_aa_frame_gamma 0 (a game that leaves it) and 2 (Gamma Correction off): every output bit the build before's, for
-//    each add-on folder given. CONTROL: 2.2 changes them (the constant reaches the passes).
+//    each add-on folder given; SMAA's edges (aa_smaa_edges) at 2.2 too. CONTROL: 2.2 changes the other four (the
+//    constant reaches the passes).
 // 2. Round trip at 2.2: prepare then finish (NVIDIA's output = its input) gives the frame back; CMAA2's prepare, its
 //    working copy blended (here: kept at 32 bits, not as the prepare stored it), its resolve: the frame back. Grey texels
 //    to float rounding (the gamma's own round trip), every texel within 1e-2 (coloured ones near black: the BT.709 /
@@ -10,6 +11,9 @@
 //    at 2.2, encoded at 2.0: far off.
 // 3. g_aa_frame_gamma 1 (aa.hlsli AaFrameLinear, the Denoise Before Tone Mapping row): DLAA's prepare and finish linear,
 //    their matrices alone, and the round trip. CONTROL: at 2.0 far off.
+// 4. g_aa_frame_gamma 1 on Attila's / Thrones' HDR t00 (anti_aliasing.hpp Settings::linear_frame, aaf2_ 11-26): DLSS L / M
+//    get the frame's root (the prepare's square root), CMAA2's prepare and resolve the frame as it is, SMAA's edges the
+//    edges of the frame's root, bit for bit. CONTROL: at 2.0 the edges of the frame itself differ.
 // tests.exe <before folder> <after folder> [<before folder> <after folder> ...] (each an add-on's embed folder of csos)
 #include <windows.h>
 #include <d3d11.h>
@@ -41,7 +45,7 @@ ComPtr<ID3D11DeviceContext> context;
 // aa.hlsli's aa_settings.
 struct AaSettings {
   std::array<float, 4> metrics = {1.f / WIDTH, 1.f / HEIGHT, static_cast<float>(WIDTH), static_cast<float>(HEIGHT)};
-  std::array<float, 7> quality = {};
+  std::array<float, 7> quality = {0.1f};  // SMAA's threshold (anti_aliasing.hpp SMAA_PRESETS High); the rest unread
   float frame_gamma = 0.f;
   std::array<float, 4> subsample = {};
   std::array<float, 4> dlaa_debug = {0.f, static_cast<float>(WIDTH), static_cast<float>(HEIGHT), 0.f};
@@ -79,7 +83,8 @@ Texture MakeTexture(DXGI_FORMAT format, const void* data, UINT pixel_bytes) {
   return made;
 }
 
-std::vector<float> ReadBack(ID3D11Texture2D* texture) {
+// The texture's texels as floats (`pixel_bytes` 16: RGBA32F; 2: SMAA's RG8 edges, two bytes a texel held in one float).
+std::vector<float> ReadBack(ID3D11Texture2D* texture, UINT pixel_bytes = 16) {
   D3D11_TEXTURE2D_DESC desc;
   texture->GetDesc(&desc);
   desc.Usage = D3D11_USAGE_STAGING, desc.BindFlags = 0, desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -88,16 +93,21 @@ std::vector<float> ReadBack(ID3D11Texture2D* texture) {
   context->CopyResource(staging.Get(), texture);
   D3D11_MAPPED_SUBRESOURCE mapped = {};
   context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
-  std::vector<float> values(size_t{WIDTH} * HEIGHT * 4);
-  for (UINT y = 0; y < HEIGHT; ++y) std::memcpy(values.data() + (size_t{y} * WIDTH * 4), static_cast<const char*>(mapped.pData) + (size_t{y} * mapped.RowPitch), WIDTH * 16);
+  std::vector<float> values(size_t{WIDTH} * HEIGHT * pixel_bytes / 4);
+  for (UINT y = 0; y < HEIGHT; ++y) {
+    std::memcpy(reinterpret_cast<char*>(values.data()) + (size_t{y} * WIDTH * pixel_bytes), static_cast<const char*>(mapped.pData) + (size_t{y} * mapped.RowPitch),
+                WIDTH * pixel_bytes);
+  }
   context->Unmap(staging.Get(), 0);
   return values;
 }
 
+// `square_root`: aa_dlaa_prepare's g_dlaa_debug.w (1: NVIDIA gets the root, presets L / M and Ray Reconstruction).
 void Dispatch(ID3D11ComputeShader* shader, float frame_gamma, std::initializer_list<ID3D11ShaderResourceView*> views,
-              std::initializer_list<ID3D11UnorderedAccessView*> outputs) {
+              std::initializer_list<ID3D11UnorderedAccessView*> outputs, float square_root = 0.f) {
   AaSettings settings;
   settings.frame_gamma = frame_gamma;
+  settings.dlaa_debug[3] = square_root;
   const D3D11_BUFFER_DESC desc = {sizeof(AaSettings) + 15u & ~15u, D3D11_USAGE_DEFAULT, D3D11_BIND_CONSTANT_BUFFER, 0, 0, 0};
   std::array<char, (sizeof(AaSettings) + 15u) & ~15u> bytes = {};
   std::memcpy(bytes.data(), &settings, sizeof(settings));
@@ -127,13 +137,14 @@ float Noise(uint32_t a, uint32_t b) {
 }
 
 struct Passes {
-  ComPtr<ID3D11ComputeShader> dlaa_prepare, dlaa_finish, cmaa2_prepare, cmaa2_resolve;
+  ComPtr<ID3D11ComputeShader> dlaa_prepare, dlaa_finish, cmaa2_prepare, cmaa2_resolve, smaa_edges;
   bool Load(const std::string& folder) {
     dlaa_prepare = Shader(folder, "aa_dlaa_prepare");
     dlaa_finish = Shader(folder, "aa_dlaa_finish");
     cmaa2_prepare = Shader(folder, "aa_cmaa2_prepare");
     cmaa2_resolve = Shader(folder, "aa_cmaa2_resolve");
-    return dlaa_prepare && dlaa_finish && cmaa2_prepare && cmaa2_resolve;
+    smaa_edges = Shader(folder, "aa_smaa_edges");
+    return dlaa_prepare && dlaa_finish && cmaa2_prepare && cmaa2_resolve && smaa_edges;
   }
 };
 
@@ -191,19 +202,31 @@ int main(int argc, char** argv) {
   const Texture nvidia = MakeTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, nvidia_texels.data(), 16);
   const Texture depth = MakeTexture(DXGI_FORMAT_R32_FLOAT, depth_texels.data(), 4);
 
-  // 1. Each folder pair: 0 and 2 the build before's bits; 2.2 not.
+  // SMAA's edges (RG8) of `colour` at `frame_gamma`; the samplers left unbound (D3D11's default, linear: at the texel
+  // centres SMAA's point reads ask for, the texel itself).
+  const auto smaa_edges = [&](ID3D11ComputeShader* shader, float frame_gamma, const Texture& colour) {
+    Texture edges = MakeTexture(DXGI_FORMAT_R8G8_UNORM, nullptr, 2);
+    Dispatch(shader, frame_gamma, {colour.srv.Get()}, {edges.uav.Get()});
+    return ReadBack(edges.texture.Get(), 2);
+  };
+
+  // 1. Each folder pair: 0 and 2 the build before's bits (SMAA's edges at 2.2 too); 2.2 not.
   const std::array<const char*, 4> names = {"aa_dlaa_prepare", "aa_dlaa_finish", "aa_cmaa2_prepare", "aa_cmaa2_resolve"};
   for (int pair = 1; pair + 1 < argc; pair += 2) {
     Passes before;
     Passes after;
     CHECK(before.Load(argv[pair]) && after.Load(argv[pair + 1]));
     const auto old_outputs = Outputs(before, 0.f, frame, depth, nvidia, nvidia);
+    const auto old_edges = smaa_edges(before.smaa_edges.Get(), 0.f, frame);
+    for (const float gamma : {0.f, 2.f, 2.2f}) {
+      CHECK(SameBits(old_edges, smaa_edges(after.smaa_edges.Get(), gamma, frame)));
+    }
     for (const float gamma : {0.f, 2.f}) {
       const auto new_outputs = Outputs(after, gamma, frame, depth, nvidia, nvidia);
       for (size_t pass = 0; pass < 4; ++pass) CHECK(SameBits(old_outputs[pass], new_outputs[pass]));
     }
     const auto corrected = Outputs(after, 2.2f, frame, depth, nvidia, nvidia);
-    std::printf("1 %s: g_aa_frame_gamma 0 and 2: all four passes' bits the build before's; CONTROL 2.2:", argv[pair + 1]);
+    std::printf("1 %s: g_aa_frame_gamma 0 and 2: all five passes' bits the build before's (SMAA's edges at 2.2 too); CONTROL 2.2:", argv[pair + 1]);
     for (size_t pass = 0; pass < 4; ++pass) {
       CHECK(!SameBits(old_outputs[pass], corrected[pass]));
       std::printf(" %s %.3g", names[pass], Worst(old_outputs[pass], corrected[pass]));
@@ -285,6 +308,48 @@ int main(int argc, char** argv) {
               linear_worst[0], linear_worst[1], linear_worst[2], linear_worst[3], control_worst[0], control_worst[1]);
   CHECK(linear_worst[0] < 1e-5 && linear_worst[1] < 1e-5 && linear_worst[2] < 1e-5 && linear_worst[3] < 1e-4);
   CHECK(control_worst[0] > 1e-2 && control_worst[1] > 1e-2);
+
+  // 4. g_aa_frame_gamma 1 on t00 itself (Settings::linear_frame): presets L / M get the root of part 3's prepare;
+  // CMAA2's prepare the frame in BT.2020, its resolve of that (kept at 32 bits: every pixel taken as blended) the frame;
+  // SMAA's edges of the frame those of its root (sign kept, as aa_smaa.hlsli AaEdgeColour). CONTROL: SMAA's edges of the
+  // frame at 2.0 (read as it is) differ.
+  Texture rooted = MakeTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 16);
+  Texture rooted_depth = MakeTexture(DXGI_FORMAT_R32_FLOAT, nullptr, 4);
+  Texture rooted_motion = MakeTexture(DXGI_FORMAT_R32G32_FLOAT, nullptr, 8);
+  Dispatch(passes.dlaa_prepare.Get(), 1.f, {source.srv.Get(), depth.srv.Get()}, {rooted.uav.Get(), rooted_depth.uav.Get(), rooted_motion.uav.Get()}, 1.f);
+  std::vector<float> expected_root(linear[0].size());
+  for (size_t i = 0; i < expected_root.size(); ++i) expected_root[i] = (i % 4 == 3) ? linear[0][i] : std::sqrt(linear[0][i]);
+  const double root_worst = Worst(expected_root, ReadBack(rooted.texture.Get()));
+  Texture cmaa2_work = MakeTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 16);
+  Dispatch(passes.cmaa2_prepare.Get(), 1.f, {source.srv.Get()}, {cmaa2_work.uav.Get()});
+  Texture cmaa2_resolved = MakeTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 16);
+  Dispatch(passes.cmaa2_resolve.Get(), 1.f, {cmaa2_work.srv.Get(), source.srv.Get()}, {cmaa2_resolved.uav.Get()});
+  const std::array<double, 2> cmaa2_worst = {Worst(expected_prepared, ReadBack(cmaa2_work.texture.Get())),
+                                             Worst(in_gamut, ReadBack(cmaa2_resolved.texture.Get()))};
+  std::vector<float> frame_root(frame_texels.size());
+  for (size_t i = 0; i < frame_root.size(); ++i) {
+    frame_root[i] = (i % 4 == 3) ? frame_texels[i] : std::copysign(std::sqrt(std::abs(frame_texels[i])), frame_texels[i]);
+  }
+  const Texture root_frame = MakeTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, frame_root.data(), 16);
+  const auto linear_edges = smaa_edges(passes.smaa_edges.Get(), 1.f, frame);
+  const auto root_edges = smaa_edges(passes.smaa_edges.Get(), 2.f, root_frame);
+  const auto plain_edges = smaa_edges(passes.smaa_edges.Get(), 2.f, frame);
+  // RG8 edges: count the texels (two bytes each) where the two differ.
+  const auto edge_texels_differing = [](const std::vector<float>& a, const std::vector<float>& b) {
+    const auto* x = reinterpret_cast<const uint16_t*>(a.data());
+    const auto* y = reinterpret_cast<const uint16_t*>(b.data());
+    size_t count = 0;
+    for (size_t texel = 0; texel < size_t{WIDTH} * HEIGHT; ++texel) count += (x[texel] != y[texel]) ? 1 : 0;
+    return count;
+  };
+  const size_t root_differ = edge_texels_differing(linear_edges, root_edges);
+  const size_t plain_differ = edge_texels_differing(linear_edges, plain_edges);
+  std::printf("4 g_aa_frame_gamma 1 on t00, worst difference: L / M prepare vs part 3's root %.3g; CMAA2 prepare vs the frame in BT.2020 %.3g, "
+              "resolve vs the frame %.3g; SMAA edge texels differing from the root's edges %zu of %u; CONTROL edges read as it is: %zu differ\n",
+              root_worst, cmaa2_worst[0], cmaa2_worst[1], root_differ, WIDTH * HEIGHT, plain_differ);
+  CHECK(root_worst < 1e-6 && cmaa2_worst[0] < 1e-4 && cmaa2_worst[1] < 1e-4);
+  CHECK(root_differ == 0);
+  CHECK(plain_differ > 0);
   std::printf("PASS\n");
   return 0;
 }

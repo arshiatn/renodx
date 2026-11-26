@@ -10,9 +10,10 @@
 // pixel; its quality from the settings (anti_aliasing.hpp's presets). Its edge detection's discard returns no edge.
 #include "./aa.hlsli"
 
-// 0: SMAA's luma edges read the tone mapper's output as it is (Attila: linear, t00 per rrbi_ G0; Thrones, WH3...: not
-// measured), 1: its square root (Pharaoh, Troy: linear frames, their wrappers define it), 2.0 encoded as SMAA.hlsl's luma
-// edge detection needs gamma-corrected colours. The blending reads it as it is (Attila, Pharaoh, Troy: linear).
+// 0: SMAA's luma edges read the tone mapper's output as it is (Attila / Thrones SDR: linear, t00 per rrbi_ G0; WH3...:
+// not measured), 1: its square root (Pharaoh, Troy: linear frames, their wrappers define it; Attila / Thrones HDR at run
+// time: aa.hlsli AaFrameLinear), 2.0 encoded as SMAA.hlsl's luma edge detection needs gamma-corrected colours. The
+// blending reads it as it is (Attila, Pharaoh, Troy: linear).
 #ifndef TW_AA_FRAME_LINEAR
 #define TW_AA_FRAME_LINEAR 0
 #endif
@@ -22,7 +23,7 @@ SamplerState aa_point : register(s1);
 
 float4 AaEdgeColour(float4 colour)
 {
-  return (TW_AA_FRAME_LINEAR ? float4(sign(colour.rgb) * sqrt(abs(colour.rgb)), colour.a) : colour);
+  return ((TW_AA_FRAME_LINEAR || AaFrameLinear()) ? float4(sign(colour.rgb) * sqrt(abs(colour.rgb)), colour.a) : colour);
 }
 
 #define SMAA_CUSTOM_SL 1

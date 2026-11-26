@@ -1758,6 +1758,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   aa_settings.frame_gamma = TW_FRAME_GAMMA;
+  aa_settings.linear_frame = IsHDRMode();  // as Attila's: t00 writes linear in the HDR modes (aaf_ 11-26); SDR as before
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);
