@@ -189,7 +189,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixel, bool previous) {
   const uint model = texel.w & 0xFFu;
   const float3 normal = float3(texel.x & 0xFFu, (texel.x >> 8u) & 0xFFu, (texel.x >> 16u) & 0xFFu) * (2.f / 255.f) - 1.f;
   // ours: a zero normal (no light surface written there) is no surface, as a model the light shaders do not light.
-  if ((model != TW_POINT_LIGHT_SLM && model != TW_POINT_LIGHT_SKIN) || !(dot(normal, normal) > 1e-6f)) return surface;
+  if ((model != TW_POINT_LIGHT_SLM && model != TW_POINT_LIGHT_SKIN) || !(dot(normal, normal) > 9.99895e-7f)) return surface;
   surface.normal = normalize(normal);
   surface.origin = position.xyz + di_origin[previous ? 1u - DiParity() : DiParity()][at].xyz;
   surface.position = position.xyz;

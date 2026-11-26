@@ -25,7 +25,7 @@ static const float GOLDEN_ANGLE = 2.39996323f;
 // X30 (as sss_blur's): distance ~ 1 / (A - depth), A the depth at infinity.
 float SurfaceDistance(int2 pixel, float infinity)
 {
-  return 1.f / max(abs(infinity - abs(t_sss_depth[pixel])), 1e-7f);
+  return 1.f / max(abs(infinity - abs(t_sss_depth[pixel])), 9.999091e-8f);
 }
 
 [numthreads(8, 8, 1)]

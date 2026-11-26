@@ -4085,7 +4085,7 @@ class RtScene12 {
             const auto& [shade, sunlit, scale, base, ambient] = kept;
             slow_report_ += std::format("{}[TW ray tracing] Path-Traced AO keeps its learned light: shade {:.4f} {:.4f} {:.4f}, the game's ambient {:.4f} {:.4f} {:.4f}, share {:.3f} {:.3f} {:.3f}, sun {:.3f} {:.3f} {:.3f}, base colour {:.3f}.",
                                         slow_report_.empty() ? "" : "\n", shade[0], shade[1], shade[2], ambient[0], ambient[1], ambient[2],
-                                        shade[0] / std::max(ambient[0], 1e-4f), shade[1] / std::max(ambient[1], 1e-4f), shade[2] / std::max(ambient[2], 1e-4f),
+                                        shade[0] / std::max(ambient[0], 1.0001576e-4f), shade[1] / std::max(ambient[1], 1e-4f), shade[2] / std::max(ambient[2], 1e-4f),
                                         sunlit[0], sunlit[1], sunlit[2], (base[0] + base[1] + base[2]) / 3.f);
           }
           kept_copy_frame_ = UINT32_MAX;

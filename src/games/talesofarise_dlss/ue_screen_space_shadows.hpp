@@ -186,7 +186,7 @@ inline ID3D11ShaderResourceView* Compute(ID3D11DeviceContext* context, const Inp
   // render texels, so the samples are the row's in screen pixels and the surface thickness the row's (Bend's window is
   // a share of the depth left, no pixel size in it); the bilinear threshold / share stays (it classifies neighbouring
   // render texels).
-  const float share = std::clamp(inputs.render_share, 0.01f, 1.f);
+  const float share = std::clamp(inputs.render_share, 0.009998382f, 1.f);
   const float samples = std::max(std::round(settings.samples), settings.hard_samples + 4.f);
   const attila_sss::ShaderSettings shader_settings = {
       .width = static_cast<float>(objects.width),
