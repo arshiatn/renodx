@@ -364,7 +364,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSR1 sweep_coverage.py (offline, python -I): every rt_flags / rt_path_flags / rt ... | ?
 - NSR2 Nsight MCP readiness. Coord smoke 11-25 19:4x: list families OK (capture, r ... | ?
 - ATN: rule lines R1-R4 (exact text in nsr_handback.md '## Rule lines ATN must add ... | ?
-- ATN: yes to delete build\nsr_profile_1 (the failed R1 output) -> coord reruns R1 ... | ATN
 - Start nv-aftermath-monitor.exe before the sweep + its dump folder in the crash t ... | coord
 - P1: rt_di_flags + rt_diffuse_roughness as lab fields. Owner: gpr_ (NSR3) | gpr_ (NSR3)
 - ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); k ... | ?
@@ -3606,7 +3605,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         talesofarise_dlss, utils, mods, shaders; re-export when any is missing (checked: all 5 export at 542904fb5).
         The failed run left D:\Dev\renodx\build\nsr_profile_1 (68 files, 321 MB: runtime DLL copies + profile
         shader headers); R1 refuses an existing folder -> rerun needs that folder deleted.
-        - [ ] ATN: yes to delete build\nsr_profile_1 (the failed R1 output) -> coord reruns R1 -> R2 -> R4. Owner: ATN
+        - [x] ATN: yes to delete build\nsr_profile_1 (the failed R1 output) -> coord reruns R1 -> R2 -> R4. Owner: ATN
+        ATN 11-26 02:1x 'Delete it then.' -> coord checked it (71 items, 339 MB, 0 links: runtime DLL copies, the
+        profile exe + shader headers) and DELETED build\nsr_profile_1; R1 RERUN STARTED 02:1x (ATN's rule line, exact).
+        R2 -> R4 run in the GPU window right after pdi5_ GPU done (the original order, ~15 min), then pdi4c_. Owner: coord
         - [ ] Start nv-aftermath-monitor.exe before the sweep + its dump folder in the crash tools' search paths. Owner: coord
         - [ ] P1: rt_di_flags + rt_diffuse_roughness as lab fields. Owner: gpr_ (NSR3)
         - [ ] ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); keep stdin open (F1 EOF
@@ -17640,7 +17642,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         GPU ORDER 11-26 02:0x (coord): coord R2 -> R4 stay BLOCKED (R1 must rerun first and refuses the existing
         build\nsr_profile_1: ATN's deletion yes, box above) -> after pdi5_ GPU done: pdi4c_ (r4 1434dcf07) -> lsp_ (2-4
         min) -> bal3_ -> d11 replay self-test -> d11 day1 capture -> HARNESS_RR (fa4_ U1 sqrt + O-RR12) -> fa8_ B1 F7 case
-        -> coord R1..R4 once ATN says yes. Owner: coord
+        (superseded 02:1x: ATN said yes; R2 -> R4 go right after pdi5_, before pdi4c_). Owner: coord
         - [ ] LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner: done
         ATN 11-26 00:5x ANSWERS: (1) fa5_ U-VB5 CLOSED: the 3 Shadertoys are in C:\Users\arshi\Downloads\Shadertoy stuff\
         (root = GT-VBAO, 'GT-VBAO thickness heuristic' = Ottosson's variation, 'GT-VBGI (diffuse)'); every header reads
