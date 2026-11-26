@@ -45,8 +45,9 @@
 //     one sample a screen pixel between the render texels against the 100% march (A/A: half a render pixel's jitter);
 //     each with a CONTROL that must fail (today's form C, render steps, or the module's shader with a test define), but
 //     W6 (near the light: its controls numbers only, their difference under a render pixel by geometry).
-// --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), torches near and far, the CPU
-// time of a later light draw, and a battle's light draws with today's sss_lights and f6408aa1's. --time-only: that alone.
+// --time: on the hardware GPU at 3840 x 2160, each row's GPU time (median of 30 frames), sss_bend at 100% to 33% render
+// scale (O-SS5's A' against C, gate G1), torches near and far, the CPU time of a later light draw, and a battle's light
+// draws with today's sss_lights and f6408aa1's. --time-only: that alone.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -1826,6 +1827,51 @@ static void Time(const std::string& before) {
     const double milliseconds = GpuMilliseconds([&] { RunFrame(frame, row.settings, row.thin); });
     if (&row == &rows[0]) off = milliseconds;
     std::printf("   %-34s %.3f ms (%+.3f)\n", row.name, milliseconds, milliseconds - off);
+  }
+  // O-SS5 (G1, plan_1117 designs\sss_scale_thickness.md): sss_bend below 100% render scale, the render's depth in the
+  // top-left of the 3840 x 2160 screen's (as the DLSS addon draws it), A' (screen steps, the add-on's) against C (the form
+  // before O-SS5: bc423ef9d's sss_bend a sample a render pixel, samples x share, thickness / share), plain and with
+  // Softer Away from the Caster (the extended find variant). At 100% both are Bend's (the strict gate: within 1%).
+  {
+    const auto load = [&](const char* name) {
+      const auto code = ReadFile(before + "\\" + name + ".cso");
+      REQUIRE(!code.empty());
+      ComPtr<ID3D11ComputeShader> shader;
+      REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf())));
+      return shader;
+    };
+    const ComPtr<ID3D11ComputeShader> today = load("sss_bend_bc423ef9d");
+    const ComPtr<ID3D11ComputeShader> today_find = load("sss_bend_extended_find_bc423ef9d");
+    auto& objects = sss::internal::runtime.objects;
+    for (const float share : {1.f, 0.667f, 0.58f, 0.5f, 0.333f}) {
+      const UINT w = static_cast<UINT>(std::lround(3840.f * share));
+      const UINT h = static_cast<UINT>(std::lround(2160.f * share));
+      const Frame render = MakeFrame(w, h, boxes, {0.25f, -0.55f, -0.8f});
+      Frame display = MakeFrame(3840, 2160, {}, render.sun);
+      std::vector<float> depth(3840 * 2160, 1.f);
+      for (UINT y = 0; y < h; ++y) std::copy_n(render.picture.depth.begin() + (y * w), w, depth.begin() + (y * 3840));
+      display.depth = MakeTexture(3840, 2160, DXGI_FORMAT_R32_FLOAT, depth.data(), 3840 * 4);
+      display.camera_constants = render.camera_constants;
+      display.lighting = render.lighting;
+      twattila::frame_history::render_width = (w != 3840) ? w : 0;
+      twattila::frame_history::render_height = (w != 3840) ? h : 0;
+      for (const auto* row : {&base, &softer}) {
+        const double ours = GpuMilliseconds([&] { RunFrame(display, *row); });
+        const ComPtr<ID3D11ComputeShader> module_plain = objects.bend;
+        const ComPtr<ID3D11ComputeShader> module_find = objects.bend_extended[2];
+        objects.bend = today;
+        objects.bend_extended[2] = today_find;
+        sss::internal::scale_control = {.samples_by_share = true, .thickness_by_share = true};
+        const double before_form = GpuMilliseconds([&] { RunFrame(display, *row); });
+        sss::internal::scale_control = {};
+        objects.bend = module_plain;
+        objects.bend_extended[2] = module_find;
+        std::printf("   render scale %3.0f%% %-11s A' %.3f ms, C %.3f ms (%+.3f)\n", share * 100.f, (row == &base) ? "plain" : "Softer 0.5", ours,
+                    before_form, ours - before_form);
+      }
+    }
+    twattila::frame_history::render_width = 0;
+    twattila::frame_history::render_height = 0;
   }
   // Torches: the frame's first light draw (the pick and the march over last frame's 16 lights), near (9 to 11 m: each
   // one's reach covers most of the screen) and at a battle's distance (40 to 60 m).
