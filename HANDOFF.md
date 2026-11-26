@@ -1004,6 +1004,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / ... | ?
 - X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coor ... | ?
 - LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\s ... | ?
+- lsp_ FOLLOW-UP 1 (backoff uncapped vs quads capped, < 1 min GPU) STARTED 03:1x; ... | ?
 - pd5c_ STEP 5 RE-CHECK STARTED 03:0x (Opus xHigh, read-only, scratch pd5c_\; est ... | ?
 - G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
@@ -17714,6 +17715,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         gpu_job.ps1 (GpuLock.psm1), ~2-4 min under the lock. Decides: spheres <= 0.5x quads ms -> helper design; 0.5-0.8x
         only if caps / shape win; > 0.8x drop; uncapped <= quads capped with err <= 0.02 -> retire the caps; backoff
         need; aabb fallback value; spheres_nv 0 mismatches. GPU ORDER: after pdi4c_ (2-4 min). Owner: lsp_ (waits)
+        lsp_ GPU DONE 03:06:45-03:06:56 (11 s; RTX 5090 driver 595.79; results testbin\scratch\lsp_\results\
+        20261126_030645\, probe.md 'GPU results'): sphere + LSS tier STANDARD; plain HW spheres miss a ray that STARTS
+        INSIDE (err 0.36-0.66) -> the backoff variant (start 2x the largest radius behind) is required (err 0.0003, +0-2 %);
+        spheres_nv 0 mismatches. City, 4K, cap 32, quads -> backoff ms: 1000 / sun 50 2.509 -> 2.116 (0.84x), 1000 / 15
+        0.835 -> 0.783 (0.94x), 4000 / 50 5.523 -> 3.174 (0.57x; quads err 0.0575 vs 0.0000), 4000 / 15 2.592 -> 1.955
+        (0.75x); candidates / ray 17.5 -> 8.5; cap 8: 0.69-0.93x; field 0.90-0.96x. Rules: speed never <= 0.5x -> 1000 =
+        drop, 4000 = 'design only if the shape wins'; caps: spheres uncapped 3.19 ms < quads cap 32 5.52 ms -> the count
+        caps could retire at quality 32 (backoff uncapped NOT measured: follow-up running); shape: spheres stay near their
+        model at a cap (0.47 vs 0.93) -> the look = ATN's eye (img_city_*_ref_quads / _ref_spheres / _diff_x4 PNGs); AMD /
+        Intel aabb 0.77-1.25x quads, HW spheres 25 % faster than aabb; BLAS 0.28 vs 0.38 ms, 305 vs 430 KB. CAVEAT:
+        absolute 0.25-5.5 ms; the in-game 80 ms smoke frames are NOT reproduced by synthetic 4000 particles -> their
+        cause is outside per-candidate cost (more / bigger particles or the scene); a real smoke recording through the
+        probe settles it. Owner: done
+        - [ ] lsp_ FOLLOW-UP 1 (backoff uncapped vs quads capped, < 1 min GPU) STARTED 03:1x; FOLLOW-UP 2 (a real smoke
+        recording through the probe): lsp_ writes its needs in probe.md, runs later. Then LSS decision: design or drop
+        (+ ATN's eye on the sphere vs quad PNGs). Owner: lsp_ -> coord / ATN
         GPU ORDER 11-26 02:0x (coord): coord R2 -> R4 stay BLOCKED (R1 must rerun first and refuses the existing
         build\nsr_profile_1: ATN's deletion yes, box above) -> after pdi5_ GPU done: pdi4c_ (r4 1434dcf07) -> lsp_ (2-4
         min) -> bal3_ -> d11 replay self-test -> d11 day1 capture -> HARNESS_RR (fa4_ U1 sqrt + O-RR12) -> fa8_ B1 F7 case
@@ -17754,6 +17771,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         GPU 03:06 (coord): pdi4c_ got 'pdi4c_ GPU go' 03:0x but is BLOCKED on a PowerShell permission prompt (only ATN can
         answer it; coord never answers agents' prompts) -> lock free, so 'lsp_ GPU go' sent 03:06 (2-4 min, self-locking);
         then bal3_; pdi4c_ runs once ATN answers its prompt. Owner: ATN (prompt) / coord
+        03:1x: 'bal3_ resume' sent (jobs 03-12 back from lab_b\paused, run_jobs.ps1 -First 3, chain2.log; waits
+        for lsp_'s < 1 min follow-up via the lock). Owner: bal3_
         - [ ] ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 baseline -> move it to the M1 run
         (f370cd3bd vs e52ec9e28) once step 5 merges. Owner: gate tooling slot
         - [ ] wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 of 1 M SHaRC keys / 6
