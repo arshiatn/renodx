@@ -902,6 +902,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | ?
 - d11 NITs (64 vs 8 OM slots check on the first dump, static_cast<void>, stoull gu ... | ?
 - ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ?
+- ATN: MOVE ASIDE 2 STALE LOCKS (dead owner pid 31492 = the crashed d11_capture64; ... | ?
+- d11f_ SCRIPT FIX STARTED 06:2x (Opus High, CPU only, .bak_d11f): Note never thro ... | ?
+- RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait ... | ?
 - CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | ?
 - Replay gaps (d11i_): sss.lights, smoke.map, ao.draw, bounce.sun_draw not replaye ... | ?
 - PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in | ?
@@ -16843,6 +16846,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         -Replay day1.replay after its -DryRun; sea1 / stress_test_log2 NOT run, census reported only). Prereqs: 5090 replay
         self test PASS (03:5x), GPU free (bal3_ done 06:05, bal3r_ read-only), D: >= 230 GB, commit < 32 GB; the script
         takes both locks + fresh backups + hash-checked restore. Est 50 / deadline 100. Owner: d11c_ -> coord
+        d11c_ STOP 06:13 (START 1 VOID, no game crash): prereqs OK (D: 334.5 GB, commit 18.2 GB, nothing running, locks
+        free); dry run ok (27 set rows; stage addon64 060535d8 = 89022799a build, no rebuild). Run 06:10:24: locks taken, 16
+        files backed up, game pid 32360, first present 06:10:36, 5 s row pressed 06:10:43 -> Note (Add-Content run.txt,
+        line ~114) threw a SHARING VIOLATION (likely d11c_'s own Monitor tail -F on run.txt; Bitdefender unproven); the
+        catch's Note threw again (skipped close / kill); finally's Note threw after PresentMon stop -> restore / collect /
+        crash checks / start.json / Release-Locks NEVER RAN, exit 1 at 06:10:50. d11c_ then closed our game (CloseMainWindow,
+        'main returned 0'), hash-checked ATN's 16 files (ALL MATCH, nothing to restore), moved used_mods_64.txt out of the
+        game folder, no add-on / DevKit left; WER 1000 / nvlddmkm / CrashDumps none; waving-flags pin OK. 0 segments, 0
+        dumps (D:\Dev\d11_dumps\d11cap64_20261126_061024_day1 empty, kept). Start folder testbin\attila64_1124\d11_runs\
+        20261126_061024_day1. Census n/a. The one unchanged retry = ATN's go (after d11f_'s fix + review). Owner: ATN /
+        d11f_
+        - [ ] ATN: MOVE ASIDE 2 STALE LOCKS (dead owner pid 31492 = the crashed d11_capture64; non-v1 text, so gpu_lock.py
+        never takes them over -> EVERY GPU JOB WAITS): tools\tw\gpu_job.lock + tools\tw\quiet_run.lock (both
+        'd11_capture64 (D3D11 pass capture, testbin\attila64_1124), pid 31492, 2026-11-26T06:10:2x'). Coord may not
+        (D1 strict). Owner: ATN
+        - [ ] d11f_ SCRIPT FIX STARTED 06:2x (Opus High, CPU only, .bak_d11f): Note never throws (FileShare.ReadWrite +
+        retry, console fallback); catch closes the game first; finally runs every step in its own try (PresentMon, close,
+        restore + hash check, collect, crash checks, start.json, Release-Locks last) and STOPs on any failure; no step /
+        switch / env change; header 'never tail run.txt'. Then a review -> ATN sees the diff with the retry go. Owner:
+        d11f_ -> review -> ATN
+        - [ ] RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait for the exit notice
+        only. Owner: every run brief
         - [x] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
         auto_thickness, so the _auto Bend variants are dead in game (shared TW code). ATN 11-25 ~21:0x: 'SSS auto
         thickness should never be used. It is shit. Thickness should always stay at the current default' -> NOT a
