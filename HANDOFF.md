@@ -939,6 +939,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rrbi_ DONE (72 min of 90; branch rrbi_ c45733245, merged locally 6fc08a593, push ... | ?
 - W8 STARTED 15:1x (fx8_, Opus High, est 130): D1's A' (SSS at one screen pixel pe ... | ?
 - h4k_ DONE ON THE CPU, GPU PARTS NOT RUN (14:26; hand-back handoff_plan\handbacks ... | ?
+- 11-26 14:3x-14:5x (ATN in a break): (1) 64-bit licence record saved: tools\tw\at ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17383,6 +17384,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         + 6 quality jobs, ~275 GB on D:, stops before D: < 230 GB; sets RENODX_REF_CACHE for ref_cache.py) = NEEDS ATN'S
         RULE LINE (new script). Open: hrr_'s other 103 runs at 4K (h4k_\hrr4k); pdi4c_'s runs / verify / build.ps1 -> 4K exe.
         run_4k: noise.py:29 FileNotFoundError ({prefix}_frames.txt) in groups 5 + 6 -> sent to pdi4c_. Owner: coord / pdi4c_ / ATN
+        - [ ] 11-26 14:3x-14:5x (ATN in a break): (1) 64-bit licence record saved: tools\tw\attila64\sol_license_1126\PROOF.md
+        (our src_1320 = the public repo's commit fd8e56c0a714 '1.3.20', 96 / 96 files identical; MIT for every version;
+        third-party notices saved beside it). (2) The 32-bit backup plan (round_notes\attila64\designs\backup_32bit.md)
+        gains section 8: A1 a 32-bit battle clock (steps/s + step wall as a one-frame trace line; hook the 32-bit step
+        entry; final-state hash only for an A/B gate) ON THE LIST; A2 Friday's 64-bit CPU wave -> 32-bit later = section
+        4's per-piece costs (ATN: OK, time + tokens). (3) USAGE TODAY: max 3 subagents, GPU PLAN FIRST for every free
+        slot; no cap from ATN's message on 11-27. (4) sb1_ STARTED 14:2x (Opus High, est 60): fix b1 (cap wait before
+        Present, Present to Present) in testbin\attila64_1124\sol_fixes_1124, build + fake-clock CPU test + a diff for
+        Sol (sent only on ATN's word); in-game A/B prepared, runs on coord's go after the 4K baseline + d11 start 5.
+        Running: pdi4c_, fx8_, sb1_. Owner: coord / sb1_
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
