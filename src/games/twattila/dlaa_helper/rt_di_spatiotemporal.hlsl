@@ -127,7 +127,8 @@ RTXDI_DIReservoir DiSpatioTemporalResampling(uint2 pixel, RAB_Surface surface, R
       for (uint sample = 0u; sample <= count; ++sample) {
         if ((merged & (1u << sample)) == 0u) continue;
         const int2 at = (sample == 0u) ? centre : DiSpatialNeighbour(centre, sequence, sample - 1u, count, runtime, spatial);
-        const RAB_Surface neighbour = (sample == 0u) ? temporal_surface : RAB_GetGBufferSurface(at, true);
+        RAB_Surface neighbour = temporal_surface;  // no struct conditional in HLSL
+        if (sample != 0u) neighbour = RAB_GetGBufferSurface(at, true);
         const RAB_LightSample at_neighbour = RAB_SamplePolymorphicLight(selected_light, neighbour, RTXDI_GetDIReservoirSampleUV(state));
         float ps = RAB_GetLightSampleTargetPdfForSurface(at_neighbour, neighbour);
 #if RTXDI_ALLOWED_BIAS_CORRECTION >= RTXDI_BIAS_CORRECTION_RAY_TRACED
