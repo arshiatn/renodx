@@ -995,7 +995,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fx0_ WORKTREE .claude\worktrees\agent-aa5c85a54b44e6397 (branch merged; build / ... | ?
 - cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR ... | ?
 - CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope. ... | ?
-- cbi_ v2 STARTED 02:5x (resumed, Opus High, scratch cbi_\ *.v2.*; est 20 / deadli ... | ?
+- cbr_ RE-CHECK OF v2 STARTED 03:0x (resumed, est 12 / deadline 25): v1_to_v2 line ... | ?
 - CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attil ... | ?
 - FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
 - O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 fe ... | ?
@@ -17641,9 +17641,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         design's 1 s edge). EXISTING GATE BUG: a single-sha 'git cherry-pick <sha>' is checked as --no-walk r --not
         upstream = 4265 commits, > 60 s, the hook kills it at 10 s -> the cite check fails open on every cherry-pick
         (likely some of gate_errors' 7 timeouts); fix '<sha>^!'. mode.txt = shadow: no gate denies anything today. Owner: done
-        - [ ] cbi_ v2 STARTED 02:5x (resumed, Opus High, scratch cbi_\ *.v2.*; est 20 / deadline 40): cbr_'s fixes 1-2 +
+        - [x] cbi_ v2 STARTED 02:5x (resumed, Opus High, scratch cbi_\ *.v2.*; est 20 / deadline 40): cbr_'s fixes 1-2 +
         a-f + the cherry-pick '^!' fix as its own marked hunk; g into ATN's questions; reruns (self-test, 30 equality, b / r4
         / p5 flags, hook e2e + cbr_'s e2e / half, mirror, timing). Then cbr_ re-check -> ATN installs once. Owner: cbi_
+        cbi_ v2 DONE 03:05 (13 min; *.v2.* beside v1 + install_steps.v2.md): 7 s budget (:47 / :394 / :395 lazy rows),
+        order-safe hook line 961 (any install order safe now), a :542, b scope :30, c first_tag(groups, kinds) :782 /
+        :969, d :397-399 (+ a v1 bug: a tag after code on the same line never counted -> the comment part now), e :345,
+        f :964 / :975, cherry-pick :307 '<sha>^!' (own diff spec_cite_check.cherrypick.v2.diff), g = question 8 (keep the
+        rule, or add 'src' to GUARD_TAGS :533). Tests: self-test 50 / 50, modes 6 / 6, fixes 5 / 5, equality 57 inputs 0
+        differ (cherry-pick cases 105-115 s -> 0.35 s; real 1434dcf07: old 4444 commits 113 s, new 1 commit 0.3 s), b 25,
+        p5 73, r4 103 / 53 (+ rt_di_shade.cs_6_5.hlsl:23 Gt, - DI_RESERVOIR_ARRAYS), e2e 13 / 13 + cbr_ 9 / 9 + half 6 / 6,
+        mirror 1506 / 1506; r4 merge 5.3 s (budget not hit), 143 commits -> TOOL FAULT, same exit code. Owner: done
+        - [ ] cbr_ RE-CHECK OF v2 STARTED 03:0x (resumed, est 12 / deadline 25): v1_to_v2 line by line, own reruns
+        (equality sample, half installs, the cherry-pick proof), any-order claim, cherry-pick on upstream / merge shas.
+        Then ATN installs v2 (install_steps.v2.md, questions 1-8). Owner: cbr_ -> ATN
         - [ ] CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attila + helper strict first,
         ports warn-only until their propagation box [yes]; 2 saturate warn-only for good [yes]; 3 an edit inside a
         src-tagged function must touch the tag line [no, review checks]; 4 'guard inert ... proof pending' allowed while
@@ -17740,6 +17751,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         1.00000 -> the 'faster + same picture = on' rule (pd5r_: after S2 rows, S3, S1, new baselines) -> a flip commit
         + all_modes / rec_scan with G4 = 1 as the new baseline in the next GPU window (pd5c_ says what else). Owner: coord
         (after the merge)
+        GPU 03:06 (coord): pdi4c_ got 'pdi4c_ GPU go' 03:0x but is BLOCKED on a PowerShell permission prompt (only ATN can
+        answer it; coord never answers agents' prompts) -> lock free, so 'lsp_ GPU go' sent 03:06 (2-4 min, self-locking);
+        then bal3_; pdi4c_ runs once ATN answers its prompt. Owner: ATN (prompt) / coord
         - [ ] ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 baseline -> move it to the M1 run
         (f370cd3bd vs e52ec9e28) once step 5 merges. Owner: gate tooling slot
         - [ ] wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 of 1 M SHaRC keys / 6
