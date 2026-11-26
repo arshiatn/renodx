@@ -200,7 +200,9 @@ void main(uint thread : SV_GroupThreadID)
     const int2 min_bounds = whole ? int2(0, 0) : clamp(int2(floor(low)) - 1, 0, viewport_size);
     const int2 max_bounds = whole ? viewport_size : clamp(int2(ceil(high)) + 1, 0, viewport_size);
     const float4 projected = mul(float4(light.xyz, 1.f), view_projection);
-    const float4 coordinate = BendLightCoordinate(projected, projected.z / projected.w, viewport_size, WAVE_SIZE);
+    // src: Bend's bend_sss_cpu.h BuildDispatchList (Apache 2.0, Sony Interactive Entertainment), LightCoordinate_Shader[2]
+    // = w == 0 ? 0 : z / w: a light on the camera's plane gave an infinite depth (X29).
+    const float4 coordinate = BendLightCoordinate(projected, (projected.w == 0.f) ? 0.f : (projected.z / projected.w), viewport_size, WAVE_SIZE);
     t_rw_coordinates[thread] = coordinate;
     DispatchData dispatches[8];
     int dispatch_count = 0;
