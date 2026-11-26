@@ -16969,7 +16969,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         notches, the first turn check STOPs, LineWait / NotchGap ignored, deadline +180 not +170 (start 2 run.txt :69 =
         the proof; the 06:3x 'log text only' note was wrong). Every start would have been void at the camera. Fix: rename
         $CAM -> $CAMERA on 13 lines + AST case-collision test + a camera state-machine test; header first present +2.5-3 s
-        (not 13). d11f_ r10 10:1x (est 12 / deadline 24). LESSON: tests never ran the camera loop. Owner: d11f_ -> coord
+        (not 13). d11f_ r10 10:1x (est 12 / deadline 24). LESSON: tests never ran the camera loop. 
+        d11f_ r10 DONE 10:28 (11.5 min): rename (28 places / 13 lines, case-sensitive $CAM grep 0), header fixed; its new
+        camera-loop test found a 2nd bug: $flat counted 100 ms loop passes, not notches (one fresh line re-checked every
+        pass) -> zoom could stop ~0.3 s after the height last fell (7 notches, not 9) -> $camChecked (one height check per
+        notch). 91 / 91 (case test FAILS on live = catches the old bug; camera test: 9 notches, gaps >= 0.33 s, 120 deg,
+        STOP at exactly +170). -> d11fr_ recheck 10:2x -> live -> START 3. Owner: d11fr_ -> coord
         - [ ] SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATTILA_TEST_SKIP_MOVIES=1 =
         a new env var -> ATN's rule line per runner switch; first ONE test start (menu reached, no sound crash, replay
         loads) because of SWITCHES.md's sound-crash note; then d11 C1At back near 180 - 60 and a64_ab / ebo_run timing
