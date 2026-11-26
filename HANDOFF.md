@@ -916,6 +916,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sdk_ DONE 11:52 (12 min; round_notes\sdk_audit_1126.md): every runtime DLL we sh ... | ?
 - lsp2_ 4K GPU DONE 11:52 (42 runs, 28 s; lsp_\lsp2_\results\20261126_115211\lsp2_ ... | ?
 - SOL'S PORT IS NEWER THAN OURS (coord 11-26 ~12:1x, ATN 'check if we got the newe ... | ?
+- pdi4c_ r5 READY 12:2x: origin/pdi4c_step4c_r5 = 9bf2313a3 (27 commits on ce1f836 ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17094,6 +17095,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         steps/s of 10: units move at 5-7 Hz while drawing ~60 fps) + a ~21 ms frame at each sim step; menu / films ~0.9 / s =
         Sol's film path (s1s_, not ours; fix b1 for Sol / ATTILA_FPS_CAP=0), confirming run never made. Asked ATN where he
         sees the 1 s stutter. Owner: ATN (Sol, where) / coord (A/B)
+        - [ ] pdi4c_ r5 READY 12:2x: origin/pdi4c_step4c_r5 = 9bf2313a3 (27 commits on ce1f83655; step 5 in the base; 3
+        conflicts with step 5's Matched ReSTIR Neighbours block in build.ps1 / rt_d3d12.hpp, both kept, step 5 first; DI
+        slots u77-u85 + static_asserts unchanged; fused = DI_FUSED variant, off by default, kept). Helper + gated amd64 +
+        gated x86 builds exit 0. 4K RULE: every harness row of its GPU turn ran at 640x360 (tw_rt_harness.exe, not _4k);
+        W4 = its own 64x64 grid; lab cost jobs G-1126-63..-77 were 4K. -> REVIEW pdi4cr_ STARTED 12:2x (Opus xHigh,
+        read-only, handbacks\pdi4c_r5_review.md, est 60 / deadline 120) + 'pdi4c_ GPU go' 12:2x for the harness rows at
+        4K with tw_rt_harness_4k.exe (640x360 vs 4K table into the hand-back). Then fix round -> merge (gated amd64 + x86 +
+        helper on the merge) -> d11 start 4 (after d11g_) -> G4 flip. Owner: pdi4cr_ / pdi4c_ / coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
