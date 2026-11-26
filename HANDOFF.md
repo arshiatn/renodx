@@ -980,6 +980,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | ?
 - SSS TEST FLAKE: test/tw_screen_space_shadows case 2 (100 %, Auto Thickness pole ... | ?
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ?
+- GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17659,6 +17660,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         than the old A' at 58 % render scale (0.205 vs 0.265 in the WARP test); 66.7 %, 2/3, 50 %, 1/3 match. If ATN sees it,
         a W11 fix design (each pixel's own sample phase inside the shared grid, O2's cost kept; start_1127.md 3d,
         sss_aprime_cheaper.md section 9). Owner: ATN (look) -> Opus xHigh designer
+        - [ ] GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one blocking background command, never
+        poll; at most 2 agents queued at once, others do non-GPU steps first; GPU jobs batched at the end. Owner: coord (every
+        brief from 11-27)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
