@@ -974,6 +974,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI M2 remainder: the last 0.14 % of DI-interior E after C5 (not blocking) (pd ... | pdi4c_ follow-up (11-27+)
 - PT DI switch-off transient (M1-trans): frames the bits mask needs to settle afte ... | pdi4c_ follow-up (11-27+)
 - R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
+- STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17604,6 +17605,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] PT DI M2 remainder: the last 0.14 % of DI-interior E after C5 (not blocking) (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
         - [ ] PT DI switch-off transient (M1-trans): frames the bits mask needs to settle after DI turns off, at 4K (bits light 0.795 -> 0.832 in the last frames) (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
         - [ ] R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli:53 (prepared light ~-0.58 %), rt_light_copy.cs_5_0.hlsl:19 (rays' hit light ~-0.55 %); Attila's rt_light copy + vendored CMAA2 not ours (pdi4c_handback.md:564 'Boxes'). Owner: pdi4c_ follow-up (11-27+)
+        - [x] C03-64 FASTER JOB WAKE-UPS: CLOSED for the battle step, moot by measurement (c03d_ 11-26, attila64\designs\
+        c03_64_design.md): under L2B the step runs its own code 99.7-99.8 % of the time; any wake-up can save <= 0.57 ms a step
+        (0.47 %) vs the 2 % gate; 'everyone awake' (spin on + L2B) already measured 122.0 vs 121.35. Owner: done
+        - [ ] STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render pieces (-0.19 ms); hand to PK8 Stage B's
+        designer; reopen when Stage B's render pieces + empty polls >= 1.5 ms a step, small-PC step on-CPU <= 0.97, or main
+        >= 1 ms a frame. Owner: PK8 Stage B designer
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
