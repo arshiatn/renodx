@@ -10,11 +10,15 @@
 //    members off (every light a member, the lists as before) must put unlisted lights in the output.
 // 3. The shading: every pixel's two DI lights finite and >= 0, the slm one > 0 at every pixel (all lights visible), the
 //    skinlm one 0 (no skin pixel).
-// 0. rt_di_temporal's DXIL traces the temporal bias ray (2 TraceRayInline: StartPast's and the bias ray's; 1 when
-//    RTXDI_ALLOWED_BIAS_CORRECTION is left undefined and the pass compiles 1/M alone).
+// 0. rt_di_temporal's DXIL traces the temporal bias ray (1 TraceRayInline: the pixel's ray origin is rt_di_initial's,
+//    di_origin, so no StartPast of its own; 0 when RTXDI_ALLOWED_BIAS_CORRECTION is left undefined and the pass compiles
+//    1/M alone).
 // 4. The temporal pass (DI_HISTORY, spatial off) over a last trace whose surface no light reaches (100 m below; the light
 //    places the same; its reservoirs empty with M 20, as after a disocclusion's fallback): ray traced and basic bias
 //    correction keep the one-frame light (within 1 %); CONTROL: OFF (1/M) divides it by 21. Today's 1/M-only build fails.
+// 5. Light colours with a negative channel (the addon sends the game's unclamped: fa1_ B2, fa9_ U3): every pixel's slm
+//    light finite and > 0, its green 0 (DiLight takes the colour at 0 and up, as LightArriving). CONTROL: a build before
+//    the fix (DiStore zeroed a pixel with any negative channel) fails every pixel.
 // tests.exe <repository> <folder of dxcompiler.dll and dxil.dll> <RTXDI Include folder>
 #include <windows.h>
 #include <d3d12.h>
@@ -490,8 +494,8 @@ int main(int argc, char** argv) {
        at = passes[1].disassembly.find("call void @dx.op.rayQuery_TraceRayInline", at + 1)) {
     ++bias_rays;
   }
-  const bool part0 = bias_rays >= 2;
-  std::printf("%s 0 temporal bias ray built: %u TraceRayInline calls in rt_di_temporal (needs 2)\n", part0 ? "PASS" : "FAIL", bias_rays);
+  const bool part0 = bias_rays >= 1;
+  std::printf("%s 0 temporal bias ray built: %u TraceRayInline calls in rt_di_temporal (needs 1)\n", part0 ? "PASS" : "FAIL", bias_rays);
   failures += part0 ? 0 : 1;
 
   // Every light at one place, 2 m over the floor's middle (each the same target at a pixel), white, smooth, reach 20 m.
@@ -688,6 +692,25 @@ int main(int argc, char** argv) {
               "(1/21 = 0.0476, must be < 0.1)\n",
               part4 ? "PASS" : "FAIL", ratio(ray_traced), ratio(basic), ratio(off));
   failures += part4 ? 0 : 1;
+
+  // 5. Every light's colour (2, -0.5, 1): its luminance > 0 (picked), its green negative.
+  for (uint32_t light = 0; light < LIGHTS; ++light) colours[light] = {2.f, -0.5f, 1.f, 1.f};
+  uint32_t tinted_bad = 0;
+  {
+    std::vector<RTXDI_PackedDIReservoir> initial;
+    std::vector<RTXDI_PackedDIReservoir> shaded;
+    std::vector<uint8_t> slm;
+    std::vector<uint8_t> skin;
+    CHECK(run(false, FRAMES + 2, DI_NO_TEMPORAL, &initial, &shaded, &slm, &skin));
+    for (size_t pixel = 0; pixel < size_t{SIDE} * SIDE; ++pixel) {
+      const double red = half(slm, pixel * 4);
+      const double green = half(slm, pixel * 4 + 1);
+      if (!(std::isfinite(red) && red > 0.0) || green != 0.0) ++tinted_bad;
+    }
+  }
+  const bool part5 = tinted_bad == 0;
+  std::printf("%s 5 negative colour channel: %u pixels with the slm light not finite and > 0 or its green not 0\n", part5 ? "PASS" : "FAIL", tinted_bad);
+  failures += part5 ? 0 : 1;
   std::printf(failures == 0 ? "ALL PASSED\n" : "FAILED\n");
   return failures == 0 ? 0 : 1;
 }
