@@ -1008,7 +1008,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STEP 5 FOLLOW-UPS (pd5c_): (1) build.ps1:156-157 G5's REUSE_COMPATIBLE builds la ... | ?
 - REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so ... | ?
 - FIX WAVE 1 (judges: X46 judge's back-face flip rt_reference.hlsli:312 + HitNorma ... | ?
-- fx1r_ WAVE 1 REVIEW STARTED 03:4x (Opus xHigh, read + CPU only; est 25 / deadlin ... | ?
+- WAVE 2-6 JUDGE VERDICT SETS AT R >= 8 (fx1r_ power: R = 4 catches a 2 % bias 26 ... | wave briefs
+- REF BREAKS MISSING (spec 9, built 5): offset20, fog_flat, clearance0, stale_bits ... | gate tooling slot
 - ATN RULE LINE: RENODX_TW_REF_BREAK GPU proof runs (exact job text in fx1_'s repo ... | ?
 - G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
@@ -17834,10 +17835,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         (aux.w 0 everywhere, verdicts = before; control: the .bak_fx1 harness shows w > 0 + BIAS) + one game snapshot
         for the back-face share; (2) X47 breaks on the quality scene with ref_compare --expect-fail = BIAS where named,
         unset = PASS as before -> NEEDS ATN'S RULE LINE (RENODX_TW_REF_BREAK). Owner: done
-        - [ ] fx1r_ WAVE 1 REVIEW STARTED 03:4x (Opus xHigh, read + CPU only; est 25 / deadline 50): X46 rule in GAME
+        - [x] fx1r_ WAVE 1 REVIEW DONE (started 03:4x (Opus xHigh, read + CPU only; est 25 / deadline 50): X46 rule in GAME
         snapshots (open meshes: terrain / facades / single-sided walls could read 'inside'), the winding fix, X47
         inertness, X49 math (own reruns), live gpu_gate risk -> verdict; then coord merges fx1_wave1 (helper build). Owner:
         fx1r_ -> coord
+        fx1r_ DONE 04:1x (16 min; scripts testbin\scratch\fx1r_\): MERGE AFTER. Box harness X46 RIGHT (check_winding.py:
+        old 42 / 84 box triangles back faces from outside, new 0 / 84). GAME SNAPSHOTS NOT SAFE: world-space stream-out,
+        pool normal = winding cross (rt_scene_data.hlsli:57-59), FrontCCW / cull / mirrored world matrices never recorded
+        (rt_core.hpp:1856 banners only); record flags say nothing about open meshes (terrain / facades = 'solid') -> a
+        flipped convention = a black reference -> later waves pushed darker. X47 inert when unset (5 sites = old values;
+        bits 10-13 free); 5 of the spec's 9 breaks exist (offset20 / fog_flat / clearance0 / stale_bits missing). X49 math
+        RIGHT (t tail vs incomplete beta + Gauss-Legendre 1e-13; MC 2M: R=4 5.77 % -> 0.276 %); POWER: R = 4 catches a
+        2 % bias 26 % (R = 8: 99.7 %) -> judge verdict sets for waves 2-6 use R >= 8. gpu_gate G path untouched; test 30
+        OK. FIX LIST (sent to fx1_ 04:1x, est 30 / deadline 60): (1) X46 count-only by default, dark only on route A /
+        when asked (REF_INSIDE_DARK 1u<<14; existing variable first, else RENODX_TW_REF_INSIDE + ATN's rule line); route B
+        count-only until P4; the 2 11-17 caches can't serve dark runs; (2) pdi1_harness_src reference_mode.hpp:168 +
+        quality_mode.hpp:715 winding; (3) ref_compare.py:392-397 G0 branch skips the expect_fail conversion (control-
+        failed-to-fail prints PASS); (4) rt_d3d12.hpp:943 long value = unknown, gate_sim.py:267 label, docstring 3.0075;
+        (5) rebuild harness exes (all testbin ones predate the winding fix) + helper builds. Proof jobs P1 furnace box
+        new harness PASS aux.w 0, P2 old-harness control FAIL, P3 quality full + contact vs 11-17 cache, P4 1-2 route-B
+        snapshots aux.w share (> ~0.5 % or whole objects dark = stays count-only), P5 breaks --expect-fail (ATN's rule
+        line). Owner: fx1_ -> coord merge
+        - [ ] WAVE 2-6 JUDGE VERDICT SETS AT R >= 8 (fx1r_ power: R = 4 catches a 2 % bias 26 %). Owner: wave briefs
+        (coord)
+        - [ ] REF BREAKS MISSING (spec 9, built 5): offset20, fog_flat, clearance0, stale_bits. Owner: gate tooling slot
         - [ ] ATN RULE LINE: RENODX_TW_REF_BREAK GPU proof runs (exact job text in fx1_'s report above, after fx1r_).
         Owner: ATN
         - [ ] G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 same or nearer, reflections
