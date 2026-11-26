@@ -21,7 +21,8 @@ THE SOFTWARE.
 ********************************************************************/
 
 // Modified for RenoDX (Total War: Attila, 2026): with FFX_SSSR_NO_WAVE_OPS defined (Shader Model 5, no wave
-// intrinsics), the low-occupancy exit of FFX_SSSR_HierarchicalRaymarch is off.
+// intrinsics), the low-occupancy exit of FFX_SSSR_HierarchicalRaymarch is off. Modified (2026-11-26): its valid_hit is
+// true only for rays that found an intersection, not for those that ran out of steps (X26).
 
 #ifndef FFX_SSSR
 #define FFX_SSSR
@@ -126,7 +127,16 @@ float3 FFX_SSSR_HierarchicalRaymarch(float3 origin, float3 direction, bool is_mi
         ++i;
     }
 
+#ifdef FFX_SSSR_CONTROL_CAP_ENDED_HITS
     valid_hit = (i <= max_traversal_intersections);
+#else
+    // RenoDX modified: AMD's (i <= max_traversal_intersections) is always true, so a ray that ran out of steps handed its
+    // mid-air point to the caller as a hit (ValidateHit's thickness then took some: false reflections). The loop found an
+    // intersection only when it went below the most detailed mip; with wave ops a low-occupancy exit is now a miss too.
+    // ours: test/tw_sssr_hits (step cap 8: cap-ended rays with confidence > 0, none after); FFX_SSSR_CONTROL_CAP_ENDED_HITS
+    // is AMD's line (the test's control).
+    valid_hit = (current_mip < most_detailed_mip);
+#endif
 
     return position;
 }
