@@ -1117,6 +1117,17 @@ float ReuseJacobian(Reservoir other, float3 other_origin, float3 origin) {
          / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
 }
 
+// A history reservoir's own surface `held` (last frame's position at the pixel it was made for) at `world`'s depth in last
+// frame's view, within 10 % (X05). src: RTXDI-Library GI/TemporalResampling.hlsli:107-110, RTXDI_IsValidNeighbor's depth
+// test (Utils/Math.hlsli:22, :27-31: |a - b| <= threshold max(a, b), linear depths); 0.1 = ours, the spatial merge's.
+// SeenLastFrame tests the reprojected pixel, not the reservoir texel's own one (nor, under PATH_PERMUTE, the texel
+// taken): a reservoir made at another depth leaked across edges (fidelity restir_gi_sharc_fog.md B5).
+bool HistoryDepthMatches(float4 held, float3 world) {
+  const float expected = ClipOf(world, previous_view_projection).w;
+  const float seen = ClipOf(held.xyz, previous_view_projection).w;
+  return held.w > 0.f && abs(seen - expected) <= 0.1f * max(seen, expected);
+}
+
 // The surface a bounce texel shows: its render pixel, world position (w: depth; 0: the sky), normal, rays' origin.
 float4 TexelSurface(uint2 id, out float3 normal, out float3 origin) {
   const uint2 pixel = min(id * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
@@ -1215,8 +1226,13 @@ void PathTraceTexel(uint2 id) {
     if ((path_flags & PATH_PERMUTE) != 0u) previous_texel ^= uint2(frame & 1u, (frame >> 1) & 1u);
     previous_texel = min(previous_texel, uint2(bounce_width, bounce_height) - 1u);
     Reservoir previous = LoadReservoir(reuse_samples[1u - set], reuse_data[1u - set], previous_texel);
-    // Last frame's reservoir was made for a surface facing about the same way (else a new history starts).
+    // Last frame's reservoir was made for a surface facing about the same way and at its depth (its texel's centre pixel;
+    // CONTROL_HISTORY_NO_DEPTH: the normal alone, today's), else a new history starts.
     if (dot(LoadReceiverNormal(reuse_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
+#if !defined(CONTROL_HISTORY_NO_DEPTH)
+    const uint2 held_pixel = min(previous_texel * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
+    if (!HistoryDepthMatches(previous_positions[uint3(held_pixel, previous_positions_slice)], position.xyz)) previous.count = 0.f;
+#endif
     float invalidity = 0.f;
     if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u && (reuse_tests & REUSE_TEST_NO_VALIDATE) == 0u) {
       invalidity = Validate(previous, origin, true);
@@ -1839,6 +1855,11 @@ void ReflectReservoirTexel(uint2 id) {
     const uint2 previous_texel = min(previous_pixel / 2u, (uint2(width, height) + 1u) / 2u - 1u);
     Reservoir previous = LoadReservoir(reflect_samples[1u - set], reflect_data[1u - set], previous_texel);
     if (dot(LoadReceiverNormal(reflect_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
+#if !defined(CONTROL_HISTORY_NO_DEPTH)
+    // Its own surface: the pixel ReservoirPixel gave that texel last frame (frame - 1).
+    const uint2 held_pixel = min(previous_texel * 2u + uint2((frame - 1u) & 1u, ((frame - 1u) >> 1) & 1u), uint2(width, height) - 1u);
+    if (!HistoryDepthMatches(previous_positions[uint3(held_pixel, previous_positions_slice)], position.xyz)) previous.count = 0.f;
+#endif
     float invalidity = 0.f;
     if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin, false);
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)));
