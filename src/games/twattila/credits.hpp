@@ -17,7 +17,7 @@ namespace twattila::credits {
 struct Shipped {
   bool psycho_v30 = true;       // PsychoV30 (else the line names PsychoV31 and PsychoV35 alone)
   bool psycho_v31 = true;       // PsychoV31 (else Musa's custom PsychoV30 and PsychoV35: both Divinity games)
-  bool gtvbao = false;         // Visibility Bitmask ambient occlusion
+  bool gtvbao = false;          // Visibility Bitmask ambient occlusion
   bool gtvbgi = false;          // Visibility Bitmask Light Bounce
   bool auto_thickness = false;  // their Auto Thickness rows
   bool ue_extended = false;     // UE Filmic Extended
