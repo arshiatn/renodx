@@ -932,6 +932,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - D1 / sst_ DONE (29 min; plan_1117\designs\sss_scale_thickness.md): Bend's window ... | ?
 - h4k_ STOPPED AT A SAFE POINT (23 min; handbacks\h4k__handback.md): ITEM 1 DONE: ... | ?
 - pdi4c_ r6 (12:4x, local commits, push asked): S1 7a28d0114 (+ f4e579616 fused-bu ... | ?
+- D2 DONE (14 min; plan_1117\designs\cost_caps_q5.md): lsp_'s 4K quads_uncapped ar ... | ?
+- fx5b_ DONE (branch fx5b_w5b 3575ac0af, not merged; next in merge order after W6) ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17297,6 +17299,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         baseline. Next: S5 tag lines, M2 analysis, rt_scene.hlsli:16 comment. run_4k group 2 tr done 12:22 (frame dumps
         34.8 GB removed by its analysis: test frames, not references); trpre1 printed 'mean bits light 0.00000' -> pdi4c_
         checks the arm / analysis. Owner: pdi4c_
+        - [ ] D2 DONE (14 min; plan_1117\designs\cost_caps_q5.md): lsp_'s 4K quads_uncapped arm = capped-at-32 cost (city
+        4000 / 50: 5.528 vs 5.523 ms; 12 scenes within 0.5 %), error vs reference 0.0575 -> 0.00056; caps save time only at
+        quality 8 (2.92 vs 5.53 ms). Rows: R-A the 80 ms comments = old Mega Geometry numbers (its leftover cluster-smoke
+        path in rt_d3d12.hpp listed, not dropped), R-B PTLAS smoke (4 arms, 4K plan, never run); cap census by one-request
+        recorder builds (shipping shaders byte-identical); ranking MAX_CANDIDATES, TILE_LIGHTS 32, smoke counts, grass > 64
+        lit; code after the pdi4c_ + W3 merges. Not found: fa2's fog-tolerance site 'rt_fog.cs :231 / :271'. Still for ATN
+        (section 6): Low / Medium smoke LOD look (J5 PNGs), 64-bit light mask (~+100 MB at 4K) + Steady Torch Shadows
+        default, rows 4 / 12 / 14 / 15 / 19 / 21 looks; Q5-J2's four 4K recordings (standing go).
+        ATN 11-26 ~14:0x on D2's smoke questions: (1) RETIRE the smoke caps at quality 32 / 64 = YES (same ms at 4K, error
+        0.0575 -> 0.00056; quality 8 keeps its caps) -> code after the pdi4c_ + W3 merges. (2) SMOKE AS SPHERES + backoff = WANTED,
+        as the LAST GPU item, on 11-27 after ATN's account swap. (3) The OLD MEGA GEOMETRY SMOKE PATH = KEEP (never dropped), with
+        (2) at the END of the GPU plan; ATN's reading of its 80 ms: the cluster structure covered the whole map, so every ray hit
+        it, stopped and checked for smoke; retest it (and PTLAS, row R-B) once unified PT and the other GPU work are in. Owner: coord / implementer after the merges
+        - [ ] fx5b_ DONE (branch fx5b_w5b 3575ac0af, not merged; next in merge order after W6): X35 more jitter phases while
+        RR runs in Divinity 1, Divinity 2, Ryse, Tales, Expeditions, Shogun 2 (RR off keeps today's count; WH3 untouched);
+        X36 Rome R phases below 100 % (50 % = 32, 100 % = 8); X37 XeSS texture LOD bias in Rome R, Ryse, Expeditions (+ its
+        :525 comment), Tales (it runs XeSS): textures at the default one mip step softer under XeSS (-1.00 instead of -2.00
+        at 50 %, Intel's value) -> ATN's eye. Tests tw_d2_helper (32 with RR / 8 without) + tw_romer_dlaa (8 at 100 %, 32 at
+        50 %) pass, controls fail; other hosts: game-run jobs written. 9 gated builds exit 0. OPEN: Shogun 2 at 100 % with RR
+        still uses the game's own jitter (count unknown; a job written; replacing it = ATN). CAP: ATN ~14:0x max 3 running
+        subagents (marks work exempt), running ones finish. Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
