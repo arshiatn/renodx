@@ -16926,7 +16926,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         ~653 s < 900 budget, ~450 battle s < ATTILA_TEST_QUIT 600) + a 600 s load STOP; (3) COORD PICK: keep the script,
         ATN adds ONE rule line for `... d11_capture64.ps1 -Replay day1.replay -C1At 400` (+ its -DryRun) -> start 3 on his
         go. Note: run.txt printed 'first present + 180 s' while the code computes $C1At - margin = 170 (log text only).
-        v1 copy (locks only) -> d11fr_ review 09:4x. Owner: ATN (rule line + go) / d11fr_
+        v1 copy (locks only) -> d11fr_ review 09:4x.
+        d11fr_ v1 REVIEW 09:47 (7 min): FIX FIRST. (1) NEW deadlock: a lab_keeper ticket at the head of gpu_job's queue
+        waits while quiet_run.lock exists (lab_keeper.py external() ~:252) and only the head may take -> d11 (holding
+        quiet_run) waits behind it until 1800 s -> exit 2 (safe, but the start is void); old CreateNew + a64_ab skip the
+        queue. Coord pick (a): the keeper leaves its ticket while quiet_run.lock exists and queues again after (the quiet
+        run wins, as its docstring says). (2) a lock gpu_lock took but Take-Locks misread stays held -> release our own
+        v1 record before each break. Optional, taken: Release-Locks 3 x 100 ms retry; $GPU_LOCK in the dry-run path
+        checks. Checks 2-6 clean (quiet_run.queue confuses no reader; Remove-Item leaves nothing stale; argv quoting
+        exact; PS 5.1 probes OK; a64_ab / budget.py / keeper treat v1 as alive). Fixes -> d11f_ 09:4x (est 15 / deadline
+        30; copies; lab_keeper.py swap with .bak_d11k) -> short d11fr_ recheck -> the v1 copy into the live script.
+        Until then: the live script keeps the old CreateNew locks. Owner: ATN (rule line + go) / d11f_
         d11f_ v1 LOCKS (copy, 09:36; diff testbin\scratch\d11f_\d11f_v1.diff, +21 / -17): Take-Locks = gpu_lock.py acquire
         --lock <each> --pid $PID (quiet_run then gpu_job; both or neither -> exit 2), Lock-Ours by 'renodx-lock v1
         pid=$PID start=$lockStart'; a dead owner is now taken over by the next taker. 59 / 59 tests; old 44 / 44 vs live.
