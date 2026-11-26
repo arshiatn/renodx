@@ -947,6 +947,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATTILA AA FEED vs LINEAR t00 (found by cw1_'s comment pass, a PRODUCT question, ... | ?
 - W8 MERGED b9a5cf080 (fx8_w8 ac18984c9 / 11bd63924 / bc6d4d6e9 + fx8_x30 a0b82717 ... | ?
 - gts_ STARTED 16:0x (Opus High, est 120; ATN: outside the cap): GPU test speed + ... | ?
+- 4K M6 BASELINE PASS 16:07 (all_modes_check -NewBaseline -Rev ce1f83655, 85 min G ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17456,6 +17457,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         write 35-63 GB of frame dumps each (run_4k). Measure GPU / dump / Python split, move the analyzers' numbers into the
         harness (small result files), full dumps only for references / debugging; proof = old vs new numbers identical +
         controls; switch of shared tools only on coord's go (tools in use by the queue). Owner: gts_
+        - [ ] 4K M6 BASELINE PASS 16:07 (all_modes_check -NewBaseline -Rev ce1f83655, 85 min GPU): 230 modes x post_a / post_b,
+        census clean, 1701 outputs hashed, 1655 repeat to the byte, 30 do not (tools\tw\h0\runs\all_20261126_144106\run1\
+        m6_baseline.tsv). all_modes_check.ps1 now judges against it ($Baseline, $HarnessHashes FC462599C453; backup
+        .bak_4kbase; dry run OK). pdi4c_ GO for -Rev r6 (queued behind its re-runs + fx8_ G1 + aaf_). Its builds
+        (h0\builds\all\20261126_144106 lab / plain) = ref_set.ps1's -Lab / -Plain later. Owner: pdi4c_ / coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
