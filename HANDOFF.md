@@ -934,6 +934,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - pdi4c_ r6 (12:4x, local commits, push asked): S1 7a28d0114 (+ f4e579616 fused-bu ... | ?
 - D2 DONE (14 min; plan_1117\designs\cost_caps_q5.md): lsp_'s 4K quads_uncapped ar ... | ?
 - fx5b_ DONE (branch fx5b_w5b 3575ac0af, not merged; next in merge order after W6) ... | ?
+- ALL 7 FIX WAVES MERGED + PUSHED 11-26 (origin/atn-mods 3415dba18): W0b 819d945f9 ... | ?
+- pdi4c_ M2 TRACED AT 4K (r6): DI-interior E vs the bits (6.84 M px, band 2) r6 0. ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17320,6 +17322,32 @@ heading text are in HANDOFF_ARCHIVE.md)
         50 %) pass, controls fail; other hosts: game-run jobs written. 9 gated builds exit 0. OPEN: Shogun 2 at 100 % with RR
         still uses the game's own jitter (count unknown; a job written; replacing it = ATN). CAP: ATN ~14:0x max 3 running
         subagents (marks work exempt), running ones finish. Owner: coord
+        - [ ] ALL 7 FIX WAVES MERGED + PUSHED 11-26 (origin/atn-mods 3415dba18): W0b 819d945f9, W7 61f3f5371, W6 8f8bf5d62,
+        W5b 237096982 (9 gated builds + tw_d2_helper / tw_romer_dlaa PASS), W-H d6f971bb8 (helper + tw_nrd_front PASS: 0 of 144
+        wrong, control 103; amd64 + x86), W5a 3f4206af2 (helper + twattila amd64 / x86, shogun2, pharaoh, troy, wh2, wh3 exit 0),
+        W3 3415dba18 (helper + twattila amd64 / x86 + talesofarise exit 0; tw_rt_open_sky -Expect exact ALL PASSED, controls
+        fail; note WARP's typed float store rounds to zero: 'k + 1 at 0, k at 4096'). Plus 5fb294c62: test
+        tw_draw_recording_loop compiles again (stood_down = 64-bit SiteMask since 88e4cd874; x86 run.ps1 PASS). All builds 61
+        warnings (divinity2 62, ruse 78, twrome2 62 = their own counts). LEFT: sdku_omm_dxc AFTER pdi4c_'s merge (OMM 1.12
+        changes 3 of 4.8 M micro-triangle states = image change; DXC changes every blob's bytes) + its G1-G3 at 4K; one helper
+        build of pdi4c_ + W3 together at pdi4c_'s merge; W3's X01 / X06 env bits inverted -> rename after pdi4c_; run.ps1's
+        stale default -Expect now -> fix; X48 floor (1e-3 vs RTXPT 0.05) + X02's Balanced ReSTIR Light G1 weights + X22 RR guides
+        look + O-CO16 Rome R peak + X37 XeSS LOD = ATN's eye after 4K numbers. fx5a_ open: skin guide model; Squared Lobe as
+        default for the GGX games (ATN). Owner: coord / ATN (looks)
+        - [ ] pdi4c_ M2 TRACED AT 4K (r6): DI-interior E vs the bits (6.84 M px, band 2) r6 0.9857 -> S1 0.9933 -> C5 0.9986
+        (matte 0.9851 -> 0.9927 -> 0.9986). S1 (temporal bias ray from the history's own origin) closes ~0.75 %; no reuse
+        (DI_TEST 24) = 0.9930, so after S1 reuse costs nothing. The rest = OUR DI STORE: rt_di_shade writes R11G11B10 and
+        D3D11.3 3.2.2 says round-to-zero on conversion to another float format (~0.58 % luminance at 6 / 6 / 5 mantissa bits);
+        C5 = half an R11G11B10 ULP added in DiStore before the store -> E 0.9986. REFUTED: C3 border band (band 12 = band 2),
+        C1 unreached listed lights (their game light 0.00000). E6's 'shadowed 0.94' = an E6 quirk: its bits reference is the
+        first bits frame (58), at 4K the DI -> bits transition frame -> take the steady frame (pdi4c_). COORD DECISION: C5
+        LANDS in r6 as a product fix (DI not live in any add-on yet), cited src: D3D11.3 3.2.2 + ours: round-to-nearest by
+        half a ULP; DI-off bytes identical + a short 4K DI re-gate after D1 / D2. NEW BOX (pdi4c_ lists, changes nothing):
+        every other R11G11B10 store of ours may carry the same darkening. W4 caught an S3 test bug (part 4's history upload
+        sized for 3 arrays) -> 017e3d3e8, W4 6 / 6; byte gates PASS at 4K (S3 split at DI_TEST 0 / 8 / 16, S12 / NITs, fused S3
+        0 / 8, r9 A/A); r6 head pushed origin/pdi4c_step4c_r6 (S5 tags 38fb981c7: 0 real denies at HEAD; rt_scene.hlsli:16
+        comment 60c9435c1). Running: D1 / D2 at 4K; all_modes_check -Rev r6 after h4k_'s 4K M6 baseline AT ce1f83655 (not
+        HEAD: W-H / W5a / W3 change helper output). Owner: pdi4c_ / h4k_
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
