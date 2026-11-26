@@ -914,6 +914,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - pdi4c_ GPU TURN DONE 11:47 (148 min vs ~100, 1.48x; handbacks\pdi4c_handback.md ... | ?
 - lsp2_ DONE 11:49 (9 min): all 7 recorded frames (live_proof / live_proof2) hold ... | ?
 - sdk_ DONE 11:52 (12 min; round_notes\sdk_audit_1126.md): every runtime DLL we sh ... | ?
+- lsp2_ 4K GPU DONE 11:52 (42 runs, 28 s; lsp_\lsp2_\results\20261126_115211\lsp2_ ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17071,6 +17072,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         Detours / MinHook. Current: NRD 4.18.0, RTXDI 3.2, SHaRC 1.8.3, FSR 2.4.0, XeSS 3.0.2, json 3.12.0. ATN: yes / no
         per item (vendored = ATN's yes). Stale: src/games/expeditionsrome/README_DLSS.md:426 names the unused 310.7.0 DLL
         folder. Owner: ATN (yes / no) / next README writer
+        - [ ] lsp2_ 4K GPU DONE 11:52 (42 runs, 28 s; lsp_\lsp2_\results\20261126_115211\lsp2_table.md, probe.md 'Follow-up
+        2 GPU results'): on the 7 recorded DUST frames at 4K (--upsample 3840x2160 from 1080p / 1440p; recorded-size rows
+        as control) spheres_backoff / quads = 1.02 / 1.12 / 1.15 (min / median / max) at cap 64, 1.01 / 1.12 / 1.15 at 32,
+        1.01 / 1.07 / 1.10 at 8; both 0.14-0.50 ms, < 1 candidate a ray; caps 64 / 32 never bite (quads 0.0000, backoff
+        <= 0.0003); cap 8 bites in thick dust (quads up to 0.61, capped spheres up to 0.80); uncapped spheres exact
+        (0.0003) at 1.01-1.35x cap-8 quads; plain spheres miss smoke the ray starts inside (0.50-0.77 = the expected
+        exit 1); NVAPI mismatches 0. vs the synthetic city smoke 0.57-0.94x (follow-up 1). -> light dust: spheres ~12 %
+        slower; heavy smoke: faster + caps retire. NOT DROPPED (ATN's rule): the verdict waits for a 4K Constantinople
+        burning-siege recording (new runner = ATN's rule line) + ATN's eye. Owner: ATN (recording line, decision) / coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
