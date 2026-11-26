@@ -1095,7 +1095,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NV9 NVIDIA-SAYS-DON'T (section 4): TLAS fast-build (rt_d3d12.hpp:8069) = U12c; s ... | ?
 - 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
 - TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
-- TDD AUTHORS' ANSWERS (1-4) -> tdd_shaders.md + any follow-up. Owner: ATN -> coor ... | ATN -> coord
 - C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + ... | ?
 - pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
@@ -19107,7 +19106,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         bytes? (5) credit wording? Owner: ATN
         ATN 11-25 evening: questions 1-4 SENT to TDD's authors (answers pending); (5) dropped: 'They don't need any
         credits' -> tddi_'s fix round removes the About / README credit (236eeb00b) (memory updated).
-        - [ ] TDD AUTHORS' ANSWERS (1-4) -> tdd_shaders.md + any follow-up. Owner: ATN -> coord
+        - [x] TDD AUTHORS' ANSWERS (11-26, forum via ATN; tdd_shaders.md): the changed shaders are Thrones of Britannia's, meant
+        to brighten units in shadow + gain speed; by their judgement neither worked and the mod doesn't use some of them
+        properly; plan = make them work as in Thrones or (most likely) remove them. No work for us now; our 37 TDD entries
+        stay until a TDD release is confirmed back on vanilla bytes (then cleanup). Q2 (water over land) unanswered.
         - [ ] C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + one 64-bit 1212 battle
         (after PT DI, ATN's OK). Owner: rtp_ design / C4 implementer
         - [x] 1212 README (ATN 11-25 'does it matter?': not now): 'thanks / compatible' line (no licence line: none of their files used); until C4 a line
