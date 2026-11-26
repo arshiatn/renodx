@@ -17199,7 +17199,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Note for pdi4c_: rt_scene.hlsli:16 calls positions.w 'view depth' = the camera distance. fx6_ STARTED (W6 X26 /
         X27 / X29 / X30, base origin/atn-mods with 620049332). sdku_ stopped at a classifier deny on its own find over
         tools\tw (rule break, not retried in any form) -> resumed with gated_build.ps1's path. Running: fx3_, fx7_, sdku_,
-        fx6_, h4k_, pdi4c_ (+ 1 private). Parked: rrb_, D1, D2, fx5a_, fx5b_. Owner: coord
+        fx6_, h4k_, pdi4c_. Parked: rrb_, D1, D2, fx5a_, fx5b_. Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
