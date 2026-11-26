@@ -49,7 +49,7 @@ RWTexture2D<float4> ref_candidate_previous : register(u65);
 RWTexture2D<float4> ref_candidate_last : register(u66);
 // The reference's: the current group's sum, Welford's mean and M2 over the group means, each group's mean (grids up to
 // 1920 x 1080), the aux counts (x the primary surfaces met, y the rays past a cap or an overflow, z the paths cut at the
-// vertex cap, w the slices' sample count).
+// vertex cap, w REF_REFLECT's samples above the horizon, REF_PATHS's inside hits: RefNearest's `inside`, each ending its path).
 RWTexture2D<float4> ref_group_sum : register(u67);
 RWTexture2D<float4> ref_mean : register(u68);
 RWTexture2D<float4> ref_m2 : register(u69);
@@ -284,9 +284,15 @@ float RefSunTransmittance(float3 origin, float3 direction, float range, inout ui
 }
 
 // The nearest surface along a ray among `instances`, every candidate alpha-tested (no cap but REF_MAX_CANDIDATES): its
-// distance (false: none), its record and normal facing back along the ray (the record's pool normal: the shared scene).
+// distance (false: none), its record and normal facing back along the ray (the record's pool normal: the shared scene), and
+// whether it is `inside`: a solid's back face. src: reference_suite.md 1.1 "Back faces" (I6): a solid record's (no
+// RECORD_MASKED or RECORD_THIN: leaves, cut-outs and sheets are two-sided) back face is the inside of a closed solid, no
+// light, counted; the helper's HitNormal turns every back face toward the ray, so the reference must not take its side
+// (fa9 B1). Facing: src: D3D12 Raytracing spec, D3D12_RAYTRACING_INSTANCE_FLAGS (front = clockwise seen from the ray in
+// object space, unchanged by the instance's transform; the helper sets no FRONT_COUNTERCLOCKWISE) via
+// CommittedTriangleFrontFace, not the pool normal's sign.
 bool RefNearest(float3 origin, float3 direction, float range, uint instances, out float hit_distance, out uint record_index, out float3 hit_normal,
-                inout uint overflow) {
+                out bool inside, inout uint overflow) {
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
@@ -306,17 +312,19 @@ bool RefNearest(float3 origin, float3 direction, float range, uint instances, ou
   hit_distance = 0.f;
   record_index = 0u;
   hit_normal = 0.f;
+  inside = false;
   if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return false;
   hit_distance = query.CommittedRayT();
   record_index = query.CommittedInstanceID() + query.CommittedGeometryIndex();
   hit_normal = HitNormal(record_index, query.CommittedPrimitiveIndex(), direction, query.CommittedObjectToWorld3x4());
+  inside = !query.CommittedTriangleFrontFace() && ((records[record_index].z >> 16) & (RECORD_MASKED | RECORD_THIN)) == 0u;
   return true;
 }
 
 // A texel's primary surface as the reference sees it: the camera's ray toward its frozen position, to half a metre past it,
 // against the solids (the G-buffer's surface): its exact point and geometric normal facing the camera (false: nothing
-// there within the half metre either side, a coverage gap: the position and its depth normal then).
-bool RefPrimary(uint2 pixel, float4 position, out float3 surface, out float3 normal, inout uint overflow) {
+// there within the half metre either side, a coverage gap: the position and its depth normal then); `inside`: RefNearest's.
+bool RefPrimary(uint2 pixel, float4 position, out float3 surface, out float3 normal, out bool inside, inout uint overflow) {
   const float3 camera = Camera();
   const float3 to_surface = position.xyz - camera;
   const float distance_to = length(to_surface);
@@ -325,7 +333,7 @@ bool RefPrimary(uint2 pixel, float4 position, out float3 surface, out float3 nor
   uint record_index;
   float3 hit_normal;
   const bool met = RefNearest(camera + direction * max(distance_to - 0.5f, 0.f), direction, (distance_to > 0.5f) ? 1.f : distance_to + 0.5f, NO_GRASS_SMOKE,
-                              hit_distance, record_index, hit_normal, overflow);
+                              hit_distance, record_index, hit_normal, inside, overflow);
   surface = position.xyz;
   normal = SurfaceNormal(int2(pixel), position);
   if (!met) return false;
@@ -418,11 +426,12 @@ float3 RefEmitted(float3 hit, float3 normal, uint record_index, float3 albedo, b
 // REF_MAX_VERTICES at most (a path cut there counted in `cut`); one sun disk point and every local light at each vertex;
 // an escape brings the game's sky at the surface it left (RefSky; none from the first ray without Path-Traced Ambient,
 // whose screen pixel the game's ambient lights then, or where grass within GRASS_AMBIENT_RANGE blocks it, as the AO's;
-// the furnace's box has no sky). The first ray reaches `first_range` (the integral's), the rest 10 km. `contact`: the
+// the furnace's box has no sky); a hit `inside` a solid (RefNearest's) ends it with no light there, counted in `inside`.
+// The first ray reaches `first_range` (the integral's), the rest 10 km. `contact`: the
 // first ray's hit's light (and all beyond it) x ContactShade (the `contact` variant). `helper_sky`: past the first vertex
 // the sky as the helper's paths take it (PathRadiance: SkyLight x SkyCalibration at the surface left; `contact_sky`).
 float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float first_range, bool furnace, bool contact, bool helper_sky,
-                   uint2 texel, uint sample_index, inout uint overflow, inout uint cut) {
+                   uint2 texel, uint sample_index, inout uint overflow, inout uint cut, inout uint inside) {
   float3 radiance = 0.f;
   float3 throughput = 1.f;
   float3 leaving_normal = origin_normal;
@@ -432,12 +441,17 @@ float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float 
     float hit_distance;
     uint record_index;
     float3 normal;
-    if (!RefNearest(origin, direction, (vertex == 0u) ? first_range : 1.0e4f, NO_GRASS_SMOKE, hit_distance, record_index, normal, overflow)) {
+    bool solid_inside;
+    if (!RefNearest(origin, direction, (vertex == 0u) ? first_range : 1.0e4f, NO_GRASS_SMOKE, hit_distance, record_index, normal, solid_inside, overflow)) {
       const bool sky_seen = !furnace && (vertex > 0u || ((path_flags & PATH_AMBIENT) != 0u
                                                           && !RefBlocked(origin, direction, min(first_range, GRASS_AMBIENT_RANGE), GRASS_STILL, overflow)));
       if (sky_seen) {
         radiance += throughput * ((helper_sky && vertex > 0u) ? SkyLight(direction, KeptShade()) * SkyCalibration(leaving_normal) : RefSky(direction, leaving_normal));
       }
+      break;
+    }
+    if (solid_inside) {
+      ++inside;
       break;
     }
     const float3 hit = origin + direction * hit_distance;
@@ -472,6 +486,7 @@ float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float 
 // the first ray; a surface the screen shows (or the cache knows, but CACHE_RELEARN of them, from a cell's size away)
 // sends HitLight's; an unseen one SunLit's (its one ray to the sun's centre) and its first 32 lights (where UnseenLight
 // takes them: their exact sum, LocalLights' two picks' mean) and goes on path_bounces surfaces, the last x KeptShade.
+// Every surface two-sided, as the helper's HitNormal (RefNearest's `inside` unused: the route model, not the integral).
 float3 RefRouteIncoming(float3 origin, float3 direction, float3 origin_normal, float first_range, uint2 texel, uint sample_index, inout uint overflow) {
   float3 radiance = 0.f;
   float3 throughput = 1.f;
@@ -485,7 +500,8 @@ float3 RefRouteIncoming(float3 origin, float3 direction, float3 origin_normal, f
     float hit_distance;
     uint record_index;
     float3 normal;
-    if (!RefNearest(origin, direction, (vertex == 0u) ? first_range : bounce_range, NO_GRASS_SMOKE, hit_distance, record_index, normal, overflow)) {
+    bool solid_inside;
+    if (!RefNearest(origin, direction, (vertex == 0u) ? first_range : bounce_range, NO_GRASS_SMOKE, hit_distance, record_index, normal, solid_inside, overflow)) {
       if (vertex > 0u) {
         radiance += throughput * SkyLight(direction, shade) * SkyCalibration(leaving_normal);
       } else if ((path_flags & PATH_AMBIENT) != 0u && !RefBlocked(origin, direction, min(first_range, GRASS_AMBIENT_RANGE), GRASS_STILL, overflow)) {
