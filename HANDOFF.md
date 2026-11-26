@@ -928,6 +928,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - READY, NOT MERGED (merge order W6, W5b, W-H, W5a, W3): fxh_wh (W-H, see 12:3x); ... | ?
 - rrb_ DONE (34 min + 26 parked; plan_1117\designs\rr_before_tonemap.md): F1 ~90 % ... | ?
 - ATN 13:0x asked why '39.8 GB': not VRAM = Windows commit (RAM + page file reserv ... | ?
+- W6 MERGED 8f8bf5d62 (fx6_w6, 24 min of 60): X26 9d5f27a89 ffx_sssr.h valid_hit = ... | ?
+- D1 / sst_ DONE (29 min; plan_1117\designs\sss_scale_thickness.md): Bend's window ... | ?
+- h4k_ STOPPED AT A SAFE POINT (23 min; handbacks\h4k__handback.md): ITEM 1 DONE: ... | ?
+- pdi4c_ r6 (12:4x, local commits, push asked): S1 7a28d0114 (+ f4e579616 fused-bu ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17244,6 +17248,55 @@ heading text are in HANDOFF_ARCHIVE.md)
         compiles + the 4K harness; 27.4 GB at 12:4x. d11 start 5 refused at preconditions (harness running + commit >= 32):
         no game started, not a start; it runs after run_4k ends. ATN offered to hide the Claude window: not needed with g2.
         Owner: coord
+        - [ ] W6 MERGED 8f8bf5d62 (fx6_w6, 24 min of 60): X26 9d5f27a89 ffx_sssr.h valid_hit = (current_mip <
+        most_detailed_mip), AMD's line kept as FFX_SSSR_CONTROL_CAP_ENDED_HITS (test/tw_sssr_hits, step cap 8: control 3664
+        of 61660 cap-ended rays with confidence > 0, fix 0, all others bit-equal); X29 57ac88527 Bend's w == 0 ? 0 : z / w
+        back in sss_lights (case 9: finite; control -inf); X27 958614a3d DEVIATION: the fours rounding is in the shader for
+        both marches (talesofarise_dlss/ue_screen_space_shadows.hpp:185 and twromeremastered/contact_shadows.hpp:267 fill
+        the count too), screen_space_shadows.hpp untouched; case 1 at 50 / 58 / 77 %: 0 px apart (control 110 / 138 / 290),
+        100 % unchanged. X30 BLOCKED -> moved INTO W8 (sss_blur / sss_soft need A = t_sss_parameters[0].z, so every host
+        that dispatches them must bind it: twromeremastered/contact_shadows.hpp:339-341, twshogun2completeedition/
+        screen_space_shadows.hpp:184 granted to W8; talesofarise_dlss/ue_screen_space_shadows.hpp:252-253 at LAST, frozen).
+        O-SR2 4K job written (fx6__handback.md). Builds on the merge: see the next push. Owner: coord
+        - [ ] D1 / sst_ DONE (29 min; plan_1117\designs\sss_scale_thickness.md): Bend's window is already world-constant at any
+        render size, so today's /share (screen_space_shadows.hpp:1077) makes casters 1.5x deeper at Quality, 2x at
+        Performance, 3x at Ultra Performance; the comb + weaker thin casters + fade / hard zones + near-sun minimum share one
+        root: Bend counts in samples and one sample = one render pixel today. FIX A' (default on, ATN's O-SS5): march the
+        100 % sample count at one SCREEN pixel per sample inside Bend's own groupshared ray (between texels interpolated from
+        the two neighbours, nearest across an edge), thickness stays 0.005, share 1 = Bend to the bit, no new CB field,
+        Shogun 2 unchanged; the edge threshold /share stays (exact for planes). Rows kept: fallback B (comb only), today's
+        form C (control), Bend's offset mode (numbers for ATN). WARP W1-W10 each with a control; GPU G1-G3 at 4K. Cost
+        ~+0.2-0.4 ms at Quality, 100 % unchanged. W8 = implement (~130 min, + X30, + the Tales host port at LAST); note X27
+        landed in the shader, not at the host. Owner: W8 implementer
+        - [ ] h4k_ STOPPED AT A SAFE POINT (23 min; handbacks\h4k__handback.md): ITEM 1 DONE: rt_harness\tw_rt_harness.cpp =
+        3840x2160 unless -DHARNESS_SMALL (640x360, WARP / CPU only), HARNESS_UPSCALER out 3840x2160, build_harness.sh all
+        4K + a `small` target (dropped the link shim: duplicate NAME symbol), all_modes.sh XeSS below_min (1272x715) /
+        native scaled to 4K; build\tw_rt_harness\tw_rt_harness.exe rebuilt at 4K (F0D970CBF43F) + tw_rt_harness_small.exe;
+        its old 11-14 helper (could not serve a v32 harness) replaced by atn-mods 1f88af2dd plain + 3 DLLs; old copies kept
+        (_640_1114 / _1114). PILOT 5 modes PASS at 4K (default 7.2 s, moving 7.1, rr_layer 20.2, light_stress 7.2,
+        micromaps_leaf_stress 13.9; mean 11.1 s vs 4.6 at 640; HARNESS_DUMP 149 MB a mode). ITEM 2: pdi1_harness_src +
+        pdi1_build_harness.sh default 4K (rebuilt FC462599C453, picks up fx1_'s X46 winding judge edits), NEW 4K REFERENCES
+        NOT MADE (a 4K candidate vs a 640 reference fails loudly; one reference replicate 22 s + 2.19 GB). ITEM 3:
+        h0_gpu_runs.ps1 $HarnessExe = tw_rt_harness_4k.exe, $Cost.Mode 11; all_modes_check.ps1 runs it but keeps the 640
+        hashes (refuses: 'a new baseline run first'; dry run 89 min); release_check.ps1 both stacks' 4K exe; all parse; the 4K
+        baseline needs a baseline writer (tool change) -> h4k_ RESUMED 13:3x for that + the queued 4K M6 baseline (behind
+        run_4k + pdi4c_'s jobs). ITEM 4: hrr4k probe 2 runs 33 s each: U1 HOLDS AT 4K (linear x0.9930, sqrt x0.7725 =
+        -22.7 %; 640 x0.9957 / x0.7825); its other 103 runs (~60 min GPU) later. ITEM 5: runs.ps1 default -Exe, verify.ps1:20,
+        harness\build.ps1 still 640 -> pdi4c_ after run_4k. LEFT ~3.5 h GPU + ~330 GB (all_modes 89 min / <= 69 GB,
+        release_check ~15 min, hrr_ ~60 min, reference suite 59 x 2 replicates ~45 min / ~260 GB, ref_cache + quality refs
+        not measured). ATN DECIDES 4K REFERENCE DUMPS: stats only / half precision / raw on D: only (C: 503, D: 543 GB free).
+        Below-4K verdicts to redo: hrr_ O-RR12 + p sweep + 'DEFAULT KEPT after + sqrt'; the reference suite E1-E7 / E4 + gates_e4b
+        (pdi3_, pdi5_, bal3_, pds2_, B12C2; fx1_ P1-P3; h0 runs 2/4/5/6; gpu3 / pdi3_ probes); the quality scorer's 'RR 310.9
+        boil 2.19 -> 5.01 %', IQ rounds (Light Bounce Rays / Match Output), SHaRC bias; all_modes M6 baseline
+        20261122_120946; pdi4c_ DI checks via runs.ps1's default / verify.ps1. Memory notes updated. Owner: h4k_ / ATN
+        - [ ] pdi4c_ r6 (12:4x, local commits, push asked): S1 7a28d0114 (+ f4e579616 fused-build struct fix), S3 88cf6f71e
+        two reservoir arrays, S8 9d0063f15 fused variant script, S12 fce0dd1ca, NITs dcbdc5058 / 871b1a8e3 (NIT 8 cited:
+        StoreSnorm8Offset never writes -128) / a402fdb5e / aafa544fc; builds r9, r9_fused, c_base6, c_s1f exit 0. QUEUED at
+        4K behind run_4k: M2 jobs, then chain_r6 (byte gates S3 / NITs / fused S3, W4, D2 modes 1 + 3 + DI off base vs HEAD +
+        the DI toggle, D1 82 modes incl. two new mode-1 rows at ATN's settings). all_modes_check -Rev r6 after h4k_'s 4K
+        baseline. Next: S5 tag lines, M2 analysis, rt_scene.hlsli:16 comment. run_4k group 2 tr done 12:22 (frame dumps
+        34.8 GB removed by its analysis: test frames, not references); trpre1 printed 'mean bits light 0.00000' -> pdi4c_
+        checks the arm / analysis. Owner: pdi4c_
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
