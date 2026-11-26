@@ -161,7 +161,19 @@ void PathTracePixel(uint2 id) {
   }
   const float3 normal = normalize(encoded * 2.f - 1.f);
   const float3 view = normalize(Camera() - position.xyz);
-  const float n_dot_v = max(dot(normal, view), 1e-3f);
+  // The reflections' lobe: a shading normal facing away from the view (or grazing it) turned toward the view in the plane
+  // of both, just far enough for n.v = 1e-3 (the old clamp's floor: every pixel at n.v >= 1e-3 keeps its lobe); the
+  // clamp of n.v alone kept a view vector that is neither the real one nor unit. Attila's ViewFacingNormal
+  // (twattila/dlaa_helper/rt_path.hlsli, its cites: RTXPT ShadingData.hlsli:196-227; ours: the shortest turn), inline
+  // here (one use). The bounce's paths keep the G-buffer's normal. CONTROL_N_DOT_V_CLAMP: the old clamp.
+  float3 reflect_normal = normal;
+#if !defined(CONTROL_N_DOT_V_CLAMP)
+  const float3 across = normal - dot(normal, view) * view;
+  if (dot(normal, view) < 1e-3f) {
+    reflect_normal = (length(across) > 1e-6f) ? 1e-3f * view + sqrt(1.f - 1e-6f) * normalize(across) : view;
+  }
+#endif
+  const float n_dot_v = max(dot(reflect_normal, view), 1e-3f);
   const float3 origin = position.xyz + normal * SurfaceOffset(position.w);
   int2 previous_pixel;
   const bool seen = (flags & HISTORY_VALID) != 0u && PreviousPixel(position.xyz, previous_pixel)
@@ -188,7 +200,7 @@ void PathTracePixel(uint2 id) {
   const bool mirror = roughness < 0.05f;
   const bool traced = reflections_on && roughness <= ROUGH_LIMIT;
   const uint samples = mirror ? 1u : max(path_samples, 1u);
-  const float3x3 basis = Basis(normal);
+  const float3x3 basis = Basis(reflect_normal);
   const float3 view_local = float3(dot(view, basis[0]), dot(view, basis[1]), n_dot_v);
   float3 light = 0.f;
   float weights = 0.f;
@@ -199,9 +211,9 @@ void PathTracePixel(uint2 id) {
     const float3 half_local = mirror ? float3(0.f, 0.f, 1.f)
                                      : GgxVisibleNormal(view_local, alpha, Random(uint3(id, frame * 16u + sample * 2u + 3072u)),
                                                         Random(uint3(id, frame * 16u + sample * 2u + 3073u)));
-    const float3 half_vector = half_local.x * basis[0] + half_local.y * basis[1] + half_local.z * normal;
+    const float3 half_vector = half_local.x * basis[0] + half_local.y * basis[1] + half_local.z * reflect_normal;
     const float3 direction = reflect(-view, half_vector);
-    const float n_dot_l = dot(normal, direction);
+    const float n_dot_l = dot(reflect_normal, direction);
     if (n_dot_l <= 0.f) continue;
     if (traced) {
       float first_distance;

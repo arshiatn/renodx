@@ -1844,12 +1844,35 @@ float3 GgxDirection(float3x3 basis, float3 view, float3 view_local, float alpha,
   return reflect(-view, mul(GgxVisibleNormal(view_local, alpha, random.x, random.y), basis));
 }
 
+// A shading normal facing away from the view (a normal map's at grazing water, the screen's sides), or grazing it, turned
+// toward the view in the plane of both, just far enough for n.v = BACK_FACING_COSINE (X48): the lobe's sampler (visible
+// normals) needs the view above it, and today's clamp of n.v alone kept the view's other components, a view vector that is
+// neither the real one nor unit. src: RTXPT ShadingData.hlsli:196-227 (AdjustShadingNormalAndComputeTangentSpace: the
+// normal pulled toward V; its Falcor branch blends it toward the face normal), pbrt-v4 scattering.h:166. ours: the form
+// (the shortest turn, not RTXPT's N + t V; no code copied) and its floor, the old clamp's 1e-3, so every pixel at n.v >=
+// 1e-3 keeps today's lobe (RTXPT starts at 0.05: a look choice for ATN). CONTROL_N_DOT_V_CLAMP: today's.
+static const float BACK_FACING_COSINE = 1e-3f;
+float3 ViewFacingNormal(float3 normal, float3 view) {
+#if defined(CONTROL_N_DOT_V_CLAMP)
+  return normal;
+#else
+  const float n_dot_v = dot(normal, view);
+  if (n_dot_v >= BACK_FACING_COSINE) return normal;
+  const float3 across = normal - n_dot_v * view;  // the normal's part across the view
+  const float across_length = length(across);
+  // A normal straight away from the view has no turn of its own: the view's (an exact limit, never met in a frame).
+  if (!(across_length > 1e-6f)) return view;
+  return BACK_FACING_COSINE * view + sqrt(1.f - BACK_FACING_COSINE * BACK_FACING_COSINE) * (across / across_length);
+#endif
+}
+
 // A pixel's GGX lobe's density toward a point (of its reflected directions; 0: below the surface). Reflection Reuse's
-// target: a sample's light (luminance) by it.
+// target: a sample's light (luminance) by it. The normal as the lobe's (ViewFacingNormal: a neighbour's too).
 float LobeDensity(float3 receiver, float3 normal, float3 view, float alpha, float3 target) {
+  normal = ViewFacingNormal(normal, view);
   const float3 direction = normalize(target - receiver);
   if (dot(normal, direction) <= 0.f) return 0.f;
-  return GgxReflectionDensity(max(dot(normal, view), 1e-3f), saturate(dot(normal, normalize(view + direction))), alpha);
+  return GgxReflectionDensity(max(dot(normal, view), BACK_FACING_COSINE), saturate(dot(normal, normalize(view + direction))), alpha);
 }
 
 // The render pixel an Own ReSTIR texel stands for this frame: one of its 2 x 2, a different one each frame.
@@ -1873,9 +1896,9 @@ void ReflectReservoirTexel(uint2 id) {
     StoreReservoir(reflect_samples[set], reflect_data[set], id, reservoir, 0.f);
     return;
   }
-  const float3 normal = PixelNormal(pixel, position);
   const float3 view = normalize(Camera() - position.xyz);
-  const float n_dot_v = max(dot(normal, view), 1e-3f);
+  const float3 normal = ViewFacingNormal(PixelNormal(pixel, position), view);
+  const float n_dot_v = max(dot(normal, view), BACK_FACING_COSINE);  // the clamp: CONTROL_N_DOT_V_CLAMP's alone
   const float3 origin = RayOrigin(position, normal, Planar(int2(pixel), position, normal));
   const float alpha = ReflectAlpha(roughness);
   const float3x3 basis = Basis(normal);
@@ -1931,7 +1954,8 @@ void ReflectPixel(uint2 id) {
     if ((path_flags & PATH_NRD) != 0u) nrd_reflection[id] = float4(0.f, 0.f, 0.f, SKY_HIT_DISTANCE);
     return;
   }
-  const float3 normal = PixelNormalOf(id, position, guide, neighbours);
+  const float3 view = normalize(Camera() - position.xyz);
+  const float3 normal = ViewFacingNormal(PixelNormalOf(id, position, guide, neighbours), view);
   const float3 surface_normal = SurfaceNormalOf(int2(id), position, neighbours);
   // Only where the depth's plane is a real one (water, the ground): at concave corners the depth's normal mixes two faces,
   // and a ray toward the wall folded off it came back open (the reference: concave edges 1.35x its open share, traced
@@ -1947,8 +1971,7 @@ void ReflectPixel(uint2 id) {
       fold = false;
     }
   }
-  const float3 view = normalize(Camera() - position.xyz);
-  const float n_dot_v = max(dot(normal, view), 1e-3f);
+  const float n_dot_v = max(dot(normal, view), BACK_FACING_COSINE);  // the clamp: CONTROL_N_DOT_V_CLAMP's alone
   const float3 origin = RayOrigin(position, normal, PlanarOf(position, normal, neighbours));
   const float roughness = saturate(raw_roughness);
   const float alpha = ReflectAlpha(roughness);
