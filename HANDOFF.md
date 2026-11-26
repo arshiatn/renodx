@@ -921,6 +921,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FIX WAVES 11-26 (wvp_ DONE 12:2x, 24 min: plan_1117\fidelity\wave_plan_1126.md = ... | ?
 - ATN 11-26 ~13:0x: (1) paste 1126b ADDED (allow 91: fx1_run.ps1 wildcard + WebFet ... | ?
 - r4k_ 4K AUDIT DONE 12:10 (19 min; round_notes\tests_4k_audit_1126.md): 21 GPU te ... | ?
+- ATN 11-26 ~12:2x: (1) run_4k.ps1 rule ADDED (allow 92) -> the coord runs `& run_ ... | ?
+- d11 START 4 VOID CAUSE: the camera line came (the 620049332 fix works), but the ... | ?
+- WAVES 12:3x: fx0b_ DONE (13 min; branch fx0b_w0b: 554af2693 rt_reference RefRout ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17161,6 +17164,42 @@ heading text are in HANDOFF_ARCHIVE.md)
         release_check on the 4K exe + new baselines; 4 hrr_ at 4K; 5 pdi4c_ runs.ps1 / verify.ps1 on the 4K exe. First a
         5-mode 4K pilot for wall time. DISK: dumps grow 36x (C: 490 GB free) -> ATN decides how long 4K reference dumps
         are kept (never deleted without his yes). Owner: tools agent (after sdku_) / ATN (dump retention)
+        - [ ] ATN 11-26 ~12:2x: (1) run_4k.ps1 rule ADDED (allow 92) -> the coord runs `& run_4k.ps1 -First 2 -Last 8` in the
+        background from ~12:27 (that exact form, no redirect; deadline 16:18 inside the script); pdi4c_ RESUMED for its r6
+        fix round on pdi4cr_'s review (handbacks\pdi4c_r5_review.md, 24 min): GO WITH CHANGES; M1 BLOCKS THE MERGE = the
+        real-frame gates D1 / D2 / all_modes_check at 4K on 9bf2313a3 with mode 1 + mode 3 (2.9a's mode-1 carry + the
+        rt_lights tile refactor change player paths without DI; none ran since r2); M2 blocks 4b only = trace DI ~6 % below
+        the bits (4K shadowed 0.938; 640 matte 0.931 vs 0.986 never traced; causes C1 lights behind the depth plane, C2 =
+        S1, C3 border band area, C4 the reference moved; order DI_TEST=24, S1 variant, E6 by planar pixels, 12-px band,
+        brute-force judge); 12 SHOULD (S1 temporal bias ray from previous.origin, S3 one reservoir array less = 199 MB at
+        4K, S5 the citation blocker would deny 53 blocks / 103 flags -> cites, never a weaker blocker) + 9 NIT; a 4K re-check
+        list (fused-off rests on 640 noise). (2) Q2 = WARN ONLY: all 7 citation-blocker questions answered (1, 3-7 = the
+        picks; 2 saturate() warn-only for good) -> the v2 config as a .proposed for ATN (gates' owner; mode flip = ATN).
+        (3) 4K DEFAULT: h4k_ STARTED (r4k_'s fix list 1-5: tw_rt_harness default 3840x2160, small only by an explicit
+        opt-out for WARP self-checks; 5-mode pilot first; old 640x360 references kept beside the new ones). (4) Sol's frame
+        cap = ONE global cap (src_1320 loader\shim_gfx.c:1297, default 240 fps, menus + films + battles; ATTILA_FPS_CAP=0
+        = off): battles under 240 fps never wait on it; the 1 s menu / film stutter is WHERE it waits (after Present) + the
+        film decode's per-map calloc / UpdateSubresource -> fix b1 (wait before Present) in sol_fixes_1124 + a 4K PresentMon
+        check, queued. ATN is close to going back to 32-bit but holds on. Owner: coord / pdi4c_ / h4k_
+        - [ ] d11 START 4 VOID CAUSE: the camera line came (the 620049332 fix works), but the front window was the Claude
+        desktop app (pid 15100), so every SendInput was skipped (the script never changes focus). g2
+        (testbin\scratch\d11g_\d11_capture64.ps1.g2, coord): while the game window is not in front each camera / C3 input is
+        POSTED into our game window (WM_KEYDOWN / UP with the scan code, WM_MOUSEWHEEL at its centre: the movie keys' way, no
+        focus change, nothing to another window), SendInput stays when in front; the first post logs the front window;
+        camera.posted / front in start.json; the closed loop keeps the STOPs (no height change / no turn). Tests: test_g2.ps1
+        15/15 (a message-only window gets 100 45 120001 / 101 45 C0120001 / 20A 780000 ..), the d11g_ suite on g2 96/96.
+        START 5 = g2 live (trimmed: 5th start; why = does the battle camera take posted keys; if not, d11 waits for a start
+        with the game window in front). Owner: coord
+        - [ ] WAVES 12:3x: fx0b_ DONE (13 min; branch fx0b_w0b: 554af2693 rt_reference RefRouteIncoming comment = 128 under
+        T2 not 32, 39bde15da rt_recording.h ApplyField comment; code bytes unchanged; helper headers identical; amd64 + x86
+        OK) -> merge first. fxh_ DONE (17 min; branch fxh_wh: X19 77ec9d90a NRD gets view Z = dot(position,
+        view_projection[3]) not the camera distance, -D NRD_FRONT_DISTANCE_Z control byte-identical, WARP test tw_nrd_front
+        passes / control fails 103 of 144; X40 12e184a18 FSR + FSR FG DEPTH_INFINITE + far FLT_MAX when P[10] == 1, context
+        remade on change; helper + amd64 + x86 OK; X19 4K NRD-route job + X40 Tales status-line job WRITTEN, not run).
+        Note for pdi4c_: rt_scene.hlsli:16 calls positions.w 'view depth' = the camera distance. fx6_ STARTED (W6 X26 /
+        X27 / X29 / X30, base origin/atn-mods with 620049332). sdku_ stopped at a classifier deny on its own find over
+        tools\tw (rule break, not retried in any form) -> resumed with gated_build.ps1's path. Running: fx3_, fx7_, sdku_,
+        fx6_, h4k_, pdi4c_ (+ 1 private). Parked: rrb_, D1, D2, fx5a_, fx5b_. Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
