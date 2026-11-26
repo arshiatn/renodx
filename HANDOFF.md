@@ -975,6 +975,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI switch-off transient (M1-trans): frames the bits mask needs to settle afte ... | pdi4c_ follow-up (11-27+)
 - R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
 - STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | ?
+- CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17611,6 +17612,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render pieces (-0.19 ms); hand to PK8 Stage B's
         designer; reopen when Stage B's render pieces + empty polls >= 1.5 ms a step, small-PC step on-CPU <= 0.97, or main
         >= 1 ms a frame. Owner: PK8 Stage B designer
+        - [ ] CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.md): O2 one shared screen grid
+        (bend_sss_gpu.hlsli under BEND_SSS_SCREEN_STEPS only; plain shaders byte-identical -> W1 0 px). Prototype G1 4K, A' ->
+        O2 ms: 67 % 1.560 -> 0.511, 58 % 1.231 -> 0.416, 50 % 0.686 -> 0.336 (2.04x, thinnest), 33 % 0.537 -> 0.226; every scale
+        below 100 % now cheaper than 100 % (0.813); Softer 1.65-2.28x. Exact shares (q <= 4) keep today's positions; other
+        shares move samples <= 0.5 screen px (ours, W11); 1920 samples cut to 2048 slots at <= 50 % (-3.3 % at 33 %; 2304-slot
+        alternative = ATN's row). Not verified: WARP picture, AMD / Intel. A 4th G1 job was DENIED by the classifier (agent
+        stopped). NEXT: one Opus High implementer (file's step plan) after gts_, then 11 gated builds. Owner: coord / ATN (2048
+        vs 2304 slots)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
