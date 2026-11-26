@@ -961,6 +961,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - W8 RE-LANDED, MERGED 5c2c5042f (fx8_reland 498a63470): A' code only in 5 new sss ... | ?
 - ATTILA AA FEED (aaf_ 11-26, measured only; testbin\scratch\aaf_\table_out.txt): ... | ?
 - gts_ FOLLOW-UPS (11-26 17:22, scratch\gts_\pc\compare_c.txt): DI hashing on a wo ... | ?
+- pdi4c_ r6 FINAL (origin/pdi4c_step4c_r6 148731b35; hand-back pdi4c_handback.md:5 ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17555,6 +17556,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         tested: identical, 0.3 MB vs 1.7 GB. HARNESS_DI_E (~9.6 GB / round) can't be a digest (m1_check energy averages Y over
         X's per-pixel classes) -> coord's pick: option 2, each Y run gets X's class map as input (E: HDD is 98 % full). All of
         this folds into switch B after pdi4c_'s hand-back (shared pdi1 harness rebuild = new hash). Owner: gts_ (11-27)
+        - [ ] pdi4c_ r6 FINAL (origin/pdi4c_step4c_r6 148731b35; hand-back pdi4c_handback.md:501): C5 DI store rounds to nearest
+        (DI off: 0 changed; DI energy 0.9986-0.9987); M2 gap explained to 0.14 % (boxed); D2 16 pairs same; D1 17 of 18 same,
+        atn_torch_light_gi_every_frame = the 2.9a trade (harness-only periodic case by reading; M1 / 2.9a box). all_modes_check
+        -Rev 148731b35 NOT RUN yet (h0_gpu_runs.ps1 $HelperPaths lacked tw_point_light.hlsli: fixed, dry run OK) -> coord runs
+        it after tonight's game block; merge (gated amd64 + x86 + helper) only on its PASS, then sdku_omm_dxc. Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
