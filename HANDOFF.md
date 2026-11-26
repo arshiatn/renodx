@@ -16968,8 +16968,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         the browser (hooks reference: 'PermissionRequest' input + decision control, 'agent_id' common field). Pipe
         tests 12 / 12. ATN copies it into tools\tw\gates\ (protected) + pastes the block: round_notes\
         paste_for_atn_1126.md (1 hook, 2 d11 -C1At 400 lines, 3 five safe lab wildcards, 4 P1 / P2 dark + P4 hold
-        lines, 5 unstick). Proof in use = the first tools\tw\hooks\agent_prompt_log.tsv line. Owner: ATN (paste) ->
-        coord (proof)
+        lines, 5 unstick). Proof in use = the first tools\tw\hooks\agent_prompt_log.tsv line.
+        ATN ~10:0x: copied the hook into gates (coord sha256 check: 882a9dc3... = the source) + pasted; coord check:
+        all 10 allow lines of sections 2-5 present (allow 73 -> 84), JSON valid, but the PermissionRequest block is NOT
+        in "hooks" yet -> asked again (paste file 1b now says: right below `"hooks": {`). Section B (4 game-run
+        wildcards + 4 Edit denies, ATN's choice) now written out in the paste file. Owner: ATN (hook block) -> coord
+        (proof)
         - [ ] P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): list them when fx1_
         resumes (paste file section 4 says so). Owner: coord
         - [ ] BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the deadline (bal3_ waited 3 h
