@@ -16866,6 +16866,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         restore + hash check, collect, crash checks, start.json, Release-Locks last) and STOPs on any failure; no step /
         switch / env change; header 'never tail run.txt'. Then a review -> ATN sees the diff with the retry go. Owner:
         d11f_ -> review -> ATN
+        d11f_ DONE 06:22 (~10 min; backup d11_capture64.ps1.bak_d11f; diff testbin\scratch\d11f_\d11f.diff, 739 -> 798
+        lines; no run): Append-Line (ReadWrite | Delete share, 4 tries x 50 ms, console fallback, never throws) for Note +
+        log_timed.txt (no Add-Content left); Close-Ours shared by catch + finally, $closeGaveUp stops a second try; catch
+        closes first; finally = PresentMon, close, RESTORE + HASH (now before collect), collect, crash checks, pin / dump
+        checks, start.json, Release-Locks last, each in its own try -> $finally_problems -> exit 1 + STOP; Locks-Held +
+        Release-Locks match '$OWNER, pid $PID,*'. Unit test test_d11f.ps1 34 / 34 (the script's own AST text). Left fragile:
+        Set-Content of start.json / hashes without retry, ~200 ms per blocked write, STOP reason may name an earlier
+        check, unreadable lock kept silently. d11fr_ REVIEW STARTED 06:2x (Opus xHigh, read only; est 15 / deadline 30)
+        -> ATN: the diff + the one unchanged-command retry go. Owner: d11fr_ -> ATN
         - [ ] RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait for the exit notice
         only. Owner: every run brief
         - [x] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
