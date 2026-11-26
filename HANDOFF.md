@@ -940,6 +940,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - W8 STARTED 15:1x (fx8_, Opus High, est 130): D1's A' (SSS at one screen pixel pe ... | ?
 - h4k_ DONE ON THE CPU, GPU PARTS NOT RUN (14:26; hand-back handoff_plan\handbacks ... | ?
 - 11-26 14:3x-14:5x (ATN in a break): (1) 64-bit licence record saved: tools\tw\at ... | ?
+- sb1_ DONE (b1 in testbin\attila64_1124\sol_fixes_1124, out\b1_20261126_1433): So ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17394,6 +17395,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         Present, Present to Present) in testbin\attila64_1124\sol_fixes_1124, build + fake-clock CPU test + a diff for
         Sol (sent only on ATN's word); in-game A/B prepared, runs on coord's go after the 4K baseline + d11 start 5.
         Running: pdi4c_, fx8_, sb1_. Owner: coord / sb1_
+        - [ ] sb1_ DONE (b1 in testbin\attila64_1124\sol_fixes_1124, out\b1_20261126_1433): Sol's cap block moved unchanged
+        into frame_cap_wait() (shim_gfx.c:1272-1298), called right before Present (dx11_device.inc:460) and before r(w) on
+        OpenGL (:1322); 240 default + ATTILA_FPS_CAP=0 unchanged. Exe d59ec12d (no warnings). Fake-clock test 4 / 4 PASS
+        (light + heavy frames: min interval 4.47 ms vs Sol's 10.97 ms then 1.10 ms; 10 ms frames and cap 0 the same as
+        Sol); the 40 existing tests unchanged. b1_for_sol.diff (b1 only, applies to 1.3.20) NOT SENT: ATN decides.
+        Trade: menus can show a picture up to 4.17 ms older; battles unchanged. NEXT (coord, after the 4K baseline + d11
+        start 5): ab_commands.txt = 5 a64_ab -Smoke -Package starts (Sol, Sol, b1, b1, Sol; menu, 4K, PresentMon), then
+        resume sb1_ with the batch folders. Films: not reachable by a64_ab (Space every 1.5 s) -> would need menu_stutter_1s.md
+        section 4's rule lines (ATN). 32-bit: nothing (Sol's loader only). cw1_ STARTED 14:5x (Opus High, est 45): the RR
+        PLACEMENT CITE + R3 comments box, own worktree, shader-blob proof. Running: pdi4c_, fx8_, cw1_. Owner: coord / cw1_
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
