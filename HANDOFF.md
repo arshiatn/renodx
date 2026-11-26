@@ -17524,7 +17524,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         HARNESS_DI_FRAMES_DIGEST), proven byte-identical old vs new. all_modes_check switched 16:48 (harness FE78193B309C, gts_
         checkers, dry run OK): 61 GiB -> ~1 MB per run. LEFT: B = pdi4c_'s DI_FRAMES harness + jobs + m1_check / noise readers
         (after pdi4c_'s hand-back; 7 GiB -> 18 KB per job); verify_gts.ps1 GPU test; HARNESS_DI_E (190 MB/job) + ProbeMean
-        still on .bin; the DI hashing (+2.6 s/job) could move to the GPU. The 60.9 GiB 4K baseline bins stay until ATN's yes.
+        still on .bin; the DI hashing (+2.6 s/job) could move to the GPU. The 60.9 GiB 4K baseline bins: ATN 11-26
+        'keep for now' -> ask again after the next digest all-modes run PASSES.
         Long group times = GPU-lock queueing, not dumps. Owner: coord / gts_ follow-up
         - [x] a64_ab CPU step-0 switch (ab0_ patch, applied by ATN 11-26, sha 86993af6): -AB -Package, arm 'fast', probe line
         base,fast,l2b. Run it twice (6 starts) for a drift check. Owner: coord (game block)
