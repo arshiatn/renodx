@@ -942,6 +942,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 11-26 14:3x-14:5x (ATN in a break): (1) 64-bit licence record saved: tools\tw\at ... | ?
 - sb1_ DONE (b1 in testbin\attila64_1124\sol_fixes_1124, out\b1_20261126_1433): So ... | ?
 - SOLCAP (ATN 11-26 ~15:0x: Sol's frame cap OFF by default, 'it would ruin our Ref ... | ?
+- 4K REFERENCE SET: ATN ADDED THE RULE LINE 11-26 ~15:1x (ref_set.ps1 *). GPU orde ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17411,7 +17412,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         Sol reads it once, on frame 1) with Sol's own 3 calls, unless the restart-only key SolFrameCap = 1; a player's own
         env value wins. Live control = our Frame Rate Limit row (Reflex). Owner: Friday's C8 wave (addon.cpp + plugin
         main.cpp have one writer there); design addendum in round_notes\attila64\designs\c8_wave2_plan.md (2026-11-26).
-        ATN QUESTION OPEN: our Frame Rate Limit default with his cap off (Off vs 240, so menus stay capped). Owner: C8 / ATN
+        ANSWERED ATN 11-26 ~15:1x: ALL caps off by default (his AND our Frame Rate Limit = 0); players turn them on, or
+        use Reflex + driver vsync + G-Sync for the automatic cap. Owner: C8 wave
+        - [ ] 4K REFERENCE SET: ATN ADDED THE RULE LINE 11-26 ~15:1x (ref_set.ps1 *). GPU order (coord): M6 baseline
+        (running, stamp 20261126_144106) -> pdi4c_'s queued re-runs + all_modes_check -Rev r6 -> d11 start 5 + sb1_'s 5 b1
+        menu starts (games, no harness) -> ref_set.ps1 -Lab / -Plain = the baseline's builds, -Out
+        D:\RenoDX_archive\references_4k\<stamp> (~275 GB, stops before D: < 230 GB). Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
