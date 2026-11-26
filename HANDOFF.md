@@ -16904,7 +16904,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         listed read-only first. Owner: d11f_ -> coord
         - [ ] d11 CAPTURE RETRY (ATN 09:3x 'Yes, retry'): d11c_ resumed; START 2 of the round (start 1 void 06:10); the
         reviewed 812-line script (06:34), dry run first, the run in the background, no log reads until exit. d11f_'s v1
-        change goes to a copy (testbin\scratch\d11f_\d11_capture64.v1.ps1) until the run ends. Owner: d11c_ -> coord
+        change goes to a copy (testbin\scratch\d11f_\d11_capture64.v1.ps1) until the run ends.
+        START 2 (09:32:12-09:35:32) VOID, CLEAN: prereqs OK (D: 333.7 GB, commit 21.2 GB, ATN's 16 = 06:10 hashes); dry run
+        ok; first present 09:32:25 = the FRONT END; 'sent' day1 ~09:32:38; the camera deadline (first present + 170 s,
+        logged '+ 180 s') fired 09:35:25 with the camera in 'wait' and no battle line -> STOP 'camera not done'; the game
+        closed via its window (main returned 0); the hardened finally ran every step (restored 0, hashes before = after
+        16 / 16, used_mods_64 moved out, both locks released, no PROBLEM); WER / nvlddmkm / dumps none; waving-flags pin OK;
+        0 segments / 0 dumps (D:\Dev\d11_dumps\d11cap64_20261126_093213_day1 empty, kept). CAUSE: the port's only earlier
+        battle took 186 s 'sent' -> 'battle is running' (ab_runs\20261124_194927_GateR\1_C64) -> day1 needed ~20 s more;
+        day1 never played on the port before (unproven). STARTS THIS ROUND: 2 (both void). FIX (copy only, d11f_ 09:4x):
+        C1 / camera timing from the battle clock (-C1At keeps its form = 'seconds after the battle starts'), a 600 s load
+        STOP, C2-C4 rechecked vs the 900 s budget + ATTILA_TEST_QUIT 600 -> one review of v1 locks + timing -> live file ->
+        START 3 only on ATN's go. stress_test_log2 fallback not justified (day1 was cut off loading). Owner: d11f_ ->
+        review -> ATN
+        d11f_ v1 LOCKS (copy, 09:36; diff testbin\scratch\d11f_\d11f_v1.diff, +21 / -17): Take-Locks = gpu_lock.py acquire
+        --lock <each> --pid $PID (quiet_run then gpu_job; both or neither -> exit 2), Lock-Ours by 'renodx-lock v1
+        pid=$PID start=$lockStart'; a dead owner is now taken over by the next taker. 59 / 59 tests; old 44 / 44 vs live.
+        Readers of quiet_run.lock: ~70, none breaks on v1 (release_check.ps1:207 + heapfix hfp3_build.ps1:75 read it as
+        alive = wait). Live-file note: one edit at ~09:31 reverted at 09:31:57.527 (byte-identical to the reviewed diff),
+        before the 09:31:58 dry run read it. Owner: d11f_
         - [ ] gpu_lock.py UNSTICK (ATN 09:4x 'Yes, build it': a backup for stale locks while he's away): unst_ STARTED
         (Opus High; est 30 / deadline 60): `gpu_lock.py unstick` moves aside gpu_job.lock / quiet_run.lock ONLY when the
         owner pid is gone (old text: the pid must not exist at all; v1: dead / reused, no live residents), mtime >= 10 min,
