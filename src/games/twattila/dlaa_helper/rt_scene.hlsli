@@ -13,7 +13,7 @@
 
 RaytracingAccelerationStructure scene : register(t0);
 RaytracingAccelerationStructure smoke_scene : register(t15);  // the smoke alone (SMOKE_MET: built)
-Texture2D<float4> positions : register(t1);  // world position, view depth (0: sky)
+Texture2D<float4> positions : register(t1);  // world position, its distance from the camera (rt_positions; 0: sky)
 Texture2D<float4> sun : register(t2);        // [0] toward the sun (w 1: valid), [1] the camera
 // Per record: UV offset in uv_pool, normal offset in normal_pool, atlas slice | flags << 16, the alpha threshold (asfloat).
 Buffer<uint4> records : register(t3);
