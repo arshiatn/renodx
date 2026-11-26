@@ -908,6 +908,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATT ... | ?
 - gpu_lock.py UNSTICK (ATN 09:4x 'Yes, build it': a backup for stale locks while h ... | ?
 - ATN'S ANSWERS 11-26 ~10:5x (to the overnight report): (1) P3 dark + P5 rule line ... | ?
+- ATN 11-26 ~11:3x QUESTIONS: (6) 'are you really sure RR before the tone mapper + ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -998,9 +999,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ROME REMASTERED PROXY CLAMP (coord 11-26, from fx0_): twromeremastered's swap ch ... | ?
 - cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR ... | ?
 - CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope. ... | ?
-- ATN INSTALLS CITATION BLOCKER v2: follow testbin\scratch\cbi_\install_steps.v2.m ... | ?
 - OLD GATE BUG (cbr_): 'git cherry-pick -m 1 <merge>' makes spec_cite_check.py fau ... | ?
-- CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attil ... | ?
+- (ATN 11-26 ~11:3x: 1 and 3-7 = the picks, agreed; 2 'what do you mean?' -> expla ... | ?
 - FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
 - X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither ... | ?
 - O-SS5 SSS THICKNESS AT EVERY SCALE (ATN wants the picked thickness exact at any ... | ?
@@ -1022,7 +1022,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RR PLACEMENT CITE: the RR-after-tone-mapper comment (anti_aliasing.hpp aa_dlaa_p ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
 - wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
-- pdi5_ WORKTREE .claude\worktrees\agent-a04c344af00661e33 + the stale branches pd ... | ?
 - LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a c ... | ?
 - R4 REPLAY TRACE (sass_counters): the tooling slot finds ngfx's option for the at ... | ?
 - LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner ... | done
@@ -17012,9 +17011,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         F 'do not use'; the 310.9.16 runtime's F = the new transformer). (8) X45 text sent. (9) backup.zip already gone.
         (10) fa8_ B1 SDR eye + (11) Balanced Raytraced eye: ATN's manual test session at the end. DELETIONS done (2.9 GB
         P4 dump, psychov35 test build, stray fa6_ / pd3c_, pd4r_, pds2_ 4 builds, tddr_ .obj + .bak_tddi, the 2
-        *.stale-31492 locks, fx0_ worktree + branch); pdi5_step5_rb was already gone. HELD + ASKED: the pdi5_ worktree
-        holds 213 GB of step-5 play dumps (build\pdi5play: fx / pre1 / pre2 / rb / rb2). Owner: ATN (install, Q1-Q7,
-        pdi5play) / coord (G4 flip)
+        *.stale-31492 locks, fx0_ worktree + branch); pdi5_step5_rb was already gone. The pdi5_ worktree (213 GB of step-5 play dumps)
+        DELETED 11-26 ~11:2x on ATN's 'Yes, delete it'. Owner: ATN (Q2) / coord (G4 flip)
+        - [ ] ATN 11-26 ~11:3x QUESTIONS: (6) 'are you really sure RR before the tone mapper + linear gained nothing?'
+        -> hrr_ numbers: placement alone ~nothing (A ~ C); linear removes sqrt's -22 % darkening of noisy two-level
+        spots (penumbrae / AO / fireflies) and ~11 % less AO noise, but lifts true darks x1.26-1.28 above the reference
+        (the violet veil) and doubles firefly flicker (before + linear). Middle for ATN's eye: pow p 0.6 (darks +4-5 %,
+        bias -22 -> -18 %, AO flicker -8 %, firefly flicker -20 %) = offered as an eye option. (7) SDK update: runtime DLLs
+        already newest (DLSS 310.9.16, SL 2.14.16); only the repo headers are older (external/DLSS 310.7.0, external/
+        Streamline 2.12) -> sdk_ audit STARTED ~11:4x (Opus xHigh, read only, round_notes\sdk_audit_1126.md, est 30 /
+        deadline 60); submodule bumps only on ATN's yes after it. (spheres) lsp2_ STARTED ~11:4x (Opus High, CPU, follow-up
+        2: real smoke recording through the probe; est 40 / deadline 80; GPU on 'lsp2_ GPU go'). (waves) wvp_ wave
+        planner STARTED ~11:4x (Opus xHigh, read only, plan_1117\fidelity\wave_plan_1126.md: START NOW waves beside
+        pdi4c_ + fx1_ with briefs, + ranked never-considered NVIDIA items by VRAM / RAM / CPU / GPU gain; est 45 /
+        deadline 90). Owner: coord / ATN (RR p 0.6 eye, SDK yes)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
@@ -17874,14 +17884,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         state = the row at 'on' with today's checker (install_steps.v2.md step 8 says so). Cherry-pick: 1434dcf07 4444 ->
         1 commit, same stdout as the ^..sha range; upstream sha 0 (byte-equal skip); merge sha 0 with --no-merges (1.1 s).
         Owner: done
-        - [ ] ATN INSTALLS CITATION BLOCKER v2: follow testbin\scratch\cbi_\install_steps.v2.md (steps 1-9; checker +
+        - [x] (INSTALLED by ATN 11-26 ~11:2x with round_notes\install_citation_blocker_v2.ps1; coord -Check: all 5 files 'already installed', *.bak_cb2 next to each = shadow mode live) ATN INSTALLS CITATION BLOCKER v2: follow testbin\scratch\cbi_\install_steps.v2.md (steps 1-9; checker +
         scope file + gates.tsv row 'estimator shadow' + hook line 961 + gate_override line 14 (combined with gtp_'s
         'price') + INSTALL_FOR_ATN.md row) and answer its questions 1-8 (1-7 = cbd_'s list in the box above, 8 = cbr_'s
         g: may a resolving src: tag clear a clamp that is the source's own contract?). Strict = row 'on' only after >= 5
         days / 30 commits of shadow at FP <= 10 %. The cherry-pick '^!' fix is in the same file (its own diff). Owner: ATN
         - [ ] OLD GATE BUG (cbr_): 'git cherry-pick -m 1 <merge>' makes spec_cite_check.py fault on the '1' (exit 2 = fail
         open), today and in v2 -> the gates' owner skips the value after -m (a .proposed for ATN). Owner: gates tooling slot
-        - [ ] CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attila + helper strict first,
+        - [ ] (ATN 11-26 ~11:3x: 1 and 3-7 = the picks, agreed; 2 'what do you mean?' -> explained in chat: saturate() hits only warn for good, or each of the ~600 needs a tag; answer pending) CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attila + helper strict first,
         ports warn-only until their propagation box [yes]; 2 saturate warn-only for good [yes]; 3 an edit inside a
         src-tagged function must touch the tag line [no, review checks]; 4 'guard inert ... proof pending' allowed while
         its box is open [yes]; 5 a code 'src: spec:' tag counts as the commit's API cite for that symbol [yes]; 6 Python
@@ -18239,7 +18249,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 of 1 M SHaRC keys / 6
         radiance words move; a repeat play matches itself -> step 3's code, not noise (pd5c_ checks the claim). Owner:
         pdi3_ follow-up
-        - [ ] pdi5_ WORKTREE .claude\worktrees\agent-a04c344af00661e33 + the stale branches pdi5_step5 / pdi5_step5_rb
+        - [x] (DELETED 11-26 ~11:2x on ATN's 'Yes, delete it': 213 GB build\pdi5play, 0 links; branch pdi5_step5 eb7438206 was already in atn-mods; pdi5_step5_rb already gone) pdi5_ WORKTREE .claude\worktrees\agent-a04c344af00661e33 + the stale branches pdi5_step5 / pdi5_step5_rb
         (after the merge): delete on ATN's yes. Owner: ATN
         - [ ] LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a calibrate per job -> keep
         the calibration across a batch's ab jobs (or one session per batch); (2) the timing-total refusal (decide must be
