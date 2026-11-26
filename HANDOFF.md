@@ -917,6 +917,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - lsp2_ 4K GPU DONE 11:52 (42 runs, 28 s; lsp_\lsp2_\results\20261126_115211\lsp2_ ... | ?
 - SOL'S PORT IS NEWER THAN OURS (coord 11-26 ~12:1x, ATN 'check if we got the newe ... | ?
 - pdi4c_ r5 READY 12:2x: origin/pdi4c_step4c_r5 = 9bf2313a3 (27 commits on ce1f836 ... | ?
+- d11g_ DONE 12:3x (9 min; testbin\scratch\d11g_\report.md): ROOT CAUSE of start 3 ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17103,6 +17104,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         read-only, handbacks\pdi4c_r5_review.md, est 60 / deadline 120) + 'pdi4c_ GPU go' 12:2x for the harness rows at
         4K with tw_rt_harness_4k.exe (640x360 vs 4K table into the hand-back). Then fix round -> merge (gated amd64 + x86 +
         helper on the merge) -> d11 start 4 (after d11g_) -> G4 flip. Owner: pdi4cr_ / pdi4c_ / coord
+        - [ ] d11g_ DONE 12:3x (9 min; testbin\scratch\d11g_\report.md): ROOT CAUSE of start 3's void = the add-on wrote
+        the camera line ('camera yaw ... pos', ReShade.log, pass_dump.hpp) only inside each site's Recording() block (sss /
+        ao_filter / ssr_hiz), so no line can come before C1's dump; starts 1-3 have 0 camera lines (25 SendInput notches,
+        0 skipped). FIX: pass_dump::Camera moved before Recording() at the 3 sites (inert without RENODX_TW_PASS_DUMP:
+        camera_due is set only by the enabled present poll, every 30 presents) = coord applied on atn-mods 12:3x, gated
+        amd64 + x86 building -> restage d11_stage's renodx-twattila.addon64; script g1 (sha256 1416FD0CFA4490C6...,
+        +17 / -4: refuses add-on 060535d8..., zoom only after a first camera line, STOP before any input if none 20 s
+        after the settle; movie keys unchanged; test_d11g.ps1 96 / 96, live 91 pass + 5 new fail) -> install as live
+        (.bak_g1 = 76499BEE...) -> d11 start 4 (1 trimmed start, no ask). No rule line needed. Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
