@@ -16956,7 +16956,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         brief: refuses while live shared holders exist. OPEN POINT (unst_): the live-queue-ticket refusal blocks the
         06:10 case (waiters always queue) -> coord: drop it (old text is never taken over, so no waiter writes the file;
         Aside() moves only an unchanged file), keep holders / ours / age / pid checks; unst_ round 2 09:4x (est 8 /
-        deadline 16; .bak_unst2). Rule line = ONE Bash line, paste_for_atn_1126.md section 5 (the change is told
+        deadline 16; .bak_unst2) -> DONE 09:49:41 (4 min): live sha1 0601fc12 (.bak_unst2 = 4557efa5, .bak_unst =
+        1da6027a original); the queued-ticket refusal removed, the moved row says 'queue N waiting'; new case 'live
+        ticket + live holder = refused'; 24 / 24 (coord rerun from live 24 / 24), old suites 58 (+2 InUse skips: the
+        harness was running) / 29 / 9. Rule line = ONE Bash line, paste_for_atn_1126.md section 5 (the change is told
         there). Owner: unst_ -> ATN (paste)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
