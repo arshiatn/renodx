@@ -49,8 +49,8 @@
 // Anti-aliasing (Experimental): SMAA 1x (smaa/SMAA.hlsl, MIT, Jimenez et al. 2013) or CMAA2 (cmaa2/CMAA2.hlsl, Apache
 // 2.0, Copyright (c) 2018 Intel Corporation), as compute shaders right after the game's tone mapper (its replaced
 // shaders' on_drawn: before the UI), on its output at the display's size. That target (no unordered access) is copied,
-// anti-aliased into the addon's result and copied back. SMAA works on the output as it is (2.0 encoded: perceptual);
-// CMAA2 on a linear BT.2020 copy (aa_cmaa2_prepare: it stores colours without sign), only the pixels it changed
+// anti-aliased into the addon's result and copied back. SMAA works on the output as it is (Attila: t00's, linear; the
+// edges of Pharaoh / Troy its root); CMAA2 on a BT.2020 copy (aa_cmaa2_prepare: no sign stored), only the pixels it changed
 // converted back (aa_cmaa2_resolve). Every compute binding is put back after. D3D11.
 // TAA and SMAA T2x (ATN: edge AA cannot fix grass): the main view's camera is jittered as the game uploads its
 // constants (camera_VS_PS: a perspective camera with the display's viewport, written through Map / Unmap or
@@ -1135,12 +1135,12 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   const UINT input_width = (scaled ? runtime.render_width : objects.width);
   const UINT input_height = (scaled ? runtime.render_height : objects.height);
   // Presets L and M (always auto-exposed) and Ray Reconstruction flatten dark tones given linear colour (ATN debug11:
-  // shadows one flat grey with coloured fringes; debug28: Ray Reconstruction's a flat violet veil): they get its square
-  // root, as the tone mapper's own encoding. Ray Reconstruction after the tone mapper (its output is this input):
-  // ours: RRG 3.1 p10 says before tone mapping; hrr_ 11-26 (640x360, below the 4K rule): no gain before at
-  // matched encoding, linear lifts darks x1.26 (that harness's sqrt of linear: in game the tone mapper's output is linear,
-  // so this feed is about its 1.1 power, rrb_ G0). `scene_linear` (Settings::rr_before_tone_map, before the tone mapper):
-  // the lit scene as it is, RRG 3.1 p10's order.
+  // shadows one flat grey with coloured fringes; debug28: Ray Reconstruction's a flat violet veil): they get the square
+  // root of aa_dlaa_prepare's colour (Attila: t00 itself, ~t00^1.1 with Gamma Correction on, rrbi_ G0; Pharaoh / Troy:
+  // the root of their linear output). RRG (DLSS-RR Integration Guide) 3.1 p10: RR before tone mapping. In Attila it
+  // already runs before PsychoV35 (after t00, feed ~t00^1.1); the Experimental row Denoise Before Tone Mapping moves it
+  // before t00: `scene_linear` (Settings::rr_before_tone_map, OnToneMapperDraw), the lit scene as it is (no square
+  // root).
   const bool square_root = !scene_linear && method == Method::DLAA
                            && (runtime.settings.dlaa_preset == 12u || runtime.settings.dlaa_preset == 13u
                                || (runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame));

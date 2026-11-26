@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-// DLAA (anti_aliasing.hpp): NVIDIA's result (t0, BT.2020: linear, or its square root for presets L and M and Ray
-// Reconstruction) back to the tone mapper's signed BT.709 and its 2.0 encoding (square root, sign kept; 2.2 with aa.hlsli
-// AaFrameGamma22; linear with TW_AA_FRAME_LINEAR or AaFrameLinear), the frame's own alpha (t1), into the result (u0). Its Debug View
+// DLAA (anti_aliasing.hpp): NVIDIA's result (t0, BT.2020 as aa_dlaa_prepare gave it, or its square root for presets L
+// and M and Ray Reconstruction) back to the tone mapper's signed BT.709 (square root, sign kept; 1 / 2.2 with aa.hlsli
+// AaFrameGamma22; as it is with TW_AA_FRAME_LINEAR or AaFrameLinear: Attila's t00 linear again), the frame's own alpha (t1), into the result (u0). Its Debug View
 // instead: the motion
 // NVIDIA got (1: t2) or the objects' own (2: t3, motion.hlsli MotionTexel; t4 the depth), at the input size (top-left),
 // stretched over the picture: the direction as the hue, brighter the faster (32 pixels a frame: full). Object Motion
@@ -16,8 +16,8 @@
 #include "./aa.hlsli"
 #include "./motion.hlsli"
 
-// The tone mapper's output: 0 its square root (Attila, Thrones, WH3...; Rome II's hdr_to_screen gamma 2.2), 1 linear
-// (Pharaoh). A game folder's copy of this shader defines it before its #include.
+// 0: the tone mapper's output read as 2.0 encoded (Thrones, WH3...; Rome II's hdr_to_screen gamma 2.2; Attila too, its
+// t00 linear: rrbi_ G0), 1 linear (Pharaoh / Troy: their ACES fits end without a root). Game copies define it first.
 #ifndef TW_AA_FRAME_LINEAR
 #define TW_AA_FRAME_LINEAR 0
 #endif

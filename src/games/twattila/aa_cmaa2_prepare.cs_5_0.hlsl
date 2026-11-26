@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: MIT
  */
 
-// CMAA2's working copy (u0): the tone mapper's output (t0, 2.0 encoded signed BT.709, 2.2 with aa.hlsli AaFrameGamma22;
-// linear with TW_AA_FRAME_LINEAR) as linear BT.2020, which CMAA2 expects (its colours stored without sign).
+// CMAA2's working copy (u0): the tone mapper's output (t0, signed BT.709; Attila's t00 linear) squared (to 2.2 with aa.hlsli
+// AaFrameGamma22; as it is with TW_AA_FRAME_LINEAR) in BT.2020 as CMAA2's linear input (its colours stored without sign).
 #include "./aa.hlsli"
 #include "./shared.h"
 
-// The tone mapper's output: 0 its square root (Attila, Thrones, WH3...), 1 linear (Pharaoh, Troy: their wrappers define it).
+// 0: read as 2.0 encoded (Thrones, WH3...; Attila too, though its t00 is linear), 1 linear (Pharaoh, Troy define it).
 #ifndef TW_AA_FRAME_LINEAR
 #define TW_AA_FRAME_LINEAR 0
 #endif

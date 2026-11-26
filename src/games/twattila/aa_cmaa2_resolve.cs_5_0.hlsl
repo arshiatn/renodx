@@ -4,12 +4,12 @@
  */
 
 // CMAA2's result (u0): the pixels it blended (the working copy, t0, no longer what aa_cmaa2_prepare wrote) back to the
-// tone mapper's encoding (2.0, 2.2 with aa.hlsli AaFrameGamma22; linear with TW_AA_FRAME_LINEAR); every other pixel the
-// original (t1), untouched.
+// tone mapper's values (square root, 1 / 2.2 with aa.hlsli AaFrameGamma22, none with TW_AA_FRAME_LINEAR: Attila's t00
+// linear again); every other pixel the original (t1), untouched.
 #include "./aa.hlsli"
 #include "./shared.h"
 
-// The tone mapper's output: 0 its square root (Attila, Thrones, WH3...), 1 linear (Pharaoh, Troy: their wrappers define it).
+// 0: read as 2.0 encoded (Thrones, WH3...; Attila too, though its t00 is linear), 1 linear (Pharaoh, Troy define it).
 #ifndef TW_AA_FRAME_LINEAR
 #define TW_AA_FRAME_LINEAR 0
 #endif

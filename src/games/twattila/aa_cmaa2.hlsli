@@ -6,8 +6,8 @@
 #ifndef SRC_GAMES_TWATTILA_AA_CMAA2_HLSLI_
 #define SRC_GAMES_TWATTILA_AA_CMAA2_HLSLI_
 
-// CMAA2 (cmaa2/CMAA2.hlsl: Apache 2.0, Copyright (c) 2018 Intel Corporation) on anti_aliasing.hpp's working copy: linear
-// BT.2020 (aa_cmaa2_prepare), RGBA16F, written by typed stores; its quality from the settings. Each kernel file names
+// CMAA2 (cmaa2/CMAA2.hlsl: Apache 2.0, Copyright (c) 2018 Intel Corporation) on anti_aliasing.hpp's working copy:
+// BT.2020 (aa_cmaa2_prepare: squared, or as it is), RGBA16F, written by typed stores; its quality from the settings. Each kernel file names
 // its kernel main before including this.
 #include "./aa.hlsli"
 

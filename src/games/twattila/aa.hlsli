@@ -6,8 +6,8 @@
 #ifndef SRC_GAMES_TWATTILA_AA_HLSLI_
 #define SRC_GAMES_TWATTILA_AA_HLSLI_
 
-// Anti-aliasing (anti_aliasing.hpp): the settings of its compute shaders, on the tone mapper's output (2.0 encoded,
-// signed BT.709: wide colours below 0).
+// Anti-aliasing (anti_aliasing.hpp): the settings of its compute shaders, on the tone mapper's output (signed BT.709:
+// wide colours below 0; Attila's t00 writes it linear in the HDR modes, rrbi_ G0).
 cbuffer aa_settings : register(b0)
 {
   float4 g_aa_metrics;              // 1 / width, 1 / height, width, height (SMAA_RT_METRICS)
@@ -39,9 +39,9 @@ cbuffer aa_taa : register(b1)
   float g_taa_object_motion;                // TAA Motion Vectors on Objects: 1 (t4-t6: what moved this frame)
 }
 
-// The passes that take the tone mapper's 2.0-encoded output to linear and back (DLAA's prepare and finish, CMAA2's) in
-// the frame's own curve: with Gamma Correction on the swap chain decodes the frame at 2.2 (Attila and Thrones hand it
-// over), so they decode and encode at 2.2 too; else their own 2.0 (square and square root, their bits as before).
+// The passes that raise the tone mapper's output to the frame's gamma and take the root back (DLAA's prepare and
+// finish, CMAA2's): 2.2 with Gamma Correction on (the swap chain's decode; Attila and Thrones hand it over), else 2.0
+// (square and square root). Attila's t00 writes linear (rrbi_ G0): they see t00^2 / t00^2.2 and give t00 back.
 bool AaFrameGamma22()
 {
   return g_aa_frame_gamma == 2.2f;
