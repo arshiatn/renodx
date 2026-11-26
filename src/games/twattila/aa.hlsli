@@ -18,7 +18,7 @@ cbuffer aa_settings : register(b0)
   float g_cmaa2_edge_threshold;     // CMAA2's edge threshold (its quality preset)
   float g_cmaa2_local_contrast;     // CMAA2's local contrast adaptation (its extra sharpness)
   float g_cmaa2_simple_shape_blur;  // CMAA2's simple shape blurriness (its extra sharpness)
-  float g_aa_frame_gamma;           // the frame's gamma (frame_gamma.hlsli TW_FRAME_GAMMA): 2.2 AaFrameGamma22; else 2.0
+  float g_aa_frame_gamma;           // the frame's gamma (frame_gamma.hlsli TW_FRAME_GAMMA): 2.2 AaFrameGamma22; 1 AaFrameLinear; else 2.0
   float4 g_smaa_subsample_indices;  // SMAA T2x: this frame's sample (SMAA 1x: 0)
   float4 g_dlaa_debug;              // DLAA's Debug View (anti_aliasing.hpp Settings debug_view): x the view, yz the input size;
                                     // w the colour NVIDIA gets: 1 its square root (presets L and M, Ray
@@ -45,6 +45,13 @@ cbuffer aa_taa : register(b1)
 bool AaFrameGamma22()
 {
   return g_aa_frame_gamma == 2.2f;
+}
+
+// DLAA's prepare and finish on the lit scene before the tone mapper (anti_aliasing.hpp Apply's scene_linear: Ray
+// Reconstruction there), linear. Ours: the constant that carries the encoding says it, gamma 1 being linear.
+bool AaFrameLinear()
+{
+  return g_aa_frame_gamma == 1.f;
 }
 
 float3 AaDecodeFrame22(float3 color)

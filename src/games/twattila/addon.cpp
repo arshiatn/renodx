@@ -221,7 +221,10 @@ void ApplyRecommendedPreset() {
   ApplyHDRPreset(3.f, 1.f, 1.00f, 0.35f, 0.f, AUTO_EXPOSURE_HEADROOM_DEFAULT, 1.f, 1.f, 1.f, 2.f, 0.2f);
 }
 
-#define UpgradeRTVReplaceShader(value)                                                                \
+// The tone mappers' scene view slot (t00 t1, t09 / t10 t0: anti_aliasing.hpp OnToneMapperDraw); hdr_to_screen has none.
+constexpr UINT NO_SCENE_SLOT = UINT_MAX;
+
+#define UpgradeRTVReplaceShader(value, scene_slot)                                                    \
   {                                                                                                   \
       value,                                                                                          \
       {                                                                                               \
@@ -242,6 +245,9 @@ void ApplyRecommendedPreset() {
               renodx::mods::swapchain::FlushDescriptors(cmd_list);                                    \
               renodx::mods::swapchain::RewriteRenderTargets(cmd_list, rtvs.size(), rtvs.data(), {0}); \
             }                                                                                         \
+            if constexpr (ATTILA64 && (scene_slot) != NO_SCENE_SLOT) {                                \
+              twattila::anti_aliasing::OnToneMapperDraw(cmd_list, scene_slot);                        \
+            }                                                                                         \
             return true; },                                                                           \
           .on_drawn = [](auto* cmd_list) {                                                            \
             twattila::screen_space_shadows::OnTonemapDrawn(cmd_list);                                 \
@@ -255,17 +261,17 @@ renodx::utils::settings::Settings settings;
 
 void BuildRuntimeData() {
   custom_shaders = {
-      UpgradeRTVReplaceShader(0x8BF6B657),
-      UpgradeRTVReplaceShader(0x2C8169CA),
-      UpgradeRTVReplaceShader(0xFEA9F9E2),
-      UpgradeRTVReplaceShader(0xBA446301),
-      UpgradeRTVReplaceShader(0xB7FBF3E2),
-      UpgradeRTVReplaceShader(0xA2D88FCD),
-      UpgradeRTVReplaceShader(0xCC79C76F),
-      UpgradeRTVReplaceShader(0x836B7901),
-      UpgradeRTVReplaceShader(0xF42FDDC6),
-      UpgradeRTVReplaceShader(0x95398068),  // t09 constant tone mapper with bloom
-      UpgradeRTVReplaceShader(0x6E20B0EF),  // t10 constant tone mapper
+      UpgradeRTVReplaceShader(0x8BF6B657, 1),
+      UpgradeRTVReplaceShader(0x2C8169CA, NO_SCENE_SLOT),
+      UpgradeRTVReplaceShader(0xFEA9F9E2, NO_SCENE_SLOT),
+      UpgradeRTVReplaceShader(0xBA446301, NO_SCENE_SLOT),
+      UpgradeRTVReplaceShader(0xB7FBF3E2, NO_SCENE_SLOT),
+      UpgradeRTVReplaceShader(0xA2D88FCD, NO_SCENE_SLOT),
+      UpgradeRTVReplaceShader(0xCC79C76F, NO_SCENE_SLOT),
+      UpgradeRTVReplaceShader(0x836B7901, NO_SCENE_SLOT),
+      UpgradeRTVReplaceShader(0xF42FDDC6, NO_SCENE_SLOT),
+      UpgradeRTVReplaceShader(0x95398068, 0),  // t09 constant tone mapper with bloom
+      UpgradeRTVReplaceShader(0x6E20B0EF, 0),  // t10 constant tone mapper
       __ALL_CUSTOM_SHADERS,
   };
   // The point lights with the game's point light shadows (pointlight08-39): the game's bytes but at a traced draw.
@@ -1557,6 +1563,9 @@ float lod_bias_trilinear_row = 0.f;
 // Faster Game CPU Code (graphics_page.hpp, twattila/engine_code.hpp): on by default, every routine proven to give the game's
 // results (test/tw_engine_code).
 float engine_code_row = 1.f;
+// Denoise Before Tone Mapping (Experimental, 64-bit only; graphics_page.hpp's Ray Reconstruction rows): anti_aliasing.hpp
+// Settings::rr_before_tone_map.
+float rr_before_tone_map_row = 0.f;
 // Faster Render Lists (on by default; graphics_page.hpp): engine_code.hpp's render list push site.
 float render_lists_row = 1.f;
 // Faster Job Wake-Ups (Experimental, off; graphics_page-style row below): engine_code.hpp's job system sites.
@@ -2059,6 +2068,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
   aa_settings.frame_gamma = TW_FRAME_GAMMA;
+  aa_settings.rr_before_tone_map = ATTILA64 && rr_before_tone_map_row != 0.f;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);
@@ -3065,6 +3075,20 @@ void ConfigureAddon() {
       {"General", "Psycho V30", "PsychoV31", "PsychoV35", "Extra", "Extra (Experimental)", "Output (Restart Required)", "About"},
       engine_sections);
 
+  // Ray Reconstruction's rows (shown while it is on, in the anti-aliasing's More Options).
+  std::vector<renodx::utils::settings::Setting*> rr_inputs;
+  if constexpr (ATTILA64) {
+    rr_inputs.push_back(new renodx::utils::settings::Setting{
+        .key = "RayReconstructionBeforeToneMap",
+        .binding = &rr_before_tone_map_row,
+        .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+        .default_value = 0.f,
+        .label = "Denoise Before Tone Mapping (Experimental)",
+        .tooltip = "Ray Reconstruction cleans the scene's light before exposure, bloom and tone mapping (NVIDIA's order).\n"
+                   "At 100% render scale. Can change dark areas.",
+        .labels = {"Off", "On"},
+    });
+  }
   // Graphics 1 of 2's layout (graphics_page.hpp), then Settings Mode's pages.
   twattila::graphics_page::Apply(&settings, {.aa = &aa_sliders, .sss = &sss_sliders, .rt = &rt_sliders, .ssao_mode = &shader_injection.ssao_mode,
                                              .light_bounce_strength = &shader_injection.light_bounce_strength,
@@ -3072,7 +3096,8 @@ void ConfigureAddon() {
                                              .smoke_strength = &smoke_map_sliders.strength, .smoke_softness = &smoke_map_sliders.softness,
                                              .lod_bias_trilinear = &lod_bias_trilinear_row, .rays_banner_light = &rays_banner_light_row,
                                              .rays_untraced_casters = &rays_untraced_casters_row, .rays_sheets_unselfed = &rt_sliders.sheets_unselfed,
-                                             .engine_code = &engine_code_row, .lights_in_bounce = &rt_sliders.lights_in_bounce,
+                                             .engine_code = &engine_code_row, .rr_inputs = rr_inputs,
+                                             .lights_in_bounce = &rt_sliders.lights_in_bounce,
                                              .light_ratio = &rt_sliders.light_ratio});
   if constexpr (ATTILA64) {
     // The game-code rows wait for the 64-bit engine plugin: wrapped (never replaced) before AssignPages wraps them in
