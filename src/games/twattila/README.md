@@ -1,5 +1,18 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Denoise Before Tone Mapping (2026-11-26; built only, not stamped, not installed, not run in game)
+
+- New: **Denoise Before Tone Mapping (Experimental, off)**, 64-bit only, in the anti-aliasing's More Options while Ray
+  Reconstruction is on: Ray Reconstruction runs on the lit scene before the tone mapper (t00 / t09 / t10's scene, fed
+  linear: no exposure, bloom, Hue Clip or S-curve yet), and the tone mapper grades its result (NVIDIA's RR guide 3.1:
+  before tone mapping). Without the row it runs after the tone mapper, on its output (linear light: about its 1.1 power
+  with Gamma Correction on), and before hdr_to_screen's PsychoV35. Bloom stays outside Ray Reconstruction (made from the
+  scene before the hook). At 100% render scale only; below it, with plain DLSS, FSR, XeSS, Ray Reconstruction refused or
+  the Upscaling Debug View on, the row does nothing. One 4K copy less a frame (the result is bound in the scene's place).
+- Verification in game (row on, RR on, 100%): the frame trace shows "tone mapper draw: Ray Reconstruction on the scene
+  before it"; the picture's darks, fire and an exposure change from shade to sun against the row off on the same paused
+  frame; Frame Generation's HUD-less image (its Debug View 1) as bright as the picture.
+
 ## Dev, The Dawnless Days support (2026-11-25; built only, not stamped, not installed, not run in game)
 
 - New: the add-on has twin rows for the shaders of The Dawnless Days (TDD 1.1.x, its shader pack v1.1.0), which

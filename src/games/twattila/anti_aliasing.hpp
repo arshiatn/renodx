@@ -101,7 +101,10 @@ struct Settings {
   bool effects_at_output = true;  // DLSS: the effects' resolutions follow the render scale (frame_history::effect_share)
   bool ray_reconstruction = false;          // DLAA / DLSS: NVIDIA's Ray Reconstruction (guides from the G-buffer)
   uint32_t ray_reconstruction_preset = 0;  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset (0: NVIDIA's)
-  bool ray_tracing = false;                // DLAA / DLSS: the bridge's ray tracing textures (rt_scene.hpp)
+  // Ray Reconstruction on the lit scene before the tone mapper (OnToneMapperDraw: linear, before exposure, bloom and
+  // grade; NVIDIA's order), at 100% render scale only; else after it, on its output.
+  bool rr_before_tone_map = false;
+  bool ray_tracing = false;               // DLAA / DLSS: the bridge's ray tracing textures (rt_scene.hpp)
   // DLAA / DLSS: the G-buffer guides for ray tracing's paths (path tracing, reflections) and the reflections' textures.
   bool ray_traced_guides = false;
   bool ray_traced_reflections = false;
@@ -252,6 +255,7 @@ struct DeviceObjects {
   ComPtr<ID3D11ShaderResourceView> frame_srv;
   ComPtr<ID3D11Texture2D> result;
   ComPtr<ID3D11UnorderedAccessView> result_uav;
+  ComPtr<ID3D11ShaderResourceView> result_srv;  // the tone mapper's scene in OnToneMapperDraw's place
   // The Debug View's Warp Error: last frame's input (as `color`), made and copied only while that view is on.
   ComPtr<ID3D11Texture2D> warp_history;
   ComPtr<ID3D11ShaderResourceView> warp_history_srv;
@@ -305,6 +309,11 @@ struct Runtime {
   uint64_t upscaled_frame = UINT64_MAX;    // the last frame DLSS answered
   uint64_t depth_upscaled_frame = UINT64_MAX;  // DLSS below 100%: the last frame UpscaleDepth ran
   uint64_t copy_upscaled_frame = UINT64_MAX;   // the same for the scene's depth's copy (Install's full_depth_copy)
+  // Settings::rr_before_tone_map: the last frame OnToneMapperDraw bound Ray Reconstruction's result in the scene's place,
+  // and the game's view it took from `scene_slot` (put back after the draw).
+  uint64_t scene_reconstructed_frame = UINT64_MAX;
+  ComPtr<ID3D11ShaderResourceView> scene_view;
+  UINT scene_slot = 0;
   bool full_depth_copy = false;
   Camera camera;
   Camera previous_camera;
@@ -799,6 +808,7 @@ inline void ReleaseStorage() {
   objects.frame_srv.Reset();
   objects.result.Reset();
   objects.result_uav.Reset();
+  objects.result_srv.Reset();
   objects.warp_history.Reset();
   objects.warp_history_srv.Reset();
   objects.smaa_edges_uav.Reset();
@@ -887,7 +897,7 @@ inline bool PrepareSize(ID3D11Device* device, UINT width, UINT height, DXGI_FORM
   auto& storage = objects.cmaa2_storage;
   bool made =
       texture(width, height, format, DXGI_FORMAT_R16G16B16A16_FLOAT, &objects.color, nullptr, &objects.color_srv)
-      && texture(width, height, format, DXGI_FORMAT_R16G16B16A16_FLOAT, &objects.result, &objects.result_uav, nullptr);
+      && texture(width, height, format, DXGI_FORMAT_R16G16B16A16_FLOAT, &objects.result, &objects.result_uav, &objects.result_srv);
   if (method == Method::SMAA || method == Method::SMAA_T2X) {
     made = made
            && texture(width, height, DXGI_FORMAT_R8G8_UNORM, DXGI_FORMAT_R8G8_UNORM, nullptr, &objects.smaa_edges_uav,
@@ -1074,8 +1084,9 @@ constexpr auto OnFullDepthDraw = []<typename Context>(Context& command) -> renod
 };
 
 // SMAA, CMAA2, SMAA T2x, TAA or DLAA / DLSS on `target` (the tone mapper's; `scaled`: DLSS, its top-left render size
-// holds the frame), the compute stage's bindings put back after.
-inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool scaled) {
+// holds the frame), the compute stage's bindings put back after. `scene_linear`: DLAA on the lit scene before the tone
+// mapper (OnToneMapperDraw), linear, its result left in `result` for the caller to bind (nothing copied into `target`).
+inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool scaled, bool scene_linear) {
   auto& objects = runtime.objects;
   const int quality = std::clamp(runtime.settings.quality, 0, 3);
   const bool sharp = runtime.settings.extra_sharpness;
@@ -1127,8 +1138,10 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   // shadows one flat grey with coloured fringes; debug28: Ray Reconstruction's a flat violet veil): they get its square
   // root, as the tone mapper's own encoding. Ray Reconstruction after the tone mapper (its output is this input):
   // ours: RRG 3.1 p10 says before tone mapping; hrr_ 11-26 (640x360, below the 4K rule): no gain before at
-  // matched encoding, linear lifts darks x1.26; rrb_ designs the before-tone-mapper row.
-  const bool square_root = method == Method::DLAA
+  // matched encoding, linear lifts darks x1.26 (that harness's sqrt of linear: in game the tone mapper's output is linear,
+  // so this feed is about its 1.1 power, rrb_ G0). `scene_linear` (Settings::rr_before_tone_map, before the tone mapper):
+  // the lit scene as it is, RRG 3.1 p10's order.
+  const bool square_root = !scene_linear && method == Method::DLAA
                            && (runtime.settings.dlaa_preset == 12u || runtime.settings.dlaa_preset == 13u
                                || (runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame));
   dlaa_bridge::bridge.color_square_root = square_root;
@@ -1142,7 +1155,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       .cmaa2_edge_threshold = CMAA2_THRESHOLDS[quality],
       .cmaa2_local_contrast = (sharp ? 0.15f : 0.1f),
       .cmaa2_simple_shape_blur = (sharp ? 0.07f : 0.1f),
-      .frame_gamma = runtime.settings.frame_gamma,
+      .frame_gamma = (scene_linear ? 1.f : runtime.settings.frame_gamma),  // aa.hlsli AaFrameLinear at 1
       .smaa_subsample_indices = subsample_indices,
       .dlaa_debug = {static_cast<float>(runtime.settings.debug_view), static_cast<float>(input_width),
                      static_cast<float>(input_height), (square_root ? 1.f : 0.f)},
@@ -1371,9 +1384,12 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   if (objects.warp_history) {
     native->CopyResource(objects.warp_history.Get(), target);
   }
-  if (resolved) native->CopyResource(target, objects.result.Get());
+  if (resolved && !scene_linear) {
+    native->CopyResource(target, objects.result.Get());
+  }
+  // Before the tone mapper the HUD-less image comes from a later pass (hdr_to_screen: KeepOutput).
   if (generation) {
-    frame_generation::KeepFrame(native, target, *generation);
+    frame_generation::KeepFrame(native, (scene_linear ? nullptr : target), *generation);
   }
   if (targets_off) {
     native->OMSetRenderTargets(static_cast<UINT>(game_targets.size()), game_targets.data(), game_depth_target.Get());
@@ -1440,6 +1456,62 @@ inline void OnOutputEffectDrawn(reshade::api::command_list* cmd_list) {
   if (SUCCEEDED(resource.As(&target))) frame_generation::KeepOutput(native, target.Get());
 }
 
+// The tone mapper is about to draw (its replaced shaders' on_draw; its scene's view at `scene_slot`): with
+// Settings::rr_before_tone_map, Ray Reconstruction on that scene (linear: before exposure, bloom and the grade) at 100%
+// render scale, its result bound in the scene's place for this draw (OnTonemapDrawn puts the game's view back). Not with
+// SR alone, FSR, XeSS, Ray Reconstruction refused by the helper or the Upscaling Debug View (drawn into the result after
+// the tone mapper): those keep the order after it.
+inline void OnToneMapperDraw(reshade::api::command_list* cmd_list, UINT scene_slot) {
+  if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
+  auto& runtime = internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  const auto& settings = runtime.settings;
+  if (!settings.rr_before_tone_map || settings.method != Method::DLAA || !settings.ray_reconstruction
+      || runtime.objects.guides_frame != runtime.frame || internal::scaling.load(std::memory_order_relaxed)
+      || runtime.camera_frame != runtime.frame || !runtime.scene_depth || runtime.applied_frame == runtime.frame
+      || settings.debug_view != 0 || dlaa_bridge::bridge.rr_refused) {
+    return;
+  }
+  auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
+  renodx::utils::directx::TryNativeFromReShadeProxy(&native);
+  if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
+  // The main view's tone mapper as OnTonemapDrawn takes it: its target and its scene at the display's size, RGBA16.
+  const auto main_view_texture = [&](ID3D11View* view, ComPtr<ID3D11Texture2D>* texture, D3D11_TEXTURE2D_DESC* desc) {
+    ComPtr<ID3D11Resource> resource;
+    view->GetResource(resource.GetAddressOf());
+    if (FAILED(resource.As(texture))) return false;
+    (*texture)->GetDesc(desc);
+    return desc->Width == runtime.display_width && desc->Height == runtime.display_height && desc->SampleDesc.Count == 1
+           && desc->ArraySize == 1
+           && (desc->Format == DXGI_FORMAT_R16G16B16A16_FLOAT || desc->Format == DXGI_FORMAT_R16G16B16A16_TYPELESS);
+  };
+  ComPtr<ID3D11RenderTargetView> target_view;
+  native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+  ComPtr<ID3D11ShaderResourceView> scene_view;
+  native->PSGetShaderResources(scene_slot, 1, scene_view.GetAddressOf());
+  if (!target_view || !scene_view) return;
+  ComPtr<ID3D11Texture2D> target;
+  D3D11_TEXTURE2D_DESC target_desc = {};
+  ComPtr<ID3D11Texture2D> scene;
+  D3D11_TEXTURE2D_DESC scene_desc = {};
+  if (!main_view_texture(target_view.Get(), &target, &target_desc) || !main_view_texture(scene_view.Get(), &scene, &scene_desc)) {
+    return;
+  }
+  ComPtr<ID3D11Device> device;
+  native->GetDevice(device.GetAddressOf());
+  if (!internal::PrepareDevice(device.Get())) return;
+  // The target's size and format, as OnTonemapDrawn's call (the storage made once).
+  if (!internal::PrepareSize(device.Get(), target_desc.Width, target_desc.Height, target_desc.Format, settings.method)) return;
+  frame_trace::Mark("tone mapper draw: Ray Reconstruction on the scene before it");
+  internal::Apply(native, scene.Get(), false, true);
+  if (runtime.upscaled_frame != runtime.frame) return;
+  ID3D11ShaderResourceView* result = runtime.objects.result_srv.Get();
+  native->PSSetShaderResources(scene_slot, 1, &result);
+  runtime.scene_view = scene_view;
+  runtime.scene_slot = scene_slot;
+  runtime.scene_reconstructed_frame = runtime.frame;
+}
+
 // The tone mapper drew (its replaced shaders' on_drawn): its target anti-aliased when it is the display's size.
 inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
@@ -1450,6 +1522,14 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
+  // The tone mapper's own draw after OnToneMapperDraw (Ray Reconstruction already ran on its scene): the game's scene view
+  // back in its slot.
+  const bool own_draw = runtime.scene_reconstructed_frame == runtime.frame && runtime.tonemapped_frame != runtime.frame;
+  if (own_draw && runtime.scene_view) {
+    ID3D11ShaderResourceView* scene_view = runtime.scene_view.Get();
+    native->PSSetShaderResources(runtime.scene_slot, 1, &scene_view);
+    runtime.scene_view.Reset();
+  }
   ComPtr<ID3D11RenderTargetView> target_view;
   native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
   if (!target_view) return;
@@ -1484,9 +1564,10 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   if (!internal::PrepareSize(device.Get(), desc.Width, desc.Height, desc.Format, runtime.settings.method)) return;
   frame_trace::Mark(scaled ? "tone mapper drawn: DLSS (render scale) after it" : "tone mapper drawn: DLAA after it");
   // After the frame's anti-aliasing: a later pass of its output (Attila's hdr_to_screen after its tone mapper, with the
-  // HDR output), frame generation's HUD-less image from it.
-  const bool later = (runtime.applied_frame == runtime.frame);
-  internal::Apply(native, target.Get(), scaled);
+  // HDR output), frame generation's HUD-less image from it. Not the tone mapper's own output after OnToneMapperDraw (linear,
+  // much darker: v90's dark HUD-less image).
+  const bool later = (runtime.applied_frame == runtime.frame && !own_draw);
+  internal::Apply(native, target.Get(), scaled, false);
   if (later) frame_generation::KeepOutput(native, target.Get());
   if (scaled) {
     // The game's viewports and scissor rectangles back if the scaled ones are still bound.
@@ -1695,6 +1776,7 @@ inline void Uninstall() {
   internal::scaling.store(false);
   const std::unique_lock lock(internal::runtime.mutex);
   internal::runtime.scene_depth.Reset();
+  internal::runtime.scene_view.Reset();
   internal::runtime.full_depth_copy = false;
 }
 
@@ -1771,6 +1853,7 @@ inline void OnDestroyDevice(reshade::api::device* device) {
   internal::runtime.objects = {};
   dlaa_bridge::Release();
   internal::runtime.scene_depth.Reset();
+  internal::runtime.scene_view.Reset();
   internal::runtime.guides_gbuffer = {};
   internal::runtime.uploads.clear();
 }
