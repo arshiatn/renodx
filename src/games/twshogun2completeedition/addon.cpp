@@ -536,7 +536,7 @@ bool OnDrawCapture(reshade::api::command_list* cmd_list) {
   if (desc.Width == 0 || desc.Width != back_buffer_width.load() || desc.Height != back_buffer_height.load()) return true;
   const float x = viewport.Width / static_cast<float>(desc.Width);
   const float y = viewport.Height / static_cast<float>(desc.Height);
-  if (x < 0.05f || y < 0.05f) return true;
+  if (x < 0.049993165f || y < 0.05f) return true;
   Set(std::min(x, 1.f), std::min(y, 1.f));
   return true;
 }

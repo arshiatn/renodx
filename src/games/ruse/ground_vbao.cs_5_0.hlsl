@@ -62,7 +62,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 position = ViewPosition(pixel);
   const float radius = range.x;
   // The radius on screen in pixels; below one, nothing to sample.
-  const float2 radius_pixels = 0.5f * radius * projection.xy / max(position.z, 1e-6f) * size.xy;
+  const float2 radius_pixels = 0.5f * radius * projection.xy / max(position.z, 1.0000501e-6f) * size.xy;
   float value = 1.f;
   float3 light = 0.f;
   [branch]
@@ -117,7 +117,7 @@ void main(uint3 id : SV_DispatchThreadID) {
           if (sample_position.z <= 0.f) continue;
           const float3 delta = sample_position - position;
           const float delta_length = length(delta);
-          if (!(delta_length > 1e-4f) || delta_length > radius) continue;
+          if (!(delta_length > 1.0000263e-4f) || delta_length > radius) continue;
           // Its back a constant thickness along its own camera ray.
           const float3 back = normalize(delta + normalize(sample_position) * range.y);
           const uint covered = BitmaskSectors(delta / delta_length, back, view, side, slice_info, slice_jitter);

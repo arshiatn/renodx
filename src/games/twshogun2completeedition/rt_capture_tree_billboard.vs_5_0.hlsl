@@ -30,7 +30,7 @@ void main(
 {
   const float3 toward_sun = t_rt_sun.Load(int3(0, 0, 0)).xyz;
   const float across = length(toward_sun.xz);
-  const float2 from_tree = (across > 1e-3f) ? toward_sun.xz / across : float2(0.f, 1.f);
+  const float2 from_tree = (across > 1.0002044e-3f) ? toward_sun.xz / across : float2(0.f, 1.f);
 
   // The game's card (its right vector from the view; here from the sun's direction), scaled by v5.w at v4.xyz.
   const float3 right = float3(from_tree.y, 0.f, -from_tree.x);

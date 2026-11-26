@@ -56,13 +56,13 @@ float AoVisibility(uint2 pixel) {
   const float far = ao_view_info.x;
   const float z = depth * far;
   // The radius in pixels at the pixel's depth.
-  const float2 radius_texels = ao_radius / max(z, 1e-3f) * abs(float2(ao_projection[0].x, ao_projection[1].y)) * 0.5f * float2(size);
+  const float2 radius_texels = ao_radius / max(z, 9.999711e-4f) * abs(float2(ao_projection[0].x, ao_projection[1].y)) * 0.5f * float2(size);
   const float radius_pixels = min(radius_texels.x, radius_texels.y);
   if (!(depth < 1.f) || radius_pixels < 1.f) return 1.f;
   const float3 encoded = float3(ao_gbuffer1.Load(int3(pixel, 0)) * 3.5554f - 1.7777f, 1.f);
   const float g = 2.f / dot(encoded, encoded);
   float3 normal = float3(g * encoded.xy, g - 1.f);
-  if (!(dot(normal, normal) > 1e-6f)) return 1.f;
+  if (!(dot(normal, normal) > 1.0000476e-6f)) return 1.f;
   normal = normalize(normal);
   const float3 position = AoPosition(uv, depth);
   const float3 view = normalize(-position);
@@ -138,7 +138,7 @@ float AoVisibility(uint2 pixel) {
     }
     visibility += 1.f - countbits(occluded) / (float)BITMASK_SECTORS;
   }
-  return exp2(log2(max(visibility / slices, 1e-4f)) * ao_strength);
+  return exp2(log2(max(visibility / slices, 1.0000872e-4f)) * ao_strength);
 }
 
 float2 main(float4 v0 : SV_Position0, float2 v1 : TexCoord0) : SV_Target0 {

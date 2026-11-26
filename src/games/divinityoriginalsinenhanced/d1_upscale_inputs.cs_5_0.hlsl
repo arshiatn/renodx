@@ -34,7 +34,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float3 color = max(t_scene.Load(int3(id.xy, 0)).rgb, 0.f);
   u_color[id.xy] = float4((g_projection.w != 0.f) ? sqrt(color) : color, 1.f);
 
-  const float view_z = max(t_linear_depth.Load(int3(id.xy, 0)), 1e-6f) * g_projection.z;
+  const float view_z = max(t_linear_depth.Load(int3(id.xy, 0)), 9.998239e-7f) * g_projection.z;
   const float device_z = g_projection.x + g_projection.y / view_z;
   u_depth[id.xy] = saturate(device_z);
 

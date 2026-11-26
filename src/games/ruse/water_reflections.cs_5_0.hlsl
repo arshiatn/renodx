@@ -75,7 +75,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       float reach = 1.f;
       [unroll]
       for (int axis = 0; axis < 2; ++axis) {
-        if (travel[axis] > 1e-6f) reach = min(reach, (size[axis] - 0.5f - start_pixel[axis]) / travel[axis]);
+        if (travel[axis] > 9.999291e-7f) reach = min(reach, (size[axis] - 0.5f - start_pixel[axis]) / travel[axis]);
         if (travel[axis] < -1e-6f) reach = min(reach, (0.5f - start_pixel[axis]) / travel[axis]);
       }
       const float travel_pixels = length(travel) * reach;
@@ -114,7 +114,7 @@ void main(uint3 id : SV_DispatchThreadID) {
           const float2 hit_pixel = lerp(start_pixel, end_pixel, hit);
           const float3 hit_position = RelativePosition(floor(hit_pixel) + 0.5f, DepthAt(int2(hit_pixel)));
           const float4 previous = mul(relative_to_previous, float4(hit_position, 1.f));
-          const float2 uv = previous.xy / max(previous.w, 1e-9f) * float2(0.5f, -0.5f) + 0.5f;
+          const float2 uv = previous.xy / max(previous.w, 1.0002053e-9f) * float2(0.5f, -0.5f) + 0.5f;
           [branch]
           if (previous.w > 0.f && all(uv >= 0.f) && all(uv < 1.f)) {
             const float2 edge = min(uv, 1.f - uv) * 20.f;

@@ -1203,7 +1203,7 @@ inline void OnSceneDraw(reshade::api::command_list* cmd_list) {
     if (found != SUN_DIRECTION_SHADERS.end() && found->hash == pixel_shader) {
       const float* direction = bridge.pixel_registers.data() + (found->register_index * 4);
       const float length = std::sqrt((direction[0] * direction[0]) + (direction[1] * direction[1]) + (direction[2] * direction[2]));
-      if (length > 1e-6f) {
+      if (length > 9.998914e-7f) {
         state.toward_sun = {-direction[0] / length, -direction[1] / length, -direction[2] / length};
         state.sun_frame = bridge.frame;
       }

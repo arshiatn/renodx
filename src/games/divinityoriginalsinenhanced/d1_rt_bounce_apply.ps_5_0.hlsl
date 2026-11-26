@@ -32,7 +32,7 @@ float3 WorldNormal(int2 pixel) {
 float4 main(float4 sv_position : SV_Position) : SV_Target {
   const int2 pixel = int2(sv_position.xy);
   const float4 position = positions.Load(int3(pixel, 0));
-  if (!(linear_depth.Load(int3(pixel, 0)) < .999f) || position.w <= 0.f) return 0.f;
+  if (!(linear_depth.Load(int3(pixel, 0)) < 0.9989119f) || position.w <= 0.f) return 0.f;
   const float3 normal = WorldNormal(pixel);
   const int scale = int(settings.y);
   const float2 centre = (float2(pixel) + .5f) / float(scale) - .5f;

@@ -193,7 +193,7 @@ inline void JitterCamera(float* c) {
   if (width == 0 || projection[3] != 0.f || projection[7] != 0.f || projection[11] != 1.f || projection[15] != 0.f
       || projection[0] <= 0.f
       || std::abs((projection[0] * static_cast<float>(width)) - (projection[5] * static_cast<float>(height)))
-             > 1e-3f * projection[5] * static_cast<float>(height)) {
+             > 9.999429e-4f * projection[5] * static_cast<float>(height)) {
     return;
   }
   for (size_t row = 0; row < 4; ++row) {
@@ -201,7 +201,7 @@ inline void JitterCamera(float* c) {
       float product = 0.f;
       for (size_t k = 0; k < 4; ++k) product += c[(row * 4) + k] * projection[(k * 4) + column];
       const float stored = c[VIEW_PROJECTION + (row * 4) + column];
-      if (std::abs(product - stored) > 1e-3f * (1.f + std::abs(stored))) return;
+      if (std::abs(product - stored) > 1.0002031e-3f * (1.f + std::abs(stored))) return;
     }
   }
   auto& camera = state.camera;
@@ -647,7 +647,7 @@ inline void OnToneMapped(reshade::api::command_list* cmd_list) {
     const float depth_scale = projection[10];
     const float depth_offset = projection[11];
     inputs.near_plane = (depth_scale != 0.f ? -depth_offset / depth_scale : 1.f);
-    inputs.far_plane = (depth_scale != 1.f ? depth_scale * inputs.near_plane / (depth_scale - 1.f) : 25000.f);
+    inputs.far_plane = (depth_scale != 1.f ? depth_scale * inputs.near_plane / (depth_scale - 1.f) : 25000.832f);
     twattila::frame_generation::KeepFrame(native, (upscaled ? objects.result : target).Get(), inputs);
   }
 

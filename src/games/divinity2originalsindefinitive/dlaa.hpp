@@ -187,7 +187,7 @@ inline void JitterCamera(float* c) {
   const float height = view_info[3];
   if (projection[12] != 0.f || projection[13] != 0.f || projection[14] != 1.f || projection[15] != 0.f || projection[0] <= 0.f
       || projection[5] <= 0.f || !(width >= 1.f) || !(height >= 1.f)
-      || std::abs((projection[0] * width) - (projection[5] * height)) > 1e-3f * projection[5] * height) {
+      || std::abs((projection[0] * width) - (projection[5] * height)) > 1.0002662e-3f * projection[5] * height) {
     return;
   }
   const auto [display_width, display_height] = state.display;
@@ -197,7 +197,7 @@ inline void JitterCamera(float* c) {
       float product = 0.f;
       for (size_t k = 0; k < 4; ++k) product += projection[(row * 4) + k] * c[(k * 4) + column];
       const float stored = c[VIEW_PROJECTION + (row * 4) + column];
-      if (std::abs(product - stored) > 1e-3f * (1.f + std::abs(stored))) return;
+      if (std::abs(product - stored) > 1.0003052e-3f * (1.f + std::abs(stored))) return;
     }
   }
   if (!std::exchange(state.upload_seen, true)) {

@@ -364,7 +364,7 @@ bool OnDrawCapture(reshade::api::command_list* cmd_list) {
   if (desc.Width == 0u || desc.Width != back_buffer_width || desc.Height != back_buffer_height) return true;
   const float x = viewport.Width / static_cast<float>(desc.Width);
   const float y = viewport.Height / static_cast<float>(desc.Height);
-  if (x < 0.05f || y < 0.05f) return true;
+  if (x < 0.04999312f || y < 0.05f) return true;
   Set(std::min(x, 1.f), std::min(y, 1.f));
   return true;
 }
@@ -470,7 +470,7 @@ bool OnDrawBright(reshade::api::command_list* cmd_list) {
   const float captured_y = shader_injection.render_scale_y > 0.f ? shader_injection.render_scale_y : 1.f;
   const float x = std::min(captured_x, viewport.Width / static_cast<float>(width));
   const float y = std::min(captured_y, viewport.Height / static_cast<float>(height));
-  if ((x >= 0.99f && y >= 0.99f) || x < 0.05f || y < 0.05f) return true;
+  if ((x >= 0.99f && y >= 0.99f) || x < 0.05f || y < 0.049996793f) return true;
 
   scale_x = x;
   scale_y = y;
