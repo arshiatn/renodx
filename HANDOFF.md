@@ -992,6 +992,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | ?
 - fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
 - FIX WAVE 0 (no picture change, one commit a lane): X15, X25 (+ coord's memory li ... | ?
+- cbd_ CITATION BLOCKER DESIGN STARTED 01:2x (Opus xHigh, read-only; est 40 / dead ... | ?
 - FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
 - CRITIC QUESTIONS FOR ATN (01:1x): Q2 RR after the tone mapper (O-RR12): one line ... | ?
 - LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner ... | done
@@ -17535,6 +17536,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         B13 / B14 comments, O-CO15, O-CO7; LICENCES L1 release_zip.py ships no RTXDI licence (credits.hpp: 'Every license
         ships'), L3 = X28 Attila's Apache / SMAA / SSSR / MiniEngine files reach its zip only by carry-over (repack_game.py),
         L4 = X32 Divinity 1 / 2 credit no Bend (D2 also no GT-VBAO / Auto Thickness); X45 upstream report. Owner: wave 0
+        fx0_ STARTED 01:2x (Opus High, worktree, branch fx0_wave0; est 45 / deadline 90): wave 0 above; gates = helper +
+        add-on shader bytes identical, gated builds twattila amd64 / twrome2 x86 / D1 / D2, release scripts dry-run with
+        the licence files listed (*.bak_fx0 backups). Coord merges after review. Owner: fx0_
+        - [ ] cbd_ CITATION BLOCKER DESIGN STARTED 01:2x (Opus xHigh, read-only; est 40 / deadline 80) ->
+        plan_1117\designs\citation_blocker.md + shadow prototype in testbin\scratch\cbd_\ over the last ~30 commits;
+        scope / tag syntax (source, ours: why, deviation, guard class) / shadow -> strict / backfill by critic waves /
+        ATN's install lines (gates folder = ATN's). Owner: cbd_ -> ATN installs
         - [ ] FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are scored; pdi5 edits
         rt_reference.cs). WAVE 2 = review + merge r4 (X50 / X51). WAVE 3 PT estimator X01, X02, X05, X04 (+ Talbot), X06,
         then X08 (pdi5_step5 owns those sites: REBASE pdi5 onto the step 3 merge first). WAVE 4 X09 + X10, X18, X12, X14,
