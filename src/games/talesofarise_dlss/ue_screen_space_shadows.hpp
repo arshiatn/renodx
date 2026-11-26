@@ -51,6 +51,8 @@ struct Objects {
   ComPtr<ID3D11ComputeShader> depth;
   ComPtr<ID3D11ComputeShader> setup;
   ComPtr<ID3D11ComputeShader> bend;
+  // Below 100% render scale sss_bend_steps (as Attila's screen_space_shadows.hpp bend_steps).
+  ComPtr<ID3D11ComputeShader> bend_steps;
   ComPtr<ID3D11ComputeShader> blur;
   // sss.hlsli's sss_settings: the add-on's (render size 0, host_sss_setup's b3), the setup's with the render size (raw)
   // and its copy (sss_bend's and sss_blur's b2).
@@ -146,7 +148,8 @@ inline ID3D11ShaderResourceView* Compute(ID3D11DeviceContext* context, const Inp
     };
     objects.failed = !dlss::MakeContextState(device.Get(), &objects.private_state)
                      || !compute(__host_sss_depth, &objects.depth) || !compute(__host_sss_setup, &objects.setup)
-                     || !compute(__sss_bend, &objects.bend) || !compute(__sss_blur, &objects.blur)
+                     || !compute(__sss_bend, &objects.bend) || !compute(__sss_bend_steps, &objects.bend_steps)
+                     || !compute(__sss_blur, &objects.blur)
                      || FAILED(device->CreateBuffer(&settings_desc, nullptr, objects.base_settings.GetAddressOf()))
                      || FAILED(device->CreateBuffer(&settings_desc, nullptr, objects.settings.GetAddressOf()))
                      || FAILED(device->CreateBuffer(&written_desc, nullptr, objects.written_settings.GetAddressOf()))
@@ -179,16 +182,18 @@ inline ID3D11ShaderResourceView* Compute(ID3D11DeviceContext* context, const Inp
     objects.height = depth_desc.Height;
   }
 
-  // Below 100%: the shadows' length (in render pixels) x the render share, the same length on screen; Bend's depth
-  // tolerances over it (a render pixel holds more of the scene), as Attila's.
+  // Below 100% (O-SS5, as Attila's screen_space_shadows.hpp): sss_bend marches one sample a screen pixel between the
+  // render texels, so the samples are the row's in screen pixels and the surface thickness the row's (Bend's window is
+  // a share of the depth left, no pixel size in it); the bilinear threshold / share stays (it classifies neighbouring
+  // render texels).
   const float share = std::clamp(inputs.render_share, 0.01f, 1.f);
-  const float samples = std::max(std::round(settings.samples * share), settings.hard_samples + 4.f);
+  const float samples = std::max(std::round(settings.samples), settings.hard_samples + 4.f);
   const attila_sss::ShaderSettings shader_settings = {
       .width = static_cast<float>(objects.width),
       .height = static_cast<float>(objects.height),
       .inverse_width = 1.f / static_cast<float>(objects.width),
       .inverse_height = 1.f / static_cast<float>(objects.height),
-      .thickness = settings.thickness / share,
+      .thickness = settings.thickness,
       .samples = samples,
       .contrast = settings.contrast,
       .edge_threshold = settings.edge_threshold / share,
@@ -240,17 +245,19 @@ inline ID3D11ShaderResourceView* Compute(ID3D11DeviceContext* context, const Inp
   context1->CSSetShaderResources(0, 2, bend_inputs.data());
   context1->CSSetConstantBuffers(2, 1, objects.settings.GetAddressOf());
   context1->CSSetSamplers(0, 1, objects.border.GetAddressOf());
-  context1->CSSetShader(objects.bend.Get(), nullptr, 0);
+  context1->CSSetShader((share < 1.f ? objects.bend_steps : objects.bend).Get(), nullptr, 0);
   for (UINT index = 0; index < internal::DISPATCH_COUNT; ++index) {
     context1->CSSetConstantBuffers(3, 1, objects.dispatch_indexes[index].GetAddressOf());
     context1->DispatchIndirect(objects.arguments.Get(), index * 12);
   }
   if (!(settings.softness > 0.f)) return objects.occlusion_srv.Get();
 
-  // Softness: its output bound before the occlusion it reads.
+  // Softness: its output bound before the occlusion it reads; t3 the setup's parameters (X30: sss_blur's depth at
+  // infinity, the light coordinate's z).
   context1->CSSetUnorderedAccessViews(0, 1, objects.soft_uav.GetAddressOf(), nullptr);
-  const std::array<ID3D11ShaderResourceView*, 2> blur_inputs = {objects.depth_srv.Get(), objects.occlusion_srv.Get()};
-  context1->CSSetShaderResources(0, 2, blur_inputs.data());
+  const std::array<ID3D11ShaderResourceView*, 4> blur_inputs = {objects.depth_srv.Get(), objects.occlusion_srv.Get(), nullptr,
+                                                                objects.parameters_srv.Get()};
+  context1->CSSetShaderResources(0, 4, blur_inputs.data());
   context1->CSSetShader(objects.blur.Get(), nullptr, 0);
   context1->Dispatch(groups_x, groups_y, 1);
   return objects.soft_srv.Get();

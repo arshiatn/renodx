@@ -58,6 +58,7 @@ struct State {
   ComPtr<ID3D11ComputeShader> distance_plain;     // sss01's
   ComPtr<ID3D11ComputeShader> game_pass;          // the pass's own (or Light Through Foliage's), put back after it
   ComPtr<ID3D11Buffer> constants;
+  ComPtr<ID3D11Buffer> pass_constants;  // the pass's sss constants (b2 / b1) copied at it: sss_soft_mask's b1 (X30)
   ComPtr<ID3D11Texture2D> split;  // R8G8B8A8: the cascades (r), the Screen Edge share (b)
   ComPtr<ID3D11UnorderedAccessView> split_target;
   ComPtr<ID3D11ShaderResourceView> split_view;
@@ -104,6 +105,7 @@ inline void ReleaseObjects() {
   state.distance_plain.Reset();
   state.game_pass.Reset();
   state.constants.Reset();
+  state.pass_constants.Reset();
   state.split.Reset();
   state.split_target.Reset();
   state.split_view.Reset();
@@ -185,7 +187,8 @@ constexpr auto OnMaskSunDraw = []<typename Context>(Context& command) -> renodx:
                                                                              state.distance ? SSS_MOST_PENUMBRA_2160 * viewport.Height / 2160.f : 0.f}.data(), 0, 0);
       ID3D11ShaderResourceView* sources[] = {state.depth.Get(), state.bend_view.Get(), state.split_view.Get()};
       native->CSSetShader(state.shader.Get(), nullptr, 0);
-      native->CSSetConstantBuffers(0, 1, state.constants.GetAddressOf());
+      const std::array<ID3D11Buffer*, 2> constants = {state.constants.Get(), state.pass_constants.Get()};
+      native->CSSetConstantBuffers(0, 2, constants.data());
       native->CSSetShaderResources(0, 3, sources);
       native->CSSetUnorderedAccessViews(0, 1, state.mask.GetAddressOf(), nullptr);
       native->Dispatch((static_cast<UINT>(viewport.Width) + 7) / 8, (static_cast<UINT>(viewport.Height) + 7) / 8, 1);
@@ -451,6 +454,21 @@ inline void OnShadowPass(reshade::api::command_list* cmd_list, UINT depth_slot, 
   }
   if (!split && !thin) return;
   if (split) {
+    // X30: the pass's sss constants (shaders/sss.hlsli: b2 with the cascades, else b1), whose light coordinate's z (the
+    // depth at infinity) sss_soft_mask's same-surface test reads; copied, the game may write them again before it runs.
+    ComPtr<ID3D11Buffer> pass_constants;
+    native->CSGetConstantBuffers((depth_slot != 0) ? 2 : 1, 1, pass_constants.GetAddressOf());
+    D3D11_BUFFER_DESC pass_desc = {};
+    if (pass_constants) pass_constants->GetDesc(&pass_desc);
+    D3D11_BUFFER_DESC copy_desc = {};
+    if (state.pass_constants) state.pass_constants->GetDesc(&copy_desc);
+    if (pass_constants && copy_desc.ByteWidth != pass_desc.ByteWidth) {
+      state.pass_constants.Reset();
+      const D3D11_BUFFER_DESC desc = {.ByteWidth = pass_desc.ByteWidth, .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_CONSTANT_BUFFER};
+      if (FAILED(state.device->CreateBuffer(&desc, nullptr, state.pass_constants.GetAddressOf()))) state.pass_constants.Reset();
+    }
+    if (!pass_constants || !state.pass_constants) return;
+    native->CopyResource(state.pass_constants.Get(), pass_constants.Get());
     native->CSSetUnorderedAccessViews(1, 1, state.split_target.GetAddressOf(), nullptr);
   }
   if (thin) {

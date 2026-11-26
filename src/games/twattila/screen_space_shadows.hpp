@@ -161,6 +161,16 @@ struct ExtendedSettings {
 // The penumbra's most at 2160 render lines (Softer Away from the Caster; render pixels, by the render's height).
 constexpr float SOFT_RADIUS_2160 = 32.f;
 
+// Test only (test/tw_screen_space_shadows case 11's controls; the add-on keeps the defaults): which of Compute's
+// sss_bend settings below 100% render scale take the render share. With samples_by_share the test swaps in the sss_bend
+// before O-SS5 (one sample a render pixel); all three that and thickness_by_share: the form before O-SS5 (control C).
+struct ScaleControl {
+  bool samples_by_share = false;
+  bool thickness_by_share = false;
+  bool edge_threshold_by_share = true;
+};
+static ScaleControl scale_control;
+
 // A shadowed sun light shader with the screen-space shadow, its shadow x (1 - t49 at the pixel), rT = 1 - t49 from
 //   ftou rT.xy, vP.xyxx / mov rT.zw, l(0) / ld rT.x, rT.xyzw, t49.xyzw / mad rT.x, rT.x, l(-1), l(1)
 // first, with rT one more temp and t49 declared (texture2d, float):
@@ -681,6 +691,9 @@ struct DeviceObjects {
   ComPtr<ID3D11ComputeShader> depth_copy_ms;
   ComPtr<ID3D11ComputeShader> setup;
   ComPtr<ID3D11ComputeShader> bend;
+  // Below 100% render scale sss_bend_steps (O-SS5: one sample a screen pixel); 100% the plain sss_bend, Bend's loops
+  // (fx8_ G1: the steps' code cost +58% at 100%).
+  ComPtr<ID3D11ComputeShader> bend_steps;
   ComPtr<ID3D11ComputeShader> blur;
   ComPtr<ID3D11ComputeShader> debug;
   ComPtr<ID3D11Buffer> settings;
@@ -720,6 +733,8 @@ struct DeviceObjects {
   // and Coloured Shadows need found, both), Softer Away from the Caster (sss_soft), Light Through Banners' draws again
   // (sss_thin) and their constants (b4).
   std::array<ComPtr<ID3D11ComputeShader>, 4> bend_extended;
+  // Theirs below 100% render scale (the *_steps shaders, as bend_steps).
+  std::array<ComPtr<ID3D11ComputeShader>, 4> bend_extended_steps;
   ComPtr<ID3D11ComputeShader> soft;
   ComPtr<ID3D11PixelShader> thin_pixel_shader;
   ComPtr<ID3D11Buffer> extended_settings;
@@ -853,6 +868,10 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
                 && compute(__sss_blur, &objects.blur) && compute(__sss_debug, &objects.debug)
                 && compute(__sss_bend_extended, &objects.bend_extended[0]) && compute(__sss_bend_extended_auto, &objects.bend_extended[1])
                 && compute(__sss_bend_extended_find, &objects.bend_extended[2]) && compute(__sss_bend_extended_auto_find, &objects.bend_extended[3])
+                && compute(__sss_bend_steps, &objects.bend_steps) && compute(__sss_bend_extended_steps, &objects.bend_extended_steps[0])
+                && compute(__sss_bend_extended_auto_steps, &objects.bend_extended_steps[1])
+                && compute(__sss_bend_extended_find_steps, &objects.bend_extended_steps[2])
+                && compute(__sss_bend_extended_auto_find_steps, &objects.bend_extended_steps[3])
                 && compute(__sss_soft, &objects.soft)
                 && SUCCEEDED(device->CreatePixelShader(__sss_thin.data(), __sss_thin.size(), nullptr, objects.thin_pixel_shader.GetAddressOf()))
                 && SUCCEEDED(device->CreateBuffer(&settings_desc, nullptr, objects.settings.GetAddressOf()))
@@ -1061,23 +1080,27 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
     pass_dump::Resource(native, "sss.soft", objects.soft_srv.Get());
     pass_dump::Resource(native, "sss.lights_camera", objects.lights.camera.Get());
   }
-  // DLSS below 100%: the shadows' length (in pixels) x the render size's share, the same length on screen as at 100%;
-  // Bend's per-pixel depth tolerances over it (a render pixel holds more of the scene: the depth steps between neighbours
-  // and along the ray grow by 1 / share): its surface thickness, else thin occluders fall between the samples of every
-  // other line, and its bilinear threshold, else slopes read as edges and shadow themselves (ATN debug19 at Ultra
-  // Performance: combed fence shadows, striped hills).
+  // DLSS below 100% (O-SS5, plan_1117 designs\sss_scale_thickness.md): sss_bend marches one sample a screen pixel
+  // between the render texels (its ScreenStep, the render share), so the samples, hard and fade counts are the rows' in
+  // screen pixels, as at 100%: the same shadow length, 4-lane average and fade on screen. The surface thickness is the
+  // row's (ours, F1: Bend's window is a share of the depth left to the far plane, no pixel size in it; ATN 11-25:
+  // 0.005); its x 1 / share made occluders 1 / share deeper, and render-pixel samples combed thin occluders' shadows
+  // (ATN debug19 at Ultra Performance). The bilinear threshold / share stays (F10): it classifies neighbouring render
+  // texels, whose depth steps on a plane are 1 / share of 100%'s, else slopes read as edges and shadow themselves
+  // (debug19's striped hills).
   const auto render = frame_history::RenderSize(objects.width, objects.height);
   const float share = static_cast<float>(render[0]) / static_cast<float>(objects.width);
-  const float samples = std::max(std::round(runtime.settings.samples * share), runtime.settings.hard_samples + 4.f);
+  const float samples = std::max(std::round(runtime.settings.samples * (scale_control.samples_by_share ? share : 1.f)),
+                                 runtime.settings.hard_samples + 4.f);
   const ShaderSettings settings = {
       .width = static_cast<float>(objects.width),
       .height = static_cast<float>(objects.height),
       .inverse_width = 1.f / static_cast<float>(objects.width),
       .inverse_height = 1.f / static_cast<float>(objects.height),
-      .thickness = runtime.settings.thickness / share,
+      .thickness = runtime.settings.thickness / (scale_control.thickness_by_share ? share : 1.f),
       .samples = samples,
       .contrast = runtime.settings.contrast,
-      .edge_threshold = runtime.settings.edge_threshold / share,
+      .edge_threshold = runtime.settings.edge_threshold / (scale_control.edge_threshold_by_share ? share : 1.f),
       .hard_samples = runtime.settings.hard_samples,
       // Within the samples left after the hard ones (Bend reads past them otherwise).
       .fade_samples = std::min(runtime.settings.fade_samples, samples - runtime.settings.hard_samples),
@@ -1173,13 +1196,15 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
     const size_t variant = ExtendedVariant(runtime.settings.auto_thickness, soft || coloured);
     pass_dump::Value("sss.extended_variant", extended ? variant : SIZE_MAX);
     const pass_timing::OwnPass mark(native, extended ? EXTENDED_NAMES[variant] : "sss_bend", pass_timing::Stage::COMPUTE);
+    const bool steps = render[0] < objects.width;
     if (extended) {
-      ComputeState::Bind(native, objects.bend_extended[variant].Get(),
+      ComputeState::Bind(native, (steps ? objects.bend_extended_steps : objects.bend_extended)[variant].Get(),
                          {objects.depth_srv.Get(), objects.parameters_srv.Get(), thin ? objects.thin_srv.Get() : nullptr, coloured ? colour : nullptr},
                          {objects.occlusion_uav.Get(), soft ? objects.penumbra_uav.Get() : nullptr, coloured ? objects.tint_uav.Get() : nullptr},
                          {camera, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
     } else {
-      ComputeState::Bind(native, objects.bend.Get(), {objects.depth_srv.Get(), objects.parameters_srv.Get()}, {objects.occlusion_uav.Get()},
+      ComputeState::Bind(native, (steps ? objects.bend_steps : objects.bend).Get(), {objects.depth_srv.Get(), objects.parameters_srv.Get()},
+                         {objects.occlusion_uav.Get()},
                          {nullptr, nullptr, objects.settings.Get()});
     }
     native->CSSetSamplers(0, 1, objects.border.GetAddressOf());
@@ -1188,11 +1213,12 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
       native->DispatchIndirect(objects.arguments.Get(), index * 12);
     }
   }
-  // Softer Away from the Caster (sss_soft), else Softness (sss_blur).
+  // Softer Away from the Caster (sss_soft), else Softness (sss_blur); t3 sss_setup's parameters (X30: the depth at infinity).
   if (soft || runtime.settings.softness > 0.f) {
     const pass_timing::OwnPass mark(native, soft ? "sss_soft" : "sss_blur", pass_timing::Stage::COMPUTE);
     const ComPtr<ID3D11ComputeShader>& smooth = (soft ? objects.soft : objects.blur);
-    ComputeState::Bind(native, smooth.Get(), {objects.depth_srv.Get(), objects.occlusion_srv.Get(), soft ? objects.penumbra_srv.Get() : nullptr},
+    ComputeState::Bind(native, smooth.Get(),
+                       {objects.depth_srv.Get(), objects.occlusion_srv.Get(), soft ? objects.penumbra_srv.Get() : nullptr, objects.parameters_srv.Get()},
                        {objects.soft_uav.Get()}, {nullptr, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
     native->Dispatch((objects.width + 7) / 8, (objects.height + 7) / 8, 1);
     runtime.soft_frame = runtime.frame;
