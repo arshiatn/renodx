@@ -920,6 +920,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - d11g_ DONE 12:3x (9 min; testbin\scratch\d11g_\report.md): ROOT CAUSE of start 3 ... | ?
 - FIX WAVES 11-26 (wvp_ DONE 12:2x, 24 min: plan_1117\fidelity\wave_plan_1126.md = ... | ?
 - ATN 11-26 ~13:0x: (1) paste 1126b ADDED (allow 91: fx1_run.ps1 wildcard + WebFet ... | ?
+- r4k_ 4K AUDIT DONE 12:10 (19 min; round_notes\tests_4k_audit_1126.md): 21 GPU te ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17151,6 +17152,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         PsychoV35, after the game's t00, on a near-linear feed (t00^1.1); hrr_'s -22 % does not apply in game; the row
         would move RR onto the lit scene before t00. d11 START 4 running 12:08 (restaged add-on 0ab54c8d = atn-mods
         620049332; live script = g1, .bak_g1). Owner: coord / ATN (run_4k line)
+        - [ ] r4k_ 4K AUDIT DONE 12:10 (19 min; round_notes\tests_4k_audit_1126.md): 21 GPU test paths run below 4K, all but
+        one from the RT harness default (rt_harness\tw_rt_harness.cpp:61-68 = 640x360 unless -DHARNESS_4K); HARNESS_UPSCALER
+        1280x720 out / 640x360 in (:246). Already 4K: the lab (6418 runs), recordings, Nsight traces, lsp_, the 5 protected
+        game runners. Below-4K LOOK verdicts to redo: hrr_'s RR A/B + sweep, the reference suite (E4 gates), the quality
+        scorer ('RR 310.9 boil'), pdi4c_'s 11-26 DI checks. FIXES: 1 4K default in tw_rt_harness.cpp + rebuild
+        build\tw_rt_harness; 2 pdi1_harness_src:54-55 4K + new references; 3 h0 all_modes_check / h0_gpu_runs /
+        release_check on the 4K exe + new baselines; 4 hrr_ at 4K; 5 pdi4c_ runs.ps1 / verify.ps1 on the 4K exe. First a
+        5-mode 4K pilot for wall time. DISK: dumps grow 36x (C: 490 GB free) -> ATN decides how long 4K reference dumps
+        are kept (never deleted without his yes). Owner: tools agent (after sdku_) / ATN (dump retention)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
