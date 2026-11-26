@@ -3609,6 +3609,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 11-26 02:1x 'Delete it then.' -> coord checked it (71 items, 339 MB, 0 links: runtime DLL copies, the
         profile exe + shader headers) and DELETED build\nsr_profile_1; R1 RERUN STARTED 02:1x (ATN's rule line, exact).
         R2 -> R4 run in the GPU window right after pdi5_ GPU done (the original order, ~15 min), then pdi4c_. Owner: coord
+        R1 DONE 02:2x exit 0: build/nsr_profile_1 = 67 profile headers + profile_manifest.txt (RTXDI b67f61cd found).
+        GPU lock now: pdi5_ lab session (since 02:03, lab_pdi5_fx_rec). Owner: coord
         - [ ] Start nv-aftermath-monitor.exe before the sweep + its dump folder in the crash tools' search paths. Owner: coord
         - [ ] P1: rt_di_flags + rt_diffuse_roughness as lab fields. Owner: gpr_ (NSR3)
         - [ ] ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); keep stdin open (F1 EOF
