@@ -16839,6 +16839,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         natural GPU gap or before the next wave, never pausing agents; maybe tomorrow if the waves run fast. Before
         it: d11v_ GO + fixes, the 5090 replay self test, commit < 32 GB, fresh backups. Owner: coord
         ATN 11-25 ~21:1x PASTED the 4 d11_capture64.ps1 rule lines (settings.local.json: 4 hits, JSON valid).
+        11-26 06:1x: d11c_ STARTED the d11 capture day1 (Opus High runner; standing go; STARTS: 1 = d11_capture64.ps1
+        -Replay day1.replay after its -DryRun; sea1 / stress_test_log2 NOT run, census reported only). Prereqs: 5090 replay
+        self test PASS (03:5x), GPU free (bal3_ done 06:05, bal3r_ read-only), D: >= 230 GB, commit < 32 GB; the script
+        takes both locks + fresh backups + hash-checked restore. Est 50 / deadline 100. Owner: d11c_ -> coord
         - [x] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
         auto_thickness, so the _auto Bend variants are dead in game (shared TW code). ATN 11-25 ~21:0x: 'SSS auto
         thickness should never be used. It is shit. Thickness should always stay at the current default' -> NOT a
