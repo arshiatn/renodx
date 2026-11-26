@@ -1004,6 +1004,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / ... | ?
 - X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coor ... | ?
 - LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\s ... | ?
+- pd5c_ STEP 5 RE-CHECK STARTED 03:0x (Opus xHigh, read-only, scratch pd5c_\; est ... | ?
+- G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
+- ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
+- wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
+- pdi5_ WORKTREE .claude\worktrees\agent-a04c344af00661e33 + the stale branches pd ... | ?
 - LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a c ... | ?
 - R4 REPLAY TRACE (sass_counters): the tooling slot finds ngfx's option for the at ... | ?
 - LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner ... | done
@@ -17713,6 +17718,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         dumps added). Rebased onto 288413a13 = NEW branch pdi5_step5_rb (not a force-push): DXIL = the old diff (14
         listings), h0i 72 / 72, gated amd64 + x86 twattila exit 0; rebases onto today's atn-mods after GPU done.
         Owner: pdi5_
+        pdi5_ HAND-BACK 03:0x (handbacks\pdi5_handback.md '## Fix round 11-25 night', report_check 0): branch
+        pdi5_step5_rb2 = eb7438206 on atn-mods 120b85ecf (10 commits; origin/pdi5_step5 f370cd3bd untouched; merge-tree
+        with atn-mods clean). M1: all_modes f370cd3bd vs e52ec9e28 = 92 outputs move, all bounce / reflections (= the
+        StoreReservoir listings), census clean, every baseline pass still passes; 17 plays floor 0, only reservoir chunks +
+        readers move; rec_scan NaN / Inf 0 x3. S2 G4 warm (64 frames dropped): day reuse -0.06 / total -0.09 ms
+        [G-1126-6, -13], night -0.03 / -0.04 [G-1126-21, -24] (the old -0.11 / -0.17 were the cold start); reflections
+        compact vs 32 B = 1.00000, 0 % texels > 5 %; G4 E4 at head = off or nearer (c49 0.98451 vs 0.98450, c36913
+        0.99677 vs 0.99675, night40 0.99599 vs 0.99598). G5 (6 texels) E4 nearer than Near every row (day c83922993
+        0.99751 vs 0.99748, c83886129 0.99009 vs 0.98953, night3 0.99836 vs 0.99832, night40 0.99871 vs 0.99863),
+        control fails as it must (0.96846 BIAS); cost day +0.11 / night +0.13 ms total [G-1126-16, -27]. F16 typed fact:
+        R16_FLOAT / R16G16B16A16_FLOAT UAV stores round toward zero on the 5090 (DXBC + DXIL; 27 210 values; test
+        testbin\scratch\pdi5_\f16store\). Rebase gates: DXIL = the same 14 listings, h0i 72 / 72, gated twattila amd64
+        + x86 exit 0 (191 steps), helper builds, re-check plays equal + NaN / Inf 0. G4 stays 0 in code, G5 opt-in.
+        Owner: done
+        - [ ] pd5c_ STEP 5 RE-CHECK STARTED 03:0x (Opus xHigh, read-only, scratch pd5c_\; est 20 / deadline 40): range-diff
+        vs f370cd3bd + the rt_d3d12.hpp include resolution, S1 / S3 / S4 / S5 vs pd5r_ (F32ToF16Nearest math in python),
+        step 3 x step 5 reservoir interaction + the SHaRC move, evidence, G4-default question -> verdict; then coord
+        merges pdi5_step5_rb2 (gated amd64 + x86 + helper). Owner: pd5c_ -> coord
+        - [ ] G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 same or nearer, reflections
+        1.00000 -> the 'faster + same picture = on' rule (pd5r_: after S2 rows, S3, S1, new baselines) -> a flip commit
+        + all_modes / rec_scan with G4 = 1 as the new baseline in the next GPU window (pd5c_ says what else). Owner: coord
+        (after the merge)
+        - [ ] ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 baseline -> move it to the M1 run
+        (f370cd3bd vs e52ec9e28) once step 5 merges. Owner: gate tooling slot
+        - [ ] wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 of 1 M SHaRC keys / 6
+        radiance words move; a repeat play matches itself -> step 3's code, not noise (pd5c_ checks the claim). Owner:
+        pdi3_ follow-up
+        - [ ] pdi5_ WORKTREE .claude\worktrees\agent-a04c344af00661e33 + the stale branches pdi5_step5 / pdi5_step5_rb
+        (after the merge): delete on ATN's yes. Owner: ATN
         - [ ] LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a calibrate per job -> keep
         the calibration across a batch's ab jobs (or one session per batch); (2) the timing-total refusal (decide must be
         ['total'] only) -> say so in the job schema error; (3) the dump kind runs every arm on build A -> a per-arm
