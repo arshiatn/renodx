@@ -806,12 +806,13 @@ class RtScene12 {
     if (!compatible_made) {
       reuse_compatible_pipeline_.Reset();
       reuse_compatible_balanced_pipeline_.Reset();
-    } else if (!(dxr12_ ? pipeline(RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED_OMM, sizeof(RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED_OMM),
-                                   &reuse_compatible_balanced_raytraced_pipeline_)
-                        : pipeline(RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED, sizeof(RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED),
-                                   &reuse_compatible_balanced_raytraced_pipeline_))) {
+    } else {
       // Its Balanced ReSTIR Light Raytraced twin (none: Raytraced runs the Basic one there).
-      reuse_compatible_balanced_raytraced_pipeline_.Reset();
+      const std::span<const unsigned char> code = (dxr12_ ? std::span<const unsigned char>(RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED_OMM)
+                                                          : std::span<const unsigned char>(RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED));
+      if (!pipeline(code.data(), code.size(), &reuse_compatible_balanced_raytraced_pipeline_)) {
+        reuse_compatible_balanced_raytraced_pipeline_.Reset();
+      }
     }
 #endif
     // Balanced ReSTIR Light's twins, Basic's and Raytraced's, each set all or none (none: the row does nothing, or its
@@ -4137,7 +4138,6 @@ class RtScene12 {
         constexpr bool regir = false;
         constexpr bool torch_traced = false;
 #endif
-        const bool balanced_raytraced = balanced && (requested & dlaa_bridge::RT_PATH_REUSE_BALANCED_RAYTRACED) != 0 && reuse_balanced_raytraced_pipelines_[0];
         PathConstants constants = {
             .bounce_width = render_pixels ? width : shared.rt_bounce_width,
             .bounce_height = render_pixels ? height : shared.rt_bounce_height,
@@ -4392,6 +4392,7 @@ class RtScene12 {
           // that swap rt_reuse keep bit 28 clear.
           uint32_t balanced_mode = 0;  // the one that runs: 0 none, 1 Basic, 2 Raytraced
           if (balanced) {
+            const bool balanced_raytraced = (requested & dlaa_bridge::RT_PATH_REUSE_BALANCED_RAYTRACED) != 0 && reuse_balanced_raytraced_pipelines_[0];
             const std::array<BalancedTwin, 4> twins = BalancedTwins();
             const auto twin = std::ranges::find_if(twins, [&](const BalancedTwin& each) { return (this->*each.plain).Get() == reuse_state; });
             if (twin != twins.end()) {
@@ -4401,7 +4402,8 @@ class RtScene12 {
             }
             if (compatible && reuse_state == reuse_compatible_pipeline_.Get()) {
               const bool compatible_raytraced = balanced_raytraced && reuse_compatible_balanced_raytraced_pipeline_;
-              reuse_state = (compatible_raytraced ? reuse_compatible_balanced_raytraced_pipeline_ : reuse_compatible_balanced_pipeline_).Get();
+              const ComPtr<ID3D12PipelineState>& compatible_twin = (compatible_raytraced ? reuse_compatible_balanced_raytraced_pipeline_ : reuse_compatible_balanced_pipeline_);
+              reuse_state = compatible_twin.Get();
               balanced_mode = compatible_raytraced ? 2u : 1u;
             }
           }
