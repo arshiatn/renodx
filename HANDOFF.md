@@ -984,7 +984,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa7_ BUG-7 NVAPI Reflex Off = no Sleep and no markers (reflex.hpp:79 / 98); NVID ... | ?
 - fa7_ BUG-8 UE infinite-far depth gets far = 1e5 every frame via the fallback (up ... | ?
 - fa7_ UNKNOWNs: U1 ATN'S WORD: Attila's DLSS default preset L at every scale vs N ... | ?
-- fa8_ B1 ATN'S WORD: SDR DISPLAY + RENDERING MODE SDR, 8 games (Attila, Thrones, ... | ?
+- fa8_ B1 GPU + EYE: tw_attila64_present (F7, GPU window) with an SDR-output Rende ... | ?
+- STRAY TEST BUILD: a tw_psychov35 run without -OutDir (coord's bash quoting) buil ... | ?
 - fa8_ B2 ToneMapperHdr 'Y > 0 ? n / Y : 1': luminance <= 0 passes unexposed (stoc ... | ?
 - fa8_ B3 Divinity 2 proxy scRGB branch lacks BT.2020 -> BT.709 (unreachable: Outp ... | ?
 - fa8_ B4 upstream colorcorrect GammaSafe float4 overload calls Gamma (not sign-sa ... | ?
@@ -17477,11 +17478,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         constants (aces-dev v1.3, tools\refcode\aces_dev_1126) SAME. RenoDRT / SwapChainPass / lut::Sample / ACES ODT in
         none of our 16 games; UE Extended (Tales, Expeditions) uses the RRT front half (UE smoothstep^2 hue weight within
         1 % of aces-dev) + UE film curve term by term. No game sends HDR10 metadata (= upstream). 16 guards classified.
-        - [ ] fa8_ B1 ATN'S WORD: SDR DISPLAY + RENDERING MODE SDR, 8 games (Attila, Thrones, Rome II, WH, WH2, WH3, Troy,
+        - [x] fa8_ B1 ATN'S WORD: SDR DISPLAY + RENDERING MODE SDR, 8 games (Attila, Thrones, Rome II, WH, WH2, WH3, Troy,
         Pharaoh): frame_gamma.hlsli TW_FRAME_GAMMA flips, so Gamma Correction on (every preset writes it, SDR preset too)
         shows stock as x^2.0 = lighter darks than the game on a 2.2 display; the 11-01 rejected look, and the opposite of
         the tooltip ('deeper shadows, in every Rendering Mode'). Fix A: drop the flip; fix B: tooltip + Gamma Correction 0
         in the SDR preset. Owner: ATN picks -> TW HDR owner
+        FIXED cccc66497 (ATN 11-26 01:0x 'Yes, fix A'): TW_FRAME_GAMMA = Gamma Correction ? 2.2 : 2.0 (no SDR-display swap;
+        twattila/frame_gamma.hlsli, shared by all 8); the 8 proxies' comments; test models tw_psychov35 FrameGamma + 7a and
+        tw_attila64_present Proxy follow. tw_psychov35 x86 + amd64 PASS (7a every game worst <= 1.7e-6, SDR displays now
+        swap vs 242d6101 like HDR displays; 7b within Peak); gated builds twattila amd64 + twwarhammer3 amd64 (61) +
+        twrome2 x86 (62 = before) exit 0. Effect: SDR monitor + Rendering Mode SDR + on (every preset) = the game's own
+        picture (2.2 look); off = gamma 2.0. Owner: done
+        - [ ] fa8_ B1 GPU + EYE: tw_attila64_present (F7, GPU window) with an SDR-output Rendering Mode SDR Gamma
+        Correction on case: screen = stock^2.2 within 1 code; control cccc66497^ must give stock^2.0. ATN's eye on an SDR
+        output once (Windows HDR off). Release notes line 'Fixed: Gamma Correction on SDR monitors darkens as promised'
+        in the 8 games' next releases. Owner: GPU queue (after pdi4c_) / ATN / release owner
+        - [ ] STRAY TEST BUILD: a tw_psychov35 run without -OutDir (coord's bash quoting) built and ran psychov35.exe in
+        D:\Dev\renodx\build\tw_psychov35_test_x86\ (outside testbin; nothing blocked it). The good runs are in
+        testbin\scratch\sdrfix_\. Delete that folder only on ATN's yes. Owner: ATN
         - [ ] fa8_ B2 ToneMapperHdr 'Y > 0 ? n / Y : 1': luminance <= 0 passes unexposed (stock t00 -> black); use the
         stock ': n'. Latent. Owner: TW HDR owner
         - [ ] fa8_ B3 Divinity 2 proxy scRGB branch lacks BT.2020 -> BT.709 (unreachable: Output offers HDR10 only).
