@@ -17638,7 +17638,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (needed since 3989d8a89; backup .bak_coord1126). Owner: done
         - [ ] gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_run's helper E0D3C4484ACD is not the
         merged code; 62 outputs differ for that reason only); m2c_bits_r11 (+ _matte) stay .bin (hand-run c1 / c5 / r13);
-        scratch gts_\head_build2 (4 junctions in JUNCTIONS.txt: links first) + v13 (302 MB) = delete on ATN's yes. Owner: coord
+        scratch gts_\head_build2 + v13: DELETED 11-26 on ATN's yes (its 4 junction links removed alone first, no other links
+        left, main checkout's bin / include / external / build\downloads checked intact). Owner: coord (verify base build)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
