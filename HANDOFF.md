@@ -938,6 +938,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - pdi4c_ M2 TRACED AT 4K (r6): DI-interior E vs the bits (6.84 M px, band 2) r6 0. ... | ?
 - rrbi_ DONE (72 min of 90; branch rrbi_ c45733245, merged locally 6fc08a593, push ... | ?
 - W8 STARTED 15:1x (fx8_, Opus High, est 130): D1's A' (SSS at one screen pixel pe ... | ?
+- h4k_ DONE ON THE CPU, GPU PARTS NOT RUN (14:26; hand-back handoff_plan\handbacks ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17373,6 +17374,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] W8 STARTED 15:1x (fx8_, Opus High, est 130): D1's A' (SSS at one screen pixel per sample, every render scale,
         thickness 0.005) + X30 with all its hosts bound (Rome R contact_shadows.hpp, Shogun 2 screen_space_shadows.hpp; Tales
         as a patch for LAST); rows B / C / Bend offset kept. Agents running: pdi4c_, h4k_, fx8_ (cap 3). Owner: fx8_
+        - [ ] h4k_ DONE ON THE CPU, GPU PARTS NOT RUN (14:26; hand-back handoff_plan\handbacks\h4k__handback.md): 4K is the
+        harness default (pdi1 exe FC462599C453, 640 exes kept; h0 + release_check use the 4K exe; pilot 5 modes PASS).
+        all_modes_check.ps1 has -NewBaseline (writes run1\m6_baseline.tsv via h0_rng_check.py m6baseline) + -LockWaitS;
+        CPU self-checks PASS, dry run 89 min. NEXT (coord, when run_4k ends): all_modes_check.ps1 -NewBaseline -Rev
+        ce1f83655 -LockWaitS 14400 (~89 min GPU, <= 69 GB on C:), then set $Baseline + $HarnessHashes (FC462599C453) at
+        all_modes_check.ps1:37-42, then pdi4c_'s -Rev r6. 4K reference set: testbin\scratch\h4k_\ref_set.ps1 (118 replicate
+        + 6 quality jobs, ~275 GB on D:, stops before D: < 230 GB; sets RENODX_REF_CACHE for ref_cache.py) = NEEDS ATN'S
+        RULE LINE (new script). Open: hrr_'s other 103 runs at 4K (h4k_\hrr4k); pdi4c_'s runs / verify / build.ps1 -> 4K exe.
+        run_4k: noise.py:29 FileNotFoundError ({prefix}_frames.txt) in groups 5 + 6 -> sent to pdi4c_. Owner: coord / pdi4c_ / ATN
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
