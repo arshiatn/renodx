@@ -56,8 +56,19 @@ RWTexture2D<float4> nrd_reflection : register(u50);        // out (PATH_NRD, the
 // writes the bounce). Two sets, this frame's at PATH_REUSE_PARITY. As kajiya's ReSTIR GI (Embark Studios, MIT / Apache
 // 2.0; compared, not copied): W clamped against fireflies, last frame's reservoir only on a surface facing the same way,
 // and every third frame its sample re-checked (still in view, its light now): changed light shortens the history.
-RWTexture2D<float4> reuse_samples[2] : register(u23);  // the surface's position, W (its unbiased contribution weight)
-RWTexture2D<uint4> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal, the texel's (octahedral)
+#include "./rt_reuse_bits.h"  // RT_RESERVOIR_COMPACT; reuse_tests' bits (RENODX_TW_REUSE_*, rt_d3d12.hpp)
+// RT_RESERVOIR_COMPACT (G4): the position's bits, f16 sqrt(W) (W past f16's 65504 kept) | M; the light RGB9E5, its
+// normal | the texel's (8 + 8 octahedral, SNORM). A non-finite light or W is stored empty (W 0, M 0), never as a bright
+// or huge sample. rec_scan finds such values in a play of the 32-byte layout, where they reach the bounce.
+#if RT_RESERVOIR_COMPACT
+typedef uint4 ReservoirPoint;
+typedef uint2 ReservoirData;
+#else
+typedef float4 ReservoirPoint;
+typedef uint4 ReservoirData;
+#endif
+RWTexture2D<ReservoirPoint> reuse_samples[2] : register(u23);  // the surface's position, W (its unbiased contribution weight)
+RWTexture2D<ReservoirData> reuse_data[2] : register(u25);      // its light (f16 r | g, b | M), its normal, the texel's (octahedral)
 // This frame's surface of each bounce texel as PathTraceTexel found it (TexelSurface's), for ReuseTexel: its rays' origin
 // (w: its depth; 0: the sky) and its normal. Found again there for itself and five neighbours (StartPast's ray, the
 // normal's and planarity's fetches each), they cost more than the reuse's own work (Nsight at 4K: 2.5 -> 1.5 ms).
@@ -68,8 +79,8 @@ RWTexture2D<float4> surface_origin : register(u58);
 RWTexture2D<float4> surface_normal : register(u59);
 // Own ReSTIR (Reflection Reuse): the reflections' own reservoirs at half the render pixels (ReflectReservoirTexel), laid
 // out as ReSTIR GI's; two sets, this frame's at PATH_REFLECT_PARITY.
-RWTexture2D<float4> reflect_samples[2] : register(u36);
-RWTexture2D<uint4> reflect_data[2] : register(u38);
+RWTexture2D<ReservoirPoint> reflect_samples[2] : register(u36);
+RWTexture2D<ReservoirData> reflect_data[2] : register(u38);
 // Path-Traced Ambient's own sky (helpers 107 on): the sky a bounce texel's paths brought (rgb, w 1; 0: none), two sets, the
 // paths' at PATH_SKY_PARITY, the other's the last paths' (PATH_SKY_HISTORY: valid at these texels).
 RWTexture2D<float4> own_sky[2] : register(u54);
@@ -111,7 +122,6 @@ static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this many times one ray's (kajiya's RESTIR_RESERVOIR_W_CLAMP; the bounce's: W x cos / pi)
 static const uint REUSE_VALIDATION_PERIOD = 3u;
-#include "./rt_reuse_bits.h"  // reuse_tests' bits (RENODX_TW_REUSE_*, rt_d3d12.hpp)
 // The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set). Balanced ReSTIR Light (RT_PATH_REUSE_BALANCED): G1 Basic in the reuse's own builds
 // (REUSE_BALANCED: rt_reuse*_balanced, the host's choice with the row), Validate's kept light read in the paths (the host
@@ -130,6 +140,13 @@ static const uint REUSE_VALIDATION_PERIOD = 3u;
 // scored better, its pass about half the cost).
 static const uint REUSE_NEIGHBOURS = 3u;
 static const float REUSE_RADIUS = 6.f;        // bounce texels
+#elif defined(REUSE_COMPATIBLE)
+// Matched ReSTIR Neighbours (PT DI step 5's G5, only its rt_reuse_compatible builds): three neighbours picked among
+// COMPATIBLE_CANDIDATES within Near Reuse's reach by how well their surfaces match (ReuseTexel; 12 texels darkened the
+// edges and boxes more than Near, E4 p5_g5c / p5_g5r6).
+static const uint REUSE_NEIGHBOURS = 3u;
+static const float REUSE_RADIUS = 6.f;        // bounce texels
+static const uint COMPATIBLE_CANDIDATES = 8u;
 #else
 static const uint REUSE_NEIGHBOURS = 5u;
 static const float REUSE_RADIUS = 12.f;       // bounce texels
@@ -890,6 +907,41 @@ bool Merge(inout Reservoir reservoir, Reservoir other, float weight, float rando
   return false;
 }
 
+// G2, pairwise MIS (Bitterli 2022, thesis 9.1, Eq. 9.10 and Alg. 8; RTXDI's RTXDI_StreamNeighborWithPairwiseMIS read as
+// the formula's reference, not copied): `neighbour` merged with the balance heuristic between its technique and the
+// canonical one (the receiver's own reservoir), each counted M_i x `neighbours` (the neighbours streamed) and M_c
+// (`canonical_count`). The targets, in the receiver's domain: `targets` x = p_i(y_i), the neighbour's sample at its own
+// receiver; y = p_c(T(y_i)) |J|, at this one (0 where the shift is cut); z = p_i(T^-1(y_c)) |J^-1|, the canonical sample
+// at the neighbour (0 likewise); w = p_c(y_c). Both shifts' Jacobians that ShiftCut keeps, a cut one's target 0
+// (y and z alike, so the two techniques' weights stay a partition of unity). Adds the canonical sample's share against
+// this neighbour (1 - its weight) to `canonical_share`; PairwiseFinish then merges the canonical sample and takes W. The
+// one form of the ReSTIR streams' pairwise MIS (ReuseTexel; unified U3 / U5a call it). True: `neighbour`'s sample taken.
+bool PairwiseMerge(inout Reservoir reservoir, inout float canonical_share, Reservoir neighbour, float4 targets, float neighbours,
+                   float canonical_count, float random) {
+  const float neighbour_count = neighbour.count * neighbours;
+  const float neighbour_sum = neighbour_count * targets.x + canonical_count * targets.y;
+  const float canonical_sum = neighbour_count * targets.z + canonical_count * targets.w;
+  canonical_share += (canonical_sum > 0.f) ? canonical_count * targets.w / canonical_sum : 1.f;
+  const float weight = (neighbour_sum > 0.f) ? targets.y * neighbour.weight * neighbour_count * targets.x / neighbour_sum : 0.f;
+  return Merge(reservoir, neighbour, weight, random);
+}
+
+// G2's last step after PairwiseMerge's (RTXDI's StreamCanonicalWithPairwiseStep and FinalizeResampling): the canonical
+// sample merged with W x p_c(y_c) (`canonical_target`) x its share (1 with no neighbour streamed), then W = the sum over
+// (the kept sample's target at this receiver x the techniques streamed).
+void PairwiseFinish(inout Reservoir combined, Reservoir canonical, float canonical_target, float canonical_share, uint streamed,
+                    float random, float3 receiver, float3 receiver_normal) {
+  Merge(combined, canonical, canonical_target * canonical.weight * ((streamed > 0u) ? canonical_share : 1.f), random);
+  const float target = ReuseTarget(receiver, receiver_normal, combined);
+  combined.weight = (target > 0.f) ? combined.weight / (target * (float)max(streamed, 1u)) : 0.f;
+}
+
+// A shift the spatial merges drop: its Jacobian outside 0.1-10 with `cut`, else outside the finite positive ones (G2's
+// two shifts; ReuseTexel's plain merge writes the same rule inline, where a call reorders the Lean build's DXIL).
+bool ShiftCut(float jacobian, bool cut) {
+  return !(jacobian > 0.1f && jacobian < 10.f) && (cut || !(jacobian > 0.f && jacobian < 1e30f));
+}
+
 // W = the weights' sum over M times `target` (the sample kept's at the receiver; 0: nothing to show).
 void Finish(inout Reservoir reservoir, float target) {
   reservoir.weight = (reservoir.count > 0.f && target > 0.f) ? reservoir.weight / (reservoir.count * target) : 0.f;
@@ -901,13 +953,65 @@ void ClampWeight(inout Reservoir reservoir, float3 origin, float3 normal) {
   reservoir.weight = min(reservoir.weight, REUSE_W_CLAMP * 3.14159265f / max(dot(normal, normalize(reservoir.hit - origin)), 1e-3f));
 }
 
+#if RT_RESERVOIR_COMPACT
+// G4's 16-bit octahedral normal: 8 + 8 SNORM (q - 128) / 127, the axes exact; codes 1-255 a component, so 0 is never a
+// normal's: none.
+uint PackNormal16(float3 normal) {
+  if (!(dot(normal, normal) > 0.f)) return 0u;
+  normal /= abs(normal.x) + abs(normal.y) + abs(normal.z);
+  const float2 folded = (normal.z >= 0.f) ? normal.xy : (1.f - abs(normal.yx)) * select(normal.xy >= 0.f, 1.f, -1.f);
+  const uint2 quantized = uint2(round(clamp(folded, -1.f, 1.f) * 127.f) + 128.f);
+  return quantized.x | (quantized.y << 8);
+}
+float3 UnpackNormal16(uint packed) {
+  if (packed == 0u) return 0.f;
+  float3 normal = float3((float2(packed & 255u, (packed >> 8) & 255u) - 128.f) / 127.f, 0.f);
+  normal.z = 1.f - abs(normal.x) - abs(normal.y);
+  normal.xy += select(normal.xy >= 0.f, -saturate(-normal.z), saturate(-normal.z));
+  return normalize(normal);
+}
+// G4's sqrt(W) half, to nearest (its square keeps W up to 4.29e9).
+uint PackWeight(float weight) {
+  return F32ToF16Nearest(sqrt(min(weight, 4.29e9f)));
+}
+// G4's light: RGB9E5 (DXGI_FORMAT_R9G9B9E5_SHAREDEXP's layout, its rounding), 0 to 65408.
+uint PackRgb9e5(float3 light) {
+  light = clamp(light, 0.f, 65408.f);
+  const float largest = max(light.r, max(light.g, light.b));
+  int exponent = max(-16, (int)floor(log2(max(largest, 1e-30f)))) + 16;
+  float scale = exp2((float)(exponent - 24));
+  if ((uint)round(largest / scale) == 512u) {
+    scale *= 2.f;
+    ++exponent;
+  }
+  const uint3 mantissa = min((uint3)round(light / scale), 511u);
+  return mantissa.r | (mantissa.g << 9) | (mantissa.b << 18) | ((uint)exponent << 27);
+}
+#endif
+
 // The texel's own normal its reservoir was made for (0: none).
-float3 LoadReceiverNormal(RWTexture2D<uint4> data, uint2 texel) {
+float3 LoadReceiverNormal(RWTexture2D<ReservoirData> data, uint2 texel) {
+#if RT_RESERVOIR_COMPACT
+  return UnpackNormal16(data[texel].y >> 16);
+#else
   const uint packed = data[texel].w;
   return (packed != 0u) ? OctahedralDecode(packed) : 0.f;
+#endif
 }
 
-Reservoir LoadReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 texel) {
+Reservoir LoadReservoir(RWTexture2D<ReservoirPoint> samples, RWTexture2D<ReservoirData> data, uint2 texel) {
+#if RT_RESERVOIR_COMPACT
+  const uint4 sample_point = samples[texel];
+  const uint2 packed = data[texel];
+  Reservoir reservoir;
+  reservoir.hit = asfloat(sample_point.xyz);
+  reservoir.weight = f16tof32(sample_point.w) * f16tof32(sample_point.w);
+  reservoir.count = (float)(sample_point.w >> 16);
+  reservoir.light = float3(packed.x & 511u, (packed.x >> 9) & 511u, (packed.x >> 18) & 511u)  // RGB9E5
+                    * exp2((float)(packed.x >> 27) - 24.f);
+  reservoir.hit_normal = UnpackNormal16(packed.y & 0xFFFFu);
+  return reservoir;
+#else
   const float4 sample_point = samples[texel];
   const uint4 packed = data[texel];
   Reservoir reservoir;
@@ -917,16 +1021,26 @@ Reservoir LoadReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, ui
   reservoir.count = (float)(packed.y >> 16);
   reservoir.hit_normal = (packed.z != 0u) ? OctahedralDecode(packed.z) : 0.f;
   return reservoir;
+#endif
 }
 
 // The normals packed never 0, the loads' "none": OctahedralEncode gives 0 for +z itself (ReSTIR GI took a hit facing +z
 // for a sky sample and dropped a receiver's history facing +z each frame); 1 is +z with x 1 / 32767.
-void StoreReservoir(RWTexture2D<float4> samples, RWTexture2D<uint4> data, uint2 texel, Reservoir reservoir, float3 receiver_normal) {
+void StoreReservoir(RWTexture2D<ReservoirPoint> samples, RWTexture2D<ReservoirData> data, uint2 texel, Reservoir reservoir,
+                    float3 receiver_normal) {
+#if RT_RESERVOIR_COMPACT
+  // A non-finite light or W: stored empty (the layout's comment).
+  const bool finite = all(isfinite(reservoir.light)) && isfinite(reservoir.weight);
+  const uint weight_count = PackWeight(reservoir.weight) | (min((uint)reservoir.count, 65535u) << 16);
+  samples[texel] = uint4(asuint(reservoir.hit), finite ? weight_count : 0u);
+  data[texel] = uint2(PackRgb9e5(reservoir.light), PackNormal16(reservoir.hit_normal) | (PackNormal16(receiver_normal) << 16));
+#else
   samples[texel] = float4(reservoir.hit, reservoir.weight);
-  data[texel] = uint4(f32tof16(reservoir.light.r) | (f32tof16(reservoir.light.g) << 16),
-                      f32tof16(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
+  data[texel] = uint4(F32ToF16Nearest(reservoir.light.r) | (F32ToF16Nearest(reservoir.light.g) << 16),
+                      F32ToF16Nearest(reservoir.light.b) | (min((uint)reservoir.count, 65535u) << 16),
                       (dot(reservoir.hit_normal, reservoir.hit_normal) > 0.f) ? max(OctahedralEncode(reservoir.hit_normal), 1u) : 0u,
                       (dot(receiver_normal, receiver_normal) > 0.f) ? max(OctahedralEncode(receiver_normal), 1u) : 0u);
+#endif
 }
 
 // Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
@@ -1215,12 +1329,20 @@ void BoilTexel(uint2 id, uint2 local) {
   if (inside) reservoir = LoadReservoir(reuse_samples[set], reuse_data[set], id);
   if ((reuse_tests & REUSE_TEST_BOIL_PLANT) != 0u && all(id == uint2(bounce_width, bounce_height) / 2u)) {
     reservoir.weight *= 100.f;
+#if RT_RESERVOIR_COMPACT
+    reuse_samples[set][id] = uint4(asuint(reservoir.hit), PackWeight(reservoir.weight) | (reuse_samples[set][id].w & 0xFFFF0000u));
+#else
     reuse_samples[set][id] = float4(reservoir.hit, reservoir.weight);
+#endif
   }
   const bool drop = RTXDI_BoilingFilterInternal(local, BOIL_STRENGTH, Luminance(reservoir.light) * reservoir.weight);
   if (!inside || !drop || (reuse_tests & REUSE_TEST_BOIL) == 0u) return;
+#if RT_RESERVOIR_COMPACT
+  reuse_samples[set][id] = uint4(asuint(reservoir.hit), 0u);  // W 0, M 0
+#else
   reuse_samples[set][id] = float4(reservoir.hit, 0.f);
   reuse_data[set][id] = reuse_data[set][id] & uint4(~0u, 0xFFFFu, ~0u, ~0u);  // M 0
+#endif
 }
 #endif
 
@@ -1308,11 +1430,40 @@ void RtxdiPackTexel(uint2 id) {
 }
 #endif
 
-// ReuseTexel's neighbour `neighbour` of texel `id`: a texel within REUSE_RADIUS (it may fall off the texels or on `id`).
+#if defined(REUSE_COMPATIBLE)
+// Matched ReSTIR Neighbours (G5, junkins2026's compatibility-guided neighbours): NVIDIA's RTXDI-Library 3.2 score
+// RTXDI_PTNeighborCompatibilityScore (NVIDIA RTX SDKs License; build.ps1 compiles its header from the copy in
+// build\downloads\rtxdi: not part of this file; the helper's notices, credits.hpp, carry NVIDIA's sentence) in our own
+// selection (ReuseTexel: its pass's 32 candidates within 50 pixels are fixed in its header). The header's selection pass
+// is compiled though never called: our surface read is its RAB_GetNeighborSelectionSurface, and its buffer a name no
+// entry point uses (dxc drops it).
+RWByteAddressBuffer rtxdi_neighbour_selection_unused;
+#define RTXDI_SPATIAL_NEIGHBOR_SELECTION_BUFFER rtxdi_neighbour_selection_unused
+// A bounce texel's surface as PathTraceTexel found it (u58 / u59): its normal, rays' origin and depth (false: the sky).
+bool RAB_GetNeighborSelectionSurface(int2 texel, out float3 normal, out float3 position, out float depth) {
+  const float4 surface = surface_origin[uint2(texel)];
+  normal = surface_normal[uint2(texel)].xyz;
+  position = surface.xyz;
+  depth = surface.w;
+  return depth > 0.f;
+}
+#include "Rtxdi/PT/SpatialNeighborSelection.hlsli"
+#endif
+
+// ReuseTexel's neighbour `neighbour` of texel `id`: a texel within REUSE_RADIUS (it may fall off the texels or on `id`);
+// in the REUSE_COMPATIBLE builds the one Matched ReSTIR Neighbours picked (ReuseTexel's compatible_picks).
+#if defined(REUSE_COMPATIBLE)
+static uint3 compatible_picks;  // the texels picked, x | y << 16 (~0: none, off the texels)
+#endif
 int2 ReuseNeighbourTexel(uint2 id, uint neighbour) {
+#if defined(REUSE_COMPATIBLE)
+  const uint pick = (neighbour == 0u) ? compatible_picks.x : ((neighbour == 1u) ? compatible_picks.y : compatible_picks.z);
+  return (pick == ~0u) ? int2(-1, -1) : int2(pick & 0xFFFFu, pick >> 16);
+#else
   const float angle = 6.2831853f * Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u));
   const float radius = REUSE_RADIUS * sqrt(Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + neighbour * 2u + 1u)));
   return int2(id) + int2(round(float2(cos(angle), sin(angle)) * radius));
+#endif
 }
 
 // ReSTIR GI's spatial reuse: a texel's reservoir merged with neighbours' on the same surface (their samples' density
@@ -1354,12 +1505,49 @@ void ReuseTexel(uint2 id) {
 #else
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
   const Reservoir own = LoadReservoir(reuse_samples[set], reuse_data[set], id);
+  // G2 (pairwise MIS): the texel's own reservoir merged last, its share known once every neighbour was streamed.
+  const bool pairwise = (REUSE_SUSPECTS & REUSE_BIAS_PAIRWISE) != 0u;
   Reservoir combined = (Reservoir)0;
-  Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * own.count, Random(uint4(id, frame, DIM_REUSE_OWN)));
+  if (!pairwise) Merge(combined, own, ReuseTarget(origin, normal, own) * own.weight * own.count, Random(uint4(id, frame, DIM_REUSE_OWN)));
   const uint neighbours = ((reuse_tests & REUSE_TEST_NO_SPATIAL) != 0u) ? 0u : REUSE_NEIGHBOURS;
   const bool jacobian_cut = (REUSE_SUSPECTS & REUSE_TEST_NO_JACOBIAN_CUT) == 0u;
   uint merged = 0u;   // the neighbours merged (bits), for the bias correction's second walk
   uint chosen = ~0u;  // the one whose sample was kept (~0: the texel's own)
+  float canonical_share = 0.f;  // G2: the own sample's shares against the neighbours streamed
+  uint streamed = 0u;           // G2: the neighbours streamed
+  const float own_target = pairwise ? ReuseTarget(origin, normal, own) : 0.f;  // G2: p_c(y_c)
+#if defined(REUSE_COMPATIBLE)
+  // G5: COMPATIBLE_CANDIDATES texels within the reach, each scored by RTXDI's compatibility (normals alike, near in the
+  // world for the depth), REUSE_NEIGHBOURS weighted reservoirs over them (each takes a candidate with its score over the
+  // scores so far), stopping once as many scored 0.5 or more (as RTXDI's selection); a texel picked twice merges once.
+  // Their numbers in DIM_REUSE_NEIGHBOUR's from 64 (the candidates' angle, radius) and 128 (the reservoirs').
+  compatible_picks = ~0u;
+  float score_sum = 0.f;
+  uint good = 0u;
+  [loop]
+  for (uint candidate = 0u; candidate < COMPATIBLE_CANDIDATES && good < REUSE_NEIGHBOURS && neighbours != 0u; ++candidate) {
+    const float angle = 6.2831853f * Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + 64u + candidate * 2u));
+    const float radius = REUSE_RADIUS * sqrt(Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + 64u + candidate * 2u + 1u)));
+    const int2 texel = int2(id) + int2(round(float2(cos(angle), sin(angle)) * radius));
+    if (any(texel < 0) || texel.x >= (int)bounce_width || texel.y >= (int)bounce_height || all(texel == int2(id))) continue;
+    float3 candidate_normal;
+    float3 candidate_origin;
+    float candidate_depth;
+    if (!RAB_GetNeighborSelectionSurface(texel, candidate_normal, candidate_origin, candidate_depth)) continue;
+    // The merge's own surface test first: every pick can then be merged, and "good" counts usable neighbours.
+    if (abs(candidate_depth - position.w) > 0.1f * position.w || dot(candidate_normal, normal) < 0.9f) continue;
+    const float score = RTXDI_PTNeighborCompatibilityScore(normal, origin, position.w, candidate_normal, candidate_origin);
+    if (!(score > 0.f)) continue;
+    if (score >= 0.5f) ++good;
+    score_sum += score;
+    const float3 taken = float3(Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + 128u + candidate * 3u)),
+                                Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + 128u + candidate * 3u + 1u)),
+                                Random(uint4(id, frame, DIM_REUSE_NEIGHBOUR + 128u + candidate * 3u + 2u)));
+    compatible_picks = select(taken * score_sum < score, uint(texel.x) | (uint(texel.y) << 16), compatible_picks);
+  }
+  if (compatible_picks.y == compatible_picks.x) compatible_picks.y = ~0u;
+  if (compatible_picks.z == compatible_picks.x || compatible_picks.z == compatible_picks.y) compatible_picks.z = ~0u;
+#endif
   [loop]
   for (uint neighbour = 0u; neighbour < neighbours; ++neighbour) {
     const int2 texel = ReuseNeighbourTexel(id, neighbour);
@@ -1381,20 +1569,46 @@ void ReuseTexel(uint2 id) {
     Reservoir other = LoadReservoir(reuse_samples[set], reuse_data[set], uint2(texel));
     if (other.count <= 0.f) continue;
     const float jacobian = ReuseJacobian(other, other_origin, origin);
-    if (!(jacobian > 0.1f && jacobian < 10.f) && (jacobian_cut || !(jacobian > 0.f && jacobian < 1e30f))) continue;
+    // G2 streams a neighbour whose shift is cut too: its sample adds nothing, but the own sample's share counts it.
+    if (!pairwise && !(jacobian > 0.1f && jacobian < 10.f) && (jacobian_cut || !(jacobian > 0.f && jacobian < 1e30f))) continue;
     // The target moves `other`'s light to this receiver's ContactShade before the merge, which keeps that light (the random
     // number first: the order the merge's arguments had before, so the compiled shader stays the same).
     const float random = Random(uint4(id, frame, DIM_REUSE_MERGE + neighbour));
+    float4 pair_targets = 0.f;
+    if (pairwise) {
+#if defined(REUSE_LEAN)
+      const float3 other_normal = LoadReceiverNormal(reuse_data[set], uint2(texel));
+#else
+      const float3 other_normal = surface_normal[uint2(texel)].xyz;
+#endif
+      // p_i(y_i) before the move; the own sample moved to that receiver (as the merge moves a sample here), 0 where cut.
+      pair_targets.x = ReuseTarget(other_origin, other_normal, other);
+      Reservoir own_there = own;
+      const float own_jacobian = ReuseJacobian(own, origin, other_origin);
+      if (!ShiftCut(own_jacobian, jacobian_cut)) {
+        pair_targets.z = ReuseTarget(other_origin, other_normal, origin, own_there) * own_jacobian;
+      }
+      pair_targets.w = own_target;
+    }
     float target = ReuseTarget(origin, normal, other_origin, other);
     if ((REUSE_SUSPECTS & REUSE_TEST_NEIGHBOUR_VISIBILITY) != 0u && target > 0.f) {
       const float3 to_other = other.hit - origin;
       if (Occluded(origin, normalize(to_other), length(to_other) * 0.99f, NO_GRASS_SMOKE)) target = 0.f;
     }
     merged |= 1u << neighbour;
-    if (Merge(combined, other, target * other.weight * other.count * jacobian, random)) chosen = neighbour;
+    if (pairwise) {
+      if (!ShiftCut(jacobian, jacobian_cut)) pair_targets.y = target * jacobian;
+      ++streamed;
+      PairwiseMerge(combined, canonical_share, other, pair_targets, (float)neighbours, own.count, random);
+    } else if (Merge(combined, other, target * other.weight * other.count * jacobian, random)) {
+      chosen = neighbour;
+    }
   }
-  const float target = ReuseTarget(origin, normal, combined);
-  if ((REUSE_SUSPECTS & (REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED)) == 0u || !(target > 0.f)) {
+  const float target = pairwise ? 0.f : ReuseTarget(origin, normal, combined);
+  if (pairwise) {
+    PairwiseFinish(combined, own, own_target, canonical_share, streamed, Random(uint4(id, frame, DIM_REUSE_OWN + 1u)),
+                   origin, normal);
+  } else if ((REUSE_SUSPECTS & (REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED)) == 0u || !(target > 0.f)) {
     Finish(combined, target);
   } else {
     // G1 (RTXDI's GI bias correction, our Jacobian rule): W = the weights' sum x p_chosen / (target x the sum of M_k p_k),

@@ -140,6 +140,15 @@
 #endif
 #define RENODX_REGIR 1
 #endif
+// Matched ReSTIR Neighbours (RT_RESTIR_COMPATIBLE, RENODX_TW_REUSE_COMPATIBLE): the reuse's REUSE_COMPATIBLE builds (RTXDI's
+// neighbour compatibility score) and their Balanced ReSTIR Light twin.
+#if __has_include("rt_reuse_compatible.h")
+#include "rt_reuse_compatible.h"
+#include "rt_reuse_compatible_balanced.h"
+#include "rt_reuse_compatible_balanced_omm.h"
+#include "rt_reuse_compatible_omm.h"
+#define RENODX_REUSE_COMPATIBLE 1
+#endif
 // RENODX_TW_PATH_PROBE (tests only: build.ps1 compiles these with RENODX_TW_PATH_PROBE_BUILD set): rt_path.hlsli ProbeTexel.
 #if __has_include("rt_path_probe.h")
 #include "rt_path_probe.h"
@@ -768,6 +777,27 @@ class RtScene12 {
                  : pipeline(RT_REUSE_NEAR, sizeof(RT_REUSE_NEAR), &reuse_near_pipeline_))) {
       reuse_near_pipeline_.Reset();
     }
+#if defined(RENODX_REUSE_COMPATIBLE)
+    // Matched ReSTIR Neighbours' build and its Balanced ReSTIR Light twin, both or neither (none: the switch does nothing).
+    bool compatible_made = false;
+    if (dxr12_) {
+      compatible_made = pipeline(RT_REUSE_COMPATIBLE_OMM, sizeof(RT_REUSE_COMPATIBLE_OMM), &reuse_compatible_pipeline_);
+      if (compatible_made) {
+        compatible_made = pipeline(RT_REUSE_COMPATIBLE_BALANCED_OMM, sizeof(RT_REUSE_COMPATIBLE_BALANCED_OMM),
+                                   &reuse_compatible_balanced_pipeline_);
+      }
+    } else {
+      compatible_made = pipeline(RT_REUSE_COMPATIBLE, sizeof(RT_REUSE_COMPATIBLE), &reuse_compatible_pipeline_);
+      if (compatible_made) {
+        compatible_made = pipeline(RT_REUSE_COMPATIBLE_BALANCED, sizeof(RT_REUSE_COMPATIBLE_BALANCED),
+                                   &reuse_compatible_balanced_pipeline_);
+      }
+    }
+    if (!compatible_made) {
+      reuse_compatible_pipeline_.Reset();
+      reuse_compatible_balanced_pipeline_.Reset();
+    }
+#endif
     // Balanced ReSTIR Light's twins, all or none (none: the row does nothing, the ready line says so).
     const std::array<BalancedTwin, 4> twins = BalancedTwins();
     bool balanced_made = true;
@@ -1949,6 +1979,12 @@ class RtScene12 {
     for (const RecordedResource& resource : RecordedResources()) {
       const auto found = resources.find(resource.name);
       if (found == resources.end() || !*resource.member || list == nullptr) continue;
+      // A ReSTIR history recorded in the other reservoir layout (RT_RESERVOIR_COMPACT): left out, its sets empty (M 0).
+      if ((resource.history == HISTORY_REUSE || resource.history == HISTORY_REFLECT) && found->second.size() >= sizeof(recording::TextureHeader)) {
+        recording::TextureHeader recorded = {};
+        std::memcpy(&recorded, found->second.data(), sizeof(recorded));
+        if (recorded.format != static_cast<uint32_t>((*resource.member)->GetDesc().Format)) continue;
+      }
       if (!UploadRecorded(list, resource.name, resource.member->Get(), resource.state, found->second, &uploads, why)) break;
       batch_bytes += found->second.size();
       if (batch_bytes > (512ull << 20) && !flush()) break;
@@ -2585,11 +2621,13 @@ class RtScene12 {
     }
     const std::unique_ptr<dlaa_bridge::Shared> block = PlaybackBlock(request, frame_offset);
     edit(block.get());
+    // An edited newer field lifted the block's version (rt_serve.h's SHARED_FIELDS): read as that version.
+    const uint32_t version = std::max(playback_.version, block->version);
     if (request.header.request == 1) {
       before_trace();
-      Trace(*block, playback_.version, std::span<const uint8_t>(request.data).subspan(request.block_bytes));
+      Trace(*block, version, std::span<const uint8_t>(request.data).subspan(request.block_bytes));
     } else {
-      Paths(*block, playback_.version, request.header.request == 3);
+      Paths(*block, version, request.header.request == 3);
     }
     if (Lost()) {
       *report = std::format("the device was lost at {}", request.path.filename().string());
@@ -3983,7 +4021,7 @@ class RtScene12 {
         // RENODX_TW_REUSE_NO_SPATIAL / _NO_VALIDATE / _NO_SKY / _NO_CONTACT / _SEEN_LIGHTS_FRAME (tests, read once): ReSTIR GI's
         // parts left out (the last two the raw paths' too); _SPATIAL_CLAMP / _SKY_DIRECTION / _NO_JACOBIAN_CUT / _HISTORY_PLAIN /
         // _NEIGHBOUR_VISIBILITY / _JACOBIAN_SATURATE its bias suspects (PT DI step 2's G0); RENODX_TW_REUSE_BIAS=1 / 2 the spatial
-        // merge's bias correction, Basic / Raytraced (G1); _BOIL the boiling filter's pass, _BOIL_PLANT its test texel;
+        // merge's bias correction, Basic / Raytraced (G1), 3 its pairwise MIS (step 5's G2); _BOIL the boiling filter's pass, _BOIL_PLANT its test texel;
         // _RTXDI (the reference build) RTXDI's spatial resampling in the reuse's place, its bias correction RENODX_TW_REUSE_BIAS's;
         // _VALIDATE_* Validate's parts and _NO_HISTORY_CLAMP the history's ClampWeight (part C's bisection) (rt_path.hlsli).
         // The suspects', G1's and Validate's switches (REUSE_SUSPECT_BITS) run only in the reference build's REUSE_TESTS
@@ -4017,12 +4055,18 @@ class RtScene12 {
           }
           std::array<wchar_t, 8> bias = {};
           if (GetEnvironmentVariableW(L"RENODX_TW_REUSE_BIAS", bias.data(), static_cast<DWORD>(bias.size())) != 0) {
-            const auto mode = std::wcstoul(bias.data(), nullptr, 10);
-            if (mode == 1) {
-              tests |= REUSE_BIAS_BASIC;
-            }
-            if (mode >= 2) {
-              tests |= REUSE_BIAS_RAYTRACED;
+            switch (std::wcstoul(bias.data(), nullptr, 10)) {
+              case 1:
+                tests |= REUSE_BIAS_BASIC;
+                break;
+              case 2:
+                tests |= REUSE_BIAS_RAYTRACED;
+                break;
+              case 3:
+                tests |= REUSE_BIAS_PAIRWISE;
+                break;
+              default:
+                break;
             }
           }
           return tests;
@@ -4292,7 +4336,11 @@ class RtScene12 {
           Mark(list, L"reuse");
           // Lean ReSTIR Reuse (RT_PATH_REUSE_LEAN, or RENODX_TW_REUSE_LEAN for the harness): the neighbours with fewer
           // fetches; Near ReSTIR Reuse (RT_PATH_REUSE_NEAR, RENODX_TW_REUSE_NEAR), before it: fewer, nearer ones
-          // (rt_path.hlsli ReuseTexel).
+          // (rt_path.hlsli ReuseTexel); Matched ReSTIR Neighbours (RT_RESTIR_COMPATIBLE, RENODX_TW_REUSE_COMPATIBLE), before
+          // both: three of eight near neighbours picked by how well their surfaces match.
+          const bool compatible = reuse_compatible_pipeline_
+                                  && ((version >= 32 && (shared.rt_restir_flags & dlaa_bridge::RT_RESTIR_COMPATIBLE) != 0)
+                                      || GetEnvironmentVariableW(L"RENODX_TW_REUSE_COMPATIBLE", nullptr, 0) != 0);
           const bool lean = reuse_lean_pipeline_
                             && ((version >= 31 && (requested & dlaa_bridge::RT_PATH_REUSE_LEAN) != 0)
                                 || GetEnvironmentVariableW(L"RENODX_TW_REUSE_LEAN", nullptr, 0) != 0);
@@ -4306,6 +4354,8 @@ class RtScene12 {
             reuse_state = reuse_rtxdi_pipeline_.Get();
           } else if (reuse_suspects) {
             reuse_state = reuse_tests_pipeline_.Get();
+          } else if (compatible) {
+            reuse_state = reuse_compatible_pipeline_.Get();
           } else if (nearer) {
             reuse_state = reuse_near_pipeline_.Get();
           } else if (lean) {
@@ -4318,6 +4368,9 @@ class RtScene12 {
             const auto twin = std::ranges::find_if(twins, [&](const BalancedTwin& each) { return (this->*each.plain).Get() == reuse_state; });
             if (twin != twins.end()) {
               reuse_state = reuse_balanced_pipelines_[twin - twins.begin()].Get();
+            }
+            if (compatible && reuse_state == reuse_compatible_pipeline_.Get()) {
+              reuse_state = reuse_compatible_balanced_pipeline_.Get();
             }
           }
           list->SetPipelineState(reuse_state);
@@ -4777,7 +4830,8 @@ class RtScene12 {
                                                  | REUSE_TEST_NEIGHBOUR_VISIBILITY | REUSE_TEST_JACOBIAN_SATURATE | REUSE_BIAS_BASIC | REUSE_BIAS_RAYTRACED
                                                  | REUSE_TEST_VALIDATE_NO_DROP | REUSE_TEST_VALIDATE_KEEP_LIGHT | REUSE_TEST_VALIDATE_NO_CUTS
                                                  | REUSE_TEST_VALIDATE_RESCALE | REUSE_TEST_VALIDATE_NO_INVALIDITY
-                                                 | REUSE_TEST_VALIDATE_KEEP_CHROMA | REUSE_TEST_NO_HISTORY_CLAMP | REUSE_TEST_VALIDATE_NO_CACHE;
+                                                 | REUSE_TEST_VALIDATE_KEEP_CHROMA | REUSE_TEST_NO_HISTORY_CLAMP | REUSE_TEST_VALIDATE_NO_CACHE
+                                                 | REUSE_BIAS_PAIRWISE;
   static constexpr UINT RTXDI_RESERVOIR_BYTES = 32;  // RTXDI_PackedGIReservoir
   static constexpr UINT RTXDI_OFFSET_COUNT = 1024;   // rt_path.hlsli RTXDI_NEIGHBOUR_OFFSETS
   static constexpr uint32_t LIGHTS_IN_PATHS = 128;  // rt_camera.hlsli (PathConstants::lights_in_bounce)
@@ -6189,15 +6243,15 @@ class RtScene12 {
         // surface_origin, surface_normal: this frame's only; ~265 MB at 4K).
         if (reuse_samples_[0]) return true;
         for (UINT set = 0; set < 2; ++set) {
-          if (!Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reuse_samples_[set]) || !Texture(DXGI_FORMAT_R32G32B32A32_UINT, &reuse_data_[set])
+          if (!Texture(RESERVOIR_POINTS, &reuse_samples_[set]) || !Texture(RESERVOIR_DATA, &reuse_data_[set])
               || !Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reuse_surface_[set])) {
             reuse_samples_ = {};
             reuse_data_ = {};
             reuse_surface_ = {};
             return false;
           }
-          Written(reuse_samples_[set].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, REUSE_SAMPLES + set);
-          Written(reuse_data_[set].Get(), DXGI_FORMAT_R32G32B32A32_UINT, REUSE_DATA + set);
+          Written(reuse_samples_[set].Get(), RESERVOIR_POINTS, REUSE_SAMPLES + set);
+          Written(reuse_data_[set].Get(), RESERVOIR_DATA, REUSE_DATA + set);
         }
         Written(reuse_surface_[0].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, SURFACE_ORIGIN);
         Written(reuse_surface_[1].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, SURFACE_NORMAL);
@@ -6231,14 +6285,14 @@ class RtScene12 {
         // Own ReSTIR's two sets (half the render pixels: ~130 MB at 4K).
         if (reflect_samples_[0]) return true;
         for (UINT set = 0; set < 2; ++set) {
-          if (!Texture(DXGI_FORMAT_R32G32B32A32_FLOAT, &reflect_samples_[set], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 2)
-              || !Texture(DXGI_FORMAT_R32G32B32A32_UINT, &reflect_data_[set], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 2)) {
+          if (!Texture(RESERVOIR_POINTS, &reflect_samples_[set], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 2)
+              || !Texture(RESERVOIR_DATA, &reflect_data_[set], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, 2)) {
             reflect_samples_ = {};
             reflect_data_ = {};
             return false;
           }
-          Written(reflect_samples_[set].Get(), DXGI_FORMAT_R32G32B32A32_FLOAT, REFLECT_SAMPLES + set);
-          Written(reflect_data_[set].Get(), DXGI_FORMAT_R32G32B32A32_UINT, REFLECT_DATA + set);
+          Written(reflect_samples_[set].Get(), RESERVOIR_POINTS, REFLECT_SAMPLES + set);
+          Written(reflect_data_[set].Get(), RESERVOIR_DATA, REFLECT_DATA + set);
         }
         reflect_frame_ = UINT32_MAX;
         return true;
@@ -10658,6 +10712,8 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> reuse_pipeline_;  // ReSTIR GI's spatial reuse
   ComPtr<ID3D12PipelineState> reuse_lean_pipeline_;  // its Lean Reuse build (REUSE_LEAN)
   ComPtr<ID3D12PipelineState> reuse_near_pipeline_;  // its Near Reuse build (REUSE_NEAR)
+  ComPtr<ID3D12PipelineState> reuse_compatible_pipeline_;           // its Matched ReSTIR Neighbours build (REUSE_COMPATIBLE; RTXDI builds)
+  ComPtr<ID3D12PipelineState> reuse_compatible_balanced_pipeline_;  // that build's Balanced ReSTIR Light twin
   // Balanced ReSTIR Light's twins (REUSE_BALANCED: G1 Basic) of the usual reuse builds: each plain build and its twin's
   // code (DXR 1.1, DXR 1.2), in reuse_balanced_pipelines_'s order.
   struct BalancedTwin {
@@ -10691,6 +10747,9 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> reuse_rtxdi_pipeline_;       // its reuse (REUSE_RTXDI)
   ComPtr<ID3D12Resource> rtxdi_reservoirs_;  // its reservoirs (RTXDI_GI_RESERVOIRS)
   ComPtr<ID3D12Resource> rtxdi_offsets_;     // its neighbour offsets (RTXDI_OFFSETS)
+  // ReSTIR GI's and Own ReSTIR's reservoir formats (rt_path.hlsli ReservoirPoint / ReservoirData; G4: RT_RESERVOIR_COMPACT).
+  static constexpr DXGI_FORMAT RESERVOIR_POINTS = (RT_RESERVOIR_COMPACT ? DXGI_FORMAT_R32G32B32A32_UINT : DXGI_FORMAT_R32G32B32A32_FLOAT);
+  static constexpr DXGI_FORMAT RESERVOIR_DATA = (RT_RESERVOIR_COMPACT ? DXGI_FORMAT_R32G32_UINT : DXGI_FORMAT_R32G32B32A32_UINT);
   std::array<ComPtr<ID3D12Resource>, 2> reuse_samples_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_surface_;  // the bounce texels' rays' origins and normals (SURFACE_ORIGIN, SURFACE_NORMAL)

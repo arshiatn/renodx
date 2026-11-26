@@ -49,7 +49,7 @@ constexpr uint8_t RT_LIGHT_LINEAR = 1;  // 1 - d / r
 // listed torches of each pixel that reaches more than four; their mask words 0, the addon adds the helper's light at the
 // point lights' draw.
 constexpr uint32_t RT_DI_LIGHTS = 1;
-// Shared::rt_restir_flags (v32, a Light Bounce request's; no helper reads them yet): ReSTIR GI's neighbours by
+// Shared::rt_restir_flags (v32, a Light Bounce request's; helpers read RT_RESTIR_COMPATIBLE alone): ReSTIR GI's neighbours by
 // compatibility, Ray Reconstruction's decorrelation.
 constexpr uint32_t RT_RESTIR_COMPATIBLE = 1;
 constexpr uint32_t RT_RESTIR_DECORRELATE = 2;

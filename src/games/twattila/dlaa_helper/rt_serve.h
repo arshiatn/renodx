@@ -397,29 +397,39 @@ inline void ApplyLights(const LightFrame& frame, dlaa_bridge::Shared* block) {
   }
 }
 
-// config's fields: the numeric Shared fields a lab arm may set (rt_light_count: a cap on the recorded count). A name may end
-// in "@trace", "@bounce" or "@reflections": that request kind's alone.
+// config's fields: the numeric Shared fields a lab arm may set (rt_light_count: a cap on the recorded count; rt_path_flags:
+// over path_flags, e.g. one kind's). A name may end in "@trace", "@bounce" or "@reflections": that request kind's alone.
+// `version`: the block version that added it (an edit lifts an older recording's block to it, so the helper reads it; 0:
+// older than any recording).
 using SharedMember = std::variant<uint32_t dlaa_bridge::Shared::*, float dlaa_bridge::Shared::*>;
-inline constexpr std::array<std::pair<std::string_view, SharedMember>, 15> SHARED_FIELDS = {{
-    {"rt_shadow_rays", &dlaa_bridge::Shared::rt_shadow_rays},
-    {"rt_sun_softness", &dlaa_bridge::Shared::rt_sun_softness},
-    {"rt_light_size", &dlaa_bridge::Shared::rt_light_size},
-    {"rt_ambient_range", &dlaa_bridge::Shared::rt_ambient_range},
-    {"rt_ambient_rays", &dlaa_bridge::Shared::rt_ambient_rays},
-    {"rt_grass_shadow_range", &dlaa_bridge::Shared::rt_grass_shadow_range},
-    {"rt_bounce_rays", &dlaa_bridge::Shared::rt_bounce_rays},
-    {"rt_bounce_range", &dlaa_bridge::Shared::rt_bounce_range},
-    {"rt_path_bounces", &dlaa_bridge::Shared::rt_path_bounces},
-    {"rt_path_samples", &dlaa_bridge::Shared::rt_path_samples},
-    {"rt_reflection_range", &dlaa_bridge::Shared::rt_reflection_range},
-    {"rt_kept_frames", &dlaa_bridge::Shared::rt_kept_frames},
-    {"rt_nrd_off", &dlaa_bridge::Shared::rt_nrd_off},
-    {"rt_scene_flags", &dlaa_bridge::Shared::rt_scene_flags},
-    {"rt_light_count", &dlaa_bridge::Shared::rt_light_count},
+struct SharedField {
+  std::string_view name;
+  SharedMember member;
+  uint32_t version = 0;
+};
+inline constexpr std::array<SharedField, 17> SHARED_FIELDS = {{
+    {.name = "rt_shadow_rays", .member = &dlaa_bridge::Shared::rt_shadow_rays},
+    {.name = "rt_sun_softness", .member = &dlaa_bridge::Shared::rt_sun_softness},
+    {.name = "rt_light_size", .member = &dlaa_bridge::Shared::rt_light_size},
+    {.name = "rt_ambient_range", .member = &dlaa_bridge::Shared::rt_ambient_range},
+    {.name = "rt_ambient_rays", .member = &dlaa_bridge::Shared::rt_ambient_rays},
+    {.name = "rt_grass_shadow_range", .member = &dlaa_bridge::Shared::rt_grass_shadow_range},
+    {.name = "rt_bounce_rays", .member = &dlaa_bridge::Shared::rt_bounce_rays},
+    {.name = "rt_bounce_range", .member = &dlaa_bridge::Shared::rt_bounce_range},
+    {.name = "rt_path_bounces", .member = &dlaa_bridge::Shared::rt_path_bounces},
+    {.name = "rt_path_samples", .member = &dlaa_bridge::Shared::rt_path_samples},
+    {.name = "rt_reflection_range", .member = &dlaa_bridge::Shared::rt_reflection_range},
+    {.name = "rt_kept_frames", .member = &dlaa_bridge::Shared::rt_kept_frames},
+    {.name = "rt_nrd_off", .member = &dlaa_bridge::Shared::rt_nrd_off},
+    {.name = "rt_scene_flags", .member = &dlaa_bridge::Shared::rt_scene_flags},
+    {.name = "rt_light_count", .member = &dlaa_bridge::Shared::rt_light_count},
+    {.name = "rt_path_flags", .member = &dlaa_bridge::Shared::rt_path_flags},
+    {.name = "rt_restir_flags", .member = &dlaa_bridge::Shared::rt_restir_flags, .version = 32},
 }};
 inline constexpr std::array<std::string_view, 3> REQUEST_KINDS = {"trace", "bounce", "reflections"};  // rt_request 1, 2, 3
 struct FieldEdit {
   SharedMember member;
+  uint32_t version = 0;
   double value = 0.0;
   uint32_t request = 0;  // 0: every kind
   bool cap = false;
@@ -428,18 +438,19 @@ struct FieldEdit {
 inline bool ParseField(std::string_view name, double value, FieldEdit* edit, std::string* why) {
   const size_t at = name.find('@');
   const std::string_view field = name.substr(0, at);
-  const auto found = std::ranges::find(SHARED_FIELDS, field, &std::pair<std::string_view, SharedMember>::first);
+  const auto found = std::ranges::find(SHARED_FIELDS, field, &SharedField::name);
   const auto kind = (at == std::string_view::npos) ? REQUEST_KINDS.end() : std::ranges::find(REQUEST_KINDS, name.substr(at + 1));
   if (found == SHARED_FIELDS.end() || (at != std::string_view::npos && kind == REQUEST_KINDS.end()) || value < 0.0) {
     *why = std::format("unknown field {} (or a negative value)", name);
     return false;
   }
-  *edit = {.member = found->second, .value = value, .request = (kind == REQUEST_KINDS.end()) ? 0u : static_cast<uint32_t>(kind - REQUEST_KINDS.begin()) + 1,
-           .cap = field == "rt_light_count"};
+  *edit = {.member = found->member, .version = found->version, .value = value,
+           .request = (kind == REQUEST_KINDS.end()) ? 0u : static_cast<uint32_t>(kind - REQUEST_KINDS.begin()) + 1, .cap = field == "rt_light_count"};
   return true;
 }
 inline void ApplyField(const FieldEdit& edit, uint32_t request, dlaa_bridge::Shared* block) {
   if (edit.request != 0 && edit.request != request) return;
+  block->version = std::max(block->version, edit.version);
   std::visit(
       [&](auto member) {
         using Value = std::remove_reference_t<decltype(block->*member)>;
