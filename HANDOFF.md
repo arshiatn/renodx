@@ -976,6 +976,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
 - STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | ?
 - CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | ?
+- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17562,7 +17563,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Thrones same mismatch (same fix); WH3 OK; Rome II OK pending one log line (t09 / t10 never draw into a display-size
         RGBA16 target). Candidate patch (all to mode 1 in HDR incl. RR) scratch\aaf_\aaf_candidate_attila_hdr_mode1.patch,
         applies clean on 505959548. Recommendation: L yes; K likely (ATN's eye); M darks only; RR keep today's feed (better
-        RR path = Denoise Before Tone Mapping); SMAA + CMAA2 root edges. Owner: ATN (which presets) / 11-27 implementer
+        RR path = Denoise Before Tone Mapping); SMAA + CMAA2 root edges. APPROVED by ATN 11-26 ('Let's build it'): K / L / M +
+        SMAA + CMAA2 to the root feed in HDR, RR stays on t00^1.1 (extra encode), Thrones the same; implementer after the O2
+        cheaper-A' implementer (1-agent cap). Owner: 11-27 implementer, then ATN's A/B look
         - [ ] gts_ FOLLOW-UPS (11-26 17:22, scratch\gts_\pc\compare_c.txt): DI hashing on a worker thread (bin_di 1A0D42AE5C77):
         identical outputs, job 31.5-32.9 s -> ~27.7 s (= no-dump time). ProbeMean in the digest (bin_dump EEE670CE0EF0): identical
         NUMBER / RESULT lines; h0 run 6 stays on .bin (gpu3_probe_analyze compares texels, ~0.56 GB / run). verify_gts.ps1 GPU
@@ -17620,6 +17623,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         alternative = ATN's row). Not verified: WARP picture, AMD / Intel. A 4th G1 job was DENIED by the classifier (agent
         stopped). NEXT: one Opus High implementer (file's step plan) after gts_, then 11 gated builds. Owner: coord / ATN (2048
         vs 2304 slots)
+        - [ ] DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below 100 % the 3D scene is a render-size
+        corner of display-size targets and DLSS stretches it right after the tone mapper; RR before t00 would give the tone
+        mapper a full-size scene while it draws with the corner's viewport and corner-size bloom / exposure, so the row skips
+        while scaling (anti_aliasing.hpp:1469-1470; coord's reading, designer to confirm). Design (Opus xHigh, no code first):
+        tone mapper at display size after RR, bloom / exposure read at the render share (effect_share), jitter ends at RR;
+        gate = 4K harness G1 like rrbi_'s at 67 / 58 / 50 %. Owner: 11-27+ designer (start_1127.md 5b)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
