@@ -1846,10 +1846,30 @@ static void Time(const std::string& before) {
     };
     const ComPtr<ID3D11ComputeShader> today = load("sss_bend_bc423ef9d");
     const ComPtr<ID3D11ComputeShader> today_find = load("sss_bend_extended_find_bc423ef9d");
+    // apd_ O2 (designs\sss_aprime_cheaper.md): the module's steps shaders are O2 (one shared screen grid); today's A'
+    // (5c2c5042f, every lane its own samples) a third column. A fourth, numbers for ATN where the folder holds them
+    // (o2_'s G1 job compiles them from a scratch copy): O2 with 2304 groupshared slots (18 KB).
+    const ComPtr<ID3D11ComputeShader> aprime = load("sss_bend_steps_5c2c5042f");
+    const ComPtr<ID3D11ComputeShader> aprime_find = load("sss_bend_extended_find_steps_5c2c5042f");
+    const auto load_optional = [&](const char* name) {
+      ComPtr<ID3D11ComputeShader> shader;
+      const auto code = ReadFile(before + "\\" + name + ".cso");
+      if (!code.empty()) REQUIRE(SUCCEEDED(device->CreateComputeShader(code.data(), code.size(), nullptr, shader.GetAddressOf())));
+      return shader;
+    };
+    const ComPtr<ID3D11ComputeShader> slots_2304 = load_optional("sss_bend_steps_2304");
+    const ComPtr<ID3D11ComputeShader> slots_2304_find = load_optional("sss_bend_extended_find_steps_2304");
     auto& objects = sss::internal::runtime.objects;
-    for (const float share : {1.f, 0.667f, 0.58f, 0.5f, 0.333f}) {
-      const UINT w = static_cast<UINT>(std::lround(3840.f * share));
-      const UINT h = static_cast<UINT>(std::lround(2160.f * share));
+    // The add-on's shares at 4K: 2/3 and 1/3 exact (2560, 1280), and the rows G1 had (66.7% and 33.3%: 2561, 1279).
+    struct TimeShare {
+      const char* name;
+      UINT width;
+      UINT height;
+    };
+    for (const TimeShare& share : {TimeShare{"100%", 3840, 2160}, TimeShare{"66.7%", 2561, 1441}, TimeShare{"2/3", 2560, 1440}, TimeShare{"58%", 2227, 1253},
+                                   TimeShare{"50%", 1920, 1080}, TimeShare{"33.3%", 1279, 719}, TimeShare{"1/3", 1280, 720}}) {
+      const UINT w = share.width;
+      const UINT h = share.height;
       const Frame render = MakeFrame(w, h, boxes, {0.25f, -0.55f, -0.8f});
       Frame display = MakeFrame(3840, 2160, {}, render.sun);
       std::vector<float> depth(3840 * 2160, 1.f);
@@ -1863,6 +1883,17 @@ static void Time(const std::string& before) {
         const double ours = GpuMilliseconds([&] { RunFrame(display, *row); });
         const std::array<ComPtr<ID3D11ComputeShader>, 4> module_shaders = {objects.bend, objects.bend_steps, objects.bend_extended[2],
                                                                            objects.bend_extended_steps[2]};
+        // A form's shaders in the module's place (the 100% row's plain shaders stay: there the steps ones never run).
+        const auto timed = [&](const ComPtr<ID3D11ComputeShader>& plain, const ComPtr<ID3D11ComputeShader>& find) {
+          objects.bend_steps = plain;
+          objects.bend_extended_steps[2] = find;
+          const double milliseconds = GpuMilliseconds([&] { RunFrame(display, *row); });
+          objects.bend_steps = module_shaders[1];
+          objects.bend_extended_steps[2] = module_shaders[3];
+          return milliseconds;
+        };
+        const double aprime_form = timed(aprime, aprime_find);
+        const double slots_form = (slots_2304 != nullptr && slots_2304_find != nullptr) ? timed(slots_2304, slots_2304_find) : -1.0;
         objects.bend = objects.bend_steps = today;
         objects.bend_extended[2] = objects.bend_extended_steps[2] = today_find;
         sss::internal::scale_control = {.samples_by_share = true, .thickness_by_share = true};
@@ -1872,8 +1903,10 @@ static void Time(const std::string& before) {
         objects.bend_steps = module_shaders[1];
         objects.bend_extended[2] = module_shaders[2];
         objects.bend_extended_steps[2] = module_shaders[3];
-        std::printf("   render scale %3.0f%% %-11s A' %.3f ms, C %.3f ms (%+.3f)\n", share * 100.f, (row == &base) ? "plain" : "Softer 0.5", ours,
-                    before_form, ours - before_form);
+        std::printf("   render scale %-5s (%4u px) %-11s O2 %.3f ms, today's A' %.3f ms, C %.3f ms (O2 / A' %.3f, O2 - C %+.3f)", share.name, w,
+                    (row == &base) ? "plain" : "Softer 0.5", ours, aprime_form, before_form, ours / aprime_form, ours - before_form);
+        if (slots_form >= 0.0) std::printf(", O2 2304 slots %.3f ms", slots_form);
+        std::printf("\n");
       }
     }
     twattila::frame_history::render_width = 0;
@@ -1978,7 +2011,9 @@ static void Time(const std::string& before) {
 
 // Case 11's other shaders (run.ps1's csos): today's sss_bend and sss_bend_extended_find (bc423ef9d, before O-SS5: a
 // sample a render pixel) and the module's with BEND_SSS_STEP_CONTROL 1 (nearest sub-samples), 2 (the near-light window
-// in render pixels), 3 (the found caster in render steps), 4 (half a render pixel a sample at any scale).
+// in render pixels), 3 (the found caster in render steps), 4 (half a render pixel a sample at any scale), 5 (the grid
+// pass's rounds from the first). apd_ O2 (round_notes designs\sss_aprime_cheaper.md: the module's steps shaders, one
+// shared screen grid): A' as 5c2c5042f had it (every lane its own samples, `aprime`), the numbers its section 4 bounds.
 struct StepShaders {
   ComPtr<ID3D11ComputeShader> today;
   ComPtr<ID3D11ComputeShader> today_find;
@@ -1986,6 +2021,9 @@ struct StepShaders {
   ComPtr<ID3D11ComputeShader> render_window;
   ComPtr<ID3D11ComputeShader> render_find;
   ComPtr<ID3D11ComputeShader> half_step;
+  ComPtr<ID3D11ComputeShader> ascending;
+  ComPtr<ID3D11ComputeShader> aprime;
+  ComPtr<ID3D11ComputeShader> aprime_find;
 };
 
 // A march's form: its plain and find shaders (null: the module's) and the host's scale control (the add-on's by default).
@@ -2019,23 +2057,33 @@ static std::vector<uint8_t> AtRenderPixels(const std::vector<uint8_t>& full, UIN
 
 // One frame of `render` at its share of 960 x 540 (its depth in the top-left of the display's); `full_steps`: its depth
 // nearest-upsampled to 960 x 540 and marched at 100% instead (its result still the render pixels', at their centres).
-static StepResult MarchAt(const Frame& render, const sss::Settings& settings, const StepForm& form = {}, bool full_steps = false) {
+// `without_foliage` (the same scene without its foliage, at the render size): the foliage's depth copies (Light Through
+// Foliage's mark, sss_depth), the render part top-left as the depth's.
+static StepResult MarchAt(const Frame& render, const sss::Settings& settings, const StepForm& form = {}, bool full_steps = false,
+                          const Frame* without_foliage = nullptr) {
   auto& objects = sss::internal::runtime.objects;
   const UINT w = render.camera.width;
   const UINT h = render.camera.height;
   const Frame* frame = &render;
   Frame display;
+  Foliage foliage;
+  if (without_foliage != nullptr) foliage = {.before = without_foliage->depth, .after = render.depth};
   if (w != DISPLAY_W) {
     display = MakeFrame(DISPLAY_W, DISPLAY_H, {}, render.sun);
-    std::vector<float> depth(DISPLAY_W * DISPLAY_H, 1.f);
-    if (full_steps) {
-      for (UINT y = 0; y < DISPLAY_H; ++y) {
-        for (UINT x = 0; x < DISPLAY_W; ++x) depth[(y * DISPLAY_W) + x] = render.picture.depth[((y * h / DISPLAY_H) * w) + (x * w / DISPLAY_W)];
+    // A render-size depth in the display's.
+    const auto in_display = [&](const std::vector<float>& render_depth) {
+      std::vector<float> depth(DISPLAY_W * DISPLAY_H, 1.f);
+      if (full_steps) {
+        for (UINT y = 0; y < DISPLAY_H; ++y) {
+          for (UINT x = 0; x < DISPLAY_W; ++x) depth[(y * DISPLAY_W) + x] = render_depth[((y * h / DISPLAY_H) * w) + (x * w / DISPLAY_W)];
+        }
+      } else {
+        for (UINT y = 0; y < h; ++y) std::copy_n(render_depth.begin() + (y * w), w, depth.begin() + (y * DISPLAY_W));
       }
-    } else {
-      for (UINT y = 0; y < h; ++y) std::copy_n(render.picture.depth.begin() + (y * w), w, depth.begin() + (y * DISPLAY_W));
-    }
-    display.depth = MakeTexture(DISPLAY_W, DISPLAY_H, DXGI_FORMAT_R32_FLOAT, depth.data(), DISPLAY_W * 4);
+      return MakeTexture(DISPLAY_W, DISPLAY_H, DXGI_FORMAT_R32_FLOAT, depth.data(), DISPLAY_W * 4);
+    };
+    display.depth = in_display(render.picture.depth);
+    if (without_foliage != nullptr) foliage = {.before = in_display(without_foliage->picture.depth), .after = display.depth};
     display.camera_constants = render.camera_constants;
     display.lighting = render.lighting;
     frame = &display;
@@ -2049,7 +2097,7 @@ static StepResult MarchAt(const Frame& render, const sss::Settings& settings, co
                                                                      objects.bend_extended_steps[2]};
   if (form.plain != nullptr) objects.bend = objects.bend_steps = form.plain;
   if (form.find != nullptr) objects.bend_extended[2] = objects.bend_extended_steps[2] = form.find;
-  RunFrame(*frame, settings);
+  RunFrame(*frame, settings, false, (without_foliage != nullptr) ? &foliage : nullptr);
   objects.bend = module_shaders[0];
   objects.bend_steps = module_shaders[1];
   objects.bend_extended[2] = module_shaders[2];
@@ -2220,7 +2268,12 @@ static void TestScreenSteps(const std::string& before_folder) {
                                .nearest = load("sss_bend_control1"),
                                .render_window = load("sss_bend_control2"),
                                .render_find = load("sss_bend_extended_find_control3"),
-                               .half_step = load("sss_bend_control4")};
+                               .half_step = load("sss_bend_control4"),
+                               .ascending = load("sss_bend_control5"),
+                               .aprime = load("sss_bend_steps_5c2c5042f"),
+                               .aprime_find = load("sss_bend_extended_find_steps_5c2c5042f")};
+  // Today's A' (5c2c5042f): its steps shaders in the module's place (the host's scale control, the add-on's).
+  const StepForm aprime_form = {.plain = shaders.aprime.Get(), .find = shaders.aprime_find.Get()};
   // C, the form before O-SS5: today's sss_bend, samples x share, thickness and threshold / share.
   const StepForm before_form = {.plain = shaders.today.Get(), .find = shaders.today_find.Get(),
                                 .control = {.samples_by_share = true, .thickness_by_share = true}};
@@ -2234,6 +2287,34 @@ static void TestScreenSteps(const std::string& before_folder) {
     const char* name;
   };
   constexpr std::array<Share, 3> SHARES = {{{640, 360, "67%"}, {480, 270, "50%"}, {320, 180, "33%"}}};
+  // W11 (apd_ O2, designs\sss_aprime_cheaper.md 4): shares with no exact grid (one grid point a screen pixel).
+  constexpr std::array<Share, 2> W11_SHARES = {{{557, 313, "58%"}, {641, 361, "66.8%"}}};
+  // The shader's exact grid (the share p / q with q in 2..4): today's A' sample positions.
+  const auto exact_grid = [](UINT width) { return ((width * 2) % DISPLAY_W == 0) || ((width * 3) % DISPLAY_W == 0) || ((width * 4) % DISPLAY_W == 0); };
+  // O2 against today's A' (5c2c5042f), runs of each (case 1's rule: a pixel apart only by its nearest pair of runs):
+  // the pixels apart by more than `threshold` (of 255).
+  const auto apart_by = [](const std::vector<std::vector<uint8_t>>& ours, const std::vector<std::vector<uint8_t>>& theirs, int threshold) {
+    int count = 0;
+    for (size_t pixel = 0; pixel < ours[0].size(); ++pixel) {
+      int nearest = 255;
+      for (const auto& run : ours) {
+        for (const auto& other : theirs) nearest = std::min(nearest, std::abs(static_cast<int>(run[pixel]) - static_cast<int>(other[pixel])));
+      }
+      count += (nearest > threshold) ? 1 : 0;
+    }
+    return count;
+  };
+  // W11's number for ATN: of the pixels either form shadows by over 0.25, the share apart by over 0.25.
+  const auto shadowed_apart = [](const std::vector<uint8_t>& ours, const std::vector<uint8_t>& theirs) {
+    int shadowed = 0;
+    int apart = 0;
+    for (size_t pixel = 0; pixel < ours.size(); ++pixel) {
+      if (std::max(ours[pixel], theirs[pixel]) < 64) continue;
+      ++shadowed;
+      apart += (std::abs(static_cast<int>(ours[pixel]) - static_cast<int>(theirs[pixel])) >= 64) ? 1 : 0;
+    }
+    return static_cast<double>(apart) / std::max(shadowed, 1);
+  };
   // The reference and its A/A noise at a render size: the 100% march resampled at the render pixels, and the 100% march
   // over a depth traced half a render pixel off, resampled. `geometry` (ours, a deviation from the design's reference
   // where the render's geometry dominates: W2, W4): the 100% march over the render's depth nearest-upsampled, so
@@ -2303,7 +2384,8 @@ static void TestScreenSteps(const std::string& before_folder) {
                                            {.low = {-4.f, -2.f, 12.155f}, .high = {8.f, 2.f, 12.5f}}}};
     const Vector sun = {1.f, -0.24f, 0.15f};
     const auto scene = [&](UINT w, UINT h, float jitter) { return MakeFrame(w, h, post_wall, sun, jitter, 0.f); };
-    for (const auto& share : SHARES) {
+    for (const auto& share : {SHARES[0], SHARES[1], SHARES[2], W11_SHARES[0], W11_SHARES[1]}) {
+      const bool exact = exact_grid(share.width);
       const Frame render = scene(share.width, share.height, 0.f);
       const auto ref = reference(scene, Defaults(), share.width, share.height);
       const auto wall = std::ranges::count(render.picture.hit, 1);
@@ -2315,15 +2397,25 @@ static void TestScreenSteps(const std::string& before_folder) {
         return count;
       };
       const auto ours_occlusion = MarchAt(render, Defaults()).occlusion;
+      const auto aprime_occlusion = MarchAt(render, Defaults(), aprime_form).occlusion;
       const auto before_occlusion = MarchAt(render, Defaults(), before_form).occlusion;
       const int noise = halo(ref.jittered, ref.occlusion);
       const int ours = halo(ours_occlusion, ref.geometry);
+      const int aprime = halo(aprime_occlusion, ref.geometry);
       const int before = halo(before_occlusion, ref.geometry);
       const double bound = (1.5 * noise) + (0.001 * static_cast<double>(wall));
-      std::printf("   W2 %s: halo pixels (of %lld wall pixels) A' %d, C %d, A/A %d (bound %.0f); against the full depth's A' %d, C %d\n", share.name,
-                  static_cast<long long>(wall), ours, before, noise, bound, halo(ours_occlusion, ref.occlusion), halo(before_occlusion, ref.occlusion));
+      std::printf("   W2%s %s: halo pixels (of %lld wall pixels) O2 %d, today's A' %d, C %d, A/A %d (bound %.0f); against the full depth's O2 %d, C %d",
+                  exact ? "" : " (W11)", share.name, static_cast<long long>(wall), ours, aprime, before, noise, bound, halo(ours_occlusion, ref.occlusion),
+                  halo(before_occlusion, ref.occlusion));
       CHECK(ours <= bound);
-      if (share.width < 640) CHECK(before > bound);
+      if (exact) {
+        // O2 within 2 pixels of today's A' (designs\sss_aprime_cheaper.md 4).
+        std::printf("\n");
+        CHECK(ours <= aprime + 2);
+        if (share.width < 640) CHECK(before > bound);
+      } else {
+        std::printf("; shadowed pixels apart from today's A' by over 0.25: %.4f\n", shadowed_apart(ours_occlusion, aprime_occlusion));
+      }
     }
   }
 
@@ -2361,12 +2453,14 @@ static void TestScreenSteps(const std::string& before_folder) {
     const double reference_comb = comb(ref.occlusion);
     const double noise = comb(ref.jittered);
     const double ours = comb(MarchAt(render, Defaults()).occlusion);
+    const double aprime = comb(MarchAt(render, Defaults(), aprime_form).occlusion);
     const double control = comb(MarchAt(render, Defaults(), render_steps).occlusion);
     const double before = comb(MarchAt(render, Defaults(), before_form).occlusion);
     const double bound = std::max(reference_comb, noise) + 0.05;
-    std::printf("   W3 33%%: comb rows A' %.3f, render steps %.3f, C %.3f, reference %.3f, A/A %.3f (bound %.3f)\n", ours, control, before,
-                reference_comb, noise, bound);
+    std::printf("   W3 33%%: comb rows O2 %.3f, today's A' %.3f, render steps %.3f, C %.3f, reference %.3f, A/A %.3f (bound %.3f)\n", ours, aprime,
+                control, before, reference_comb, noise, bound);
     CHECK(ours <= bound);
+    CHECK(ours <= aprime + 0.005);
     CHECK(control > bound);
     const auto mass = [&](const std::vector<uint8_t>& occlusion) {
       double sum = 0.0;
@@ -2375,16 +2469,20 @@ static void TestScreenSteps(const std::string& before_folder) {
     };
     sss::Settings along_ray = Defaults();
     along_ray.sample_along_ray = true;
-    std::printf("   W10 33%%: the fence's shadow mass (render pixels) BilinearSamplingOffsetMode off %.1f, on %.1f; the reference %.1f\n",
-                mass(MarchAt(render, Defaults()).occlusion), mass(MarchAt(render, along_ray).occlusion), mass(ref.occlusion));
+    std::printf("   W10 33%%: the fence's shadow mass (render pixels) BilinearSamplingOffsetMode off O2 %.1f (today's A' %.1f), on O2 %.1f (today's A' %.1f); the reference %.1f\n",
+                mass(MarchAt(render, Defaults()).occlusion), mass(MarchAt(render, Defaults(), aprime_form).occlusion), mass(MarchAt(render, along_ray).occlusion),
+                mass(MarchAt(render, along_ray, aprime_form).occlusion), mass(ref.occlusion));
   }
 
   // W4 lanes: one post k = 1..4 render pixels wide at 33% (0.03 m deep, touching a wall behind it), the sun nearly
   // parallel to the wall (towards the camera by 0.03: its rays from the wall run into the post). Its shadow's middle (the
   // wall 0.35 to 1.2 m from the post, past both forms' hard samples): the mean occlusion the render geometry's 100%
   // march's (a 3k-pixel post) within 0.05; CONTROL C at k = 1 apart (k / 4 of a shadow: Bend's 4 lanes).
-  for (int k = 1; k <= 4; ++k) {
-    const Share& share = SHARES[2];
+  // W11: the same at 58% and 66.8% (no exact grid), O2 within 0.02 of today's A'.
+  for (int row = 0; row < 12; ++row) {
+    const Share& share = (row < 4) ? SHARES[2] : W11_SHARES[(row - 4) / 4];
+    const int k = (row % 4) + 1;
+    const bool exact = exact_grid(share.width);
     // A render pixel's width at the post (view depth ~11 m).
     const float view_z = 12.f;
     const float width = 2.f * view_z * TAN_HALF_Y * static_cast<float>(share.width) / static_cast<float>(share.height) / static_cast<float>(share.width)
@@ -2409,12 +2507,23 @@ static void TestScreenSteps(const std::string& before_folder) {
       return (count > 20) ? (sum / count) : -1.0;
     };
     const double reference_middle = middle(ref.geometry);
-    const double ours = middle(MarchAt(render, Defaults()).occlusion);
+    const auto ours_occlusion = MarchAt(render, Defaults()).occlusion;
+    const auto aprime_occlusion = MarchAt(render, Defaults(), aprime_form).occlusion;
+    const double ours = middle(ours_occlusion);
+    const double aprime = middle(aprime_occlusion);
     const double before = middle(MarchAt(render, Defaults(), before_form).occlusion);
-    std::printf("   W4 33%% post %d render px (%.3f m): mid-shadow occlusion A' %.3f, C %.3f, the render geometry's 100%% %.3f; the full depth's %.3f, A/A %.3f\n",
-                k, width, ours, before, reference_middle, middle(ref.occlusion), middle(ref.jittered));
-    CHECK(reference_middle > 0.f && std::abs(ours - reference_middle) <= 0.05);
-    if (k == 1) CHECK(std::abs(before - reference_middle) > 0.05);
+    std::printf("   W4%s %s post %d render px (%.3f m): mid-shadow occlusion O2 %.3f, today's A' %.3f, C %.3f, the render geometry's 100%% %.3f; the full depth's %.3f, A/A %.3f",
+                exact ? "" : " (W11)", share.name, k, width, ours, aprime, before, reference_middle, middle(ref.occlusion), middle(ref.jittered));
+    if (exact) {
+      // O2 within 0.005 of today's A' (designs\sss_aprime_cheaper.md 4).
+      std::printf("\n");
+      CHECK(reference_middle > 0.f && std::abs(ours - reference_middle) <= 0.05);
+      CHECK(std::abs(ours - aprime) <= 0.005);
+      if (k == 1) CHECK(std::abs(before - reference_middle) > 0.05);
+    } else {
+      std::printf("; shadowed pixels apart from today's A' by over 0.25: %.4f\n", shadowed_apart(ours_occlusion, aprime_occlusion));
+      CHECK(aprime > 0.0 && std::abs(ours - aprime) <= 0.02);
+    }
   }
 
   // W5 slopes at 33%: a lit 30 degree ramp (the sun 10 degrees over it) and a sine hill (the sun 15 degrees up). False
@@ -2479,13 +2588,16 @@ static void TestScreenSteps(const std::string& before_folder) {
       const double reference_share = false_share(ref.occlusion);
       const double noise = std::abs(false_share(ref.jittered) - reference_share);
       const double ours = false_share(MarchAt(render, Defaults()).occlusion);
+      const double aprime = false_share(MarchAt(render, Defaults(), aprime_form).occlusion);
       const double nearest = false_share(MarchAt(render, Defaults(), {.plain = shaders.nearest.Get()}).occlusion);
       const double unscaled = false_share(MarchAt(render, Defaults(), {.control = unscaled_threshold}).occlusion);
       const double before = false_share(MarchAt(render, Defaults(), before_form).occlusion);
       const double bound = reference_share + noise + 0.001;
-      std::printf("   W5 33%% %s: false shadow on lit ground A' %.4f, nearest %.4f, threshold not / share %.4f, C %.4f, reference %.4f, A/A %.4f (bound %.4f)\n",
-                  is_ramp ? "ramp" : "hill", ours, nearest, unscaled, before, reference_share, noise, bound);
+      std::printf("   W5 33%% %s: false shadow on lit ground O2 %.4f, today's A' %.4f, nearest %.4f, threshold not / share %.4f, C %.4f, reference %.4f, A/A %.4f (bound %.4f)\n",
+                  is_ramp ? "ramp" : "hill", ours, aprime, nearest, unscaled, before, reference_share, noise, bound);
       CHECK(ours <= bound);
+      // designs\sss_aprime_cheaper.md 4: the ramp within 0.0005 over today's A', the hill within 0.002 of it.
+      CHECK(is_ramp ? (ours <= aprime + 0.0005) : (std::abs(ours - aprime) <= 0.002));
       CHECK(nearest > bound);
       if (!is_ramp) CHECK(unscaled > bound);
     }
@@ -2530,13 +2642,23 @@ static void TestScreenSteps(const std::string& before_folder) {
       };
       const int noise = apart(ref.jittered);
       const int ours = apart(ours_result.occlusion);
+      // O2 against today's A': the medians of 3 runs each (Bend's WARP acne varies run to run), within 3 pixels.
+      const auto median3 = [&](const StepForm& form) {
+        std::array<int, 3> counts = {};
+        for (int& count : counts) count = apart(MarchAt(render, Defaults(), form).occlusion);
+        std::ranges::sort(counts);
+        return counts[1];
+      };
+      const int ours_median = median3({});
+      const int aprime_median = median3(aprime_form);
       const int control = apart(MarchAt(render, Defaults(), {.plain = shaders.render_window.Get()}).occlusion);
       const int before = apart(MarchAt(render, Defaults(), before_form).occlusion);
       const double bound = (1.5 * noise) + (0.001 * static_cast<double>(wall));
-      std::printf("   W6 %s: light at (%.0f, %.0f) render px; wall pixels within 200 screen px apart from the reference (of %d) A' %d, render-pixel window %d, C %d, A/A %d (bound %.0f)\n",
-                  share.name, ours_result.light[0], ours_result.light[1], wall, ours, control, before, noise, bound);
+      std::printf("   W6 %s: light at (%.0f, %.0f) render px; wall pixels within 200 screen px apart from the reference (of %d) O2 %d (median of 3 %d), today's A' median %d, render-pixel window %d, C %d, A/A %d (bound %.0f)\n",
+                  share.name, ours_result.light[0], ours_result.light[1], wall, ours, ours_median, aprime_median, control, before, noise, bound);
       CHECK(ours_result.light[0] > 0.f && ours_result.light[0] < share.width && ours_result.light[1] > 0.f && ours_result.light[1] < share.height);
       CHECK(ours <= bound);
+      CHECK(std::abs(ours_median - aprime_median) <= 3);
     }
   }
 
@@ -2549,7 +2671,9 @@ static void TestScreenSteps(const std::string& before_folder) {
                                            {.low = {-4.f, -2.f, 12.06f}, .high = {8.f, 2.f, 12.5f}}}};
     const Vector sun = {1.f, -0.24f, 0.03f};
     const auto scene = [&](UINT w, UINT h, float jitter) { return MakeFrame(w, h, post_wall, sun, jitter, 0.f); };
-    for (const auto& share : SHARES) {
+    // W11: the same at 58% and 66.8%, O2 within a render pixel of today's A'.
+    for (const auto& share : {SHARES[0], SHARES[1], SHARES[2], W11_SHARES[0], W11_SHARES[1]}) {
+      const bool exact = exact_grid(share.width);
       const Frame render = scene(share.width, share.height, 0.f);
       const auto ref = reference(scene, Defaults(), share.width, share.height);
       const float to_screen = static_cast<float>(DISPLAY_W) / static_cast<float>(share.width);
@@ -2582,13 +2706,24 @@ static void TestScreenSteps(const std::string& before_folder) {
       };
       const auto reference_ends = ends(ref.occlusion);
       const auto noise_ends = ends(ref.jittered);
-      const auto ours = ends(MarchAt(render, Defaults()).occlusion);
+      const auto ours_occlusion = MarchAt(render, Defaults()).occlusion;
+      const auto aprime_occlusion = MarchAt(render, Defaults(), aprime_form).occlusion;
+      const auto ours = ends(ours_occlusion);
+      const auto aprime = ends(aprime_occlusion);
       const auto before = ends(MarchAt(render, Defaults(), before_form).occlusion);
       const float bound = to_screen + std::max(std::abs(noise_ends[0] - reference_ends[0]), std::abs(noise_ends[1] - reference_ends[1]));
-      std::printf("   W7 %s: end / fade start (screen px) A' %.1f / %.1f, C %.1f / %.1f, reference %.1f / %.1f, A/A %.1f / %.1f (bound %.1f)\n", share.name,
-                  ours[0], ours[1], before[0], before[1], reference_ends[0], reference_ends[1], noise_ends[0], noise_ends[1], bound);
-      CHECK(std::abs(ours[0] - reference_ends[0]) <= bound && std::abs(ours[1] - reference_ends[1]) <= bound);
-      if (share.width < 640) CHECK(std::abs(before[1] - reference_ends[1]) > bound);
+      std::printf("   W7%s %s: end / fade start (screen px) O2 %.1f / %.1f, today's A' %.1f / %.1f, C %.1f / %.1f, reference %.1f / %.1f, A/A %.1f / %.1f (bound %.1f)",
+                  exact ? "" : " (W11)", share.name, ours[0], ours[1], aprime[0], aprime[1], before[0], before[1], reference_ends[0], reference_ends[1],
+                  noise_ends[0], noise_ends[1], bound);
+      if (exact) {
+        std::printf("\n");
+        CHECK(std::abs(ours[0] - reference_ends[0]) <= bound && std::abs(ours[1] - reference_ends[1]) <= bound);
+        if (share.width < 640) CHECK(std::abs(before[1] - reference_ends[1]) > bound);
+      } else {
+        std::printf("; shadowed pixels apart from today's A' by over 0.25: %.4f\n", shadowed_apart(ours_occlusion, aprime_occlusion));
+      }
+      // O2 within a render pixel of today's A' (designs\sss_aprime_cheaper.md 4).
+      CHECK(std::abs(ours[0] - aprime[0]) <= to_screen && std::abs(ours[1] - aprime[1]) <= to_screen);
     }
   }
 
@@ -2631,10 +2766,68 @@ static void TestScreenSteps(const std::string& before_folder) {
       return ratios[ratios.size() / 2];
     };
     const float ours = median_ratio(MarchAt(render, settings).penumbra);
+    const float aprime = median_ratio(MarchAt(render, settings, aprime_form).penumbra);
     const float control = median_ratio(MarchAt(render, settings, {.find = shaders.render_find.Get()}).penumbra);
-    std::printf("   W8 50%%: Softer's penumbra over the reference A' %.3f, CONTROL caster in render steps %.3f\n", ours, control);
+    std::printf("   W8 50%%: Softer's penumbra over the reference O2 %.3f, today's A' %.3f, CONTROL caster in render steps %.3f\n", ours, aprime, control);
     CHECK(ours > 0.75f && ours < 1.25f);
+    CHECK(std::abs(ours - aprime) <= 0.02f);
     CHECK(control <= 0.75f || control >= 1.25f);
+  }
+
+  // W12 (apd_ O2, designs\sss_aprime_cheaper.md 4): at the exact shares O2 is today's A' (its positions and math; the
+  // entry's distance from the grid thread, a few float ulps): on W1's scene, plain and with Softer, case 1's runs, pixels
+  // apart by over 1 / 255 at most 0.1%, by over 0.25 at most 0.01% (one-surface ties). CONTROL 5 (must fail it): the grid
+  // pass's rounds from the first, over entries later rounds still read.
+  {
+    const std::array<Box, 3> casters = {{BOX_SCENE[0], {.low = {-6.f, -2.f, 20.f}, .high = {6.f, 0.f, 22.f}}, {.low = {3.f, -2.f, 10.f}, .high = {3.2f, 2.f, 10.2f}}}};
+    sss::Settings base_settings = Defaults();
+    sss::Settings softer = Defaults();
+    softer.sun_disk = 2.f;
+    for (const auto& share : SHARES) {
+      const Frame render = MakeFrame(share.width, share.height, casters, BOX_SUN);
+      const auto pixels = static_cast<double>(share.width * share.height);
+      for (const auto* settings : {&base_settings, &softer}) {
+        std::vector<std::vector<uint8_t>> ours;
+        std::vector<std::vector<uint8_t>> aprime;
+        std::vector<std::vector<uint8_t>> ascending;
+        for (int run = 0; run < RUNS; ++run) {
+          ours.push_back(MarchAt(render, *settings).occlusion);
+          aprime.push_back(MarchAt(render, *settings, aprime_form).occlusion);
+          if (settings == &base_settings) ascending.push_back(MarchAt(render, *settings, {.plain = shaders.ascending.Get()}).occlusion);
+        }
+        const int over_one = apart_by(ours, aprime, 1);
+        const int over_quarter = apart_by(ours, aprime, 63);
+        std::printf("   W12 %s %s: pixels apart from today's A' by over 1 / 255 %d, over 0.25 %d (of %.0f)", share.name,
+                    (settings == &base_settings) ? "plain" : "Softer", over_one, over_quarter, pixels);
+        CHECK(over_one <= 0.001 * pixels && over_quarter <= 0.0001 * pixels);
+        if (settings == &base_settings) {
+          const int control = apart_by(ascending, aprime, 1);
+          std::printf("; CONTROL rounds from the first %d over 1 / 255", control);
+          CHECK(control > 0.001 * pixels);
+        }
+        std::printf("\n");
+      }
+      // Light Through Foliage 0.5 (case 1's bush: the steps shader's light copy; the rows above, foliage 0, its light-free
+      // one, O2d): the same bounds, and the bush lets light through (case 1's half-lit pixels).
+      const std::array<Box, 2> bush_scene = {{BOX_SCENE[0], {.low = {2.f, -2.f, 7.f}, .high = {3.f, -1.f, 8.f}, .kind = Kind::FOLIAGE}}};
+      const Frame bush = MakeFrame(share.width, share.height, bush_scene, BOX_SUN);
+      const Frame without = MakeFrame(share.width, share.height, std::span(bush_scene).first(1), BOX_SUN);
+      sss::Settings foliage_settings = Defaults();
+      foliage_settings.foliage_light = 0.5f;
+      std::vector<std::vector<uint8_t>> ours;
+      std::vector<std::vector<uint8_t>> aprime;
+      for (int run = 0; run < RUNS; ++run) {
+        ours.push_back(MarchAt(bush, foliage_settings, {}, false, &without).occlusion);
+        aprime.push_back(MarchAt(bush, foliage_settings, aprime_form, false, &without).occlusion);
+      }
+      const int over_one = apart_by(ours, aprime, 1);
+      const int over_quarter = apart_by(ours, aprime, 63);
+      const auto lit_through = std::ranges::count_if(ours[0], [](uint8_t value) { return value > 40 && value < 200; });
+      std::printf("   W12 %s foliage 0.5: pixels apart from today's A' by over 1 / 255 %d, over 0.25 %d (of %.0f); half-lit pixels %zu\n", share.name,
+                  over_one, over_quarter, pixels, static_cast<size_t>(lit_through));
+      CHECK(over_one <= 0.001 * pixels && over_quarter <= 0.0001 * pixels);
+      CHECK(lit_through > 20);
+    }
   }
   sss::internal::runtime.objects = {};
 }

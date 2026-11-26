@@ -65,7 +65,7 @@ if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
 & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect -Fo (Join-Path $beforeShaders 'sss_lights_f6408aa1.cso') (Join-Path $lightsBefore 'src\games\twattila\sss_lights.cs_5_0.hlsl') | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'fxc failed: f6408aa1 sss_lights' }
 # Case 11 (O-SS5): sss_bend and sss_bend_extended_find as bc423ef9d had them (before O-SS5: a sample a render pixel; control
-# C and W1's today) and this tree's steps shaders (below 100%) with BEND_SSS_STEP_CONTROL 1, 2, 4 (sss_bend_steps) and 3
+# C and W1's today) and this tree's steps shaders (below 100%) with BEND_SSS_STEP_CONTROL 1, 2, 4, 5 (sss_bend_steps) and 3
 # (the find variant): the W tests' CONTROLS.
 $stepsBefore = Join-Path $testBuild 'before_bc423ef9d'
 if (Test-Path -LiteralPath $stepsBefore) { Remove-Item -LiteralPath $stepsBefore -Recurse -Force -Confirm:$false }
@@ -78,7 +78,37 @@ foreach ($shader in @('sss_bend', 'sss_bend_extended_find', 'sss_blur')) {
   & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect -Fo (Join-Path $beforeShaders "${shader}_bc423ef9d.cso") (Join-Path $stepsBefore "src\games\twattila\$shader.cs_5_0.hlsl") | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "fxc failed: bc423ef9d $shader" }
 }
-foreach ($control in @(@{ Shader = 'sss_bend'; Value = 1 }, @{ Shader = 'sss_bend'; Value = 2 }, @{ Shader = 'sss_bend_extended_find'; Value = 3 }, @{ Shader = 'sss_bend'; Value = 4 })) {
+# apd_ O2 (round_notes designs\sss_aprime_cheaper.md, one shared screen grid): the 5 plain sss_bend* and Shogun 2's sss00-02
+# must be 5c2c5042f's (today's A' merge) to the bit; its 5 *_steps (today's A', every lane its own samples) go to case 11
+# (W12, W2-W8's today's A' numbers) and --time as *_steps_5c2c5042f.
+$aprimeBefore = Join-Path $testBuild 'before_5c2c5042f'
+if (Test-Path -LiteralPath $aprimeBefore) { Remove-Item -LiteralPath $aprimeBefore -Recurse -Force -Confirm:$false }
+New-Item -ItemType Directory -Force -Path $aprimeBefore | Out-Null
+& git -C $repairRoot archive --output=$archive 5c2c5042f src/games/twattila src/games/twshogun2completeedition src/shaders
+if ($LASTEXITCODE -ne 0) { throw 'git archive failed' }
+& (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $archive -C $aprimeBefore
+if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
+$plainChanged = @()
+foreach ($shader in @('twattila\sss_bend', 'twattila\sss_bend_extended', 'twattila\sss_bend_extended_auto', 'twattila\sss_bend_extended_auto_find',
+                      'twattila\sss_bend_extended_find', 'twshogun2completeedition\shaders\sss00_0x34ECD06E',
+                      'twshogun2completeedition\shaders\sss01_0x1B529672', 'twshogun2completeedition\shaders\sss02_0x78E88E1D')) {
+  $name = Split-Path -Leaf $shader
+  $outputs = @()
+  foreach ($side in @(@{ Root = (Join-Path $aprimeBefore 'src\games'); Out = (Join-Path $beforeShaders "${name}_5c2c5042f.cso") }, @{ Root = (Join-Path $repairRoot 'src\games'); Out = (Join-Path $afterShaders "$name.cso") })) {
+    & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect -Fo $side.Out (Join-Path $side.Root "$shader.cs_5_0.hlsl") | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "fxc failed: $shader" }
+    $outputs += (Get-FileHash -Algorithm SHA256 -LiteralPath $side.Out).Hash
+  }
+  if ($outputs[0] -ne $outputs[1]) { $plainChanged += $name }
+}
+if ($plainChanged.Count -ne 0) { throw "Plain shader bytes changed since 5c2c5042f: $($plainChanged -join ', ')" }
+Write-Host 'Plain sss_bend* and Shogun 2 sss00-02: 5c2c5042f''s bytes'
+foreach ($shader in @('sss_bend_steps', 'sss_bend_extended_find_steps')) {
+  & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect -Fo (Join-Path $beforeShaders "${shader}_5c2c5042f.cso") (Join-Path $aprimeBefore "src\games\twattila\$shader.cs_5_0.hlsl") | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "fxc failed: 5c2c5042f $shader" }
+}
+foreach ($control in @(@{ Shader = 'sss_bend'; Value = 1 }, @{ Shader = 'sss_bend'; Value = 2 }, @{ Shader = 'sss_bend_extended_find'; Value = 3 }, @{ Shader = 'sss_bend'; Value = 4 },
+                       @{ Shader = 'sss_bend'; Value = 5 })) {
   & $fxc /nologo -T cs_5_0 -E main /O3 /Qstrip_reflect /D "BEND_SSS_STEP_CONTROL=$($control.Value)" -Fo (Join-Path $beforeShaders "$($control.Shader)_control$($control.Value).cso") (Join-Path $repairRoot "src\games\twattila\$($control.Shader)_steps.cs_5_0.hlsl") | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "fxc failed: $($control.Shader) control $($control.Value)" }
 }
