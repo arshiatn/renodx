@@ -149,11 +149,13 @@
 #define RENODX_REGIR 1
 #endif
 // Matched ReSTIR Neighbours (RT_RESTIR_COMPATIBLE, RENODX_TW_REUSE_COMPATIBLE): the reuse's REUSE_COMPATIBLE builds (RTXDI's
-// neighbour compatibility score) and their Balanced ReSTIR Light twin.
+// neighbour compatibility score) and their Balanced ReSTIR Light twins (Basic, Raytraced).
 #if __has_include("rt_reuse_compatible.h")
 #include "rt_reuse_compatible.h"
 #include "rt_reuse_compatible_balanced.h"
 #include "rt_reuse_compatible_balanced_omm.h"
+#include "rt_reuse_compatible_balanced_raytraced.h"
+#include "rt_reuse_compatible_balanced_raytraced_omm.h"
 #include "rt_reuse_compatible_omm.h"
 #define RENODX_REUSE_COMPATIBLE 1
 #endif
@@ -804,6 +806,12 @@ class RtScene12 {
     if (!compatible_made) {
       reuse_compatible_pipeline_.Reset();
       reuse_compatible_balanced_pipeline_.Reset();
+    } else if (!(dxr12_ ? pipeline(RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED_OMM, sizeof(RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED_OMM),
+                                   &reuse_compatible_balanced_raytraced_pipeline_)
+                        : pipeline(RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED, sizeof(RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED),
+                                   &reuse_compatible_balanced_raytraced_pipeline_))) {
+      // Its Balanced ReSTIR Light Raytraced twin (none: Raytraced runs the Basic one there).
+      reuse_compatible_balanced_raytraced_pipeline_.Reset();
     }
 #endif
     // Balanced ReSTIR Light's twins, Basic's and Raytraced's, each set all or none (none: the row does nothing, or its
@@ -4392,7 +4400,9 @@ class RtScene12 {
               balanced_mode = balanced_raytraced ? 2u : 1u;
             }
             if (compatible && reuse_state == reuse_compatible_pipeline_.Get()) {
-              reuse_state = reuse_compatible_balanced_pipeline_.Get();
+              const bool compatible_raytraced = balanced_raytraced && reuse_compatible_balanced_raytraced_pipeline_;
+              reuse_state = (compatible_raytraced ? reuse_compatible_balanced_raytraced_pipeline_ : reuse_compatible_balanced_pipeline_).Get();
+              balanced_mode = compatible_raytraced ? 2u : 1u;
             }
           }
           if (balanced_mode != balanced_logged_) {
@@ -10741,6 +10751,7 @@ class RtScene12 {
   ComPtr<ID3D12PipelineState> reuse_near_pipeline_;  // its Near Reuse build (REUSE_NEAR)
   ComPtr<ID3D12PipelineState> reuse_compatible_pipeline_;           // its Matched ReSTIR Neighbours build (REUSE_COMPATIBLE; RTXDI builds)
   ComPtr<ID3D12PipelineState> reuse_compatible_balanced_pipeline_;  // that build's Balanced ReSTIR Light twin
+  ComPtr<ID3D12PipelineState> reuse_compatible_balanced_raytraced_pipeline_;  // and its Raytraced twin
   // Balanced ReSTIR Light's twins of the usual reuse builds: each plain build, its REUSE_BALANCED twin's code (G1 Basic) and
   // its REUSE_BALANCED_RAYTRACED twin's (G1 Raytraced) (DXR 1.1, DXR 1.2), in reuse_balanced_pipelines_'s order.
   struct BalancedTwin {

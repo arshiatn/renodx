@@ -151,9 +151,10 @@ if ($rtxdi_found) {
   }
 }
 # Matched ReSTIR Neighbours' reuse (REUSE_COMPATIBLE, PT DI step 5's G5: RTXDI's compatibility score; its PT header's
-# uncalled selection pass gets its surface read and buffer name from rt_path.hlsli) and its Balanced ReSTIR Light twin.
+# uncalled selection pass gets its surface read and buffer name from rt_path.hlsli) and its Balanced ReSTIR Light twins.
 $compatible = @(@('REUSE_COMPATIBLE REUSE', 'rt_reuse_compatible', 'RT_REUSE_COMPATIBLE'),
-                @('REUSE_BALANCED REUSE_COMPATIBLE REUSE', 'rt_reuse_compatible_balanced', 'RT_REUSE_COMPATIBLE_BALANCED'))
+                @('REUSE_BALANCED REUSE_COMPATIBLE REUSE', 'rt_reuse_compatible_balanced', 'RT_REUSE_COMPATIBLE_BALANCED'),
+                @('REUSE_BALANCED_RAYTRACED REUSE_COMPATIBLE REUSE', 'rt_reuse_compatible_balanced_raytraced', 'RT_REUSE_COMPATIBLE_BALANCED_RAYTRACED'))
 foreach ($variant in $compatible) {
   Remove-Item "$out\$($variant[1]).h", "$out\$($variant[1])_omm.h" -ErrorAction SilentlyContinue
   if (-not $rtxdi_found) { continue }
