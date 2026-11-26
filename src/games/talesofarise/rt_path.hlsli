@@ -52,6 +52,22 @@ float3 Camera() {
   return sun[uint2(1, 0)].xyz;
 }
 
+// A running average's value as its f16 texture keeps it: the nearest half, stored exactly. A typed f16 store rounds toward
+// zero on the 5090 (as f32tof16, D3D11.3 3.2.2), so each frame's lerp toward a steady value stopped short below it (a
+// dark bias). Attila's F32ToF16Nearest (twattila/dlaa_helper/rt_scene.hlsli:355-363) per component, its own copy (this
+// port's rt_scene has none): the nearer of the truncated half and the next one away from zero, from 65504 on as
+// f32tof16 gives it. CONTROL_F16_STORE_RAW: the plain store.
+float4 StoredHalf(float4 value) {
+#if defined(CONTROL_F16_STORE_RAW)
+  return value;
+#else
+  const uint4 truncated = f32tof16(value);
+  const float4 magnitude = abs(value);
+  const uint4 nearest = select(magnitude - abs(f16tof32(truncated)) > abs(f16tof32(truncated + 1u)) - magnitude, truncated + 1u, truncated);
+  return f16tof32(select((truncated & 0x7FFFu) >= 0x7BFFu, truncated, nearest));
+#endif
+}
+
 // The base colour the cache saw at a hit.
 float3 HitAlbedo(float3 hit) {
   float3 albedo;
@@ -163,7 +179,7 @@ void PathTracePixel(uint2 id) {
     light /= max(path_samples, 1u);
     const float4 previous = ((flags & BOUNCE_HISTORY) != 0u && seen) ? history[previous_pixel] : 0.f;
     const float frames = min(previous.w + 1.f, MAX_DIFFUSE_FRAMES);
-    accumulated[id] = float4(lerp(previous.rgb, light, 1.f / frames), frames);
+    accumulated[id] = StoredHalf(float4(lerp(previous.rgb, light, 1.f / frames), frames));
   }
 
   if (!reflections_on && !occlusion) return;
@@ -211,8 +227,8 @@ void PathTracePixel(uint2 id) {
     previous_meta = specular_meta_history[previous_pixel];
   }
   const float frames = min(previous_meta.y + 1.f, mirror ? 1.f : lerp(2.f, MAX_SPECULAR_FRAMES, saturate(roughness * 3.f)));
-  specular_accumulated[id] = lerp(previous, current, 1.f / frames);
-  specular_meta[id] = float2(lerp(previous_meta.x, current_open, 1.f / frames), frames);
+  specular_accumulated[id] = StoredHalf(lerp(previous, current, 1.f / frames));
+  specular_meta[id] = StoredHalf(float4(lerp(previous_meta.x, current_open, 1.f / frames), frames, 0.f, 0.f)).xy;
 }
 
 #endif  // SRC_GAMES_TALESOFARISE_DLSS_RT_PATH_HLSLI_

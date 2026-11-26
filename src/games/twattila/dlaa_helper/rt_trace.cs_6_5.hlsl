@@ -74,7 +74,13 @@ float KeptAmbient(uint2 pixel, float3 world, float ambient_now) {
   if ((path_flags & PATH_AMBIENT_HISTORY) != 0u && SeenByLastTrace(world, seen_pixel)) {
     kept = lerp(ambient_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 1u : 0u][seen_pixel], ambient_now, AMBIENT_BLEND);
   }
+  // Stored as its nearest half (X11): the R16F history's typed store rounds toward zero on the 5090, a dark drift of
+  // ~2.5-5 f16 ULP at a steady value (rt_path.hlsli StoredHalf's sources). CONTROL_F16_STORE_RAW: today's plain store.
+#if defined(CONTROL_F16_STORE_RAW)
   ambient_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 0u : 1u][pixel] = kept;
+#else
+  ambient_history[(path_flags & PATH_AMBIENT_PARITY) != 0u ? 0u : 1u][pixel] = f16tof32(F32ToF16Nearest(kept));
+#endif
   return kept;
 }
 

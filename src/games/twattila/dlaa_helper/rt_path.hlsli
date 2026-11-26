@@ -1054,6 +1054,19 @@ void StoreReservoir(RWTexture2D<ReservoirPoint> samples, RWTexture2D<ReservoirDa
 #endif
 }
 
+// A running average's value as an f16 texture (R16F / RGBA16F) keeps it: the nearest half (X11), stored exactly. A
+// typed store of the float rounds toward zero on the 5090 (pdi5_ 11-26, testbin\scratch\pdi5_\f16store: typed R16_FLOAT
+// and R16G16B16A16_FLOAT, as f32tof16, D3D11.3 3.2.2), so each frame's lerp toward a steady value stopped short below
+// it: a dark bias of ~0.5-1 f16 ULP / blend share (fidelity rt_core.md B3). src: rt_scene.hlsli F32ToF16Nearest.
+// CONTROL_F16_STORE_RAW: today's plain store.
+float4 StoredHalf(float4 value) {
+#if defined(CONTROL_F16_STORE_RAW)
+  return value;
+#else
+  return f16tof32(uint4(F32ToF16Nearest(value.x), F32ToF16Nearest(value.y), F32ToF16Nearest(value.z), F32ToF16Nearest(value.w)));
+#endif
+}
+
 // Validation of last frame's reservoir from `origin`: its light now (where the screen or the cache knows it; not with
 // TORCH_REGIR) takes the stored light's place, and a change shortens the history (bright changes dimmed until they
 // settle). The change (0: none, 1: all of the history goes). `contact`: its light in ContactShade's.
@@ -1754,7 +1767,7 @@ void ReuseTexel(uint2 id) {
     }
     const float most_frames = ((lights_in_bounce & LIGHTS_RATIO_FOLLOW) != 0u) ? RATIO_FRAMES_MOVING / (float)min(bounce_scale, 2u) : RATIO_FRAMES;
     const float frames = min(kept.z + 1.f, most_frames);
-    light_ratio[written][id] = float4(lerp(kept.xy, float2(lit ? total : 0.f, total), 1.f / frames), frames, position.w);
+    light_ratio[written][id] = StoredHalf(float4(lerp(kept.xy, float2(lit ? total : 0.f, total), 1.f / frames), frames, position.w));
   }
 #else
   float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && (reuse_tests & REUSE_TEST_NO_SKY) == 0u) ? bounce[id].rgb : 0.f;
@@ -2132,8 +2145,8 @@ void ReflectPixel(uint2 id) {
   // rgb: the light of what met something (the share-weighted mean over the frames, as fast as the share itself); a: the
   // share that met.
   const float share = lerp(previous.a, current.a, 1.f / frames);
-  specular_accumulated[id] = float4(lerp(previous.rgb, current.rgb, saturate(current.a / (frames * max(share, 1e-4f)))), share);
-  specular_meta[id] = float2(lerp(previous_meta.x, current_open, 1.f / frames), frames);
+  specular_accumulated[id] = StoredHalf(float4(lerp(previous.rgb, current.rgb, saturate(current.a / (frames * max(share, 1e-4f)))), share));
+  specular_meta[id] = StoredHalf(float4(lerp(previous_meta.x, current_open, 1.f / frames), frames, 0.f, 0.f)).xy;
 }
 
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_PATH_HLSLI_
