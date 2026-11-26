@@ -948,6 +948,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - W8 MERGED b9a5cf080 (fx8_w8 ac18984c9 / 11bd63924 / bc6d4d6e9 + fx8_x30 a0b82717 ... | ?
 - gts_ STARTED 16:0x (Opus High, est 120; ATN: outside the cap): GPU test speed + ... | ?
 - 4K M6 BASELINE PASS 16:07 (all_modes_check -NewBaseline -Rev ce1f83655, 85 min G ... | ?
+- 64-BIT LOADER 1.3.27 / 1.3.28 OUT (11-26, public repo 0af665a4ad76 / 6ef3e72bcca ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17462,6 +17463,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         m6_baseline.tsv). all_modes_check.ps1 now judges against it ($Baseline, $HarnessHashes FC462599C453; backup
         .bak_4kbase; dry run OK). pdi4c_ GO for -Rev r6 (queued behind its re-runs + fx8_ G1 + aaf_). Its builds
         (h0\builds\all\20261126_144106 lab / plain) = ref_set.ps1's -Lab / -Plain later. Owner: pdi4c_ / coord
+        - [ ] 64-BIT LOADER 1.3.27 / 1.3.28 OUT (11-26, public repo 0af665a4ad76 / 6ef3e72bcca8; 21 files vs 1.3.20; licence files
+        unchanged): 1.3.27 carries ATN's 3 fixes (credited). Also new: an opt-in crash-report sender (asks once after a crash;
+        off with settings.txt crash_reports=off; source builds without the author's private webhook header never ask) and a
+        test-only film pacing trace (ATTILA_FILM_TRACE=1). The frame cap (shim_gfx.c) is unchanged; dx_present changed -> b1
+        needs a rebase. TODO: move our 64-bit base 1.3.20 -> 1.3.28 (fetch into a new dir, rebase sol_fixes_1124 (3 fixes now
+        upstream) + b1, rebuild, a64_ab smoke with our add-on + plugin; test home settings.txt crash_reports=off so no run
+        stops on that question; runs never answer Yes). Owner: coord (ATN: now or next slot)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
