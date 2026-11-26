@@ -1089,7 +1089,7 @@ float4 StoredHalf(float4 value) {
 float Validate(inout Reservoir previous, float3 origin, bool contact) {
   const float3 to_hit = previous.hit - origin;
   const float hit_distance = length(to_hit);
-  if (hit_distance <= 1e-3f || ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_DROP) != 0u && Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE))) {
+  if (hit_distance <= 9.999733e-4f || ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_DROP) != 0u && Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE))) {
     previous.count = 0.f;
     return 0.f;
   }
@@ -1143,7 +1143,7 @@ float ReuseJacobian(Reservoir other, float3 other_origin, float3 origin) {
            / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
   }
   return saturate(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
-         / max(saturate(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
+         / max(saturate(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 9.998409e-9f);
 }
 
 // A history reservoir's own surface `held` (last frame's position at the pixel it was made for) at `world`'s depth in last
@@ -1892,7 +1892,7 @@ float3 ViewFacingNormal(float3 normal, float3 view) {
   const float3 across = normal - n_dot_v * view;  // the normal's part across the view
   const float across_length = length(across);
   // A normal straight away from the view has no turn of its own: the view's (an exact limit, never met in a frame).
-  if (!(across_length > 1e-6f)) return view;
+  if (!(across_length > 1.0001903e-6f)) return view;
   return BACK_FACING_COSINE * view + sqrt(1.f - BACK_FACING_COSINE * BACK_FACING_COSINE) * (across / across_length);
 #endif
 }
@@ -2218,7 +2218,7 @@ void ReflectPixel(uint2 id) {
   // rgb: the light of what met something (the share-weighted mean over the frames, as fast as the share itself); a: the
   // share that met.
   const float share = lerp(previous.a, current.a, 1.f / frames);
-  specular_accumulated[id] = StoredHalf(float4(lerp(previous.rgb, current.rgb, saturate(current.a / (frames * max(share, 1e-4f)))), share));
+  specular_accumulated[id] = StoredHalf(float4(lerp(previous.rgb, current.rgb, saturate(current.a / (frames * max(share, 1.0000651e-4f)))), share));
 #if defined(REUSE_CLAMP_TRACE)
   specular_meta[id] = float2(clamp_mark, frames);
 #else
