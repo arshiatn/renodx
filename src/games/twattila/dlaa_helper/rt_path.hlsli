@@ -121,6 +121,13 @@ static const float REFLECT_RADIUS = 12.f;  // half-resolution texels at roughnes
 static const float REFLECT_SHIFT = 1.f;    // a neighbour at most this x alpha x its sample's distance away
 static const float REUSE_HISTORY = 20.f;      // last frame's samples at most this many times this frame's
 static const float REUSE_W_CLAMP = 10.f;      // a sample's weight at most this many times one ray's (kajiya's RESTIR_RESERVOIR_W_CLAMP; the bounce's: W x cos / pi)
+// X08 (fidelity restir_gi_sharc_fog.md G-1: an output-changing clamp over the estimator's biases, re-set where it cuts
+// nothing at PASS or dropped, by the GPU's numbers and ATN's word; no default change here). Builds of their own (never
+// in build.ps1; a lab stem swap): REUSE_W_CLAMP_OFF the clamp off (the history's ClampWeight, PathTraceTexel, and Own
+// ReSTIR's merge ratio, ReflectPixel; the spatial one is off already, REUSE_TEST_SPATIAL_CLAMP's), REUSE_CLAMP_TRACE a
+// one-frame trace of where it cuts: the bounce's w = 1 the history's clamp cut this texel's W, + 2 the spatial one would
+// have (its distance from the camera's place; ReuseTexel), specular_meta's x = 1 where Own ReSTIR clamped a merge (0
+// else; its open share's place). The bounce's other parts and every other output as without it.
 static const uint REUSE_VALIDATION_PERIOD = 3u;
 // The suspects', G1's and Validate's bits (32-4096, 65536 up) are read only in their own builds (REUSE_TESTS: rt_path_tests, rt_reuse_tests; the
 // host takes them while one is set). Balanced ReSTIR Light (RT_PATH_REUSE_BALANCED): G1 Basic in the reuse's own builds
@@ -138,6 +145,11 @@ static const uint REUSE_VALIDATION_PERIOD = 3u;
 #else
 #define REUSE_SUSPECTS (reuse_tests & REUSE_TEST_VALIDATE_KEEP_LIGHT)
 #endif
+// The fidelity fixes' controls (11-26 wave 3; -D in a build of its own, never in build.ps1: a lab stem swap or the WARP
+// tests, one build A / B against the shipped one): CONTROL_TARGET_PAST_RANGE (X02, ReuseTarget), CONTROL_HISTORY_NO_DEPTH
+// (X05, HistoryDepthMatches' callers), CONTROL_TEMPORAL_NO_SHIFT (X04, PathTraceTexel), CONTROL_F16_STORE_RAW (X11,
+// StoredHalf; rt_trace.cs_6_5.hlsl's too), CONTROL_NRD_CHOSEN_HIT (X23), CONTROL_N_DOT_V_CLAMP (X48, ViewFacingNormal);
+// REUSE_W_CLAMP_OFF / REUSE_CLAMP_TRACE (X08, at REUSE_W_CLAMP). X01's and X06's are bits (rt_reuse_bits.h).
 #if defined(REUSE_NEAR)
 // Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
 // scored better, its pass about half the cost).
@@ -872,8 +884,16 @@ float ContactShade(float hit_distance) {
 }
 
 // The target function at a receiver: the sample's light (luminance) by the cosine toward it (the integrand without 1/pi),
-// for a sample made at this receiver (its own, its history: the merges' and Finish's).
+// for a sample made at this receiver (its own, its history: the merges' and Finish's). 0 for a surface sample past this
+// receiver's FirstRange (X02): its own rays end there (their sky, Own Sky Rays' mean or the sky sample, owns those
+// directions), so such a sample lies outside its domain, and a neighbour's or the history's counted it twice (bright at
+// the range's edge). ours: the target's support = the receiver's sampling domain (fidelity restir_gi_sharc_fog.md B2).
+// Every merge inherits it: the history's, the spatial one's (the moved target below), G1's and G2's targets there. Not
+// the reflections': their lobes' targets are LobeDensity's, to 1e4 m. CONTROL_TARGET_PAST_RANGE: today's (no test).
 float ReuseTarget(float3 receiver, float3 receiver_normal, Reservoir reservoir) {
+#if !defined(CONTROL_TARGET_PAST_RANGE)
+  if (any(reservoir.hit_normal != 0.f) && distance(reservoir.hit, receiver) > FirstRange()) return 0.f;
+#endif
   return Luminance(reservoir.light) * max(dot(receiver_normal, normalize(reservoir.hit - receiver)), 0.f);
 }
 
@@ -1046,13 +1066,30 @@ void StoreReservoir(RWTexture2D<ReservoirPoint> samples, RWTexture2D<ReservoirDa
 #endif
 }
 
-// Validation of last frame's reservoir from `origin`: its surface out of view now drops it; its light now (where the
-// screen or the cache knows it; not with TORCH_REGIR) takes the stored light's place, and a change shortens the history (bright changes
-// dimmed until they settle). The change (0: none, 1: all of the history goes). `contact`: its light in ContactShade's.
+// A running average's value as an f16 texture (R16F / RGBA16F) keeps it: the nearest half (X11), stored exactly. A
+// typed store of the float rounds toward zero on the 5090 (pdi5_ 11-26, testbin\scratch\pdi5_\f16store: typed R16_FLOAT
+// and R16G16B16A16_FLOAT, as f32tof16, D3D11.3 3.2.2), so each frame's lerp toward a steady value stopped short below
+// it: a dark bias of ~0.5-1 f16 ULP / blend share (fidelity rt_core.md B3). src: rt_scene.hlsli F32ToF16Nearest.
+// CONTROL_F16_STORE_RAW: today's plain store.
+float4 StoredHalf(float4 value) {
+#if defined(CONTROL_F16_STORE_RAW)
+  return value;
+#else
+  return f16tof32(uint4(F32ToF16Nearest(value.x), F32ToF16Nearest(value.y), F32ToF16Nearest(value.z), F32ToF16Nearest(value.w)));
+#endif
+}
+
+// Validation of last frame's reservoir from `origin`: its light now (where the screen or the cache knows it; not with
+// TORCH_REGIR) takes the stored light's place, and a change shortens the history (bright changes dimmed until they
+// settle). The change (0: none, 1: all of the history goes). `contact`: its light in ContactShade's.
+// A sample out of view now keeps its history (X01): the final ray (ReuseTexel's, ReflectPixel's) shades it 0. src: Lin et
+// al. 2022, "Generalized Resampled Importance Sampling" (GRIS), as fidelity restir_gi_sharc_fog.md B1 derives it: dropping
+// a technique by its own sample's visibility biases, E = int f (1 + q m_h), q = P(occluded), m_h ~ 20 / 21. The drop stays
+// as the control: REUSE_TEST_VALIDATE_NO_DROP's bit now selects it (its name is today's host switch, rt_d3d12.hpp).
 float Validate(inout Reservoir previous, float3 origin, bool contact) {
   const float3 to_hit = previous.hit - origin;
   const float hit_distance = length(to_hit);
-  if (hit_distance <= 1e-3f || ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_DROP) == 0u && Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE))) {
+  if (hit_distance <= 1e-3f || ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_DROP) != 0u && Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE))) {
     previous.count = 0.f;
     return 0.f;
   }
@@ -1092,17 +1129,32 @@ float Validate(inout Reservoir previous, float3 origin, bool contact) {
 }
 
 // A neighbour's sample moved to this receiver: the Jacobian of its surface's solid angles from here over from there (the
-// sky's samples, no surface, as far as the sky: the same solid angle from either).
+// sky's samples, no surface, as far as the sky: the same solid angle from either). The cosines saturated (X06): the hit's
+// normal faces the ray that made it (rt_scene.hlsli HitNormal), so a receiver behind its surface (a thin two-sided card)
+// gets 0, cut, not the front's light. src: RTXDI-Library Utils/Math.hlsli:144-151 (RTXDI_CalculatePartialJacobian's
+// saturate), :153-166 (RTXDI_CalculateJacobian). Today's abs() is the control: REUSE_TEST_JACOBIAN_SATURATE's bit now
+// selects it (its name is today's host switch, rt_d3d12.hpp).
 float ReuseJacobian(Reservoir other, float3 other_origin, float3 origin) {
   if (all(other.hit_normal == 0.f)) return 1.f;
   const float3 to_other = other_origin - other.hit;
   const float3 to_here = origin - other.hit;
   if ((REUSE_SUSPECTS & REUSE_TEST_JACOBIAN_SATURATE) != 0u) {
-    return saturate(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
-           / max(saturate(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
+    return abs(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
+           / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
   }
-  return abs(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
-         / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
+  return saturate(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
+         / max(saturate(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
+}
+
+// A history reservoir's own surface `held` (last frame's position at the pixel it was made for) at `world`'s depth in last
+// frame's view, within 10 % (X05). src: RTXDI-Library GI/TemporalResampling.hlsli:107-110, RTXDI_IsValidNeighbor's depth
+// test (Utils/Math.hlsli:22, :27-31: |a - b| <= threshold max(a, b), linear depths); 0.1 = ours, the spatial merge's.
+// SeenLastFrame tests the reprojected pixel, not the reservoir texel's own one (nor, under PATH_PERMUTE, the texel
+// taken): a reservoir made at another depth leaked across edges (fidelity restir_gi_sharc_fog.md B5).
+bool HistoryDepthMatches(float4 held, float3 world) {
+  const float expected = ClipOf(world, previous_view_projection).w;
+  const float seen = ClipOf(held.xyz, previous_view_projection).w;
+  return held.w > 0.f && abs(seen - expected) <= 0.1f * max(seen, expected);
 }
 
 // The surface a bounce texel shows: its render pixel, world position (w: depth; 0: the sky), normal, rays' origin.
@@ -1190,9 +1242,16 @@ void PathTraceTexel(uint2 id) {
           Random(uint4(id, frame, DIM_FIRST_MERGE + path * 2u)));
   }
   if (sky_kept) own_sky[sky_set][id] = float4(sky / samples, 1.f);
+  // REBLUR's hit distance: this texel's own rays' mean, with ReSTIR GI too (X23), not the reservoir's chosen sample's (a
+  // pick by the target, which src: NRD.hlsli:521 says "cannot be simply passed"). CONTROL_NRD_CHOSEN_HIT: today's (the
+  // reuse writes the chosen sample's, ReuseTexel).
+#if defined(CONTROL_NRD_CHOSEN_HIT)
+  if (!reuse && (path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = hit_sum / samples;
+#else
+  if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = hit_sum / samples;
+#endif
   if (!reuse) {
     bounce[id] = float4(arriving / samples, distance(position.xyz, Camera()));
-    if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = hit_sum / samples;
     return;
   }
   uint2 previous_pixel;
@@ -1203,19 +1262,50 @@ void PathTraceTexel(uint2 id) {
     if ((path_flags & PATH_PERMUTE) != 0u) previous_texel ^= uint2(frame & 1u, (frame >> 1) & 1u);
     previous_texel = min(previous_texel, uint2(bounce_width, bounce_height) - 1u);
     Reservoir previous = LoadReservoir(reuse_samples[1u - set], reuse_data[1u - set], previous_texel);
-    // Last frame's reservoir was made for a surface facing about the same way (else a new history starts).
+    // Last frame's reservoir was made for a surface facing about the same way and at its depth (its texel's centre pixel;
+    // CONTROL_HISTORY_NO_DEPTH: the normal alone, today's), else a new history starts.
     if (dot(LoadReceiverNormal(reuse_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
+    const float4 held = previous_positions[uint3(min(previous_texel * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u),
+                                                 previous_positions_slice)];
+#if !defined(CONTROL_HISTORY_NO_DEPTH)
+    if (!HistoryDepthMatches(held, position.xyz)) previous.count = 0.f;
+#endif
+    // The temporal shift (X04): the history's sample was made from last frame's origin at its texel's centre, up to a texel
+    // from this one, so it moves here by the reconnection Jacobian and its 0.1-10 cut, as the spatial merge's. That origin
+    // is not stored: its position (`held`) plus this texel's offset from its surface to its rays' start (RayOrigin's,
+    // StartPast's; ours: the same offset, both texels on one surface by the tests above). src: RTXDI-Library
+    // GI/TemporalResampling.hlsli:151-156 (RTXDI_CalculateJacobian from the temporal surface, weightSum x J) and RTXDI
+    // FullSample RAB_SpatialHelpers.hlsli:37-40 (RAB_ValidateGISampleWithJacobian: 0.1-10); Ouyang et al. 2021 Eq. 11.
+    // CONTROL_TEMPORAL_NO_SHIFT: today's (no Jacobian, no cut).
+#if defined(CONTROL_TEMPORAL_NO_SHIFT)
+    const float jacobian = 1.f;
+#else
+    const float jacobian = ReuseJacobian(previous, held.xyz + (origin - position.xyz), origin);
+    if (ShiftCut(jacobian, (REUSE_SUSPECTS & REUSE_TEST_NO_JACOBIAN_CUT) == 0u)) previous.count = 0.f;
+#endif
     float invalidity = 0.f;
     if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u && (reuse_tests & REUSE_TEST_NO_VALIDATE) == 0u) {
       invalidity = Validate(previous, origin, true);
     }
     // REUSE_TEST_HISTORY_PLAIN (G0): the cap without the rays.
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)) * (((REUSE_SUSPECTS & REUSE_TEST_HISTORY_PLAIN) != 0u) ? 1u : samples));
-    Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count,
+    // deviation: from G22 Eq. 36 (Talbot over {canonical, history}): 1 / M, because our target has no visibility and the
+    // history comes from a surface facing the same way at the reprojected point, so Talbot's weights reduce to 1 / M; the
+    // bias left is the visibility domain, RTXDI's Raytraced temporal's (unified_pt.md:1771-1784, fa2 B6). No Talbot code.
+    // deviation: the spatial merge's ContactShade move is not applied (the origins lie within a texel; Validate's frames
+    // take the light now at this origin's ContactShade).
+    Merge(reservoir, previous, ReuseTarget(origin, normal, previous) * previous.weight * previous.count * jacobian,
           Random(uint4(id, frame, DIM_HISTORY_MERGE)));
   }
   Finish(reservoir, ReuseTarget(origin, normal, reservoir));
+#if defined(REUSE_CLAMP_TRACE)
+  Reservoir history_clamped = reservoir;
+  ClampWeight(history_clamped, origin, normal);
+  surface_normal[id].w = (history_clamped.weight < reservoir.weight) ? 1.f : 0.f;  // ReuseTexel reads it into the bounce
+#endif
+#if !defined(REUSE_W_CLAMP_OFF)
   if ((REUSE_SUSPECTS & REUSE_TEST_NO_HISTORY_CLAMP) == 0u) ClampWeight(reservoir, origin, normal);
+#endif
   StoreReservoir(reuse_samples[set], reuse_data[set], id, reservoir, normal);
   if (sky_apart) bounce[id] = float4(sky / samples, 0.f);
 }
@@ -1505,6 +1595,9 @@ void ReuseTexel(uint2 id) {
   combined.light = resampled.radiance;
   combined.weight = resampled.weightSum;
   combined.count = (float)resampled.M;
+#if defined(REUSE_CLAMP_TRACE)
+  const float clamp_marks = surface_normal[id].w;  // RTXDI's resampling has no spatial clamp of ours
+#endif
 #else
   const uint set = ((path_flags & PATH_REUSE_PARITY) != 0u) ? 1u : 0u;
   const Reservoir own = LoadReservoir(reuse_samples[set], reuse_data[set], id);
@@ -1643,6 +1736,11 @@ void ReuseTexel(uint2 id) {
     }
     combined.weight = (targets > 0.f) ? combined.weight * chosen_target / (target * targets) : 0.f;
   }
+#if defined(REUSE_CLAMP_TRACE)
+  Reservoir spatial_clamped = combined;
+  ClampWeight(spatial_clamped, origin, normal);
+  const float clamp_marks = surface_normal[id].w + ((spatial_clamped.weight < combined.weight) ? 2.f : 0.f);
+#endif
   if ((REUSE_SUSPECTS & REUSE_TEST_SPATIAL_CLAMP) != 0u) ClampWeight(combined, origin, normal);
 #endif
   // The chosen surface in view of this one (no light through walls); the integrand over its density.
@@ -1703,7 +1801,7 @@ void ReuseTexel(uint2 id) {
     }
     const float most_frames = ((lights_in_bounce & LIGHTS_RATIO_FOLLOW) != 0u) ? RATIO_FRAMES_MOVING / (float)min(bounce_scale, 2u) : RATIO_FRAMES;
     const float frames = min(kept.z + 1.f, most_frames);
-    light_ratio[written][id] = float4(lerp(kept.xy, float2(lit ? total : 0.f, total), 1.f / frames), frames, position.w);
+    light_ratio[written][id] = StoredHalf(float4(lerp(kept.xy, float2(lit ? total : 0.f, total), 1.f / frames), frames, position.w));
   }
 #else
   float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && (reuse_tests & REUSE_TEST_NO_SKY) == 0u) ? bounce[id].rgb : 0.f;
@@ -1711,8 +1809,14 @@ void ReuseTexel(uint2 id) {
     arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }
 #endif
+#if defined(REUSE_CLAMP_TRACE)
+  bounce[id] = float4(arriving, clamp_marks);
+#else
   bounce[id] = float4(arriving, distance(position.xyz, Camera()));
+#endif
+#if defined(CONTROL_NRD_CHOSEN_HIT)
   if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = (combined.weight > 0.f) ? hit_distance : bounce_range;
+#endif
 }
 
 // Fog in Reflections (PATH_REFLECT_FOG): the light a reflection's ray brings from `hit` to the pixel's `origin` through the
@@ -1771,12 +1875,35 @@ float3 GgxDirection(float3x3 basis, float3 view, float3 view_local, float alpha,
   return reflect(-view, mul(GgxVisibleNormal(view_local, alpha, random.x, random.y), basis));
 }
 
+// A shading normal facing away from the view (a normal map's at grazing water, the screen's sides), or grazing it, turned
+// toward the view in the plane of both, just far enough for n.v = BACK_FACING_COSINE (X48): the lobe's sampler (visible
+// normals) needs the view above it, and today's clamp of n.v alone kept the view's other components, a view vector that is
+// neither the real one nor unit. src: RTXPT ShadingData.hlsli:196-227 (AdjustShadingNormalAndComputeTangentSpace: the
+// normal pulled toward V; its Falcor branch blends it toward the face normal), pbrt-v4 scattering.h:166. ours: the form
+// (the shortest turn, not RTXPT's N + t V; no code copied) and its floor, the old clamp's 1e-3, so every pixel at n.v >=
+// 1e-3 keeps today's lobe (RTXPT starts at 0.05: a look choice for ATN). CONTROL_N_DOT_V_CLAMP: today's.
+static const float BACK_FACING_COSINE = 1e-3f;
+float3 ViewFacingNormal(float3 normal, float3 view) {
+#if defined(CONTROL_N_DOT_V_CLAMP)
+  return normal;
+#else
+  const float n_dot_v = dot(normal, view);
+  if (n_dot_v >= BACK_FACING_COSINE) return normal;
+  const float3 across = normal - n_dot_v * view;  // the normal's part across the view
+  const float across_length = length(across);
+  // A normal straight away from the view has no turn of its own: the view's (an exact limit, never met in a frame).
+  if (!(across_length > 1e-6f)) return view;
+  return BACK_FACING_COSINE * view + sqrt(1.f - BACK_FACING_COSINE * BACK_FACING_COSINE) * (across / across_length);
+#endif
+}
+
 // A pixel's GGX lobe's density toward a point (of its reflected directions; 0: below the surface). Reflection Reuse's
-// target: a sample's light (luminance) by it.
+// target: a sample's light (luminance) by it. The normal as the lobe's (ViewFacingNormal: a neighbour's too).
 float LobeDensity(float3 receiver, float3 normal, float3 view, float alpha, float3 target) {
+  normal = ViewFacingNormal(normal, view);
   const float3 direction = normalize(target - receiver);
   if (dot(normal, direction) <= 0.f) return 0.f;
-  return GgxReflectionDensity(max(dot(normal, view), 1e-3f), saturate(dot(normal, normalize(view + direction))), alpha);
+  return GgxReflectionDensity(max(dot(normal, view), BACK_FACING_COSINE), saturate(dot(normal, normalize(view + direction))), alpha);
 }
 
 // The render pixel an Own ReSTIR texel stands for this frame: one of its 2 x 2, a different one each frame.
@@ -1800,9 +1927,9 @@ void ReflectReservoirTexel(uint2 id) {
     StoreReservoir(reflect_samples[set], reflect_data[set], id, reservoir, 0.f);
     return;
   }
-  const float3 normal = PixelNormal(pixel, position);
   const float3 view = normalize(Camera() - position.xyz);
-  const float n_dot_v = max(dot(normal, view), 1e-3f);
+  const float3 normal = ViewFacingNormal(PixelNormal(pixel, position), view);
+  const float n_dot_v = max(dot(normal, view), BACK_FACING_COSINE);  // the clamp: CONTROL_N_DOT_V_CLAMP's alone
   const float3 origin = RayOrigin(position, normal, Planar(int2(pixel), position, normal));
   const float alpha = ReflectAlpha(roughness);
   const float3x3 basis = Basis(normal);
@@ -1827,6 +1954,11 @@ void ReflectReservoirTexel(uint2 id) {
     const uint2 previous_texel = min(previous_pixel / 2u, (uint2(width, height) + 1u) / 2u - 1u);
     Reservoir previous = LoadReservoir(reflect_samples[1u - set], reflect_data[1u - set], previous_texel);
     if (dot(LoadReceiverNormal(reflect_data[1u - set], previous_texel), normal) < 0.8f) previous.count = 0.f;
+#if !defined(CONTROL_HISTORY_NO_DEPTH)
+    // Its own surface: the pixel ReservoirPixel gave that texel last frame (frame - 1).
+    const uint2 held_pixel = min(previous_texel * 2u + uint2((frame - 1u) & 1u, ((frame - 1u) >> 1) & 1u), uint2(width, height) - 1u);
+    if (!HistoryDepthMatches(previous_positions[uint3(held_pixel, previous_positions_slice)], position.xyz)) previous.count = 0.f;
+#endif
     float invalidity = 0.f;
     if (previous.count > 0.f && previous.weight > 0.f && frame % REUSE_VALIDATION_PERIOD == 0u) invalidity = Validate(previous, origin, false);
     previous.count = min(previous.count, exp2(log2(REUSE_HISTORY) * (1.f - invalidity)));
@@ -1853,7 +1985,8 @@ void ReflectPixel(uint2 id) {
     if ((path_flags & PATH_NRD) != 0u) nrd_reflection[id] = float4(0.f, 0.f, 0.f, SKY_HIT_DISTANCE);
     return;
   }
-  const float3 normal = PixelNormalOf(id, position, guide, neighbours);
+  const float3 view = normalize(Camera() - position.xyz);
+  const float3 normal = ViewFacingNormal(PixelNormalOf(id, position, guide, neighbours), view);
   const float3 surface_normal = SurfaceNormalOf(int2(id), position, neighbours);
   // Only where the depth's plane is a real one (water, the ground): at concave corners the depth's normal mixes two faces,
   // and a ray toward the wall folded off it came back open (the reference: concave edges 1.35x its open share, traced
@@ -1869,8 +2002,7 @@ void ReflectPixel(uint2 id) {
       fold = false;
     }
   }
-  const float3 view = normalize(Camera() - position.xyz);
-  const float n_dot_v = max(dot(normal, view), 1e-3f);
+  const float n_dot_v = max(dot(normal, view), BACK_FACING_COSINE);  // the clamp: CONTROL_N_DOT_V_CLAMP's alone
   const float3 origin = RayOrigin(position, normal, PlanarOf(position, normal, neighbours));
   const float roughness = saturate(raw_roughness);
   const float alpha = ReflectAlpha(roughness);
@@ -1937,6 +2069,9 @@ void ReflectPixel(uint2 id) {
     }
   }
   float met_weights = weights;  // before the reuses below set `weights` to 1
+#if defined(REUSE_CLAMP_TRACE)
+  float clamp_mark = 0.f;  // 1: Own ReSTIR clamped a merge here (REUSE_W_CLAMP's trace)
+#endif
   // Reflection Reuse from ReSTIR GI (PATH_REFLECT_REUSE, rougher lobes): the Light Bounce's reservoir at this pixel's
   // texel as a second candidate, resampled with the rays' own light (generalized RIS, its weights 1/2: the rays' light
   // by its target over their density, the reservoir's by the lobe's density at it times its W); one ray to the chosen
@@ -2036,7 +2171,14 @@ void ReflectPixel(uint2 id) {
       }
       if (densities <= 0.f) continue;
       const float ratio = LobeDensity(origin, normal, view, alpha, other.hit) * jacobian * total_count / densities;
+#if defined(REUSE_CLAMP_TRACE)
+      if (ratio > REUSE_W_CLAMP) clamp_mark = 1.f;
+#endif
+#if defined(REUSE_W_CLAMP_OFF)
+      Merge(combined, other, other.weight * other.count * ratio, Random(uint4(id, frame, DIM_REFLECT_MERGE + index)));
+#else
       Merge(combined, other, other.weight * other.count * min(ratio, REUSE_W_CLAMP), Random(uint4(id, frame, DIM_REFLECT_MERGE + index)));
+#endif
       weight_sum += other.weight * other.count;
       counted += other.count;
     }
@@ -2076,8 +2218,12 @@ void ReflectPixel(uint2 id) {
   // rgb: the light of what met something (the share-weighted mean over the frames, as fast as the share itself); a: the
   // share that met.
   const float share = lerp(previous.a, current.a, 1.f / frames);
-  specular_accumulated[id] = float4(lerp(previous.rgb, current.rgb, saturate(current.a / (frames * max(share, 1e-4f)))), share);
-  specular_meta[id] = float2(lerp(previous_meta.x, current_open, 1.f / frames), frames);
+  specular_accumulated[id] = StoredHalf(float4(lerp(previous.rgb, current.rgb, saturate(current.a / (frames * max(share, 1e-4f)))), share));
+#if defined(REUSE_CLAMP_TRACE)
+  specular_meta[id] = float2(clamp_mark, frames);
+#else
+  specular_meta[id] = StoredHalf(float4(lerp(previous_meta.x, current_open, 1.f / frames), frames, 0.f, 0.f)).xy;
+#endif
 }
 
 #endif  // SRC_GAMES_TWATTILA_DLAA_HELPER_RT_PATH_HLSLI_

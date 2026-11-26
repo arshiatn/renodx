@@ -52,6 +52,22 @@ float3 Camera() {
   return sun[uint2(1, 0)].xyz;
 }
 
+// A running average's value as its f16 texture keeps it: the nearest half, stored exactly. A typed f16 store rounds toward
+// zero on the 5090 (as f32tof16, D3D11.3 3.2.2), so each frame's lerp toward a steady value stopped short below it (a
+// dark bias). Attila's F32ToF16Nearest (twattila/dlaa_helper/rt_scene.hlsli:355-363) per component, its own copy (this
+// port's rt_scene has none): the nearer of the truncated half and the next one away from zero, from 65504 on as
+// f32tof16 gives it. CONTROL_F16_STORE_RAW: the plain store.
+float4 StoredHalf(float4 value) {
+#if defined(CONTROL_F16_STORE_RAW)
+  return value;
+#else
+  const uint4 truncated = f32tof16(value);
+  const float4 magnitude = abs(value);
+  const uint4 nearest = select(magnitude - abs(f16tof32(truncated)) > abs(f16tof32(truncated + 1u)) - magnitude, truncated + 1u, truncated);
+  return f16tof32(select((truncated & 0x7FFFu) >= 0x7BFFu, truncated, nearest));
+#endif
+}
+
 // The base colour the cache saw at a hit.
 float3 HitAlbedo(float3 hit) {
   float3 albedo;
@@ -145,7 +161,19 @@ void PathTracePixel(uint2 id) {
   }
   const float3 normal = normalize(encoded * 2.f - 1.f);
   const float3 view = normalize(Camera() - position.xyz);
-  const float n_dot_v = max(dot(normal, view), 1e-3f);
+  // The reflections' lobe: a shading normal facing away from the view (or grazing it) turned toward the view in the plane
+  // of both, just far enough for n.v = 1e-3 (the old clamp's floor: every pixel at n.v >= 1e-3 keeps its lobe); the
+  // clamp of n.v alone kept a view vector that is neither the real one nor unit. Attila's ViewFacingNormal
+  // (twattila/dlaa_helper/rt_path.hlsli, its cites: RTXPT ShadingData.hlsli:196-227; ours: the shortest turn), inline
+  // here (one use). The bounce's paths keep the G-buffer's normal. CONTROL_N_DOT_V_CLAMP: the old clamp.
+  float3 reflect_normal = normal;
+#if !defined(CONTROL_N_DOT_V_CLAMP)
+  const float3 across = normal - dot(normal, view) * view;
+  if (dot(normal, view) < 1e-3f) {
+    reflect_normal = (length(across) > 1e-6f) ? 1e-3f * view + sqrt(1.f - 1e-6f) * normalize(across) : view;
+  }
+#endif
+  const float n_dot_v = max(dot(reflect_normal, view), 1e-3f);
   const float3 origin = position.xyz + normal * SurfaceOffset(position.w);
   int2 previous_pixel;
   const bool seen = (flags & HISTORY_VALID) != 0u && PreviousPixel(position.xyz, previous_pixel)
@@ -163,7 +191,7 @@ void PathTracePixel(uint2 id) {
     light /= max(path_samples, 1u);
     const float4 previous = ((flags & BOUNCE_HISTORY) != 0u && seen) ? history[previous_pixel] : 0.f;
     const float frames = min(previous.w + 1.f, MAX_DIFFUSE_FRAMES);
-    accumulated[id] = float4(lerp(previous.rgb, light, 1.f / frames), frames);
+    accumulated[id] = StoredHalf(float4(lerp(previous.rgb, light, 1.f / frames), frames));
   }
 
   if (!reflections_on && !occlusion) return;
@@ -172,7 +200,7 @@ void PathTracePixel(uint2 id) {
   const bool mirror = roughness < 0.05f;
   const bool traced = reflections_on && roughness <= ROUGH_LIMIT;
   const uint samples = mirror ? 1u : max(path_samples, 1u);
-  const float3x3 basis = Basis(normal);
+  const float3x3 basis = Basis(reflect_normal);
   const float3 view_local = float3(dot(view, basis[0]), dot(view, basis[1]), n_dot_v);
   float3 light = 0.f;
   float weights = 0.f;
@@ -183,9 +211,9 @@ void PathTracePixel(uint2 id) {
     const float3 half_local = mirror ? float3(0.f, 0.f, 1.f)
                                      : GgxVisibleNormal(view_local, alpha, Random(uint3(id, frame * 16u + sample * 2u + 3072u)),
                                                         Random(uint3(id, frame * 16u + sample * 2u + 3073u)));
-    const float3 half_vector = half_local.x * basis[0] + half_local.y * basis[1] + half_local.z * normal;
+    const float3 half_vector = half_local.x * basis[0] + half_local.y * basis[1] + half_local.z * reflect_normal;
     const float3 direction = reflect(-view, half_vector);
-    const float n_dot_l = dot(normal, direction);
+    const float n_dot_l = dot(reflect_normal, direction);
     if (n_dot_l <= 0.f) continue;
     if (traced) {
       float first_distance;
@@ -211,8 +239,8 @@ void PathTracePixel(uint2 id) {
     previous_meta = specular_meta_history[previous_pixel];
   }
   const float frames = min(previous_meta.y + 1.f, mirror ? 1.f : lerp(2.f, MAX_SPECULAR_FRAMES, saturate(roughness * 3.f)));
-  specular_accumulated[id] = lerp(previous, current, 1.f / frames);
-  specular_meta[id] = float2(lerp(previous_meta.x, current_open, 1.f / frames), frames);
+  specular_accumulated[id] = StoredHalf(lerp(previous, current, 1.f / frames));
+  specular_meta[id] = StoredHalf(float4(lerp(previous_meta.x, current_open, 1.f / frames), frames, 0.f, 0.f)).xy;
 }
 
 #endif  // SRC_GAMES_TALESOFARISE_DLSS_RT_PATH_HLSLI_
