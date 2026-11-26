@@ -8,6 +8,8 @@
 //    to float rounding (the gamma's own round trip), every texel within 1e-2 (coloured ones near black: the BT.709 /
 //    BT.2020 matrices' seven digits steepened by the encode, 2.0's too). The 2.0 round trip beside it. CONTROL: decoded
 //    at 2.2, encoded at 2.0: far off.
+// 3. g_aa_frame_gamma 1 (aa.hlsli AaFrameLinear, the Denoise Before Tone Mapping row): DLAA's prepare and finish linear,
+//    their matrices alone, and the round trip. CONTROL: at 2.0 far off.
 // tests.exe <before folder> <after folder> [<before folder> <after folder> ...] (each an add-on's embed folder of csos)
 #include <windows.h>
 #include <d3d11.h>
@@ -246,6 +248,43 @@ int main(int argc, char** argv) {
   CHECK(at_22[0] < 1e-5 && at_22[1] < 1e-5);
   CHECK(at_22[2] < 1e-2 && at_22[3] < 1e-2);
   CHECK(mixed[0] > 1e-2 && mixed[1] > 1e-2);
+
+  // 3. g_aa_frame_gamma 1 (aa.hlsli AaFrameLinear: Ray Reconstruction on the lit scene before the tone mapper, no square
+  // root): DLAA's prepare gives NVIDIA the frame as it is (BT.2020, its positive part), its finish NVIDIA's output as it
+  // is (BT.709), the round trip the frame. CONTROL: at 2.0 the prepare squares and the finish takes the square root.
+  const auto linear_pass = [&](float frame_gamma) {
+    Texture prepared = MakeTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 16);
+    Texture prepared_depth = MakeTexture(DXGI_FORMAT_R32_FLOAT, nullptr, 4);
+    Texture motion = MakeTexture(DXGI_FORMAT_R32G32_FLOAT, nullptr, 8);
+    Dispatch(passes.dlaa_prepare.Get(), frame_gamma, {source.srv.Get(), depth.srv.Get()}, {prepared.uav.Get(), prepared_depth.uav.Get(), motion.uav.Get()});
+    Texture finished = MakeTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 16);
+    Dispatch(passes.dlaa_finish.Get(), frame_gamma, {nvidia.srv.Get(), source.srv.Get()}, {finished.uav.Get()});
+    Texture trip = MakeTexture(DXGI_FORMAT_R32G32B32A32_FLOAT, nullptr, 16);
+    Dispatch(passes.dlaa_finish.Get(), frame_gamma, {prepared.srv.Get(), source.srv.Get()}, {trip.uav.Get()});
+    return std::array<std::vector<float>, 3>{ReadBack(prepared.texture.Get()), ReadBack(finished.texture.Get()), ReadBack(trip.texture.Get())};
+  };
+  std::vector<float> expected_prepared(in_gamut.size());
+  std::vector<float> expected_finished(in_gamut.size());
+  for (size_t texel = 0; texel < in_gamut.size(); texel += 4) {
+    const float* c = &in_gamut[texel];
+    const float* n = &nvidia_texels[texel];
+    expected_prepared[texel + 0] = std::max(0.6274040f * c[0] + 0.3292820f * c[1] + 0.0433136f * c[2], 0.f);
+    expected_prepared[texel + 1] = std::max(0.0690970f * c[0] + 0.9195400f * c[1] + 0.0113612f * c[2], 0.f);
+    expected_prepared[texel + 2] = std::max(0.0163916f * c[0] + 0.0880132f * c[1] + 0.8955950f * c[2], 0.f);
+    expected_finished[texel + 0] = 1.6604910f * n[0] - 0.5876411f * n[1] - 0.0728499f * n[2];
+    expected_finished[texel + 1] = -0.1245505f * n[0] + 1.1328999f * n[1] - 0.0083494f * n[2];
+    expected_finished[texel + 2] = -0.0181508f * n[0] - 0.1005789f * n[1] + 1.1187297f * n[2];
+  }
+  const auto linear = linear_pass(1.f);
+  const auto encoded = linear_pass(2.f);
+  const std::array<double, 4> linear_worst = {Worst(expected_prepared, linear[0]), Worst(expected_finished, linear[1]),
+                                              Worst(in_gamut, linear[2], true), Worst(in_gamut, linear[2])};
+  const std::array<double, 2> control_worst = {Worst(expected_prepared, encoded[0]), Worst(expected_finished, encoded[1])};
+  std::printf("3 g_aa_frame_gamma 1, worst difference: prepare vs the frame in BT.2020 %.3g, finish vs NVIDIA's in BT.709 %.3g, "
+              "round trip grey / every texel %.3g / %.3g; CONTROL at 2.0: prepare %.3g, finish %.3g\n",
+              linear_worst[0], linear_worst[1], linear_worst[2], linear_worst[3], control_worst[0], control_worst[1]);
+  CHECK(linear_worst[0] < 1e-5 && linear_worst[1] < 1e-5 && linear_worst[2] < 1e-5 && linear_worst[3] < 1e-4);
+  CHECK(control_worst[0] > 1e-2 && control_worst[1] > 1e-2);
   std::printf("PASS\n");
   return 0;
 }
