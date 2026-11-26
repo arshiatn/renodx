@@ -4922,7 +4922,7 @@ class RtScene12 {
     DI_MEMBERS,              // u77: each tile's listed lights (rt_light_tiles.hlsli di_members)
     LIGHT_SURFACE,           // u78: the addon's light surface (rt_di_surface.hlsli light_surface)
     LIGHT_SURFACE_PREVIOUS,  // u79: the last DI trace's copy of it
-    DI_RESERVOIRS,           // u80: RTXDI's DI reservoirs, three arrays (rt_rtxdi_bridge.hlsli di_reservoirs)
+    DI_RESERVOIRS,           // u80: RTXDI's DI reservoirs, two arrays (rt_rtxdi_bridge.hlsli di_reservoirs)
     DI_OFFSETS,              // u81: RTXDI's spatial neighbour offsets
     DI_LIGHT,                // u82, u83: the addon's two DI textures (di_light)
     DI_ORIGIN = DI_LIGHT + 2,  // u84, u85: each DI pixel's ray origin, this trace's and the last's by parity (di_origin)
@@ -6560,7 +6560,7 @@ class RtScene12 {
                                                                          .Buffer = {.NumElements = 1, .StructureByteStride = DI_RESERVOIR_BYTES}};
   static constexpr D3D12_UNORDERED_ACCESS_VIEW_DESC DI_OFFSETS_NULL = {.Format = DXGI_FORMAT_R32G32_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
                                                                       .Buffer = {.NumElements = 1}};
-  static constexpr uint32_t DI_RESERVOIR_ARRAYS = 3;  // rt_di_surface.hlsli DI_*_ARRAY
+  static constexpr uint32_t DI_RESERVOIR_ARRAYS = 2;  // rt_di_surface.hlsli DI_*_ARRAY
   // RTXDI's reservoir layout at the shared textures' size (one set's: the history keeps it at any render size).
   [[nodiscard]] RTXDI_ReservoirBufferParameters DiReservoirLayout() const {
     const D3D12_RESOURCE_DESC size = positions_->GetDesc();
@@ -11119,7 +11119,7 @@ class RtScene12 {
   uint32_t torch_irradiance_frame_ = UINT32_MAX;
 #if defined(RENODX_RTXDI_DI)
   // Path-Traced Torch Light (PT DI step 4c): its builds; the addon's light surface and DI textures (v32), the helper's
-  // copy of the surface (the last DI trace's), the tiles' listed lights, RTXDI's reservoirs (three arrays) and neighbour
+  // copy of the surface (the last DI trace's), the tiles' listed lights, RTXDI's reservoirs (two arrays) and neighbour
   // offsets; the last trace that ran it.
   // rt_lights_di, its twin with T1 (rt_lights_di_torch), both with Torch and Fire Shadows from the Light Bounce
   // (rt_lights_di_bounce, rt_lights_di_bounce_torch)

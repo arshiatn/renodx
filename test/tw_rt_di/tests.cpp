@@ -298,7 +298,8 @@ int main(int argc, char** argv) {
   // Each DI pixel's ray origin (rt_rtxdi_bridge.hlsli di_origin: rt_di_initial writes this trace's, by parity).
   std::array<ComPtr<ID3D12Resource>, 2> origin_textures = {texture(SIDE, SIDE, DXGI_FORMAT_R16G16B16A16_FLOAT), texture(SIDE, SIDE, DXGI_FORMAT_R16G16B16A16_FLOAT)};
   const RTXDI_ReservoirBufferParameters layout = rtxdi::CalculateReservoirBufferParameters(SIDE, SIDE, rtxdi::CheckerboardMode::Off);
-  ComPtr<ID3D12Resource> reservoirs = buffer(uint64_t{layout.reservoirArrayPitch} * 3 * sizeof(RTXDI_PackedDIReservoir), D3D12_HEAP_TYPE_DEFAULT,
+  // The reservoirs' two arrays (rt_di_surface.hlsli DI_*_ARRAY): the initial and temporal passes', the shading's.
+  ComPtr<ID3D12Resource> reservoirs = buffer(uint64_t{layout.reservoirArrayPitch} * 2 * sizeof(RTXDI_PackedDIReservoir), D3D12_HEAP_TYPE_DEFAULT,
                                              D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
   std::array<uint8_t, OFFSETS * 2> offset_bytes = {};
   rtxdi::FillNeighborOffsetBuffer(offset_bytes.data(), OFFSETS, ReSTIRDI_SpatialSamplingMode::StratifiedLowDiscrepancy);
@@ -525,7 +526,7 @@ int main(int argc, char** argv) {
         {"di_members", {members_texture.Get(), DXGI_FORMAT_R32G32B32A32_UINT}},
         {"light_surface", {surface_texture.Get(), DXGI_FORMAT_R32G32B32A32_UINT}},
         {"light_surface_previous", {previous_surface_texture.Get(), DXGI_FORMAT_R32G32B32A32_UINT}},
-        {"di_reservoirs", {reservoirs.Get(), DXGI_FORMAT_UNKNOWN, layout.reservoirArrayPitch * 3, sizeof(RTXDI_PackedDIReservoir)}},
+        {"di_reservoirs", {reservoirs.Get(), DXGI_FORMAT_UNKNOWN, layout.reservoirArrayPitch * 2, sizeof(RTXDI_PackedDIReservoir)}},
         {"di_offsets", {offsets.Get(), DXGI_FORMAT_R32G32_FLOAT, OFFSETS}},
         {"di_light[0]", {light_textures[0].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT}},
         {"di_light[1]", {light_textures[1].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT}},
@@ -561,7 +562,7 @@ int main(int argc, char** argv) {
     }
     const std::vector<uint8_t> bytes = read_buffer(reservoirs.Get());
     shaded->resize(layout.reservoirArrayPitch);
-    std::memcpy(shaded->data(), bytes.data() + uint64_t{layout.reservoirArrayPitch} * 2 * sizeof(RTXDI_PackedDIReservoir),
+    std::memcpy(shaded->data(), bytes.data() + uint64_t{layout.reservoirArrayPitch} * sizeof(RTXDI_PackedDIReservoir),
                 shaded->size() * sizeof(RTXDI_PackedDIReservoir));
     *slm = read_texture(light_textures[0].Get(), 8);
     *skin = read_texture(light_textures[1].Get(), 8);

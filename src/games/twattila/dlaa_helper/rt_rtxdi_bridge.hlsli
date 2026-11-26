@@ -145,7 +145,7 @@ RTXDI_LightBufferRegion RegirLights() {
 // compiles its 1/M normalization alone, dark where the last trace's reservoir could not produce this pixel's lights).
 #define RTXDI_ALLOWED_BIAS_CORRECTION RTXDI_BIAS_CORRECTION_RAY_TRACED
 // Path-Traced Torch Light's RAB (PT DI step 4c; the DI passes, rt_di_surface.hlsli before this file): RTXDI's DI
-// reservoirs (three arrays, rt_di_surface.hlsli DI_*_ARRAY), its spatial neighbours' offsets (RTXDI's
+// reservoirs (two arrays, rt_di_surface.hlsli DI_*_ARRAY), its spatial neighbours' offsets (RTXDI's
 // FillNeighborOffsetBuffer, stratified, as floats) and the two lights the shading writes (rt_di_shade).
 RWStructuredBuffer<RTXDI_PackedDIReservoir> di_reservoirs : register(u80);
 #define RTXDI_LIGHT_RESERVOIR_BUFFER di_reservoirs

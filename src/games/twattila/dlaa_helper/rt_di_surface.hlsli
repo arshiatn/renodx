@@ -38,20 +38,25 @@ static const uint DI_BIAS_SHIFT = 1u;
 static const uint DI_NO_TEMPORAL = 8u;
 static const uint DI_NO_SPATIAL = 16u;
 
-// The reservoirs' arrays: the initial pass's, the temporal pass's, the spatial pass's (the shading's and the next
-// trace's history).
-static const uint DI_INITIAL_ARRAY = 0u;
-static const uint DI_TEMPORAL_ARRAY = 1u;
+// The reservoirs' two arrays (rt_d3d12.hpp DI_RESERVOIR_ARRAYS).
+// ours: two, not the three of RTXDI's ReSTIR DI context (ReSTIRDI.h c_NumReSTIRDIReservoirBuffers; its ReSTIR GI keeps
+// two): a pass that loads a reservoir only at its own pixel stores over it, and no pass reads an array that another of
+// its threads writes (review pdi4cr_ S3).
 #if defined(DI_FUSED)
 // The fused variant (rt_di_spatiotemporal; -D DI_FUSED in every DI pass build of it): it reads the last trace's shading
-// reservoirs while it writes this trace's, so the two take arrays 1 and 2 in turns by the light history's parity
-// (DiParity flips every trace; the history is read only after a flip: DI_HISTORY needs the trace the frame before).
-#define DI_SHADE_ARRAY (1u + DiParity())
-#define DI_HISTORY_ARRAY (2u - DiParity())
+// reservoirs while it writes this trace's, so the two take arrays 0 and 1 in turns by the light history's parity
+// (DiParity flips every trace; the history is read only after a flip: DI_HISTORY needs the trace the frame before); the
+// initial reservoir is the shading one's array (the fused pass loads it at its own pixel only and stores over it).
+#define DI_SHADE_ARRAY DiParity()
+#define DI_HISTORY_ARRAY (1u - DiParity())
+#define DI_INITIAL_ARRAY DI_SHADE_ARRAY
 #else
-static const uint DI_SHADE_ARRAY = 2u;
-// The last trace's shading reservoirs, the temporal reuse's history: the split passes' the same array (the temporal pass
-// reads it before the spatial pass writes it).
+// The split passes: the initial pass's array, the temporal pass's too (it loads the initial reservoir at its own pixel
+// only and stores over it), and the spatial pass's, the shading's and the last trace's (the temporal reuse's history: the
+// temporal pass reads it before the spatial pass writes it).
+static const uint DI_INITIAL_ARRAY = 0u;
+static const uint DI_TEMPORAL_ARRAY = DI_INITIAL_ARRAY;
+static const uint DI_SHADE_ARRAY = 1u;
 static const uint DI_HISTORY_ARRAY = DI_SHADE_ARRAY;
 #endif
 
