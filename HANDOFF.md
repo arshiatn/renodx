@@ -16963,8 +16963,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         closing; ends at first text / ui / battle line; run.txt + start.json movie_keys / _end. Timing at C1At 180: battle
         ~60-70 s, camera ~30-60 s (deadline first present + 170), C4 dump ~433 s after the start (~350 battle s < QUIT 600;
         budget 900). OPEN: day1 length on the port must pass ~350 battle s. 85 / 85 tests (WinForms no-activate window
-        mock). -> d11fr_ review 10:1x -> live -> START 3 (coord runs the rule-line command in the background). Owner:
-        d11fr_ -> coord
+        mock). -> d11fr_ review 10:1x -> live -> START 3 (coord runs the rule-line command in the background).
+        d11fr_ mk REVIEW 10:16: keys GO, but FIX FIRST an OLD bug in the live script too: $cam (state, :625) and $CAM
+        (settings table, :110) are ONE variable (PowerShell names ignore case) -> every $CAM.x $null -> zoom done at 0
+        notches, the first turn check STOPs, LineWait / NotchGap ignored, deadline +180 not +170 (start 2 run.txt :69 =
+        the proof; the 06:3x 'log text only' note was wrong). Every start would have been void at the camera. Fix: rename
+        $CAM -> $CAMERA on 13 lines + AST case-collision test + a camera state-machine test; header first present +2.5-3 s
+        (not 13). d11f_ r10 10:1x (est 12 / deadline 24). LESSON: tests never ran the camera loop. Owner: d11f_ -> coord
         - [ ] SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATTILA_TEST_SKIP_MOVIES=1 =
         a new env var -> ATN's rule line per runner switch; first ONE test start (menu reached, no sound crash, replay
         loads) because of SWITCHES.md's sound-crash note; then d11 C1At back near 180 - 60 and a64_ab / ebo_run timing
