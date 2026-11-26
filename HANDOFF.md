@@ -1008,6 +1008,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - lsp_ FOLLOW-UP 1 DONE / 2 OPEN (backoff uncapped vs quads capped, < 1 min GPU) S ... | ?
 - STEP 5 FOLLOW-UPS (pd5c_): (1) build.ps1:156-157 G5's REUSE_COMPATIBLE builds la ... | ?
 - REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so ... | ?
+- FIX WAVE 1 (judges: X46 judge's back-face flip rt_reference.hlsli:312 + HitNorma ... | ?
 - G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
 - wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
@@ -17810,6 +17811,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         comment, lines > 120 cols (rt_d3d12.hpp:1983 / :1988 / :10750-10752). Owner: next helper writer slot
         - [ ] REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so a slot swap (same keys, same
         light) is not ABOVE FLOOR. Owner: gate tooling slot
+        - [ ] FIX WAVE 1 (judges: X46 judge's back-face flip rt_reference.hlsli:312 + HitNormal, X47 RENODX_TW_REF_BREAK
+        deliberate-break switch, X49 ref_compare.py:403 / gpu_gate.py:607 small-dof CI): fx1_ STARTED 03:2x (Opus High,
+        worktree, branch fx1_wave1 on 824d61adb; est 50 / deadline 100); hunks > 70 lines from r4 / bal3; no GPU (proof
+        jobs listed; X47's new env var needs ATN's rule line to run); Tales X46 copy checked. Coord reviews + merges.
+        Owner: fx1_
         - [ ] G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 same or nearer, reflections
         1.00000 -> the 'faster + same picture = on' rule (pd5r_: after S2 rows, S3, S1, new baselines) -> a flip commit
         + all_modes / rec_scan with G4 = 1 as the new baseline in the next GPU window. pd5c_ 03:2x: speed + E4 support it,
