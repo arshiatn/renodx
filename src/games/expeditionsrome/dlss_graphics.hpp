@@ -211,7 +211,7 @@ constexpr size_t SIGNED_LOAD_OPCODE = 2;  // 0F BE (movsx) -> 0F B6 (movzx)
 static std::array<talesofarise::code_patch::CodePatch, JITTER_POSITION_LOADS.size()> jitter_position_patches;
 
 // DLAA / DLSS use NVIDIA's jitter (as Tales): Halton (2, 3) over the whole pixel, 8 * (output / input)^2 positions (8
-// for DLAA), any length. UE's own: Halton only while it upscales and at most 255 positions (below 18% it repeats
+// for DLAA, at least 32 under Ray Reconstruction), any length. UE's own: Halton only while it upscales and at most 255 positions (below 18% it repeats
 // early); at 100% a Gaussian of r.TemporalAASamples positions, denser in the middle. Every path of the jitter setup
 // ends at
 //   movss [rdi + TemporalJitterPixels.x], xmm7; lea rbx, [rdi + ...]; movss [rdi + TemporalJitterPixels.y], xmm8
@@ -222,6 +222,9 @@ constexpr std::string_view JITTER_STORE =
     "F3 0F 11 BF ?? ?? 00 00 48 8D 9F ?? ?? 00 00 F3 44 0F 11 87 ?? ?? 00 00 F3 0F 58 FF";
 constexpr size_t JITTER_STORE_SIZE = 8;  // movss [rdi + disp32], xmm7
 constexpr size_t JUMP_SIZE = 5;          // jmp rel32
+// src: NVIDIA's DLSS-RR integration guide 3.6 (at least 32 phases under Ray Reconstruction), as
+// twattila/anti_aliasing.hpp:183 RR_PHASES.
+constexpr uint32_t RR_JITTER_POSITIONS = 32;
 static struct HaltonJitter {
   talesofarise::code_patch::CodePatch patch;  // the jump into the block
   float* sample = nullptr;                       // x, y in input pixels
@@ -1476,7 +1479,8 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   }
   const bool halton = halton_jitter.sample != nullptr && jitter_render_size[0] != 0 && jitter_render_size[1] != 0;
   if (halton) {
-    const auto positions = static_cast<uint32_t>(std::ceil(8. * width * height / (static_cast<double>(jitter_render_size[0]) * jitter_render_size[1])));
+    const auto positions = std::max((talesofarise::upscaling::Use().ray_reconstruction != 0 ? RR_JITTER_POSITIONS : 1u),
+                                    static_cast<uint32_t>(std::ceil(8. * width * height / (static_cast<double>(jitter_render_size[0]) * jitter_render_size[1]))));
     if (positions != halton_jitter.positions) {
       halton_jitter.positions = positions;
       halton_jitter.index = 0;
