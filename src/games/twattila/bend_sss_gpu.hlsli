@@ -5,9 +5,10 @@
 // RenoDX render scale (search "RenoDX"): the game builds the light coordinate and the dispatches for the full-size
 // screen, the DLSS addon draws the depth into its top-left render scale part. The rays stay in full-size pixels (the
 // same shadow length on screen as at full size), read the depth in the rendered part and write each rendered pixel
-// once. At full size the same as the game's. Modified (O-SS5, 11-26): with ScreenStep below 1 the samples are screen
-// pixels between the rendered depth's texels (ScreenSample), so the shadows match 100%'s at every render scale; 1 (the
-// default, Shogun 2's) Bend's loops' values to the bit.
+// once. At full size the same as the game's. Modified (O-SS5, 11-26): built with BEND_SSS_SCREEN_STEPS (the *_steps
+// shaders, the hosts' below 100% render scale) and ScreenStep below 1, the samples are screen pixels between the rendered
+// depth's texels (ScreenSample), so the shadows match 100%'s at every render scale; without it Bend's loops as they were
+// (100%, Shogun 2: the same code and cost, fx8_ G1: the steps' path in Bend's loops cost +58% at 100%).
 
 // Copyright 2023 Sony Interactive Entertainment.
 //
@@ -130,7 +131,8 @@ struct DispatchParameters
 	float2 FarFade;
 	// RenoDX render scale (O-SS5): render pixels (groupshared entries) per sample, 1 = Bend's one sample per depth texel.
 	// Below 1 the march takes one sample per screen pixel (ScreenSample), so every count of Bend's (the length, hard,
-	// fade, its 4 lanes, the near-light window) means on screen what it means at 100%.
+	// fade, its 4 lanes, the near-light window) means on screen what it means at 100%. Read with BEND_SSS_SCREEN_STEPS
+	// only.
 	float ScreenStep;
 #ifdef BEND_SSS_LIGHT_CASTERS
 	// RenoDX (Attila's Light Through Foliage): what a depth marked negative shadows keeps this share of the light.
@@ -358,8 +360,16 @@ struct DispatchParameters
 	//   shadows, grazing ground's mean occlusion 0.57 at 33% against 100%'s 0.08).
 	// The light casters' delta is the nearer entry's (ours: a sub-sample takes the nearer texel's material, as a full
 	// size G-buffer read would).
+	// Without BEND_SSS_SCREEN_STEPS: entry n itself (Bend's loops' reads).
 	float2 ScreenSample(DispatchParameters inParameters, int sample_index, int n, float first_sample_distance, float direction)
 	{
+#ifndef BEND_SSS_SCREEN_STEPS
+#ifdef BEND_SSS_LIGHT_CASTERS
+		return float2(DepthData[sample_index + n], LightData[sample_index + n]);
+#else
+		return float2(DepthData[sample_index + n], 0);
+#endif
+#else
 		const float q = (float)(n + 1) * inParameters.ScreenStep - 1;
 		const float m = floor(q);
 		const float f = q - m;
@@ -402,6 +412,7 @@ struct DispatchParameters
 #endif
 		}
 		return float2(stored, light);
+#endif
 	}
 
 #ifdef BEND_SSS_EXTENDED
@@ -484,8 +495,12 @@ struct DispatchParameters
 	//	(int)	inGroupThreadId:	Compute shader group thread id register (SV_GroupThreadID)
 	void WriteScreenSpaceShadow(DispatchParameters inParameters, int3 inGroupID, int inGroupThreadID, int inSampleCount)
 	{
+#ifdef BEND_SSS_SCREEN_STEPS
 		// RenoDX render scale: the reads cover the render pixels the samples span (ScreenStep 1: Bend's).
 		const int read_count = (int)((uint)ceil((float)inSampleCount * inParameters.ScreenStep) / WAVE_SIZE) + 2;
+#else
+		const int read_count = inSampleCount / WAVE_SIZE + 2;
+#endif
 		float2 xy_delta;
 		float2 pixel_xy;
 		float pixel_distance;
@@ -713,8 +728,9 @@ struct DispatchParameters
 		// The min() function is to make sure the window is a minimum width when very close to the light. The +direction term will bias the result so the pixel at the very center of the light is either fully lit or shadowed
 		// RenoDX render scale (deviation from Bend's line, O-SS5 F6): the distance in the minimum in screen pixels (Bend's own
 		// pixels at 100%), so the widened window keeps its radius on screen.
-#if BEND_SSS_STEP_CONTROL == 2
-		// Test only (tw_screen_space_shadows case 11, W6's numbers): the distance in render pixels.
+#if !defined(BEND_SSS_SCREEN_STEPS) || BEND_SSS_STEP_CONTROL == 2
+		// Bend's (test only with BEND_SSS_SCREEN_STEPS: tw_screen_space_shadows case 11, W6's numbers, the distance in
+		// render pixels).
 		float depth_scale = min(first_sample_distance + direction, 1.0 / inParameters.SurfaceThickness) * first_sample_distance / first_depth_thickness_scale;
 #else
 		float depth_scale = min(first_sample_distance / inParameters.ScreenStep + direction, 1.0 / inParameters.SurfaceThickness) * first_sample_distance / first_depth_thickness_scale;
@@ -857,8 +873,9 @@ struct DispatchParameters
 			ExtendedResult extended;
 			extended.hit = hit >= 0;
 			// RenoDX render scale: a sample is ScreenStep render pixels (step_xy's) along the ray.
-#if BEND_SSS_STEP_CONTROL == 3
-			// Test only (tw_screen_space_shadows case 11, W8's CONTROL): one render pixel a sample.
+#if !defined(BEND_SSS_SCREEN_STEPS) || BEND_SSS_STEP_CONTROL == 3
+			// One render pixel a sample (test only with BEND_SSS_SCREEN_STEPS: tw_screen_space_shadows case 11, W8's
+			// CONTROL).
 			const float sample_step = 1;
 #else
 			const float sample_step = inParameters.ScreenStep;

@@ -51,6 +51,8 @@ struct Objects {
   ComPtr<ID3D11ComputeShader> depth;
   ComPtr<ID3D11ComputeShader> setup;
   ComPtr<ID3D11ComputeShader> bend;
+  // Below 100% render scale sss_bend_steps (as Attila's screen_space_shadows.hpp bend_steps).
+  ComPtr<ID3D11ComputeShader> bend_steps;
   ComPtr<ID3D11ComputeShader> blur;
   // sss.hlsli's sss_settings: the add-on's (render size 0, host_sss_setup's b3), the setup's with the render size (raw)
   // and its copy (sss_bend's and sss_blur's b2).
@@ -146,7 +148,8 @@ inline ID3D11ShaderResourceView* Compute(ID3D11DeviceContext* context, const Inp
     };
     objects.failed = !dlss::MakeContextState(device.Get(), &objects.private_state)
                      || !compute(__host_sss_depth, &objects.depth) || !compute(__host_sss_setup, &objects.setup)
-                     || !compute(__sss_bend, &objects.bend) || !compute(__sss_blur, &objects.blur)
+                     || !compute(__sss_bend, &objects.bend) || !compute(__sss_bend_steps, &objects.bend_steps)
+                     || !compute(__sss_blur, &objects.blur)
                      || FAILED(device->CreateBuffer(&settings_desc, nullptr, objects.base_settings.GetAddressOf()))
                      || FAILED(device->CreateBuffer(&settings_desc, nullptr, objects.settings.GetAddressOf()))
                      || FAILED(device->CreateBuffer(&written_desc, nullptr, objects.written_settings.GetAddressOf()))
@@ -242,7 +245,7 @@ inline ID3D11ShaderResourceView* Compute(ID3D11DeviceContext* context, const Inp
   context1->CSSetShaderResources(0, 2, bend_inputs.data());
   context1->CSSetConstantBuffers(2, 1, objects.settings.GetAddressOf());
   context1->CSSetSamplers(0, 1, objects.border.GetAddressOf());
-  context1->CSSetShader(objects.bend.Get(), nullptr, 0);
+  context1->CSSetShader((share < 1.f ? objects.bend_steps : objects.bend).Get(), nullptr, 0);
   for (UINT index = 0; index < internal::DISPATCH_COUNT; ++index) {
     context1->CSSetConstantBuffers(3, 1, objects.dispatch_indexes[index].GetAddressOf());
     context1->DispatchIndirect(objects.arguments.Get(), index * 12);

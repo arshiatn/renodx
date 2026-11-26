@@ -185,7 +185,9 @@ void main(int3 group_id : SV_GroupID, int thread_id : SV_GroupThreadID)
   dp.FullSize = g_sss_size;
   dp.RenderSize = g_sss_render_size;
   // O-SS5 (sss_scale_thickness.md 2.2): below 100% one sample a screen pixel, g_sss_samples the length in screen pixels.
-#if BEND_SSS_STEP_CONTROL == 4
+#ifndef BEND_SSS_SCREEN_STEPS
+  // 100% (the hosts' plain shaders): Bend's one sample a render pixel (SetDefaults' 1, not read).
+#elif BEND_SSS_STEP_CONTROL == 4
   // Test only (tw_screen_space_shadows case 11, W1's CONTROL): half a render pixel a sample at any scale.
   dp.ScreenStep = 0.5f;
 #else

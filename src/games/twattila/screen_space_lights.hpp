@@ -204,7 +204,9 @@ inline bool OnLightDraw(ID3D11DeviceContext* native, const Instances& instances)
       const size_t variant = screen_space_shadows::internal::ExtendedVariant(runtime.settings.auto_thickness, false);
       const pass_timing::OwnPass mark(native, screen_space_shadows::internal::EXTENDED_NAMES[variant], pass_timing::Stage::COMPUTE);
       ID3D11ShaderResourceView* thin = (settings.thin_light > 0.f) ? objects.thin_srv.Get() : nullptr;
-      ComputeState::Bind(native, objects.bend_extended[variant].Get(),
+      // The sun's render share (screen_space_shadows' Compute): below 100% the *_steps march.
+      const bool steps = objects.uploaded.render_width < objects.uploaded.width;
+      ComputeState::Bind(native, (steps ? objects.bend_extended_steps : objects.bend_extended)[variant].Get(),
                          {objects.depth_srv.Get(), objects.parameters_srv.Get(), thin, nullptr, lights.dispatches_srv.Get(), lights.coordinates_srv.Get()},
                          {nullptr, nullptr, nullptr, lights.mask_uav.Get()},
                          {lights.camera.Get(), nullptr, objects.settings.Get(), lights.mode.Get(), lights.settings.Get()});

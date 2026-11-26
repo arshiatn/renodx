@@ -691,6 +691,9 @@ struct DeviceObjects {
   ComPtr<ID3D11ComputeShader> depth_copy_ms;
   ComPtr<ID3D11ComputeShader> setup;
   ComPtr<ID3D11ComputeShader> bend;
+  // Below 100% render scale sss_bend_steps (O-SS5: one sample a screen pixel); 100% the plain sss_bend, Bend's loops
+  // (fx8_ G1: the steps' code cost +58% at 100%).
+  ComPtr<ID3D11ComputeShader> bend_steps;
   ComPtr<ID3D11ComputeShader> blur;
   ComPtr<ID3D11ComputeShader> debug;
   ComPtr<ID3D11Buffer> settings;
@@ -730,6 +733,8 @@ struct DeviceObjects {
   // and Coloured Shadows need found, both), Softer Away from the Caster (sss_soft), Light Through Banners' draws again
   // (sss_thin) and their constants (b4).
   std::array<ComPtr<ID3D11ComputeShader>, 4> bend_extended;
+  // Theirs below 100% render scale (the *_steps shaders, as bend_steps).
+  std::array<ComPtr<ID3D11ComputeShader>, 4> bend_extended_steps;
   ComPtr<ID3D11ComputeShader> soft;
   ComPtr<ID3D11PixelShader> thin_pixel_shader;
   ComPtr<ID3D11Buffer> extended_settings;
@@ -863,6 +868,10 @@ inline bool Prepare(ID3D11Device* device, UINT width, UINT height) {
                 && compute(__sss_blur, &objects.blur) && compute(__sss_debug, &objects.debug)
                 && compute(__sss_bend_extended, &objects.bend_extended[0]) && compute(__sss_bend_extended_auto, &objects.bend_extended[1])
                 && compute(__sss_bend_extended_find, &objects.bend_extended[2]) && compute(__sss_bend_extended_auto_find, &objects.bend_extended[3])
+                && compute(__sss_bend_steps, &objects.bend_steps) && compute(__sss_bend_extended_steps, &objects.bend_extended_steps[0])
+                && compute(__sss_bend_extended_auto_steps, &objects.bend_extended_steps[1])
+                && compute(__sss_bend_extended_find_steps, &objects.bend_extended_steps[2])
+                && compute(__sss_bend_extended_auto_find_steps, &objects.bend_extended_steps[3])
                 && compute(__sss_soft, &objects.soft)
                 && SUCCEEDED(device->CreatePixelShader(__sss_thin.data(), __sss_thin.size(), nullptr, objects.thin_pixel_shader.GetAddressOf()))
                 && SUCCEEDED(device->CreateBuffer(&settings_desc, nullptr, objects.settings.GetAddressOf()))
@@ -1187,13 +1196,15 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
     const size_t variant = ExtendedVariant(runtime.settings.auto_thickness, soft || coloured);
     pass_dump::Value("sss.extended_variant", extended ? variant : SIZE_MAX);
     const pass_timing::OwnPass mark(native, extended ? EXTENDED_NAMES[variant] : "sss_bend", pass_timing::Stage::COMPUTE);
+    const bool steps = render[0] < objects.width;
     if (extended) {
-      ComputeState::Bind(native, objects.bend_extended[variant].Get(),
+      ComputeState::Bind(native, (steps ? objects.bend_extended_steps : objects.bend_extended)[variant].Get(),
                          {objects.depth_srv.Get(), objects.parameters_srv.Get(), thin ? objects.thin_srv.Get() : nullptr, coloured ? colour : nullptr},
                          {objects.occlusion_uav.Get(), soft ? objects.penumbra_uav.Get() : nullptr, coloured ? objects.tint_uav.Get() : nullptr},
                          {camera, nullptr, objects.settings.Get(), nullptr, objects.extended_settings.Get()});
     } else {
-      ComputeState::Bind(native, objects.bend.Get(), {objects.depth_srv.Get(), objects.parameters_srv.Get()}, {objects.occlusion_uav.Get()},
+      ComputeState::Bind(native, (steps ? objects.bend_steps : objects.bend).Get(), {objects.depth_srv.Get(), objects.parameters_srv.Get()},
+                         {objects.occlusion_uav.Get()},
                          {nullptr, nullptr, objects.settings.Get()});
     }
     native->CSSetSamplers(0, 1, objects.border.GetAddressOf());
