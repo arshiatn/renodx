@@ -952,6 +952,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - W8 G1 FAILED -> REVERTED 182c83dc6 (src / test = the pre-merge tree 505959548, b ... | ?
 - 64-BIT CPU PREMISES MOVED (loader 1.3.24 / 1.3.25, in public 1.3.27 / 1.3.28): t ... | ?
 - A' BELOW 100 %: ATN 11-26 ~16:3x 'I would like to have it on' -> fx8_reland keep ... | ?
+- CPU PLAN STEP 0 (ATN 11-26 ~16:4x): the loader-1.3.28 A/B is now step 0 of the 6 ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17492,6 +17493,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] A' BELOW 100 %: ATN 11-26 ~16:3x 'I would like to have it on' -> fx8_reland keeps A' ON below 100 % (100 % path
         = C's cost); then an Opus xHigh DESIGN pass for a cheaper A' (fx8_'s option c: fewer reads in the one-surface test,
         cost per scale from G1) at the next GPU-plan slot; re-run W2 / W4 + G1 after. Owner: fx8_ / next slot
+        - [ ] CPU PLAN STEP 0 (ATN 11-26 ~16:4x): the loader-1.3.28 A/B is now step 0 of the 64-bit CPU plan (cpu_plan_64_map.md
+        section 3.3 top): base -> task_waits=fast -> l2b -> base (drift), 4 starts, tick-3749 gate; runs tonight after the GPU
+        queue if s128_'s package is ready, else first after ATN's 'start' on 11-27. Then the L2B / PK4-64 / PK9 premise
+        re-checks and a design pass for C03-64 Faster Job Wake-Ups (re-opened). Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
