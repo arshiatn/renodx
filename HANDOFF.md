@@ -16885,7 +16885,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         (BOM + CRLF), bounded 150 ms; ROOT CAUSE CONFIRMED by probe: PS 5.1 Add-Content throws even beside a ReadWrite |
         Delete reader; clean run exit 0 + same start.json keys; command forms unchanged; unit test uses the script's AST.
         ATN's 16 files = 06:10 hashes (16 / 16, read 06:30), no used_mods_64 in the game folder. Items 1-3 + the fallback
-        count SENT to d11f_ 06:3x (est 12 / deadline 25); no second review needed. Owner: d11f_ -> ATN
+        count SENT to d11f_ 06:3x (est 12 / deadline 25); no second review needed.
+        d11f_ ROUND 3 DONE 06:36 (3 min; script 812 lines, diff 131 + / 58 -): Close-Ours :257 null guard; Restore-Now :223
+        per-copy try; start.json step :793-795 'a file did not come back (also: ...)' first; new finally step 'game
+        folder' :734-746 right after restore + collect :747 run folder only, both guarded :735 / :748; Append-Line counts
+        console fallbacks -> 'N log lines not written' in problems :796. Unit test 44 / 44 (real Backup / Restore
+        functions from the AST; locked-file restore, void-pin stop text, null snapshots move nothing); mutation check:
+        without the guards exactly the 3 matching cases FAIL. READY FOR ATN: after he moves the 2 stale locks aside, the
+        one retry = the same command (powershell -NoProfile -ExecutionPolicy Bypass -File ...\attila64\d11\
+        d11_capture64.ps1 -Replay day1.replay, after -DryRun), run in the background, run.txt read only after the exit.
+        Owner: ATN (locks + retry go)
         - [ ] RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait for the exit notice
         only. Owner: every run brief
         - [x] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
