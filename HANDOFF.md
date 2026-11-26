@@ -17657,7 +17657,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         bound. Owner: next SSS test agent
         - [ ] O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spear shafts) cast a lighter shadow
         than the old A' at 58 % render scale (0.205 vs 0.265 in the WARP test); 66.7 %, 2/3, 50 %, 1/3 match. If ATN sees it,
-        a fix design (per-lane sample phase inside the shared grid). Owner: ATN (look) -> coord
+        a W11 fix design (each pixel's own sample phase inside the shared grid, O2's cost kept; start_1127.md 3d,
+        sss_aprime_cheaper.md section 9). Owner: ATN (look) -> Opus xHigh designer
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
