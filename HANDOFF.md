@@ -17890,7 +17890,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         by record class) decides whether route B may ever use dark. hfp_ STARTED 05:0x (Opus High, worktree, branch hfp_hold
         on atn-mods; CPU only; proposed RENODX_TW_PLAY_HOLD=<frames>, reference / recorder builds only, plain headers
         identical; est 40 / deadline 80; the P4 rerun needs ATN's rule line). fx1_ rerunning P3 contact at R = 8.
-        Owner: hfp_ -> coord
+        hfp_ DONE 05:19 (05:06-05:19): 16fffc49c, rt_d3d12.hpp PlayRecording only (+18 / -4, inside #if RENODX_RECORDER):
+        RENODX_TW_PLAY_HOLD=<n> plays the last recorded frame's requests n more times after the LOOPS passes, a frame later
+        each (frames stay consecutive; not dumped); unset = today's bounds / offsets / report byte for byte. No block edit
+        needed: the spec's 4 made-up fields follow from consecutive frames of one block (parities turn ~:3913-3925 /
+        ~:8559; history_valid_ = copied + 1 == frame ~:3811; light_previous identity = same 128 lights ~:8358-8373;
+        previous positions / view-projection = the same inputs); frame_936: 156 captures all RT_DYNAMIC, 0 new sets, SLOTS
+        3 = 3 requests a frame -> digest fixed. Builds plain / reference / recorder / recorder+reference: 71 / 71 plain
+        headers identical each (sha256); merge-tree vs bal3_raytraced_rb clean, vs pdi4c_ r4 only its existing :143 block.
+        Coord read the diff: OK. MERGED 4feb1d907 (gated twattila amd64 + x86 + helper build pass). P4 RERUN
+        (needs ATN's rule line RENODX_TW_PLAY_HOLD): powershell -NoProfile -ExecutionPolicy Bypass -File
+        C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\testbin\scratch\hfp_\hfp_play.ps1 p4_day1_battle_hold
+        D:\Dev\tw_recordings\day1_battle\frame_936 (HOLD 158 = 160 frames; pass: changes_in_window 0, dropped_slices 0,
+        groups_done 2; then fx1_'s aux_share.py on runs\p4_day1_battle_hold_0\ref). Owner: ATN (rule line) -> GPU queue
         - [ ] CONTACT BOXES BIAS AT R = 4 (fx1_ P3: 0.99306, r/g 0.9916, outliers 14 vs 3; not X49's, 11-17 had R = 1): a
         real candidate bias in contact shading on boxes or an outlier-rule artefact? Rerun at R = 8 in the next judge
         wave. -> fx1_ R = 8 DONE 05:12 (runs\p3c8_contact_r0..r7, GPU 34 s): REAL, SMALL CANDIDATE DEFICIT: boxes 0.99294 +-
