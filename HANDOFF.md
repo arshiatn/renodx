@@ -16974,7 +16974,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         camera-loop test found a 2nd bug: $flat counted 100 ms loop passes, not notches (one fresh line re-checked every
         pass) -> zoom could stop ~0.3 s after the height last fell (7 notches, not 9) -> $camChecked (one height check per
         notch). 91 / 91 (case test FAILS on live = catches the old bug; camera test: 9 notches, gaps >= 0.33 s, 120 deg,
-        STOP at exactly +170). -> d11fr_ recheck 10:2x -> live -> START 3. Owner: d11fr_ -> coord
+        STOP at exactly +170). -> d11fr_ recheck 10:2x -> live -> START 3. 
+        d11fr_ RECHECK 10:30 GO (no stall paths; turn step has no recount; test (b) runs the shipped block). mk LIVE 10:3x
+        (sha256 76499BEE..., 889 lines; .bak_mk = DD666729 v1; no d11 process ran). START 3 waits for a natural GPU gap:
+        gpu_job.lock = lab_keeper (pdi4c_ lab jobs, since 10:30:24) -> start after pdi4c_'s jobs, 1 start (purpose: the
+        D3D11 pass captures C1-C4 on day1; nothing offline gives them), existing rule line -Replay day1.replay (-DryRun
+        first). Owner: coord
         - [ ] SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATTILA_TEST_SKIP_MOVIES=1 =
         a new env var -> ATN's rule line per runner switch; first ONE test start (menu reached, no sound crash, replay
         loads) because of SWITCHES.md's sound-crash note; then d11 C1At back near 180 - 60 and a64_ab / ebo_run timing
