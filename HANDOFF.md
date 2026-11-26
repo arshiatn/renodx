@@ -17625,6 +17625,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\scratch\lsp_\ (no product
         code): smoke as NVAPI spheres vs today's quads, sun-shadow trace time + transmittance picture; GPU job after
         pdi4c_ on 'lsp_ GPU go'. Owner: lsp_
+        lsp_ READY FOR GPU 01:58 (24 min; testbin\scratch\lsp_\probe.md): CORRECTION: today's smoke quads face the SUN
+        (twattila/rt_smoke.cs_5_0.hlsl:6-12), not the camera as the coord told ATN at 00:5x -> the gain is speed + caps +
+        smoke visible to every ray direction, not a better sun-shadow shape. Model: sphere centre = particle, r =
+        0.5 sqrt(w h), sigma = -ln(1 - min(a, 0.99)) / 2r (ours: through the centre = today's quad), T = exp(-sigma chord)
+        (pbrt-v4 media.h:217 / :760); today's caps + SMOKE_DARK for a fair test; variants quads (verbatim copy of
+        28ea6fb07) / spheres / uncapped / backoff (start inside) / spheres_nv (primitive index) / aabb (AMD / Intel
+        fallback) / brute-force refs. Synthetic smoke (recordings folder holds only MOVED_TO_D.txt): city 64 x 36 m (8-23
+        candidates / ray) + field, 250 / 1000 / 4000 particles, sun 50 / 15 deg. NVAPI lives in build\downloads\nvapi
+        (untracked). 6 builds OK; WARP self-check exit 0 (quads vs ref 0.0010, aabb vs sphere ref 0.0000). GPU job:
+        gpu_job.ps1 (GpuLock.psm1), ~2-4 min under the lock. Decides: spheres <= 0.5x quads ms -> helper design; 0.5-0.8x
+        only if caps / shape win; > 0.8x drop; uncapped <= quads capped with err <= 0.02 -> retire the caps; backoff
+        need; aabb fallback value; spheres_nv 0 mismatches. GPU ORDER: after pdi4c_ (2-4 min). Owner: lsp_ (waits)
         - [ ] LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner: done
         ATN 11-26 00:5x ANSWERS: (1) fa5_ U-VB5 CLOSED: the 3 Shadertoys are in C:\Users\arshi\Downloads\Shadertoy stuff\
         (root = GT-VBAO, 'GT-VBAO thickness heuristic' = Ottosson's variation, 'GT-VBGI (diffuse)'); every header reads
