@@ -243,6 +243,9 @@ constexpr size_t PAUSE_FLAG_CHECK = 84;
 constexpr int GAME_JITTER_MODE = 6;  // r_PostAAMode: Halton 8x
 // The addon's own jitter: Halton (2, 3), NVIDIA's at least 8 positions per (output / input)^2; DLAA: 8.
 constexpr uint32_t JITTER_PHASES = 8;
+// src: NVIDIA's DLSS-RR integration guide 3.6 (at least 32 phases under Ray Reconstruction), as
+// twattila/anti_aliasing.hpp:183 RR_PHASES.
+constexpr uint32_t RR_PHASES = 32;
 constexpr uint32_t MAX_JITTER_PHASES = 1 << 16;
 
 // Must match PassConstants (b12) in the private shaders.
@@ -3123,9 +3126,11 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       height = state.render_height;
       display_width = state.display_width;
     }
-    // 8 x (display / render)^2 positions (NVIDIA): 8 for DLAA, 32 at 50%, 72 at 33%.
+    // 8 x (display / render)^2 positions (NVIDIA): 8 for DLAA, 32 at 50%, 72 at 33%; at least 32 while the helper runs
+    // Ray Reconstruction (the last UpdateHelper's use).
     const float ratio = (width != 0 && display_width > width ? static_cast<float>(display_width) / static_cast<float>(width) : 1.f);
-    const uint32_t phases = std::clamp(static_cast<uint32_t>(std::ceil(JITTER_PHASES * ratio * ratio - 0.01f)), JITTER_PHASES, MAX_JITTER_PHASES);
+    const uint32_t least = (upscaling::CurrentUse().ray_reconstruction != 0 ? RR_PHASES : JITTER_PHASES);
+    const uint32_t phases = std::clamp(static_cast<uint32_t>(std::ceil(JITTER_PHASES * ratio * ratio - 0.01f)), least, MAX_JITTER_PHASES);
     const auto halton = [](uint32_t index, uint32_t base) {
       float fraction = 1.f;
       float value = 0.f;
