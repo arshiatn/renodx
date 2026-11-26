@@ -17503,7 +17503,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         loader tests, plugin + add-on fit by reading. Prepared, not run: (a) smoke with add-on + plugin, (b) b1 menu A/B
         (A A B B A). The CPU step 0 spin A/B needs a64_ab changes first (STEP 0a: -Package with -AB, a 'fast' arm writing
         task_waits=fast into the run folder, 'base,fast,l2b' probe line) + ATN's yes; tonight's proxy = '-AB -Arms
-        base,spinoff' on 1.3.20. Owner: coord (game block) / ATN (STEP 0a yes)
+        base,spinoff' on 1.3.20. ATN 16:35 'Yes, tonight' -> ab0_ adds the a64_ab changes (dry runs only), step 0 runs
+        tonight in the game block. Owner: ab0_ / coord (game block)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
