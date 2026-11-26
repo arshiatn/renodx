@@ -6561,11 +6561,6 @@ class RtScene12 {
   static constexpr D3D12_UNORDERED_ACCESS_VIEW_DESC DI_OFFSETS_NULL = {.Format = DXGI_FORMAT_R32G32_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
                                                                       .Buffer = {.NumElements = 1}};
   static constexpr uint32_t DI_RESERVOIR_ARRAYS = 2;  // rt_di_surface.hlsli DI_*_ARRAY
-  // RTXDI's reservoir layout at the shared textures' size (one set's: the history keeps it at any render size).
-  [[nodiscard]] RTXDI_ReservoirBufferParameters DiReservoirLayout() const {
-    const D3D12_RESOURCE_DESC size = positions_->GetDesc();
-    return rtxdi::CalculateReservoirBufferParameters(static_cast<uint32_t>(size.Width), size.Height, rtxdi::CheckerboardMode::Off);
-  }
 #endif
 
   // The history an effect left unused for HISTORY_FRAMES given back once the GPU is past this request (its views null:
@@ -8670,6 +8665,10 @@ class RtScene12 {
 #if defined(RENODX_RTXDI_DI)
     const bool di_asked = version >= 32 && (shared.rt_di_flags & dlaa_bridge::RT_DI_LIGHTS) != 0 && lights_kept
                           && lights_di_pipelines_[0] && light_surface_ && di_light_[1];
+    // RTXDI's reservoir layout at the shared textures' size (one set's: the history keeps it at any render size).
+    const D3D12_RESOURCE_DESC di_size = positions_->GetDesc();
+    const RTXDI_ReservoirBufferParameters di_layout =
+        rtxdi::CalculateReservoirBufferParameters(static_cast<uint32_t>(di_size.Width), di_size.Height, rtxdi::CheckerboardMode::Off);
     // Its own resources, made at the first request (released after HISTORY_FRAMES unused: ExpireHistory): the tiles'
     // members, the light surface's copy (its own desc), the reservoirs and the neighbour offsets (uploaded once). A piece
     // that cannot be made: said, no DI for this set (its light surface dropped).
@@ -8677,7 +8676,7 @@ class RtScene12 {
       D3D12_RESOURCE_DESC surface_desc = light_surface_->GetDesc();
       surface_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
       const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
-      const uint64_t reservoir_bytes = uint64_t{DiReservoirLayout().reservoirArrayPitch} * DI_RESERVOIR_ARRAYS * DI_RESERVOIR_BYTES;
+      const uint64_t reservoir_bytes = uint64_t{di_layout.reservoirArrayPitch} * DI_RESERVOIR_ARRAYS * DI_RESERVOIR_BYTES;
       ComPtr<ID3D12Resource> upload = Buffer(uint64_t{DI_OFFSET_COUNT} * 8, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
       di_reservoirs_ = Buffer(reservoir_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       di_offsets_ = Buffer(uint64_t{DI_OFFSET_COUNT} * 8, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
@@ -8830,9 +8829,8 @@ class RtScene12 {
           Transition(di_light_[1].Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
       };
       list->ResourceBarrier(static_cast<UINT>(to_di.size()), to_di.data());
-      const RTXDI_ReservoirBufferParameters layout = DiReservoirLayout();
       // b2 (rt_di_surface.hlsli DiPass): the layout, the flags, the temporal pass's permutation number, the offsets' mask.
-      const std::array<uint32_t, 5> di_constants = {layout.reservoirBlockRowPitch, layout.reservoirArrayPitch, (di_history ? 1u : 0u) | di_test,
+      const std::array<uint32_t, 5> di_constants = {di_layout.reservoirBlockRowPitch, di_layout.reservoirArrayPitch, (di_history ? 1u : 0u) | di_test,
                                                     rtxdi::JenkinsHash(frame), DI_OFFSET_COUNT - 1};
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(di_constants.size()), di_constants.data(), 0);
       for (ID3D12PipelineState* pass : {di_initial_pipeline_.Get(), di_temporal_pipeline_.Get(), di_spatial_pipeline_.Get(), di_shade_pipeline_.Get()}) {
