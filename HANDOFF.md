@@ -933,7 +933,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa4_ B5 ReSTIR GI's chosen-sample hitT into REBLUR unfiltered (rt_path.hlsli:143 ... | ?
 - fa4_ B6 aa_dlaa_prepare:56 zeroes non-finite motion, cause unnamed (Forge lens): ... | ?
 - fa4_ B7 rr_d3d12.hpp:32-33 cites the deleted talesofarise_dlss/rr_d3d12.hpp (ae8 ... | ?
-- fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered pen ... | ?
 - fa4_ RR PLACEMENT: RR runs after the tone mapper; DPG + RRG 3.1 say before. CHOS ... | ?
 - fa3_ B1 TWO VISIBILITY KINDS IN ONE STREAM (bias): in OMM builds TRACE_SURFACE c ... | ?
 - fa3_ B2 LIGHT LEAKS THROUGH SOLID CUT-OUTS (thatch, fences) in GI / bounce / SHa ... | ?
@@ -998,7 +997,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - OLD GATE BUG (cbr_): 'git cherry-pick -m 1 <merge>' makes spec_cite_check.py fau ... | ?
 - CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attil ... | ?
 - FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
-- O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 fe ... | ?
 - X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither ... | ?
 - O-SS5 SSS THICKNESS AT EVERY SCALE (ATN wants the picked thickness exact at any ... | ?
 - Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / ... | ?
@@ -1013,6 +1011,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REF BREAKS MISSING (spec 9, built 5): offset20, fog_flat, clearance0, stale_bits ... | gate tooling slot
 - ATN RULE LINE: RENODX_TW_REF_BREAK + RENODX_TW_REF_INSIDE GPU proof runs (P5 bre ... | ?
 - G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
+- RR PLACEMENT CITE: the RR-after-tone-mapper comment (anti_aliasing.hpp aa_dlaa_p ... | ?
+- ATN LOOK: RR FEED ENCODING. Today's sqrt keeps darks right (x0.997) but darkens ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
 - wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
 - pdi5_ WORKTREE .claude\worktrees\agent-a04c344af00661e33 + the stale branches pd ... | ?
@@ -17299,9 +17299,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         the audit brief carry the rule; the critic classifies every guard row as inert / output-changing.
         - [ ] fa4_ B7 rr_d3d12.hpp:32-33 cites the deleted talesofarise_dlss/rr_d3d12.hpp (ae86e8603): fix the comment
         (memory note fixed 11-26). Owner: next twattila writer
-        - [ ] fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered penumbra 0.1 / 1.1 reads
+        - [x] fa4_ U1 SQRT FEED CHECK: if RR averages in its input domain, a 50 % dithered penumbra 0.1 / 1.1 reads
         0.47 not 0.60 (-22 %). HARNESS_RR synthetic bit image linear vs sqrt, constant 0.60 control. Owner: GPU queue
-        after pdi4c_ -> hrr_ RUNNING 04:0x
+        after pdi4c_ -> hrr_ DONE 04:24: CONFIRMED (RR averages in its input domain; numbers in the HARNESS_RR JOB note)
         - [ ] fa4_ RR PLACEMENT: RR runs after the tone mapper; DPG + RRG 3.1 say before. CHOSEN as architecture, no ATN
         cite found -> critic: find the decision or design the move. Owner: critic -> coord
         - [x] ATN Q (ANSWERED 11-26 ~00:4x: 'Not for now'; rows stay as they are) (fa4_ B3 + RRG p22): under RR / NRD, hide AO Quarter (rt_trace:388-417, one pixel of
@@ -17701,9 +17701,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         default but maybe I decide otherwise with my eyes'; Q4 'Cannot we fix it so it stays correct at the picked
         thickness at any scaling?'; Q5 'Maybe they are bugs?'; Q6 'your advice' (RTXPT / Falcor bend); Q7 'yes please';
         Q8 'sure'. Owner: done
-        - [ ] O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 feed rules; noise, darks,
+        - [x] O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 feed rules; noise, darks,
         ghosting) in the HARNESS_RR job with fa4_ U1's sqrt check; the winner = the default with its cite. Owner: GPU queue
-        (with fa4_ U1) -> hrr_ RUNNING 04:0x
+        (with fa4_ U1) -> hrr_ DONE 04:24: KEEP AFTER + sqrt (no gain before at matched encoding; numbers in the note)
         - [ ] X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither in sampling): under RR the
         default sampler drops IGN for NVIDIA's advice; IGN stays a row for ATN's eye; NV9 numbers in the report. Owner:
         wave 5 (with X22)
@@ -17926,6 +17926,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         HARNESS_RR JOB (fa4_ U1 sqrt feed + O-RR12 before / after the tone mapper) STARTED 04:0x: hrr_ (Opus High; tools
         only, test-only helper variants in its own outdir; scratch testbin\scratch\hrr_\; GPU via Enter-GpuLock, holds
         < 15 min; est 60 / deadline 120). Look moves -> ATN's eye with numbers; no product default flip. Owner: hrr_
+        hrr_ DONE 04:24 (30 min; GPU 355 s in 4 holds, 10 min wait behind bal3_; harness deterministic; helper
+        testbin\pdi5_rb2_rec = eb7438206, dlaa_helper / bridge / ngx_backend no diff to atn-mods; tools only:
+        tw_rt_harness.cpp (.bak_hrr) HARNESS_RR_PATTERN / _TONEMAP / _ORDER / _EXPOSURE / _FIREFLY / _EDGE; results
+        testbin\scratch\hrr_\results\20261126_04*). U1 (HARNESS_RR=0, 90 frames, 640x360, ground < 15 m, 87 440 px): 50 %
+        0.1 / 1.1 -> linear feed 0.5973 (x0.996), sqrt feed 0.4694 (x0.783; predicted (E sqrt x)^2 = 0.4658); flip checker
+        0.6084 / 0.4725; jitter on 0.6013 / 0.4657; preset E 0.5941 / 0.4645; const 0.60 control 0.5994-0.6002 -> RR AVERAGES
+        IN ITS INPUT DOMAIN: today's sqrt feed (anti_aliasing.hpp:1121-1127 aa_dlaa_prepare) darkens two-level noise
+        (penumbrae / AO / fireflies) by 22 %, with white noise too (B2's IGN fix alone does not remove it). O-RR12 (RRG 3.1
+        p10 'before tone mapping'; 3.4.5 p13 any 3-channel format; 3.7 p18 no exposure; DPG 3.1 p19 IsHDR; stand-in tone
+        mapper ExponentialRollOff start 1.0 peak 4.93, identity below 1): A after + sqrt (today) / B before + linear / C
+        before + sqrt / D after + linear: AO x4 darkest tenth x0.997 / x1.283 / x1.001 / x1.261; AO noise ref 0.0340 /
+        0.0303 / 0.0334 / 0.0298; fireflies 1 % +20 mean x0.693 / x1.026 / x0.756 / x0.753, time noise 0.0026 / 0.0057 /
+        0.0031 / 0.0024; dark ramp darkest tenth x3.09 / x10.55 / x3.09 / x10.55; ghost trails < 1 px all arms. -> ORDER
+        MATTERS LITTLE AT MATCHED ENCODING (A ~ C); THE ENCODING IS THE LEVER (linear lifts darks x1.26-1.28 = debug28's
+        violet veil). DEFAULT KEPT: after + sqrt. Caveats: stand-in is not PsychoV35 / grading; 640x360 no upscale;
+        presets 0 / E. FOLLOW-UP SENT 04:3x: encoding sweep p = 0.5 / 0.6 / 0.7 / 0.8 / 1.0 (same measures; est 15 /
+        deadline 30) -> a middle option for ATN. Owner: hrr_ -> ATN
+        - [ ] RR PLACEMENT CITE: the RR-after-tone-mapper comment (anti_aliasing.hpp aa_dlaa_prepare / rr_d3d12.hpp) gets
+        'ours: RRG 3.1 p10 says before tone mapping; measured hrr_ 11-26: no gain before at matched encoding, linear lifts
+        darks x1.26'. Owner: next comment / cite wave
+        - [ ] ATN LOOK: RR FEED ENCODING. Today's sqrt keeps darks right (x0.997) but darkens two-level noise (penumbrae,
+        AO, fireflies) by 22 %; linear fixes that bias but lifts darks x1.26 (the violet veil). hrr_'s sweep adds middle
+        exponents; ATN picks by eye (a product change only on his word). Owner: ATN
         - [ ] ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 baseline -> move it to the M1 run
         (f370cd3bd vs e52ec9e28) once step 5 merges. Owner: gate tooling slot
         - [ ] wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 of 1 M SHaRC keys / 6
