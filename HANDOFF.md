@@ -995,7 +995,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fx0_ WORKTREE .claude\worktrees\agent-aa5c85a54b44e6397 (branch merged; build / ... | ?
 - cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR ... | ?
 - CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope. ... | ?
-- cbr_ RE-CHECK OF v2 STARTED 03:0x (resumed, est 12 / deadline 25): v1_to_v2 line ... | ?
+- ATN INSTALLS CITATION BLOCKER v2: follow testbin\scratch\cbi_\install_steps.v2.m ... | ?
+- OLD GATE BUG (cbr_): 'git cherry-pick -m 1 <merge>' makes spec_cite_check.py fau ... | ?
 - CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attil ... | ?
 - FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
 - O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 fe ... | ?
@@ -17653,9 +17654,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         differ (cherry-pick cases 105-115 s -> 0.35 s; real 1434dcf07: old 4444 commits 113 s, new 1 commit 0.3 s), b 25,
         p5 73, r4 103 / 53 (+ rt_di_shade.cs_6_5.hlsl:23 Gt, - DI_RESERVOIR_ARRAYS), e2e 13 / 13 + cbr_ 9 / 9 + half 6 / 6,
         mirror 1506 / 1506; r4 merge 5.3 s (budget not hit), 143 commits -> TOOL FAULT, same exit code. Owner: done
-        - [ ] cbr_ RE-CHECK OF v2 STARTED 03:0x (resumed, est 12 / deadline 25): v1_to_v2 line by line, own reruns
+        - [x] cbr_ RE-CHECK OF v2 STARTED 03:0x (resumed, est 12 / deadline 25): v1_to_v2 line by line, own reruns
         (equality sample, half installs, the cherry-pick proof), any-order claim, cherry-pick on upstream / merge shas.
         Then ATN installs v2 (install_steps.v2.md, questions 1-8). Owner: cbr_ -> ATN
+        cbr_ v2 VERDICT 03:12: INSTALL v2 AS IS (5 min). v1_to_v2 = exactly fixes 1-2 (gate_hook.py.v2 byte-equal to
+        cbr_'s) + a-f + the one-line cherry-pick hunk, nothing else; d rework right (v1 never matched a '// src:' line at
+        all; v2 reads the comment part, strict files, resolving spec: refs only; probe 5 / 5; small strict-side gap: a ref
+        on a tag's continuation line gets no cite credit). Reruns: equality 19 / 19 SAME, shadow exit codes = today's, r4
+        103 / 53, self-test 50 / 50, e2e 13 / 13 + 9 / 9; half installs 6 / 6 deny a cite-missing commit; the only unsafe
+        state = the row at 'on' with today's checker (install_steps.v2.md step 8 says so). Cherry-pick: 1434dcf07 4444 ->
+        1 commit, same stdout as the ^..sha range; upstream sha 0 (byte-equal skip); merge sha 0 with --no-merges (1.1 s).
+        Owner: done
+        - [ ] ATN INSTALLS CITATION BLOCKER v2: follow testbin\scratch\cbi_\install_steps.v2.md (steps 1-9; checker +
+        scope file + gates.tsv row 'estimator shadow' + hook line 961 + gate_override line 14 (combined with gtp_'s
+        'price') + INSTALL_FOR_ATN.md row) and answer its questions 1-8 (1-7 = cbd_'s list in the box above, 8 = cbr_'s
+        g: may a resolving src: tag clear a clamp that is the source's own contract?). Strict = row 'on' only after >= 5
+        days / 30 commits of shadow at FP <= 10 %. The cherry-pick '^!' fix is in the same file (its own diff). Owner: ATN
+        - [ ] OLD GATE BUG (cbr_): 'git cherry-pick -m 1 <merge>' makes spec_cite_check.py fault on the '1' (exit 2 = fail
+        open), today and in v2 -> the gates' owner skips the value after -m (a .proposed for ATN). Owner: gates tooling slot
         - [ ] CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attila + helper strict first,
         ports warn-only until their propagation box [yes]; 2 saturate warn-only for good [yes]; 3 an edit inside a
         src-tagged function must touch the tag line [no, review checks]; 4 'guard inert ... proof pending' allowed while
