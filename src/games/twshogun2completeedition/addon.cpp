@@ -2612,10 +2612,13 @@ void OnDlssPresent(reshade::api::command_queue* queue, reshade::api::swapchain*,
     twshogun2::particle_resolution::Apply(1.f);
   }
   twshogun2::render_scale::BeginFrame(scaling, display, render, helper_evaluates.load(std::memory_order_relaxed) && dlss_running);
-  // Until the DLSS evaluation (its callback clears it): log2(render / display width), minus 1 (sharper) or 2.
+  // Until the DLSS evaluation (its callback clears it): log2(render / display width), minus 1 (sharper) or 2. The helper's
+  // XeSS one step less, as twattila/anti_aliasing.hpp OnPresent (src: XeSS SDK 3.0.2 xess_sr_developer_guide_english.md:90-94).
   float bias = 0.f;
   if (const int choice = std::clamp(static_cast<int>(aa_sliders.texture_lod_bias), 0, 3); scaling && choice != 0 && display[0] != 0) {
-    bias = std::log2(static_cast<float>(render[0]) / static_cast<float>(display[0])) - static_cast<float>(choice - 1);
+    const bool xess = aa_sliders.method == static_cast<float>(5 + twattila::dlaa_bridge::UPSCALER_XESS);
+    bias = std::log2(static_cast<float>(render[0]) / static_cast<float>(display[0]))
+           - static_cast<float>(xess ? std::max(choice - 2, 0) : (choice - 1));
   }
   twattila::texture_lod_bias::SetTracking(queue, bias != 0.f);
   twattila::texture_lod_bias::SetBias(bias);

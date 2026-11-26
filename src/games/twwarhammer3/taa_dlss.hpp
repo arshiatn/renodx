@@ -1237,8 +1237,10 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     }
     twattila::frame_history::tonemapped.store(false, std::memory_order_relaxed);
     PublishSize();
+    // XeSS one step less, as twattila/anti_aliasing.hpp OnPresent (src: XeSS SDK 3.0.2 xess_sr_developer_guide_english.md:90-94).
     if (const int choice = state.settings.texture_lod_bias; choice != 0 && state.scale_proof == ScaleProof::GOOD) {
-      lod_bias = std::log2(state.learned_share) - static_cast<float>(choice - 1);
+      const bool xess = state.settings.method == twattila::anti_aliasing::Method::XESS;
+      lod_bias = std::log2(state.learned_share) - static_cast<float>(xess ? std::max(choice - 2, 0) : (choice - 1));
     }
     state.lod_bias_presents = (state.log_details && lod_bias != 0.f) ? state.lod_bias_presents + 1 : 0;
     report_lod_bias = state.lod_bias_presents == 300;

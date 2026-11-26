@@ -556,7 +556,9 @@ inline void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t first
 }
 
 // Every present: the texture LOD bias for the next frames' main view (log2 of render / display width, minus 1 or 2
-// for sharper; none at 100% or with it off), and whether the module tracks the samplers.
+// for sharper; none at 100% or with it off), and whether the module tracks the samplers. XeSS: one step less (the default
+// Intel's log2, Sharpest log2 - 1; src: XeSS SDK 3.0.2 xess_sr_developer_guide_english.md:90-94, :495-502, mip bias =
+// log2(render / display), -1 at 2.0x); DLSS and FSR as before.
 inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*,
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   float bias = 0.f;
@@ -565,7 +567,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     const int choice = runtime.settings.texture_lod_bias;
     if (choice != 0 && runtime.render_width < runtime.display_width && runtime.display_width != 0) {
       bias = std::log2(static_cast<float>(runtime.render_width) / static_cast<float>(runtime.display_width))
-             - static_cast<float>(choice - 1);
+             - static_cast<float>((runtime.settings.method == Method::XESS) ? std::max(choice - 2, 0) : (choice - 1));
     }
   }
   texture_lod_bias::SetTracking(queue, bias != 0.f);
