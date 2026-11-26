@@ -17578,6 +17578,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] CPU STEP 0b (19:30): spin on + L2B 134.72 = base 134.74 ms in one batch -> nothing beats the loader default on
         1.3.28 yet; fair L2B re-test needs ATN's CPU Set Setter rule for run_pkg_580efafeb5765d81\attila64.exe (cpu_plan_64_map.md
         STEP 0b RESULT). Owner: ATN (rule) / coord
+        - [x] CPU STEP 0c VALID (20:18, ATN's CPU Set Setter rule on the 1.3.28 path): base 134.3, spin on 136.4, L2B 121.7
+        (-9.4 %), spin on + L2B 120.8 ms; same battle state in all 5. L2B's premise holds on 1.3.28; keep the loader's spin
+        off. Steps 0 / 0b (hard affinity) superseded. LESSON: a new exe path needs ATN's CPU Set Setter rule before any CPU
+        run (dry run line 'CPU Set Setter rule: none'). Owner: Friday CPU wave (L2B, C03-64 design)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
