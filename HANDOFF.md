@@ -1005,8 +1005,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / ... | ?
 - X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coor ... | ?
 - LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\s ... | ?
-- lsp_ FOLLOW-UP 1 (backoff uncapped vs quads capped, < 1 min GPU) STARTED 03:1x; ... | ?
-- pd5c_ STEP 5 RE-CHECK STARTED 03:0x (Opus xHigh, read-only, scratch pd5c_\; est ... | ?
+- lsp_ FOLLOW-UP 1 DONE / 2 OPEN (backoff uncapped vs quads capped, < 1 min GPU) S ... | ?
+- STEP 5 FOLLOW-UPS (pd5c_): (1) build.ps1:156-157 G5's REUSE_COMPATIBLE builds la ... | ?
+- REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so ... | ?
 - G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
 - wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
@@ -17744,9 +17745,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         absolute 0.25-5.5 ms; the in-game 80 ms smoke frames are NOT reproduced by synthetic 4000 particles -> their
         cause is outside per-candidate cost (more / bigger particles or the scene); a real smoke recording through the
         probe settles it. Owner: done
-        - [ ] lsp_ FOLLOW-UP 1 (backoff uncapped vs quads capped, < 1 min GPU) STARTED 03:1x; FOLLOW-UP 2 (a real smoke
+        - [ ] lsp_ FOLLOW-UP 1 DONE / 2 OPEN (backoff uncapped vs quads capped, < 1 min GPU) STARTED 03:1x; FOLLOW-UP 2 (a real smoke
         recording through the probe): lsp_ writes its needs in probe.md, runs later. Then LSS decision: design or drop
         (+ ATN's eye on the sphere vs quad PNGs). Owner: lsp_ -> coord / ATN
+        FOLLOW-UP 1 DONE 03:16:42-43 (1 s; the lock waited 7 min behind lab_keeper): backoff UNCAPPED vs quads capped 32,
+        city 1000 / 50, 1000 / 15, 4000 / 50, 4000 / 15: 2.115 / 2.506, 0.784 / 0.836, 3.174 / 5.522, 1.955 / 2.591 ms
+        (0.84x, 0.94x, 0.57x, 0.75x); uncapped = capped cost; err vs sphere ref max 0.0003 / 0.0002 / 0.0000 / 0.0001 (quads
+        at cap 32 vs their ref up to 0.0575) -> with spheres + backoff the COUNT CAPS CAN RETIRE at quality 32 (cheaper +
+        exact); at quality 8 uncapped = ~1.09x today's capped quads. Still open: follow-up 2 (a real smoke recording: the
+        80 ms frames' cause) and ATN's eye on the PNGs -> then design or drop. Follow-up 2 plan (probe.md): step 0 = a CPU
+        check of D:\RenoDX_archive\recordings\live_proof / live_proof2 (4 frames, ~6.7 GB each) for smoke in the bridge
+        block; none -> a burning-city siege recording with the recorder build (a game run, ~10 min); a CPU reader of
+        rt_recording.h (block / vertices / sun / positions chunks -> particles.bin, one sphere per 6-vertex quad) + ~40
+        probe lines (--particles-file / --sun / --origins); GPU 1-2 min. Owner: lsp_ (2) / ATN (look)
         GPU ORDER 11-26 02:0x (coord): coord R2 -> R4 stay BLOCKED (R1 must rerun first and refuses the existing
         build\nsr_profile_1: ATN's deletion yes, box above) -> after pdi5_ GPU done: pdi4c_ (r4 1434dcf07) -> lsp_ (2-4
         min) -> bal3_ -> d11 replay self-test -> d11 day1 capture -> HARNESS_RR (fa4_ U1 sqrt + O-RR12) -> fa8_ B1 F7 case
@@ -17776,13 +17787,38 @@ heading text are in HANDOFF_ARCHIVE.md)
         testbin\scratch\pdi5_\f16store\). Rebase gates: DXIL = the same 14 listings, h0i 72 / 72, gated twattila amd64
         + x86 exit 0 (191 steps), helper builds, re-check plays equal + NaN / Inf 0. G4 stays 0 in code, G5 opt-in.
         Owner: done
-        - [ ] pd5c_ STEP 5 RE-CHECK STARTED 03:0x (Opus xHigh, read-only, scratch pd5c_\; est 20 / deadline 40): range-diff
+        - [x] pd5c_ STEP 5 RE-CHECK STARTED 03:0x (Opus xHigh, read-only, scratch pd5c_\; est 20 / deadline 40): range-diff
         vs f370cd3bd + the rt_d3d12.hpp include resolution, S1 / S3 / S4 / S5 vs pd5r_ (F32ToF16Nearest math in python),
         step 3 x step 5 reservoir interaction + the SHaRC move, evidence, G4-default question -> verdict; then coord
         merges pdi5_step5_rb2 (gated amd64 + x86 + helper). Owner: pd5c_ -> coord
+        pd5c_ VERDICT 03:2x: MERGE (14 min). range-diff 9 / 10 '=', G5's '!' = context only; rb2 tree = old branch +
+        120b85ecf with both include blocks (rt_d3d12.hpp:121-151: SHaRC, RTXDI boil, ReGIR, G5, each __has_include, no
+        duplicates); 288413a13 -> 120b85ecf helper changes comments only. S1 rt_scene.hlsli:355-363 = pd5r_'s code; numpy:
+        0 / 900 k farther than nearest, midpoints +-1 ulp 0 wrong, +-0 / inf / NaN kept, re-store stable for all 63 490
+        halves (no drift), ties keep the truncated half (as documented); S3 :60-62 / :1031-1035, S4 :1537-1538, S5
+        PairwiseFinish :929-937 = the old math. Step 3 x 5: no new reservoir reader / writer (Load / StoreReservoir
+        only); the wh3_forest_high SHaRC move = 2 keys in one bucket with SWAPPED SLOTS (same keys, same light) = insert
+        order, not a step 3 x 5 interaction (sharc_keys.txt). Gate ids G-1126-4..-27 all in lab\gate_log.tsv as claimed.
+        G4 off (rt_reuse_bits.h:69 RT_RESERVOIR_COMPACT 0), G5 opt-in (rt_d3d12.hpp:4341-4343). MERGED ed3e5c6a4 (gated twattila amd64 61 / 61 + x86 61 / 61, helper 6 239 232 B, RTXDI found).
+        Owner: done
+        - [ ] STEP 5 FOLLOW-UPS (pd5c_): (1) build.ps1:156-157 G5's REUSE_COMPATIBLE builds lack step 3's @regir (no
+        PATH_REGIR; harmless today: ReuseTexel reaches no ReGIR / TORCH_REGIR code, the Lights cbuffer prefix matches) ->
+        add @regir (check RTXDI's PT header + rt_rtxdi_bridge.hlsli compile together) or say why; (2) scratch\pdi5_\
+        p5_dxil.py compiles without -D PATH_REGIR, so rb2's 'same 14 listings' used pre-step-3 flags (the rb plays covered
+        it) -> add @regir before the next DXIL gate; (3) nits left: G5 ready-line note when its builds are missing
+        (rt_d3d12.hpp:781), v32 lift only from 31 + a block-size check per request (rt_serve.h:453) + rt_recording.h:25-26
+        comment, lines > 120 cols (rt_d3d12.hpp:1983 / :1988 / :10750-10752). Owner: next helper writer slot
+        - [ ] REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so a slot swap (same keys, same
+        light) is not ABOVE FLOOR. Owner: gate tooling slot
         - [ ] G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 same or nearer, reflections
         1.00000 -> the 'faster + same picture = on' rule (pd5r_: after S2 rows, S3, S1, new baselines) -> a flip commit
-        + all_modes / rec_scan with G4 = 1 as the new baseline in the next GPU window (pd5c_ says what else). Owner: coord
+        + all_modes / rec_scan with G4 = 1 as the new baseline in the next GPU window. pd5c_ 03:2x: speed + E4 support it,
+        NOT ready as default yet; before the flip: (a) new baselines with G4 = 1 (all_modes_check + two plays of a G4 = 1
+        rec build on all 17 recordings for a new rec_compare --floor; recorded 32 B histories no longer load -> cold
+        starts); (b) rec_scan plan: S3 makes a compact build drop NaN / Inf silently -> keep a G4 = 0 rec build in the gate
+        set or add a counter; (c) a night torch-lit CHROMA check with step 3's rows on (Torch Light in PT GI + ReGIR):
+        RGB9E5's weak channel (blue at 1 % of red: +-17 %) hits saturated torch light, luminance E4 does not see it; + a
+        night reflections row; (d) flip gates on the merged head: h0i, gated amd64 + x86, lab / Nsight timing. Owner: coord
         (after the merge)
         GPU 03:06 (coord): pdi4c_ got 'pdi4c_ GPU go' 03:0x but is BLOCKED on a PowerShell permission prompt (only ATN can
         answer it; coord never answers agents' prompts) -> lock free, so 'lsp_ GPU go' sent 03:06 (2-4 min, self-locking);
