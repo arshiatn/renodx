@@ -958,6 +958,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - USAGE 11-26 16:4x: no new agents today; running ones finish; only gts_, ab0_ + t ... | ?
 - tw_rt_open_sky's default -Expect is outdated (the 'exact' values already hold): ... | ?
 - TEST DUMP DIGESTS (gts_ 11-26): the harness hashes / checks the frames in RAM an ... | ?
+- W8 RE-LANDED, MERGED 5c2c5042f (fx8_reland 498a63470): A' code only in 5 new sss ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17527,6 +17528,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         Long group times = GPU-lock queueing, not dumps. Owner: coord / gts_ follow-up
         - [x] a64_ab CPU step-0 switch (ab0_ patch, applied by ATN 11-26, sha 86993af6): -AB -Package, arm 'fast', probe line
         base,fast,l2b. Run it twice (6 starts) for a drift check. Owner: coord (game block)
+        - [ ] W8 RE-LANDED, MERGED 5c2c5042f (fx8_reland 498a63470): A' code only in 5 new sss_bend*_steps wrappers
+        (BEND_SSS_SCREEN_STEPS; 65 files in 12 folders); without the define every variant = C (10 temps). G1 4K 100 %: A' 0.813
+        vs C 0.814 ms (PASS; Softer +-0.1 %). Below 100 % A' ON (ATN): 67 % 1.561 / 0.346, 58 % 1.231 / 0.279, 50 % 0.686 /
+        0.222, 33 % 0.538 / 0.159 -> at 67 % / 58 % SSS costs MORE than at 100 %. run.ps1 x86 + amd64 PASS; 11 gated builds +
+        coord's post-merge twattila / talesofarise builds exit 0. Nsight strict gate impossible headless (D3D11). Shogun 2,
+        Rome R contact shadows, R.U.S.E. keep Bend's loops. NEXT (11-27, Opus xHigh design): cheaper A' (march = the cost:
+        240 samples always, 4 DepthData + 1-2 LightData + ~25 ALU incl. a divide per between-entry sample; one-surface test
+        once per entry as a flag; raw depth kept; divide -> increment; screen steps only for the first N samples), then W2 /
+        W4 + G1; the SSS private-round items. Owner: coord / 11-27 design
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
