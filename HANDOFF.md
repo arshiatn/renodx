@@ -981,11 +981,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SSS TEST FLAKE: test/tw_screen_space_shadows case 2 (100 %, Auto Thickness pole ... | ?
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ?
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | ?
-- AA FEED FIX BUILT, NOT MERGED (aaf2_ 11-26, origin/aafeed_1126 ecf627f09; testbi ... | ?
 - AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | ?
 - RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | ?
 - OMM G3 RUNNER READY, NOT RUN (omr_ 11-27, testbin\scratch\omr_\omm_ab.ps1 sha 83 ... | ?
-- OMM G2 (CPU baker): the player can't make it from today's recordings (both GPU-b ... | ?
+- A/B LOOKS WAIT (ATN 11-27): every look / A/B check (AA feed, O2 thin shadows at ... | ?
+- GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds a ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17668,12 +17668,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one blocking background command, never
         poll; at most 2 agents queued at once, others do non-GPU steps first; GPU jobs batched at the end. Owner: coord (every
         brief from 11-27)
-        - [ ] AA FEED FIX BUILT, NOT MERGED (aaf2_ 11-26, origin/aafeed_1126 ecf627f09; testbin\scratch\aaf2_\handback.md):
+        - [x] AA FEED FIX MERGED f1214a5f9 (ATN 11-27; AA files = the tested branch). Was BUILT (aaf2_ 11-26,
+        origin/aafeed_1126 ecf627f09; testbin\scratch\aaf2_\handback.md):
         Settings::linear_frame (Attila + Thrones HDR) -> g_aa_frame_gamma 1 except RR frames and FSR / XeSS; SMAA edges + CMAA2
         on the root. 4K: K 11.3 -> 7.5, L 11.0 -> 6.8, M 10.9 -> 6.9, RR bit-identical (16.3). Other games unchanged (bytes /
         branch never taken). tw_aa_frame_gamma PASS, control fails; 16 builds at baseline. Look changes: PT on-screen hits
         brighter mid-tones under K / L / M; SMAA T2x root edges; CMAA2 Low misses a 0.6-stop edge at t00 0.5. Not verified:
-        game picture (ATN A/B), Thrones' t00 linear (from aaf_), CMAA2 on GPU (CPU model). Owner: ATN (merge) -> coord
+        game picture (ATN A/B), Thrones' t00 linear (from aaf_), CMAA2 on GPU (CPU model). Owner: ATN (A/B after all plans)
         - [ ] AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both take linear HDR (FFX HDR flag,
         XeSS default) so likely K's mismatch -> 4K measurement like aaf_'s, then ATN's word. Owner: 11-27 GPU wave
         - [x] rrbi_ RUNNER FIX (coord 11-26): gpu_job_g1.ps1 did not clear HARNESS_SR between runs (aaf2_'s first RR arms
@@ -17686,9 +17687,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         -Prepare / -Play / -Nsight, 0 game starts, ~20-25 min + lock waits; dry run clean (shas, worktree 61e6d7fa0, CPU Set
         Setter 'none -> nothing set'). -Prepare sets the documented recorder-build switch for its build child only. Needs ATN's
         5 rule lines. Owner: ATN (rule lines) -> 11-27 GPU wave
-        - [ ] OMM G2 (CPU baker): the player can't make it from today's recordings (both GPU-baked; DXR 1.2 off is refused);
-        ATN picks (a) one recording start with GPU Micromap Baking Off (runner not written), (b) harness synthetic CPU micromap
-        modes (leaves only), (c) accept sdku_'s synthetic result. Also open: FLIP PNGs from the trimmed dumps. Owner: ATN
+        - [x] OMM G2 (CPU baker): the player can't make it from today's recordings (both GPU-baked; DXR 1.2 off is refused);
+        ATN 11-27 picked (c): accept sdku_'s synthetic CPU-baker result (0.947x median, 3 of 4.8 M states differ). Owner: done
+        - [ ] A/B LOOKS WAIT (ATN 11-27): every look / A/B check (AA feed, O2 thin shadows at 58 %, RR row, W8 below 100 %, X22 /
+        X37 / O-CO16 / X48 / X02) happens after every part of the plans is done. Owner: ATN (end of plans)
+        - [ ] GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds are done, then one trimmed batch
+        (count + why per start). The TV may be off by its button: before the batch check that Windows still lists the
+        3840x2160 HDR display; if not, the batch waits for the TV (ATN / his brother). GPU harness work needs no TV. Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
