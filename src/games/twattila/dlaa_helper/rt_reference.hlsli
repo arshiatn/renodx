@@ -508,8 +508,13 @@ float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float 
 // SkyCalibration at the surface the ray left (the first ray's at `origin_normal`, blocked by grass within
 // GRASS_AMBIENT_RANGE); a hit x ContactShade on
 // the first ray; a surface the screen shows (or the cache knows, but CACHE_RELEARN of them, from a cell's size away)
-// sends HitLight's; an unseen one SunLit's (its one ray to the sun's centre) and its first 32 lights (where UnseenLight
-// takes them: their exact sum, LocalLights' two picks' mean) and goes on path_bounces surfaces, the last x KeptShade.
+// sends HitLight's; an unseen one SunLit's (its one ray to the sun's centre) and its first TORCH_LIGHT_COUNT lights
+// (where UnseenLight takes them: their exact sum, LocalLights' two picks' mean or T2's TorchLight) and goes on
+// path_bounces surfaces, the last x KeptShade.
+// src: reference_suite.md 1.1 ("Light choice": `same_route` keeps the helper's light set, `full` sums all 128) and 1.2
+// (each route's cut). ours: the set is the helper's TORCH_LIGHT_COUNT (rt_path.hlsli: 32; 128 under T2, PT DI step 3
+// f23d665ca, whose TorchLight covers every light), not a fixed 32, because a fixed 32 would cut 8 of night40's 40
+// lights that the T2 candidate sums: a bias by construction, not a finding.
 // Every surface two-sided, as the helper's HitNormal (RefNearest's `inside` unused: the route model, not the integral).
 float3 RefRouteIncoming(float3 origin, float3 direction, float3 origin_normal, float first_range, uint2 texel, uint sample_index, inout uint overflow) {
   float3 radiance = 0.f;
