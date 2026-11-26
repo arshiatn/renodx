@@ -1230,9 +1230,16 @@ void PathTraceTexel(uint2 id) {
           Random(uint4(id, frame, DIM_FIRST_MERGE + path * 2u)));
   }
   if (sky_kept) own_sky[sky_set][id] = float4(sky / samples, 1.f);
+  // REBLUR's hit distance: this texel's own rays' mean, with ReSTIR GI too (X23), not the reservoir's chosen sample's (a
+  // pick by the target, which src: NRD.hlsli:521 says "cannot be simply passed"). CONTROL_NRD_CHOSEN_HIT: today's (the
+  // reuse writes the chosen sample's, ReuseTexel).
+#if defined(CONTROL_NRD_CHOSEN_HIT)
+  if (!reuse && (path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = hit_sum / samples;
+#else
+  if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = hit_sum / samples;
+#endif
   if (!reuse) {
     bounce[id] = float4(arriving / samples, distance(position.xyz, Camera()));
-    if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = hit_sum / samples;
     return;
   }
   uint2 previous_pixel;
@@ -1776,7 +1783,9 @@ void ReuseTexel(uint2 id) {
   }
 #endif
   bounce[id] = float4(arriving, distance(position.xyz, Camera()));
+#if defined(CONTROL_NRD_CHOSEN_HIT)
   if ((path_flags & PATH_NRD) != 0u) nrd_hit_distance[id] = (combined.weight > 0.f) ? hit_distance : bounce_range;
+#endif
 }
 
 // Fog in Reflections (PATH_REFLECT_FOG): the light a reflection's ray brings from `hit` to the pixel's `origin` through the
