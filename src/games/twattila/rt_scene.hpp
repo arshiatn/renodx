@@ -279,6 +279,8 @@ inline void Configure(const Settings& settings, anti_aliasing::Settings* aa) {
   // The Light Bounce through rays: at their own resolution, no Checkerboard.
   light_bounce::SetRayTraced(settings.light_bounce, settings.light_bounce_resolution);
   aa->water_roughness = settings.water_soft ? WATER_SOFT_ROUGHNESS : 0.f;
+  // As the helper's lobe (rt_d3d12.hpp: PATH_SQUARED_LOBE with reflections only).
+  aa->reflection_squared_lobe = settings.reflections && settings.reflection_squared_lobe;
 }
 
 // The TW games' view: DLAA's (anti_aliasing.hpp); a rigid draw DLAA's motion saw moving stays out of the scene.

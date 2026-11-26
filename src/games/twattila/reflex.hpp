@@ -23,7 +23,10 @@
 
 // NVIDIA Reflex for the game's own presents (frame generation off, or FSR's; DLSS's and XeSS's pace the game in the helper):
 // NVAPI's low latency sleep mode on the game's D3D11 device, its Sleep right after each present (the next frame starts
-// only as the GPU will need it) and the frame's latency markers around them. NVIDIA GPUs only: elsewhere nothing runs.
+// only as the GPU will need it) and the frame's latency markers around them. With Reflex Off the sleep mode is set off
+// and Sleep and the markers still run (no pacing: src: Streamline ProgrammingGuideReflex.md:171, :177, :374, Sleep and
+// the markers "must always be called even when Reflex Low Latency mode is Off", the HUD's App Called Sleep 1). NVIDIA
+// GPUs only: elsewhere nothing runs.
 namespace twattila::reflex {
 
 namespace internal {
@@ -68,7 +71,8 @@ struct State {
   ComPtr<ID3D11Device> device;  // the game's, with the sleep mode below asked of it
   uint32_t mode = 0;            // asked: 0 off, 1 on, 2 on + boost
   uint32_t frame_limit = 0;     // asked: rendered frames per second (0: none)
-  bool running = false;         // NVAPI took a mode other than off
+  bool paced = false;           // asked: frame generation paces the game (nothing of this runs)
+  bool running = false;         // Sleep and the markers run: NVAPI took the sleep mode (on or off), not paced
   uint64_t frame = 0;           // the markers' frame id (strictly increasing)
 };
 
@@ -123,15 +127,22 @@ inline void Update(reshade::api::swapchain* swapchain, uint32_t mode, uint32_t f
   renodx::utils::directx::TryNativeFromReShadeProxy(&device);
   dlaa_bridge::ReadGpuVendor(device);
   const std::unique_lock lock(state.mutex);
-  if (wanted == state.mode && wanted_limit == state.frame_limit && (wanted == 0 || device == state.device.Get())) return;
+  if (state.loaded && wanted == state.mode && wanted_limit == state.frame_limit && paced == state.paced
+      && device == state.device.Get()) {
+    return;
+  }
   if (!state.loaded) {
     state.loaded = true;
-    state.set_sleep_mode = reinterpret_cast<internal::SetSleepMode>(nvapi::Function(0xAC1CA9E0));
-    state.sleep = reinterpret_cast<internal::Sleep>(nvapi::Function(0x852CD1D2));
-    state.set_latency_marker = reinterpret_cast<internal::SetLatencyMarker>(nvapi::Function(0xD9984C05));
+    // Reflex Off on another vendor's GPU: NVAPI not even looked for.
+    if (wanted != 0 || dlaa_bridge::OnNvidia()) {
+      state.set_sleep_mode = reinterpret_cast<internal::SetSleepMode>(nvapi::Function(0xAC1CA9E0));
+      state.sleep = reinterpret_cast<internal::Sleep>(nvapi::Function(0x852CD1D2));
+      state.set_latency_marker = reinterpret_cast<internal::SetLatencyMarker>(nvapi::Function(0xD9984C05));
+    }
   }
   state.mode = wanted;
   state.frame_limit = wanted_limit;
+  state.paced = paced;
   state.device = device;
   if (state.set_sleep_mode == nullptr || state.sleep == nullptr || device == nullptr) {
     state.running = false;
@@ -145,7 +156,7 @@ inline void Update(reshade::api::swapchain* swapchain, uint32_t mode, uint32_t f
       .minimum_interval_us = (wanted_limit != 0 ? 1000000u / wanted_limit : 0u),
   };
   const int result = state.set_sleep_mode(device, &params);
-  state.running = (result == 0 && wanted != 0);
+  state.running = (result == 0 && !paced);
   const char* mode_name = (paced ? "frame generation paces the game" : (wanted == 0 ? "off" : (wanted == 2 ? "on + boost" : "on")));
   const std::string limit_text = (wanted_limit != 0 ? ", frame rate limit " + std::to_string(wanted_limit) : std::string());
   const std::string result_text = (result == 0 ? std::string(".") : " refused by NVAPI (" + std::to_string(result) + ").");

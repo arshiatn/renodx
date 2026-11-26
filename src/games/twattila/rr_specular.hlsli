@@ -3,6 +3,22 @@
  * SPDX-License-Identifier: MIT
  */
 
+// Binding-free shading terms shared by the add-ons' Ray Reconstruction guides (fxc, cs_5_0) and the helper's rays (dxc,
+// dlaa_helper/rt_camera.hlsli): one source for each formula.
+#ifndef SRC_GAMES_TWATTILA_RR_SPECULAR_HLSLI_
+#define SRC_GAMES_TWATTILA_RR_SPECULAR_HLSLI_
+
+static const float MIRROR_ROUGHNESS = 0.05f;  // smoother reflections are traced as mirrors (one ray, a delta lobe)
+
+// A reflection's GGX alpha by the G-buffer's roughness (1 - gloss): GGX as wide as the game's own lights' highlight on it
+// (a Gaussian whose share within 0.5 degrees is gloss^2); `squared_lobe` (Squared Lobe): roughness^2. The helper's
+// reflections' rays, NRD's guide (rt_nrd_front.hlsl) and Ray Reconstruction's roughness guide (aa_rr_guides) all.
+float ReflectAlphaOf(float roughness, bool squared_lobe) {
+  if (squared_lobe) return max(roughness * roughness, 0.0064f);
+  const float gloss = 1.f - roughness;
+  return 0.0064f / max(gloss * gloss, 0.0625f);
+}
+
 // Ray Reconstruction's specular albedo: F0 with its Fresnel, pre-integrated at this view and roughness. NVIDIA's DLSS-RR
 // programming guide, 4.2.1 (EnvBRDFApprox2, Ray Tracing Gems chapter 32), alpha the roughness guide's square. The shaders'
 // own diffuse albedo keeps the bare F0: the game's sun takes it that way.
@@ -20,3 +36,5 @@ float3 RrSpecularAlbedo(float3 f0, float linear_roughness, float n_dot_v) {
   // The guide's own rule for a specular reflectance of 0.
   return saturate(f0 * max(scale, 0.f) + max(bias * saturate(f0.g * 50.f), 0.f));
 }
+
+#endif  // SRC_GAMES_TWATTILA_RR_SPECULAR_HLSLI_
