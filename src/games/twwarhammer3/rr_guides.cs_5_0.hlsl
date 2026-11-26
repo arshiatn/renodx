@@ -10,7 +10,9 @@
 // axis, turned by inv_view). Water (the flags' class 64, drawn after the first guides: its rays rewrite them): the resolve's
 // own 0.02 and gloss, no diffuse. The sun shaders differ (as in light_bounce.hlsli): diffuse_rule 1: F0 0.08 x colour alpha;
 // 2: F0 0.04; 0: F0 0.04, no metal and no flags in this G-buffer, roughness in the material's z, the normal in the upper 8 of
-// each 10 bits. Nothing drawn (no unit normal to rebuild): the bare F0.
+// each 10 bits. Nothing drawn (no unit normal to rebuild): the bare F0. The sky (no G-buffer write: channel 1's xy cleared
+// to 0, e = (-1, -1), deep in that set): src: RRG 3.4.2 / 3.4.3 / 3.4.4: specular albedo 0, normal (0, 0, 0), roughness 0
+// (they were the bare F0, inv_view's z axis and the material's roughness before).
 #include "../twattila/rr_specular.hlsli"
 
 Texture2D<float4> gbuffer_normal : register(t0);    // channel 1
@@ -40,6 +42,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   roughness.GetDimensions(size.x, size.y);
   if (any(id.xy >= size)) return;
   const float2 stored = gbuffer_normal[id.xy].xy;
+  const bool sky = all(stored == 0.f);
   const float2 e = (diffuse_rule > 0.f) ? (stored * 2.f - 1.f) : (float2(uint2(round(stored * 1023.f)) >> 2) * (2.f / 255.f) - 1.f);
   const float rest = 1.f - dot(e, e);
   const float3 view = float3(2.f * e * sqrt(max(rest, 0.f)), 1.f - 2.f * rest);
@@ -56,7 +59,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float2 uv = (float2(id.xy) + 0.5f - g_viewport_origin + g_vpos_texel_offset) * g_viewport_dimensions.zw;
   const float4 on_ray = mul(float4(uv * float2(2.f, -2.f) + float2(-1.f, 1.f), 0.5f, 1.f), inv_projection);
   const float n_dot_v = dot(view, normalize(on_ray.xyz / on_ray.w));
-  specular_albedo[id.xy] = float4((water || rest < 0.f) ? specular : RrSpecularAlbedo(specular, linear_roughness, n_dot_v), 1.f);
-  normals[id.xy] = float4(dot(world, world) > 0.f ? normalize(world) : float3(0.f, 0.f, 1.f), 0.f);
-  roughness[id.xy] = water ? max(0.01f, water_roughness) : linear_roughness;
+  specular_albedo[id.xy] = float4(sky ? (float3)0.f : ((water || rest < 0.f) ? specular : RrSpecularAlbedo(specular, linear_roughness, n_dot_v)), 1.f);
+  normals[id.xy] = float4(sky ? (float3)0.f : normalize(world), 0.f);
+  roughness[id.xy] = sky ? 0.f : (water ? max(0.01f, water_roughness) : linear_roughness);
 }

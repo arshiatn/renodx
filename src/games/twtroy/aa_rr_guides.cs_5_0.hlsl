@@ -12,6 +12,8 @@
 // Troy's bytes (tools\tw\troy\guides). Water (flags 64 alone: all 68 water pixel shaders write it, with albedo 1 and gloss
 // 1, after the sun draw; no other G-buffer writer does): no diffuse albedo, its own Fresnel's 0.02, nearly smooth (Softer
 // Water Reflections: at least g_water_roughness), as Pharaoh's.
+// The sky (no G-buffer write: the cleared channel 1, xy 0, an encoding no normal has, |e|^2 = 2 > 1): src: RRG 3.4.3 /
+// 3.4.4: normal (0, 0, 0) and roughness 0 (it decoded to (0, -1, 0) and roughness 1 before).
 #include "../twattila/rr_specular.hlsli"
 
 Texture2D<float4> gbuffer_normal : register(t0);     // world normal (encoded in xy), gloss
@@ -40,16 +42,17 @@ void main(uint3 id : SV_DispatchThreadID)
   const float3 specular = float3(constants.xy, ((flags & 128u) != 0u) ? constants.x : constants.z);
   const bool emissive = (flags & 10u) == 10u;
   const bool water = flags == 64u;
+  const bool sky = all(normal.xy == 0.f);
   diffuse_albedo[id.xy] = float4((emissive || water) ? 0.f : gbuffer_colour[id.xy].rgb * saturate(1.f - specular), 1.f);
   const float2 encoded = normal.xy * 2.f - 1.f;
   const float y = max(0.f, 1.f - dot(encoded, encoded));
   const float3 world = float3(2.f * encoded.x * sqrt(y), 2.f * y - 1.f, 2.f * encoded.y * sqrt(y));
-  const float3 world_normal = dot(world, world) > 0.f ? normalize(world) : float3(0.f, 1.f, 0.f);
+  const float3 world_normal = sky ? (float3)0.f : normalize(world);
   const float linear_roughness = saturate(1.f - normal.z);
   const float2 uv = (float2(id.xy) + 0.5f) * g_inverse_render_size;
   const float4 on_ray = mul(float4(uv * float2(2.f, -2.f) + float2(-1.f, 1.f), 0.5f, 1.f), g_inverse_view_projection);
   const float n_dot_v = dot(world_normal, normalize(g_camera_position - on_ray.xyz / on_ray.w));
   specular_albedo[id.xy] = float4(water ? (float3)0.02f : RrSpecularAlbedo(saturate(specular), linear_roughness, n_dot_v), 1.f);
   normals[id.xy] = float4(world_normal, 0.f);
-  roughness[id.xy] = water ? max(0.01f, g_water_roughness) : linear_roughness;
+  roughness[id.xy] = sky ? 0.f : (water ? max(0.01f, g_water_roughness) : linear_roughness);
 }

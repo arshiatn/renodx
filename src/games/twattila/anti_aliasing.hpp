@@ -106,6 +106,8 @@ struct Settings {
   bool ray_traced_guides = false;
   bool ray_traced_reflections = false;
   float water_roughness = 0.f;  // the guides' least roughness on water (rt_scene's Softer Water Reflections; 0: their own)
+  // The guides' roughness by the traced reflections' Squared Lobe (rt_scene Configure; the helper's PATH_SQUARED_LOBE).
+  bool reflection_squared_lobe = false;
   uint32_t frame_generation = 0;           // DLAA / DLSS: frames shown per rendered frame (2-6; 1 Dynamic; 0 off: frame_generation.hpp)
   uint32_t frame_backend = dlaa_bridge::FG_BACKEND_DLSS;  // which makes them
   uint32_t reflex = 0;        // NVIDIA Reflex: 0 off, 1 on, 2 on + boost (with frame generation: on whatever this is)
@@ -153,7 +155,7 @@ struct GuidesCamera {
   float padding = 0.f;
   std::array<float, 2> inverse_render_size = {};
   float water_roughness = 0.f;  // Settings::water_roughness
-  float padding_end = 0.f;
+  uint32_t reflection_squared_lobe = 0;  // Settings::reflection_squared_lobe (Attila's guide; Pharaoh's and Troy's stop before it)
 };
 
 struct TaaConstants {
@@ -554,7 +556,9 @@ inline void OnBindViewports(reshade::api::command_list* cmd_list, uint32_t first
 }
 
 // Every present: the texture LOD bias for the next frames' main view (log2 of render / display width, minus 1 or 2
-// for sharper; none at 100% or with it off), and whether the module tracks the samplers.
+// for sharper; none at 100% or with it off), and whether the module tracks the samplers. XeSS: one step less (the default
+// Intel's log2, Sharpest log2 - 1; src: XeSS SDK 3.0.2 xess_sr_developer_guide_english.md:90-94, :495-502, mip bias =
+// log2(render / display), -1 at 2.0x); DLSS and FSR as before.
 inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*,
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   float bias = 0.f;
@@ -563,7 +567,7 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     const int choice = runtime.settings.texture_lod_bias;
     if (choice != 0 && runtime.render_width < runtime.display_width && runtime.display_width != 0) {
       bias = std::log2(static_cast<float>(runtime.render_width) / static_cast<float>(runtime.display_width))
-             - static_cast<float>(choice - 1);
+             - static_cast<float>((runtime.settings.method == Method::XESS) ? std::max(choice - 2, 0) : (choice - 1));
     }
   }
   texture_lod_bias::SetTracking(queue, bias != 0.f);
@@ -625,6 +629,7 @@ inline bool WriteGuides(ID3D11DeviceContext* native, const std::array<ID3D11Shad
       .position = runtime.camera.position,
       .inverse_render_size = {1.f / static_cast<float>(runtime.render_width), 1.f / static_cast<float>(runtime.render_height)},
       .water_roughness = runtime.settings.water_roughness,
+      .reflection_squared_lobe = runtime.settings.reflection_squared_lobe ? 1u : 0u,
   };
   native->UpdateSubresource(runtime.objects.guides_camera.Get(), 0, nullptr, &guides_camera, 0, 0);
   const std::array<ID3D11UnorderedAccessView*, 4> guides = {bridge.diffuse_albedo.uav.Get(), bridge.specular_albedo.uav.Get(),
@@ -1120,7 +1125,9 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   const UINT input_height = (scaled ? runtime.render_height : objects.height);
   // Presets L and M (always auto-exposed) and Ray Reconstruction flatten dark tones given linear colour (ATN debug11:
   // shadows one flat grey with coloured fringes; debug28: Ray Reconstruction's a flat violet veil): they get its square
-  // root, as the tone mapper's own encoding.
+  // root, as the tone mapper's own encoding. Ray Reconstruction after the tone mapper (its output is this input):
+  // ours: RRG 3.1 p10 says before tone mapping; hrr_ 11-26 (640x360, below the 4K rule): no gain before at
+  // matched encoding, linear lifts darks x1.26; rrb_ designs the before-tone-mapper row.
   const bool square_root = method == Method::DLAA
                            && (runtime.settings.dlaa_preset == 12u || runtime.settings.dlaa_preset == 13u
                                || (runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame));
