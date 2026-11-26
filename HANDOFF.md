@@ -992,7 +992,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | ?
 - fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
 - FIX WAVE 0 (no picture change, one commit a lane): X15, X25 (+ coord's memory li ... | ?
-- cbd_ CITATION BLOCKER DESIGN STARTED 01:2x (Opus xHigh, read-only; est 40 / dead ... | ?
+- cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR ... | ?
+- CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope. ... | ?
+- CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attil ... | ?
 - FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
 - O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 fe ... | ?
 - X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither ... | ?
@@ -17545,10 +17547,40 @@ heading text are in HANDOFF_ARCHIVE.md)
         fx0_ STARTED 01:2x (Opus High, worktree, branch fx0_wave0; est 45 / deadline 90): wave 0 above; gates = helper +
         add-on shader bytes identical, gated builds twattila amd64 / twrome2 x86 / D1 / D2, release scripts dry-run with
         the licence files listed (*.bak_fx0 backups). Coord merges after review. Owner: fx0_
-        - [ ] cbd_ CITATION BLOCKER DESIGN STARTED 01:2x (Opus xHigh, read-only; est 40 / deadline 80) ->
+        - [x] cbd_ CITATION BLOCKER DESIGN STARTED 01:2x (Opus xHigh, read-only; est 40 / deadline 80) ->
         plan_1117\designs\citation_blocker.md + shadow prototype in testbin\scratch\cbd_\ over the last ~30 commits;
         scope / tag syntax (source, ours: why, deviation, guard class) / shadow -> strict / backfill by critic waves /
         ATN's install lines (gates folder = ATN's). Owner: cbd_ -> ATN installs
+        cbd_ DONE 01:48 (31 min; designs\citation_blocker.md; prototype testbin\scratch\cbd_\cite_blocker_proto.py):
+        a third check in spec_cite_check.py (--checks cxx,cite,estimator), run by the existing gate hook on every
+        commit / merge / cherry-pick (no new hook or settings rule); --range atn-mods..<branch> = the pre-merge step.
+        Tags: '// src: spec:<id>@<rev>:<path>:<line>' (| commit: | game: | audit:), '// ours: <why>' (>= 4 words),
+        '// dev: <ref>: <what>; <why>', '// guard inert|output|hang: ...' (a guard always its own tag). Tiers: strict =
+        helper rt_* HLSL + add-on / port HLSL; SDK-feed C++ = constants / literal fields / guards; rt_d3d12.hpp = lines
+        naming an estimator input; third-party copies = any change needs 'dev:'; game code warn-only. Shadow >= 5 days +
+        30 estimator commits; strict when FP <= 10 % (<= 1 per 3 commits), low-value <= 20 %, controls fire, p95 <= 1 s.
+        Prototype: last 30 code commits 25 flags / 20 blocks, 23 TP + 2 low-value + 0 FP, 4.7 s; 200 commits 355 flags,
+        sample FP 10 % (at the limit); r4 catches every fa1 row there; 25 self-test controls pass. Misses: edits inside an
+        already-tagged function without a new literal / guard; inline integer literals; Python judges (tools not git).
+        Backfill: Attila + helper 397 blocks (253 prose-cited, 144 nothing) + 143 named constants + 534 guards; ports
+        501 blocks + 497 guards; the audit tables tag ~140 sites directly, the rest when first touched; tags land with
+        the critic's waves, comment-only tag commits = byte-identical DXIL. Owner: done
+        - [ ] cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR 64 / 32 -> 16 / 8 + the 2 m
+        cell; TORCH_CANDIDATES 8 -> 2; RabSampler leaves RTXDI's seeding; RegirLights' 128-light cap; RefRouteIncoming
+        (the reference judge's light set changed); + others in testbin\scratch\cbd_\flags_a.tsv. Each: cite, 'ours:
+        why' with numbers, or fix. Owner: step 3 follow-ups (with pd3c_ S1 / S2 / S5, after the 4c merge)
+        - [ ] CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope.tsv.proposed + tests in
+        testbin\scratch\cbd_\ (tools owner writes, an Opus xHigh review checks), then ATN installs: (1) copy over
+        tools\specs\spec_cite_check.py and tools\tw\gates\estimator_scope.tsv; (2) gates.tsv row 'estimator shadow';
+        (3-5) gate_hook.py:949 / :959-960 / :962 lines (exact text in the design); (6) gate_override.ps1:14 $known +=
+        'estimator'; (7) INSTALL_FOR_ATN.md section 3 row; no settings rule; strict = row 'on', back out = 'off'.
+        Owner: cbi_ (writes) -> review -> ATN installs
+        - [ ] CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attila + helper strict first,
+        ports warn-only until their propagation box [yes]; 2 saturate warn-only for good [yes]; 3 an edit inside a
+        src-tagged function must touch the tag line [no, review checks]; 4 'guard inert ... proof pending' allowed while
+        its box is open [yes]; 5 a code 'src: spec:' tag counts as the commit's API cite for that symbol [yes]; 6 Python
+        judges: tags by review only or a later snapshot check?; 7 third-party list aa_smaa.hlsli, aa_cmaa2.hlsli,
+        bend_sss_gpu.hlsli, psycho_test*.hlsli, src/shaders/ - complete? Owner: ATN (morning)
         - [ ] FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are scored; pdi5 edits
         rt_reference.cs). WAVE 2 = review + merge r4 (X50 / X51). WAVE 3 PT estimator X01, X02, X05, X04 (+ Talbot), X06,
         then X08 (pdi5_step5 owns those sites: REBASE pdi5 onto the step 3 merge first). WAVE 4 X09 + X10, X18, X12, X14,
