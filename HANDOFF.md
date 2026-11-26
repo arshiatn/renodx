@@ -16957,7 +16957,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         'movie keys' (ATN 11-24: Space every 1.5 s via PostMessage into our own window; Escape 30..75 s; stop 200 s);
         coord forgot them in d11 -> d11f_ ports them into d11_capture64.mk.ps1 (est 15 / deadline 30), C1At default 180
         rechecked; then review -> live -> START 3 with the existing rule line (-Replay day1.replay, no C1At). (b) 'for
-        runs you don't need to ask me' (memory updated): start 3 runs without a go. Owner: d11f_ -> coord
+        runs you don't need to ask me' (memory updated): start 3 runs without a go. 
+        d11f_ r9 DONE 10:12 (10.5 min): mk copy 886 lines (+59 / ~3; d11f_mk.diff): $MOVIE Gap 1.5 / Limit 200 / Esc 30..75 at
+        zoom >= 1.05; D11Win ClassOf + PostKey (null window posts nothing); Movie-Keys after the stderr read, never while
+        closing; ends at first text / ui / battle line; run.txt + start.json movie_keys / _end. Timing at C1At 180: battle
+        ~60-70 s, camera ~30-60 s (deadline first present + 170), C4 dump ~433 s after the start (~350 battle s < QUIT 600;
+        budget 900). OPEN: day1 length on the port must pass ~350 battle s. 85 / 85 tests (WinForms no-activate window
+        mock). -> d11fr_ review 10:1x -> live -> START 3 (coord runs the rule-line command in the background). Owner:
+        d11fr_ -> coord
         - [ ] SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATTILA_TEST_SKIP_MOVIES=1 =
         a new env var -> ATN's rule line per runner switch; first ONE test start (menu reached, no sound crash, replay
         loads) because of SWITCHES.md's sound-crash note; then d11 C1At back near 180 - 60 and a64_ab / ebo_run timing
