@@ -2700,10 +2700,23 @@ class RtScene12 {
     std::array<wchar_t, 16> loops_value = {};
     const uint32_t loops = std::max<uint32_t>(
         (GetEnvironmentVariableW(L"RENODX_TW_PLAY_LOOPS", loops_value.data(), static_cast<DWORD>(loops_value.size())) != 0) ? _wtoi(loops_value.data()) : 1, 1);
+    // RENODX_TW_PLAY_HOLD=<n> (route B references: reference_suite.md 2.3.1, holding the frame): after the passes, the last
+    // frame's requests n times more as recorded, a frame later each (not dumped). The helper's per-frame state then follows
+    // from consecutive frames of one block as it does live: its parities turn, its history-valid bits are on (each
+    // history's frame the one before), light_previous is the identity (the same lights) and the previous positions and
+    // view-projection are the current ones (the same inputs), so the scene digest stays the held frame's.
+    std::array<wchar_t, 16> hold_value = {};
+    const uint32_t hold = static_cast<uint32_t>(std::max(
+        (GetEnvironmentVariableW(L"RENODX_TW_PLAY_HOLD", hold_value.data(), static_cast<DWORD>(hold_value.size())) != 0) ? _wtoi(hold_value.data()) : 0, 0));
+    const uint32_t pass_frames = last_frame - first_frame + 1;
+    const size_t last_frame_request = std::ranges::find(playback_.requests, last_frame, [](const PlaybackRequest& request) { return request.header.frame; })
+                                      - playback_.requests.begin();
     uint32_t played = 0;
     std::string flags;  // the masked requests' flags as recorded and as played
-    for (uint32_t loop = 0; loop < loops; ++loop) {
-      for (size_t index = 0; index < PlaybackRequests(); ++index) {
+    for (uint32_t loop = 0; loop < loops + hold; ++loop) {
+      const bool held = loop >= loops;
+      const uint32_t frame_offset = (held ? ((loops - 1) * pass_frames) + (loop - loops + 1) : (loop * pass_frames));
+      for (size_t index = (held ? last_frame_request : 0); index < PlaybackRequests(); ++index) {
         const auto edit = [&](dlaa_bridge::Shared* block) {
           const uint32_t recorded_flags = std::exchange(block->rt_flags, (block->rt_flags & ~trace_masks.second) | trace_masks.first);
           const uint32_t recorded_path_flags = std::exchange(block->rt_path_flags, (block->rt_path_flags & ~path_masks.second) | path_masks.first);
@@ -2712,14 +2725,15 @@ class RtScene12 {
                                  block->rt_flags, recorded_path_flags, block->rt_path_flags);
           }
         };
-        if (!PlayRequest(index, loop * (last_frame - first_frame + 1), edit, nullptr, before_trace, report)) {
+        if (!PlayRequest(index, frame_offset, edit, nullptr, before_trace, report)) {
           *report += std::format(" (pass {})", loop + 1);
           return false;
         }
         ++played;
       }
     }
-    *report = std::format("{}; {} requests played ({} passes){}: {}", loaded_report, played, loops, flags, FinishRecording());
+    *report = std::format("{}; {} requests played ({} passes{}){}: {}", loaded_report, played, loops,
+                          (hold != 0) ? std::format(", the last frame held {} times", hold) : std::string(), flags, FinishRecording());
     return true;
   }
 
