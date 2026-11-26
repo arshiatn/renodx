@@ -945,6 +945,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 4K REFERENCE SET: ATN ADDED THE RULE LINE 11-26 ~15:1x (ref_set.ps1 *). GPU orde ... | ?
 - cw1_ MERGED 8adf80664 (comments only, 9 files, every block keeps its line count) ... | ?
 - ATTILA AA FEED vs LINEAR t00 (found by cw1_'s comment pass, a PRODUCT question, ... | ?
+- W8 MERGED b9a5cf080 (fx8_w8 ac18984c9 / 11bd63924 / bc6d4d6e9 + fx8_x30 a0b82717 ... | ?
+- gts_ STARTED 16:0x (Opus High, est 120; ATN: outside the cap): GPU test speed + ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17437,6 +17439,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         HARNESS_RR_TONEMAP=attila from rrbi_: K / L / M / RR, mode 0 vs 1, darks + noise vs truth), then ATN's eye; WH3 /
         Thrones / Rome II mode 0 'not measured' -> one G0-style t00 check each. 32-bit: shared source (x86 builds it).
         Owner: next GPU-plan slot (Opus High), ATN (look)
+        - [ ] W8 MERGED b9a5cf080 (fx8_w8 ac18984c9 / 11bd63924 / bc6d4d6e9 + fx8_x30 a0b827172 / e927ff0ff, with fx8_'s
+        Tales host patches tales_o_ss5 + tales_x30 in the merge commit): O-SS5 Fix A' ON (Bend SSS marches one screen pixel
+        per sample below 100 %; step 1 = Bend's output to the bit, so 100 % and Shogun 2 unchanged; hosts stop scaling
+        samples x share / thickness / share, 0.005 stays; ours: 'one surface' also needs the step within one window of its
+        neighbours (W2 halo 380 -> 2 px)); X30 (sss_blur / sss_soft 1 / |A - |d||, A = t_sss_parameters[0].z at t3; Attila +
+        Rome R bind t3, Shogun 2 copies its c1.z; Tales host binds t3). Builds on the merged tree: twattila / Rome R / Shogun 2 /
+        WH3 / Tales / Expeditions amd64 61, Divinity 2 62, twattila / Thrones x86 61, Rome II x86 62; tw_screen_space_shadows
+        run.ps1 x86 + amd64 PASS (W1-W10 controls fail as expected; case 12: 0 vs control 5925). OPEN: G1 timing (A' vs C at
+        100 / 66.7 / 58 / 50 / 33.3 %, 4K, scratch\fx8_\g1) queued in the GPU lock; strict Nsight gate not run; G2 in game
+        (ATN: debug19 by eye below 100 %) + G3 replay at Ultra Performance vs the DLAA mask (written, fx8__handback.md);
+        sss_debug.cs:35 ray_length x render / full size (small fix, next SSS touch); Coloured Shadows below 100 % untested;
+        Bend's acne differs run to run under WARP at 100 % (1044 px on identical input, ATN item); fallback B = design row.
+        Owner: coord (G1), ATN (G2 look)
+        - [ ] gts_ STARTED 16:0x (Opus High, est 120; ATN: outside the cap): GPU test speed + disk writes. 4K test groups
+        write 35-63 GB of frame dumps each (run_4k). Measure GPU / dump / Python split, move the analyzers' numbers into the
+        harness (small result files), full dumps only for references / debugging; proof = old vs new numbers identical +
+        controls; switch of shared tools only on coord's go (tools in use by the queue). Owner: gts_
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
