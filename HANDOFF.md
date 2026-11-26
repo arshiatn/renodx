@@ -995,6 +995,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fx0_ WORKTREE .claude\worktrees\agent-aa5c85a54b44e6397 (branch merged; build / ... | ?
 - cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR ... | ?
 - CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope. ... | ?
+- cbr_ CITATION BLOCKER REVIEW STARTED 02:3x (Opus xHigh, read + test only, scratc ... | ?
 - CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attil ... | ?
 - FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
 - O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 fe ... | ?
@@ -17605,6 +17606,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         cbi_ STARTED 01:5x (Opus High, scratch only: testbin\scratch\cbi_\; est 45 / deadline 90): .proposed files + diffs +
         tests (controls, old checks equal on 50 commits, shadow vs cbd_ 25 flags, r4 rows, p95); assumes cbd_ answers 1-5.
         Owner: cbi_
+        cbi_ DONE 02:23 (33 min; testbin\scratch\cbi_\, nothing installed): spec_cite_check.py.proposed (+602 / -5:
+        --checks ...,estimator, --estimator-mode shadow|on, --estimator-scope, --estimator-self-test), estimator_scope.tsv,
+        gate_hook.py (+4 / -2), gate_override (+1 / -1), gates_row.txt, install_steps.md (steps 1-9). Tests: 50 controls
+        0 failed; old checks byte-equal on 131 inputs (only argparse's usage text lists the new options); shadow flags =
+        cbd_'s on b 25 / 25, r4 103 / 103, p5 73 / 73; every fa1 row on r4 flagged except 2 misses by design (M1's
+        RAY_TRACED define, 'lights_mode != 1u'); p95 per commit 0.70-0.81 s (max 0.90); mirror suite 1506 / 1506; hook e2e
+        13 / 13. 13 'did not fit' items in install_steps.md, among them: the CHECKER MUST GO IN BEFORE THE HOOK EDIT (the
+        new hook passes --estimator-mode, today's checker exits 2 = every commit check fails open); gtp_'s
+        gate_override.ps1.proposed also edits line 14 (combined line given); a ~50-commit estimator merge would pass the
+        hook's 10 s budget and fail open (TOOL FAULT); aa_smaa.hlsli is ours (tier E), the sss_* / bend_dispatch_setup files
+        too. Owner: done
+        - [ ] cbr_ CITATION BLOCKER REVIEW STARTED 02:3x (Opus xHigh, read + test only, scratch testbin\scratch\cbr_\; est
+        25 / deadline 50): install safety + order, old behaviour byte-equal (own rerun), hand-judged flags on r4, the 13
+        deviations each OK / fix / ATN, the 10 s fail-open risk, timing -> verdict; then ATN installs (questions 1-7 below).
+        Owner: cbr_
         - [ ] CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attila + helper strict first,
         ports warn-only until their propagation box [yes]; 2 saturate warn-only for good [yes]; 3 an edit inside a
         src-tagged function must touch the tag line [no, review checks]; 4 'guard inert ... proof pending' allowed while
