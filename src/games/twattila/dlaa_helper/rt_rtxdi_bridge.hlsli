@@ -196,7 +196,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixel, bool previous) {
   surface.depth = position.w;
   // src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:103 RAB_GetSurfaceLinearDepth (motion .z must be this depth's change): the view Z of the
   // camera that saw the surface, as DiMotion's .z (review pdi4cr_ S2: the camera distance against a view Z change).
-  surface.view_depth = ClipOf(position.xyz, previous ? previous_view_projection : view_projection).w;
+  surface.view_depth = (previous ? ClipOf(position.xyz, previous_view_projection).w : ClipOf(position.xyz, view_projection).w);
   surface.texel = texel;
   surface.members = di_members[at >> 3u];
   return surface;
