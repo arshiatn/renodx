@@ -26,9 +26,11 @@ struct RAB_Surface {
   float3 normal;
 #if defined(PATH_DI)
   // Path-Traced Torch Light (PT DI step 4c, rt_di_surface.hlsli): a DI pixel's (normal: the game's, origin: its rays'
-  // start) world position, view depth (0: no DI surface), light surface texel and its tile's listed lights.
+  // start) world position, its distance from the camera (positions' w; 0: no DI surface), its view Z (RTXDI's linear
+  // depth), light surface texel and its tile's listed lights.
   float3 position;
   float depth;
+  float view_depth;
   uint4 texel;
   uint4 members;
 #endif
@@ -183,6 +185,9 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixel, bool previous) {
   surface.origin = position.xyz + di_origin[previous ? 1u - DiParity() : DiParity()][at].xyz;
   surface.position = position.xyz;
   surface.depth = position.w;
+  // src: RtxdiApplicationBridge.md RAB_GetSurfaceLinearDepth (motion .z must be this depth's change): the view Z of the
+  // camera that saw the surface, as DiMotion's .z (review pdi4cr_ S2: the camera distance against a view Z change).
+  surface.view_depth = ClipOf(position.xyz, previous ? previous_view_projection : view_projection).w;
   surface.texel = texel;
   surface.members = di_members[at >> 3u];
   return surface;
@@ -190,7 +195,7 @@ RAB_Surface RAB_GetGBufferSurface(int2 pixel, bool previous) {
 RAB_Surface RAB_EmptySurface() { return (RAB_Surface)0; }
 bool RAB_IsSurfaceValid(RAB_Surface surface) { return surface.depth > 0.f; }
 float3 RAB_GetSurfaceNormal(RAB_Surface surface) { return surface.normal; }
-float RAB_GetSurfaceLinearDepth(RAB_Surface surface) { return surface.depth; }
+float RAB_GetSurfaceLinearDepth(RAB_Surface surface) { return surface.view_depth; }
 
 // Alike for spatial reuse: the same light model, the gloss within 0.1.
 struct RAB_Material {
