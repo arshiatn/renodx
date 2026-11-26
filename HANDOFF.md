@@ -902,8 +902,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | ?
 - d11 NITs (64 vs 8 OM slots check on the first dump, static_cast<void>, stoull gu ... | ?
 - ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ?
-- ATN: MOVE ASIDE 2 STALE LOCKS (dead owner pid 31492 = the crashed d11_capture64; ... | ?
 - d11f_ SCRIPT FIX STARTED 06:2x (Opus High, CPU only, .bak_d11f): Note never thro ... | ?
+- d11 SCRIPT v1 LOCK RECORDS (cost of the 06:10 crash: every build / GPU job waite ... | ?
+- BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
 - RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait ... | ?
 - CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | ?
 - Replay gaps (d11i_): sss.lights, smoke.map, ao.draw, bounce.sun_draw not replaye ... | ?
@@ -16857,7 +16858,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         dumps (D:\Dev\d11_dumps\d11cap64_20261126_061024_day1 empty, kept). Start folder testbin\attila64_1124\d11_runs\
         20261126_061024_day1. Census n/a. The one unchanged retry = ATN's go (after d11f_'s fix + review). Owner: ATN /
         d11f_
-        - [ ] ATN: MOVE ASIDE 2 STALE LOCKS (dead owner pid 31492 = the crashed d11_capture64; non-v1 text, so gpu_lock.py
+        - [x] ATN MOVED ASIDE ~09:2x (gpu_job.lock.stale-31492 + quiet_run.lock.stale-31492): 2 STALE LOCKS (dead owner pid 31492 = the crashed d11_capture64; non-v1 text, so gpu_lock.py
         never takes them over -> EVERY GPU JOB WAITS): tools\tw\gpu_job.lock + tools\tw\quiet_run.lock (both
         'd11_capture64 (D3D11 pass capture, testbin\attila64_1124), pid 31492, 2026-11-26T06:10:2x'). Coord may not
         (D1 strict). Owner: ATN
@@ -16895,6 +16896,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         one retry = the same command (powershell -NoProfile -ExecutionPolicy Bypass -File ...\attila64\d11\
         d11_capture64.ps1 -Replay day1.replay, after -DryRun), run in the background, run.txt read only after the exit.
         Owner: ATN (locks + retry go)
+        - [ ] d11 SCRIPT v1 LOCK RECORDS (cost of the 06:10 crash: every build / GPU job waited ~3 h on the non-v1 owner
+        text that gpu_lock.py never takes over): d11f_ 09:3x makes Take-Locks write gpu_lock.py's v1 record for both locks
+        (a dead owner taken over automatically), Locks-Held / Release-Locks by pid + start; other quiet_run.lock readers
+        listed read-only first. Owner: d11f_ -> coord
+        - [ ] BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the deadline (bal3_ waited 3 h
+        silently). Owner: every brief
         - [ ] RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait for the exit notice
         only. Owner: every run brief
         - [x] SSS AUTO THICKNESS NEVER RUNS (d11i_ finding): SssSettings in feature_settings.hpp never sets
@@ -18045,7 +18052,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         Attila x64, WH1-3, Troy, Pharaoh, Rome Remastered, Rome II + Thrones (x86), Divinity 1 / 2, Expeditions on rebuild
         (shows with PT GI + an upscaler); Tales hides it; Shogun 2 / Ryse / R.U.S.E. don't add it; 32-bit Attila frozen;
         a new add-on on an older helper shows Raytraced but runs Basic -> ship add-on + helper together. Fixes sent to
-        bal3_ 06:2x (est 15 / deadline 30; identity must stay byte-equal). Owner: bal3_ -> coord merge
+        bal3_ 06:2x (est 15 / deadline 30; identity must stay byte-equal).
+        bal3_ FIXES DONE 09:28 (bb5cfbe4c, rt_d3d12.hpp + rt_reuse_bits.h +11 / -8; committed 06:18, its builds WAITED
+        06:18-09:26 on the stale quiet_run.lock): player 81 / 81, reference 95 / 95, lab 84 / 84 headers identical to
+        1f88af2dd's (no shader byte moved); merge-tree vs 5783b1d58 clean. MERGED c5ffa9deb (builds running).
+        Owner: coord
         COORD GPU 03:5x: d11 5090 REPLAY SELF TEST PASS (test\tw_d3d11_replay run.ps1 -Architecture amd64, hardware, under
         Enter-GpuLock; log testbin\scratch\coord_d11hw_amd64.log): 3 frames x 4 events all equal, race pixels 226 / 665
         with 0 outputs no writer gives, CONTROL fewer samples DIFFERS (occlusion 72 B, penumbra 241 B) + changed constant
