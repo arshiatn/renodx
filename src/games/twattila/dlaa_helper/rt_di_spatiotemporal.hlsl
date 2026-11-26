@@ -13,7 +13,7 @@
 // (TemporalResampling.hlsli, SpatialResampling.hlsli) in the loop shape of its GI one (GI/SpatioTemporalResampling.hlsli)
 // and RTXDI 2's RTXDI_DISpatioTemporalResampling. NVIDIA's RTXDI-Library 3.2 (NVIDIA RTX SDKs License;
 // rt_rtxdi_bridge.hlsli). This software contains source code provided by NVIDIA Corporation.
-// Build (only the fused variant, scratch pdi4c_ fused_variant.py; DI_FUSED in every DI pass build of it: the reservoirs'
+// Build (only the fused variant, test/tw_rt_di/fused_variant.py; DI_FUSED in every DI pass build of it: the reservoirs'
 // two arrays in turns, rt_di_surface.hlsli): dxc -T cs_6_5 -D PATH_DI -D DI_FUSED -D PATH_REGIR -I <RTXDI>\Include
 // -Fh rt_di_spatiotemporal.h -Vn RT_DI_SPATIOTEMPORAL; with -T cs_6_9 -D OPACITY_MICROMAPS -Vn RT_DI_SPATIOTEMPORAL_OMM.
 #include "./rt_scene.hlsli"
