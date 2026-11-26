@@ -667,9 +667,9 @@ static Float3 Decode(const Float4& o, float gamma) {
 }
 
 // The frame's gamma, as the swap chain proxy decodes it (twattila/frame_gamma.hlsli TW_FRAME_GAMMA): 2.2 with Gamma
-// Correction, 2.0 without; Rendering Mode SDR on an SDR display the other way round.
-static float FrameGamma(float mode, float encoding, float correction) {
-  return ((correction != 0.f) != (encoding == 2.f && mode < 0.5f)) ? 2.2f : 2.f;
+// Correction, 2.0 without, in every mode on every display (fa8_ B1 'fix A', 2026-11-26: no SDR-display swap).
+static float FrameGamma(float correction) {
+  return (correction != 0.f) ? 2.2f : 2.f;
 }
 
 static Float3 Bt709ToBt2020(const Float3& c) {
@@ -1049,7 +1049,7 @@ static std::vector<Float3> RunAttila(const Chain& chain, const std::vector<Float
   Bindings second = AttilaHdrToScreen(handoff, true);
   second.injection = Bytes(si);
   const auto output = Draw(chain.attila_hdr_to_screen->after, second);
-  const float frame_gamma = FrameGamma(si.hdr, si.swap_chain_encoding, si.gamma_correction);
+  const float frame_gamma = FrameGamma(si.gamma_correction);
   std::vector<Float3> linear;
   for (const auto& o : output) linear.push_back(Decode(o, frame_gamma));
   return linear;
@@ -1076,7 +1076,7 @@ static std::vector<Float3> RunWh3(const Chain& chain, const std::vector<Float4>&
   Bindings bindings = Wh3ToneMapper(scene, true, 1.f, burn);
   bindings.injection = Bytes(si);
   const auto output = Draw(chain.wh3->after, bindings);
-  const float frame_gamma = FrameGamma(si.hdr, si.swap_chain_encoding, si.gamma_correction);
+  const float frame_gamma = FrameGamma(si.gamma_correction);
   std::vector<Float3> linear;
   for (const auto& o : output) linear.push_back(Decode(o, frame_gamma));
   return linear;
@@ -1089,7 +1089,7 @@ static std::vector<Float3> RunWarhammer(const Shader& tone_mapper, const Shader&
   first.injection = Bytes(si);
   Bindings second = GammaBindings(Draw(tone_mapper, first));
   second.injection = Bytes(si);
-  const float frame_gamma = FrameGamma(si.hdr, si.swap_chain_encoding, si.gamma_correction);
+  const float frame_gamma = FrameGamma(si.gamma_correction);
   std::vector<Float3> linear;
   for (const auto& o : Draw(hdr_to_screen, second)) linear.push_back(Decode(o, frame_gamma));
   return linear;
@@ -1827,9 +1827,9 @@ static Bindings Wh3GammaBindings(const std::vector<Float4>& scene) {
 }
 
 // a. Gamma Correction off (every mode) and Rendering Mode SDR: 242d6101's picture, the frame decoded with its gamma
-//    (TW_FRAME_GAMMA; 242d6101's frame: 2.2) within 1e-5 of each texel's brightest channel. Rendering Mode SDR on an HDR
-//    display swaps on and off (at in-game gamma 2.0): on is now the 2.2 display's decode, off the game's gamma 2.0 as
-//    linear. CONTROL: the HDR modes with it on against 242d6101's (which ignored it there) must differ. The colour beyond
+//    (TW_FRAME_GAMMA; 242d6101's frame: 2.2) within 1e-5 of each texel's brightest channel. Rendering Mode SDR swaps on
+//    and off on every display (at in-game gamma 2.0; SDR displays too since fa8_ B1 'fix A'): on is now the 2.2
+//    display's decode, off the game's gamma 2.0 as linear. CONTROL: the HDR modes with it on against 242d6101's (which ignored it there) must differ. The colour beyond
 //    the spectral locus left out: PsychoV35's edge fix changes it on purpose (part 9).
 // b. Gamma Correction on in the HDR modes, Peak 1000 and 400 and SDR output, the scene ramp of part 3: BT.2020 and
 //    luminance within Peak (SDR output: luminance alone, the BT.709 channels past 1 are the tone mappers' own), grey
@@ -1861,12 +1861,12 @@ static void TestGammaCorrection(const std::vector<GammaGame>& games) {
     for (const float mode : game.modes) {
       for (const float encoding : {0.f, 1.f, 2.f}) {
         for (const float correction : {0.f, 1.f}) {
-          const auto after = run(game.shader->after, mode, encoding, correction, 1000.f, FrameGamma(mode, encoding, correction));
+          const auto after = run(game.shader->after, mode, encoding, correction, 1000.f, FrameGamma(correction));
           if (mode >= 0.5f && correction != 0.f) {
             control = std::max(control, worst_difference(after, run(game.shader->before, mode, encoding, correction, 1000.f, 2.2f)));
             continue;
           }
-          const float before_correction = ((mode < 0.5f && encoding != 2.f) ? 1.f - correction : correction);
+          const float before_correction = ((mode < 0.5f) ? 1.f - correction : correction);
           unchanged = std::max(unchanged, worst_difference(after, run(game.shader->before, mode, encoding, before_correction, 1000.f, 2.2f)));
         }
       }
@@ -2216,7 +2216,7 @@ static void TestEdges(const std::filesystem::path& before, const std::filesystem
       bindings.words["colour_matrix"] = NightGradeMatrix();
       bindings.injection = Bytes(AttilaInjection(mode, encoding));
       std::vector<Float3> linear;
-      for (const auto& o : Draw(shader, bindings)) linear.push_back(Decode(o, FrameGamma(mode, encoding, 1.f)));
+      for (const auto& o : Draw(shader, bindings)) linear.push_back(Decode(o, FrameGamma(1.f)));
       return linear;
     };
     const auto count_red = [](const std::vector<Float3>& picture, Float3* reddest) {

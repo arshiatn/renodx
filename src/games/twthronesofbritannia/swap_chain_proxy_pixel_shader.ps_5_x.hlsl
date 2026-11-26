@@ -14,8 +14,9 @@ float4 main(float4 vpos: SV_POSITION, float2 uv: TEXCOORD0)
   float3 x = t0.Sample(s0, uv).xyz;
 
   // Decoded with the frame's gamma (shared.h, as Attila): Gamma Correction shows the game's gamma 2.0 picture as a 2.2
-  // display does, in every Rendering Mode. An SDR display decodes a 2.2 frame itself: Rendering Mode SDR without Gamma
-  // Correction, the game's picture as it is, and the HDR modes with it.
+  // display does, in every Rendering Mode. An SDR display decodes a 2.2 frame itself, so Gamma Correction on sends the
+  // frame as it is, in every Rendering Mode; off decodes 2.0 and encodes 2.2 below (fa8_ B1: Rendering Mode SDR used to
+  // swap the two, ATN 2026-11-26 'fix A').
   if (SI.swap_chain_encoding == 2.f && TW_FRAME_GAMMA == 2.2f) return float4(saturate(x), 1.f);
 
   // intermediate encode inv

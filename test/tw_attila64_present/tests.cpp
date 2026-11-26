@@ -291,13 +291,13 @@ ProxySettings ReadProxySettings() {
 float SignPow(float value, float exponent) { return std::copysign(std::pow(std::abs(value), exponent), value); }
 
 // twattila's swap_chain_proxy_pixel_shader.ps_5_x.hlsl on one pixel of the frame (RGBA16F), for the setting's output:
-// gamma = 2.2 when Gamma Correction is on (2.0 off; SDR with Rendering Mode SDR the other way round);
+// gamma = 2.2 when Gamma Correction is on, 2.0 off, in every Rendering Mode on every output (fa8_ B1 'fix A');
 // SDR at gamma 2.2: saturate(x) as it is; SDR else: encode 2.2 of saturate(decode(x)).
 // HDR: y = BT.2020 of decode(x), clamped at 0, scaled down by its largest channel to Peak / UI (Rendering Mode SDR:
 // max(Paper White, UI) / UI); HDR10 PQ of y x UI / 10000, scRGB BT.709 of y x UI / 80.
 std::array<float, 3> Proxy(std::array<float, 3> x, const ProxySettings& settings) {
   const bool sdr = (settings.encoding == 2);
-  const float gamma = (((settings.gamma_correction != 0.f) != (sdr && settings.rendering_mode < 0.5f)) ? 2.2f : 2.f);
+  const float gamma = ((settings.gamma_correction != 0.f) ? 2.2f : 2.f);
   if (sdr && gamma == 2.2f) {
     return {std::clamp(x[0], 0.f, 1.f), std::clamp(x[1], 0.f, 1.f), std::clamp(x[2], 0.f, 1.f)};
   }
