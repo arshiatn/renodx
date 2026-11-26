@@ -1006,6 +1006,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STEP 5 FOLLOW-UPS (pd5c_): (1) build.ps1:156-157 G5's REUSE_COMPATIBLE builds la ... | ?
 - REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so ... | ?
 - FIX WAVE 1 (judges: X46 judge's back-face flip rt_reference.hlsli:312 + HitNorma ... | ?
+- PLAYER HOLD-FRAME MODE (reference_suite.md 2.3.1, repeat frame N+2): no RENODX_T ... | ?
+- CONTACT BOXES BIAS AT R = 4 (fx1_ P3: 0.99306, r/g 0.9916, outliers 14 vs 3; not ... | ?
+- DELETE fx1_ P4 PLAY DUMP (2.9 GB, testbin\scratch\fx1_\runs\p4_day1_battle_0\pla ... | ?
 - BASE HARNESS BUILD (tools\tw\reference\harness): stale include of a deleted work ... | ?
 - WAVE 2-6 JUDGE VERDICT SETS AT R >= 8 (fx1r_ power: R = 4 catches a 2 % bias 26 ... | wave briefs
 - REF BREAKS MISSING (spec 9, built 5): offset20, fog_flat, clearance0, stale_bits ... | gate tooling slot
@@ -17869,6 +17872,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         RayReconstruction::extra_written (tw_rt_harness.cpp:3642) -> use the pdi1 fork. test_gpu_gate 30 OK; MC false BIAS
         R=4 5.77 -> 0.30 %. MERGED 0a6e3e182 (gated twattila amd64 + x86 + helper build pass). GPU PROOF GO 04:1x
         for P1 / P2 count parts + P3 + P4 (no new rule line); dark parts + P5 wait. Owner: fx1_ (P1-P4) -> coord
+        fx1_ PROOF DONE 04:57 (04:10-04:57, ~42 min lock waits behind hrr_ / lab_keeper, GPU ~50 s; testbin\scratch\fx1_\
+        runs\): P1 new harness furnace 0.5: ref / closed 0.99995 +- 0.00005 every mask (= 11-17 g1_furnace05b; mean
+        0.2499866, not byte-equal: triangle order), aux.w 128 in 2.36e8 samples (5.4e-7, 106 texels: slab seams /
+        corners); row FAIL as on 11-17 = the candidate's (2.66, no furnace variant). P2 OLD winding: ref_mean BYTE-
+        IDENTICAL to 11-17 (count mode leaves radiance alone), aux.w 6.0e8 (2.55 / sample, every texel; faces 3 / 12 / 28
+        = the inward low walls) -> the winding fix takes inside hits 6.0e8 -> 128. P3 quality R = 4 vs the 11-17 caches:
+        full 1 PASS (open) / 6 BIAS = 11-17's q_raw verdicts, NO FLIP (candidate 0.02-0.08 % lower = helper changes since
+        11-17), aux.w 1.7e-6; contact all PASS except BOXES BIAS (0.99306, outlier rule 14 vs 3; same with the pre-fx1
+        ref_compare; 11-17 had R = 1 only, no outlier test). P4 route B (day1_battle frame_936, play 80 loops, 18 s): NO
+        DATA, all 16 slices dropped (46 digest changes: the 2 recorded frames differ) -> needs the player's hold-frame mode
+        (reference_suite.md 2.3.1). Route B STAYS COUNT-ONLY. Dark parts + P5 commands: round_notes\fx1_proof_commands.md.
+        Owner: done (P1-P3) / see boxes
+        - [ ] PLAYER HOLD-FRAME MODE (reference_suite.md 2.3.1, repeat frame N+2): no RENODX_TW_PLAY_* option holds one
+        frame, so a route-B reference drops every slice (fx1_ P4) -> player code change; then P4 (inside share + texel map
+        by record class) decides whether route B may ever use dark. Owner: gate tooling slot
+        - [ ] CONTACT BOXES BIAS AT R = 4 (fx1_ P3: 0.99306, r/g 0.9916, outliers 14 vs 3; not X49's, 11-17 had R = 1): a
+        real candidate bias in contact shading on boxes or an outlier-rule artefact? Rerun at R = 8 in the next judge
+        wave. Owner: wave 2 judge set
+        - [ ] DELETE fx1_ P4 PLAY DUMP (2.9 GB, testbin\scratch\fx1_\runs\p4_day1_battle_0\play; not a reference run, no
+        slices) on ATN's yes. Owner: ATN
         - [ ] BASE HARNESS BUILD (tools\tw\reference\harness): stale include of a deleted worktree's dlaa_bridge.hpp; repoint
         to src's bridge + fix extra_written, or retire it for the pdi1 fork. Owner: gate tooling slot
         - [ ] WAVE 2-6 JUDGE VERDICT SETS AT R >= 8 (fx1r_ power: R = 4 catches a 2 % bias 26 %). Owner: wave briefs
