@@ -954,6 +954,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - A' BELOW 100 %: ATN 11-26 ~16:3x 'I would like to have it on' -> fx8_reland keep ... | ?
 - CPU PLAN STEP 0 (ATN 11-26 ~16:4x): the loader-1.3.28 A/B is now step 0 of the 6 ... | ?
 - 64-BIT BASE 1.3.28 READY (s128_ 11-26 16:2x; testbin\attila64_1124\sol_fixes_112 ... | ?
+- NSIGHT GPU TRACE ON NATIVE D3D11 (11-26, another RenoDX member's work, shown by ... | ?
+- USAGE 11-26 16:4x: no new agents today; running ones finish; only gts_, ab0_ + t ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17505,6 +17507,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         task_waits=fast into the run folder, 'base,fast,l2b' probe line) + ATN's yes; tonight's proxy = '-AB -Arms
         base,spinoff' on 1.3.20. ATN 16:35 'Yes, tonight' -> ab0_ adds the a64_ab changes (dry runs only), step 0 runs
         tonight in the game block. Owner: ab0_ / coord (game block)
+        - [ ] NSIGHT GPU TRACE ON NATIVE D3D11 (11-26, another RenoDX member's work, shown by ATN): a GPU Trace report from a
+        plain D3D11 app (fix: Device vtable slots 6 / 7 overridden), no installed files changed. Could let us trace TW / Ryse
+        frames directly instead of through the helper. Not ours: ATN asks whether it can be shared, later. Owner: ATN
+        - [ ] USAGE 11-26 16:4x: no new agents today; running ones finish; only gts_, ab0_ + the game block, queued GPU tests.
+        A' design pass etc. wait for 11-27. Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
