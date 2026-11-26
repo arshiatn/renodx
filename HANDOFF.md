@@ -990,7 +990,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fa8_ B4 upstream colorcorrect GammaSafe float4 overload calls Gamma (not sign-sa ... | ?
 - fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | ?
 - fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
-- FIX WAVE 0 (no picture change, one commit a lane): X15, X25 (+ coord's memory li ... | ?
+- ROME REMASTERED PROXY CLAMP (coord 11-26, from fx0_): twromeremastered's swap ch ... | ?
+- X45 UPSTREAM REPORT (fx0_): src/shaders/colorcorrect.hlsl:41-42 GammaSafe(float4 ... | ?
+- fx0_ WORKTREE .claude\worktrees\agent-aa5c85a54b44e6397 (branch merged; build / ... | ?
 - cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR ... | ?
 - CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope. ... | ?
 - CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attil ... | ?
@@ -1000,7 +1002,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - O-SS5 SSS THICKNESS AT EVERY SCALE (ATN wants the picked thickness exact at any ... | ?
 - Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / ... | ?
 - X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coor ... | ?
-- L5 MUSA'S COPYRIGHT LINE into the shipped notice file (RENODX_LICENSE names only ... | ?
 - LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\s ... | ?
 - LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner ... | done
 - LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'licens ... | ?
@@ -17544,13 +17545,35 @@ heading text are in HANDOFF_ARCHIVE.md)
         (rt_scene.hlsli:322-323), X05 temporal reservoir's own texel no depth test (rt_path.hlsli:1080-1096), X22 RR
         guides, X02 no FirstRange test (rt_path.hlsli:855-878, in ATN's Rays preset), X19 NRD view Z = distance. Then X41
         FSR metres, X08 W clamp every frame. FIX LIST + ORDER = critic.md H (plan.md lane D). Owner: done
-        - [ ] FIX WAVE 0 (no picture change, one commit a lane): X15, X25 (+ coord's memory line), X31, X13's comment,
+        - [x] FIX WAVE 0 (no picture change, one commit a lane): X15, X25 (+ coord's memory line), X31, X13's comment,
         B13 / B14 comments, O-CO15, O-CO7; LICENCES L1 release_zip.py ships no RTXDI licence (credits.hpp: 'Every license
         ships'), L3 = X28 Attila's Apache / SMAA / SSSR / MiniEngine files reach its zip only by carry-over (repack_game.py),
         L4 = X32 Divinity 1 / 2 credit no Bend (D2 also no GT-VBAO / Auto Thickness); X45 upstream report. Owner: wave 0
         fx0_ STARTED 01:2x (Opus High, worktree, branch fx0_wave0; est 45 / deadline 90): wave 0 above; gates = helper +
         add-on shader bytes identical, gated builds twattila amd64 / twrome2 x86 / D1 / D2, release scripts dry-run with
         the licence files listed (*.bak_fx0 backups). Coord merges after review. Owner: fx0_
+        fx0_ DONE 02:23 (65 min, est 45, ~12 min of it the memory rule): fx0_wave0 79d5f6de3 = bc1439270 lane 1
+        (X15 grass 4-state comment, B13 OMM CPU / GPU baker, B14 PTLAS 'ours, a test path' + nvapi.h
+        PARTITIONED_TLAS_INDIRECT_DESC, X13 SER 'ours: 1-bit hint' + RTXPT PathTracerSample.hlsl:152-154 /
+        SERUtils.hlsli:43-52, X25 rr_d3d12 cite, X31 BitmaskDenoise / FilterDenoise 'ours, not XeGTAO's', O-CO7 'ours'
+        range floor, O-CO15 TODO out of 8 proxies) + 991c8494b (L4 / X32: D1 credits Bend / SMAA / CMAA2, D2 + GT-VBAO /
+        GT-VBGI / Auto Thickness via credits::Methods, new Shipped.psycho_v31 keeps their own PsychoV30 sentence) +
+        79d5f6de3 (L5 docs/licenses/PSYCHOV_LICENSE.txt: Carlos Lopez + Musa Haji lines + MIT text). Tools (not git,
+        *.bak_fx0 beside each): release_zip.py ships twattila/RTXDI_LICENSE.txt (L1; hdr_zip.py HELPER_ONLY += RTXDI),
+        repack_game.py Apache test over every included file (L3 / X28: changes Attila only) + PSYCHOV_LICENSE.txt in
+        every zip with psycho code (all 16 add-ons), both with --dry-run. Bytes: helper 67 headers identical, 57 add-on
+        shader compiles over 11 games identical (= the build's own .cso 13 / 13). 21 gated builds, every warning count at
+        its baseline. X45 = upstream report only (box below). COORD REVIEW 02:3x: OK; 2 fixes in 1b4203738 (credits.hpp
+        column; Rome Remastered's 'TODO: renable when publishing' put back: its clamp is commented out, not enabled).
+        MERGED a8e223f14 (twattila amd64 gated 61 / 61; helper build OK, RTXDI found). Owner: done
+        - [ ] ROME REMASTERED PROXY CLAMP (coord 11-26, from fx0_): twromeremastered's swap chain proxy has Clamp Peak and
+        the negative-nits clamp commented out (its TODO 'renable when publishing'), the 8 other TW proxies have both on:
+        port them or keep off with a reason. Owner: parity (critic G)
+        - [ ] X45 UPSTREAM REPORT (fx0_): src/shaders/colorcorrect.hlsl:41-42 GammaSafe(float4) calls Gamma, not GammaSafe
+        (negative channels -> NaN); no float4 caller in this fork; report text testbin\scratch\fx0_\x45_upstream_report.txt.
+        Sending it to clshortfuse/renodx = ATN's call. Owner: ATN
+        - [ ] fx0_ WORKTREE .claude\worktrees\agent-aa5c85a54b44e6397 (branch merged; build / build32 output inside, no
+        links left per fx0_): delete on ATN's yes. Owner: ATN
         - [x] cbd_ CITATION BLOCKER DESIGN STARTED 01:2x (Opus xHigh, read-only; est 40 / deadline 80) ->
         plan_1117\designs\citation_blocker.md + shadow prototype in testbin\scratch\cbd_\ over the last ~30 commits;
         scope / tag syntax (source, ours: why, deviation, guard class) / shadow -> strict / backfill by critic waves /
@@ -17624,8 +17647,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         brings back e.g. the 80 ms smoke frames), like the hang caps. Owner: waves (per cap's area)
         - [ ] X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coord's advice; cite the RTXPT
         file:line), E5 numbers in the report. Owner: wave 3 / 4 (reflections + paths)
-        - [ ] L5 MUSA'S COPYRIGHT LINE into the shipped notice file (RENODX_LICENSE names only Carlos Lopez today): sent
-        to fx0_ (wave 0). Owner: fx0_
+        - [x] L5 MUSA'S COPYRIGHT LINE into the shipped notice file (RENODX_LICENSE names only Carlos Lopez today): sent
+        to fx0_ (wave 0); DONE 79d5f6de3 (docs/licenses/PSYCHOV_LICENSE.txt, merged a8e223f14). Owner: done
         - [ ] LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\scratch\lsp_\ (no product
         code): smoke as NVAPI spheres vs today's quads, sun-shadow trace time + transmittance picture; GPU job after
         pdi4c_ on 'lsp_ GPU go'. Owner: lsp_
