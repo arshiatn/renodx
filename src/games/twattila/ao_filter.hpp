@@ -164,6 +164,7 @@ inline void Filter(ID3D11DeviceContext* native, ID3D11ShaderResourceView* game_a
   auto& objects = runtime.objects;
   // Pass dump (test only): the inputs, the outputs before (and after) and the CPU state the replay sets.
   const pass_dump::Pass dump(native, "ao_filter.filter");
+  pass_dump::Camera(native, camera);  // the camera line (every 30 presents while enabled), not only while a frame records
   if (pass_dump::Recording()) {
     pass_dump::Keep("ao_filter.settings_cpu", &runtime.settings, sizeof(runtime.settings));
     pass_dump::Value("ao_filter.frame", runtime.frame);
@@ -174,7 +175,6 @@ inline void Filter(ID3D11DeviceContext* native, ID3D11ShaderResourceView* game_a
     pass_dump::Value("ao_filter.msaa", msaa);
     pass_dump::Value("frame_history.render_width", frame_history::render_width.load());
     pass_dump::Value("frame_history.render_height", frame_history::render_height.load());
-    pass_dump::Camera(native, camera);
     pass_dump::Resource(native, "ao_filter.game_ao", game_ao);
     pass_dump::Resource(native, "ao_filter.depth", depth);
     pass_dump::Resource(native, "ao_filter.camera", camera);

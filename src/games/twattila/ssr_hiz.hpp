@@ -286,6 +286,7 @@ inline void Resolve(ID3D11DeviceContext* native, ID3D11Resource* target, ID3D11S
   auto& objects = runtime.objects;
   // Pass dump (test only): the inputs, the outputs before (and after) and the CPU state the replay sets.
   const pass_dump::Pass dump(native, "ssr.resolve");
+  pass_dump::Camera(native, camera);  // the camera line (every 30 presents while enabled), not only while a frame records
   if (pass_dump::Recording()) {
     pass_dump::Value("ssr.frame", runtime.frame);
     pass_dump::Value("ssr.resolved_frame", runtime.resolved_frame);
@@ -295,7 +296,6 @@ inline void Resolve(ID3D11DeviceContext* native, ID3D11Resource* target, ID3D11S
     pass_dump::Value("ssr.denoise", runtime.denoise);
     pass_dump::Value("frame_history.render_width", frame_history::render_width.load());
     pass_dump::Value("frame_history.render_height", frame_history::render_height.load());
-    pass_dump::Camera(native, camera);
     pass_dump::Resource(native, "ssr.target", target);
     pass_dump::Resource(native, "ssr.depth", depth_view);
     pass_dump::Resource(native, "ssr.camera", camera);

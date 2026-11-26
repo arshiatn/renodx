@@ -1028,6 +1028,7 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
   auto& objects = runtime.objects;
   // Pass dump (test only): the inputs, the outputs before (and at its end after) and the CPU state the replay sets.
   const pass_dump::Pass dump(native, "sss.compute");
+  pass_dump::Camera(native, camera);  // the camera line (every 30 presents while enabled), not only while a frame records
   if (pass_dump::Recording()) {
     pass_dump::Keep("sss.settings_cpu", &runtime.settings, sizeof(runtime.settings));
     pass_dump::Value("sss.frame", runtime.frame);
@@ -1043,7 +1044,6 @@ inline void Compute(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth
     pass_dump::Value("frame_history.render_width", frame_history::render_width.load());
     pass_dump::Value("frame_history.render_height", frame_history::render_height.load());
     pass_dump::Value("frame_history.effect_share", frame_history::effect_share.load());
-    pass_dump::Camera(native, camera);
     pass_dump::Resource(native, "sss.depth_view", depth_view);
     pass_dump::Resource(native, "sss.camera", camera);
     pass_dump::Resource(native, "sss.lighting", lighting);
