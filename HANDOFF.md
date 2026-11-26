@@ -963,6 +963,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gts_ FOLLOW-UPS (11-26 17:22, scratch\gts_\pc\compare_c.txt): DI hashing on a wo ... | ?
 - pdi4c_ r6 FINAL (origin/pdi4c_step4c_r6 148731b35; hand-back pdi4c_handback.md:5 ... | ?
 - GAME BLOCK 11-26 17:23-18:18 (11 starts, all clean exits): (a) 1.3.28 smoke with ... | ?
+- NEXT MERGE sdku_omm_dxc: its G1-G3 (Nsight DXC speed gate, OMM grass recording p ... | ?
+- CPU STEP 0b (19:30): spin on + L2B 134.72 = base 134.74 ms in one batch -> nothi ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17568,6 +17570,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         (A/A agrees). b1 only matters while the loader cap is on; b1_for_sol_1328.diff could go upstream (ATN's word). (c) CPU
         step 0: see cpu_plan_64_map.md STEP 0 RESULT (spin off -4.7 %; L2B wins only with the spin on) -> step 0b 'fastl2b'.
         Owner: coord / ATN (b1 upstream, 0b yes)
+        - [x] pdi4c_ MERGED 34b70eeef: all_modes_check -Rev 148731b35 PASS at 4K 18:18-19:30 (h0\runs\all_20261126_181849:
+        census clean, 1655 / 1655 M6 equal, checks / dumps / repeat PASS; first run on the digest path, ~1 MB written).
+        Builds after the merge: twattila amd64 + x86 exit 0, helper 19:45 (RTXDI found). Owner: coord
+        - [ ] NEXT MERGE sdku_omm_dxc: its G1-G3 (Nsight DXC speed gate, OMM grass recording picture + speed, GPU baker) at 4K are
+        NOT run -> 11-27 (gate before merge). Owner: 11-27 GPU wave
+        - [ ] CPU STEP 0b (19:30): spin on + L2B 134.72 = base 134.74 ms in one batch -> nothing beats the loader default on
+        1.3.28 yet; fair L2B re-test needs ATN's CPU Set Setter rule for run_pkg_580efafeb5765d81\attila64.exe (cpu_plan_64_map.md
+        STEP 0b RESULT). Owner: ATN (rule) / coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
