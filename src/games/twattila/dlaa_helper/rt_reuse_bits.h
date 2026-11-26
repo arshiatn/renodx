@@ -11,8 +11,8 @@
 // _SPATIAL_CLAMP the receiver-unit W clamp after the spatial Finish too; _SKY_DIRECTION a neighbour's sky sample (a point at
 // its first ray's reach) moved as a direction; _NO_JACOBIAN_CUT no 0.1-10 cut; _HISTORY_PLAIN the history cap without the
 // rays; _NEIGHBOUR_VISIBILITY a neighbour's sample shadow-tested before its merge (its target 0 when blocked);
-// _JACOBIAN_SATURATE ReuseJacobian's cosines saturated (RTXDI_CalculateJacobian's: a sample whose surface faces away from
-// the receiver 0, cut) instead of abs.
+// _JACOBIAN_SATURATE (inverted by X06: ReuseJacobian's cosines are saturated by default, RTXDI_CalculateJacobian's: a sample
+// whose surface faces away from the receiver 0, cut) today's old abs as the control.
 // RENODX_TW_REUSE_BIAS=1 / 2 (G1): the spatial merge's MIS-like normalization over the neighbours that could have made the
 // chosen sample (Basic), they also seeing it (Raytraced, a ray each), instead of 1 / M (RTXDI's GI bias correction modes).
 // RENODX_TW_REUSE_BIAS=3 (PT DI step 5's G2): pairwise MIS between each neighbour and the texel's own reservoir instead.

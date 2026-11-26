@@ -1104,17 +1104,21 @@ float Validate(inout Reservoir previous, float3 origin, bool contact) {
 }
 
 // A neighbour's sample moved to this receiver: the Jacobian of its surface's solid angles from here over from there (the
-// sky's samples, no surface, as far as the sky: the same solid angle from either).
+// sky's samples, no surface, as far as the sky: the same solid angle from either). The cosines saturated (X06): the hit's
+// normal faces the ray that made it (rt_scene.hlsli HitNormal), so a receiver behind its surface (a thin two-sided card)
+// gets 0, cut, not the front's light. src: RTXDI-Library Utils/Math.hlsli:144-151 (RTXDI_CalculatePartialJacobian's
+// saturate), :153-166 (RTXDI_CalculateJacobian). Today's abs() is the control: REUSE_TEST_JACOBIAN_SATURATE's bit now
+// selects it (its name is today's host switch, rt_d3d12.hpp).
 float ReuseJacobian(Reservoir other, float3 other_origin, float3 origin) {
   if (all(other.hit_normal == 0.f)) return 1.f;
   const float3 to_other = other_origin - other.hit;
   const float3 to_here = origin - other.hit;
   if ((REUSE_SUSPECTS & REUSE_TEST_JACOBIAN_SATURATE) != 0u) {
-    return saturate(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
-           / max(saturate(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
+    return abs(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
+           / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
   }
-  return abs(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
-         / max(abs(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
+  return saturate(dot(other.hit_normal, normalize(to_here))) * dot(to_other, to_other)
+         / max(saturate(dot(other.hit_normal, normalize(to_other))) * dot(to_here, to_here), 1e-8f);
 }
 
 // A history reservoir's own surface `held` (last frame's position at the pixel it was made for) at `world`'s depth in last
