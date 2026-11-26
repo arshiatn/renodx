@@ -18004,6 +18004,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         ceecd4b84's 192 / 76); its 104 differing outputs are a subset of step 5's 110 (m6_compare.py) -> none its own.
         bal3r_ REVIEW STARTED 06:0x (Opus xHigh, read + CPU; est 25 / deadline 50; incl. merge-tree vs today's atn-mods with
         fx1_wave1 + hfp_hold). Owner: bal3r_ -> coord merge
+        bal3r_ DONE 06:19 (12 min): MERGE AFTER 4 fixes (no shader bytes): (1) rt_d3d12.hpp:4404 ?: picks an object then
+        .Get() -> const ComPtr& compatible_twin; (2) :809-815 pipeline() side effects inside ?: -> span select + if; (3)
+        :4140 balanced_raytraced into the `if (balanced)` block (~:4394), drop the redundant `balanced &&`; (4)
+        rt_reuse_bits.h:25 comment names REUSE_BIAS_RAYTRACED. Checked right: old ini 1 = Basic (clamped to 2); add-on
+        1 = bit 28, 2 = bits 28 + 29 (rt_core.hpp:3857-3858); older helpers ignore bit 29 -> Basic; no bit collision (path
+        flags 0-28; RT_LIGHTS_IN_BOUNCE 1u<<29 is rt_flags); twin fallbacks + log name the reuse that runs; REUSE_SUSPECTS
+        order right; rebase lost nothing of steps 3 / 5; rb_identity rerun 71 / 85 / 74 + 10; E4 / lab / M6 re-read. Config
+        36913 Raytraced slightly ABOVE the reference (tops 1.0019, boxes 1.0039): ATN's eye, not a blocker. Merge-tree vs
+        atn-mods fa5551cbb CLEAN (tree 7ed20c704; both sides' lines survive). PARITY: shared row (rt_scene::AppendSettings) ->
+        Attila x64, WH1-3, Troy, Pharaoh, Rome Remastered, Rome II + Thrones (x86), Divinity 1 / 2, Expeditions on rebuild
+        (shows with PT GI + an upscaler); Tales hides it; Shogun 2 / Ryse / R.U.S.E. don't add it; 32-bit Attila frozen;
+        a new add-on on an older helper shows Raytraced but runs Basic -> ship add-on + helper together. Fixes sent to
+        bal3_ 06:2x (est 15 / deadline 30; identity must stay byte-equal). Owner: bal3_ -> coord merge
         COORD GPU 03:5x: d11 5090 REPLAY SELF TEST PASS (test\tw_d3d11_replay run.ps1 -Architecture amd64, hardware, under
         Enter-GpuLock; log testbin\scratch\coord_d11hw_amd64.log): 3 frames x 4 events all equal, race pixels 226 / 665
         with 0 outputs no writer gives, CONTROL fewer samples DIFFERS (occlusion 72 B, penumbra 241 B) + changed constant
