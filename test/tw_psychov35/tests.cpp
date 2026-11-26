@@ -8,7 +8,7 @@
 //    steps. Attila's hdr_to_screen (t01 - t08): V30 / V31 with Gamma Correction off (since 2026-11-16 it acts in every
 //    mode; tw_vanilla_exact checks it and Rendering Mode SDR). WH3's t00 the same with Gamma Correction off, its picture
 //    (its frame since 2026-11-16 in the frame's gamma, 2.0 there; -Before's 2.2) within 1e-5 of each pixel's brightest
-//    channel; its Gamma Correction and Rendering Mode SDR in part 7.
+//    channel; its Gamma Correction and Rendering Mode SDR in part 7. 1b: a pixel with Y <= 0 comes out black (X43).
 // 2. Hue Clip alone (twattila/psycho35.hlsli's HueClip, every game's): fire orange and sky blue move their middle
 //    channel toward the clip's place, the smallest and largest channel keep their ratio, BT.709 luminance is kept; grey
 //    and strength 0 unchanged; a negative channel keeps its sign; a dark colour (far below the clip) about unchanged.
@@ -898,6 +898,61 @@ static void TestBits(const std::map<std::string, Pair>& shaders) {
   }
   std::printf("1. %d draws of %u pixels on each side, %d pixels different\n", draws, WIDTH * HEIGHT, total_different);
   CHECK(total_different == 0);
+}
+
+// 1b. X43: a pixel with BT.709 Y <= 0 ((-0.3, 0, 0.6): Y = -0.020, positive cone mean) through Attila's t00 / t09 / t10 ->
+// t01 gives a black input's values, as the stock t00 does (its scale n is 0 there), in every Rendering Mode, output and
+// black / white point pair. Thrones' and WH1's tone mappers clamp each channel to >= 0 first (this pixel is their blue
+// (0, 0, 0.6), Y > 0), so only an all-black pixel has Y <= 0 there and their scale's 0 changes nothing. Control:
+// -Before's Attila chain (scale 1 for Y <= 0) passes the pixel unexposed: not black.
+static void TestNegativeLuminance(const std::map<std::string, Pair>& shaders) {
+  std::vector<Float4> pixel(WIDTH * HEIGHT);
+  for (UINT i = 0; i < WIDTH * HEIGHT; ++i) {
+    const float brightness = std::exp2(-4.f + 8.f * static_cast<float>(i / WIDTH) / HEIGHT);
+    pixel[i] = {-0.3f * brightness, 0.f, 0.6f * brightness, 1.f};
+  }
+  const std::vector<Float4> black(WIDTH * HEIGHT, Float4{0.f, 0.f, 0.f, 1.f});
+  const auto chain = [](const Shader& tone_mapper, const Shader& hdr_to_screen, const std::vector<Float4>& scene,
+                        const std::vector<uint8_t>& injection, float black_point, float white_point) {
+    Bindings first = AttilaToneMapper(scene, true, black_point, white_point);
+    first.injection = injection;
+    Bindings second = AttilaHdrToScreen(Draw(tone_mapper, first), true);
+    second.views["god_rays_sampler"] = Texture2D(WIDTH, HEIGHT, std::vector<Float4>(WIDTH * HEIGHT, Float4{}));
+    second.injection = injection;
+    return Draw(hdr_to_screen, second);
+  };
+  int after_lit = 0;
+  int before_lit = 0;
+  for (const float mode : {0.f, 1.f, 2.f, 3.f}) {
+    for (const float encoding : {0.f, 1.f, 2.f}) {
+      for (const auto& [black_point, white_point] : {std::pair{0.f, 1.f}, std::pair{0.002f, 1.6f}}) {
+        const auto attila_injection = Bytes(AttilaInjection(mode, encoding));
+        const auto lit = [&](const char* name, const Shader& tone_mapper, const Shader& hdr_to_screen,
+                             const std::vector<uint8_t>& injection, bool print) {
+          const auto a = chain(tone_mapper, hdr_to_screen, pixel, injection, black_point, white_point);
+          const auto b = chain(tone_mapper, hdr_to_screen, black, injection, black_point, white_point);
+          int count = 0;
+          for (size_t i = 0; i < a.size(); ++i) {
+            // By value: -0 (the negative channel x 0) is black.
+            if (a[i][0] == b[i][0] && a[i][1] == b[i][1] && a[i][2] == b[i][2]) continue;
+            if (print && count == 0) {
+              std::printf("  %s mode %g output %g points %g / %g pixel %zu: %.9g %.9g %.9g vs black's %.9g %.9g %.9g\n", name, mode,
+                          encoding, black_point, white_point, i, a[i][0], a[i][1], a[i][2], b[i][0], b[i][1], b[i][2]);
+            }
+            ++count;
+          }
+          return count;
+        };
+        for (const char* name : {"a_t00", "a_t09", "a_t10"}) {
+          after_lit += lit(name, shaders.at(name).after, shaders.at("a_t01").after, attila_injection, true);
+          before_lit += lit(name, shaders.at(name).before, shaders.at("a_t01").before, attila_injection, false);
+        }
+      }
+    }
+  }
+  std::printf("1b. Y <= 0 pixel (-0.3, 0, 0.6): %d pixels not black (control, -Before's Attila chain: %d)\n", after_lit, before_lit);
+  CHECK(after_lit == 0);
+  CHECK(before_lit > 0);
 }
 
 // 2. Hue Clip alone ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2324,6 +2379,7 @@ int main(int argc, char** argv) {
   const bool report_only = (argc >= 4 && std::string(argv[3]) == "--report");
   if (!report_only) {
     TestBits(shaders);
+    TestNegativeLuminance(shaders);
     TestHueClip(after);
   }
   const Shader curves = LoadPixelShader(after / "hue_curves.cso");

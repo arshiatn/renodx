@@ -62,18 +62,16 @@ float4 main(float4 vpos: SV_POSITION, float2 uv: TEXCOORD0)
   // get rid of "negative" nits of UI:
   // Clamp in the TARGET gamut, not in signed BT.709 representation.
   float3 x_bt2020 = renodx::color::bt2020::from::BT709(x);
-  // x_bt2020 = max(x_bt2020, 0.f);
+  x_bt2020 = max(x_bt2020, 0.f);
 
-  // Clamp Peak
-  // TODO: renable when publishing
-//   float peak = ((HDR >= 0.5f) ? SI.peak_white_nits: max(SI.diffuse_white_nits, SI.graphics_white_nits))
-//                / SI.graphics_white_nits;
-//   float mx = max(x_bt2020.r, max(x_bt2020.g, x_bt2020.b));
+  // Clamp Peak (as the other TW proxies, e.g. twattila/swap_chain_proxy_pixel_shader.ps_5_x.hlsl:73-81)
+  float peak = ((HDR >= 0.5f) ? SI.peak_white_nits : max(SI.diffuse_white_nits, SI.graphics_white_nits))
+               / SI.graphics_white_nits;
+  float mx = max(x_bt2020.r, max(x_bt2020.g, x_bt2020.b));
 
-//   if (mx > peak)
-// {
-//     x_bt2020 *= peak / mx;
-//   }
+  if (mx > peak) {
+    x_bt2020 *= peak / mx;
+  }
 
   // HDR10
   if (SI.swap_chain_encoding == 0) {

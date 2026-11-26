@@ -46,8 +46,9 @@ float4 main(float4 vpos: SV_POSITION, float2 uv: TEXCOORD0)
   //   x /= SI.graphics_white_nits;
   // }
 
-  // scRGB: 1.0 = 80 nits (the game writes absolute PQ, decoded to nits above).
-  x /= 80.f;
+  // scRGB: BT.709, 1.0 = 80 nits (the game writes BT.2020 absolute PQ, decoded to nits above). The Output row offers
+  // HDR10 alone today (addon.cpp, its scRGB label commented out); the branch stays correct for the day it is offered.
+  x = renodx::color::bt709::from::BT2020(x) / 80.f;
   
   return float4(x, 1.0);
 }

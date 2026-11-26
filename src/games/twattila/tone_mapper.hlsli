@@ -42,7 +42,9 @@ float4 ToneMapperHdr(float4 scene_sample, float4 bloom_sample, float2 black_whit
 
   float hdr_luminance = dot(hdr_color, float3(0.212599993, 0.715200007, 0.0722000003));
   float normalized_hdr_luminance =max(hdr_luminance - black_point, 0.f) / black_white_range;
-  float hdr_normalization_scale = hdr_luminance > 0.f? normalized_hdr_luminance / hdr_luminance : 1.f;
+  // src: stock t00 (shaders/t00_0x8BF6B657.ps_4_0.hlsl:94) scales a Y <= 0 pixel by n, 0 for a black point >= 0, so it
+  // is black; Rome II's form writes the 0 (twrome2/tone_mapper.hlsli:34).
+  float hdr_normalization_scale = hdr_luminance > 0.f ? normalized_hdr_luminance / hdr_luminance : 0.f;
   float3 untonemapped = hdr_color * hdr_normalization_scale;
 
   // PsychoV35: Hue Clip Emulation before the S-curve (hue_clip.hlsli).

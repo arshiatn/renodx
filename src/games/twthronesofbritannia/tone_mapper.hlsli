@@ -28,10 +28,9 @@ float4 ToneMapperHdr(float4 scene_sample, float4 bloom_sample, float2 black_whit
   float normalized_hdr_luminance =
       max(hdr_luminance - black_point, 0.f) / black_white_range;
 
-  float normalization_scale =
-      hdr_luminance > 0.f
-          ? normalized_hdr_luminance / hdr_luminance
-          : 1.f;
+  // src: Attila's stock t00 (twattila/shaders/t00_0x8BF6B657.ps_4_0.hlsl:94): a Y <= 0 pixel is black; Rome II's form
+  // writes the 0 (twrome2/tone_mapper.hlsli:34).
+  float normalization_scale = hdr_luminance > 0.f ? normalized_hdr_luminance / hdr_luminance : 0.f;
 
   float3 untonemapped = hdr_color * normalization_scale;
 
