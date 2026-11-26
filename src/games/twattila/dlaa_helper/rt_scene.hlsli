@@ -13,7 +13,7 @@
 
 RaytracingAccelerationStructure scene : register(t0);
 RaytracingAccelerationStructure smoke_scene : register(t15);  // the smoke alone (SMOKE_MET: built)
-Texture2D<float4> positions : register(t1);  // world position, view depth (0: sky)
+Texture2D<float4> positions : register(t1);  // world position, its distance from the camera (rt_positions; 0: sky)
 Texture2D<float4> sun : register(t2);        // [0] toward the sun (w 1: valid), [1] the camera
 // Per record: UV offset in uv_pool, normal offset in normal_pool, atlas slice | flags << 16, the alpha threshold (asfloat).
 Buffer<uint4> records : register(t3);
@@ -537,6 +537,12 @@ static const uint DIM_SHARC_LIGHTS = 33u << 12;      // a vertex's LocalLights p
 static const uint DIM_CACHE_LIGHTS = 34u << 12;      // rt_cache_fill: a cell's SeenDiffuseLight picks (0 / 1)
 static const uint DIM_RTXDI_GI_SPATIAL = 35u << 12;  // ReuseTexel's RTXDI GI contest: its RTXDI sampler's seed (Pcg4d lane .y)
 static const uint DIM_REGIR_BUILD = 36u << 12;       // rt_regir_presample: a ReGIR cell slot's RTXDI sampler (lanes the slot's)
+// Path-Traced Torch Light's RTXDI samplers (PT DI step 4c; Pcg4d lane .y, rt_rtxdi_bridge.hlsli RabSampler): a pixel's
+// in each of its passes (rt_di_shade draws none: its final ray goes to the reservoir's point).
+static const uint DIM_DI_INITIAL = 37u << 12;   // rt_di_initial: its candidates and the pick
+static const uint DIM_DI_TEMPORAL = 38u << 12;  // rt_di_temporal
+static const uint DIM_DI_SPATIAL = 39u << 12;   // rt_di_spatial
+static const uint DIM_DI_SPATIOTEMPORAL = 40u << 12;  // rt_di_spatiotemporal (the fused variant: its temporal tries and neighbours)
 // Torch Light in Path-Traced GI's ReGIR picks (rt_path.hlsli TorchLight): its caller's seed with the kind moved up by this,
 // so each caller's kind k takes kind k + 64 of its own (every kind above stays below 64).
 static const uint TORCH_KIND_SHIFT = 64u << 12;

@@ -159,6 +159,29 @@
 #include "rt_reuse_compatible_omm.h"
 #define RENODX_REUSE_COMPATIBLE 1
 #endif
+// Its DI for Path-Traced Torch Light (PT DI step 4c; build.ps1 adds RtxdiUtils.cpp with the build): rt_lights' LIGHTS_DI
+// build and the four DI passes (rt_di_*.hlsl), each with its OMM twin.
+#if defined(RENODX_REGIR) && __has_include("rt_di_shade.h")
+#include <Rtxdi/RtxdiUtils.h>
+
+#include "rt_di_initial.h"
+#include "rt_di_initial_omm.h"
+#include "rt_di_shade.h"
+#include "rt_di_shade_omm.h"
+#include "rt_di_spatial.h"
+#include "rt_di_spatial_omm.h"
+#include "rt_di_temporal.h"
+#include "rt_di_temporal_omm.h"
+#include "rt_lights_di.h"
+#include "rt_lights_di_omm.h"
+#include "rt_lights_di_torch.h"
+#include "rt_lights_di_torch_omm.h"
+#include "rt_lights_di_bounce.h"
+#include "rt_lights_di_bounce_omm.h"
+#include "rt_lights_di_bounce_torch.h"
+#include "rt_lights_di_bounce_torch_omm.h"
+#define RENODX_RTXDI_DI 1
+#endif
 // RENODX_TW_PATH_PROBE (tests only: build.ps1 compiles these with RENODX_TW_PATH_PROBE_BUILD set): rt_path.hlsli ProbeTexel.
 #if __has_include("rt_path_probe.h")
 #include "rt_path_probe.h"
@@ -870,6 +893,34 @@ class RtScene12 {
     }
 #endif
 #endif
+#if defined(RENODX_RTXDI_DI)
+    // Path-Traced Torch Light's builds, all or none (none: no DI, rt_di_ok 0: the addon keeps the game's lights).
+    struct DiBuild {
+      std::span<const unsigned char> code;
+      std::span<const unsigned char> code_omm;
+      ComPtr<ID3D12PipelineState>* state;
+    };
+    const std::array<DiBuild, 8> di_builds = {{
+        {.code = RT_LIGHTS_DI, .code_omm = RT_LIGHTS_DI_OMM, .state = &lights_di_pipelines_[0]},
+        {.code = RT_LIGHTS_DI_TORCH, .code_omm = RT_LIGHTS_DI_TORCH_OMM, .state = &lights_di_pipelines_[1]},
+        {.code = RT_LIGHTS_DI_BOUNCE, .code_omm = RT_LIGHTS_DI_BOUNCE_OMM, .state = &lights_di_pipelines_[2]},
+        {.code = RT_LIGHTS_DI_BOUNCE_TORCH, .code_omm = RT_LIGHTS_DI_BOUNCE_TORCH_OMM, .state = &lights_di_pipelines_[3]},
+        {.code = RT_DI_INITIAL, .code_omm = RT_DI_INITIAL_OMM, .state = &di_initial_pipeline_},
+        {.code = RT_DI_TEMPORAL, .code_omm = RT_DI_TEMPORAL_OMM, .state = &di_temporal_pipeline_},
+        {.code = RT_DI_SPATIAL, .code_omm = RT_DI_SPATIAL_OMM, .state = &di_spatial_pipeline_},
+        {.code = RT_DI_SHADE, .code_omm = RT_DI_SHADE_OMM, .state = &di_shade_pipeline_},
+    }};
+    bool di_made = true;
+    for (const DiBuild& build : di_builds) {
+      const std::span<const unsigned char> code = (dxr12_ ? build.code_omm : build.code);
+      di_made = di_made && pipeline(code.data(), code.size(), build.state);
+    }
+    if (!di_made) {
+      for (const DiBuild& build : di_builds) {
+        build.state->Reset();
+      }
+    }
+#endif
 #if defined(RENODX_RTXDI_GI)
     // The RTXDI GI contest's (REUSE_RTXDI_PACK: no ray tracing, one build; REUSE_RTXDI: the reuse's).
     if (!(pipeline(RT_REUSE_RTXDI_PACK, sizeof(RT_REUSE_RTXDI_PACK), &reuse_rtxdi_pack_pipeline_)
@@ -1130,6 +1181,15 @@ class RtScene12 {
       const D3D12_UNORDERED_ACCESS_VIEW_DESC tint_view = {.Format = DXGI_FORMAT_R8G8B8A8_UNORM, .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D};
       device_->CreateUnorderedAccessView(tint_.Get(), nullptr, &tint_view, Descriptor(TINT));
     }
+#if defined(RENODX_RTXDI_DI)
+    // Path-Traced Torch Light (v32): the addon's light surface and its two DI textures, when it made them (the row on; their
+    // views written at each DI trace).
+    if (version >= 32 && shared.rt_light_surface != 0 && shared.rt_di_light[0] != 0 && shared.rt_di_light[1] != 0
+        && !(open(shared.rt_light_surface, &light_surface_) && open(shared.rt_di_light[0], &di_light_[0]) && open(shared.rt_di_light[1], &di_light_[1]))) {
+      light_surface_.Reset();
+      di_light_ = {};
+    }
+#endif
     // Paths (v8): last frame's scene colour (the DLAA input), the G-buffer guides and the reflections' outputs as the
     // addon shares them (the history of the helper's own made when first used: EnsureHistory).
     if (version >= 8) {
@@ -1209,6 +1269,7 @@ class RtScene12 {
 
   void Close() {
     WaitForGpuBeforeRelease(own_fence_.Get(), event_, own_value_, FENCE_TIMEOUT, "ray tracing");
+    di_ok_ = 0;
     vertices_.Reset();
     positions_.Reset();
     sun_.Reset();
@@ -1260,12 +1321,24 @@ class RtScene12 {
     rtxdi_offsets_.Reset();
     torch_irradiance_.Reset();
     regir_cells_.Reset();
+#if defined(RENODX_RTXDI_DI)
+    light_surface_.Reset();
+    light_surface_previous_.Reset();
+    di_light_ = {};
+    di_members_.Reset();
+    di_origin_ = {};
+    di_reservoirs_.Reset();
+    di_offsets_.Reset();
+    di_frame_ = UINT32_MAX;
+#endif
     if (descriptors_) WriteNullPathDescriptors();
     fence_.Reset();
   }
 
   // The signals asked for NRD that it did not run on (dlaa_bridge.h rt_nrd_off).
   [[nodiscard]] uint32_t NrdOff() const { return nrd_off_.load(); }
+  // Whether the last trace request ran Path-Traced Torch Light (dlaa_bridge.h rt_di_ok: 1, else 0).
+  [[nodiscard]] uint32_t DiOk() const { return di_ok_.load(); }
 
   [[nodiscard]] std::string Status() const {
     // The GPU times right after the label: the bridge's line holds 255 characters, a battle's counts run past them.
@@ -3174,6 +3247,13 @@ class RtScene12 {
       *why = "rt_lights' twins (rt_lights_torch) run in its place while Torch Light in PT GI (bit 27) is on";
       return false;
     }
+#if defined(RENODX_RTXDI_DI)
+    // So do Path-Traced Torch Light's rt_lights_di builds while its resources are held (asked within HISTORY_FRAMES).
+    if (stem == "rt_lights" && !code.empty() && di_reservoirs_) {
+      *why = "rt_lights_di runs in rt_lights' place while Path-Traced Torch Light (rt_di_flags) is on";
+      return false;
+    }
+#endif
     ComPtr<ID3D12PipelineState>& pipeline = this->*found->second;
     const auto base = base_pipelines_.try_emplace(std::string(stem), pipeline).first;
     if (code.empty()) {
@@ -3495,6 +3575,7 @@ class RtScene12 {
   // fence value and signals the next (also when nothing ran). `cluster_data`: its new cluster sets' data (v16, the
   // second mapping's start). False: nothing traced.
   bool Trace(const dlaa_bridge::Shared& shared, uint32_t version, std::span<const uint8_t> cluster_data) {
+    di_ok_ = 0;  // a trace skipped or failed before its DI: none ran
     if (!visibility_) return false;
     // The GPU harness's RENODX_TW_TEST_REMOVAL: the device removed at the process's third trace, as a GPU hang removes it
     // (main.cpp starts a new one).
@@ -4042,8 +4123,13 @@ class RtScene12 {
         const bool lights_possible = reuse_lights_pipeline_ && path_traced && reuse && light_count != 0;
         const bool ratio_written = lights_possible && lights_asked == 3u && EnsureHistory(HISTORY_RATIO, frame);
         const uint32_t lights_mode = (lights_possible && (lights_asked != 3u || ratio_written)) ? lights_asked : 0u;
+        // Ours (design 2.9a): mode 1 carries its lights only when this frame's trace left them dark: not under Path-Traced
+        // Torch Light (its DI pixels' light DI's, the others' exact bits), nor the frame it is first asked, after a bounce
+        // gap or a remade reuse history (the game lit them: today's one-frame doubles). reuse_lights_mode_ keeps the asked
+        // mode for the next trace. Mode 2 (a measurement) always carries.
+        const uint32_t carried_mode = (lights_mode == 1u && lights_dark_frame_ != frame ? 0u : lights_mode);
         // Their soft shadows under Ray Reconstruction: the lights' radius (rt_path.hlsli ReuseTexel's rays to their disk).
-        if (lights_mode != 0 && (requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) {
+        if (carried_mode != 0 && (requested & dlaa_bridge::RT_PATH_RECONSTRUCTED) != 0) {
           list->SetComputeRoot32BitConstant(ROOT_SETTINGS, std::bit_cast<uint32_t>(std::clamp(shared.rt_light_size, 0.f, 2.f)), 8);
         }
         // Their ratio's history shorter while the camera moves (RT_PATH_RATIO_FOLLOW): its registers changed since the last
@@ -4178,7 +4264,7 @@ class RtScene12 {
             // Torch and Fire Light in the Light Bounce: ReuseTexel shades the lights' samples (the paths with ReSTIR GI), or
             // keeps their shadow ratio (ratio_written below). Torch Light in Path-Traced GI (RT_PATH_TORCH_LIGHT): the
             // local lights on the screen's surfaces a path meets too (LIGHTS_IN_PATHS).
-            .lights_in_bounce = lights_mode | ((ratio_written && ratio_parity_ != 0) ? 16u : 0u)
+            .lights_in_bounce = carried_mode | ((ratio_written && ratio_parity_ != 0) ? 16u : 0u)
                                 | ((ratio_written && history_valid_ && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame && ratio_size_ == reuse_size) ? 32u : 0u)
                                 | (ratio_follows ? 64u : 0u)
                                 | (torch_light ? LIGHTS_IN_PATHS : 0u) | (regir ? LIGHTS_REGIR : 0u) | (torch_traced ? LIGHTS_TORCH_IRRADIANCE : 0u),
@@ -4350,7 +4436,7 @@ class RtScene12 {
           // The RTXDI GI contest (the reference build): this frame's reservoirs in RTXDI's format and its neighbour offsets
           // (u73 / u74, rt_path.hlsli RtxdiPackTexel; made at the shared textures' size when first asked for), then RTXDI's
           // spatial resampling in the reuse's place.
-          bool rtxdi = lights_mode == 0 && reuse_rtxdi_pipeline_ && (reuse_tests & REUSE_TEST_RTXDI) != 0;
+          bool rtxdi = carried_mode == 0 && reuse_rtxdi_pipeline_ && (reuse_tests & REUSE_TEST_RTXDI) != 0;
           if (rtxdi && !rtxdi_reservoirs_) {
             const D3D12_RESOURCE_DESC positions = positions_->GetDesc();
             const uint64_t reservoirs = ((positions.Width + 15) / 16) * ((positions.Height + 15) / 16) * 256;  // RTXDI's 16 x 16 blocks
@@ -4397,7 +4483,7 @@ class RtScene12 {
                               && ((version >= 31 && (requested & dlaa_bridge::RT_PATH_REUSE_NEAR) != 0)
                                   || GetEnvironmentVariableW(L"RENODX_TW_REUSE_NEAR", nullptr, 0) != 0);
           ID3D12PipelineState* reuse_state = reuse_pipeline_.Get();
-          if (lights_mode != 0) {
+          if (carried_mode != 0) {
             reuse_state = reuse_lights_pipeline_.Get();
           } else if (rtxdi) {
             reuse_state = reuse_rtxdi_pipeline_.Get();
@@ -4832,7 +4918,15 @@ class RtScene12 {
     RTXDI_OFFSETS,        // u74: its neighbour offsets
     TORCH_IRRADIANCE,     // u75: Torch Light in Path-Traced GI's torch light at the render pixels (rt_scene.hlsli torch_irradiance)
     REGIR_CELLS,          // u76: its ReGIR cells (rt_rtxdi_bridge.hlsli regir_cells)
-    DESCRIPTOR_COUNT,
+    // Path-Traced Torch Light (PT DI step 4c; written each DI trace, null otherwise and in builds without RTXDI):
+    DI_MEMBERS,              // u77: each tile's listed lights (rt_light_tiles.hlsli di_members)
+    LIGHT_SURFACE,           // u78: the addon's light surface (rt_di_surface.hlsli light_surface)
+    LIGHT_SURFACE_PREVIOUS,  // u79: the last DI trace's copy of it
+    DI_RESERVOIRS,           // u80: RTXDI's DI reservoirs, two arrays (rt_rtxdi_bridge.hlsli di_reservoirs)
+    DI_OFFSETS,              // u81: RTXDI's spatial neighbour offsets
+    DI_LIGHT,                // u82, u83: the addon's two DI textures (di_light)
+    DI_ORIGIN = DI_LIGHT + 2,  // u84, u85: each DI pixel's ray origin, this trace's and the last's by parity (di_origin)
+    DESCRIPTOR_COUNT = DI_ORIGIN + 2,
   };
   // The registers (the last UAV range starts at u10 with CACHE_KEYS).
   static_assert(REF_CANDIDATE_BATCH - CACHE_KEYS + 10 == 60 && REF_STATE - CACHE_KEYS + 10 == 72);
@@ -4840,6 +4934,12 @@ class RtScene12 {
   static_assert(RTXDI_OFFSETS - CACHE_KEYS + 10 == 74);
   static_assert(TORCH_IRRADIANCE - CACHE_KEYS + 10 == 75);
   static_assert(REGIR_CELLS - CACHE_KEYS + 10 == 76);
+  static_assert(DI_MEMBERS - CACHE_KEYS + 10 == 77);
+  static_assert(LIGHT_SURFACE - CACHE_KEYS + 10 == 78);
+  static_assert(LIGHT_SURFACE_PREVIOUS - CACHE_KEYS + 10 == 79);
+  static_assert(DI_RESERVOIRS - CACHE_KEYS + 10 == 80);
+  static_assert(DI_OFFSETS - CACHE_KEYS + 10 == 81);
+  static_assert(DI_LIGHT - CACHE_KEYS + 10 == 82 && DI_ORIGIN - CACHE_KEYS + 10 == 84 && DESCRIPTOR_COUNT - CACHE_KEYS + 10 == 86);
 #if defined(RENODX_REFERENCE)
   static constexpr UINT TABLES = 2;  // the live table, the reference's frozen one
 #else
@@ -5588,6 +5688,10 @@ class RtScene12 {
       device_->CreateUnorderedAccessView(nullptr, nullptr, &texture_written, Descriptor(descriptor));
     }
     device_->CreateUnorderedAccessView(nullptr, nullptr, &NO_REGIR_CELLS, Descriptor(REGIR_CELLS));
+#if defined(RENODX_RTXDI_DI)
+    device_->CreateUnorderedAccessView(nullptr, nullptr, &DI_RESERVOIRS_NULL, Descriptor(DI_RESERVOIRS));
+    device_->CreateUnorderedAccessView(nullptr, nullptr, &DI_OFFSETS_NULL, Descriptor(DI_OFFSETS));
+#endif
     if (cache_keys_) return;
     const D3D12_UNORDERED_ACCESS_VIEW_DESC buffer_written = {.Format = DXGI_FORMAT_R32_UINT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
                                                              .Buffer = {.NumElements = 1}};
@@ -6447,6 +6551,20 @@ class RtScene12 {
     }
   }
 
+#if defined(RENODX_RTXDI_DI)
+  // RTXDI's neighbour offsets for the spatial pass (a power of two; rt_di_surface.hlsli di_offset_mask).
+  // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/ReSTIRDI.h:44 NeighborOffsetCount 8192 (review pdi4cr_ S4: 1024 had no source).
+  static constexpr uint32_t DI_OFFSET_COUNT = 8192;
+  static constexpr uint32_t DI_LIGHT_R11G11B10 = 32u;  // rt_di_surface.hlsli: the slm DI texture's format, the skinlm one's at the next bit
+  static constexpr uint64_t DI_RESERVOIR_BYTES = sizeof(RTXDI_PackedDIReservoir);
+  // The reservoirs' and the neighbour offsets' null views (as their buffers' kinds).
+  static constexpr D3D12_UNORDERED_ACCESS_VIEW_DESC DI_RESERVOIRS_NULL = {.Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                                                                         .Buffer = {.NumElements = 1, .StructureByteStride = DI_RESERVOIR_BYTES}};
+  static constexpr D3D12_UNORDERED_ACCESS_VIEW_DESC DI_OFFSETS_NULL = {.Format = DXGI_FORMAT_R32G32_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                                                                      .Buffer = {.NumElements = 1}};
+  static constexpr uint32_t DI_RESERVOIR_ARRAYS = 2;  // rt_di_surface.hlsli DI_*_ARRAY
+#endif
+
   // The history an effect left unused for HISTORY_FRAMES given back once the GPU is past this request (its views null:
   // nothing reads them while unused), logged.
   void ExpireHistory(uint32_t frame) {
@@ -6479,6 +6597,18 @@ class RtScene12 {
       release("torch light's", {std::addressof(torch_irradiance_), std::addressof(regir_cells_)}, {TORCH_IRRADIANCE});
       device_->CreateUnorderedAccessView(nullptr, nullptr, &NO_REGIR_CELLS, Descriptor(REGIR_CELLS));
     }
+#if defined(RENODX_RTXDI_DI)
+    // Path-Traced Torch Light's own resources: its trace's frame (the addon's light surface and DI textures stay the set's).
+    if (di_reservoirs_ && (di_frame_ == UINT32_MAX || di_frame_ + HISTORY_FRAMES < frame)) {
+      release("Path-Traced Torch Light's",
+              {std::addressof(di_members_), std::addressof(light_surface_previous_), std::addressof(di_reservoirs_), std::addressof(di_offsets_),
+               std::addressof(di_origin_[0]), std::addressof(di_origin_[1])},
+              {DI_MEMBERS, LIGHT_SURFACE_PREVIOUS, DI_ORIGIN, DI_ORIGIN + 1});
+      device_->CreateUnorderedAccessView(nullptr, nullptr, &DI_RESERVOIRS_NULL, Descriptor(DI_RESERVOIRS));
+      device_->CreateUnorderedAccessView(nullptr, nullptr, &DI_OFFSETS_NULL, Descriptor(DI_OFFSETS));
+      di_frame_ = UINT32_MAX;
+    }
+#endif
     if (light_ratio_[0] && unused(HISTORY_RATIO)) {
       release("torch shadow ratio's", {std::addressof(light_ratio_[0]), std::addressof(light_ratio_[1])}, {LIGHT_RATIO, LIGHT_RATIO + 1});
     }
@@ -8480,7 +8610,6 @@ class RtScene12 {
     const bool lights_asked = local_lights && lights_bounce_pipeline_ && ((shared.rt_flags & dlaa_bridge::RT_LIGHTS_IN_BOUNCE) != 0 || LightsInBounceTest() != 0);
     const bool light_ratio = lights_asked && ((shared.rt_flags & dlaa_bridge::RT_LIGHT_RATIO) != 0 || LightsInBounceTest() == 3u);
     const bool lights_in_bounce = light_ratio || (lights_asked && reuse_lights_mode_ != 0 && reuse_frame_ != UINT32_MAX && reuse_frame_ + 1 >= frame);
-    const uint32_t lights_mode = light_ratio ? 3u : (lights_in_bounce ? 1u : 0u);
     const bool ratio_kept = light_ratio && light_ratio_[0] && EnsureHistory(HISTORY_RATIO, frame) && ratio_frame_ != UINT32_MAX && ratio_frame_ + 1 == frame;
     // Its pixels the ratio can't serve traced, their own bits (the addon's light shaders read them: RT_SCENE_LIGHT_BITS).
     const bool ratio_bits = light_ratio && ((shared.rt_scene_flags & dlaa_bridge::RT_SCENE_LIGHT_BITS) != 0 || LightsInBounceTest() == 3u);
@@ -8529,13 +8658,105 @@ class RtScene12 {
 #else
     constexpr bool torch_written = false;
 #endif
+    // Path-Traced Torch Light (v32 RT_DI_LIGHTS, PT DI step 4c): rt_lights' LIGHTS_DI build (its DI pixels: a tile listing
+    // more than four lights they reach), then RTXDI's DI passes there, their light into the addon's two DI textures. With
+    // Torch and Fire Shadows from the Light Bounce (mode 3) it wins in its pixels (design 2.9: rt_lights_di_bounce, their
+    // words the ratio 0; that bounce leaves the lights out). With Torch and Fire Light in the Light Bounce (mode 1) too
+    // (design 2.9a): this trace is then mode 0's (each listed light DI's or exact bits) and the frame's bounce leaves the
+    // lights out (lights_dark below). A switch of it drops the lights' kept bits once (their mode).
+#if defined(RENODX_RTXDI_DI)
+    const bool di_asked = version >= 32 && (shared.rt_di_flags & dlaa_bridge::RT_DI_LIGHTS) != 0 && lights_kept
+                          && lights_di_pipelines_[0] && light_surface_ && di_light_[1];
+    // RTXDI's reservoir layout at the shared textures' size (one set's: the history keeps it at any render size).
+    const D3D12_RESOURCE_DESC di_size = positions_->GetDesc();
+    const RTXDI_ReservoirBufferParameters di_layout =
+        rtxdi::CalculateReservoirBufferParameters(static_cast<uint32_t>(di_size.Width), di_size.Height, rtxdi::CheckerboardMode::Off);
+    // Its own resources, made at the first request (released after HISTORY_FRAMES unused: ExpireHistory): the tiles'
+    // members, the light surface's copy (its own desc), the reservoirs and the neighbour offsets (uploaded once). A piece
+    // that cannot be made: said, no DI for this set (its light surface dropped).
+    if (di_asked && !di_reservoirs_) {
+      D3D12_RESOURCE_DESC surface_desc = light_surface_->GetDesc();
+      surface_desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+      const D3D12_HEAP_PROPERTIES heap = {.Type = D3D12_HEAP_TYPE_DEFAULT};
+      const uint64_t reservoir_bytes = uint64_t{di_layout.reservoirArrayPitch} * DI_RESERVOIR_ARRAYS * DI_RESERVOIR_BYTES;
+      ComPtr<ID3D12Resource> upload = Buffer(uint64_t{DI_OFFSET_COUNT} * 8, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
+      di_reservoirs_ = Buffer(reservoir_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      di_offsets_ = Buffer(uint64_t{DI_OFFSET_COUNT} * 8, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
+      // The first piece that could not be made (none: all of them).
+      void* mapped = nullptr;
+      const char* failed = nullptr;
+      if (!di_reservoirs_) {
+        failed = "reservoirs";
+      } else if (!di_offsets_ || !upload) {
+        failed = "neighbour offsets";
+      } else if (FAILED(upload->Map(0, nullptr, &mapped))) {
+        failed = "neighbour offsets' upload (Map)";
+      } else if (!Texture(DXGI_FORMAT_R32G32B32A32_UINT, &di_members_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, dlaa_bridge::RT_LIGHT_TILE)) {
+        failed = "tile members";
+      } else if (!Texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &di_origin_[0]) || !Texture(DXGI_FORMAT_R16G16B16A16_FLOAT, &di_origin_[1])) {
+        failed = "ray origins";
+      } else if (FAILED(device_->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &surface_desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                                                         IID_PPV_ARGS(light_surface_previous_.GetAddressOf())))) {
+        failed = "light surface's copy";
+      }
+      if (failed != nullptr) {
+        slow_report_ += std::format("{}[TW ray tracing] Path-Traced Torch Light: its {} could not be made ({} MB of reservoirs): off for this set",
+                                    slow_report_.empty() ? "" : "\n", failed, reservoir_bytes >> 20);
+        di_reservoirs_.Reset();
+        di_offsets_.Reset();
+        di_members_.Reset();
+        di_origin_ = {};
+        light_surface_previous_.Reset();
+        light_surface_.Reset();
+      } else {
+        // RTXDI's stratified offsets as snorm8 pairs, as floats (its shaders read the buffer's values times the radius).
+        std::array<uint8_t, size_t{DI_OFFSET_COUNT} * 2> offsets = {};
+        rtxdi::FillNeighborOffsetBuffer(offsets.data(), DI_OFFSET_COUNT, ReSTIRDI_SpatialSamplingMode::StratifiedLowDiscrepancy);
+        auto* floats = static_cast<float*>(mapped);
+        for (size_t index = 0; index < offsets.size(); ++index) {
+          // src: RG8_SNORM's v / 127 (RtxdiUtils.h FillNeighborOffsetBuffer); its StoreSnorm8Offset writes -127..127
+          // only, so SNORM's clamp of -128 never applies.
+          floats[index] = static_cast<float>(static_cast<int8_t>(offsets[index])) / 127.f;
+        }
+        upload->Unmap(0, nullptr);
+        list->CopyBufferRegion(di_offsets_.Get(), 0, upload.Get(), 0, uint64_t{DI_OFFSET_COUNT} * 8);
+        const D3D12_RESOURCE_BARRIER to_read = Transition(di_offsets_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        list->ResourceBarrier(1, &to_read);
+        releases_.push_back({.value = own_value_ + 1, .resource = std::move(upload)});
+      }
+    }
+    const bool di = di_asked && di_reservoirs_;
+    if (di) {
+      const D3D12_UNORDERED_ACCESS_VIEW_DESC reservoirs_view = {
+          .Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+          .Buffer = {.NumElements = static_cast<UINT>(di_reservoirs_->GetDesc().Width / DI_RESERVOIR_BYTES), .StructureByteStride = DI_RESERVOIR_BYTES}};
+      const D3D12_UNORDERED_ACCESS_VIEW_DESC offsets_view = {.Format = DXGI_FORMAT_R32G32_FLOAT, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
+                                                             .Buffer = {.NumElements = DI_OFFSET_COUNT}};
+      device_->CreateUnorderedAccessView(di_reservoirs_.Get(), nullptr, &reservoirs_view, Descriptor(DI_RESERVOIRS));
+      device_->CreateUnorderedAccessView(di_offsets_.Get(), nullptr, &offsets_view, Descriptor(DI_OFFSETS));
+      Written(di_members_.Get(), DXGI_FORMAT_R32G32B32A32_UINT, DI_MEMBERS);
+      Written(light_surface_.Get(), DXGI_FORMAT_R32G32B32A32_UINT, LIGHT_SURFACE);
+      Written(light_surface_previous_.Get(), DXGI_FORMAT_R32G32B32A32_UINT, LIGHT_SURFACE_PREVIOUS);
+      Written(di_light_[0].Get(), di_light_[0]->GetDesc().Format, DI_LIGHT);
+      Written(di_light_[1].Get(), di_light_[1]->GetDesc().Format, DI_LIGHT + 1);
+      Written(di_origin_[0].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, DI_ORIGIN);
+      Written(di_origin_[1].Get(), DXGI_FORMAT_R16G16B16A16_FLOAT, DI_ORIGIN + 1);
+    }
+#else
+    constexpr bool di = false;
+#endif
+    // Ours (design 2.9a): Torch and Fire Light in the Light Bounce leaves its lights dark for this frame's bounce only
+    // without DI (under DI the settings' RT_LIGHTS_IN_BOUNCE bit is unread: rt_lights_di has no TORCHES_IN_BOUNCE code).
+    const bool lights_dark = lights_in_bounce && !light_ratio && !di;
+    const uint32_t traced_mode = (lights_dark ? 1u : (light_ratio ? 3u : 0u)) | (di ? 4u : 0u);
+    [[maybe_unused]] bool di_history = false;
     {
       // RENODX_TW_NO_TRACE_HISTORY=1 (the quality scorer's raw AO and torches with every other history kept: frame numbers
       // two apart turned off the paths' and the reflections' too): neither history is applied, both still written.
       static const bool no_trace_history = GetEnvironmentVariableW(L"RENODX_TW_NO_TRACE_HISTORY", nullptr, 0) != 0;
       const bool last_frame = !no_trace_history && ambient_kept && ambient_frame_ != UINT32_MAX && ambient_frame_ + 1 == frame;
       PathConstants constants = {.flags = (last_frame ? PATH_AMBIENT_HISTORY : 0u) | (((shared.rt_flags & dlaa_bridge::RT_START_PAST) != 0) ? PATH_START_PAST : 0u)
-                                          | (lights_kept && last_frame && lights_frame_ + 1 == frame && lights_mode == lights_mode_traced_ ? PATH_LIGHT_HISTORY : 0u)
+                                          | (lights_kept && last_frame && lights_frame_ + 1 == frame && traced_mode == lights_mode_traced_ ? PATH_LIGHT_HISTORY : 0u)
                                           | (ambient_parity_ != 0 ? PATH_AMBIENT_PARITY : 0u) | (tint ? PATH_TINT : 0u)
                                           | (tint_guides ? PATH_TINT_GUIDES : 0u) | (history_kept ? PATH_AMBIENT_KEPT : 0u),
                                  .previous_positions_slice = history_kept ? trace_positions_slice_ : 0u,
@@ -8550,6 +8771,12 @@ class RtScene12 {
       constants.previous_view_projection = ambient_view_projection_;
       std::memcpy(slot->paths_data, &constants, sizeof(constants));
       list->SetComputeRootConstantBufferView(ROOT_PATHS, slot->paths->GetGPUVirtualAddress());
+      // The DI passes' history: the last trace ran them with these lights' kept bits (their mode and places), at this
+      // render size (its reservoirs and surfaces are at its pixels).
+#if defined(RENODX_RTXDI_DI)
+      di_history = di && (constants.flags & PATH_LIGHT_HISTORY) != 0 && di_frame_ != UINT32_MAX && di_frame_ + 1 == frame
+                   && di_trace_size_ == std::array{shared.rt_width, shared.rt_height};
+#endif
     }
     // The last trace's positions for the trace's and the local lights' dispatches.
     D3D12_RESOURCE_BARRIER history_read = Transition(ambient_positions_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -8576,11 +8803,71 @@ class RtScene12 {
     // twin with T1 while torch_written.
     if (local_lights) {
       Mark(list, L"local lights");
+#if defined(RENODX_RTXDI_DI)
+      const ComPtr<ID3D12PipelineState>& lights_state =
+          (di ? lights_di_pipelines_[(light_ratio ? 2 : 0) + (torch_written ? 1 : 0)]
+              : (lights_in_bounce ? (torch_written ? lights_torch_pipelines_[1] : lights_bounce_pipeline_)
+                                  : (torch_written ? lights_torch_pipelines_[0] : lights_pipeline_)));
+#else
       const ComPtr<ID3D12PipelineState>& lights_state = (torch_written ? lights_torch_pipelines_[lights_in_bounce ? 1 : 0]
                                                                        : (lights_in_bounce ? lights_bounce_pipeline_ : lights_pipeline_));
+#endif
       list->SetPipelineState(lights_state.Get());
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+      if (lights_dark) {
+        lights_dark_frame_ = frame;
+      }
     }
+#if defined(RENODX_RTXDI_DI)
+    if (di) {
+      // RENODX_TW_DI_TEST (tests): rt_di_surface.hlsli's test switches (the bias correction, no temporal or spatial pass).
+      static const uint32_t di_test = [] {
+        std::array<wchar_t, 16> value = {};
+        return (GetEnvironmentVariableW(L"RENODX_TW_DI_TEST", value.data(), static_cast<DWORD>(value.size())) != 0)
+                   ? static_cast<uint32_t>(std::wcstoul(value.data(), nullptr, 0)) & (DI_LIGHT_R11G11B10 - 2u)
+                   : 0u;
+      }();
+      Mark(list, L"torch light DI");
+      const std::array<D3D12_RESOURCE_BARRIER, 4> to_di = {
+          uav_barrier,
+          Transition(light_surface_.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+          Transition(di_light_[0].Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+          Transition(di_light_[1].Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+      };
+      list->ResourceBarrier(static_cast<UINT>(to_di.size()), to_di.data());
+      // b2 (rt_di_surface.hlsli DiPass): the layout, the flags (with the DI textures' formats: DiStore's rounding), the
+      // temporal pass's permutation number, the offsets' mask.
+      const uint32_t di_formats = ((di_light_[0]->GetDesc().Format == DXGI_FORMAT_R11G11B10_FLOAT) ? DI_LIGHT_R11G11B10 : 0u)
+                                  | ((di_light_[1]->GetDesc().Format == DXGI_FORMAT_R11G11B10_FLOAT) ? DI_LIGHT_R11G11B10 << 1 : 0u);
+      const std::array<uint32_t, 5> di_constants = {di_layout.reservoirBlockRowPitch, di_layout.reservoirArrayPitch, (di_history ? 1u : 0u) | di_test | di_formats,
+                                                    rtxdi::JenkinsHash(frame), DI_OFFSET_COUNT - 1};
+      list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(di_constants.size()), di_constants.data(), 0);
+      for (ID3D12PipelineState* pass : {di_initial_pipeline_.Get(), di_temporal_pipeline_.Get(), di_spatial_pipeline_.Get(), di_shade_pipeline_.Get()}) {
+        list->SetPipelineState(pass);
+        list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+        list->ResourceBarrier(1, &uav_barrier);
+      }
+      // The light surface for the next DI trace's temporal pass; the shared textures back to COMMON.
+      const std::array<D3D12_RESOURCE_BARRIER, 2> to_copy = {
+          Transition(light_surface_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+          Transition(light_surface_previous_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+      };
+      list->ResourceBarrier(static_cast<UINT>(to_copy.size()), to_copy.data());
+      list->CopyResource(light_surface_previous_.Get(), light_surface_.Get());
+      const std::array<D3D12_RESOURCE_BARRIER, 4> after_di = {
+          Transition(light_surface_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COMMON),
+          Transition(light_surface_previous_.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+          Transition(di_light_[0].Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+          Transition(di_light_[1].Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+      };
+      list->ResourceBarrier(static_cast<UINT>(after_di.size()), after_di.data());
+      di_frame_ = frame;
+      di_trace_size_ = {shared.rt_width, shared.rt_height};
+    }
+#endif
+    // Before the list is closed and submitted: a failed submit is fatal to the device (rendering stops), so no stale 1
+    // reaches a working frame.
+    di_ok_ = (di ? 1u : 0u);
     if (ambient_kept) {
       // This trace's positions for the next one (copy_kept: in the slices' turn, as the paths' first request's copy).
       std::swap(history_read.Transition.StateBefore, history_read.Transition.StateAfter);
@@ -8616,7 +8903,7 @@ class RtScene12 {
       for (uint32_t light = 0; light < light_count; ++light) std::copy_n(SharedLight(shared, light, false), 4, previous_lights_[light].begin());
       previous_light_count_ = light_count;
       lights_frame_ = frame;
-      lights_mode_traced_ = lights_mode;
+      lights_mode_traced_ = traced_mode;
     }
     if (fog) {
       Mark(list, L"fog");
@@ -10084,7 +10371,13 @@ class RtScene12 {
   [[nodiscard]] std::unique_ptr<dlaa_bridge::Shared> PlaybackBlock(const PlaybackRequest& request, uint32_t frame_offset) const {
     auto block = std::make_unique<dlaa_bridge::Shared>();
     std::memcpy(block.get(), request.data.data(), std::min(request.block_bytes, sizeof(dlaa_bridge::Shared)));
-    for (size_t index = 0; index < PLAYER_HANDLES.size(); ++index) block.get()->*PLAYER_HANDLES[index].second = playback_.handles[index];
+    for (size_t index = 0; index < PLAYER_HANDLES.size(); ++index) {
+      block.get()->*PLAYER_HANDLES[index].second = playback_.handles[index];
+    }
+    // No recorded light surface or DI textures (v32): the recording process's handle numbers would open the player's own.
+    block->rt_light_surface = 0;
+    block->rt_di_light[0] = 0;
+    block->rt_di_light[1] = 0;
     block->rt_frame += frame_offset;
     return block;
   }
@@ -10718,7 +11011,7 @@ class RtScene12 {
   // The local lights' bits kept over frames (HISTORY_LIGHTS), the last trace that wrote them and its lights.
   std::array<ComPtr<ID3D12Resource>, 2> light_history_;
   uint32_t lights_frame_ = UINT32_MAX;
-  uint32_t lights_mode_traced_ = 0;  // the last kept lights' bits' Torch and Fire Light in the Light Bounce mode (0 none, 1, 3 the ratio)
+  uint32_t lights_mode_traced_ = 0;  // the last kept lights' bits' Torch and Fire Light in the Light Bounce mode (0 none, 1, 3 the ratio), | 4 with DI
   std::array<std::array<float, 4>, dlaa_bridge::RT_ALL_LIGHTS> previous_lights_ = {};
   uint32_t previous_light_count_ = 0;
   ComPtr<ID3D12PipelineState> fog_pipeline_;
@@ -10834,6 +11127,27 @@ class RtScene12 {
   ComPtr<ID3D12Resource> torch_irradiance_;
   uint32_t torch_light_frame_ = UINT32_MAX;
   uint32_t torch_irradiance_frame_ = UINT32_MAX;
+#if defined(RENODX_RTXDI_DI)
+  // Path-Traced Torch Light (PT DI step 4c): its builds; the addon's light surface and DI textures (v32), the helper's
+  // copy of the surface (the last DI trace's), the tiles' listed lights, RTXDI's reservoirs (two arrays) and neighbour
+  // offsets; the last trace that ran it.
+  // rt_lights_di, its twin with T1 (rt_lights_di_torch), both with Torch and Fire Shadows from the Light Bounce
+  // (rt_lights_di_bounce, rt_lights_di_bounce_torch)
+  std::array<ComPtr<ID3D12PipelineState>, 4> lights_di_pipelines_;
+  ComPtr<ID3D12PipelineState> di_initial_pipeline_;
+  ComPtr<ID3D12PipelineState> di_temporal_pipeline_;
+  ComPtr<ID3D12PipelineState> di_spatial_pipeline_;
+  ComPtr<ID3D12PipelineState> di_shade_pipeline_;
+  ComPtr<ID3D12Resource> light_surface_;
+  ComPtr<ID3D12Resource> light_surface_previous_;
+  std::array<ComPtr<ID3D12Resource>, 2> di_light_;
+  ComPtr<ID3D12Resource> di_members_;
+  std::array<ComPtr<ID3D12Resource>, 2> di_origin_;  // DI_ORIGIN (RGBA16F at the render pixels: 2 x 66 MB at 4K)
+  ComPtr<ID3D12Resource> di_reservoirs_;
+  ComPtr<ID3D12Resource> di_offsets_;
+  uint32_t di_frame_ = UINT32_MAX;
+  std::array<uint32_t, 2> di_trace_size_ = {};  // di_frame_'s rt_width x rt_height
+#endif
   ComPtr<ID3D12PipelineState> reuse_rtxdi_pack_pipeline_;  // the RTXDI GI contest's pack (REUSE_RTXDI_PACK; the reference build)
   ComPtr<ID3D12PipelineState> reuse_rtxdi_pipeline_;       // its reuse (REUSE_RTXDI)
   ComPtr<ID3D12Resource> rtxdi_reservoirs_;  // its reservoirs (RTXDI_GI_RESERVOIRS)
@@ -10845,7 +11159,10 @@ class RtScene12 {
   std::array<ComPtr<ID3D12Resource>, 2> reuse_data_;
   std::array<ComPtr<ID3D12Resource>, 2> reuse_surface_;  // the bounce texels' rays' origins and normals (SURFACE_ORIGIN, SURFACE_NORMAL)
   uint32_t reuse_frame_ = UINT32_MAX;  // the frame the reservoirs were last made in
-  uint32_t reuse_lights_mode_ = 0;     // its Torch and Fire Light in the Light Bounce mode (rt_camera.hlsli LIGHTS_MODE; 0: none)
+  uint32_t reuse_lights_mode_ = 0;     // its Torch and Fire Light in the Light Bounce mode as asked, carried or not (rt_camera.hlsli LIGHTS_MODE; 0: none)
+  // The last trace whose rt_lights left Torch and Fire Light in the Light Bounce's lights dark (mode 1 without Path-Traced
+  // Torch Light): that frame's bounce carries them (design 2.9a; not recorded, as torch_irradiance_frame_).
+  uint32_t lights_dark_frame_ = UINT32_MAX;
   uint32_t reuse_parity_ = 0;          // this frame's set
   std::array<uint32_t, 3> reuse_size_ = {};  // the bounce's size and scale they are at
   std::array<ComPtr<ID3D12Resource>, 2> own_sky_;  // Path-Traced Ambient's own sky at the bounce texels (rt_path.hlsli ScreenSky)
@@ -10918,6 +11235,7 @@ class RtScene12 {
   }
 
   std::atomic<uint32_t> nrd_off_ = 0;  // published from the helper's worker, read beside it
+  std::atomic<uint32_t> di_ok_ = 0;    // the last trace request's rt_di_ok (1: it ran Path-Traced Torch Light), as nrd_off_
   std::string status_ = "Ray tracing off";
   // The last trace's times: the GPU's (after the status's label), the CPU's and the submit's (at its end).
   std::string gpu_timings_;

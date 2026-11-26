@@ -45,9 +45,23 @@ constexpr uint32_t LightTileRows(uint32_t height) { return ((height + RT_LIGHT_T
 // d and reach r.
 constexpr uint8_t RT_LIGHT_SMOOTH = 0;  // (1 - d / r)^2 (older addons: every light)
 constexpr uint8_t RT_LIGHT_LINEAR = 1;  // 1 - d / r
-// Shared::rt_di_flags (v32, the addon's; no helper runs it yet): Path-Traced Torch Light, NVIDIA's RTXDI lighting the
-// listed torches of each pixel that reaches more than four; their mask words 0, the addon adds the helper's light at the
-// point lights' draw.
+// Shared::rt_di_flags (v32, the addon's; helpers from PT DI step 4c on): Path-Traced Torch Light, NVIDIA's RTXDI lighting
+// the listed torches of each pixel that reaches more than four; their mask words 0, the addon adds the helper's light at
+// the point lights' draw. The addon's rules with it:
+// - Only with Ray Reconstruction (the addon's gate: the helper runs it without RT_RECONSTRUCTED too, the lights at their
+//   centres) and only when the trace answered rt_di_ok 1.
+// - No lowdef light is sent: DI shades every listed light as highdef (one sent would be too bright in DI pixels where
+//   lowdef's saturate(lit x ssao) clips, mostly in SDR).
+// - The light surface (rt_light_surface): RGBA32_UINT, made with UAV access, at least the set's render size (a read past
+//   it is 0: no DI surface, the pixel's word 0 with no DI light, black where torches crowd). The DI textures
+//   (rt_di_light): made with UAV access, R11G11B10_FLOAT or R16G16B16A16_FLOAT, at least the render size too.
+// - The three handles are SharedSet's: Publish writes them every set (0: none, so PublishEmptySet's Publish({}) zeroes
+//   them), and they are in Prepare's `transferred` (an unread set's are closed in the helper by CloseInHelper).
+// - With Torch and Fire Shadows from the Light Bounce (RT_LIGHT_RATIO) it wins in its pixels (their words the ratio 0:
+//   the listed lights dark; that bounce leaves the lights out). With Torch and Fire Light in the Light Bounce it runs
+//   too; that frame's bounce leaves those lights out (helpers from design 2.9a on). The addon asks both rows as set.
+// - DI pixels get no Screen-Space Shadows contact shadow (sss_bend clears mask bits; theirs is 0 already): a seam can
+//   show between DI and exact pixels (a 4d look line).
 constexpr uint32_t RT_DI_LIGHTS = 1;
 // Shared::rt_restir_flags (v32, a Light Bounce request's; helpers read RT_RESTIR_COMPATIBLE alone): ReSTIR GI's neighbours by
 // compatibility, Ray Reconstruction's decorrelation.
@@ -585,13 +599,13 @@ struct Shared {
   uint32_t rt_di_flags = 0;
   uint32_t rt_restir_flags = 0;
   uint64_t rt_light_surface = 0;
-  // The helper's (v32; older helpers and this one leave it 0): written for each trace request, 1 when that request ran
-  // Path-Traced Torch Light (0: it ran no DI, the addon keeps the game's lights).
+  // The helper's (v32; older helpers leave it 0): written for each trace request, 1 when that request ran Path-Traced
+  // Torch Light (0: it ran no DI, a skipped or failed trace included: the addon keeps the game's lights).
   uint32_t rt_di_ok = 0;
   // The addon's (v32): Rough Diffuse's roughness (vMF diffuse at the receivers, 0-1; 0: Lambert).
   float rt_diffuse_roughness = 0.f;
-  // The addon's (v32; unused yet, 0: none): Path-Traced Torch Light's two helper-written DI textures (R11G11B10 at the
-  // textures' size: the light SSAO dims and the light it does not), for the addon's composite.
+  // The addon's (v32; 0: none): Path-Traced Torch Light's two helper-written DI textures (RT_DI_LIGHTS' rules: the light
+  // SSAO dims and the light it does not), for the addon's composite.
   uint64_t rt_di_light[2] = {};
 };
 
