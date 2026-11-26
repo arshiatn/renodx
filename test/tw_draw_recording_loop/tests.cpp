@@ -910,7 +910,7 @@ const uint64_t COLOUR_FALLBACK_MODE = ec::RECORDING_OWN[static_cast<size_t>(dr::
 
 // engine_code's own window, as Update calls it.
 void SetSites(uint64_t mask) {
-  uint32_t stood_down = 0;
+  uint64_t stood_down = 0;  // a SiteMask since 88e4cd874 (PK4 S1)
   uint64_t recording_stood_down = 0;
   REQUIRE(ec::PausedWrite(0, &stood_down, mask, &recording_stood_down));
   REQUIRE(stood_down == 0 && recording_stood_down == 0);
