@@ -950,6 +950,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 4K M6 BASELINE PASS 16:07 (all_modes_check -NewBaseline -Rev ce1f83655, 85 min G ... | ?
 - 64-BIT LOADER 1.3.27 / 1.3.28 OUT (11-26, public repo 0af665a4ad76 / 6ef3e72bcca ... | ?
 - W8 G1 FAILED -> REVERTED 182c83dc6 (src / test = the pre-merge tree 505959548, b ... | ?
+- 64-BIT CPU PREMISES MOVED (loader 1.3.24 / 1.3.25, in public 1.3.27 / 1.3.28): t ... | ?
+- A' BELOW 100 %: ATN 11-26 ~16:3x 'I would like to have it on' -> fx8_reland keep ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17480,6 +17482,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         patches again, gate = 100 % within 1 % of C (+ Nsight strict if headless), below-100 % numbers for ATN (A' costs 3-4.5x
         C there: on / off below 100 %, or a cheaper A' after an xHigh design). wm_ r3 told to skip the SSS files. Owner: fx8_ /
         ATN (below-100 % default)
+        - [ ] 64-BIT CPU PREMISES MOVED (loader 1.3.24 / 1.3.25, in public 1.3.27 / 1.3.28): the loader's worker spin is OFF by
+        default (settings.txt task_waits=fast = on), so our C03 Faster Job Wake-Ups is no longer moot (the loader's own note:
+        main ~4 % waking workers + ~10 % on the task queue lock without the spin); Wwise clock() = real time (film fix). All our
+        64-bit CPU numbers are from 1.3.20 with the spin on -> FIRST STEP of Friday's CPU wave: a64_ab A/B on 1.3.28 + fixes:
+        base / task_waits=fast / l2b (tick-3749 gate; s128_ prepares the lines), then the design re-checks (cpu_plan_64_map.md
+        addendum). Also 1.3.25 fixed the intro-film stutter at its root (a sound clock in 15 ms steps) + the menu film's half
+        speed: b1 now only evens out menu frames when the loader cap is on. Owner: coord / Friday wave
+        - [ ] A' BELOW 100 %: ATN 11-26 ~16:3x 'I would like to have it on' -> fx8_reland keeps A' ON below 100 % (100 % path
+        = C's cost); then an Opus xHigh DESIGN pass for a cheaper A' (fx8_'s option c: fewer reads in the one-surface test,
+        cost per scale from G1) at the next GPU-plan slot; re-run W2 / W4 + G1 after. Owner: fx8_ / next slot
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
