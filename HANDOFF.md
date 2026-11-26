@@ -17510,7 +17510,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         tonight in the game block. Owner: ab0_ / coord (game block)
         - [ ] NSIGHT GPU TRACE ON NATIVE D3D11 (11-26, another RenoDX member's work, shown by ATN): a GPU Trace report from a
         plain D3D11 app (fix: Device vtable slots 6 / 7 overridden), no installed files changed. Could let us trace TW / Ryse
-        frames directly instead of through the helper. Not ours: ATN asks whether it can be shared, later. Owner: ATN
+        frames directly instead of through the helper. Not ours. Its author: once it looks right to them (before their own
+        traces); ATN passes on the answer. Owner: ATN
         - [ ] USAGE 11-26 16:4x: no new agents today; running ones finish; only gts_, ab0_ + the game block, queued GPU tests.
         A' design pass etc. wait for 11-27. Owner: coord
         - [x] tune_1126c MERGED 532bc2d4d (helper / Tales / RR guides tolerance and guard constants; 7 files; all add-ons +
