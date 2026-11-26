@@ -6553,7 +6553,8 @@ class RtScene12 {
 
 #if defined(RENODX_RTXDI_DI)
   // RTXDI's neighbour offsets for the spatial pass (a power of two; rt_di_surface.hlsli di_offset_mask).
-  static constexpr uint32_t DI_OFFSET_COUNT = 1024;
+  // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/ReSTIRDI.h:44 NeighborOffsetCount 8192 (review pdi4cr_ S4: 1024 had no source).
+  static constexpr uint32_t DI_OFFSET_COUNT = 8192;
   static constexpr uint64_t DI_RESERVOIR_BYTES = sizeof(RTXDI_PackedDIReservoir);
   // The reservoirs' and the neighbour offsets' null views (as their buffers' kinds).
   static constexpr D3D12_UNORDERED_ACCESS_VIEW_DESC DI_RESERVOIRS_NULL = {.Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
