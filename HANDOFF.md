@@ -995,7 +995,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fx0_ WORKTREE .claude\worktrees\agent-aa5c85a54b44e6397 (branch merged; build / ... | ?
 - cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR ... | ?
 - CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope. ... | ?
-- cbr_ CITATION BLOCKER REVIEW STARTED 02:3x (Opus xHigh, read + test only, scratc ... | ?
+- cbi_ v2 STARTED 02:5x (resumed, Opus High, scratch cbi_\ *.v2.*; est 20 / deadli ... | ?
 - CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attil ... | ?
 - FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
 - O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 fe ... | ?
@@ -17617,10 +17617,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         gate_override.ps1.proposed also edits line 14 (combined line given); a ~50-commit estimator merge would pass the
         hook's 10 s budget and fail open (TOOL FAULT); aa_smaa.hlsli is ours (tier E), the sss_* / bend_dispatch_setup files
         too. Owner: done
-        - [ ] cbr_ CITATION BLOCKER REVIEW STARTED 02:3x (Opus xHigh, read + test only, scratch testbin\scratch\cbr_\; est
+        - [x] cbr_ CITATION BLOCKER REVIEW STARTED 02:3x (Opus xHigh, read + test only, scratch testbin\scratch\cbr_\; est
         25 / deadline 50): install safety + order, old behaviour byte-equal (own rerun), hand-judged flags on r4, the 13
         deviations each OK / fix / ATN, the 10 s fail-open risk, timing -> verdict; then ATN installs (questions 1-7 below).
         Owner: cbr_
+        cbr_ DONE 02:52 (28 min): INSTALL AFTER 2 FIXES (both tested, files in testbin\scratch\cbr_\): (1) a 7 s estimator
+        budget in the checker (over it: TOOL FAULT row, only the estimator skipped; cite / cxx output unchanged) - merges of
+        r4's size (26 commits) take 6.8 s with the estimator vs 2.5 s, so under build load the hook's 10 s would kill the
+        whole check and cite / cxx fail open (today zero risk: cite_since unset, merges check 0 commits); (2) hook line 961
+        passes --estimator-mode only for 'on', so hook-first on today's checker no longer fails every check open. Safety:
+        mirror 1506 / 1506, hook e2e 13 / 13 + 9 / 9 own, no deny in shadow (34 runs), old checks 36 / 36 byte-equal. Before
+        'on': a TERNARY_LIT misses '))?' (rt_di_shade.cs_6_5.hlsl:23 on r4), b 'rays' matches ARRAYS, c first_tag hides a
+        guard tag under a src: tag, d on-mode cite text takes unresolved refs from any file, e estimator listing order, f
+        head_in_diff vs group_head; g (ATN) rule G cannot take src: for a clamp that is the source's own contract. Hand
+        sample on r4: 11 flags, 3 FP (ARRAYS, DiParity, RTXDI's clamp), 1 real miss. Timing p95 1.04 s on 16 commits (the
+        design's 1 s edge). EXISTING GATE BUG: a single-sha 'git cherry-pick <sha>' is checked as --no-walk r --not
+        upstream = 4265 commits, > 60 s, the hook kills it at 10 s -> the cite check fails open on every cherry-pick
+        (likely some of gate_errors' 7 timeouts); fix '<sha>^!'. mode.txt = shadow: no gate denies anything today. Owner: done
+        - [ ] cbi_ v2 STARTED 02:5x (resumed, Opus High, scratch cbi_\ *.v2.*; est 20 / deadline 40): cbr_'s fixes 1-2 +
+        a-f + the cherry-pick '^!' fix as its own marked hunk; g into ATN's questions; reruns (self-test, 30 equality, b / r4
+        / p5 flags, hook e2e + cbr_'s e2e / half, mirror, timing). Then cbr_ re-check -> ATN installs once. Owner: cbi_
         - [ ] CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attila + helper strict first,
         ports warn-only until their propagation box [yes]; 2 saturate warn-only for good [yes]; 3 an edit inside a
         src-tagged function must touch the tag line [no, review checks]; 4 'guard inert ... proof pending' allowed while
