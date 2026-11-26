@@ -16915,8 +16915,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         day1 never played on the port before (unproven). STARTS THIS ROUND: 2 (both void). FIX (copy only, d11f_ 09:4x):
         C1 / camera timing from the battle clock (-C1At keeps its form = 'seconds after the battle starts'), a 600 s load
         STOP, C2-C4 rechecked vs the 900 s budget + ATTILA_TEST_QUIT 600 -> one review of v1 locks + timing -> live file ->
-        START 3 only on ATN's go. stress_test_log2 fallback not justified (day1 was cut off loading). Owner: d11f_ ->
-        review -> ATN
+        START 3 only on ATN's go. stress_test_log2 fallback not justified (day1 was cut off loading).
+        d11f_ STOPPED 09:41 (right): the design (d3d11_pass_speed.md 4.3) MEANT the front-end clock ('set rows on the
+        add-on clock, late enough for any load speed'; twattila addon.cpp:3178 test_hooks::Install(..., true) =
+        clock_at_first_present; test_hooks.hpp:114-118 / :134 read RENODX_TW_SET_FILE once at the first present) -> a
+        script-only battle-relative clock is impossible; its 'any load speed' assumption failed on the port. Options: (1)
+        add-on battle-start clock (C++ + capture build + stage: design first); (2) raise C1At's default (e.g. 400: C4 dump
+        ~653 s < 900 budget, ~450 battle s < ATTILA_TEST_QUIT 600) + a 600 s load STOP; (3) COORD PICK: keep the script,
+        ATN adds ONE rule line for `... d11_capture64.ps1 -Replay day1.replay -C1At 400` (+ its -DryRun) -> start 3 on his
+        go. Note: run.txt printed 'first present + 180 s' while the code computes $C1At - margin = 170 (log text only).
+        v1 copy (locks only) -> d11fr_ review 09:4x. Owner: ATN (rule line + go) / d11fr_
         d11f_ v1 LOCKS (copy, 09:36; diff testbin\scratch\d11f_\d11f_v1.diff, +21 / -17): Take-Locks = gpu_lock.py acquire
         --lock <each> --pid $PID (quiet_run then gpu_job; both or neither -> exit 2), Lock-Ours by 'renodx-lock v1
         pid=$PID start=$lockStart'; a dead owner is now taken over by the next taker. 59 / 59 tests; old 44 / 44 vs live.
