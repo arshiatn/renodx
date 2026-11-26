@@ -85,16 +85,8 @@ void TileList(uint index, uint count, bool tiled) {
   }
 }
 
-#if defined(LIGHTS_DI)
-// The listed lights (after TileList's barrier): tile_reach with only its first TILE_LIGHTS set bits (without tiles the
-// first TILE_LIGHTS lights).
-uint4 TileMembers() {
-  return uint4(tile_members[0], tile_members[1], tile_members[2], tile_members[3]);
-}
-#endif
-
 #if defined(LIGHTS_DI) || defined(PATH_DI)
-// Path-Traced Torch Light (PT DI step 4c): each tile's listed lights (TileMembers, rt_lights' LIGHTS_DI build), read by the
+// Path-Traced Torch Light (PT DI step 4c): each tile's listed lights (tile_members, rt_lights' LIGHTS_DI build), read by the
 // DI passes (rt_rtxdi_bridge.hlsli's PATH_DI part).
 RWTexture2D<uint4> di_members : register(u77);
 // The light history's word at a pixel the DI passes light (rt_lights): no exact pixel's (at most LIGHT_RAYS_ALWAYS of its

@@ -76,11 +76,15 @@ RAB_LightSample RAB_EmptyLightSample() {
   light_sample.light = RTXDI_InvalidLightIndex;
   return light_sample;
 }
-// A point of the light's disk (DiSamplePoint) seen from the surface's ray origin.
+// A point of the light's disk (light_size, under Ray Reconstruction; else its centre) seen from the surface's ray
+// origin, `uv` in 0-1 each.
 RAB_LightSample RAB_SamplePolymorphicLight(RAB_LightInfo light, RAB_Surface surface, float2 uv) {
   RAB_LightSample light_sample = RAB_EmptyLightSample();
   if (light.index < min(light_count, 128u)) {
-    light_sample.position = DiSamplePoint(light.index, surface.origin, uv);
+    light_sample.position = lights[light.index].xyz;
+    if (!(light_size <= 0.f) && (flags & RECONSTRUCTED) != 0u) {
+      light_sample.position += DiskPoint(normalize(light_sample.position - surface.origin), light_size, uv);
+    }
     light_sample.light = light.index;
   }
   return light_sample;
@@ -101,9 +105,12 @@ bool RAB_SurfaceImportanceSampleBrdf(RAB_Surface surface, inout RTXDI_RandomSamp
   return false;
 }
 #if defined(PATH_DI)
-// The light's game light at the surface where its tile lists it (DiTarget).
+// RTXDI's target: the light's game light's luminance where the surface's tile lists it (`members`), else 0 (an unlisted
+// light keeps the game's unshadowed light); NaN and negative 0.
 float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample light_sample, RAB_Surface surface) {
-  return DiTarget(surface.texel, surface.position, surface.members, light_sample.light);
+  if (light_sample.light >= 128u || SetBit(surface.members, light_sample.light) == 0u) return 0.f;
+  const float target = Luminance(DiLight(surface.texel, surface.position, light_sample.light));
+  return (target > 0.f) ? target : 0.f;
 }
 #else
 float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample light_sample, RAB_Surface surface) { return 0.f; }

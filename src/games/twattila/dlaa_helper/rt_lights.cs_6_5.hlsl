@@ -93,7 +93,9 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     light_history[parity_written][TileWord(group.xy, index)] = tile_list[index];
   }
 #if defined(LIGHTS_DI)
-  if (index == 0u) di_members[group.xy] = TileMembers();
+  // The listed lights (after TileList's barrier): tile_reach with only its first TILE_LIGHTS set bits (without tiles the
+  // first TILE_LIGHTS lights).
+  if (index == 0u) di_members[group.xy] = uint4(tile_members[0], tile_members[1], tile_members[2], tile_members[3]);
 #endif
   if (!inside) return;
   if (!surface) {

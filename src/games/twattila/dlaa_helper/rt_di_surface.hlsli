@@ -65,17 +65,6 @@ uint DiParity() {
   return ((path_flags & PATH_AMBIENT_PARITY) != 0u) ? 0u : 1u;
 }
 
-// The game's point-light surface at a pixel from its light surface texel.
-TwPointLightSurface DiSurfaceOf(uint4 texel, float3 position) {
-  TwPointLightSurface surface;
-  surface.channel_1 = float4(texel.x & 0xFFu, (texel.x >> 8u) & 0xFFu, (texel.x >> 16u) & 0xFFu, texel.x >> 24u) / 255.f;
-  surface.channel_2 = float4(texel.y & 0xFFu, (texel.y >> 8u) & 0xFFu, (texel.y >> 16u) & 0xFFu, texel.y >> 24u) / 255.f;
-  surface.channel_3 = float4(texel.z & 0xFFu, (texel.z >> 8u) & 0xFFu, (texel.z >> 16u) & 0xFFu, texel.z >> 24u) / 255.f;
-  surface.position = position;
-  surface.model = texel.w & 0xFFu;
-  return surface;
-}
-
 // The game's light of local light `light` at a light surface (its point-light shader with visibility 1, at the light's
 // centre; SSAO left out: the addon's composite multiplies it into the slm light, rt_di_shade). The DI passes' one
 // evaluation of it: the target (rt_rtxdi_bridge.hlsli) and the shading both call this. Highdef only: the addon leaves
@@ -83,24 +72,15 @@ TwPointLightSurface DiSurfaceOf(uint4 texel, float3 position) {
 // from the game's shader (it takes the colour as sent, unclamped): the colour at 0 and up, as the paths' LightArriving
 // takes it (rt_scene.hlsli), so no light is negative (fa9_ U3: the one source of negative DI light found; B2).
 float3 DiLight(uint4 texel, float3 position, uint light) {
-  return TwPointLight(DiSurfaceOf(texel, position), lights[light], max(light_colours[light].rgb, 0.f), LightLinear(light), sun[uint2(1, 0)].xyz,
+  // The game's point-light surface at the pixel from its light surface texel.
+  TwPointLightSurface surface;
+  surface.channel_1 = float4(texel.x & 0xFFu, (texel.x >> 8u) & 0xFFu, (texel.x >> 16u) & 0xFFu, texel.x >> 24u) / 255.f;
+  surface.channel_2 = float4(texel.y & 0xFFu, (texel.y >> 8u) & 0xFFu, (texel.y >> 16u) & 0xFFu, texel.y >> 24u) / 255.f;
+  surface.channel_3 = float4(texel.z & 0xFFu, (texel.z >> 8u) & 0xFFu, (texel.z >> 16u) & 0xFFu, texel.z >> 24u) / 255.f;
+  surface.position = position;
+  surface.model = texel.w & 0xFFu;
+  return TwPointLight(surface, lights[light], max(light_colours[light].rgb, 0.f), LightLinear(light), sun[uint2(1, 0)].xyz,
                       sun[uint2(SUN_LIGHT_TEXEL, 0)].w, 1.f, false);
-}
-
-// RTXDI's target for light `light` at a surface: its game light's luminance where its tile lists it (`members`), else 0
-// (an unlisted light keeps the game's unshadowed light); NaN and negative 0.
-float DiTarget(uint4 texel, float3 position, uint4 members, uint light) {
-  if (light >= 128u || SetBit(members, light) == 0u) return 0.f;
-  const float target = Luminance(DiLight(texel, position, light));
-  return (target > 0.f) ? target : 0.f;
-}
-
-// The point of light `light`'s disk (light_size, under Ray Reconstruction; else its centre) a ray from `origin` goes to,
-// `uv` in 0-1 each.
-float3 DiSamplePoint(uint light, float3 origin, float2 uv) {
-  const float3 centre = lights[light].xyz;
-  if (light_size <= 0.f || (flags & RECONSTRUCTED) == 0u) return centre;
-  return centre + DiskPoint(normalize(centre - origin), light_size, uv);
 }
 
 // Whether a ray from `origin` reaches `light_point`, stopping LIGHT_CLEARANCE short of it (rt_lights' rays).
