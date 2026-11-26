@@ -901,7 +901,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
 - FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | ?
 - d11 NITs (64 vs 8 OM slots check on the first dump, static_cast<void>, stoull gu ... | ?
-- 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU wi ... | coord
 - ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ?
 - CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | ?
 - Replay gaps (d11i_): sss.lights, smoke.map, ao.draw, bounce.sun_draw not replaye ... | ?
@@ -16824,7 +16823,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         git diff branch..merge over src / test / CMakeLists = empty -> the branch's 17 exit-0 builds stand for the merge.
         - [ ] d11 NITs (64 vs 8 OM slots check on the first dump, static_cast<void>, stoull guard) -> next lane I touch.
         Owner: coord
-        - [ ] 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU window. Owner: coord
+        - [x] 5090 replay self test (tw_d3d11_replay --race-map on the GPU) in the next GPU window. PASS 03:5x. Owner: done
         - [ ] ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set keys, folders, SendInput
         E / A / D + wheel only with the game in front) are in d11i_handback.md 'Rule lines' / 'OKs'. Owner: ATN
         ATN 11-25 ~21:1x STANDING GO for game runs, no ask: 'as long we don't waste tokens pausing/stopping agents +
@@ -17855,6 +17854,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         then bal3_; pdi4c_ runs once ATN answers its prompt. Owner: ATN (prompt) / coord
         03:1x: 'bal3_ resume' sent (jobs 03-12 back from lab_b\paused, run_jobs.ps1 -First 3, chain2.log; waits
         for lsp_'s < 1 min follow-up via the lock). Owner: bal3_
+        bal3_ GPU DONE 03:48 (chain2 03:09:29-03:47:53, 10 jobs exit 0, sessions closed, no -Stop; builds on bal3_raytraced
+        c339d0eb0 = before step 3 / wave 0 / step 5): reuse ms Off / Basic / Raytraced: day1_wide 0.80 / 0.73 / 1.84
+        [G-1125-74], night1_low 1.28 / 1.25 / 4.12 [G-1126-36]; frame total day 9.84 / 9.77 / 10.88, night 22.92 / 22.89 /
+        25.79; PT unchanged. Rotations base vs new: SAME + NO CHANGE (day Basic G-1126-30 0.73 -> 0.73, day Off -33 0.80,
+        night Basic -39 1.25, night Off -42 1.28) -> route (b) removes route (a)'s +0.20 ms on Basic (G-1125-68). Raytraced
+        = +1.03 ms day / +2.84 ms night reuse over Off (Experimental row's 3rd choice: ATN's eye). Jobs 7.2 / 7.3 / 4.1 /
+        10.0 / 10.1 min. Parity line: Balanced ReSTIR Light (Experimental) Off / Basic / Raytraced (INTEGER, same key;
+        saved 1 = Basic; Raytraced = bridge RT_PATH_REUSE_BALANCED_RAYTRACED 1u<<29 + REUSE_BALANCED_RAYTRACED twins; older
+        helpers run Basic). NEXT (sent 03:5x): rebase onto atn-mods (steps 3 + 5) as bal3_raytraced_rb if needed, CPU gates,
+        then 'bal3_ GPU go' for gates_e4b + lab_b rotations + all_modes_check -Rev; then review (Opus xHigh) -> merge.
+        Owner: bal3_
+        COORD GPU 03:5x: d11 5090 REPLAY SELF TEST PASS (test\tw_d3d11_replay run.ps1 -Architecture amd64, hardware, under
+        Enter-GpuLock; log testbin\scratch\coord_d11hw_amd64.log): 3 frames x 4 events all equal, race pixels 226 / 665
+        with 0 outputs no writer gives, CONTROL fewer samples DIFFERS (occlusion 72 B, penumbra 241 B) + changed constant
+        byte found -> 'PASS (0 failures)'; S-12 closed. F7 present test (fa8_ B1 fix A) started via f7_gpu.sh. Owner: coord
         - [ ] ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 baseline -> move it to the M1 run
         (f370cd3bd vs e52ec9e28) once step 5 merges. Owner: gate tooling slot
         - [ ] wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 of 1 M SHaRC keys / 6
