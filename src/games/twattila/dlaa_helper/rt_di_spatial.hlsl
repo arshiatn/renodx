@@ -17,11 +17,13 @@
 #include "./rt_rtxdi_bridge.hlsli"
 #include "Rtxdi/DI/SpatialResampling.hlsli"
 
+// src: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/DI/SpatialResampling.hlsl:22 the spatial pass: the temporal output resampled with its neighbours, stored.
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   SceneRayFlags();
   if (id.x >= width || id.y >= height) return;
   const RAB_Surface surface = RAB_GetGBufferSurface(int2(id.xy), false);
+  // dev: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/DI/SpatialResampling.hlsl:42: no store at a non-DI pixel (RTXDI stores an empty reservoir there); RAB_GetGBufferSurface rejects that pixel as a neighbour or history, so its old reservoir is never read.
   if (!RAB_IsSurfaceValid(surface)) return;
   const RTXDI_ReservoirBufferParameters reservoirs = DiReservoirParameters();
   RTXDI_DIReservoir reservoir = RTXDI_LoadDIReservoir(reservoirs, id.xy, DI_TEMPORAL_ARRAY);

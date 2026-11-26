@@ -56,6 +56,8 @@ bool LightRayReaches(uint light, float3 from, bool soft, uint2 pixel, uint index
   return !Occluded(from, to_light / light_distance, light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance), NO_GRASS_SMOKE);
 }
 
+// ours: each pixel's local-light bits; the tile build in rt_light_tiles.hlsli (commit:2841222cf), and with LIGHTS_DI the
+// tiles' members and the DI pixels (PT DI step 4c).
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index : SV_GroupIndex) {
   TileClear(index);

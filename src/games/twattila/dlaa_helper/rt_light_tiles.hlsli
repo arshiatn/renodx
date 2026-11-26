@@ -44,6 +44,7 @@ uint2 TileWord(uint2 tile, uint word) {
 }
 
 // The group's sets empty (`index` the thread's in the group).
+// ours: rt_lights' tile build, moved here unchanged as functions (commit:2841222cf) for LIGHTS_DI and unified PT.
 void TileClear(uint index) {
   if (index < 4u) tile_reach[index] = 0u;
   if (index < 8u) tile_list[index] = 0xFFFFFFFFu;
@@ -53,6 +54,7 @@ void TileClear(uint index) {
 }
 
 // A pixel's reached lights into the tile's.
+// ours: rt_lights' tile build, moved here unchanged as functions (commit:2841222cf).
 void TileReach(uint4 reached) {
   if (reached.x != 0u) InterlockedOr(tile_reach[0], reached.x);
   if (reached.y != 0u) InterlockedOr(tile_reach[1], reached.y);
@@ -63,6 +65,7 @@ void TileReach(uint4 reached) {
 // The tile's list: the first TILE_LIGHTS of the lights it reaches (without tiles every light) in the lights' order, a
 // light's slot the count of those before it. Every thread places two (lights index and index + 64) into their bytes
 // (one thread's loop over all of them kept 63 waiting at the barrier); with LIGHTS_DI each listed one into the members.
+// ours: rt_lights' tile list (commit:2841222cf), placed by every thread, two lights each.
 void TileList(uint index, uint count, bool tiled) {
   const uint4 tile = uint4(tile_reach[0], tile_reach[1], tile_reach[2], tile_reach[3]);
   if (index == 0u) {
@@ -95,6 +98,7 @@ static const uint DI_PIXEL_WORD = 0u;
 
 // Whether this frame's light can be the game's formula: the sun texture's texel 2 w holds the game's HDR state (0.004:
 // HDR, 1: its SDR constants; 0: not written yet, the first frame or a host without it: no DI, tw_point_light.hlsli).
+// ours: no DI before the addon has sent the game's HDR state, so DiLight always has its diffuse scale.
 bool DiShadedFrame() {
   const float diffuse_scale = sun[uint2(SUN_LIGHT_TEXEL, 0)].w;
   return diffuse_scale > 0.f && diffuse_scale <= 1.f;

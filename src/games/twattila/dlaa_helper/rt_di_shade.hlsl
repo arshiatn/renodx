@@ -18,14 +18,17 @@
 
 // The pixel's DI light into the addon's textures, the one place they are written (unified PT's demodulated pair swaps
 // this function): the slm light (the composite multiplies the game's SSAO into it) or the skinlm light (no SSAO), the
-// other 0. Ours: a net that changes nothing in a normal frame (its light finite and 0 and up: DiLight's colours at 0 and
-// up, B2): NaN or infinite light 0, light past the half floats' largest clamped there.
+// other 0.
+// ours: the one writer of the addon's two DI textures, the pixel's light by its model.
 void DiStore(uint2 pixel, uint model, float3 light) {
+  // guard inert: NaN or infinite light to 0, light past the half floats' largest clamped there (none in a normal frame:
+  // DiLight's colours at 0 and up, B2); proof pending S6; trace S6's one-frame count.
   const float3 kept = all(isfinite(light)) ? min(light, 65504.f) : 0.f;
   di_light[0][pixel] = float4((model == TW_POINT_LIGHT_SLM) ? kept : 0.f, 0.f);
   di_light[1][pixel] = float4((model == TW_POINT_LIGHT_SKIN) ? kept : 0.f, 0.f);
 }
 
+// src: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/DI/ShadeSamples.hlsl:33 the shading pass: the reservoir's light times its weight, behind a final visibility ray.
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   SceneRayFlags();

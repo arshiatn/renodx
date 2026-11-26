@@ -61,6 +61,7 @@ static const uint DI_HISTORY_ARRAY = DI_SHADE_ARRAY;
 #endif
 
 // The light history's set this trace writes (rt_lights' parity_written); the last trace's is the other.
+// ours: the light history's two sets alternate each trace, as rt_lights writes them.
 uint DiParity() {
   return ((path_flags & PATH_AMBIENT_PARITY) != 0u) ? 0u : 1u;
 }
@@ -71,6 +72,7 @@ uint DiParity() {
 // the lowdef shaders' lights to the game (none drawn in any timing capture), so no lowdef light reaches DI. Deviation
 // from the game's shader (it takes the colour as sent, unclamped): the colour at 0 and up, as the paths' LightArriving
 // takes it (rt_scene.hlsli), so no light is negative (fa9_ U3: the one source of negative DI light found; B2).
+// src: commit:01010d235 TwPointLight, the game's 40 point-light shaders (bit-exact on WARP, test/tw_point_light).
 float3 DiLight(uint4 texel, float3 position, uint light) {
   // The game's point-light surface at the pixel from its light surface texel.
   TwPointLightSurface surface;
@@ -79,14 +81,17 @@ float3 DiLight(uint4 texel, float3 position, uint light) {
   surface.channel_3 = float4(texel.z & 0xFFu, (texel.z >> 8u) & 0xFFu, (texel.z >> 16u) & 0xFFu, texel.z >> 24u) / 255.f;
   surface.position = position;
   surface.model = texel.w & 0xFFu;
+  // dev: commit:5c04b1019: the colour at 0 and up, the game's shader takes it unclamped; no DI light is negative (B2).
   return TwPointLight(surface, lights[light], max(light_colours[light].rgb, 0.f), LightLinear(light), sun[uint2(1, 0)].xyz,
                       sun[uint2(SUN_LIGHT_TEXEL, 0)].w, 1.f, false);
 }
 
 // Whether a ray from `origin` reaches `light_point`, stopping LIGHT_CLEARANCE short of it (rt_lights' rays).
+// src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:166 RAB_GetConservativeVisibility's ray, traced as rt_lights' LightRayReaches.
 bool DiVisible(float3 origin, float3 light_point) {
   const float3 to_light = light_point - origin;
   const float light_distance = length(to_light);
+  // guard output: a light within 1 mm of the ray origin (or a NaN distance) reads shadowed, no ray; box S10.
   if (!(light_distance > 1.0003098e-3f)) return false;
 #if defined(DI_CONSERVATIVE)
   // Source: RTXDI RtxdiApplicationBridge.md, RAB_GetConservativeVisibility ("conservative visibility can skip
@@ -98,7 +103,7 @@ bool DiVisible(float3 origin, float3 light_point) {
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = to_light / light_distance;
-  ray.TMin = 0.f;
+  ray.TMin = 0.f;  // ours: the origin is already off the surface (rt_di_initial's stored origin, B1)
   ray.TMax = light_distance - min(LIGHT_CLEARANCE, 0.5f * light_distance);
   SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query;
   query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, ray);
@@ -110,6 +115,7 @@ bool DiVisible(float3 origin, float3 light_point) {
 }
 
 // Light `light`'s place in the last trace's list (b4's light_previous; NO_LIGHT: new).
+// src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:139 RAB_TranslateLightIndex's current-to-previous map, from b4's light_previous bytes.
 uint LightInLastList(uint light) {
   // Its byte (selected, not indexed).
   const uint4 words = light_previous[light >> 4u];
@@ -119,12 +125,14 @@ uint LightInLastList(uint light) {
 
 // The last trace's lights' places in this one's list (the temporal pass's group builds it: DiCurrentClear, barrier,
 // DiCurrentBuild, barrier); 0xFFFFFFFF: gone. Two lights at one place (equal position and reach) keep the first.
+// src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:139 RAB_TranslateLightIndex's previous-to-current map, built by each group from light_previous.
 groupshared uint di_current_of[128];
 void DiCurrentClear(uint index) {
   di_current_of[index] = 0xFFFFFFFFu;
   di_current_of[index + 64u] = 0xFFFFFFFFu;
 }
 void DiCurrentBuild(uint index) {
+  // guard inert: a light_count past b4's 128 lights; proof pending S5G; trace HARNESS_LIGHT_STRESS=125 (128 lights).
   const uint count = min(light_count, 128u);
   [unroll]
   for (uint pair = 0u; pair < 2u; ++pair) {
@@ -135,6 +143,7 @@ void DiCurrentBuild(uint index) {
   }
 }
 // The last trace's light `previous`'s index in this trace's list (0xFFFFFFFF: gone).
+// src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:139 RAB_TranslateLightIndex, previous to current.
 uint DiCurrentLight(uint previous) {
   return (previous < 128u) ? di_current_of[previous] : 0xFFFFFFFFu;
 }

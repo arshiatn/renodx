@@ -15,11 +15,13 @@
 #include "./rt_rtxdi_bridge.hlsli"
 #include "./rt_di_initial.hlsli"
 
+// src: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/DI/GenerateInitialSamples.hlsl:22 the initial pass: the pixel's surface, its sampled reservoir, stored.
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   SceneRayFlags();
   if (id.x >= width || id.y >= height) return;
   RAB_Surface surface = RAB_GetGBufferSurface(int2(id.xy), false);
+  // dev: spec:rtxdi@fdbd9b3:Samples/MinimalSample/Shaders/InitialSampling.hlsl:34: no store at a non-DI pixel (RTXDI stores an empty reservoir there); RAB_GetGBufferSurface rejects that pixel as a neighbour or history, so its old reservoir is never read.
   if (!RAB_IsSurfaceValid(surface)) return;
   // The pixel's rays start where rt_lights' do (off a planar surface along the normal from the depth, else toward the
   // camera; past a hidden shape with Rays Start Past Hidden Shapes), stored for every DI pass that loads this surface,

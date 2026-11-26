@@ -11,9 +11,11 @@
 #ifndef SRC_GAMES_TWATTILA_DLAA_HELPER_RT_DI_INITIAL_HLSLI_
 #define SRC_GAMES_TWATTILA_DLAA_HELPER_RT_DI_INITIAL_HLSLI_
 
-static const uint DI_CANDIDATES = 8u;
+static const uint DI_CANDIDATES = 8u;  // src: spec:rtxdi-lib@b67f61c:Source/ReSTIRDI.cpp:49 numLocalLightSamples 8
 
 // The reservoir of a DI pixel's surface (its rays from its stored origin: rt_di_initial) at `pixel`, and its pick's sample.
+// src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/Reservoir.hlsli:156 RTXDI_StreamSample over the tile's listed lights (source pdf 1 / listed),
+// then the pick's visibility (RTXDI's enableInitialVisibility).
 RTXDI_DIReservoir DiInitialSample(uint2 pixel, RAB_Surface surface, inout RTXDI_RandomSamplerState rng, out RAB_LightSample picked) {
   picked = RAB_EmptyLightSample();
   RTXDI_DIReservoir reservoir = RTXDI_EmptyDIReservoir();

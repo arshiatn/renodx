@@ -28,11 +28,14 @@
 #endif
 
 // The spatial neighbour `index` of `count` around `centre` in the last trace (RTXDI's stratified offsets).
+// src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/SpatialResampling.hlsli:49 the offset's index and the sampling radius, clamped into view.
 int2 DiSpatialNeighbour(int2 centre, uint sequence, uint index, uint count, RTXDI_RuntimeParameters runtime, RTXDI_DISpatialResamplingParameters spatial) {
   const uint offset = RTXDI_CalculateSpatialNeighborOffsetIndex(sequence, index, count, runtime, spatial.neighborOffsetSamplingMode);
   return RAB_ClampSamplePositionIntoView(centre + int2(float2(RTXDI_DI_NEIGHBOR_OFFSETS_BUFFER[offset].xy) * spatial.samplingRadius), true);
 }
 
+// src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/GI/SpatioTemporalResampling.hlsli:20 the loop shape, with the DI temporal
+// (TemporalResampling.hlsli:29) and spatial (SpatialResampling.hlsli:172) steps inside it.
 RTXDI_DIReservoir DiSpatioTemporalResampling(uint2 pixel, RAB_Surface surface, RTXDI_DIReservoir current, inout RTXDI_RandomSamplerState rng,
                                              RTXDI_RuntimeParameters runtime, RTXDI_ReservoirBufferParameters reservoirs, float3 motion,
                                              RTXDI_DITemporalResamplingParameters temporal, RTXDI_DISpatialResamplingParameters spatial) {
@@ -54,9 +57,11 @@ RTXDI_DIReservoir DiSpatioTemporalResampling(uint2 pixel, RAB_Surface surface, R
   for (int i = 0; i < tries + (temporal.enableFallbackSampling ? 1 : 0); ++i) {
     fallback = i == tries;
     int2 at = fallback ? int2(pixel) : centre;
+    // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/TemporalResampling.hlsli:72 the tries' radius, 4 pixels.
     if (i != 0 && !fallback) at += int2((float2(RTXDI_GetNextRandom(rng), RTXDI_GetNextRandom(rng)) - 0.5f) * 4.f);
     if ((temporal.enablePermutationSampling && i == 0) || fallback) RTXDI_ApplyPermutationSampling(at, temporal.uniformRandomNumber);
     temporal_surface = RAB_GetGBufferSurface(at, true);
+    // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/TemporalResampling.hlsli:110 (and the depth / normal test's continue at :117).
     if (!RAB_IsSurfaceValid(temporal_surface)) continue;
     if (!fallback && !RTXDI_IsValidNeighbor(RAB_GetSurfaceNormal(surface), RAB_GetSurfaceNormal(temporal_surface), expected_depth,
                                             RAB_GetSurfaceLinearDepth(temporal_surface), temporal.normalThreshold, temporal.depthThreshold)) {
@@ -80,16 +85,19 @@ RTXDI_DIReservoir DiSpatioTemporalResampling(uint2 pixel, RAB_Surface surface, R
   const uint sequence = RTXDI_InitializeSpatialNeighborSequence(RTXDI_GetNextRandom(rng), runtime, spatial.neighborOffsetSamplingMode);
   [loop]
   for (uint sample = 0u; sample <= count; ++sample) {
+    // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/GI/SpatioTemporalResampling.hlsli:81 no temporal surface: the spatial samples only.
     if (sample == 0u && !found) continue;
     const int2 at = (sample == 0u) ? centre : DiSpatialNeighbour(centre, sequence, sample - 1u, count, runtime, spatial);
     RAB_Surface neighbour = temporal_surface;
     if (sample != 0u) {
       neighbour = RAB_GetGBufferSurface(at, true);
+      // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/SpatialResampling.hlsli:233 (its depth / normal and material continues at :238, :241).
       if (!RAB_IsSurfaceValid(neighbour)) continue;
       if (!RTXDI_IsValidNeighbor(RAB_GetSurfaceNormal(surface), RAB_GetSurfaceNormal(neighbour), expected_depth, RAB_GetSurfaceLinearDepth(neighbour),
                                  spatial.normalThreshold, spatial.depthThreshold)) {
         continue;
       }
+      // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/SpatialResampling.hlsli:241 the material test's continue.
       if (spatial.enableMaterialSimilarityTest && !RAB_AreMaterialsSimilar(RAB_GetMaterial(surface), RAB_GetMaterial(neighbour))) continue;
     }
     RTXDI_DIReservoir previous = RTXDI_LoadDIReservoir(reservoirs, RTXDI_PixelPosToReservoirPos(at, runtime.activeCheckerboardField), DI_HISTORY_ARRAY);
@@ -99,7 +107,10 @@ RTXDI_DIReservoir DiSpatioTemporalResampling(uint2 pixel, RAB_Surface surface, R
     const uint original_light = RTXDI_GetDIReservoirLightIndex(previous);
     if (RTXDI_IsValidDIReservoir(previous)) {
       const int mapped = RAB_TranslateLightIndex(original_light, false);
+      // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/TemporalResampling.hlsli:158 a light gone since the last trace kills
+      // the reservoir.
       previous.weightSum = (mapped < 0) ? 0.f : previous.weightSum;
+      // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/TemporalResampling.hlsli:162 (its light data 0).
       previous.lightData = (mapped < 0) ? 0u : (uint(mapped) | RTXDI_DIReservoir_LightValidBit);
     }
     merged |= 1u << sample;
@@ -125,6 +136,7 @@ RTXDI_DIReservoir DiSpatioTemporalResampling(uint2 pixel, RAB_Surface surface, R
       const RAB_LightInfo selected_light = RAB_LoadLightInfo(selected_previous, true);
       [loop]
       for (uint sample = 0u; sample <= count; ++sample) {
+        // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/GI/SpatioTemporalResampling.hlsli:206 the samples skipped above skipped again.
         if ((merged & (1u << sample)) == 0u) continue;
         const int2 at = (sample == 0u) ? centre : DiSpatialNeighbour(centre, sequence, sample - 1u, count, runtime, spatial);
         RAB_Surface neighbour = temporal_surface;  // no struct conditional in HLSL
@@ -154,6 +166,7 @@ RTXDI_DIReservoir DiSpatioTemporalResampling(uint2 pixel, RAB_Surface surface, R
   return state;
 }
 
+// src: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/GI/FusedResampling.hlsl:27 the fused pass: one reuse pass, then shading.
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID, uint index : SV_GroupIndex) {
   DiCurrentClear(index);
@@ -163,6 +176,7 @@ void main(uint3 id : SV_DispatchThreadID, uint index : SV_GroupIndex) {
   SceneRayFlags();
   if (id.x >= width || id.y >= height) return;
   const RAB_Surface surface = RAB_GetGBufferSurface(int2(id.xy), false);
+  // dev: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/GI/FusedResampling.hlsl:48: no store at a non-DI pixel (RTXDI stores an empty reservoir there); RAB_GetGBufferSurface rejects that pixel as a neighbour or history, so its old reservoir is never read.
   if (!RAB_IsSurfaceValid(surface)) return;
   const RTXDI_ReservoirBufferParameters reservoirs = DiReservoirParameters();
   RTXDI_DIReservoir reservoir = RTXDI_LoadDIReservoir(reservoirs, id.xy, DI_INITIAL_ARRAY);
