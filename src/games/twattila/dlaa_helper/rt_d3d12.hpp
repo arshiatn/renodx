@@ -6555,6 +6555,7 @@ class RtScene12 {
   // RTXDI's neighbour offsets for the spatial pass (a power of two; rt_di_surface.hlsli di_offset_mask).
   // src: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/ReSTIRDI.h:44 NeighborOffsetCount 8192 (review pdi4cr_ S4: 1024 had no source).
   static constexpr uint32_t DI_OFFSET_COUNT = 8192;
+  static constexpr uint32_t DI_LIGHT_R11G11B10 = 32u;  // rt_di_surface.hlsli: the slm DI texture's format, the skinlm one's at the next bit
   static constexpr uint64_t DI_RESERVOIR_BYTES = sizeof(RTXDI_PackedDIReservoir);
   // The reservoirs' and the neighbour offsets' null views (as their buffers' kinds).
   static constexpr D3D12_UNORDERED_ACCESS_VIEW_DESC DI_RESERVOIRS_NULL = {.Format = DXGI_FORMAT_UNKNOWN, .ViewDimension = D3D12_UAV_DIMENSION_BUFFER,
@@ -8823,7 +8824,7 @@ class RtScene12 {
       static const uint32_t di_test = [] {
         std::array<wchar_t, 16> value = {};
         return (GetEnvironmentVariableW(L"RENODX_TW_DI_TEST", value.data(), static_cast<DWORD>(value.size())) != 0)
-                   ? static_cast<uint32_t>(std::wcstoul(value.data(), nullptr, 0)) & ~1u
+                   ? static_cast<uint32_t>(std::wcstoul(value.data(), nullptr, 0)) & (DI_LIGHT_R11G11B10 - 2u)
                    : 0u;
       }();
       Mark(list, L"torch light DI");
@@ -8834,8 +8835,11 @@ class RtScene12 {
           Transition(di_light_[1].Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
       };
       list->ResourceBarrier(static_cast<UINT>(to_di.size()), to_di.data());
-      // b2 (rt_di_surface.hlsli DiPass): the layout, the flags, the temporal pass's permutation number, the offsets' mask.
-      const std::array<uint32_t, 5> di_constants = {di_layout.reservoirBlockRowPitch, di_layout.reservoirArrayPitch, (di_history ? 1u : 0u) | di_test,
+      // b2 (rt_di_surface.hlsli DiPass): the layout, the flags (with the DI textures' formats: DiStore's rounding), the
+      // temporal pass's permutation number, the offsets' mask.
+      const uint32_t di_formats = ((di_light_[0]->GetDesc().Format == DXGI_FORMAT_R11G11B10_FLOAT) ? DI_LIGHT_R11G11B10 : 0u)
+                                  | ((di_light_[1]->GetDesc().Format == DXGI_FORMAT_R11G11B10_FLOAT) ? DI_LIGHT_R11G11B10 << 1 : 0u);
+      const std::array<uint32_t, 5> di_constants = {di_layout.reservoirBlockRowPitch, di_layout.reservoirArrayPitch, (di_history ? 1u : 0u) | di_test | di_formats,
                                                     rtxdi::JenkinsHash(frame), DI_OFFSET_COUNT - 1};
       list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(di_constants.size()), di_constants.data(), 0);
       for (ID3D12PipelineState* pass : {di_initial_pipeline_.Get(), di_temporal_pipeline_.Get(), di_spatial_pipeline_.Get(), di_shade_pipeline_.Get()}) {

@@ -37,6 +37,9 @@ static const uint DI_HISTORY = 1u;  // the last trace's reservoirs (DI_SHADE_ARR
 static const uint DI_BIAS_SHIFT = 1u;
 static const uint DI_NO_TEMPORAL = 8u;
 static const uint DI_NO_SPATIAL = 16u;
+// The DI textures' formats (rt_d3d12.hpp; rt_di_shade.hlsl DiStore): the slm texture R11G11B10_FLOAT, the skinlm one
+// at the next bit; each else R16G16B16A16_FLOAT (dlaa_bridge.h's two).
+static const uint DI_LIGHT_R11G11B10 = 32u;
 
 // The reservoirs' two arrays (rt_d3d12.hpp DI_RESERVOIR_ARRAYS).
 // ours: two, not the three of RTXDI's ReSTIR DI context (ReSTIRDI.h c_NumReSTIRDIReservoirBuffers; its ReSTIR GI keeps
