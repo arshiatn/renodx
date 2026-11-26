@@ -5,10 +5,12 @@
 // RenoDX render scale (search "RenoDX"): the game builds the light coordinate and the dispatches for the full-size
 // screen, the DLSS addon draws the depth into its top-left render scale part. The rays stay in full-size pixels (the
 // same shadow length on screen as at full size), read the depth in the rendered part and write each rendered pixel
-// once. At full size the same as the game's. Modified (O-SS5, 11-26): built with BEND_SSS_SCREEN_STEPS (the *_steps
-// shaders, the hosts' below 100% render scale) and ScreenStep below 1, the samples are screen pixels between the rendered
-// depth's texels (ScreenSample), so the shadows match 100%'s at every render scale; without it Bend's loops as they were
-// (100%, Shogun 2: the same code and cost, fx8_ G1: the steps' path in Bend's loops cost +58% at 100%).
+// once. At full size the same as the game's. Modified (O-SS5 11-26, grid 11-26): built with BEND_SSS_SCREEN_STEPS (the
+// *_steps shaders, the hosts' below 100% render scale) and ScreenStep below 1, the samples are screen pixels between the
+// rendered depth's texels (GridValue), so the shadows match 100%'s at every render scale; the group works out each
+// sample position along its ray once into groupshared (the grid pass) and Bend's loops read those slots (apd_ O2,
+// round_notes designs\sss_aprime_cheaper.md 3: 2-3x cheaper than every lane's own, G1); without it Bend's loops as they
+// were (100%, Shogun 2: the same code and cost, fx8_ G1: the steps' path in Bend's loops cost +58% at 100%).
 
 // Copyright 2023 Sony Interactive Entertainment.
 //
@@ -130,10 +132,14 @@ struct DispatchParameters
 	// RenoDX: the shadow fades out between these shares of the far plane's distance (y <= x: none).
 	float2 FarFade;
 	// RenoDX render scale (O-SS5): render pixels (groupshared entries) per sample, 1 = Bend's one sample per depth texel.
-	// Below 1 the march takes one sample per screen pixel (ScreenSample), so every count of Bend's (the length, hard,
+	// Below 1 the march takes one sample per screen pixel (GridValue), so every count of Bend's (the length, hard,
 	// fade, its 4 lanes, the near-light window) means on screen what it means at 100%. Read with BEND_SSS_SCREEN_STEPS
 	// only.
 	float ScreenStep;
+#ifdef BEND_SSS_SCREEN_STEPS
+	// RenoDX render scale (apd_ O2): the groupshared slots a sample apart (WriteScreenSpaceShadow sets it).
+	int GridStride;
+#endif
 #ifdef BEND_SSS_LIGHT_CASTERS
 	// RenoDX (Attila's Light Through Foliage): what a depth marked negative shadows keeps this share of the light.
 	float CasterLight;
@@ -338,10 +344,30 @@ struct DispatchParameters
 #endif
 	groupshared bool LdsEarlyOut;
 
-	// RenoDX render scale (O-SS5, round_notes plan_1117 designs\sss_scale_thickness.md 2.2): sample `n` of the march,
-	// (n + 1) x ScreenStep render pixels from the pixel along the ray (groupshared from `sample_index` on, whose entry
-	// k lies k + 1 render pixels out: index -1 is the pixel's own read): x its parallel-space depth (Bend's stored depth),
-	// y its light casters' least delta (0 without BEND_SSS_LIGHT_CASTERS). On an entry (ScreenStep 1: always) the entry
+	// Sample `n` of the march from groupshared: x its parallel-space depth (Bend's stored depth), y its light casters'
+	// least delta (0 without BEND_SSS_LIGHT_CASTERS). Without BEND_SSS_SCREEN_STEPS entry `sample_index` + n itself
+	// (Bend's loops' reads); with it the grid slot GridStride x n past the lane's first (`sample_index`), GridValue's
+	// value at the sample's position (the grid pass in WriteScreenSpaceShadow).
+	float2 ScreenSample(DispatchParameters inParameters, int sample_index, int n)
+	{
+#ifdef BEND_SSS_SCREEN_STEPS
+		const int k = sample_index + n * inParameters.GridStride;
+#else
+		const int k = sample_index + n;
+#endif
+#ifdef BEND_SSS_LIGHT_CASTERS
+		return float2(DepthData[k], LightData[k]);
+#else
+		return float2(DepthData[k], 0);
+#endif
+	}
+
+#ifdef BEND_SSS_SCREEN_STEPS
+	// RenoDX render scale (O-SS5, round_notes plan_1117 designs\sss_scale_thickness.md 2.2): the value at render position
+	// a + f along the wave's ray (entry a, 0 <= f < 1; entry k lies k render pixels past lane 0's own read, entry 0),
+	// `nearer_b` f's nearer entry a + 1, `a_distance` entry a's distance. The O-SS5 estimator as A' had it per sample (fx8_
+	// reland 5c2c5042f's ScreenSample), moved here unchanged but for the two marked deviations (apd_ O2, designs\
+	// sss_aprime_cheaper.md 5: a_distance from the grid thread, nearer_b in integers). On an entry (f 0) the entry
 	// itself, Bend's to the bit. Between two entries:
 	// - on one surface (src: Bend's bilinear edge test, its BilinearThreshold of the remaining depth, here along the ray;
 	//   neither entry left out near the light, 1e10; and ours, deviation from the design: a step over one window,
@@ -360,30 +386,18 @@ struct DispatchParameters
 	//   shadows, grazing ground's mean occlusion 0.57 at 33% against 100%'s 0.08).
 	// The light casters' delta is the nearer entry's (ours: a sub-sample takes the nearer texel's material, as a full
 	// size G-buffer read would).
-	// Without BEND_SSS_SCREEN_STEPS: entry n itself (Bend's loops' reads).
-	float2 ScreenSample(DispatchParameters inParameters, int sample_index, int n, float first_sample_distance, float direction)
+	// apd_ O2 (ours): A' branched on f != 0 per sample; here every grid point takes the one path (f 0 selects the entry's
+	// own values), since the grid pass runs a point a thread and both kinds of point lie in one round.
+	float2 GridValue(DispatchParameters inParameters, int a, float f, bool nearer_b, float a_distance, float direction)
 	{
-#ifndef BEND_SSS_SCREEN_STEPS
-#ifdef BEND_SSS_LIGHT_CASTERS
-		return float2(DepthData[sample_index + n], LightData[sample_index + n]);
-#else
-		return float2(DepthData[sample_index + n], 0);
-#endif
-#else
-		const float q = (float)(n + 1) * inParameters.ScreenStep - 1;
-		const float m = floor(q);
-		const float f = q - m;
-		const int a = sample_index + (int)m;
 		float stored = DepthData[a];
 #ifdef BEND_SSS_LIGHT_CASTERS
 		float light = LightData[a];
 #else
 		float light = 0;
 #endif
-		[branch] if (f != 0)
 		{
 			const float b_stored = DepthData[a + 1];
-			const float a_distance = first_sample_distance + (m + 1) * direction;
 			const float a_depth = stored * a_distance + inParameters.LightCoordinate.z;
 			const float b_depth = b_stored * (a_distance + direction) + inParameters.LightCoordinate.z;
 			const float step = b_depth - a_depth;
@@ -396,24 +410,27 @@ struct DispatchParameters
 			const bool one_surface = abs(stored) < 9.998519e8 && abs(b_stored) < 1e9 && abs(step) <= inParameters.BilinearThreshold * remaining
 			                         && ((abs(after_step - step) <= window && abs(step - before_step) <= window)
 			                             || (abs(step) <= window && step * after_step >= 0 && step * before_step >= 0));
+			// apd_ O2 (deviation, arithmetic): the sample's distance a_distance + f x direction, A''s the lane's
+			// first_sample_distance + (q + 1) x direction (equal in real arithmetic, a few ulps apart in float).
 #if BEND_SSS_STEP_CONTROL == 1
 			// Test only (tw_screen_space_shadows case 11, W5's CONTROL): ATN debug14's staircase, the nearer texel's depth
 			// at the sample's own distance.
-			stored = (((f >= 0.5) ? b_depth : a_depth) - inParameters.LightCoordinate.z) / (first_sample_distance + (q + 1) * direction);
+			if (f != 0)
+				stored = ((nearer_b ? b_depth : a_depth) - inParameters.LightCoordinate.z) / (a_distance + f * direction);
 #else
-			if (one_surface)
-				stored = (lerp(a_depth, b_depth, f) - inParameters.LightCoordinate.z) / (first_sample_distance + (q + 1) * direction);
-			else if (f >= 0.5)
+			if (f != 0 && one_surface)
+				stored = (lerp(a_depth, b_depth, f) - inParameters.LightCoordinate.z) / (a_distance + f * direction);
+			else if (nearer_b)
 				stored = b_stored;
 #endif
 #ifdef BEND_SSS_LIGHT_CASTERS
-			if (f >= 0.5)
+			if (nearer_b)
 				light = LightData[a + 1];
 #endif
 		}
 		return float2(stored, light);
-#endif
 	}
+#endif
 
 #ifdef BEND_SSS_EXTENDED
 	// RenoDX extended: what the loops carry between samples. Auto Thickness's run (its first sample, the depth and step of
@@ -434,15 +451,13 @@ struct DispatchParameters
 	// thick as it is wide", CC0, as bitmask.hlsli's): a run starts where the depth jumps more than a window from the sample
 	// before or bends by more than half of one; a sample's back lies 2 (m - 1) windows further than Bend's, m growing along
 	// the run, its front edge Bend's; light casters (foliage, banners) stay thin.
-	// RenoDX render scale: the samples ScreenSample's (first_sample_distance, direction its ray's).
+	// RenoDX render scale: the samples ScreenSample's.
 	float4 ExtendedDeltas(DispatchParameters inParameters, inout ExtendedState state, int first, int sample_index, float start_depth,
-	                      float depth_scale, float z_sign, float first_sample_distance, float direction)
+	                      float depth_scale, float z_sign)
 	{
 		const int4 index = first + int4(0, 1, 2, 3);
-		const float2 samples[4] = {ScreenSample(inParameters, sample_index, first, first_sample_distance, direction),
-		                           ScreenSample(inParameters, sample_index, first + 1, first_sample_distance, direction),
-		                           ScreenSample(inParameters, sample_index, first + 2, first_sample_distance, direction),
-		                           ScreenSample(inParameters, sample_index, first + 3, first_sample_distance, direction)};
+		const float2 samples[4] = {ScreenSample(inParameters, sample_index, first), ScreenSample(inParameters, sample_index, first + 1),
+		                           ScreenSample(inParameters, sample_index, first + 2), ScreenSample(inParameters, sample_index, first + 3)};
 		const float4 sample_depth = float4(samples[0].x, samples[1].x, samples[2].x, samples[3].x) * depth_scale;
 		const float4 light_data = float4(samples[0].y, samples[1].y, samples[2].y, samples[3].y);
 		const float4 offset = start_depth - sample_depth;
@@ -496,8 +511,55 @@ struct DispatchParameters
 	void WriteScreenSpaceShadow(DispatchParameters inParameters, int3 inGroupID, int inGroupThreadID, int inSampleCount)
 	{
 #ifdef BEND_SSS_SCREEN_STEPS
-		// RenoDX render scale: the reads cover the render pixels the samples span (ScreenStep 1: Bend's).
-		const int read_count = (int)((uint)ceil((float)inSampleCount * inParameters.ScreenStep) / WAVE_SIZE) + 2;
+		// RenoDX render scale, apd_ O2 (ours: one shared screen grid, round_notes designs\sss_aprime_cheaper.md 3.1, 3.4):
+		// grid point j lies j x grid_u / grid_v render pixels past entry 0 (lane 0's own read), the lane's sample n is
+		// point grid_base + n x grid_p. A value there depends on the entries and uniform constants alone, not on the lane,
+		// so one evaluation a point serves every lane whose samples land on it.
+		// - Exact: the share p / q with the least q in 2..4 (2/3, 1/2, 1/3, 3/4): thirds at 2/3, the lanes' samples A''s
+		//   positions (lane L's n at L + (n + 1) x share).
+		// - Else (ours, deviation): one point a screen pixel (render / full width), a lane's first the point nearest A''s
+		//   first sample: its samples move by at most half a screen pixel.
+		// - Slots: point j in groupshared slot j + 2, all within the 16 KB (no new groupshared): exact where it fits, else
+		//   one point a screen pixel, else the samples cut to fit with the fade moved in (ours, deviation: 1920 samples
+		//   at 50% and below, -4 at 50%).
+		const uint render_w = (uint)inParameters.RenderSize.x;
+		const uint full_w = (uint)inParameters.FullSize.x;
+#if BEND_SSS_STEP_CONTROL == 4
+		// Test only (tw_screen_space_shadows case 11, W1's CONTROL, the wrapper's ScreenStep 0.5): half a render pixel a
+		// sample at any scale.
+		uint grid_u = 1;
+		uint grid_v = 2;
+		uint grid_p = 1;
+#else
+		uint grid_u = render_w;
+		uint grid_v = full_w;
+		uint grid_p = 1;
+		[unroll] for (uint q = 4; q >= 2; q--)
+		{
+			if ((render_w * q) % full_w == 0)
+			{
+				grid_u = 1;
+				grid_v = q;
+				grid_p = render_w * q / full_w;
+			}
+		}
+		if (((WAVE_SIZE - 1) * grid_v + grid_u / 2) / grid_u + grid_p * (uint)inSampleCount + 4 > READ_COUNT * WAVE_SIZE)
+		{
+			grid_u = render_w;
+			grid_v = full_w;
+			grid_p = 1;
+		}
+#endif
+		// The last lane's first point; the grid's points (G + 3 <= the slots).
+		const uint last_base = ((WAVE_SIZE - 1) * grid_v + grid_u / 2) / grid_u + grid_p;
+		inSampleCount = min(inSampleCount, (int)(((READ_COUNT * WAVE_SIZE - 4 - last_base) / grid_p + 1) & ~3u));
+		inParameters.FadeOutSamples = max(min(inParameters.FadeOutSamples, inSampleCount - inParameters.HardShadowSamples) & ~3, 4);
+		inParameters.GridStride = (int)grid_p;
+		const uint grid_count = last_base + (uint)(inSampleCount - 1) * grid_p + 1;
+		// The reads cover the entries the grid reads: up to the last point's entry + 2.
+		const int read_count = (int)(((grid_count - 1) * grid_u / grid_v + 3 + WAVE_SIZE - 1) / WAVE_SIZE);
+		// Auto Thickness's first previous depth (Bend's DepthData[sample_index - 1]: the grid overwrites that slot).
+		float own_stored = 0;
 #else
 		const int read_count = inSampleCount / WAVE_SIZE + 2;
 #endif
@@ -638,6 +700,10 @@ struct DispatchParameters
 				// Store the depth values in groupshared
 				int idx = (i * WAVE_SIZE) + inGroupThreadID.x;
 				DepthData[idx] = stored_depth;
+#ifdef BEND_SSS_SCREEN_STEPS
+				if (i == 0)
+					own_stored = stored_depth;
+#endif
 #ifdef BEND_SSS_LIGHT_CASTERS
 				// The contrast below turns this least delta into the caster's share of the light.
 #ifdef BEND_SSS_EXTENDED
@@ -701,6 +767,44 @@ struct DispatchParameters
 		// Sync wavefronts now groupshared DepthData is written
 		GroupMemoryBarrierWithGroupSync();
 
+#ifdef BEND_SSS_SCREEN_STEPS
+		// apd_ O2 grid pass (ours, designs\sss_aprime_cheaper.md 3.2), by every thread (its barriers) before the skipped
+		// pixels return: point j into slot j + 2 in place, in rounds of a point a thread from the last. A point's position
+		// is at most its index (grid_u <= grid_v), so its reads reach at most entry j + 2: a round's reads lie below every
+		// slot an earlier round wrote, and its barrier keeps its own reads before its writes. The entries are dead after it.
+		{
+			const int rounds = (int)((grid_count + WAVE_SIZE - 1) / WAVE_SIZE);
+#if BEND_SSS_STEP_CONTROL == 5
+			// Test only (tw_screen_space_shadows case 11, W12's CONTROL): the rounds from the first, over entries later
+			// rounds still read.
+			[loop] for (int r = 0; r < rounds; r++)
+#else
+			[loop] for (int r = rounds - 1; r >= 0; r--)
+#endif
+			{
+				const uint grid_point = (uint)r * WAVE_SIZE + (uint)inGroupThreadID.x;
+				const uint j = min(grid_point, grid_count - 1);
+				const uint position = j * grid_u;
+				const uint a = position / grid_v;
+				const uint rem = position - a * grid_v;
+				// The entry's distance from this thread's own (deviation, arithmetic: A' took the lane's; consecutive
+				// threads are consecutive pixels along the ray, ComputeWavefrontExtents). Nearer b in integers (deviation,
+				// exactness: A''s float f >= 0.5, the same at the W tests' shares).
+				const float2 value = GridValue(inParameters, (int)a, (float)rem / (float)grid_v, 2 * rem >= grid_v,
+				                               first_sample_distance + (float)((int)a - inGroupThreadID.x) * direction, direction);
+				GroupMemoryBarrierWithGroupSync();
+				if (grid_point < grid_count)
+				{
+					DepthData[j + 2] = value.x;
+#ifdef BEND_SSS_LIGHT_CASTERS
+					LightData[j + 2] = value.y;
+#endif
+				}
+			}
+			GroupMemoryBarrierWithGroupSync();
+		}
+#endif
+
 		// If the starting depth isn't in depth bounds, then we don't need a shadow
 		if (skip_pixel)
 			return;
@@ -715,7 +819,13 @@ struct DispatchParameters
 		start_depth = (start_depth - inParameters.LightCoordinate.z) / first_sample_distance;
 
 		// Start by reading the next value
+#ifdef BEND_SSS_SCREEN_STEPS
+		// apd_ O2: the lane's first point (exact: L q + p; else the nearest to A''s first sample) and its slot.
+		const uint grid_base = ((uint)inGroupThreadID.x * grid_v + grid_u / 2) / grid_u + grid_p;
+		int sample_index = (int)grid_base + 2;
+#else
 		int sample_index = inGroupThreadID.x + 1;
+#endif
 
 		float4 shadow_value = 1;
 		float hard_shadow = 1;
@@ -743,25 +853,29 @@ struct DispatchParameters
 		// rounds them: the same minimums into the same lanes), each sample's delta from ExtendedDeltas.
 		ExtendedState state;
 		state.run_start = 0;
+#ifdef BEND_SSS_SCREEN_STEPS
+		state.previous_depth = own_stored * depth_scale;
+#else
 		state.previous_depth = DepthData[sample_index - 1] * depth_scale;
+#endif
 		state.previous_step = 0;
 		state.hit = -1;
 		state.thin = -1;
 		state.thin_weight = 0;
 		[loop] for (i = 0; i < inParameters.HardShadowSamples; i += 4)
 		{
-			const float4 depth_delta = ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign, first_sample_distance, direction);
+			const float4 depth_delta = ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign);
 			hard_shadow = min(hard_shadow, min(min(depth_delta.x, depth_delta.y), min(depth_delta.z, depth_delta.w)));
 		}
 		[loop] for (i = inParameters.HardShadowSamples; i < inSampleCount - inParameters.FadeOutSamples; i += 4)
 		{
-			shadow_value = min(shadow_value, ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign, first_sample_distance, direction));
+			shadow_value = min(shadow_value, ExtendedDeltas(inParameters, state, i, sample_index, start_depth, depth_scale, z_sign));
 		}
 		[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade += 4)
 		{
 			const float4 fade_out = (float4)(fade + int4(1, 2, 3, 4)) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
 			const float4 depth_delta = ExtendedDeltas(inParameters, state, inSampleCount - inParameters.FadeOutSamples + fade, sample_index,
-			                                          start_depth, depth_scale, z_sign, first_sample_distance, direction);
+			                                          start_depth, depth_scale, z_sign);
 			shadow_value = min(shadow_value, depth_delta + fade_out);
 		}
 		const int hit = state.hit;
@@ -772,7 +886,7 @@ struct DispatchParameters
 		// (RenoDX render scale: every sample of the three loops ScreenSample's)
 		[loop] for (i = 0; i < inParameters.HardShadowSamples; i++)
 		{
-			const float2 hard_sample = ScreenSample(inParameters, sample_index, i, first_sample_distance, direction);
+			const float2 hard_sample = ScreenSample(inParameters, sample_index, i);
 			float depth_delta = abs(start_depth - hard_sample.x * depth_scale);
 #ifdef BEND_SSS_LIGHT_CASTERS
 			depth_delta = max(depth_delta, hard_sample.y);
@@ -788,10 +902,10 @@ struct DispatchParameters
 		// the sample counts are multiples of 4).
 		[loop] for (i = inParameters.HardShadowSamples; i < inSampleCount - inParameters.FadeOutSamples; i += 4)
 		{
-			const float2 main_samples[4] = {ScreenSample(inParameters, sample_index, i, first_sample_distance, direction),
-			                                ScreenSample(inParameters, sample_index, i + 1, first_sample_distance, direction),
-			                                ScreenSample(inParameters, sample_index, i + 2, first_sample_distance, direction),
-			                                ScreenSample(inParameters, sample_index, i + 3, first_sample_distance, direction)};
+			const float2 main_samples[4] = {ScreenSample(inParameters, sample_index, i),
+			                                ScreenSample(inParameters, sample_index, i + 1),
+			                                ScreenSample(inParameters, sample_index, i + 2),
+			                                ScreenSample(inParameters, sample_index, i + 3)};
 			float4 depth_delta = abs(start_depth - float4(main_samples[0].x, main_samples[1].x, main_samples[2].x, main_samples[3].x) * depth_scale);
 #ifdef BEND_SSS_LIGHT_CASTERS
 			depth_delta = max(depth_delta, float4(main_samples[0].y, main_samples[1].y, main_samples[2].y, main_samples[3].y));
@@ -805,7 +919,7 @@ struct DispatchParameters
 		// Final fade out samples (RenoDX: counted from the first, fade; Bend's i is inSampleCount - FADE_OUT_SAMPLES + fade)
 		[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade++)
 		{
-			const float2 fade_sample = ScreenSample(inParameters, sample_index, inSampleCount - inParameters.FadeOutSamples + fade, first_sample_distance, direction);
+			const float2 fade_sample = ScreenSample(inParameters, sample_index, inSampleCount - inParameters.FadeOutSamples + fade);
 			float depth_delta = abs(start_depth - fade_sample.x * depth_scale);
 #ifdef BEND_SSS_LIGHT_CASTERS
 			depth_delta = max(depth_delta, fade_sample.y);
@@ -872,17 +986,18 @@ struct DispatchParameters
 #ifdef BEND_SSS_EXTENDED
 			ExtendedResult extended;
 			extended.hit = hit >= 0;
-			// RenoDX render scale: a sample is ScreenStep render pixels (step_xy's) along the ray.
+			// RenoDX render scale: a sample's position along the ray in render pixels (step_xy's).
 #if !defined(BEND_SSS_SCREEN_STEPS) || BEND_SSS_STEP_CONTROL == 3
 			// One render pixel a sample (test only with BEND_SSS_SCREEN_STEPS: tw_screen_space_shadows case 11, W8's
 			// CONTROL).
-			const float sample_step = 1;
+			extended.hit_xy = own_xy + (float)(hit + 1) * step_xy;
+			extended.thin_xy = own_xy + (float)(thin_hit + 1) * step_xy;
 #else
-			const float sample_step = inParameters.ScreenStep;
+			// apd_ O2: its grid point's position past the lane's own read.
+			extended.hit_xy = own_xy + ((float)((grid_base + (uint)hit * grid_p) * grid_u) / (float)grid_v - (float)inGroupThreadID.x) * step_xy;
+			extended.thin_xy = own_xy + ((float)((grid_base + (uint)thin_hit * grid_p) * grid_u) / (float)grid_v - (float)inGroupThreadID.x) * step_xy;
 #endif
-			extended.hit_xy = own_xy + (float)(hit + 1) * sample_step * step_xy;
 			extended.thin = thin_hit >= 0 && thin_weight > 0;
-			extended.thin_xy = own_xy + (float)(thin_hit + 1) * sample_step * step_xy;
 			extended.thin_weight = thin_weight;
 			extended.depth = first_sampling_depth;
 			WriteExtended(inParameters, (int2)write_xy, result, extended);
