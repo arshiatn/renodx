@@ -503,6 +503,71 @@ struct DispatchParameters
 	}
 #endif
 
+#ifndef BEND_SSS_EXTENDED
+	// Bend's three loops (WriteScreenSpaceShadow's, moved: Bend Studio's bend_sss_gpu.h): the hard samples into
+	// `hard_shadow`, the main and fade-out samples into the 4 lanes of `shadow_value`. `with_light` false (a literal: the
+	// light casters' reads compiled out of that copy) leaves the light casters' deltas out (apd_ O2d, below). `i` the
+	// caller's loop counter (ours: a counter of its own moved the plain shaders' registers, their fxc output no longer
+	// the bit-identical one).
+	void BendLoops(DispatchParameters inParameters, int sample_index, int inSampleCount, float start_depth, float depth_scale, bool with_light, inout int i,
+	               inout float hard_shadow, inout float4 shadow_value)
+	{
+		// The first number of hard shadow samples, a single pixel can produce a full shadow
+		// (RenoDX render scale: every sample of the three loops ScreenSample's)
+		[loop] for (i = 0; i < inParameters.HardShadowSamples; i++)
+		{
+			const float2 hard_sample = ScreenSample(inParameters, sample_index, i);
+			float depth_delta = abs(start_depth - hard_sample.x * depth_scale);
+#ifdef BEND_SSS_LIGHT_CASTERS
+			if (with_light)
+				depth_delta = max(depth_delta, hard_sample.y);
+#endif
+
+			// We want to find the distance of the sample that is closest to the reference depth
+			hard_shadow = min(hard_shadow, depth_delta);
+		}
+
+		// Brute force go!
+		// The main shadow samples, averaged in to a set of 4 shadow values
+		// RenoDX: 4 per iteration, sample i into component i & 3 as Bend's (HARD_SHADOW_SAMPLES, FADE_OUT_SAMPLES and
+		// the sample counts are multiples of 4).
+		[loop] for (i = inParameters.HardShadowSamples; i < inSampleCount - inParameters.FadeOutSamples; i += 4)
+		{
+			const float2 main_samples[4] = {ScreenSample(inParameters, sample_index, i),
+			                                ScreenSample(inParameters, sample_index, i + 1),
+			                                ScreenSample(inParameters, sample_index, i + 2),
+			                                ScreenSample(inParameters, sample_index, i + 3)};
+			float4 depth_delta = abs(start_depth - float4(main_samples[0].x, main_samples[1].x, main_samples[2].x, main_samples[3].x) * depth_scale);
+#ifdef BEND_SSS_LIGHT_CASTERS
+			if (with_light)
+				depth_delta = max(depth_delta, float4(main_samples[0].y, main_samples[1].y, main_samples[2].y, main_samples[3].y));
+#endif
+
+			// Do the same as the hard_shadow code above, but this will accumulate to 4 separate values.
+			// By using 4 values, the average shadow can be taken, which can help soften single-pixel shadows.
+			shadow_value = min(shadow_value, depth_delta);
+		}
+
+		// Final fade out samples (RenoDX: counted from the first, fade; Bend's i is inSampleCount - FADE_OUT_SAMPLES + fade)
+		[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade++)
+		{
+			const float2 fade_sample = ScreenSample(inParameters, sample_index, inSampleCount - inParameters.FadeOutSamples + fade);
+			float depth_delta = abs(start_depth - fade_sample.x * depth_scale);
+#ifdef BEND_SSS_LIGHT_CASTERS
+			if (with_light)
+				depth_delta = max(depth_delta, fade_sample.y);
+#endif
+
+			// Add the fade value to these samples
+			const float fade_out = (float)(fade + 1) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
+
+			// RenoDX: its component by a mask (a run-time count: no unrolled indexing).
+			const bool4 lane = ((fade & 3) == int4(0, 1, 2, 3));
+			shadow_value = lane ? min(shadow_value, depth_delta + fade_out) : shadow_value;
+		}
+	}
+#endif
+
 	// Generate the shadow
 	//	Call this function from a compute shader with thread dimensions: numthreads[WAVE_SIZE, 1, 1]
 	// 
@@ -882,56 +947,16 @@ struct DispatchParameters
 		const int thin_hit = state.thin;
 		float thin_weight = state.thin_weight;
 #else
-		// The first number of hard shadow samples, a single pixel can produce a full shadow
-		// (RenoDX render scale: every sample of the three loops ScreenSample's)
-		[loop] for (i = 0; i < inParameters.HardShadowSamples; i++)
-		{
-			const float2 hard_sample = ScreenSample(inParameters, sample_index, i);
-			float depth_delta = abs(start_depth - hard_sample.x * depth_scale);
-#ifdef BEND_SSS_LIGHT_CASTERS
-			depth_delta = max(depth_delta, hard_sample.y);
+#if defined(BEND_SSS_SCREEN_STEPS) && defined(BEND_SSS_LIGHT_CASTERS)
+		// apd_ O2d (designs\sss_aprime_cheaper.md 2, rank (3); ours): Light Through Foliage 0 (CasterLight, the host's
+		// g_sss_foliage_light) means sss_depth marks no depth negative (its g_sss_foliage_light > 0 test; Tales' host its own
+		// depth, none negative), so every LightData entry is 0 and its max() changes no delta: Bend's loops without the light
+		// reads then (a uniform branch, exact).
+		[branch] if (!(inParameters.CasterLight > 0))
+			BendLoops(inParameters, sample_index, inSampleCount, start_depth, depth_scale, false, i, hard_shadow, shadow_value);
+		else
 #endif
-
-			// We want to find the distance of the sample that is closest to the reference depth
-			hard_shadow = min(hard_shadow, depth_delta);
-		}
-
-		// Brute force go!
-		// The main shadow samples, averaged in to a set of 4 shadow values
-		// RenoDX: 4 per iteration, sample i into component i & 3 as Bend's (HARD_SHADOW_SAMPLES, FADE_OUT_SAMPLES and
-		// the sample counts are multiples of 4).
-		[loop] for (i = inParameters.HardShadowSamples; i < inSampleCount - inParameters.FadeOutSamples; i += 4)
-		{
-			const float2 main_samples[4] = {ScreenSample(inParameters, sample_index, i),
-			                                ScreenSample(inParameters, sample_index, i + 1),
-			                                ScreenSample(inParameters, sample_index, i + 2),
-			                                ScreenSample(inParameters, sample_index, i + 3)};
-			float4 depth_delta = abs(start_depth - float4(main_samples[0].x, main_samples[1].x, main_samples[2].x, main_samples[3].x) * depth_scale);
-#ifdef BEND_SSS_LIGHT_CASTERS
-			depth_delta = max(depth_delta, float4(main_samples[0].y, main_samples[1].y, main_samples[2].y, main_samples[3].y));
-#endif
-
-			// Do the same as the hard_shadow code above, but this will accumulate to 4 separate values.
-			// By using 4 values, the average shadow can be taken, which can help soften single-pixel shadows.
-			shadow_value = min(shadow_value, depth_delta);
-		}
-
-		// Final fade out samples (RenoDX: counted from the first, fade; Bend's i is inSampleCount - FADE_OUT_SAMPLES + fade)
-		[loop] for (int fade = 0; fade < inParameters.FadeOutSamples; fade++)
-		{
-			const float2 fade_sample = ScreenSample(inParameters, sample_index, inSampleCount - inParameters.FadeOutSamples + fade);
-			float depth_delta = abs(start_depth - fade_sample.x * depth_scale);
-#ifdef BEND_SSS_LIGHT_CASTERS
-			depth_delta = max(depth_delta, fade_sample.y);
-#endif
-
-			// Add the fade value to these samples
-			const float fade_out = (float)(fade + 1) / (float)(inParameters.FadeOutSamples + 1) * 0.75;
-
-			// RenoDX: its component by a mask (a run-time count: no unrolled indexing).
-			const bool4 lane = ((fade & 3) == int4(0, 1, 2, 3));
-			shadow_value = lane ? min(shadow_value, depth_delta + fade_out) : shadow_value;
-		}
+			BendLoops(inParameters, sample_index, inSampleCount, start_depth, depth_scale, true, i, hard_shadow, shadow_value);
 #endif
 
 		// Apply the contrast value.

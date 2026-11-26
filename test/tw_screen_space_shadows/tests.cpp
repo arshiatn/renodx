@@ -2057,23 +2057,33 @@ static std::vector<uint8_t> AtRenderPixels(const std::vector<uint8_t>& full, UIN
 
 // One frame of `render` at its share of 960 x 540 (its depth in the top-left of the display's); `full_steps`: its depth
 // nearest-upsampled to 960 x 540 and marched at 100% instead (its result still the render pixels', at their centres).
-static StepResult MarchAt(const Frame& render, const sss::Settings& settings, const StepForm& form = {}, bool full_steps = false) {
+// `without_foliage` (the same scene without its foliage, at the render size): the foliage's depth copies (Light Through
+// Foliage's mark, sss_depth), the render part top-left as the depth's.
+static StepResult MarchAt(const Frame& render, const sss::Settings& settings, const StepForm& form = {}, bool full_steps = false,
+                          const Frame* without_foliage = nullptr) {
   auto& objects = sss::internal::runtime.objects;
   const UINT w = render.camera.width;
   const UINT h = render.camera.height;
   const Frame* frame = &render;
   Frame display;
+  Foliage foliage;
+  if (without_foliage != nullptr) foliage = {.before = without_foliage->depth, .after = render.depth};
   if (w != DISPLAY_W) {
     display = MakeFrame(DISPLAY_W, DISPLAY_H, {}, render.sun);
-    std::vector<float> depth(DISPLAY_W * DISPLAY_H, 1.f);
-    if (full_steps) {
-      for (UINT y = 0; y < DISPLAY_H; ++y) {
-        for (UINT x = 0; x < DISPLAY_W; ++x) depth[(y * DISPLAY_W) + x] = render.picture.depth[((y * h / DISPLAY_H) * w) + (x * w / DISPLAY_W)];
+    // A render-size depth in the display's.
+    const auto in_display = [&](const std::vector<float>& render_depth) {
+      std::vector<float> depth(DISPLAY_W * DISPLAY_H, 1.f);
+      if (full_steps) {
+        for (UINT y = 0; y < DISPLAY_H; ++y) {
+          for (UINT x = 0; x < DISPLAY_W; ++x) depth[(y * DISPLAY_W) + x] = render_depth[((y * h / DISPLAY_H) * w) + (x * w / DISPLAY_W)];
+        }
+      } else {
+        for (UINT y = 0; y < h; ++y) std::copy_n(render_depth.begin() + (y * w), w, depth.begin() + (y * DISPLAY_W));
       }
-    } else {
-      for (UINT y = 0; y < h; ++y) std::copy_n(render.picture.depth.begin() + (y * w), w, depth.begin() + (y * DISPLAY_W));
-    }
-    display.depth = MakeTexture(DISPLAY_W, DISPLAY_H, DXGI_FORMAT_R32_FLOAT, depth.data(), DISPLAY_W * 4);
+      return MakeTexture(DISPLAY_W, DISPLAY_H, DXGI_FORMAT_R32_FLOAT, depth.data(), DISPLAY_W * 4);
+    };
+    display.depth = in_display(render.picture.depth);
+    if (without_foliage != nullptr) foliage = {.before = in_display(without_foliage->picture.depth), .after = display.depth};
     display.camera_constants = render.camera_constants;
     display.lighting = render.lighting;
     frame = &display;
@@ -2087,7 +2097,7 @@ static StepResult MarchAt(const Frame& render, const sss::Settings& settings, co
                                                                      objects.bend_extended_steps[2]};
   if (form.plain != nullptr) objects.bend = objects.bend_steps = form.plain;
   if (form.find != nullptr) objects.bend_extended[2] = objects.bend_extended_steps[2] = form.find;
-  RunFrame(*frame, settings);
+  RunFrame(*frame, settings, false, (without_foliage != nullptr) ? &foliage : nullptr);
   objects.bend = module_shaders[0];
   objects.bend_steps = module_shaders[1];
   objects.bend_extended[2] = module_shaders[2];
@@ -2797,6 +2807,26 @@ static void TestScreenSteps(const std::string& before_folder) {
         }
         std::printf("\n");
       }
+      // Light Through Foliage 0.5 (case 1's bush: the steps shader's light copy; the rows above, foliage 0, its light-free
+      // one, O2d): the same bounds, and the bush lets light through (case 1's half-lit pixels).
+      const std::array<Box, 2> bush_scene = {{BOX_SCENE[0], {.low = {2.f, -2.f, 7.f}, .high = {3.f, -1.f, 8.f}, .kind = Kind::FOLIAGE}}};
+      const Frame bush = MakeFrame(share.width, share.height, bush_scene, BOX_SUN);
+      const Frame without = MakeFrame(share.width, share.height, std::span(bush_scene).first(1), BOX_SUN);
+      sss::Settings foliage_settings = Defaults();
+      foliage_settings.foliage_light = 0.5f;
+      std::vector<std::vector<uint8_t>> ours;
+      std::vector<std::vector<uint8_t>> aprime;
+      for (int run = 0; run < RUNS; ++run) {
+        ours.push_back(MarchAt(bush, foliage_settings, {}, false, &without).occlusion);
+        aprime.push_back(MarchAt(bush, foliage_settings, aprime_form, false, &without).occlusion);
+      }
+      const int over_one = apart_by(ours, aprime, 1);
+      const int over_quarter = apart_by(ours, aprime, 63);
+      const auto lit_through = std::ranges::count_if(ours[0], [](uint8_t value) { return value > 40 && value < 200; });
+      std::printf("   W12 %s foliage 0.5: pixels apart from today's A' by over 1 / 255 %d, over 0.25 %d (of %.0f); half-lit pixels %zu\n", share.name,
+                  over_one, over_quarter, pixels, static_cast<size_t>(lit_through));
+      CHECK(over_one <= 0.001 * pixels && over_quarter <= 0.0001 * pixels);
+      CHECK(lit_through > 20);
     }
   }
   sss::internal::runtime.objects = {};
