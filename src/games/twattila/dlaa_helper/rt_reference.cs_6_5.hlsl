@@ -210,6 +210,8 @@ void main(uint3 id : SV_DispatchThreadID) {
   uint cut = 0u;
   uint met = 0u;
   uint above_count = 0u;
+  uint inside = 0u;  // REF_PATHS: hits inside a solid (RefNearest's), the primary's counted once a sample
+  bool inside_start = false;
   float4 sum = 0.f;
 #if defined(REF_PATHS)
   const uint2 pixel = min(id.xy * bounce_scale + bounce_scale / 2u, uint2(width, height) - 1u);
@@ -226,7 +228,7 @@ void main(uint3 id : SV_DispatchThreadID) {
       TexelSurface(id.xy, normal, origin);
       met = 1u;
     } else {
-      met = RefPrimary(pixel, position, surface, normal, overflow) ? 1u : 0u;
+      met = RefPrimary(pixel, position, surface, normal, inside_start, overflow) ? 1u : 0u;
       origin = RefOffset(surface, normal);
     }
 #else
@@ -235,14 +237,15 @@ void main(uint3 id : SV_DispatchThreadID) {
       origin = RayOrigin(position, normal, Planar(int2(pixel), position, normal));
       met = 1u;
     } else {
-      met = RefPrimary(pixel, position, surface, normal, overflow) ? 1u : 0u;
+      met = RefPrimary(pixel, position, surface, normal, inside_start, overflow) ? 1u : 0u;
       origin = RefOffset(surface, normal);
     }
 #endif
 #if defined(REF_PATHS)
     const bool furnace = variant == REF_FURNACE;
     // The furnace's box closed for every ray (no first-ray reach: G1).
-    const float first_range = furnace ? 1.0e4f : (((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range);
+    const float first_range = (furnace ? 1.0e4f : (((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range))
+                              * ((RefBreak() == REF_BREAK_RANGE_HALF) ? 0.5f : 1.f);
     const float3 screen_albedo = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
     const float3 direct = ((ref_word & REF_DIRECT) != 0u) ? RefLights(origin, normal, 32u, overflow) : 0.f;
 #else
@@ -270,10 +273,16 @@ void main(uint3 id : SV_DispatchThreadID) {
         if ((path_flags & PATH_LOCAL_LIGHTS) != 0u) leaving += RefLights(origin, normal, 128u, overflow);
         sum += float4(screen_albedo * leaving, 1.f);
       } else if (variant == REF_SAME_ROUTE) {
+        // The helper's route model: two-sided as its HitNormal (an inside start lit as the helper lights it).
         sum += float4(direct + RefRouteIncoming(origin, RefCosineDirection(normal, u), normal, first_range, id.xy, sample_index, overflow), 1.f);
+      } else if (inside_start && (ref_word & REF_INSIDE_DARK) != 0u) {
+        // The camera's ray met a solid's back face: the texel's surface is inside it, no light (RefNearest's `inside`).
+        sum.w += 1.f;
+        ++inside;
       } else {
+        inside += inside_start ? 1u : 0u;
         sum += float4(direct + RefIncoming(origin, RefCosineDirection(normal, u), normal, first_range, furnace, variant == REF_CONTACT || variant == REF_CONTACT_SKY,
-                                           variant == REF_CONTACT_SKY, id.xy, sample_index, overflow, cut),
+                                           variant == REF_CONTACT_SKY, id.xy, sample_index, overflow, cut, inside),
                       1.f);
       }
 #else
@@ -290,7 +299,7 @@ void main(uint3 id : SV_DispatchThreadID) {
         const float3 half_local = RefVisibleNormal(view_local, alpha, u);
         const float3 light_local = 2.f * dot(view_local, half_local) * half_local - view_local;
         direction = normalize(tangent * light_local.x + bitangent * light_local.y + normal * light_local.z);
-        weight = RefVisibleNormalWeight(view_local.z, light_local.z, alpha);
+        weight = (RefBreak() == REF_BREAK_NO_G2G1) ? ((light_local.z > 0.f) ? 1.f : 0.f) : RefVisibleNormalWeight(view_local.z, light_local.z, alpha);
       }
       const bool above = dot(direction, normal) > 0.f;
       bool counted = false;
@@ -298,7 +307,8 @@ void main(uint3 id : SV_DispatchThreadID) {
         float hit_distance;
         uint record_index;
         float3 hit_normal;
-        counted = RefNearest(origin, direction, 1.0e4f, NO_GRASS_SMOKE, hit_distance, record_index, hit_normal, overflow);
+        bool solid_inside;  // a surface met either side: specular occlusion's share (no light read)
+        counted = RefNearest(origin, direction, 1.0e4f, NO_GRASS_SMOKE, hit_distance, record_index, hit_normal, solid_inside, overflow);
       } else if (above) {
         counted = !RefBlocked(origin, direction, reflection_range, NO_GRASS_SMOKE, overflow);
       }
@@ -310,6 +320,6 @@ void main(uint3 id : SV_DispatchThreadID) {
   // The synthetic control (REF_SCALED): the reference x ref_parameters[1].x.
   if ((ref_word & REF_SCALED) != 0u) sum.xyz *= ref_parameters[1].x;
   ref_group_sum[id.xy] = ref_group_sum[id.xy] + sum;
-  ref_aux[id.xy] = ref_aux[id.xy] + uint4(met * ref_a, overflow, cut, above_count);
+  ref_aux[id.xy] = ref_aux[id.xy] + uint4(met * ref_a, overflow, cut, above_count + inside);
 #endif
 }

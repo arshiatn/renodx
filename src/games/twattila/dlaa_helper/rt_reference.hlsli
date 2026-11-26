@@ -49,7 +49,8 @@ RWTexture2D<float4> ref_candidate_previous : register(u65);
 RWTexture2D<float4> ref_candidate_last : register(u66);
 // The reference's: the current group's sum, Welford's mean and M2 over the group means, each group's mean (grids up to
 // 1920 x 1080), the aux counts (x the primary surfaces met, y the rays past a cap or an overflow, z the paths cut at the
-// vertex cap, w the slices' sample count).
+// vertex cap, w REF_REFLECT's samples above the horizon, REF_PATHS's inside hits: RefNearest's `inside`, counted always,
+// each ending its path only with REF_INSIDE_DARK).
 RWTexture2D<float4> ref_group_sum : register(u67);
 RWTexture2D<float4> ref_mean : register(u68);
 RWTexture2D<float4> ref_m2 : register(u69);
@@ -128,6 +129,27 @@ static const uint REF_SCALED = 256u;
 // local lights (rt_scene.hlsli BOUNCE_LIGHTS, 32: their exact sum, each with its own ray): what Torch and Fire Light from
 // Path Tracing adds to the bounce.
 static const uint REF_DIRECT = 512u;
+// The word's bits 10-13 (RENODX_TW_REF_BREAK, rt_d3d12.hpp REF_BREAKS: 0 none): the reference wrong in one known way, so a
+// gate against it must read BIAS (ref_compare --expect-fail: CONTROL FAILED TO FAIL if it passes). src: reference_suite.md
+// 2.6 control 1 (code break; its names) and fa9 B2: the synthetic x 1.03 (REF_SCALED) proves the compare tool, not that a
+// broken integral is seen mask by mask. ours: the break sits in the reference's code (rt_reference_*.h only), not in the
+// candidate's copies of 2.6, so a player's shaders stay byte-identical; either side broken must fail the same comparison.
+static const uint REF_BREAK_SHIFT = 10u;
+static const uint REF_BREAK_NOCAL = 1u;       // RefSky without its calibration (the raw cube: open sky off by OpenSky / E_cos)
+static const uint REF_BREAK_RANGE_HALF = 2u;  // REF_PATHS: the first ray reaches half the integral's range (dark in crevices)
+static const uint REF_BREAK_CONE2 = 3u;       // the sun's disk twice its radius (penumbrae twice as wide, open ground unchanged)
+static const uint REF_BREAK_ONELIGHT = 4u;    // RefLights: the first local light only
+static const uint REF_BREAK_NO_G2G1 = 5u;     // REF_REFLECT: every visible-normal sample above the horizon weighed 1, not G2 / G1
+// The word's bit 14 (RENODX_TW_REF_INSIDE=dark): a hit inside a solid (RefNearest's `inside`) ends its path with no light;
+// without it inside hits are only counted and lit two-sided as the helper's. ours: the dark rule (reference_suite.md 1.1)
+// holds for scenes wound outward (the analytic harness); a game snapshot's winding is unproven (mirrored or two-sided
+// meshes drawn without culling), so it is counted there until its back-face share is measured (fx1r_ review).
+static const uint REF_INSIDE_DARK = 1u << 14;
+
+// A slice's break (REF_BREAK_*; 0: none).
+uint RefBreak() {
+  return (ref_word >> REF_BREAK_SHIFT) & 15u;
+}
 
 static const float REF_PI = 3.14159265f;
 static const uint REF_MAX_VERTICES = 32u;  // a path's vertex cap (its paths cut there are counted)
@@ -284,9 +306,15 @@ float RefSunTransmittance(float3 origin, float3 direction, float range, inout ui
 }
 
 // The nearest surface along a ray among `instances`, every candidate alpha-tested (no cap but REF_MAX_CANDIDATES): its
-// distance (false: none), its record and normal facing back along the ray (the record's pool normal: the shared scene).
+// distance (false: none), its record and normal facing back along the ray (the record's pool normal: the shared scene), and
+// whether it is `inside`: a solid's back face. src: reference_suite.md 1.1 "Back faces" (I6): a solid record's (no
+// RECORD_MASKED or RECORD_THIN: leaves, cut-outs and sheets are two-sided) back face is the inside of a closed solid, no
+// light (with REF_INSIDE_DARK), counted; the helper's HitNormal turns every back face toward the ray, so the reference
+// must see them (fa9 B1). Facing: src: D3D12 Raytracing spec, D3D12_RAYTRACING_INSTANCE_FLAGS (front = clockwise seen from the ray in
+// object space, unchanged by the instance's transform; the helper sets no FRONT_COUNTERCLOCKWISE) via
+// CommittedTriangleFrontFace, not the pool normal's sign.
 bool RefNearest(float3 origin, float3 direction, float range, uint instances, out float hit_distance, out uint record_index, out float3 hit_normal,
-                inout uint overflow) {
+                out bool inside, inout uint overflow) {
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
@@ -306,17 +334,19 @@ bool RefNearest(float3 origin, float3 direction, float range, uint instances, ou
   hit_distance = 0.f;
   record_index = 0u;
   hit_normal = 0.f;
+  inside = false;
   if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT) return false;
   hit_distance = query.CommittedRayT();
   record_index = query.CommittedInstanceID() + query.CommittedGeometryIndex();
   hit_normal = HitNormal(record_index, query.CommittedPrimitiveIndex(), direction, query.CommittedObjectToWorld3x4());
+  inside = !query.CommittedTriangleFrontFace() && ((records[record_index].z >> 16) & (RECORD_MASKED | RECORD_THIN)) == 0u;
   return true;
 }
 
 // A texel's primary surface as the reference sees it: the camera's ray toward its frozen position, to half a metre past it,
 // against the solids (the G-buffer's surface): its exact point and geometric normal facing the camera (false: nothing
-// there within the half metre either side, a coverage gap: the position and its depth normal then).
-bool RefPrimary(uint2 pixel, float4 position, out float3 surface, out float3 normal, inout uint overflow) {
+// there within the half metre either side, a coverage gap: the position and its depth normal then); `inside`: RefNearest's.
+bool RefPrimary(uint2 pixel, float4 position, out float3 surface, out float3 normal, out bool inside, inout uint overflow) {
   const float3 camera = Camera();
   const float3 to_surface = position.xyz - camera;
   const float distance_to = length(to_surface);
@@ -325,7 +355,7 @@ bool RefPrimary(uint2 pixel, float4 position, out float3 surface, out float3 nor
   uint record_index;
   float3 hit_normal;
   const bool met = RefNearest(camera + direction * max(distance_to - 0.5f, 0.f), direction, (distance_to > 0.5f) ? 1.f : distance_to + 0.5f, NO_GRASS_SMOKE,
-                              hit_distance, record_index, hit_normal, overflow);
+                              hit_distance, record_index, hit_normal, inside, overflow);
   surface = position.xyz;
   normal = SurfaceNormal(int2(pixel), position);
   if (!met) return false;
@@ -351,6 +381,7 @@ float3 RefCubeCosineMean(float3 normal) {
 // shade where the game gave no cube.
 float3 RefSky(float3 direction, float3 normal) {
   if (sun[uint2(3, 0)].w == 0.f) return light_kept[0].rgb;
+  if (RefBreak() == REF_BREAK_NOCAL) return AmbientCube(direction);
   return AmbientCube(direction) * OpenSky(normal) / max(RefCubeCosineMean(normal), 1e-6f);
 }
 
@@ -367,7 +398,7 @@ float RefSunVisibility(float3 surface, float3 normal, float2 u, inout uint overf
   float3 tangent;
   float3 bitangent;
   RefBasis(toward_sun.xyz, tangent, bitangent);
-  const float2 disk = RefConcentricDisk(u) * sun_cone;
+  const float2 disk = RefConcentricDisk(u) * (sun_cone * ((RefBreak() == REF_BREAK_CONE2) ? 2.f : 1.f));
   const float3 direction = normalize(toward_sun.xyz + tangent * disk.x + bitangent * disk.y);
   if (dot(normal, direction) <= 0.f) return 0.f;
   return RefSunTransmittance(surface, direction, 1.0e4f, overflow);
@@ -379,7 +410,7 @@ float RefSunVisibility(float3 surface, float3 normal, float2 u, inout uint overf
 float3 RefLights(float3 surface, float3 normal, uint most, inout uint overflow) {
   float3 total = 0.f;
   [loop]
-  for (uint index = 0u; index < min(light_count, most); ++index) {
+  for (uint index = 0u; index < min(light_count, (RefBreak() == REF_BREAK_ONELIGHT) ? 1u : most); ++index) {
     float3 direction;
     float light_distance;
     const float3 arriving = LightArriving(index, surface, normal, direction, light_distance);
@@ -418,11 +449,13 @@ float3 RefEmitted(float3 hit, float3 normal, uint record_index, float3 albedo, b
 // REF_MAX_VERTICES at most (a path cut there counted in `cut`); one sun disk point and every local light at each vertex;
 // an escape brings the game's sky at the surface it left (RefSky; none from the first ray without Path-Traced Ambient,
 // whose screen pixel the game's ambient lights then, or where grass within GRASS_AMBIENT_RANGE blocks it, as the AO's;
-// the furnace's box has no sky). The first ray reaches `first_range` (the integral's), the rest 10 km. `contact`: the
+// the furnace's box has no sky); a hit `inside` a solid (RefNearest's) is counted in `inside` and, with REF_INSIDE_DARK,
+// ends it with no light there.
+// The first ray reaches `first_range` (the integral's), the rest 10 km. `contact`: the
 // first ray's hit's light (and all beyond it) x ContactShade (the `contact` variant). `helper_sky`: past the first vertex
 // the sky as the helper's paths take it (PathRadiance: SkyLight x SkyCalibration at the surface left; `contact_sky`).
 float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float first_range, bool furnace, bool contact, bool helper_sky,
-                   uint2 texel, uint sample_index, inout uint overflow, inout uint cut) {
+                   uint2 texel, uint sample_index, inout uint overflow, inout uint cut, inout uint inside) {
   float3 radiance = 0.f;
   float3 throughput = 1.f;
   float3 leaving_normal = origin_normal;
@@ -432,13 +465,18 @@ float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float 
     float hit_distance;
     uint record_index;
     float3 normal;
-    if (!RefNearest(origin, direction, (vertex == 0u) ? first_range : 1.0e4f, NO_GRASS_SMOKE, hit_distance, record_index, normal, overflow)) {
+    bool solid_inside;
+    if (!RefNearest(origin, direction, (vertex == 0u) ? first_range : 1.0e4f, NO_GRASS_SMOKE, hit_distance, record_index, normal, solid_inside, overflow)) {
       const bool sky_seen = !furnace && (vertex > 0u || ((path_flags & PATH_AMBIENT) != 0u
                                                           && !RefBlocked(origin, direction, min(first_range, GRASS_AMBIENT_RANGE), GRASS_STILL, overflow)));
       if (sky_seen) {
         radiance += throughput * ((helper_sky && vertex > 0u) ? SkyLight(direction, KeptShade()) * SkyCalibration(leaving_normal) : RefSky(direction, leaving_normal));
       }
       break;
+    }
+    if (solid_inside) {
+      ++inside;
+      if ((ref_word & REF_INSIDE_DARK) != 0u) break;
     }
     const float3 hit = origin + direction * hit_distance;
     if (contact && vertex == 0u) throughput *= ContactShade(hit_distance);
@@ -472,6 +510,7 @@ float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float 
 // the first ray; a surface the screen shows (or the cache knows, but CACHE_RELEARN of them, from a cell's size away)
 // sends HitLight's; an unseen one SunLit's (its one ray to the sun's centre) and its first 32 lights (where UnseenLight
 // takes them: their exact sum, LocalLights' two picks' mean) and goes on path_bounces surfaces, the last x KeptShade.
+// Every surface two-sided, as the helper's HitNormal (RefNearest's `inside` unused: the route model, not the integral).
 float3 RefRouteIncoming(float3 origin, float3 direction, float3 origin_normal, float first_range, uint2 texel, uint sample_index, inout uint overflow) {
   float3 radiance = 0.f;
   float3 throughput = 1.f;
@@ -485,7 +524,8 @@ float3 RefRouteIncoming(float3 origin, float3 direction, float3 origin_normal, f
     float hit_distance;
     uint record_index;
     float3 normal;
-    if (!RefNearest(origin, direction, (vertex == 0u) ? first_range : bounce_range, NO_GRASS_SMOKE, hit_distance, record_index, normal, overflow)) {
+    bool solid_inside;
+    if (!RefNearest(origin, direction, (vertex == 0u) ? first_range : bounce_range, NO_GRASS_SMOKE, hit_distance, record_index, normal, solid_inside, overflow)) {
       if (vertex > 0u) {
         radiance += throughput * SkyLight(direction, shade) * SkyCalibration(leaving_normal);
       } else if ((path_flags & PATH_AMBIENT) != 0u && !RefBlocked(origin, direction, min(first_range, GRASS_AMBIENT_RANGE), GRASS_STILL, overflow)) {
