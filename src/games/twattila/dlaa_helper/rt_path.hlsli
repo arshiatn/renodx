@@ -872,8 +872,16 @@ float ContactShade(float hit_distance) {
 }
 
 // The target function at a receiver: the sample's light (luminance) by the cosine toward it (the integrand without 1/pi),
-// for a sample made at this receiver (its own, its history: the merges' and Finish's).
+// for a sample made at this receiver (its own, its history: the merges' and Finish's). 0 for a surface sample past this
+// receiver's FirstRange (X02): its own rays end there (their sky, Own Sky Rays' mean or the sky sample, owns those
+// directions), so such a sample lies outside its domain, and a neighbour's or the history's counted it twice (bright at
+// the range's edge). ours: the target's support = the receiver's sampling domain (fidelity restir_gi_sharc_fog.md B2).
+// Every merge inherits it: the history's, the spatial one's (the moved target below), G1's and G2's targets there. Not
+// the reflections': their lobes' targets are LobeDensity's, to 1e4 m. CONTROL_TARGET_PAST_RANGE: today's (no test).
 float ReuseTarget(float3 receiver, float3 receiver_normal, Reservoir reservoir) {
+#if !defined(CONTROL_TARGET_PAST_RANGE)
+  if (any(reservoir.hit_normal != 0.f) && distance(reservoir.hit, receiver) > FirstRange()) return 0.f;
+#endif
   return Luminance(reservoir.light) * max(dot(receiver_normal, normalize(reservoir.hit - receiver)), 0.f);
 }
 
