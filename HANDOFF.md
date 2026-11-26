@@ -1004,6 +1004,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / ... | ?
 - X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coor ... | ?
 - LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\s ... | ?
+- LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a c ... | ?
 - LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner ... | done
 - LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'licens ... | ?
 - fa5_ SHADERTOY CREDITS: when the Shadertoy-derived code ships, credits name Mirk ... | ?
@@ -17700,6 +17701,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         build\nsr_profile_1: ATN's deletion yes, box above) -> after pdi5_ GPU done: pdi4c_ (r4 1434dcf07) -> lsp_ (2-4
         min) -> bal3_ -> d11 replay self-test -> d11 day1 capture -> HARNESS_RR (fa4_ U1 sqrt + O-RR12) -> fa8_ B1 F7 case
         (superseded 02:1x: ATN said yes; R2 -> R4 go right after pdi5_, before pdi4c_). Owner: coord
+        pdi5_ GPU STATUS 02:5x (its words): DONE M1 (all_modes vs e52ec9e28 = only 92 bounce / reflection outputs move,
+        census clean; plays + rec_compare + rec_scan NaN / Inf 0), G5 E4 + night3, G4 E4 at the head, S2 (G4 warm
+        rotations + timing-total rows day / night + reflections row), F16 TYPED FACT: typed R16F / RGBA16F stores round
+        TOWARD ZERO on the 5090 too, DXBC and DXIL (so the F16 AUDIT LIST's darker drift is real hardware behaviour).
+        LEFT: night G5 toggle (job 39) + one SHaRC repeat play, ~10 min, ETA 'pdi5_ GPU done' ~03:10. GPU ~2 h 45 since
+        00:09 vs ~2 h 20 est; S2's lab step PAST 2x (60 -> ~95 min): the lab closes its session after every ab job, so
+        each needs its own calibrate (2 refusals + reruns), timing-total jobs must decide ['total'] only (1 refusal), 2
+        memory safety stops from others' builds (55-56 GB committed), the dump kind runs all arms on build A (2 one-build
+        dumps added). Rebased onto 288413a13 = NEW branch pdi5_step5_rb (not a force-push): DXIL = the old diff (14
+        listings), h0i 72 / 72, gated amd64 + x86 twattila exit 0; rebases onto today's atn-mods after GPU done.
+        Owner: pdi5_
+        - [ ] LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a calibrate per job -> keep
+        the calibration across a batch's ab jobs (or one session per batch); (2) the timing-total refusal (decide must be
+        ['total'] only) -> say so in the job schema error; (3) the dump kind runs every arm on build A -> a per-arm
+        build. Fix-tooling-now rule: lab owner, after pdi5_'s GPU turn. Owner: coord (lab owner slot)
         - [ ] LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner: done
         ATN 11-26 00:5x ANSWERS: (1) fa5_ U-VB5 CLOSED: the 3 Shadertoys are in C:\Users\arshi\Downloads\Shadertoy stuff\
         (root = GT-VBAO, 'GT-VBAO thickness heuristic' = Ottosson's variation, 'GT-VBGI (diffuse)'); every header reads
