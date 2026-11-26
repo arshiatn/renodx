@@ -940,6 +940,8 @@ class RtScene12 {
       GetEnvironmentVariableA("RENODX_TW_REF_VARIANT", variant.data(), static_cast<DWORD>(variant.size()));
       const auto variant_found = std::ranges::find(REF_VARIANTS, std::string_view(variant.data()));
       reference_.variant = (variant_found != REF_VARIANTS.end()) ? static_cast<uint32_t>(variant_found - REF_VARIANTS.begin()) : 0u;
+      GetEnvironmentVariableA("RENODX_TW_REF_BREAK", reference_.code_break_asked.data(), static_cast<DWORD>(reference_.code_break_asked.size()));
+      reference_.code_break = static_cast<uint32_t>(std::ranges::find(REF_BREAKS, std::string_view(reference_.code_break_asked.data())) - REF_BREAKS.begin());
       std::array<char, 64> furnace = {};
       if (GetEnvironmentVariableA("RENODX_TW_REF_FURNACE", furnace.data(), static_cast<DWORD>(furnace.size())) != 0) {
         char* rest = nullptr;
@@ -5544,7 +5546,8 @@ class RtScene12 {
   // inputs (their hashes) and the state into `folder`: meta.json, census.json, a .bin a texture (rows packed).
   // RENODX_TW_REF_SETTLE (S, 150), _FRAMES (K, 384, a multiple of 16), _GROUPS (G, 8), _SEED, _VARIANT (full, same_start,
   // furnace, lout, contact, same_route, contact_sky: rt_reference.hlsli REF_*), _SCALE (the synthetic control: the reference
-  // x it), _FURNACE (<albedo>,<light>), _DUMP (the folder).
+  // x it), _BREAK (the code-break control: the reference wrong in one known way, REF_BREAKS; a name not there: no run),
+  // _FURNACE (<albedo>,<light>), _DUMP (the folder).
   enum class ReferenceEffect : uint32_t { PATHS, REFLECT };
   enum class ReferencePhase : uint32_t { OFF, SETTLE, WINDOW, SLICES, DUMPING, DONE };
   enum class ReferenceKind : uint32_t { TRACE, BOUNCE, REFLECTIONS };
@@ -5559,6 +5562,8 @@ class RtScene12 {
   static constexpr uint32_t REF_BATCH = 16;
   static constexpr uint32_t REF_SCALED = 256;
   static constexpr uint32_t REF_DIRECT = 512;
+  static constexpr uint32_t REF_BREAK_SHIFT = 10;  // rt_reference.hlsli REF_BREAK_*: their index in REF_BREAKS ("": none)
+  static constexpr std::array<std::string_view, 6> REF_BREAKS = {"", "nocal", "range_half", "cone2", "onelight", "no_g2g1"};
   static constexpr uint32_t REF_SOURCE_BOUNCE = 0;
   static constexpr uint32_t REF_SOURCE_SPECULAR_OCCLUSION = 2;
   static constexpr uint64_t REF_GROUP_PICTURES_MAX = uint64_t{1920} * 1080;  // grids up to this keep each group's mean (G3)
@@ -5602,6 +5607,8 @@ class RtScene12 {
     uint32_t variant = 0;
     float scale = 1.f;
     bool direct = false;  // RENODX_TW_REF_DIRECT: the texel's own direct light of the bounce's lights too (REF_DIRECT)
+    std::array<char, 32> code_break_asked = {};  // RENODX_TW_REF_BREAK
+    uint32_t code_break = 0;                     // its index in REF_BREAKS (REF_BREAKS.size(): unknown)
     std::array<float, 2> furnace = {0.5f, 1.f};  // albedo, light
     std::filesystem::path folder;
     std::string note;  // its line for the log
@@ -5653,6 +5660,13 @@ class RtScene12 {
   void ReferenceRequest(ID3D12GraphicsCommandList4* list, const ReferenceCall& call) {
     Reference& run = reference_;
     if (run.phase == ReferencePhase::OFF || run.phase == ReferencePhase::DONE) return;
+    // A break the shaders do not know would run unbroken and read as a control that failed to fail.
+    if (run.code_break >= REF_BREAKS.size()) {
+      run.phase = ReferencePhase::OFF;
+      slow_report_ += std::format("\n[TW reference] RENODX_TW_REF_BREAK '{}' is none of nocal, range_half, cone2, onelight, no_g2g1: off",
+                                  run.code_break_asked.data());
+      return;
+    }
     const D3D12_RESOURCE_BARRIER uav_barrier = {.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV};
     // FNV-1a, 64 bits.
     const auto hash_bytes = [](std::span<const uint8_t> bytes, uint64_t hash = 14695981039346656037ull) {
@@ -5726,14 +5740,14 @@ class RtScene12 {
       uint32_t light_count = 0;
       std::memcpy(&light_count, run.frozen_constants.data() + sizeof(run.frozen_settings) + sizeof(PathConstants) + LIGHT_COUNT_OFFSET, sizeof(light_count));
       std::ofstream(run.folder / "meta.json", std::ios::trunc) << std::format(
-          "{{\n  \"suite\": \"ref1\",\n  \"effect\": \"{}\",\n  \"variant\": \"{}\",\n  \"scale\": {},\n  \"direct\": {},\n  \"furnace\": [{}, {}],\n"
+          "{{\n  \"suite\": \"ref1\",\n  \"effect\": \"{}\",\n  \"variant\": \"{}\",\n  \"scale\": {},\n  \"direct\": {},\n  \"break\": \"{}\",\n  \"furnace\": [{}, {}],\n"
           "  \"samples\": {{\"slice\": {}, \"total\": {}, \"groups\": {}, \"per_group\": {}}},\n  \"settle\": {},\n  \"frames\": {},\n  \"batch\": {},\n"
           "  \"seed\": {},\n  \"grid\": [{}, {}],\n  \"freeze_frame\": {},\n  \"settings\": [{}],\n"
           "  \"paths\": {{\"flags\": {}, \"bounces\": {}, \"samples\": {}, \"bounce_range\": {}, \"reflection_range\": {}, \"sky_range\": {}, "
           "\"bounce_size\": [{}, {}, {}]}},\n  \"lights\": {},\n"
           "  \"digest\": {{\"frozen\": \"{:08x}{:08x}{:08x}{:08x}\", \"cpu\": \"{:08x}{:08x}\", \"changes_in_window\": {}, \"dropped_slices\": {}, "
           "\"groups_done\": {}, \"group_slices\": [{}]}},\n  \"frozen\": {{{}, \"constants\": \"{:016x}\"}},\n  \"files\": {{{}\n  }}\n}}\n",
-          (run.effect == ReferenceEffect::REFLECT) ? "reflect" : "paths", REF_VARIANTS[run.variant], run.scale, run.direct, run.furnace[0], run.furnace[1],
+          (run.effect == ReferenceEffect::REFLECT) ? "reflect" : "paths", REF_VARIANTS[run.variant], run.scale, run.direct, REF_BREAKS[run.code_break], run.furnace[0], run.furnace[1],
           run.slice_samples, run.total_samples, run.groups, run.total_samples / run.groups, run.settle, run.frames, REF_BATCH, run.seed, run.grid[0],
           run.grid[1], run.freeze_frame, settings, paths.flags, paths.bounces, paths.samples, paths.bounce_range, paths.reflection_range, paths.sky_range,
           paths.bounce_width, paths.bounce_height, paths.bounce_scale, light_count, state[132], state[133], state[134], state[135],
@@ -6009,7 +6023,8 @@ class RtScene12 {
     const std::array<float, 20> parameters = {run.furnace[0], run.furnace[1], 0.f, 0.f, run.scale};
     list->SetComputeRoot32BitConstants(ROOT_BOUNCE, static_cast<UINT>(parameters.size()), parameters.data(), 0);
     grid_pass(((run.effect == ReferenceEffect::PATHS) ? run.paths : run.reflect).Get(),
-              {run.variant | ((run.scale != 1.f) ? REF_SCALED : 0u) | (run.direct ? REF_DIRECT : 0u), samples, first, group, per_group, run.seed, grid[0], grid[1]});
+              {run.variant | ((run.scale != 1.f) ? REF_SCALED : 0u) | (run.direct ? REF_DIRECT : 0u) | (run.code_break << REF_BREAK_SHIFT), samples, first, group,
+               per_group, run.seed, grid[0], grid[1]});
     if (first + samples >= per_group) {
       grid_pass(run.group.Get(), {group, 0u, 0u, run.pictures ? 1u : 0u, 0u, 0u, grid[0], grid[1]});
       state_op(REF_OP_GROUP_DONE, group, 0);

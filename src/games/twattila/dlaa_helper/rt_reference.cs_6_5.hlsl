@@ -244,7 +244,8 @@ void main(uint3 id : SV_DispatchThreadID) {
 #if defined(REF_PATHS)
     const bool furnace = variant == REF_FURNACE;
     // The furnace's box closed for every ray (no first-ray reach: G1).
-    const float first_range = furnace ? 1.0e4f : (((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range);
+    const float first_range = (furnace ? 1.0e4f : (((path_flags & PATH_AMBIENT) != 0u) ? min(bounce_range, sky_range) : bounce_range))
+                              * ((RefBreak() == REF_BREAK_RANGE_HALF) ? 0.5f : 1.f);
     const float3 screen_albedo = ((path_flags & PATH_GUIDES) != 0u) ? guide_albedo[pixel].rgb : UNSEEN_ALBEDO;
     const float3 direct = ((ref_word & REF_DIRECT) != 0u) ? RefLights(origin, normal, 32u, overflow) : 0.f;
 #else
@@ -297,7 +298,7 @@ void main(uint3 id : SV_DispatchThreadID) {
         const float3 half_local = RefVisibleNormal(view_local, alpha, u);
         const float3 light_local = 2.f * dot(view_local, half_local) * half_local - view_local;
         direction = normalize(tangent * light_local.x + bitangent * light_local.y + normal * light_local.z);
-        weight = RefVisibleNormalWeight(view_local.z, light_local.z, alpha);
+        weight = (RefBreak() == REF_BREAK_NO_G2G1) ? ((light_local.z > 0.f) ? 1.f : 0.f) : RefVisibleNormalWeight(view_local.z, light_local.z, alpha);
       }
       const bool above = dot(direction, normal) > 0.f;
       bool counted = false;

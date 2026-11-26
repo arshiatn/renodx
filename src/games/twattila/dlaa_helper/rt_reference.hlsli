@@ -128,6 +128,22 @@ static const uint REF_SCALED = 256u;
 // local lights (rt_scene.hlsli BOUNCE_LIGHTS, 32: their exact sum, each with its own ray): what Torch and Fire Light from
 // Path Tracing adds to the bounce.
 static const uint REF_DIRECT = 512u;
+// The word's bits 10-13 (RENODX_TW_REF_BREAK, rt_d3d12.hpp REF_BREAKS: 0 none): the reference wrong in one known way, so a
+// gate against it must read BIAS (ref_compare --expect-fail: CONTROL FAILED TO FAIL if it passes). src: reference_suite.md
+// 2.6 control 1 (code break; its names) and fa9 B2: the synthetic x 1.03 (REF_SCALED) proves the compare tool, not that a
+// broken integral is seen mask by mask. ours: the break sits in the reference's code (rt_reference_*.h only), not in the
+// candidate's copies of 2.6, so a player's shaders stay byte-identical; either side broken must fail the same comparison.
+static const uint REF_BREAK_SHIFT = 10u;
+static const uint REF_BREAK_NOCAL = 1u;       // RefSky without its calibration (the raw cube: open sky off by OpenSky / E_cos)
+static const uint REF_BREAK_RANGE_HALF = 2u;  // REF_PATHS: the first ray reaches half the integral's range (dark in crevices)
+static const uint REF_BREAK_CONE2 = 3u;       // the sun's disk twice its radius (penumbrae twice as wide, open ground unchanged)
+static const uint REF_BREAK_ONELIGHT = 4u;    // RefLights: the first local light only
+static const uint REF_BREAK_NO_G2G1 = 5u;     // REF_REFLECT: every visible-normal sample above the horizon weighed 1, not G2 / G1
+
+// A slice's break (REF_BREAK_*; 0: none).
+uint RefBreak() {
+  return (ref_word >> REF_BREAK_SHIFT) & 15u;
+}
 
 static const float REF_PI = 3.14159265f;
 static const uint REF_MAX_VERTICES = 32u;  // a path's vertex cap (its paths cut there are counted)
@@ -359,6 +375,7 @@ float3 RefCubeCosineMean(float3 normal) {
 // shade where the game gave no cube.
 float3 RefSky(float3 direction, float3 normal) {
   if (sun[uint2(3, 0)].w == 0.f) return light_kept[0].rgb;
+  if (RefBreak() == REF_BREAK_NOCAL) return AmbientCube(direction);
   return AmbientCube(direction) * OpenSky(normal) / max(RefCubeCosineMean(normal), 1e-6f);
 }
 
@@ -375,7 +392,7 @@ float RefSunVisibility(float3 surface, float3 normal, float2 u, inout uint overf
   float3 tangent;
   float3 bitangent;
   RefBasis(toward_sun.xyz, tangent, bitangent);
-  const float2 disk = RefConcentricDisk(u) * sun_cone;
+  const float2 disk = RefConcentricDisk(u) * (sun_cone * ((RefBreak() == REF_BREAK_CONE2) ? 2.f : 1.f));
   const float3 direction = normalize(toward_sun.xyz + tangent * disk.x + bitangent * disk.y);
   if (dot(normal, direction) <= 0.f) return 0.f;
   return RefSunTransmittance(surface, direction, 1.0e4f, overflow);
@@ -387,7 +404,7 @@ float RefSunVisibility(float3 surface, float3 normal, float2 u, inout uint overf
 float3 RefLights(float3 surface, float3 normal, uint most, inout uint overflow) {
   float3 total = 0.f;
   [loop]
-  for (uint index = 0u; index < min(light_count, most); ++index) {
+  for (uint index = 0u; index < min(light_count, (RefBreak() == REF_BREAK_ONELIGHT) ? 1u : most); ++index) {
     float3 direction;
     float light_distance;
     const float3 arriving = LightArriving(index, surface, normal, direction, light_distance);
