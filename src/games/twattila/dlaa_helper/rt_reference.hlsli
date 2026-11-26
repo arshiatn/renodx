@@ -49,7 +49,8 @@ RWTexture2D<float4> ref_candidate_previous : register(u65);
 RWTexture2D<float4> ref_candidate_last : register(u66);
 // The reference's: the current group's sum, Welford's mean and M2 over the group means, each group's mean (grids up to
 // 1920 x 1080), the aux counts (x the primary surfaces met, y the rays past a cap or an overflow, z the paths cut at the
-// vertex cap, w REF_REFLECT's samples above the horizon, REF_PATHS's inside hits: RefNearest's `inside`, each ending its path).
+// vertex cap, w REF_REFLECT's samples above the horizon, REF_PATHS's inside hits: RefNearest's `inside`, counted always,
+// each ending its path only with REF_INSIDE_DARK).
 RWTexture2D<float4> ref_group_sum : register(u67);
 RWTexture2D<float4> ref_mean : register(u68);
 RWTexture2D<float4> ref_m2 : register(u69);
@@ -139,6 +140,11 @@ static const uint REF_BREAK_RANGE_HALF = 2u;  // REF_PATHS: the first ray reache
 static const uint REF_BREAK_CONE2 = 3u;       // the sun's disk twice its radius (penumbrae twice as wide, open ground unchanged)
 static const uint REF_BREAK_ONELIGHT = 4u;    // RefLights: the first local light only
 static const uint REF_BREAK_NO_G2G1 = 5u;     // REF_REFLECT: every visible-normal sample above the horizon weighed 1, not G2 / G1
+// The word's bit 14 (RENODX_TW_REF_INSIDE=dark): a hit inside a solid (RefNearest's `inside`) ends its path with no light;
+// without it inside hits are only counted and lit two-sided as the helper's. ours: the dark rule (reference_suite.md 1.1)
+// holds for scenes wound outward (the analytic harness); a game snapshot's winding is unproven (mirrored or two-sided
+// meshes drawn without culling), so it is counted there until its back-face share is measured (fx1r_ review).
+static const uint REF_INSIDE_DARK = 1u << 14;
 
 // A slice's break (REF_BREAK_*; 0: none).
 uint RefBreak() {
@@ -303,8 +309,8 @@ float RefSunTransmittance(float3 origin, float3 direction, float range, inout ui
 // distance (false: none), its record and normal facing back along the ray (the record's pool normal: the shared scene), and
 // whether it is `inside`: a solid's back face. src: reference_suite.md 1.1 "Back faces" (I6): a solid record's (no
 // RECORD_MASKED or RECORD_THIN: leaves, cut-outs and sheets are two-sided) back face is the inside of a closed solid, no
-// light, counted; the helper's HitNormal turns every back face toward the ray, so the reference must not take its side
-// (fa9 B1). Facing: src: D3D12 Raytracing spec, D3D12_RAYTRACING_INSTANCE_FLAGS (front = clockwise seen from the ray in
+// light (with REF_INSIDE_DARK), counted; the helper's HitNormal turns every back face toward the ray, so the reference
+// must see them (fa9 B1). Facing: src: D3D12 Raytracing spec, D3D12_RAYTRACING_INSTANCE_FLAGS (front = clockwise seen from the ray in
 // object space, unchanged by the instance's transform; the helper sets no FRONT_COUNTERCLOCKWISE) via
 // CommittedTriangleFrontFace, not the pool normal's sign.
 bool RefNearest(float3 origin, float3 direction, float range, uint instances, out float hit_distance, out uint record_index, out float3 hit_normal,
@@ -443,7 +449,8 @@ float3 RefEmitted(float3 hit, float3 normal, uint record_index, float3 albedo, b
 // REF_MAX_VERTICES at most (a path cut there counted in `cut`); one sun disk point and every local light at each vertex;
 // an escape brings the game's sky at the surface it left (RefSky; none from the first ray without Path-Traced Ambient,
 // whose screen pixel the game's ambient lights then, or where grass within GRASS_AMBIENT_RANGE blocks it, as the AO's;
-// the furnace's box has no sky); a hit `inside` a solid (RefNearest's) ends it with no light there, counted in `inside`.
+// the furnace's box has no sky); a hit `inside` a solid (RefNearest's) is counted in `inside` and, with REF_INSIDE_DARK,
+// ends it with no light there.
 // The first ray reaches `first_range` (the integral's), the rest 10 km. `contact`: the
 // first ray's hit's light (and all beyond it) x ContactShade (the `contact` variant). `helper_sky`: past the first vertex
 // the sky as the helper's paths take it (PathRadiance: SkyLight x SkyCalibration at the surface left; `contact_sky`).
@@ -469,7 +476,7 @@ float3 RefIncoming(float3 origin, float3 direction, float3 origin_normal, float 
     }
     if (solid_inside) {
       ++inside;
-      break;
+      if ((ref_word & REF_INSIDE_DARK) != 0u) break;
     }
     const float3 hit = origin + direction * hit_distance;
     if (contact && vertex == 0u) throughput *= ContactShade(hit_distance);

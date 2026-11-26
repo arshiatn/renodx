@@ -275,11 +275,12 @@ void main(uint3 id : SV_DispatchThreadID) {
       } else if (variant == REF_SAME_ROUTE) {
         // The helper's route model: two-sided as its HitNormal (an inside start lit as the helper lights it).
         sum += float4(direct + RefRouteIncoming(origin, RefCosineDirection(normal, u), normal, first_range, id.xy, sample_index, overflow), 1.f);
-      } else if (inside_start) {
+      } else if (inside_start && (ref_word & REF_INSIDE_DARK) != 0u) {
         // The camera's ray met a solid's back face: the texel's surface is inside it, no light (RefNearest's `inside`).
         sum.w += 1.f;
         ++inside;
       } else {
+        inside += inside_start ? 1u : 0u;
         sum += float4(direct + RefIncoming(origin, RefCosineDirection(normal, u), normal, first_range, furnace, variant == REF_CONTACT || variant == REF_CONTACT_SKY,
                                            variant == REF_CONTACT_SKY, id.xy, sample_index, overflow, cut, inside),
                       1.f);
