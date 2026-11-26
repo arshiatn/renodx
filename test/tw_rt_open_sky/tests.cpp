@@ -17,6 +17,8 @@
 // 4. The fog's sky texels (dlaa_helper/rt_fog.cs_6_5.hlsl with FOG_LIGHTS): the same view all sky, then all a wall 1000 m
 //    away (past FOG_RANGE), a roof shading part of each march from the sun and two lights. Today: a sky texel sun 1, no
 //    glow. Exact: the wall's values (the same march), within the storage's rounding.
+// 5. Wave 3's fixes (the same in either mode: fixed values hold, each control fails them): ReuseTexel's Jacobian behind
+//    a thin card (X06) and its target past FirstRange (X02); StoredHalf's f16 stores (X11, f16_store.cs_6_5.hlsl).
 // Each check: |measured - expected| within 4 standard errors (texel-frames independent) + the storage's rounding.
 // tests.exe <repository> <folder of dxcompiler.dll and dxil.dll> [now | exact]
 // now (default): today's values must hold, and the exact ones must fail somewhere in each part (CONTROL: the bias is
@@ -967,6 +969,223 @@ int main(int argc, char** argv) {
                 "sun share %.4f apart at most, glow %.5f (relative); %zu texel-frames not today's (sun 1, no glow), %zu not the wall's\n",
                 fog_width, fog_height, FOG_FRAMES, darkest_wall, brightest_wall, sun_apart, glow_apart, not_today, not_exact);
     conclude("4 the fog's sky texels", fog_verdict, true);
+  }
+
+  // Part 5: wave 3's fixes (fx3_ 11-26), the same in either mode: the fixed helper's values must hold and its control
+  // (the old rule, by its test bit or CONTROL_* build) must fail them. ReuseTexel (-D REUSE -D REUSE_TESTS: its bits read)
+  // over a 32 x 32 grid of bounce texels on a floor (y 0, normal +y, 5 cm apart), their reservoirs written here; the
+  // scene one far triangle (nothing blocks the final rays).
+  // X06: a thin card (the plane x 0, 1 m up) whose samples the left half made (its normal toward them, -x); the right half
+  // has none. Fixed: no right texel takes a card sample (0, saturate's Jacobian 0, cut). CONTROL abs (the
+  // REUSE_TEST_JACOBIAN_SATURATE bit): the right texels lit by the card's back.
+  // X02: every texel's sample 1.5 m straight up (normal -y), the light 1 in odd columns, 0 in even ones; bounce_range
+  // 1.5005 m, so every neighbour's sample lies past this receiver's FirstRange. Fixed: the even texels 0. CONTROL
+  // (CONTROL_TARGET_PAST_RANGE): lit by their neighbours'.
+  // X11: rt_path.hlsli StoredHalf of k + 0.75 ULP through a typed R16_FLOAT store reads back as the nearest half (k + 1);
+  // CONTROL f32tof16 (toward zero, as the 5090's typed store: pdi5_'s f16store) reads back k. WARP's own typed store of
+  // the float: reported only.
+  // X12 (rt_trace's TMin <= TMax, no LeafHit with near >= far) has no case here: its sheet / leaf paths need the trace's
+  // records, leaf instances and Light Through Leaves, and a ray with TMin > TMax is undefined, not a value WARP would
+  // show. It is an exact-limit guard (the same rays in any frame without a hit past 9,999.99 m): the GPU job list's
+  // all_modes_check byte compare covers it.
+  {
+    constexpr uint32_t GRID = 32;
+    constexpr float STEP = 0.05f;
+    constexpr uint32_t REUSE_FRAMES = 16;
+    constexpr uint32_t REUSE_TEST_JACOBIAN_SATURATE = 4096u;  // rt_reuse_bits.h (X06: today's abs)
+    struct Held {
+      std::array<float, 3> hit = {};
+      std::array<float, 3> normal = {};  // 0: none
+      float light = 0.f;
+      float count = 0.f;
+    };
+    // rt_scene.hlsli OctahedralEncode (never 0 for a normal: StoreReservoir's max(..., 1)).
+    const auto octahedral = [](const std::array<float, 3>& n) {
+      const float sum = std::abs(n[0]) + std::abs(n[1]) + std::abs(n[2]);
+      float x = n[0] / sum;
+      float y = n[1] / sum;
+      if (n[2] / sum < 0.f) {
+        const float folded_x = (1.f - std::abs(y)) * ((x >= 0.f) ? 1.f : -1.f);
+        y = (1.f - std::abs(x)) * ((y >= 0.f) ? 1.f : -1.f);
+        x = folded_x;
+      }
+      const int32_t qx = static_cast<int32_t>(std::lround(std::clamp(x, -1.f, 1.f) * 32767.f));
+      const int32_t qy = static_cast<int32_t>(std::lround(std::clamp(y, -1.f, 1.f) * 32767.f));
+      return std::max((static_cast<uint32_t>(qx) & 0xFFFFu) | (static_cast<uint32_t>(qy) << 16), 1u);
+    };
+    const auto half_bits = [](float value) { return static_cast<uint32_t>(DirectX::PackedVector::XMConvertFloatToHalf(value)); };
+    std::vector<std::array<float, 4>> positions(size_t{GRID} * GRID);
+    std::vector<std::array<float, 4>> origins(positions.size());
+    const std::vector<std::array<float, 4>> normals(positions.size(), {0.f, 1.f, 0.f, 0.f});
+    for (uint32_t y = 0; y < GRID; ++y) {
+      for (uint32_t x = 0; x < GRID; ++x) {
+        const float world_x = (x - (GRID - 1) * 0.5f) * STEP;
+        const float world_z = (y - (GRID - 1) * 0.5f) * STEP;
+        positions[size_t{y} * GRID + x] = {world_x, 0.f, world_z, 10.f};
+        origins[size_t{y} * GRID + x] = {world_x, 0.001f, world_z, 10.f};
+      }
+    }
+    std::vector<std::array<float, 4>> sun(16, {0.f, 0.f, 0.f, 0.f});
+    sun[1] = {0.f, 10.f, 0.f, 1.f};
+    ComPtr<ID3D12Resource> positions_texture = texture(GRID, GRID, DXGI_FORMAT_R32G32B32A32_FLOAT);
+    ComPtr<ID3D12Resource> origins_texture = texture(GRID, GRID, DXGI_FORMAT_R32G32B32A32_FLOAT);
+    ComPtr<ID3D12Resource> normals_texture = texture(GRID, GRID, DXGI_FORMAT_R32G32B32A32_FLOAT);
+    ComPtr<ID3D12Resource> sun_texture = texture(16, 1, DXGI_FORMAT_R32G32B32A32_FLOAT);
+    ComPtr<ID3D12Resource> samples_texture = texture(GRID, GRID, DXGI_FORMAT_R32G32B32A32_FLOAT);
+    ComPtr<ID3D12Resource> data_texture = texture(GRID, GRID, DXGI_FORMAT_R32G32B32A32_UINT);
+    ComPtr<ID3D12Resource> bounce_texture = texture(GRID, GRID, DXGI_FORMAT_R16G16B16A16_FLOAT);  // the helper's format
+    fill(positions_texture.Get(), positions.data(), 16);
+    fill(origins_texture.Get(), origins.data(), 16);
+    fill(normals_texture.Get(), normals.data(), 16);
+    fill(sun_texture.Get(), sun.data(), 16);
+    CHECK(execute());
+    std::vector<std::array<float, 3>> far_away;
+    quad(&far_away, {0.0, -100.0, 0.0}, {0.5, 0.0, 0.0}, {0.0, 0.0, 0.5});
+    const Scene far_scene = build_scene(far_away);
+    // `held` (a texel's reservoir: W 1) through ReuseTexel over the frames: the bounce's red at the texels `measured`
+    // picks, their largest and mean.
+    const auto reuse_run = [&](Pass* pass, const std::vector<Held>& held, float bounce_range, uint32_t reuse_tests, const auto& measured) {
+      std::vector<std::array<float, 4>> samples(held.size());
+      std::vector<std::array<uint32_t, 4>> data(held.size());
+      for (size_t texel = 0; texel < held.size(); ++texel) {
+        const Held& h = held[texel];
+        samples[texel] = {h.hit[0], h.hit[1], h.hit[2], (h.count > 0.f) ? 1.f : 0.f};
+        const bool has_normal = h.normal[0] != 0.f || h.normal[1] != 0.f || h.normal[2] != 0.f;
+        data[texel] = {half_bits(h.light) | (half_bits(h.light) << 16), half_bits(h.light) | (static_cast<uint32_t>(h.count) << 16),
+                       has_normal ? octahedral(h.normal) : 0u, octahedral({0.f, 1.f, 0.f})};
+      }
+      fill(samples_texture.Get(), samples.data(), 16);
+      fill(data_texture.Get(), data.data(), 16);
+      execute();
+      bind_pass(pass, {{"scene", far_scene.tlas.Get()},
+                       {"positions", positions_texture.Get()},
+                       {"sun", sun_texture.Get()},
+                       {"surface_origin", origins_texture.Get()},
+                       {"surface_normal", normals_texture.Get()},
+                       {"reuse_samples", samples_texture.Get()},
+                       {"reuse_data", data_texture.Get()},
+                       {"bounce", bounce_texture.Get()}});
+      set_uint(pass, "Settings", "width", GRID);
+      set_uint(pass, "Settings", "height", GRID);
+      set_uint(pass, "Paths", "bounce_width", GRID);
+      set_uint(pass, "Paths", "bounce_height", GRID);
+      set_uint(pass, "Paths", "bounce_scale", 1);
+      set_float(pass, "Paths", "bounce_range", bounce_range);
+      set_float(pass, "Paths", "sky_range", bounce_range);
+      set_uint(pass, "Paths", "reuse_tests", reuse_tests);
+      Stats stats;
+      double largest = 0.0;
+      for (uint32_t frame = 1; frame <= REUSE_FRAMES; ++frame) {
+        set_uint(pass, "Settings", "frame", frame);
+        if (!dispatch(pass, GRID, GRID)) return std::array<double, 2>{-1.0, -1.0};
+        const std::vector<uint8_t> bounce = read(bounce_texture.Get(), 8);
+        for (uint32_t y = 2; y + 2 < GRID; ++y) {
+          for (uint32_t x = 0; x < GRID; ++x) {
+            if (!measured(x)) continue;
+            const double red = half_at(bounce, (size_t{y} * GRID + x) * 4);
+            stats.Add(red);
+            largest = std::max(largest, red);
+          }
+        }
+      }
+      return std::array<double, 2>{largest, stats.Mean()};
+    };
+    Pass reuse;
+    CHECK(make_pass(L"rt_path.cs_6_5.hlsl", {L"REUSE", L"REUSE_TESTS"}, &reuse));
+    Pass reuse_past_range;
+    CHECK(make_pass(L"rt_path.cs_6_5.hlsl", {L"REUSE", L"REUSE_TESTS", L"CONTROL_TARGET_PAST_RANGE"}, &reuse_past_range));
+    // X06.
+    {
+      std::vector<Held> held(positions.size());
+      for (uint32_t y = 0; y < GRID; ++y) {
+        for (uint32_t x = 0; x < GRID / 2; ++x) held[size_t{y} * GRID + x] = {{0.f, 1.f, positions[size_t{y} * GRID + x][2]}, {-1.f, 0.f, 0.f}, 1.f, 1.f};
+      }
+      const auto behind = [](uint32_t x) { return x >= GRID / 2 && x < GRID / 2 + 8; };
+      const auto in_front = [](uint32_t x) { return x + 8 >= GRID / 2 && x < GRID / 2; };
+      const auto fixed = reuse_run(&reuse, held, 10.f, 0u, behind);
+      const auto control = reuse_run(&reuse, held, 10.f, REUSE_TEST_JACOBIAN_SATURATE, behind);
+      const auto front = reuse_run(&reuse, held, 10.f, 0u, in_front);
+      std::printf("X06 thin card: behind it largest %.5f mean %.5f (fixed: 0); CONTROL abs: largest %.5f mean %.5f (must be lit); in front "
+                  "(fixed) mean %.5f (lit)\n", fixed[0], fixed[1], control[0], control[1], front[1]);
+      const bool holds = fixed[0] == 0.0 && front[1] > 1e-3;
+      const bool control_fails = control[1] > 1e-3;
+      std::printf("%s 5 X06 ReuseJacobian saturate: fixed %s; CONTROL %s\n", (holds && control_fails) ? "PASS" : "FAIL", holds ? "holds" : "FAILS",
+                  control_fails ? "fails the fixed values" : "holds them too (no case)");
+      if (!holds || !control_fails) ++failures;
+    }
+    // X02.
+    {
+      std::vector<Held> held(positions.size());
+      for (uint32_t y = 0; y < GRID; ++y) {
+        for (uint32_t x = 0; x < GRID; ++x) {
+          const std::array<float, 4>& o = origins[size_t{y} * GRID + x];
+          held[size_t{y} * GRID + x] = {{o[0], o[1] + 1.5f, o[2]}, {0.f, -1.f, 0.f}, (x % 2 == 1) ? 1.f : 0.f, 1.f};
+        }
+      }
+      const auto even = [](uint32_t x) { return x % 2 == 0 && x >= 2 && x + 2 < GRID; };
+      const auto fixed = reuse_run(&reuse, held, 1.5005f, 0u, even);
+      const auto control = reuse_run(&reuse_past_range, held, 1.5005f, 0u, even);
+      std::printf("X02 past FirstRange: even texels largest %.5f mean %.5f (fixed: 0); CONTROL CONTROL_TARGET_PAST_RANGE: largest %.5f mean %.5f "
+                  "(must be lit)\n", fixed[0], fixed[1], control[0], control[1]);
+      const bool holds = fixed[0] == 0.0;
+      const bool control_fails = control[1] > 1e-3;
+      std::printf("%s 5 X02 ReuseTarget's range: fixed %s; CONTROL %s\n", (holds && control_fails) ? "PASS" : "FAIL", holds ? "holds" : "FAILS",
+                  control_fails ? "fails the fixed values" : "holds them too (no case)");
+      if (!holds || !control_fails) ++failures;
+    }
+    // X11.
+    {
+      constexpr uint32_t SIDE = 64;
+      std::vector<float> values(size_t{SIDE} * SIDE);
+      std::vector<uint16_t> lower(values.size());
+      for (size_t index = 0; index < values.size(); ++index) {
+        // Halves from 2^-14 up to below 32768 (exponents 1-29), every eighth mantissa step; the second half negative.
+        const uint16_t magnitude = static_cast<uint16_t>(0x0400u + (index % (values.size() / 2)) * 7u);
+        const uint16_t k = static_cast<uint16_t>(magnitude | ((index >= values.size() / 2) ? 0x8000u : 0u));
+        const float at = DirectX::PackedVector::XMConvertHalfToFloat(k);
+        const float next = DirectX::PackedVector::XMConvertHalfToFloat(static_cast<uint16_t>(k + 1u));
+        values[index] = at + 0.75f * (next - at);
+        lower[index] = k;
+      }
+      ComPtr<ID3D12Resource> values_texture = texture(SIDE, SIDE, DXGI_FORMAT_R32_FLOAT);
+      ComPtr<ID3D12Resource> nearest_texture = texture(SIDE, SIDE, DXGI_FORMAT_R16_FLOAT);
+      ComPtr<ID3D12Resource> truncated_texture = texture(SIDE, SIDE, DXGI_FORMAT_R16_FLOAT);
+      ComPtr<ID3D12Resource> raw_texture = texture(SIDE, SIDE, DXGI_FORMAT_R16_FLOAT);
+      fill(values_texture.Get(), values.data(), 4);
+      CHECK(execute());
+      Pass store;
+      CHECK(make_pass(L"..\\..\\..\\..\\test\\tw_rt_open_sky\\f16_store.cs_6_5.hlsl", {}, &store));
+      bind_pass(&store, {{"scene", far_scene.tlas.Get()},
+                         {"f16_values", values_texture.Get()},
+                         {"f16_nearest", nearest_texture.Get()},
+                         {"f16_truncated", truncated_texture.Get()},
+                         {"f16_raw", raw_texture.Get()}});
+      CHECK(dispatch(&store, SIDE, SIDE));
+      const std::vector<uint8_t> nearest = read(nearest_texture.Get(), 2);
+      const std::vector<uint8_t> truncated = read(truncated_texture.Get(), 2);
+      const std::vector<uint8_t> raw = read(raw_texture.Get(), 2);
+      size_t nearest_ok = 0;
+      size_t truncated_low = 0;
+      size_t raw_nearest = 0;
+      size_t raw_low = 0;
+      for (size_t index = 0; index < values.size(); ++index) {
+        uint16_t stored;
+        std::memcpy(&stored, nearest.data() + index * 2, 2);
+        nearest_ok += (stored == static_cast<uint16_t>(lower[index] + 1u)) ? 1 : 0;
+        std::memcpy(&stored, truncated.data() + index * 2, 2);
+        truncated_low += (stored == lower[index]) ? 1 : 0;
+        std::memcpy(&stored, raw.data() + index * 2, 2);
+        raw_nearest += (stored == static_cast<uint16_t>(lower[index] + 1u)) ? 1 : 0;
+        raw_low += (stored == lower[index]) ? 1 : 0;
+      }
+      std::printf("X11 f16 stores of k + 0.75 ULP (%zu values): StoredHalf -> k + 1 at %zu; CONTROL f32tof16 -> k at %zu; WARP's typed store of "
+                  "the float (info): k + 1 at %zu, k at %zu\n", values.size(), nearest_ok, truncated_low, raw_nearest, raw_low);
+      const bool holds = nearest_ok == values.size();
+      const bool control_fails = truncated_low == values.size();
+      std::printf("%s 5 X11 StoredHalf: fixed %s; CONTROL %s\n", (holds && control_fails) ? "PASS" : "FAIL", holds ? "holds" : "FAILS",
+                  control_fails ? "fails the fixed values" : "does not truncate (no case)");
+      if (!holds || !control_fails) ++failures;
+    }
   }
 
   std::printf("%s\n", (failures == 0) ? "ALL PASSED" : "SOME FAILED");
