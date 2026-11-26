@@ -984,6 +984,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AA FEED FIX BUILT, NOT MERGED (aaf2_ 11-26, origin/aafeed_1126 ecf627f09; testbi ... | ?
 - AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | ?
 - RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | ?
+- OMM G3 RUNNER READY, NOT RUN (omr_ 11-27, testbin\scratch\omr_\omm_ab.ps1 sha 83 ... | ?
+- OMM G2 (CPU baker): the player can't make it from today's recordings (both GPU-b ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17679,6 +17681,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         aaf_'s rows unaffected (every line set it). Owner: done
         - [ ] RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; the real commit ran hooks). Briefs
         already forbid skipping hooks; repeat it louder. Owner: coord (briefs)
+        - [ ] OMM G3 RUNNER READY, NOT RUN (omr_ 11-27, testbin\scratch\omr_\omm_ab.ps1 sha 83a6ddbb, handback.md): recording
+        player rebakes the 11-17 grass recordings with omm-lib 1.10.0 vs 1.12.0 (GPU Micromap Baking ON = default, so G3);
+        -Prepare / -Play / -Nsight, 0 game starts, ~20-25 min + lock waits; dry run clean (shas, worktree 61e6d7fa0, CPU Set
+        Setter 'none -> nothing set'). -Prepare sets the documented recorder-build switch for its build child only. Needs ATN's
+        5 rule lines. Owner: ATN (rule lines) -> 11-27 GPU wave
+        - [ ] OMM G2 (CPU baker): the player can't make it from today's recordings (both GPU-baked; DXR 1.2 off is refused);
+        ATN picks (a) one recording start with GPU Micromap Baking Off (runner not written), (b) harness synthetic CPU micromap
+        modes (leaves only), (c) accept sdku_'s synthetic result. Also open: FLIP PNGs from the trimmed dumps. Owner: ATN
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
