@@ -3,18 +3,18 @@
  * SPDX-License-Identifier: MIT
  */
 
-// DLAA (anti_aliasing.hpp, dlaa_bridge.hpp): NVIDIA's inputs from the tone mapper's output (t0, 2.0 encoded, signed;
-// linear with TW_AA_FRAME_LINEAR or aa.hlsli AaFrameLinear: the lit scene) and the scene's depth (t1): the colour linear for its HDR model (u0: squared, sign
-// kept; decoded at 2.2 with aa.hlsli AaFrameGamma22; in BT.2020 so wide colours stay positive), the depth (u1), and the
-// motion in pixels to where each pixel was last frame (u2, x right, y down):
+// DLAA (anti_aliasing.hpp, dlaa_bridge.hpp): NVIDIA's inputs from the tone mapper's output (t0, signed; Attila's t00
+// writes it linear, rrbi_ G0; aa.hlsli AaFrameLinear: the lit scene before it) and the scene's depth (t1): the colour (u0:
+// squared, sign kept; to 2.2 with aa.hlsli AaFrameGamma22; as it is with TW_AA_FRAME_LINEAR or AaFrameLinear; in BT.2020
+// so wide colours stay positive), the depth (u1), and the motion in pixels to where each pixel was last frame (u2, x right, y down):
 // objects' own where their depth is the final one (t3 / t4: written by the game's draws themselves, object_motion.hpp
 // in-draw; else t2: drawn again, motion.hlsli MotionTexel), the rest the camera's, from the depth and both frames'
 // cameras without the jitter (the game has no motion vectors of its own); 0 after a reset.
 #include "./aa.hlsli"
 #include "./motion.hlsli"
 
-// The tone mapper's output: 0 its square root (Attila, Thrones, WH3...; Rome II's hdr_to_screen gamma 2.2), 1 linear
-// (Pharaoh: its ACES fit ends without one). A game folder's copy of this shader defines it before its #include.
+// 0: the tone mapper's output read as 2.0 encoded (Thrones, WH3...; Rome II's hdr_to_screen gamma 2.2; Attila too, its
+// t00 linear: rrbi_ G0), 1 linear (Pharaoh / Troy: their ACES fits end without a root). Game copies define it first.
 #ifndef TW_AA_FRAME_LINEAR
 #define TW_AA_FRAME_LINEAR 0
 #endif
