@@ -936,6 +936,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - fx5b_ DONE (branch fx5b_w5b 3575ac0af, not merged; next in merge order after W6) ... | ?
 - ALL 7 FIX WAVES MERGED + PUSHED 11-26 (origin/atn-mods 3415dba18): W0b 819d945f9 ... | ?
 - pdi4c_ M2 TRACED AT 4K (r6): DI-interior E vs the bits (6.84 M px, band 2) r6 0. ... | ?
+- rrbi_ DONE (72 min of 90; branch rrbi_ c45733245, merged locally 6fc08a593, push ... | ?
+- W8 STARTED 15:1x (fx8_, Opus High, est 130): D1's A' (SSS at one screen pixel pe ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -1046,7 +1048,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REF BREAKS MISSING (spec 9, built 5): offset20, fog_flat, clearance0, stale_bits ... | gate tooling slot
 - ATN RULE LINE: RENODX_TW_REF_BREAK + RENODX_TW_REF_INSIDE GPU proof runs (P5 bre ... | ?
 - G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
-- RR PLACEMENT CITE: the RR-after-tone-mapper comment (anti_aliasing.hpp aa_dlaa_p ... | ?
+- RR PLACEMENT CITE (CORRECTED 11-26 15:1x, rrbi_ G0 confirmed F1): text = 'RRG 3. ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
 - wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
 - LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a c ... | ?
@@ -17348,6 +17350,29 @@ heading text are in HANDOFF_ARCHIVE.md)
         0 / 8, r9 A/A); r6 head pushed origin/pdi4c_step4c_r6 (S5 tags 38fb981c7: 0 real denies at HEAD; rt_scene.hlsli:16
         comment 60c9435c1). Running: D1 / D2 at 4K; all_modes_check -Rev r6 after h4k_'s 4K M6 baseline AT ce1f83655 (not
         HEAD: W-H / W5a / W3 change helper output). Owner: pdi4c_ / h4k_
+        - [ ] rrbi_ DONE (72 min of 90; branch rrbi_ c45733245, merged locally 6fc08a593, pushed after its gated builds):
+        G0 CONFIRMS F1 (t00's output is linear: 0.18 -> 0.18, CONTROL 2.0-encoded gives 0.4243 = rejected; RR feed t00^1.1 with
+        Gamma Correction on, t00 with it off; RR runs at t00's on_drawn = before PsychoV35). Row 'Denoise Before Tone Mapping
+        (Experimental)' (settings rr_before_tone_map, RR's More Options, Off by default, 64-bit only, tooltip 'At 100% render
+        scale'): OnToneMapperDraw binds RR's result in t00 / t09 / t10's scene slot (1 / 0 / 0) for that draw, OnTonemapDrawn
+        restores; AaFrameLinear() (gamma 1) prepare / finish; Apply(..., scene_linear) = no sqrt, no copy, KeepFrame with a
+        nullptr target (DrawHudless skipped); inert off / 32-bit / SR / FSR / XeSS / RR refused / Upscaling Debug View / below
+        100 % / deferred context; helper untouched. Tests: tw_aa_frame_gamma part 3 (gamma 1 prepare / finish 0 apart, round
+        trip 3.3e-6; CONTROL gamma 2.0 0.96 / 1.37 apart); harness display pass mid grey 30.781 nits vs 30.782 (CONTROL Gamma
+        Correction off 36.54). Harness: tools\tw\rt_harness\tw_rt_harness.cpp + HARNESS_RR_TONEMAP=attila (real PsychoV35 +
+        HdrToFrame), HARNESS_RR_EXPOSURE_STEP, HARNESS_RR_TREE (backup .before_rrbi; exe C0ACE41B1098). G1 AT 4K 37 / 37 PASS
+        (scratch\rrbi_\g1; table.py): the row B vs today A0: mean output / truth closest everywhere (u1 0.999 vs 1.042, fire
+        1.015 vs 1.148), noise lower (u1 0.0140 vs 0.0150), dark ramp darkest tenth PQ code 14.2 vs 16.3 (truth 5.7),
+        exposure step within 1 % from frame 59 (worst 1.5 %) vs A0 never (worst 17 %); H (sqrt) best in the deepest darks but
+        -25 % on u1 / fire (= hrr_'s -22 %); P (pre-v104) = the violet veil (darks at code 105); A1 = B bit for bit (the harness
+        has no bloom / grade); preset F = preset 0. R5 scale sweep: u1 / ao within +-0.3 % but the dark ramp +40 % / -51 % (RR has
+        an absolute floor in input units) -> B stays (Q2 default); B2 only if Attila's white point < 1: needs ONE t00 t0 (b / w)
+        pass dump in day / night / shade (a game run) + a B2 addendum (t09 / t10 hold b / w in cbuffer b1). G3 Nsight (A/A,
+        then row Off / On on one paused 4K frame; expect On <= Off) = a game run, written. 32-bit line in
+        tools\tw\attila64\backup_32bit.md. ATN: test the row in game (Experimental, off by default). Owner: ATN / coord
+        - [ ] W8 STARTED 15:1x (fx8_, Opus High, est 130): D1's A' (SSS at one screen pixel per sample, every render scale,
+        thickness 0.005) + X30 with all its hosts bound (Rome R contact_shadows.hpp, Shogun 2 screen_space_shadows.hpp; Tales
+        as a patch for LAST); rows B / C / Bend offset kept. Agents running: pdi4c_, h4k_, fx8_ (cap 3). Owner: fx8_
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
@@ -18559,9 +18584,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         while halving the U1 bias: the trade is ~linear (+0.1 p = ~4.4 points of bias back for ~4-5.5 points of dark
         lift); p 0.6-0.7 also cut AO time noise ~8 % and firefly time noise ~20 %. Middle option for ATN's eye: p 0.6
         (darks +4-5 %, bias -22 -> -18 %) or 0.7 (+7-10 %, -13 %). Owner: ATN
-        - [ ] RR PLACEMENT CITE: the RR-after-tone-mapper comment (anti_aliasing.hpp aa_dlaa_prepare / rr_d3d12.hpp) gets
-        'ours: RRG 3.1 p10 says before tone mapping; measured hrr_ 11-26: no gain before at matched encoding, linear lifts
-        darks x1.26'. Owner: next comment / cite wave
+        - [ ] RR PLACEMENT CITE (CORRECTED 11-26 15:1x, rrbi_ G0 confirmed F1): text = 'RRG 3.1 p10: RR before tone mapping.
+        In Attila it already runs before PsychoV35 (after t00, feed ~t00^1.1, rrbi_ G0); the Experimental row Denoise Before
+        Tone Mapping moves it before t00.' (the old 'after the tone mapper ... linear lifts darks x1.26' was hrr_'s 640x360
+        harness model, not the in-game feed). + R3: the '2.0 encoded' comments for Attila (aa.hlsli:9-10, 42-44;
+        aa_dlaa_prepare 6-8, 16-17; aa_dlaa_finish 6-8, 19-20; aa_cmaa2_*; aa_smaa.hlsli:13-14 shared with Pharaoh / Troy;
+        anti_aliasing.hpp:52, 1121-1123) -> t00's output is linear. Comments only. Owner: next comment / cite wave
         - [x] (ATN 11-26: keep sqrt - 'otherwise we get black raise / purple pictures') ATN LOOK: RR FEED ENCODING. Today's sqrt keeps darks right (x0.997) but darkens two-level noise (penumbrae,
         AO, fireflies) by 22 %; linear fixes that bias but lifts darks x1.26 (the violet veil). Sweep: no free middle;
         p 0.6 = darks +4-5 % / bias -18 %, p 0.7 = +7-10 % / -13 %, p 0.8 = +13-16 % / -9 %. ATN picks by eye (a product
