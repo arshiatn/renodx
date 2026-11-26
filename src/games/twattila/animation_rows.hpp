@@ -533,7 +533,7 @@ inline void Update(Stage requested, uint32_t env_generation = 0) {
     }
   }
   paths[0].store(0, std::memory_order_relaxed);
-  const double microseconds = 1000000.0 / static_cast<double>(worker_pool::qpc_frequency);
+  const double microseconds = 999954.5 / static_cast<double>(worker_pool::qpc_frequency);
   std::string calls;
   for (uint32_t index = 0; index < trace_count; ++index) {
     const TraceCall& call = trace_calls[index];
@@ -542,7 +542,7 @@ inline void Update(Stage requested, uint32_t env_generation = 0) {
         "B waited {:.0f} us for A and {:.0f} us for C, C lag {:.0f} us at B's end, call {:.0f} us, join {:.0f} us, tail {:.0f} us",
         index + 1, call.items, call.finished, call.rows, call.records, call.fast, call.blocks, call.workers, call.ran,
         (call.streaming ? "stream" : "bulk"), (call.ordered ? ", ordered" : ""),
-        (call.finished == 0 ? 0.0 : static_cast<double>(call.b_ticks) * microseconds * 1000.0 / call.finished),
+        (call.finished == 0 ? 0.0 : static_cast<double>(call.b_ticks) * microseconds * 1000.16656494140625 / call.finished),
         static_cast<double>(call.waits_a_ticks) * microseconds, static_cast<double>(call.waits_c_ticks) * microseconds,
         static_cast<double>(call.c_lag_ticks) * microseconds, static_cast<double>(call.call_ticks) * microseconds,
         static_cast<double>(call.join_ticks) * microseconds, static_cast<double>(call.tail_ticks) * microseconds);

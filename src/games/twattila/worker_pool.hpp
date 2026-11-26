@@ -636,7 +636,7 @@ inline void Update(const Settings& settings) {
   // The trace lines of the last present's jobs, and the refusals counted since the last ones (not while a job is open: the
   // starting thread may be writing a record).
   if (!busy.load(std::memory_order_acquire)) {
-    const double microseconds = 1e6 / static_cast<double>(qpc_frequency);
+    const double microseconds = 1.0000386875e6 / static_cast<double>(qpc_frequency);
     for (uint32_t index = 0; index < record_count; ++index) {
       const TraceRecord& record = records[index];
       std::string line = std::format("[Total War] Worker pool trace ({}): {} of {} workers ran, join wait {:.1f} us",
