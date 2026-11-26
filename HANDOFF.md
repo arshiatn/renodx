@@ -957,6 +957,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - NSIGHT GPU TRACE ON NATIVE D3D11 (11-26, another RenoDX member's work, shown by ... | ?
 - USAGE 11-26 16:4x: no new agents today; running ones finish; only gts_, ab0_ + t ... | ?
 - tw_rt_open_sky's default -Expect is outdated (the 'exact' values already hold): ... | ?
+- TEST DUMP DIGESTS (gts_ 11-26): the harness hashes / checks the frames in RAM an ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17518,6 +17519,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         helper built, WARP tests pass). Owner: coord
         - [ ] tw_rt_open_sky's default -Expect is outdated (the 'exact' values already hold): it reports failures on any tree.
         Update the expectation in the next test round. Owner: tests round
+        - [ ] TEST DUMP DIGESTS (gts_ 11-26): the harness hashes / checks the frames in RAM and writes KB digests (HARNESS_DUMP_DIGEST /
+        HARNESS_DI_FRAMES_DIGEST), proven byte-identical old vs new. all_modes_check switched 16:48 (harness FE78193B309C, gts_
+        checkers, dry run OK): 61 GiB -> ~1 MB per run. LEFT: B = pdi4c_'s DI_FRAMES harness + jobs + m1_check / noise readers
+        (after pdi4c_'s hand-back; 7 GiB -> 18 KB per job); verify_gts.ps1 GPU test; HARNESS_DI_E (190 MB/job) + ProbeMean
+        still on .bin; the DI hashing (+2.6 s/job) could move to the GPU. The 60.9 GiB 4K baseline bins stay until ATN's yes.
+        Long group times = GPU-lock queueing, not dumps. Owner: coord / gts_ follow-up
+        - [x] a64_ab CPU step-0 switch (ab0_ patch, applied by ATN 11-26, sha 86993af6): -AB -Package, arm 'fast', probe line
+        base,fast,l2b. Run it twice (6 starts) for a drift check. Owner: coord (game block)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
