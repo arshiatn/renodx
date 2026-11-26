@@ -17575,6 +17575,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         (3-5) gate_hook.py:949 / :959-960 / :962 lines (exact text in the design); (6) gate_override.ps1:14 $known +=
         'estimator'; (7) INSTALL_FOR_ATN.md section 3 row; no settings rule; strict = row 'on', back out = 'off'.
         Owner: cbi_ (writes) -> review -> ATN installs
+        cbi_ STARTED 01:5x (Opus High, scratch only: testbin\scratch\cbi_\; est 45 / deadline 90): .proposed files + diffs +
+        tests (controls, old checks equal on 50 commits, shadow vs cbd_ 25 flags, r4 rows, p95); assumes cbd_ answers 1-5.
+        Owner: cbi_
         - [ ] CITATION BLOCKER QUESTIONS FOR ATN (cbd_'s recommendations in brackets): 1 Attila + helper strict first,
         ports warn-only until their propagation box [yes]; 2 saturate warn-only for good [yes]; 3 an edit inside a
         src-tagged function must touch the tag line [no, review checks]; 4 'guard inert ... proof pending' allowed while
