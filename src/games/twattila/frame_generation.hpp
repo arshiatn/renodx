@@ -454,14 +454,15 @@ inline bool DrawHudless(ID3D11DeviceContext* context, ID3D11Texture2D* target) {
 }  // namespace internal
 
 // DLAA ran on `target` (the tone mapper's output, before the UI): the frame's inputs kept, and its HUD-less image unless
-// the last frames took that from a later pass of their output (KeepOutput).
+// the last frames took that from a later pass of their output (KeepOutput). `target` nullptr: DLAA ran before the tone
+// mapper (on the lit scene), a later pass draws the HUD-less image (KeepOutput).
 inline void KeepFrame(ID3D11DeviceContext* context, ID3D11Texture2D* target, const Inputs& inputs) {
   auto& state = internal::state;
   const std::unique_lock lock(state.mutex);
   if (state.settings.multiplier == 0 || state.vertex_code.empty()) return;
   state.hudless = false;
   state.output_drawn = false;
-  if (!state.output_pass && !internal::DrawHudless(context, target)) return;
+  if (target != nullptr && !state.output_pass && !internal::DrawHudless(context, target)) return;
   state.inputs = inputs;
   state.kept = true;
 }
