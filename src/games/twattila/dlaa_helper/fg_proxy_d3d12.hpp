@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <limits>
 #include <string>
 #include <thread>
 #include <type_traits>
@@ -230,7 +231,11 @@ class ProxyFrameGeneration12 {
       if (ComPtr<ID3D12Device5> device5; SUCCEEDED(device_.As(&device5))) device5->RemoveDevice();
     }
     const bool sdr = shared->fg_sdr != 0;
-    if (window_.Stale(game_window) || !chain_ || chain_width_ != width_ || chain_height_ != height_ || chain_format_ != format_ || chain_sdr_ != sdr) {
+    // FSR's depth kind (UE's infinite far plane: the projection's [10] is 1; it changes at load only) from a frame with
+    // inputs: one without has no camera, it keeps the chain's.
+    const bool infinite_far = ((shared->fg_inputs != 0) ? (shared->fg_view_to_clip[10] == 1.f) : chain_infinite_far_);
+    if (window_.Stale(game_window) || !chain_ || chain_width_ != width_ || chain_height_ != height_ || chain_format_ != format_ || chain_sdr_ != sdr
+        || (backend_ == dlaa_bridge::FG_BACKEND_FSR && chain_infinite_far_ != infinite_far)) {
       window_.Hide();
       DestroyChain();
       if (window_.Stale(game_window)) {
@@ -244,6 +249,7 @@ class ProxyFrameGeneration12 {
       chain_height_ = height_;
       chain_format_ = format_;
       chain_sdr_ = sdr;
+      chain_infinite_far_ = infinite_far;
       status_ = "Frame generation starting";
       MakeChain();
       SignalOnly(value);
@@ -349,7 +355,8 @@ class ProxyFrameGeneration12 {
             .frameTimeDelta = frame_ms,
             .reset = reset,
             .cameraNear = shared->fg_near,
-            .cameraFar = shared->fg_far,
+            // Infinite: no far plane (src: ffx_framegeneration.h:239, "used only in case of non-infinite depth").
+            .cameraFar = (chain_infinite_far_ ? std::numeric_limits<float>::max() : shared->fg_far),
             .cameraFovAngleVertical = 2.f * std::atan(1.f / projection[5]),
             .viewSpaceToMetersFactor = 1.f,
             .depth = ffxApiGetResourceDX12(depth_.Get(), FFX_API_RESOURCE_STATE_COMPUTE_READ),
@@ -458,7 +465,8 @@ class ProxyFrameGeneration12 {
           const std::string frames = (counted ? std::format("{:.1f} frames presented per rendered frame", static_cast<float>(present_count - fsr_present_count_) / 30.f) : std::string("started"));
           if (counted) presented_ = std::min(static_cast<uint32_t>(std::lround(static_cast<float>(present_count - fsr_present_count_) / 30.f)), 255u);
           fsr_present_count_ = present_count;
-          status_ = std::format("AMD FSR Frame Generation {}: {}{}{}", (provider.versionName != nullptr ? provider.versionName : "?"), frames, no_hudless, started_);
+          status_ = std::format("AMD FSR Frame Generation {}: {}{}{}{}", (provider.versionName != nullptr ? provider.versionName : "?"), frames, no_hudless,
+                                (chain_infinite_far_ ? ", infinite depth" : ""), started_);
         }
 #endif
 #if defined(RENODX_XESS_FG)
@@ -640,8 +648,9 @@ class ProxyFrameGeneration12 {
             };
             ffxCreateContextDescFrameGeneration create = {
                 .header = {.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION, .pNext = &version.header},
-                // No depth flags: 0 near, a far plane.
-                .flags = (chain_sdr_ ? 0u : static_cast<uint32_t>(FFX_FRAMEGENERATION_ENABLE_HIGH_DYNAMIC_RANGE)),
+                // Depth 0 near (no DEPTH_INVERTED); DEPTH_INFINITE for an infinite far plane (src: ffx_framegeneration.h:46).
+                .flags = (chain_sdr_ ? 0u : static_cast<uint32_t>(FFX_FRAMEGENERATION_ENABLE_HIGH_DYNAMIC_RANGE))
+                         | (chain_infinite_far_ ? static_cast<uint32_t>(FFX_FRAMEGENERATION_ENABLE_DEPTH_INFINITE) : 0u),
                 .displaySize = {.width = chain_width_, .height = chain_height_},
                 .maxRenderSize = {.width = chain_width_, .height = chain_height_},
                 .backBufferFormat = ffxApiGetSurfaceFormatDX12(chain_format_),
@@ -746,6 +755,7 @@ class ProxyFrameGeneration12 {
   UINT chain_height_ = 0;
   DXGI_FORMAT chain_format_ = DXGI_FORMAT_UNKNOWN;
   bool chain_sdr_ = false;
+  bool chain_infinite_far_ = false;  // its FSR generation context's DEPTH_INFINITE
   UINT tearing_ = 0;
   bool after_hidden_ = false;  // the next frame has no connection to the last one presented
   std::chrono::steady_clock::time_point last_time_;

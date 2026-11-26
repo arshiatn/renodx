@@ -18,6 +18,12 @@ static const float SKY_VIEW_Z = 1.0e7f;  // metres: past NRD's range (nrd_d3d12.
 // As nrd::ReblurHitDistanceParameters' (the bounce and the reflections keep its defaults).
 static const float3 HIT_DISTANCE_PARAMETERS = float3(3.f, 0.1f, 20.f);
 
+#if !defined(NRD_FRONT_BOUNCE)
+// view_projection (b3: the trace's, or the reflections' request's: the camera NRD's Run takes apart); path_flags
+// (REFLECT: ReflectAlpha). The Light Bounce's request has its own (b2).
+#include "./rt_camera.hlsli"
+#endif
+
 #if defined(NRD_FRONT_SUN)
 RWTexture2D<float2> sun_rays : register(u2);
 RWTexture2D<float> view_z : register(u40);
@@ -39,7 +45,6 @@ cbuffer Bounce : register(b2) {
   uint bounce_padding;
 };
 #elif defined(NRD_FRONT_REFLECT)
-#include "./rt_camera.hlsli"  // path_flags (b3, the reflections' request's): ReflectAlpha
 Texture2D<float4> guide_normals : register(t12);  // world normals (x 0: none)
 Texture2D<float> guide_roughness : register(t14);
 RWTexture2D<float> view_z : register(u48);
@@ -73,7 +78,17 @@ void main(uint3 id : SV_DispatchThreadID) {
 #endif
     return;
   }
-  view_z[id.xy] = position.w;
+  // src: NRD.hlsli:20-21 (NRD 4.18), NRDDescs.h:49 (IN_VIEWZ): "linear view space Z", in the matrices' space. That is
+  // ClipOf(position, view_projection).w (rt_camera.hlsli; row 3 is the forward axis nrd_d3d12.hpp Run makes the view's z),
+  // not position.w: the camera distance (rt_positions.cs_5_0.hlsl), 1 / cos(off-axis angle) larger (x1.54 at a 16:9
+  // corner with a 60-degree vertical FOV). Also REBLUR's hit distance normalisation's viewZ (NRD.hlsli:597-601).
+  // NRD_FRONT_DISTANCE_Z (test/tw_nrd_front's control only): the camera distance, as before X19.
+#if defined(NRD_FRONT_DISTANCE_Z)
+  const float depth = position.w;
+#else
+  const float depth = dot(float4(position.xyz, 1.f), view_projection[3]);
+#endif
+  view_z[id.xy] = depth;
 #if defined(NRD_FRONT_REFLECT)
   const float3 guide = guide_normals[pixel].xyz;
   const float3 normal = (dot(guide, guide) > 0.5f) ? normalize(guide) : SurfaceNormal(pixel, position);
@@ -82,7 +97,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   const float gbuffer_roughness = saturate(guide_roughness[pixel]);
   const float roughness = (gbuffer_roughness < MIRROR_ROUGHNESS) ? 0.f : sqrt(ReflectAlpha(gbuffer_roughness));
   const float4 traced = signal[id.xy];
-  signal[id.xy] = REBLUR_FrontEnd_PackRadianceAndNormHitDist(traced.rgb, REBLUR_FrontEnd_GetNormHitDist(traced.a, position.w, HIT_DISTANCE_PARAMETERS, roughness), true);
+  signal[id.xy] = REBLUR_FrontEnd_PackRadianceAndNormHitDist(traced.rgb, REBLUR_FrontEnd_GetNormHitDist(traced.a, depth, HIT_DISTANCE_PARAMETERS, roughness), true);
 #else
   const float3 normal = SurfaceNormal(pixel, position);
   const float roughness = 1.f;
@@ -94,7 +109,7 @@ void main(uint3 id : SV_DispatchThreadID) {
   penumbra[id.xy] = SIGMA_FrontEnd_PackPenumbra(occluder, sun_cone);
   translucency[id.xy] = SIGMA_FrontEnd_PackTranslucency(occluder, ray.x);
 #elif defined(NRD_FRONT_BOUNCE)
-  signal[id.xy] = REBLUR_FrontEnd_PackRadianceAndNormHitDist(bounce[id.xy].rgb, REBLUR_FrontEnd_GetNormHitDist(hit_distance[id.xy], position.w, HIT_DISTANCE_PARAMETERS, 1.f), true);
+  signal[id.xy] = REBLUR_FrontEnd_PackRadianceAndNormHitDist(bounce[id.xy].rgb, REBLUR_FrontEnd_GetNormHitDist(hit_distance[id.xy], depth, HIT_DISTANCE_PARAMETERS, 1.f), true);
 #elif defined(NRD_FRONT_AMBIENT)
   // On purpose (ATN 11-22): the open share, not NRD's mean of min(hit, range) / range, so every blocked ray counts as a
   // contact: the AO NRD shows is the one the built-in denoisers show (NRD's own is lighter near far blockers).
