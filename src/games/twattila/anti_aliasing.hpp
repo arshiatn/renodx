@@ -1125,7 +1125,9 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   const UINT input_height = (scaled ? runtime.render_height : objects.height);
   // Presets L and M (always auto-exposed) and Ray Reconstruction flatten dark tones given linear colour (ATN debug11:
   // shadows one flat grey with coloured fringes; debug28: Ray Reconstruction's a flat violet veil): they get its square
-  // root, as the tone mapper's own encoding.
+  // root, as the tone mapper's own encoding. Ray Reconstruction after the tone mapper (its output is this input):
+  // ours: RRG 3.1 p10 says before tone mapping; hrr_ 11-26 (640x360, below the 4K rule): no gain before at
+  // matched encoding, linear lifts darks x1.26; rrb_ designs the before-tone-mapper row.
   const bool square_root = method == Method::DLAA
                            && (runtime.settings.dlaa_preset == 12u || runtime.settings.dlaa_preset == 13u
                                || (runtime.settings.ray_reconstruction && objects.guides_frame == runtime.frame));

@@ -359,6 +359,9 @@ class RayReconstruction12 {
     // NVIDIA takes the matrices as writable pointers.
     auto world_to_view = request.world_to_view;
     auto view_to_clip = request.view_to_clip;
+    // pInColor: the add-on's frame after the game's tone mapper (its square root: anti_aliasing.hpp). Ray Reconstruction
+    // after the tone mapper: ours: RRG 3.1 p10 says before tone mapping; hrr_ 11-26 (640x360, below the 4K rule): no
+    // gain before at matched encoding, linear lifts darks x1.26; rrb_ designs the before-tone-mapper row.
     NVSDK_NGX_D3D12_DLSSD_Eval_Params parameters = {
         .pInDiffuseAlbedo = inputs_[DIFFUSE_ALBEDO].Get(),
         .pInSpecularAlbedo = inputs_[SPECULAR_ALBEDO].Get(),
