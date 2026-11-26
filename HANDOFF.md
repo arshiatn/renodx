@@ -17962,6 +17962,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         picture; Matched Raytraced != Matched Basic); (2) lab_rb jobs 01-12 (day / night toggle + Basic / Off rotations
         base vs new); (3) all_modes_check -Rev 1f88af2dd. Shares the GPU with hrr_ via the lock. Then review (Opus xHigh)
         -> merge. Owner: bal3_
+        bal3_ GPU2 DONE 06:05 (04:07-06:05, 118 of 180 min; GPU free, sessions closed, no -Stop): (1) E4 160 runs ALL
+        PASSED (e4_tables_rb.txt): Off + Basic atn-mods vs new 0 words differ x16; controls no-twins = Off, no-Raytraced-
+        twins = Basic (0 differ); Raytraced vs tests setting 2.2-8.1 k of 921 600 words, sums 0.99994-1.000002; Raytraced
+        vs Basic 111-125 k differ; Matched Basic vs Basic 182-219 k; Matched Raytraced vs Matched Basic 70-76 k (twin runs);
+        box tops cfg 49 Off / Basic / Raytraced / Matched Basic / Matched Raytraced 0.9517 / 0.9585 / 0.9906 / 0.9712 /
+        0.9909. (2) Lab 12 jobs exit 0: reuse ms Off / Basic / Raytraced day 0.80 / 0.73 / 1.84 (+1.04) [G-1126-45], night
+        1.26 / 1.25 / 4.12 (+2.86) [G-1126-55]; totals day 9.84 / 9.77 / 10.88, night 22.90 / 22.89 / 25.79; PT unchanged;
+        rotations SAME + NO CHANGE (day Basic G-1126-48, day Off G-1126-52 after -51 INVALID A/A, night Basic -58, night Off
+        -61). (3) all_modes_check -Rev 1f88af2dd (h0\runs\all_20261126_052224): census / checks / repeat PASS; dumps FAIL
+        192 (_lobe modes newer than the 11-22 baseline) + M6 FAIL 74 / 1463 changed = STANDING (step 5's run 192 / 78,
+        ceecd4b84's 192 / 76); its 104 differing outputs are a subset of step 5's 110 (m6_compare.py) -> none its own.
+        bal3r_ REVIEW STARTED 06:0x (Opus xHigh, read + CPU; est 25 / deadline 50; incl. merge-tree vs today's atn-mods with
+        fx1_wave1 + hfp_hold). Owner: bal3r_ -> coord merge
         COORD GPU 03:5x: d11 5090 REPLAY SELF TEST PASS (test\tw_d3d11_replay run.ps1 -Architecture amd64, hardware, under
         Enter-GpuLock; log testbin\scratch\coord_d11hw_amd64.log): 3 frames x 4 events all equal, race pixels 226 / 665
         with 0 outputs no writer gives, CONTROL fewer samples DIFFERS (occlusion 72 B, penumbra 241 B) + changed constant
@@ -18004,7 +18017,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         p 0.6 = darks +4-5 % / bias -18 %, p 0.7 = +7-10 % / -13 %, p 0.8 = +13-16 % / -9 %. ATN picks by eye (a product
         change only on his word; then a test build with the exponent for an in-game A/B). Owner: ATN
         - [ ] ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 baseline -> move it to the M1 run
-        (f370cd3bd vs e52ec9e28) once step 5 merges. Owner: gate tooling slot
+        (f370cd3bd vs e52ec9e28) once step 5 merges. Owner: gate tooling slot [11-26: step 5 merged; bal3_ / step 5 / ceecd4b84 all
+        read dumps 192 + M6 74-78 against 11-22 -> the new baseline is due now]
         - [ ] wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 of 1 M SHaRC keys / 6
         radiance words move; a repeat play matches itself -> step 3's code, not noise (pd5c_ checks the claim). Owner:
         pdi3_ follow-up
