@@ -924,6 +924,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN 11-26 ~12:2x: (1) run_4k.ps1 rule ADDED (allow 92) -> the coord runs `& run_ ... | ?
 - d11 START 4 VOID CAUSE: the camera line came (the 620049332 fix works), but the ... | ?
 - WAVES 12:3x: fx0b_ DONE (13 min; branch fx0b_w0b: 554af2693 rt_reference RefRout ... | ?
+- MERGED 11-26 ~13:1x: W0b 819d945f9 (fx0b_w0b; gated amd64 + x86 61 warnings, hel ... | ?
+- READY, NOT MERGED (merge order W6, W5b, W-H, W5a, W3): fxh_wh (W-H, see 12:3x); ... | ?
+- rrb_ DONE (34 min + 26 parked; plan_1117\designs\rr_before_tonemap.md): F1 ~90 % ... | ?
+- ATN 13:0x asked why '39.8 GB': not VRAM = Windows commit (RAM + page file reserv ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17200,6 +17204,46 @@ heading text are in HANDOFF_ARCHIVE.md)
         X27 / X29 / X30, base origin/atn-mods with 620049332). sdku_ stopped at a classifier deny on its own find over
         tools\tw (rule break, not retried in any form) -> resumed with gated_build.ps1's path. Running: fx3_, fx7_, sdku_,
         fx6_, h4k_, pdi4c_. Parked: rrb_, D1, D2, fx5a_, fx5b_. Owner: coord
+        - [ ] MERGED 11-26 ~13:1x: W0b 819d945f9 (fx0b_w0b; gated amd64 + x86 61 warnings, helper exit 0) and W7 61f3f5371
+        (fx7_w7: X43 18d326635 stock black for Y <= 0 in ToneMapperHdr = Attila's picture changes, Thrones / WH output
+        identical; X44 fd8c4690a Divinity 2 scRGB branch BT.2020 -> BT.709, output unchanged today (clamps to HDR10);
+        O-CO16 8ef052038 Rome Remastered proxy gets Clamp Peak + the BT.2020 negative clamp like the 8 other TW proxies =
+        above-Peak pixels scale down hue-kept instead of the display's per-channel clip: a 4K check is in fx7__handback.md
+        for ATN's eye; gated twattila amd64 + x86, thrones x86 + amd64, twwarhammer, twromeremastered amd64 61 warnings,
+        divinity2 amd64 62 = its own C++ count, W7 changed only its HLSL). Both pushed. 32-bit lines collected in
+        tools\tw\attila64\backup_32bit.md (new, coord). Owner: coord
+        - [ ] READY, NOT MERGED (merge order W6, W5b, W-H, W5a, W3): fxh_wh (W-H, see 12:3x); fx3_w3 (W3 DONE 28 min of 170:
+        X01 f210104aa, X02 4dbbe3b5f, X05 557946306, X06 d3300ddd6, X04 c5697db47, X12 1dd1b032b, X11 8a6aeb9a0, X23
+        1532bf0b4, X48 9cc75f39e, X08 arms d15321ce2, WARP 711aff7d8; amd64 + x86 + talesofarise amd64 + helper exit 0; 46
+        headers changed / 35 identical; WARP part 5 passes vs controls, parts 1-4 pass with -Expect exact (run.ps1's
+        default -Expect now is stale -> fix); FLAGS: X01 / X06 env bits inverted (set = old behaviour; rename after
+        pdi4c_'s merge), Tales 0x7A1E0D1C.cso rebuilt (its header asks for it), X02 also changes Balanced ReSTIR Light's G1
+        weights, X48 floor 1e-3 vs RTXPT 0.05 = a look choice for ATN after the 4K GPU numbers, X12 has no WARP case, one
+        helper build of W-H + W3 together after both merges; 4K GPU jobs written, not run); sdku_omm_dxc (DONE: OMM 1.12.0
+        omm-lib.dll built from NVIDIA-RTX/Omm main b485825a, same licence + imports, API unchanged, rt_d3d12.hpp untouched;
+        THE NPOT BAKE BUG NEVER HITS THE HELPER (both bake paths use the 512x512 atlas, a power of two: sdk_'s audit
+        overstated it; shown on 1.10 with a 640x360 texture, fixed on 1.12); bake ~5 % faster on a synthetic leaf / grass
+        set only, 3 of 4.8 M micro-triangles unknown-opaque -> opaque; the GPU baker gains a ClearOmmArray dispatch (45 ->
+        48): GPU check G3; DXC 1.9.2609.5 Microsoft-signed, 81 / 81 helper blobs differ in bytes but compile to the same
+        DXIL (version string + hash only), no new warnings; G1-G3 at 4K in sdku__handback.md; merge AFTER the waves).
+        Owner: coord
+        - [ ] rrb_ DONE (34 min + 26 parked; plan_1117\designs\rr_before_tonemap.md): F1 ~90 % sure (gate G0 first): in game
+        RR already runs before PsychoV35, after t00, on ~t00^1.1 with Gamma Correction on -> hrr_'s -22 % does not apply,
+        the old violet veil came from the pre-v104 squared feed. Row 'Denoise Before Tone Mapping (Experimental)', off by
+        default, 64-bit only, 100 % render scale only, inert with RR off / SR / FSR / XeSS / RR refused / Upscaling Debug
+        View: RR on the lit scene before t00 (scene slot), fed as is; t00 grades RR's output; FG's HUD-less image stays
+        from hdr_to_screen; RR's result rebound as t00's input (one 4K copy less, ~0 to -0.1 ms, not measured: Nsight G3).
+        Files addon.cpp, anti_aliasing.hpp, aa.hlsli, aa_dlaa_prepare / finish, frame_generation.hpp, README; no helper
+        change. 4K harness A/B (real PsychoV35; arms today / row / pre-v104 / hrr_ model, scale sweep, exposure step) after
+        h4k_. R1 SR preset K fed t00^2.2: a separate 4K A/B on ATN's word; R2 below 100 % later; R3 the '2.0 encoded'
+        comments after G0; R4 correct hrr_'s -22 % notes + memory 'RR noise test'; R5 B2 (exposed scene) only if the A/B
+        shows scale sensitivity; R6 WH3's RR rows for Attila (listed only). ASKED ATN 13:1x: Q1 100 % first (pick yes), Q2
+        raw vs exposed (pick: the A/B decides), Q3 bloom outside RR OK (pick yes), Q4 R1's SR A/B (pick later).
+        Implementer (Opus High, ~45-60 min) at the next free slot on ATN's answer. Owner: ATN / coord
+        - [ ] ATN 13:0x asked why '39.8 GB': not VRAM = Windows commit (RAM + page file reserved); 12:28 six agents'
+        compiles + the 4K harness; 27.4 GB at 12:4x. d11 start 5 refused at preconditions (harness running + commit >= 32):
+        no game started, not a start; it runs after run_4k ends. ATN offered to hide the Claude window: not needed with g2.
+        Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
