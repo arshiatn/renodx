@@ -1,7 +1,7 @@
 # Part 6 (Divinity 2's PsychoV35): its LUT builder t00 and LUT pass t01 on WARP (part6_divinity2.cpp), compiled from this
 # tree and from $Before (the commit before PsychoV35) with the build's flags, and part6_divinity2.hlsl (V35 evaluated
-# directly). -GameShaders (required): a folder with the game's own 0x7016F292.cs_5_0.cso and 0xC5E7DE4B.ps_5_0.cso (parts
-# 5, 8 and 9 compare against them).
+# directly), and the swap chain proxy (part 11). -GameShaders (required): a folder with the game's own
+# 0x7016F292.cs_5_0.cso and 0xC5E7DE4B.ps_5_0.cso (parts 5, 8 and 9 compare against them).
 # Run as x86 and amd64.
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'amd64', [string]$Before = '3122ccb8',
       [string]$GameShaders = $(throw '-GameShaders: the folder with the game''s own 0x7016F292.cs_5_0.cso and 0xC5E7DE4B.ps_5_0.cso'))
@@ -44,6 +44,9 @@ foreach ($side in @(@{ Root = (Join-Path $beforeTree 'src\games'); Out = $before
   $folder = Join-Path $side.Root 'divinity2originalsindefinitive\shaders'
   Compile-Shader (Join-Path $folder 't00_0x7016F292.cs_5_0.hlsl') 'cs_5_0' (Join-Path $side.Out 't00.cso') ''
   Compile-Shader (Join-Path $folder 't01_0xC5E7DE4B.ps_5_0.hlsl') 'ps_5_0' (Join-Path $side.Out 't01.cso') ''
+  # Part 11: the swap chain proxy (ps_5_x builds as ps_5_0).
+  Compile-Shader (Join-Path $side.Root 'divinity2originalsindefinitive\swap_chain_proxy_pixel_shader.ps_5_x.hlsl') 'ps_5_0' `
+      (Join-Path $side.Out 'proxy.cso') ''
 }
 Compile-Shader (Join-Path $testRoot 'part6_divinity2.hlsl') 'cs_5_0' (Join-Path $afterShaders 'part6_direct.cso') `
     (Join-Path $repairRoot 'src\games\divinity2originalsindefinitive')

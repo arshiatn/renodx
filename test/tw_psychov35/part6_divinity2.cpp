@@ -33,6 +33,8 @@
 //    colour (OkLab chroma at equal lightness, the ramp's 63 colours) within 5 % on average where the game's luminance is
 //    1 - 30 nits (mid tones); grey at +5 .. +8 stops within 10 % of PsychoV35's own sliders (its highlights kept) at
 //    1000 / 203 and 2500 / 275. Control that must fail: PsychoV35's own sliders (all 1, before ATN's 2026-11-16 decision).
+// 11. The swap chain proxy at Output scRGB on BT.2020 primaries: bt709::from::BT2020 x nits / 80 (X44). Control that
+//     must fail: -Before's branch.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
@@ -853,6 +855,52 @@ static void TestGameResponse(ID3D11ComputeShader* game_t00, ID3D11ComputeShader*
   }
 }
 
+// 11. The swap chain proxy's scRGB branch (X44) //////////////////////////////////////////////////////////////////////
+
+// The proxy at Output 1 (scRGB) on the BT.2020 primaries and white in absolute PQ at 1, 203 and 1000 nits gives
+// bt709::from::BT2020(primary) x nits / 80. Control that must fail: -Before's branch (no matrix: BT.2020 shown as BT.709).
+static int ProxyScRgbErrors(ID3D11PixelShader* proxy) {
+  constexpr float BT2020_TO_BT709[3][3] = {{1.6604910f, -0.5876411f, -0.0728499f},
+                                           {-0.1245505f, 1.1328999f, -0.0083494f},
+                                           {-0.0181508f, -0.1005789f, 1.1187297f}};
+  std::vector<Float4> inputs(COLOURS * EXPOSURES, Float4{0.f, 0.f, 0.f, 1.f});
+  std::vector<Float3> expected(inputs.size(), Float3{});
+  for (UINT i = 0; i < inputs.size(); ++i) {
+    const UINT primary = i % 4;  // red, green, blue, white
+    const float nits = std::array{1.f, 203.f, 1000.f}[(i / 4) % 3];
+    for (int c = 0; c < 3; ++c) {
+      const float channel = (primary == 3 || primary == static_cast<UINT>(c)) ? nits : 0.f;
+      inputs[i][c] = NitsToPQ(channel);
+      for (int r = 0; r < 3; ++r) expected[i][r] += BT2020_TO_BT709[r][c] * channel / 80.f;
+    }
+  }
+  const D3D11_TEXTURE2D_DESC desc = {COLOURS, EXPOSURES, 1, 1, DXGI_FORMAT_R32G32B32A32_FLOAT, {1, 0}, D3D11_USAGE_DEFAULT,
+                                     D3D11_BIND_SHADER_RESOURCE, 0, 0};
+  const D3D11_SUBRESOURCE_DATA init = {inputs.data(), COLOURS * 16, 0};
+  ComPtr<ID3D11Texture2D> texture;
+  REQUIRE(SUCCEEDED(device->CreateTexture2D(&desc, &init, &texture)));
+  ComPtr<ID3D11ShaderResourceView> view;
+  REQUIRE(SUCCEEDED(device->CreateShaderResourceView(texture.Get(), nullptr, &view)));
+  auto injection = Injection(0.f);
+  injection.swap_chain_encoding = 1.f;
+  const auto output = ApplyLut(proxy, Lut{}, view.Get(), TracedConstants(Frame::NEUTRAL_HDR), injection);
+  int errors = 0;
+  for (size_t i = 0; i < output.size(); ++i) {
+    const float scale = std::max({std::abs(expected[i][0]), std::abs(expected[i][1]), std::abs(expected[i][2]), 1e-3f});
+    for (int c = 0; c < 3; ++c) errors += (std::abs(output[i][c] - expected[i][c]) <= 1e-3f * scale) ? 0 : 1;
+  }
+  return errors;
+}
+
+static void TestProxyScRgb(ID3D11PixelShader* proxy_before, ID3D11PixelShader* proxy_after) {
+  const int after = ProxyScRgbErrors(proxy_after);
+  const int before = ProxyScRgbErrors(proxy_before);
+  std::printf("11. Proxy scRGB on BT.2020 primaries: %d channels off bt709::from::BT2020 x nits / 80 (control, -Before: %d)\n",
+              after, before);
+  CHECK(after == 0);
+  CHECK(before > 0);
+}
+
 // 4. Hue report /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static void ReportHue(ID3D11ComputeShader* direct_shader, const std::vector<Float4>& ramp) {
@@ -931,6 +979,7 @@ int main(int argc, char** argv) {
   TestSdrReference(game_t00.Get(), direct_shader.Get());
   TestT01Exact(game_t01.Get(), t01_after.Get(), game_t00.Get(), base.Get());
   TestGameResponse(game_t00.Get(), t00_after.Get(), t01_after.Get(), base.Get());
+  TestProxyScRgb(LoadPixel(before / "proxy.cso").Get(), LoadPixel(after / "proxy.cso").Get());
   std::printf(failures == 0 ? "PASS\n" : "FAILED (%d)\n", failures);
   return failures == 0 ? 0 : 1;
 }
