@@ -943,6 +943,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sb1_ DONE (b1 in testbin\attila64_1124\sol_fixes_1124, out\b1_20261126_1433): So ... | ?
 - SOLCAP (ATN 11-26 ~15:0x: Sol's frame cap OFF by default, 'it would ruin our Ref ... | ?
 - 4K REFERENCE SET: ATN ADDED THE RULE LINE 11-26 ~15:1x (ref_set.ps1 *). GPU orde ... | ?
+- cw1_ MERGED 8adf80664 (comments only, 9 files, every block keeps its line count) ... | ?
+- ATTILA AA FEED vs LINEAR t00 (found by cw1_'s comment pass, a PRODUCT question, ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -1053,7 +1055,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REF BREAKS MISSING (spec 9, built 5): offset20, fog_flat, clearance0, stale_bits ... | gate tooling slot
 - ATN RULE LINE: RENODX_TW_REF_BREAK + RENODX_TW_REF_INSIDE GPU proof runs (P5 bre ... | ?
 - G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
-- RR PLACEMENT CITE (CORRECTED 11-26 15:1x, rrbi_ G0 confirmed F1): text = 'RRG 3. ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
 - wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
 - LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a c ... | ?
@@ -17418,6 +17419,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         (running, stamp 20261126_144106) -> pdi4c_'s queued re-runs + all_modes_check -Rev r6 -> d11 start 5 + sb1_'s 5 b1
         menu starts (games, no harness) -> ref_set.ps1 -Lab / -Plain = the baseline's builds, -Out
         D:\RenoDX_archive\references_4k\<stamp> (~275 GB, stops before D: < 230 GB). Owner: coord
+        - [ ] cw1_ MERGED 8adf80664 (comments only, 9 files, every block keeps its line count): aa.hlsli, aa_dlaa_prepare /
+        finish, aa_cmaa2*, aa_smaa.hlsli (shared: Attila 0 = as it is, Pharaoh / Troy 1 = TW_AA_FRAME_LINEAR), anti_aliasing.hpp
+        (R4 text: 'RRG (DLSS-RR Integration Guide) 3.1 p10: RR before tone mapping. In Attila it already runs before
+        PsychoV35 ...'; cite checked in external\DLSS\doc, ch. 3.1 Pipeline Placement p10), rr_d3d12.hpp. Proof: twattila
+        amd64 / x86, pharaoh, troy base vs after: 61 / 61 warnings, 711 / 409 / 383 / 711 shader blobs IDENTICAL, add-on
+        bytes differ only in build stamps (PE time, __TIME__, debug dir, PDB GUID). atn-mods src = cw1_'s tested tree (only
+        HANDOFF moved since its base) -> no extra build. Helper not built (3 comment lines). cw1_'s own commit was blocked
+        by the classifier because it added a git-hook skip; coord committed it normally with hooks (950616346). Left:
+        twattila README.md:1913 still says 'back to the 2.0 encoding'. Owner: next doc touch
+        - [ ] ATTILA AA FEED vs LINEAR t00 (found by cw1_'s comment pass, a PRODUCT question, not a comment): Attila runs the
+        AA prepare / finish in mode 0 (reads t00 as 2.0 encoded), but t00 writes LINEAR in the HDR modes (rrbi_ G0). So today:
+        DLAA K gets t00^2 (or ^2.2 with Gamma Correction), L / M / RR get ~t00 (linear, while L / M crush darks on linear HDR:
+        reference_dlss_lm_dark_tones), SMAA's luma edges run on linear (SMAA wants gamma-corrected). Pharaoh / Troy (also
+        linear) define TW_AA_FRAME_LINEAR 1. Candidate: Attila HDR modes -> mode 1 like Pharaoh / Troy (K linear, L / M / RR
+        the root, SMAA edges the root); SDR (HDR < 1, stock S-curve) stays 0. IMAGE CHANGE -> 4K numbers first (rt_harness
+        HARNESS_RR_TONEMAP=attila from rrbi_: K / L / M / RR, mode 0 vs 1, darks + noise vs truth), then ATN's eye; WH3 /
+        Thrones / Rome II mode 0 'not measured' -> one G0-style t00 check each. 32-bit: shared source (x86 builds it).
+        Owner: next GPU-plan slot (Opus High), ATN (look)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
@@ -18629,7 +18648,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         while halving the U1 bias: the trade is ~linear (+0.1 p = ~4.4 points of bias back for ~4-5.5 points of dark
         lift); p 0.6-0.7 also cut AO time noise ~8 % and firefly time noise ~20 %. Middle option for ATN's eye: p 0.6
         (darks +4-5 %, bias -22 -> -18 %) or 0.7 (+7-10 %, -13 %). Owner: ATN
-        - [ ] RR PLACEMENT CITE (CORRECTED 11-26 15:1x, rrbi_ G0 confirmed F1): text = 'RRG 3.1 p10: RR before tone mapping.
+        - [x] RR PLACEMENT CITE (CORRECTED 11-26 15:1x, rrbi_ G0 confirmed F1; DONE cw1_ 8adf80664): text = 'RRG 3.1 p10: RR before tone mapping.
         In Attila it already runs before PsychoV35 (after t00, feed ~t00^1.1, rrbi_ G0); the Experimental row Denoise Before
         Tone Mapping moves it before t00.' (the old 'after the tone mapper ... linear lifts darks x1.26' was hrr_'s 640x360
         harness model, not the in-game feed). + R3: the '2.0 encoded' comments for Attila (aa.hlsli:9-10, 42-44;
