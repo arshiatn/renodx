@@ -17574,7 +17574,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         census clean, 1655 / 1655 M6 equal, checks / dumps / repeat PASS; first run on the digest path, ~1 MB written).
         Builds after the merge: twattila amd64 + x86 exit 0, helper 19:45 (RTXDI found). Owner: coord
         - [ ] NEXT MERGE sdku_omm_dxc: its G1-G3 (Nsight DXC speed gate, OMM grass recording picture + speed, GPU baker) at 4K are
-        NOT run -> 11-27 (gate before merge). Owner: 11-27 GPU wave
+        NOT run -> 11-27 (gate before merge). sdk3_ 11-26: G1 PASS on the default PT mode only (Nsight 6.614 / 6.613 ms,
+        tools\tw\nsight\runs\sdk3_{old,new}_2); other modes + G2 / G3 open (G2 / G3 need a new game-run form: omm-lib.dll
+        A/B swap + GPU Micromap Baking on = ATN's rule line). Owner: 11-27 GPU wave
         - [ ] CPU STEP 0b (19:30): spin on + L2B 134.72 = base 134.74 ms in one batch -> nothing beats the loader default on
         1.3.28 yet; fair L2B re-test needs ATN's CPU Set Setter rule for run_pkg_580efafeb5765d81\attila64.exe (cpu_plan_64_map.md
         STEP 0b RESULT). Owner: ATN (rule) / coord
