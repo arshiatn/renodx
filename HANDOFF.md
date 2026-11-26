@@ -1009,6 +1009,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STEP 5 FOLLOW-UPS (pd5c_): (1) build.ps1:156-157 G5's REUSE_COMPATIBLE builds la ... | ?
 - REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so ... | ?
 - FIX WAVE 1 (judges: X46 judge's back-face flip rt_reference.hlsli:312 + HitNorma ... | ?
+- fx1r_ WAVE 1 REVIEW STARTED 03:4x (Opus xHigh, read + CPU only; est 25 / deadlin ... | ?
+- ATN RULE LINE: RENODX_TW_REF_BREAK GPU proof runs (exact job text in fx1_'s repo ... | ?
 - G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
 - ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
 - wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
@@ -17816,6 +17818,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         worktree, branch fx1_wave1 on 824d61adb; est 50 / deadline 100); hunks > 70 lines from r4 / bal3; no GPU (proof
         jobs listed; X47's new env var needs ATN's rule line to run); Tales X46 copy checked. Coord reviews + merges.
         Owner: fx1_
+        fx1_ DONE 03:43 (21 min by the tool clock; its report's ~97 min step table is wrong): origin/fx1_wave1 = 454f6c752
+        X46 (rt_reference.hlsli RefNearest 'out bool inside' = solid record (not MASKED / THIN) + back face; RefIncoming
+        ends an inside path dark + counts it; RefRouteIncoming stays two-sided; REF_PATHS aux.w = inside count; cites
+        reference_suite.md 1.1 I6 + D3D12 INSTANCE_FLAGS winding) + 5b4c69f07 X47 (RENODX_TW_REF_BREAK = nocal |
+        range_half | cone2 | onelight | no_g2g1, reference code only, ref_word bits 10-13, meta.json 'break'; unknown name =
+        run off). Tools (*.bak_fx1): reference\harness\reference_mode.hpp:156 BOX LOW FACES WOUND INWARD (6 of 12 per
+        box) -> fixed (else X46 breaks every box reference; quality_mode.hpp:715 same winding, left); ref_cache.py key +
+        break only when set; ref_compare.py k = sigma3_t(R-1) (A&S 26.7.3 / .4 exact t tail; 3 dof 9.22, 6 dof 4.90; MC
+        false BIAS R=4 5.72 % -> 0.276 %, R=3 9.60 -> 0.262, R=8 1.97 -> 0.262) + exit 2 on a break without --expect-fail;
+        lab\gpu_gate.py Q base = sigma3_t(3(K-1)) (live tool; Q path only). Holm still print-only. Verdict flips: 0 Q rows
+        in gate_log; 14 recorded ref_compare mask verdicts 0 flips. Gates: plain helper 71 / 71 headers identical,
+        reference build only rt_reference_paths.h / _reflect.h change; test_gpu_gate 30 OK; merge-tree vs r4 / bal3 adds
+        no conflict. Tales X46: two-sided flip, no judge -> no fix. GPU PROOF JOBS: (1) X46 box furnace + quality R = 4
+        (aux.w 0 everywhere, verdicts = before; control: the .bak_fx1 harness shows w > 0 + BIAS) + one game snapshot
+        for the back-face share; (2) X47 breaks on the quality scene with ref_compare --expect-fail = BIAS where named,
+        unset = PASS as before -> NEEDS ATN'S RULE LINE (RENODX_TW_REF_BREAK). Owner: done
+        - [ ] fx1r_ WAVE 1 REVIEW STARTED 03:4x (Opus xHigh, read + CPU only; est 25 / deadline 50): X46 rule in GAME
+        snapshots (open meshes: terrain / facades / single-sided walls could read 'inside'), the winding fix, X47
+        inertness, X49 math (own reruns), live gpu_gate risk -> verdict; then coord merges fx1_wave1 (helper build). Owner:
+        fx1r_ -> coord
+        - [ ] ATN RULE LINE: RENODX_TW_REF_BREAK GPU proof runs (exact job text in fx1_'s report above, after fx1r_).
+        Owner: ATN
         - [ ] G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 same or nearer, reflections
         1.00000 -> the 'faster + same picture = on' rule (pd5r_: after S2 rows, S3, S1, new baselines) -> a flip commit
         + all_modes / rec_scan with G4 = 1 as the new baseline in the next GPU window. pd5c_ 03:2x: speed + E4 support it,
