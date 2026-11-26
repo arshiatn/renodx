@@ -324,6 +324,33 @@ int main(int argc, char** argv) {
       CHECK(std::ranges::find(seen, state.jitter) == seen.end());
       seen.push_back(state.jitter);
     }
+    // 100%: the 9th position is the 1st again (8 phases).
+    state.evaluated_frame = state.frame;
+    dlaa::internal::OnPresent(&queue, nullptr, nullptr, nullptr, 0, nullptr);
+    CHECK(state.jitter == seen[0]);
+    // X36: drawn in Feral's upscaler's place at 50% (output twice the render's width): 32 distinct positions, the 33rd the
+    // 1st again (NVIDIA's 8 x 2^2); CONTROL: the 8 fixed phases before X36 repeat at the 9th. The bias off here (its
+    // sampler tracking is not part of this case).
+    {
+      const float kept_bias = dlaa::sliders.texture_lod_bias;
+      const auto kept_upscaler = state.upscaler;
+      const uint64_t kept_upscaled_frame = state.upscaled_frame;
+      dlaa::sliders.texture_lod_bias = 0.f;
+      state.upscaler = {state.display[0] * 2, state.display[1] * 2};
+      std::vector<std::array<float, 2>> upscaled_seen;
+      for (int frame = 0; frame <= 32; ++frame) {
+        state.evaluated_frame = state.frame;
+        state.upscaled_frame = state.frame;
+        dlaa::internal::OnPresent(&queue, nullptr, nullptr, nullptr, 0, nullptr);
+        upscaled_seen.push_back(state.jitter);
+      }
+      CHECK(upscaled_seen[32] == upscaled_seen[0]);
+      CHECK(std::ranges::find(upscaled_seen.begin() + 1, upscaled_seen.begin() + 32, upscaled_seen[0]) == upscaled_seen.begin() + 32);
+      std::printf("jitter: 8 phases at 100%%, 32 at 50%% (Feral's upscaler's place)\n");
+      state.upscaler = kept_upscaler;
+      state.upscaled_frame = kept_upscaled_frame;
+      dlaa::sliders.texture_lod_bias = kept_bias;
+    }
     dlaa::sliders.method = 0.f;
     state.evaluated_frame = state.frame;
     dlaa::internal::OnPresent(&queue, nullptr, nullptr, nullptr, 0, nullptr);

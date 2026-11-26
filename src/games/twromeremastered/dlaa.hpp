@@ -295,8 +295,8 @@ inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data,
   return true;
 }
 
-// The next frame's jitter: Halton (2, 3) over 8 frames, centred, only after a frame DLAA ran (a frame without it would
-// shake).
+// The next frame's jitter: Halton (2, 3) over 8 frames (8 x (output / render)^2 below 100%), centred, only after a frame
+// DLAA ran (a frame without it would shake).
 inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain*, const reshade::api::rect*,
                       const reshade::api::rect*, uint32_t, const reshade::api::rect*) {
   float bias = 0.f;
@@ -311,14 +311,20 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
   };
   {
     const std::unique_lock lock(state.mutex);
-    const uint32_t phase = static_cast<uint32_t>(state.frame % JITTER_PHASES) + 1u;
+    // DLSS / FSR / XeSS drew this frame in Feral's upscaler's place (below 100%): the render is `display`, the output
+    // `upscaler`.
+    const bool upscaled = state.upscaled_frame == state.frame && state.upscaler[0] > state.display[0] && state.display[0] != 0;
+    // src: NVIDIA's DLSS programming guide 3.7.1-3.7.3 (8 x (output / render)^2 phases), as twattila/anti_aliasing.hpp:1614;
+    // 8 at 100%.
+    const float ratio = (upscaled ? static_cast<float>(state.upscaler[0]) / static_cast<float>(state.display[0]) : 1.f);
+    const uint32_t phases = std::max(JITTER_PHASES, static_cast<uint32_t>(std::ceil((JITTER_PHASES * ratio * ratio) - 0.01f)));
+    const uint32_t phase = static_cast<uint32_t>(state.frame % phases) + 1u;
     state.jitter = ((sliders.method != 0.f && state.evaluated_frame == state.frame)
                         ? std::array<float, 2>{halton(phase, 2) - 0.5f, halton(phase, 3) - 0.5f}
                         : std::array<float, 2>{});
-    // The texture LOD bias for the next frames while DLSS / FSR / XeSS drew this frame in Feral's upscaler's place:
-    // log2 of the render / output width, minus 1 (sharper) or 2.
+    // The texture LOD bias for the next frames while upscaled: log2 of the render / output width, minus 1 (sharper) or 2.
     const int choice = twattila::feature_settings::AaSettings(sliders).texture_lod_bias;
-    if (choice != 0 && state.upscaled_frame == state.frame && state.upscaler[0] > state.display[0] && state.display[0] != 0) {
+    if (choice != 0 && upscaled) {
       bias = std::log2(static_cast<float>(state.display[0]) / static_cast<float>(state.upscaler[0])) - static_cast<float>(choice - 1);
       view = (static_cast<uint64_t>(state.display[0]) << 32u) | state.display[1];
     }
