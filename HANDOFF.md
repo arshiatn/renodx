@@ -17702,8 +17702,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         coord (backups .bak_coord1 / .bak_coord2): the player's log is <dump>\renodx-tw-play.log (was read from stdout), the exit
         code needs the cached process handle, the trim keeps that log; gpu_trace.ps1 puts --frames first, so the player's '0'
         goes in -Frames 0. LEFT before the merge: G1 on the other PT modes (gate before merge). Owner: done
-        - [ ] sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the default (sdk3_ form), then merge;
-        G2 = accepted synthetic (ATN), G3 PASS. Owner: 11-27 GPU wave
+        - [ ] sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the default, then merge; G2 = accepted
+        synthetic (ATN), G3 PASS. sdk4_ 11-27 (testbin\scratch\sdk4_\handback.md, traces nsight\runs\sdk4_*): 2 pairs each,
+        old / new ms: paths_sharc PASS (-0.5 / -12.3 %, one slow old run), nrd_bounce_paths PASS (-0.06 / +0.06), reflect_own
+        PASS (-0.45 / +0.33); strict misses (new <= old + 1 % in both pairs) inside their A/A spread: paths_ser +2.85 / -1.11
+        (A/A new 4.6 %), paths_sky_apart +0.45 / +1.55 (A/A new 1.5 %), paths_kept_cube +1.46 / -1.07. RULE SET BEFORE MORE
+        DATA (coord 01:0x): pairs 3 + 4 on those three; PASS if the mean delta over the 4 pairs <= +1 % and new is slower in
+        at most 2 of 4 pairs; else FAIL -> no merge, report to ATN. Owner: sdk4_ (pairs 3 + 4) -> coord merge
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
