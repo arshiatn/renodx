@@ -915,6 +915,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - lsp2_ DONE 11:49 (9 min): all 7 recorded frames (live_proof / live_proof2) hold ... | ?
 - sdk_ DONE 11:52 (12 min; round_notes\sdk_audit_1126.md): every runtime DLL we sh ... | ?
 - lsp2_ 4K GPU DONE 11:52 (42 runs, 28 s; lsp_\lsp2_\results\20261126_115211\lsp2_ ... | ?
+- SOL'S PORT IS NEWER THAN OURS (coord 11-26 ~12:1x, ATN 'check if we got the newe ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17081,6 +17082,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         exit 1); NVAPI mismatches 0. vs the synthetic city smoke 0.57-0.94x (follow-up 1). -> light dust: spheres ~12 %
         slower; heavy smoke: faster + caps retire. NOT DROPPED (ATN's rule): the verdict waits for a 4K Constantinople
         burning-siege recording (new runner = ATN's rule line) + ATN's eye. Owner: ATN (recording line, decision) / coord
+        - [ ] SOL'S PORT IS NEWER THAN OURS (coord 11-26 ~12:1x, ATN 'check if we got the newest versions of attila 64; maybe
+        it fixes the stutter'): we build 1.3.20 (testbin\attila64_1124\src_1320 = github.com/Sol-Invictus2/64-bit-Attila
+        newest commit, 11-24; no releases there). The Workshop item 3834958414 is at 1.3.24 (11-25 17:48): 1.3.22 launcher
+        / mod-list buttons + uninstaller; 1.3.23 no more half-second freezes in the MP lobby / Custom Battle when a player
+        changes faction or army; 1.3.24 'helper threads sleep at once again when they have no work' (less CPU time; the
+        same spot as our WPR finding: busy drawing-side threads on the SMT sibling cost the battle step ~29 %, L2B -11.4 %).
+        No source past 1.3.20 on GitHub -> our rule 'his source, reviewed + built by us' blocks 1.3.21-1.3.24; ATN asks Sol
+        to push the source; then build + A/B (base vs 1.3.24, with / without L2B; stress_test_log2 s 20..200, 4K). Our run
+        folders keep update_off.txt (no self-update). STUTTER STATE told to ATN: battle = the sim below real time (6.4-7.2
+        steps/s of 10: units move at 5-7 Hz while drawing ~60 fps) + a ~21 ms frame at each sim step; menu / films ~0.9 / s =
+        Sol's film path (s1s_, not ours; fix b1 for Sol / ATTILA_FPS_CAP=0), confirming run never made. Asked ATN where he
+        sees the 1 s stutter. Owner: ATN (Sol, where) / coord (A/B)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
