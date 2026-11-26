@@ -322,10 +322,15 @@ inline void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchai
     state.jitter = ((sliders.method != 0.f && state.evaluated_frame == state.frame)
                         ? std::array<float, 2>{halton(phase, 2) - 0.5f, halton(phase, 3) - 0.5f}
                         : std::array<float, 2>{});
-    // The texture LOD bias for the next frames while upscaled: log2 of the render / output width, minus 1 (sharper) or 2.
-    const int choice = twattila::feature_settings::AaSettings(sliders).texture_lod_bias;
+    // The texture LOD bias for the next frames while upscaled: log2 of the render / output width, minus 1 (sharper) or 2;
+    // XeSS: src: XeSS SR developer guide 3.0.2 (doc/xess_sr_developer_guide_english.md:90-94, :495-502), its bias is
+    // log2(render / output) with no -1, so the default (Sharper) gives Intel's and Sharpest one step past it.
+    const auto aa = twattila::feature_settings::AaSettings(sliders);
+    const int choice = aa.texture_lod_bias;
     if (choice != 0 && upscaled) {
-      bias = std::log2(static_cast<float>(state.display[0]) / static_cast<float>(state.upscaler[0])) - static_cast<float>(choice - 1);
+      const bool xess = twattila::anti_aliasing::UpscalerOf(aa.method) == twattila::dlaa_bridge::UPSCALER_XESS;
+      bias = std::log2(static_cast<float>(state.display[0]) / static_cast<float>(state.upscaler[0]))
+             - static_cast<float>(xess ? std::max(choice - 2, 0) : (choice - 1));
       view = (static_cast<uint64_t>(state.display[0]) << 32u) | state.display[1];
     }
     ++state.frame;
