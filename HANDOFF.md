@@ -909,6 +909,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gpu_lock.py UNSTICK (ATN 09:4x 'Yes, build it': a backup for stale locks while h ... | ?
 - ATN'S ANSWERS 11-26 ~10:5x (to the overnight report): (1) P3 dark + P5 rule line ... | ?
 - ATN 11-26 ~11:3x QUESTIONS: (6) 'are you really sure RR before the tone mapper + ... | ?
+- ATN 11-26 ~11:5x (before work): (a) 'Always use 4K for everything' -> RULE (memo ... | ?
+- d11 START 3 VOID 11:50 (1 of 1 trimmed starts): movie keys OK (intro skipped in ... | ?
+- pdi4c_ GPU TURN DONE 11:47 (148 min vs ~100, 1.48x; handbacks\pdi4c_handback.md ... | ?
+- lsp2_ DONE 11:49 (9 min): all 7 recorded frames (live_proof / live_proof2) hold ... | ?
+- sdk_ DONE 11:52 (12 min; round_notes\sdk_audit_1126.md): every runtime DLL we sh ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
@@ -17025,6 +17030,47 @@ heading text are in HANDOFF_ARCHIVE.md)
         planner STARTED ~11:4x (Opus xHigh, read only, plan_1117\fidelity\wave_plan_1126.md: START NOW waves beside
         pdi4c_ + fx1_ with briefs, + ranked never-considered NVIDIA items by VRAM / RAM / CPU / GPU gain; est 45 /
         deadline 90). Owner: coord / ATN (RR p 0.6 eye, SDK yes)
+        - [ ] ATN 11-26 ~11:5x (before work): (a) 'Always use 4K for everything' -> RULE (memory feedback_tests_4k): every
+        GPU test / harness / probe / lab job at 3840x2160; hrr_'s RR A/B (640x360) is marked below-4K; r4k_ AUDIT STARTED
+        11:5x (Opus xHigh, read only, round_notes\tests_4k_audit_1126.md, est 25 / deadline 50); pdi4c_ + lsp2_ told.
+        (b) RR BEFORE THE TONE MAPPER + LINEAR as ONE Experimental row for Attila (default off; ATN tests after the fixes +
+        unified PT + GPU plan + CPU work) -> rrb_ DESIGN STARTED 11:5x (Opus xHigh, read only,
+        plan_1117\designs\rr_before_tonemap.md, est 45 / deadline 90); implementation after pdi4c_'s merge if files
+        overlap. (c) RULE (memory feedback_never_drop_features): never drop a non-RT / RT / PT feature on our own; report
+        with numbers, ATN decides (LSS 'design or drop' included; off by default is not dropping). (d) Rule lines:
+        round_notes\paste_for_atn_1126b.md: 1 MUST = fx1_run.ps1 wildcard (P3 dark + P5 breaks + 4K re-runs; P1 / P2
+        dark + P4 hfp_play were already allowed); 2 optional WebFetch github.com + developer.nvidia.com. The burning-siege
+        recording (lsp2_'s 80 ms case) needs a new runner -> its rule line when ATN is back. Owner: ATN (paste) / coord
+        - [ ] d11 START 3 VOID 11:50 (1 of 1 trimmed starts): movie keys OK (intro skipped in 30 s, 20 keys), battle clock
+        11:48:54, then 25 wheel notches and 'no fresh camera line after the last input' every time -> STOP at first present
+        + 170 s, no dump (run d11_runs\20261126_114735_day1; locks released, nothing restored needed). d11g_ STARTED 11:5x
+        (Opus High, CPU only, scratch d11g_\: root cause + fixed copy .g1 + a test on top of test_d11f_mk 91 / 91; est 30 /
+        deadline 60). No restart until the cause is known. Owner: d11g_ -> coord
+        - [ ] pdi4c_ GPU TURN DONE 11:47 (148 min vs ~100, 1.48x; handbacks\pdi4c_handback.md 'GPU turn 11-26'): W4 B2 part
+        5 passes (pre-fix fails 4096 / 4096 px); A/A byte-equal; 2.9a M1-eq / M1-trans pass, M1-energy hand-over holds, A /
+        E_0 0.945 / 0.956 = DI vs bits on matte (0.931 vs 0.986, an estimator gap, not 2.9a); refactor byte-equal; B1 DI
+        mean HEAD +0.63 / +0.62 % vs pre-B1 -1.72 / +0.25 %; E6 0.9828 -> 0.9841. FUSED DI: 0.09 ms (~13 %) cheaper, noise
+        +42 % (29 lights) / +28 % (128), mean +2 % -> stays OFF by default (kept); RAY_TRACED > BASIC (0.990 vs 0.955). NV1 /
+        targetHistoryLength 0 / 8192 offsets: no cost or quality change (uncited). Leads: DI cost ~flat with light count
+        (0.67 ms with no DI pixels = full-screen dispatch); not done: per-pass Nsight, bias modes 0 vs 3 E6, mode-3 run,
+        forced-build picture check, F2 fused spatial-only W4, foliage + moving-camera cases. Harness resolution to be
+        listed (4K rule). NEXT: rebase onto ce1f83655 (step 5 in), gated builds + helper, r5 -> review (Opus xHigh) ->
+        merge. Owner: pdi4c_ -> coord
+        - [ ] lsp2_ DONE 11:49 (9 min): all 7 recorded frames (live_proof / live_proof2) hold smoke = GROUND DUST (1152-1987
+        particles, r 1.1-3.7 m, sun rays meet smoke at 0.4-9.5 % of pixels, <= 30 a ray), 1080p / 1440p, cap 64; reader
+        lsp2_reader.cpp + lsp2_extract.ps1 -> lsp2_\frames; probe --particles-file / --sun / --origins; WARP 0.0000 on all 7.
+        Told 11:5x: 4K ray counts (synthetic 4K; recorded frames upsampled + recorded-size control), then 'lsp2_ GPU go'
+        (lsp2_gpu_job.ps1, waits for the lock). The 80 ms case needs a Constantinople burning-siege recording at 4K (recorder
+        build + RENODX_TW_RECORD; a game run with a new runner = ATN's rule line). Owner: lsp2_ -> coord / ATN
+        - [ ] sdk_ DONE 11:52 (12 min; round_notes\sdk_audit_1126.md): every runtime DLL we ship is the newest (DLSS / RR /
+        FG 310.9.16, SL / Reflex 2.14.16); upstream pins the same submodules. Optional: DLSS headers 310.7.0 -> 310.9.16
+        and SL headers 2.12 -> 2.14.16 (no runtime gain; 2 deprecated include renames). NEXT ROUND: OMM 1.10.0 -> 1.12.0
+        (unreleased main; fixes a CPU-bake bug on our default path, rt_d3d12.hpp:315 / 9624: wrong states with negative
+        UVs on non-power-of-two textures; ~10 % faster bakes), DXC 1.9.2602.17 -> 1.9.2609 (compiler fixes; Nsight gate).
+        Leave: NVAPI R615 -> R620, Agility 1.619.6 -> 1.620.2, ReShade 6.7.3 -> 6.8.0 (add-on API 18 -> 20 breaks),
+        Detours / MinHook. Current: NRD 4.18.0, RTXDI 3.2, SHaRC 1.8.3, FSR 2.4.0, XeSS 3.0.2, json 3.12.0. ATN: yes / no
+        per item (vendored = ATN's yes). Stale: src/games/expeditionsrome/README_DLSS.md:426 names the unused 310.7.0 DLL
+        folder. Owner: ATN (yes / no) / next README writer
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
