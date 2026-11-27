@@ -17986,7 +17986,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         bits (design 7.5 :852-855: the key holds only until the add-on's first present; the vfxauto kinds run without
         the add-on, a64_ab.ps1:111-114 / :327-328) -> drop the first-present skip, dump's first stop 0x0f; SHOULD-1
         dump_a64.cpp's new section breaks the driver on pre-P9-3 trees -> guard; 3 NITs; dump_a64.cpp edit = add-only,
-        needed. Fix round p94_ (resumed, Opus Medium) STARTED 18:4x; then Sonnet High final. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
+        needed. Fix round p94_ (resumed, Opus Medium) STARTED 18:4x; then Sonnet High final. m2d_ (Fable xHigh) DONE
+        17:58 (27 of 40 min; designs\pk5_m2_memcpy.md, scratch\m2d_\handback.md): ONE caller 0x339b4a4 (97.88 %,
+        ~1.67 of 1.71 ms a frame), size 0xe0 x count, destination the loader's Map pointer of a dynamic VB; class (c),
+        lever (d) only, no build target; PK5 10.1 / 10.3 corrected (addendum); section 10 copied into backup_32bit.md;
+        M2-B bench writer m2b_ (Opus Medium) STARTED 19:0x; its map rows = one ~3 min GPU-lock job (CPU-plan
+        measurement); a note to the loader's author or our stub only on ATN's word after M2-B. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
         backup_32bit.md Rev 3 (2.8 rows L1-L13 + G9-G11, 2.9 audit rows H1-H11; no 32-bit class moved); FROZEN 32-BIT
         box lines F13-F19 + refreshed F4 / F7 / F10 / F12 pasted; the short list tools\tw\attila64\backup_32bit.md
         got its lines (sdku_ now merged); finding: none of 31 hand-backs carried a 32-bit line (the COMMON rule asks
