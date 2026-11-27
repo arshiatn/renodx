@@ -727,6 +727,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
 - PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | coord DECIDED 21:0x (coord, design 3
+- PERFFIX PIN GATE (rpxm_ S1): the masks let any bytes pass in the 744 masked byte ... | ATN (pin), coord (re-check per PerfFix update)
+- PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also ... | coord (batch prep) ATN 20:3x: 'You are allowed to look at hi
 - X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN pfx_ DONE 21:05 (Fable 5
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - RESTORE AFTER THE PXM MERGE (coord): build\attila64_plugin is pxm_1127's DLL 934 ... | coord
@@ -18157,7 +18159,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         pxm_smoke_nopf.log): with -PerfFix 7.5 'x87fix: 2756 of 2756 ... replaced', 'game code differs' lines 0, rows
         '... contact split on', CONTACT_ENTRY first call (thread 31380), 21 sites unchanged, rows offered 0x3fff, clean
         exit, no WER; scriptable PASS = NO only for the known T0 2.6 sprite first-call line (SPRITES NEED A CAMERA).
-        Without PerfFix PASS (CONTACT_ENTRY first call, battle step active, clean exit).
+        Without PerfFix PASS (CONTACT_ENTRY first call, battle step active, clean exit). rpxm_ (Opus xHigh, 14 min) GO, no MUST
+        (own decoder + capstone: 18 windows exact, 54 control-word instructions in the 184 ranges all inside them, no
+        branch into a window, x87 stack depth 0 before each = M; all 184 values + 2441 check words recomputed; DLL
+        934fc1c2 again); S1 / S2 -> the boxes below; NITs (mask_count / reg_field names, 'PerfFix 7.5' in the reason
+        line). NIT fix round pxm_ (resumed, Fable 5.2 Medium, est 15) STARTED 21:39.
+        - [ ] PERFFIX PIN GATE (rpxm_ S1): the masks let any bytes pass in the 744 masked bytes. Before the contact split
+        row is shown or turned On for players: ATN decides the pin (allowed values of each window: the game's + PerfFix
+        7.5's, taken from a run), and every PerfFix update gets a re-check (pfx_'s equality test + one -PerfFix smoke).
+        Owner: ATN (pin), coord (re-check per PerfFix update)
+        - [ ] PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also run on the PerfFix stack
+        once (same result as without PerfFix). Owner: coord (batch prep)
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
         -> read-only conflict check pfx_ (Fable 5.2 xHigh; opens perffix_src read only, x87fix only; heapfix pkg stays
         unopened; findings in our words) STARTED 20:35: the pattern, the replacement, results, thread safety, the blocks
@@ -18216,6 +18228,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         plugin_block.h comment on INI_SHADOW_CASCADES is stale. New line in every start with the row: 'shadow cascades:
         game's counts'. Reviews rs5e_ (Opus xHigh) + fs5e_ (Sonnet High) + F7 GPU run of the 3 new cases STARTED 21:14. F7 GPU
         21:2x: 3 / 3 PASS (scratch\coord_\s5e_f7_gpu.log; rays-on fixture fine).
+        fs5e_ (Sonnet High, 4 min) GO WITH CHANGES: SHOULD plugin_block.h:289-290 comment; NITs (main.cpp:277 133 columns,
+        single-use locals, cascade_rewritten true for any non-size site -> test the four labels, Medium checked at init
+        only, the new 'game's counts' line vs a64_ab expectations). rs5e_ (Opus xHigh, 20 min) GO WITH CHANGES, no
+        MUST (own ELF decode: count sites +0xcc 0x30e46d8 High 3 / 0x30e470c Max 4, extra +0xb8; Medium's 22 bytes
+        exact; lowest Shadows skips the setup; DLL fb0264cb again): S1 the comment + :74 enum comment, S2 'ours:' for
+        writing 0 while not offered, S3 F7 = done (3 / 3); N1-N7. Fix round s5e_ (resumed, Fable 5.2 Medium, est 20)
+        STARTED 21:3x..
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
