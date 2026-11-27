@@ -1,5 +1,15 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, anti-aliasing on the linear picture in HDR (2026-11-26, 11-27; built only, not stamped, not installed, not run in game)
+
+- Fixed: in the HDR modes, DLAA / DLSS, SMAA, CMAA2, FSR and XeSS take the tone mapper's picture as it is (linear), as
+  their HDR inputs expect, not raised to 2.0 / 2.2 first: the darkest shadows keep their detail (no longer flushed to
+  black or lifted), and FSR's bright edges and textures are no longer 15-20 % too bright. XeSS's fine high-contrast
+  detail is somewhat darker. Ray Reconstruction and SDR are unchanged. Attila and Thrones.
+- Verification in game (HDR on, a paused dark battle scene, 100% and 67%): FSR, then XeSS, then DLSS L, against DLSS K
+  on the same frame: darks kept (not black, not grey), no tint (no purple), bright edges as bright as with DLSS K.
+  SMAA and CMAA2: same darks as AA off. Ray Reconstruction: as the build before.
+
 ## Dev, Denoise Before Tone Mapping below 100% (2026-11-27; built only, not stamped, not installed, not run in game)
 
 - New: Denoise Before Tone Mapping (Experimental) at every render scale: below 100% Ray Reconstruction upscales the lit
