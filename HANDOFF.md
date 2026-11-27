@@ -17990,8 +17990,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         present, Off included; dump_a64.cpp section under DUMP_TWEAKS_TABLE, builds on a pre-PK9 tree; NIT-1 / NIT-2;
         NIT-3 = tests.cpp not its file -> tw_unit_shadows' next owner); stop sequence 0->0xf ... 7->0x1f; both
         mutations caught; gated amd64 + x86 exit 0 (addon64 4c322b36, addon32 1fd276f2). F7's case needs
-        fake_plugin.cpp + run.ps1 edits (test\tw_attila64_present) -> the batch prep. Sonnet High final fp94_
-        STARTED 19:1x; merge after it (addon.cpp order: P1a -> P9-4 -> W-A3 -> Stage B). p1pt_ (Fable Medium) DONE 19:1x (31 of 20
+        fake_plugin.cpp + run.ps1 edits (test\tw_attila64_present) -> the batch prep. Sonnet High final fp94_ DONE: GO, no MUST / SHOULD (scratch\fp94_\review.md). P9-4 MERGED 3afb9824d
+        (pushed 18:13); main tree: gated amd64 + x86 twattila exit 0, tw_unit_shadows amd64 + x86 PASS. p8am_ (Fable
+        Medium) DONE 18:06 (35 of 45 min; scratch\p8am_\handback.md): p8a_1127 f39f7e1d1 = atn-mods 6563e2199 merged
+        into Stage A b03587490, 11 fold points, ROW_BATTLE_STEP 12 / ROW_COUNT 13 (PK9's 11 kept), sites.h = the folded
+        generator's output (21 sites; p8am_\gen\, install.sh not run yet), 4 test runs PASS, DLL 15947301, mutations
+        59 / 60 caught + m55 equivalent. Re-check rp8am_ (Sonnet High) STARTED 18:13; then merge p8a_1127, coord runs
+        p8am_\gen\install.sh + the main-tree plugin test + gated build; then Stage B step 5 (Fable Medium). p1pt_ (Fable Medium) DONE 19:1x (31 of 20
         min; scratch\p1pt_\handback.md; p1pt_1127 4b69a2f19 from b4f7442fa): ClearRenderThread shared by Release +
         the refused-write path, an ended render thread = CORE_NO_THREAD; tests 356 -> 362 (refused default write via a
         test-only import-slot swap, release with a refused read / an ended thread, full yield_line); only the ended-
@@ -18007,8 +18012,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         17:58 (27 of 40 min; designs\pk5_m2_memcpy.md, scratch\m2d_\handback.md): ONE caller 0x339b4a4 (97.88 %,
         ~1.67 of 1.71 ms a frame), size 0xe0 x count, destination the loader's Map pointer of a dynamic VB; class (c),
         lever (d) only, no build target; PK5 10.1 / 10.3 corrected (addendum); section 10 copied into backup_32bit.md;
-        M2-B bench writer m2b_ (Opus Medium) STARTED 19:0x; its map rows = one ~3 min GPU-lock job (CPU-plan
-        measurement); a note to the loader's author or our stub only on ATN's word after M2-B. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
+        m2b_ (Opus Medium) DONE (10 of 30 min; scratch\m2b_\handback.md): exe testbin\m2b\m2b.exe f16a93a5, Z = the
+        loader's own 0x162 bytes (sha 9f3f255b checked), self-test 7 arms x 133400 cases 0 fail, the short control
+        fails. Map job run x4 by coord (seconds each, GPU lock; scratch\m2b_\map_20261127_1808..1812.txt): the map
+        memory is WRITECOMBINE (0x404); at 0xe0000 / 0x380000 every arm sits at the same ~32 GB/s, as in the CPU-only
+        wc rows, so the limit is the write path, not the routine; deciding cells (map5, others): no single-thread arm
+        ahead in all 4 runs (U ahead 2 of 4 at 0x38000, behind 2); only T2 / T4 (+10..18 % at 0x38000) = 6.3's split,
+        its own design. -> M2 CLOSED as 6.0 (c): leave, no note, no code (PK5 addendum). Side line for ATN: with a
+        cold source, ucrtbase memcpy / rep movsb are +4..5 % in every run (at most ~0.07 ms a frame; the game's source
+        is 'others'); a note to the loader's author only if ATN asks. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
         backup_32bit.md Rev 3 (2.8 rows L1-L13 + G9-G11, 2.9 audit rows H1-H11; no 32-bit class moved); FROZEN 32-BIT
         box lines F13-F19 + refreshed F4 / F7 / F10 / F12 pasted; the short list tools\tw\attila64\backup_32bit.md
         got its lines (sdku_ now merged); finding: none of 31 hand-backs carried a 32-bit line (the COMMON rule asks
