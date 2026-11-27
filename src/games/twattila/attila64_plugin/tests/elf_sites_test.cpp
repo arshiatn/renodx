@@ -6,8 +6,8 @@
 // The plugin's sites against the game file itself: maps the Linux build's load segments at their addresses (read and
 // write, never executed), applies the loader's stack-check rewrite, and checks the build id and every site's window,
 // the hook or the patch through the fake loader, controls that must be refused, the shadow row's instructions, the
-// rest pack's call, the grass rows' layout facts and camera getters, each engine value's static constructor call (tweaks.h: the object, its name and its default), and
-// the built DLL's init.
+// rest pack's call, the grass rows' layout facts and camera getters, each engine value's static constructor call
+// (tweaks.h: the object, its name and its default), and the built DLL's init.
 // elf_sites_test.exe <renodx_attila64.dll> <game ELF>; SKIPPED (exit 77, reported by build.ps1 as not run)
 // without the ELF or when the game's range is taken.
 
@@ -206,15 +206,14 @@ int wmain(int argc, wchar_t** argv) {
              && std::memcmp(at(GET_CAMERA_POSITION), GET_CAMERA_POSITION_CODE.data(), GET_CAMERA_POSITION_CODE.size()) == 0,
          "grass draw: the two camera getters hold the code the hook expects");
   {
-    // FNV-1a over [entry, the instruction after the no-LOD jump), with the hook's site in it.
-    constexpr uint32_t NO_LOD_PATH_BYTES = 0x110;
-    constexpr uint32_t NO_LOD_PATH_HASH = 0xd7a250e2;
-    uint32_t hash = 0x811c9dc5;
-    for (uint32_t offset = 0; offset < NO_LOD_PATH_BYTES; ++offset) {
-      hash = (hash ^ *at(SITES[LABEL_GRASS_DRAW_ENTRY].address + offset)) * 0x01000193;
-    }
-    Expect(hash == NO_LOD_PATH_HASH && *at(SITES[LABEL_GRASS_DRAW_ENTRY].address + NO_LOD_PATH_BYTES - 5) == 0xe9,
+    // The hash init takes: over [entry, the instruction after the no-LOD jump), with the hook's site in it. One byte
+    // of it changed is another hash.
+    uint8_t* draw = at(SITES[LABEL_GRASS_DRAW_ENTRY].address);
+    Expect(Fnv1a(draw, GRASS_DRAW_NO_LOD_BYTES) == GRASS_DRAW_NO_LOD_HASH && draw[GRASS_DRAW_NO_LOD_BYTES - 5] == 0xe9,
            "grass draw: its code up to the no-LOD return is the code that was read");
+    draw[0x80] ^= 1;
+    Expect(Fnv1a(draw, GRASS_DRAW_NO_LOD_BYTES) != GRASS_DRAW_NO_LOD_HASH, "grass draw: a patched byte is found");
+    draw[0x80] ^= 1;
   }
 
   // Each engine value in the game's own code: its static constructor call passes the object, the name and a plain
@@ -268,6 +267,7 @@ int wmain(int argc, wchar_t** argv) {
 
   WriteTweakObjects();
   ExpectPluginDll(api, argv[1]);
+  Expect(!Logged("grass draw: "), "grass draw: init finds the code that was read, the early return is on");
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
   return failures;

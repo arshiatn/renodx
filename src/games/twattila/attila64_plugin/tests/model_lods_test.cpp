@@ -6,7 +6,7 @@
 // The model LOD table (model_lods.hpp) without a game, on fake nodes and models: a model's first scaling and the
 // values back at 1x, a value the game set again, a changed LOD count, entries past the eighth, distances that must not
 // be scaled, two threads on the same models (one scale, then two scales at once: never a model scaled twice), and a
-// full stripe with its notice.
+// full stripe with its notice (its models then cost a shared lock only).
 // model_lods_test.exe; exit code = failures.
 
 #include <array>
@@ -17,6 +17,8 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <mutex>
+#include <shared_mutex>
 #include <thread>
 #include <vector>
 
@@ -219,6 +221,27 @@ int main() {
                && notices.load() == NOTICE_MODEL_TABLE_FULL,
            "a full stripe: its later models keep the game's distances, the notice is left");
     std::printf("  %zu of %zu models scaled, %zu kept the game's distances\n", scaled, MODELS, kept);
+    {
+      // A model that found its stripe full never takes the exclusive lock again (it is drawn per instance): with every
+      // stripe held shared here, another thread's calls for all the models still come back.
+      std::vector<std::shared_lock<std::shared_mutex>> held;
+      for (model_lods::Stripe& stripe : model_lods::table) {
+        held.emplace_back(stripe.mutex);
+      }
+      std::atomic<bool> done = false;
+      std::thread other([&] {
+        for (size_t model = 0; model < MODELS; ++model) {
+          model_lods::Scale(fake.node.data(), static_cast<uint32_t>(model), 4.f, &notices);
+        }
+        done = true;
+      });
+      for (int waited = 0; waited < 5000 && !done.load(); ++waited) {
+        Sleep(1);
+      }
+      Expect(done.load(), "a full stripe: its models' later calls take no exclusive lock");
+      held.clear();
+      other.join();
+    }
     size_t back = 0;
     for (size_t model = 0; model < MODELS; ++model) {
       model_lods::Scale(fake.node.data(), static_cast<uint32_t>(model), 1.f, &notices);

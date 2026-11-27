@@ -6,10 +6,10 @@
 // The plugin's unit test on a fake game image at the game's addresses (no game file needed): identity, the site checks
 // and their refusals, the loader's hook and the re-check, the stack-check rule, the hook bodies on synthetic game
 // functions at the real sites (this file's copy of hooks.hpp and the built DLL's own) with the add-on's callbacks,
-// the scale rows at neutral and active (the grass and campaign tree rows on a fake scrub), and one live battle-core reserve on this process's own CPU sets, the callback
-// drain, the patch kind and its way back, and the built DLL's init with each refusal, with the RenderCore key and with
-// the ShadowMapSize key (copies of the DLL under dll_cases\, a ReShade.ini next to this exe for the ini keys), and the
-// text a batch tool looks for in the DLL file.
+// the scale rows at neutral and active (the grass and campaign tree rows on a fake scrub), and one live battle-core
+// reserve on this process's own CPU sets, the callback drain, the patch kind and its way back, and the built DLL's
+// init with each refusal, with the RenderCore key and with the ShadowMapSize key (copies of the DLL under dll_cases\,
+// a ReShade.ini next to this exe for the ini keys), and the text a batch tool looks for in the DLL file.
 // patcher_test.exe <renodx_attila64.dll>; exit code = failures.
 
 #include <windows.h>
@@ -446,6 +446,40 @@ int wmain(int argc, wchar_t** argv) {
     write_tail(LABEL_GRASS_DRAW_ENTRY, GRASS_DRAW_TAIL);
     write_tail(LABEL_GRASS_CELL_ENTRY, GRASS_CELL_TAIL);
     write_tail(LABEL_CAMPAIGN_TREE_ENTRY, CAMPAIGN_TREE_TAIL);
+    {
+      // The plugin's init takes the grass draw for the game's by the hash of its first bytes: five bytes past the fake
+      // draw's code are set so that the fake one hashes the same. FNV-1a's steps can be undone, so the last two bytes
+      // are run back from the wanted hash and met by the two before them (a first byte is tried until they meet).
+      uint8_t* draw = at(SITES[LABEL_GRASS_DRAW_ENTRY].address);
+      uint8_t* fill = draw + GRASS_DRAW_NO_LOD_BYTES - 5;
+      constexpr uint32_t PRIME = 0x01000193;
+      uint32_t inverse = PRIME;  // of PRIME modulo 2^32, by Newton's steps
+      for (int step = 0; step < 5; ++step) {
+        inverse *= 2u - (PRIME * inverse);
+      }
+      std::vector<uint32_t> wanted(size_t{1} << 16);  // the hash wanted after the third byte, by the last two
+      for (uint32_t last = 0; last < wanted.size(); ++last) {
+        const uint32_t before_fifth = (GRASS_DRAW_NO_LOD_HASH * inverse) ^ (last >> 8);
+        wanted[last] = (before_fifth * inverse) ^ (last & 0xff);
+      }
+      std::ranges::sort(wanted);
+      bool met = false;
+      for (uint32_t first = 0; first < 256 && !met; ++first) {
+        fill[0] = static_cast<uint8_t>(first);
+        const uint32_t before = Fnv1a(draw, GRASS_DRAW_NO_LOD_BYTES - 4);
+        for (uint32_t middle = 0; middle < (1u << 16) && !met; ++middle) {
+          const uint32_t after_third = ((((before ^ (middle >> 8)) * PRIME) ^ (middle & 0xff)) * PRIME);
+          if (!std::ranges::binary_search(wanted, after_third)) continue;
+          fill[1] = static_cast<uint8_t>(middle >> 8);
+          fill[2] = static_cast<uint8_t>(middle);
+          for (uint32_t last = 0; last < (1u << 16) && !met; ++last) {
+            fill[3] = static_cast<uint8_t>(last);
+            fill[4] = static_cast<uint8_t>(last >> 8);
+            met = (Fnv1a(draw, GRASS_DRAW_NO_LOD_BYTES) == GRASS_DRAW_NO_LOD_HASH);
+          }
+        }
+      }
+    }
     WriteCaller(GRASS_UPDATE_CALL, SITES[LABEL_GRASS_UPDATE_ENTRY].address);
     WriteCaller(GRASS_DRAW_CALL, SITES[LABEL_GRASS_DRAW_ENTRY].address);
     WriteCaller(CAMPAIGN_TREE_CALL, SITES[LABEL_CAMPAIGN_TREE_ENTRY].address);
@@ -1006,6 +1040,7 @@ int wmain(int argc, wchar_t** argv) {
     *grass_draw_record = {};
     *grass_cell_record = {};
     *campaign_tree_record = {};
+    grass_draw_code_read = true;  // this file's copy has no init; the DLL's own found the fake draw's hash
     const uint32_t rows_applied_before = shared->rows_applied;
     shared->rows_applied |= RowBit(ROW_GRASS);
     Expect(!Logged("GRASS_UPDATE_ENTRY: first call") && grass_update_once() && grass_update_record->calls == 1
@@ -1086,6 +1121,12 @@ int wmain(int argc, wchar_t** argv) {
            "grass draw: a getter whose code changed (read at the update), every call reaches the game");
     *at(GET_CAMERA_POSITION + 4) ^= 1;
     Expect(grass_update_once() && grass_draw_once(1, 50.f, 0.f, false), "grass draw: the code back, the call left out again");
+    if (shared == &block) {
+      grass_draw_code_read = false;
+      Expect(grass_draw_once(1, 50.f, 0.f, true) && grass_draw_once(1, 30.f, 0.f, true),
+             "grass draw: the draw's own code not as read at init, every call reaches the game");
+      grass_draw_code_read = true;
+    }
 
     // The game sets its own values again: anything but the last written value is the game's.
     put(scrub.data(), SCRUB_BIAS, 50.f);
@@ -1104,6 +1145,66 @@ int wmain(int argc, wchar_t** argv) {
            "grass: back at 1x, the game's bits in the scrub and in every LOD");
     Expect(grass_draw_once(1, 20.f, 0.f, true) && grass_draw_once(1, 50.f, 0.f, false) && lods_are({2500.f, 10000.f, 900.f, 1.0e6f, 90000.f}),
            "grass draw: back at 1x, the game's own pick; a draw the game would return from is still left out");
+
+    // Two scrubs updating in turn, each with its own state: neither's written radius or bias is ever taken for the
+    // game's (the bias would grow by scale / density at every turn).
+    {
+      std::array<uint8_t, 0x100> second_scrub = scrub;
+      put(second_scrub.data(), SCRUB_RADIUS, int32_t{300});
+      put(second_scrub.data(), SCRUB_BIAS, 80.f);
+      const auto both_hold = [&](int32_t radius, float bias, int32_t second_radius, float second_bias) {
+        bool ok = true;
+        for (int turn = 0; turn < 3; ++turn) {
+          grass_update(scrub.data());
+          grass_update(second_scrub.data());
+          ok = ok && scrub_holds(radius, bias) && std::memcmp(second_scrub.data() + SCRUB_RADIUS, &second_radius, 4) == 0
+               && std::memcmp(second_scrub.data() + SCRUB_BIAS, &second_bias, 4) == 0;
+        }
+        return ok;
+      };
+      set_scale(shared, SCALE_GRASS_LOD, 4.f);
+      set_scale(shared, SCALE_GRASS_RADIUS, 2.f);
+      Expect(both_hold(201, 100.f, 201, 160.f), "two scrubs at 2x: each from its own game values, turn after turn");
+      Expect(grass_cell_once(scrub.data(), {1, 1}, 40401.f, 3721.f) && grass_cell_once(second_scrub.data(), {1, 1}, 40401.f, 3721.f),
+             "two scrubs: the cells of both are cut");
+      set_scale(shared, SCALE_GRASS_LOD, 1.f);
+      set_scale(shared, SCALE_GRASS_RADIUS, 1.f);
+      set_scale(shared, SCALE_GRASS_DENSITY, 4.f);
+      Expect(both_hold(200, 12.5f, 300, 20.f), "two scrubs, density alone: the game's radius, each bias / density once");
+      set_scale(shared, SCALE_GRASS_DENSITY, 1.f);
+      Expect(both_hold(200, 50.f, 300, 80.f), "two scrubs: back at 1x, the game's values in both");
+
+      // This file's copy alone (its states are set by hand).
+      if (shared == &block) {
+        // Every state taken by another scrub the game still updates: a new scrub keeps the game's radius and bias, with
+        // one line; once a state is stale, the new scrub takes it.
+        for (size_t entry = 0; entry < MAX_SCRUBS; ++entry) {
+          if (scrub_states.scrubs[entry] == nullptr) {
+            scrub_states.scrubs[entry] = reinterpret_cast<const uint8_t*>(uintptr_t{0x1000} + entry);
+          }
+          scrub_states.states[entry].updated = scrub_states.updates;
+        }
+        std::array<uint8_t, 0x100> third_scrub = second_scrub;
+        set_scale(shared, SCALE_GRASS_LOD, 4.f);
+        set_scale(shared, SCALE_GRASS_RADIUS, 2.f);
+        const auto third_holds = [&](int32_t radius, float bias) {
+          grass_update(third_scrub.data());
+          grass_update(third_scrub.data());
+          return std::memcmp(third_scrub.data() + SCRUB_RADIUS, &radius, 4) == 0
+                 && std::memcmp(third_scrub.data() + SCRUB_BIAS, &bias, 4) == 0;
+        };
+        Expect(!Logged("grass: more than 64 grass areas") && third_holds(300, 80.f) && Logged("grass: more than 64 grass areas")
+                   && grass_cell_once(third_scrub.data(), {1, 1}, 40401.f, 40401.f),
+               "a scrub past the table: the game's radius and bias, no cell cut, one line");
+        scrub_states.updates += STALE_SCRUB_UPDATES + 1;
+        Expect(third_holds(201, 160.f), "a scrub past the table takes a state no scrub updated for long");
+        set_scale(shared, SCALE_GRASS_LOD, 1.f);
+        set_scale(shared, SCALE_GRASS_RADIUS, 1.f);
+        Expect(third_holds(300, 80.f), "that scrub: back at 1x, the game's values");
+        scrub_states.scrubs = {};
+        scrub_states.states = {};
+      }
+    }
 
     set_scale(shared, SCALE_CAMPAIGN_TREES, 4.f);
     Expect(campaign_tree_once() && lods_are({2500.f, 10000.f, 900.f, 1.0e6f, 360000.f}),
@@ -1424,6 +1525,26 @@ int wmain(int argc, wchar_t** argv) {
     char sites_in[64];
     std::snprintf(sites_in, sizeof(sites_in), "game started: %zu sites unchanged", SITES.size() - 1);
     Expect(plugin.block->rows_changed.load() == 0 && Logged(sites_in), "grass: the hook that stayed in is still re-checked");
+  }
+
+  // One byte of the grass draw's code is not the game's (not in the site's window): init says so once, and with the row
+  // in and its scales active the hook scales the model and leaves no draw out.
+  write_game();
+  *at(SITES[LABEL_GRASS_DRAW_ENTRY].address + GRASS_DRAW_NO_LOD_BYTES - 8) ^= 1;
+  {
+    const auto [plugin, result] = init_copy(L"grass_draw_code", MODULE_NAME, api);
+    reset_scrub();
+    *grass_update_record = {};
+    *grass_draw_record = {};
+    set_scale(plugin.block, SCALE_GRASS_LOD, 4.f);
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS
+               && Logged("grass draw: the game's code is not the code that was read, every draw goes to the game"),
+           "grass draw: a patched byte at init leaves its line");
+    Expect(grass_update_once() && grass_draw_once(1, 50.f, 0.f, true) && lods_are({10000.f, 40000.f, 1600.f, 4.0e6f, 90000.f})
+               && grass_draw_once(1, 30.f, 0.f, true),
+           "grass draw: a patched byte at init, the model scaled and every draw reaches the game");
+    set_scale(plugin.block, SCALE_GRASS_LOD, 1.f);
+    Expect(grass_update_once() && lods_are(GAME_LODS), "grass draw: a patched byte at init, back at 1x");
   }
 
   // Shadow Map Size: the ShadowMapSize key of [Attila64Plugin.Values] on the DirectX 11 route (the loader's test

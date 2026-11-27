@@ -208,6 +208,9 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     block.tweaks_status.store(TWEAKS_PENDING, std::memory_order_relaxed);
   }
 
+  grass_draw_code_read =
+      (Fnv1a(reinterpret_cast<const uint8_t*>(uintptr_t{SITES[LABEL_GRASS_DRAW_ENTRY].address}), GRASS_DRAW_NO_LOD_BYTES)
+       == GRASS_DRAW_NO_LOD_HASH);
   // Every site is checked before any is written: a row goes in whole or not at all, and one site's bytes can lie in
   // another's window (the shadow sizes and cascade counts).
   std::array<SiteCheck, SITES.size()> site_checks = {};
@@ -297,6 +300,9 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     } else {
       loader->log("renodx_attila64: shadow map: game's size (ShadowMapSize=%d out of range)", shadow_map_size);
     }
+  }
+  if ((block.rows_applied & RowBit(ROW_GRASS)) != 0 && !grass_draw_code_read) {
+    loader->log("renodx_attila64: grass draw: the game's code is not the code that was read, every draw goes to the game");
   }
   // The battle core's status is built (not 0) only with its hook in; battle_core.hpp writes it from the first step on.
   // The render core's the same, with its switch.

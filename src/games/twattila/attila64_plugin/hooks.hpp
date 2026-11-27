@@ -42,8 +42,9 @@ static std::array<std::atomic_bool, LABEL_COUNT> first_call_logged = {};
 
 // The game functions' prototypes, typed noexcept: a C++ exception in game code is unwound by the game's own unwinder,
 // which cannot pass a frame of ours. The pack, step, model LOD, grass and campaign tree hooks leave no frame of ours
-// while their originals run (a tail call); the pass hook does on measured calls only, and no frame above it catches (the generator's catch
-// gate on its site); the unit LOD hook does while a scale of its own is active, and nothing its original calls throws
+// while their originals run (a tail call); the pass hook does on measured calls only, and no frame above it catches
+// (the generator's catch gate on its site); the unit LOD hook does while a scale of its own is active, and nothing its
+// original calls throws
 // (read from the game's code: one direct call and two virtual ones, each with one possible target). So the hook
 // bodies need no landing pads, and every function they call is noexcept.
 using PackFn = bool(ATTILA64_GAME_CALL*)(void* self, void* context, bool flag, void* list, uint32_t first,
@@ -118,12 +119,11 @@ inline constexpr uint32_t GRASS_SCALES =
 // The scales that move where grass can be drawn at all: only these cut a cell's radius, or the scrub's.
 inline constexpr uint32_t GRASS_REACH_SCALES = (1u << SCALE_GRASS_LOD) | (1u << SCALE_GRASS_RADIUS);
 
-// The scrub's radius and bias as the game set them and as the update hook wrote them, and per slot the radius its
-// records need. Written by the update hook before the game's update starts the cell loop on its task threads, read by
-// the cell hook there.
+// A scrub's radius and bias as the game set them and as the update hook wrote them, and per slot the radius its
+// records need. Written by the scrub's update hook before the game's update starts the cell loop on its task threads,
+// read by the cell hook there.
 struct ScrubState {
-  std::shared_mutex mutex;
-  const uint8_t* scrub = nullptr;
+  uint64_t updated = 0;  // ScrubStates::updates at its last update; 0: never used
   int32_t game_radius = 0;
   uint32_t game_bias = 0;  // a float's bits
   int32_t written_radius = 0;
@@ -133,8 +133,22 @@ struct ScrubState {
   uint32_t slot_count = 0;
   std::array<int32_t, MAX_SCRUB_SLOTS> slot_radius = {};
 };
-static ScrubState scrub_state;
-static_assert(std::is_trivially_destructible_v<ScrubState>);
+// Each scrub's own state, by its address: with one state for all, a second scrub updating in turn with the first would
+// have our written radius and bias taken for the game's. An entry is claimed at a scrub's first update. Entries are
+// not freed (nothing tells when the game frees a scrub); a new scrub with none free takes the entry longest without an
+// update, once that is STALE_SCRUB_UPDATES updates ago (a scrub the game still draws is updated every frame). With no
+// such entry the scrub keeps the game's radius and bias, and one log line says so.
+inline constexpr size_t MAX_SCRUBS = 64;
+inline constexpr uint64_t STALE_SCRUB_UPDATES = 1u << 20;
+struct ScrubStates {
+  std::shared_mutex mutex;
+  uint64_t updates = 0;                                // every update hook call that ran its body
+  std::array<const uint8_t*, MAX_SCRUBS> scrubs = {};  // beside the states: the cell hook's search reads these alone
+  std::array<ScrubState, MAX_SCRUBS> states = {};
+};
+static ScrubStates scrub_states;
+static_assert(std::is_trivially_destructible_v<ScrubStates>);
+static std::atomic_bool scrub_table_full_logged = false;
 // The hooks that write game memory run their bodies from their row's first scale that is not neutral on, for the
 // process: back at 1x they write the game's values x 1, the game's bits (the 32-bit add-on's models_scaled).
 static std::atomic_bool grass_scaled = false;
@@ -142,6 +156,19 @@ static std::atomic_bool campaign_trees_scaled = false;
 // Both camera getters hold their code (the update hook reads it every frame: the loader and other plugins write
 // game code after our init too).
 static std::atomic_bool camera_getters_read = false;
+// The grass draw's code from its entry to its no-LOD return is the code that was read (FNV-1a, 32 bits). Set at init,
+// before the site's hook goes in and before any game thread runs; the hook's own early return stands on it, as the
+// 32-bit add-on's draw_scrub_read.
+inline constexpr size_t GRASS_DRAW_NO_LOD_BYTES = 0x110;
+inline constexpr uint32_t GRASS_DRAW_NO_LOD_HASH = 0xd7a250e2;
+static bool grass_draw_code_read = false;
+static uint32_t Fnv1a(const uint8_t* bytes, size_t count) noexcept {
+  uint32_t hash = 0x811c9dc5;
+  for (size_t index = 0; index < count; ++index) {
+    hash = (hash ^ bytes[index]) * 0x01000193;
+  }
+  return hash;
+}
 
 // The add-on's unregister stores nullptr into `callbacks`, then waits (bounded) until `calls_in_flight` is 0
 // (plugin_block.h has its rules): with this increment-then-load (seq_cst on both sides) no callback starts after that
@@ -321,15 +348,45 @@ static ATTILA64_GAME_CALL void GrassUpdateEntry(uint8_t* scrub) {
       std::memcpy(&lod_offset, node + NODE_LOD_OFFSET, sizeof(lod_offset));
     }
 
-    ScrubState& known = scrub_state;
-    const std::scoped_lock lock(known.mutex);
-    if (scrub != known.scrub || radius != known.written_radius) {
+    // This scrub's entry; else the one longest without an update (a never used one first), if it may be taken. Under
+    // a lock of its own: the game's update is called from here when there is none, with no local of ours alive.
+    size_t entry = MAX_SCRUBS;
+    bool first_update = false;
+    {
+      const std::scoped_lock lock(scrub_states.mutex);
+      ++scrub_states.updates;
+      size_t oldest = 0;
+      for (size_t index = 0; index < MAX_SCRUBS && entry == MAX_SCRUBS; ++index) {
+        if (scrub_states.scrubs[index] == scrub) {
+          entry = index;
+        } else if (scrub_states.states[index].updated < scrub_states.states[oldest].updated) {
+          oldest = index;
+        }
+      }
+      first_update = (entry == MAX_SCRUBS);
+      if (first_update && (scrub_states.states[oldest].updated == 0
+                           || scrub_states.updates - scrub_states.states[oldest].updated > STALE_SCRUB_UPDATES)) {
+        entry = oldest;
+        scrub_states.scrubs[entry] = scrub;
+      }
+      if (entry != MAX_SCRUBS) {
+        scrub_states.states[entry].updated = scrub_states.updates;
+      }
+    }
+    if (entry == MAX_SCRUBS) {
+      if (!scrub_table_full_logged.exchange(true)) {
+        loader->log("renodx_attila64: grass: more than %zu grass areas at once, the rest keep the game's radius", MAX_SCRUBS);
+      }
+      [[clang::musttail]] return reinterpret_cast<GrassUpdateFn>(originals[LABEL_GRASS_UPDATE_ENTRY])(scrub);
+    }
+    const std::scoped_lock lock(scrub_states.mutex);
+    ScrubState& known = scrub_states.states[entry];
+    if (first_update || radius != known.written_radius) {
       known.game_radius = radius;
     }
-    if (scrub != known.scrub || bias != known.written_bias) {
+    if (first_update || bias != known.written_bias) {
       known.game_bias = bias;
     }
-    known.scrub = scrub;
     known.written_radius = static_cast<int32_t>(std::lround(static_cast<float>(known.game_radius) * radius_scale));
     known.written_bias =
         std::bit_cast<uint32_t>(std::bit_cast<float>(known.game_bias) * radius_scale / ActiveScale(SCALE_GRASS_DENSITY));
@@ -393,7 +450,7 @@ static ATTILA64_GAME_CALL void GrassDrawEntry(const uint8_t* node, const uint32_
     [[clang::musttail]] return original(node, model, transform, clip, params, flag);
   }
   const uint8_t* scaled_model = model_lods::Scale(node, *model, ActiveScale(SCALE_GRASS_LOD), &block.notices);
-  if (scaled_model != nullptr && camera_getters_read.load(std::memory_order_relaxed)) {
+  if (scaled_model != nullptr && grass_draw_code_read && camera_getters_read.load(std::memory_order_relaxed)) {
     const uint8_t* scene = nullptr;
     std::memcpy(&scene, node + NODE_SCENE, sizeof(scene));
     const uint8_t* camera = scene + SCENE_CAMERA;
@@ -432,7 +489,7 @@ static ATTILA64_GAME_CALL void GrassDrawEntry(const uint8_t* node, const uint32_
 // ROW_GRASS_CELLS, one cell of the scrub's cell loop: the radius (squared) its records are tested against, cut to the
 // largest radius the cell's records' slots need (the update hook's, the same proof): the loop sends the same records
 // on, the others fail its distance test before their transform and their draw call. Only while a reach scale is active
-// and the update hook knows this scrub; speed only. The 32-bit add-on's OnScrubCell. Then the game's loop.
+// and the update hook holds this scrub's state; speed only. The 32-bit add-on's OnScrubCell. Then the game's loop.
 static ATTILA64_GAME_CALL void GrassCellEntry(const uint8_t* scrub, const uint8_t* cell, const float* camera, CellClip clip,
                                               float radius_squared, uintptr_t flag) {
   LogFirstCall(LABEL_GRASS_CELL_ENTRY);
@@ -441,9 +498,10 @@ static ATTILA64_GAME_CALL void GrassCellEntry(const uint8_t* scrub, const uint8_
     const uint8_t* records = nullptr;
     std::memcpy(&record_count, cell + CELL_RECORD_COUNT, sizeof(record_count));
     std::memcpy(&records, cell + CELL_RECORDS, sizeof(records));
-    const ScrubState& known = scrub_state;
-    const std::shared_lock lock(scrub_state.mutex);
-    if (scrub == known.scrub && known.slot_count != 0) {
+    const std::shared_lock lock(scrub_states.mutex);
+    if (const auto entry = static_cast<size_t>(std::ranges::find(scrub_states.scrubs, scrub) - scrub_states.scrubs.begin());
+        entry != MAX_SCRUBS && scrub_states.states[entry].slot_count != 0) {
+      const ScrubState& known = scrub_states.states[entry];
       int32_t radius = 0;
       for (uint32_t record = 0; record < record_count && radius < known.written_radius; ++record) {
         const uint8_t slot = records[(record * RECORD_BYTES) + RECORD_SLOT];

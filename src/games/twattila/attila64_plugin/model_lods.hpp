@@ -112,12 +112,22 @@ static const uint8_t* Scale(const uint8_t* node, uint32_t index, float scale, st
     }
     return nullptr;
   };
+  const auto leave_notice = [&] {
+    if ((notices->load(std::memory_order_relaxed) & NOTICE_MODEL_TABLE_FULL) == 0) {
+      notices->fetch_or(NOTICE_MODEL_TABLE_FULL, std::memory_order_relaxed);
+    }
+  };
   // Most misses find the model as another thread (or this one before its cache entry was replaced) left it: nothing
-  // to write, under the shared lock.
+  // to write, under the shared lock. A model that finds its stripe full here stays out for good (slots are never
+  // freed), so each of its later calls ends here too, without the exclusive lock.
   {
     const std::shared_lock lock(stripe.mutex);
     const Model* found = find_slot();
-    bool settled = (found != nullptr && found->model == key && found->count == count && holds(found->written));
+    if (found == nullptr) {
+      leave_notice();
+      return model;
+    }
+    bool settled = (found->model == key && found->count == count && holds(found->written));
     for (uint32_t lod = 0; settled && lod < count; ++lod) {
       settled = (found->written[lod] == scaled(found->game[lod]));
     }
@@ -131,9 +141,7 @@ static const uint8_t* Scale(const uint8_t* node, uint32_t index, float scale, st
   const std::scoped_lock lock(stripe.mutex);
   Model* slot = find_slot();
   if (slot == nullptr) {
-    if ((notices->load(std::memory_order_relaxed) & NOTICE_MODEL_TABLE_FULL) == 0) {
-      notices->fetch_or(NOTICE_MODEL_TABLE_FULL, std::memory_order_relaxed);
-    }
+    leave_notice();
     return model;
   }
   const bool every_value_is_the_games = (slot->model != key || slot->count != count);
