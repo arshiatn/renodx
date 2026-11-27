@@ -921,7 +921,9 @@ int wmain(int argc, wchar_t** argv) {
         for (const uint32_t sign : {0u, 0x80000000u}) {
           const uint32_t x = edge | sign;
           std::memcpy(source, &x, sizeof(x));
-          words_right = words_right && row_words_right(in);
+          // The run first: the way it took is read after it.
+          const bool words = row_words_right(in);
+          words_right = words_right && words;
           ways_right = ways_right && fallback_taken() == (edge >= DENORMAL_HALF_FIRST && edge < NORMAL_HALF_FIRST);
         }
       }
@@ -1366,8 +1368,9 @@ int wmain(int argc, wchar_t** argv) {
              && HeldRangeUnchanged(HALF_RANGE, false),
          "the half's site out again: a refused put-back leaves the jump, the next one the game's whole function");
 
+  // The sprite rows' long runs, after the half's shorter one.
   if (failures != 0) {
-    std::printf("  the long runs are skipped: a check above failed\n");
+    std::printf("  the sprite rows' long runs are skipped: a check above failed\n");
   } else {
     Expect(inputs_equal("the sprite rows, every lane at once",
                         [&](uint64_t first, uint64_t last, size_t /*thread*/, uint64_t* bad) {
