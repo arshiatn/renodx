@@ -721,7 +721,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AO DURING THE PT AMBIENT WARM-UP (rllf_ M1, 11-27, bug fix -> always on): Attila ... | ATN (the warm-up look in the batch)
 - W3 HORIZON METRIC (p6rv2_ S3, 11-27): P6a2's camera proof for w3 / w3t is a byte ... | the next a64_ab writer after PK9 P1-P5 (C8 T0 or its own ste
 - ALL PLANS LIST (ATN 11-27 16:2x: 'Some stuffs are missing ... gather those forgo ... | coord
-- UNIFIED PT COMPLETENESS CRITIC (ATN 11-27 18:5x 'Yes, start it'): unified_pt.md ... | coord
+- UNIFIED PT COMPLETENESS CRITIC (ATN 11-27 18:5x 'Yes, start it'): unified_pt.md ... | ?
+- PT DI PORT S8 READER (upt28_, 11-27): the 64-bit add-on's reader of the helper's ... | the S8 writer (RT-on-64) Owner: coord
 - SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | coord
@@ -17978,7 +17979,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         .before_v28); implementation AFTER the CPU plan (ATN 18:3x: 'we implement it after the cpu plan. Just not now'). ATN's answers: Q3 / Q4 / Q6 / Q8-Q11 = the picks; Q7
         froxel volume = a harness arm on 4K numbers, a tie decided on ATN's burning-city replay; Q1 (ReSTIR off under RR),
         Q2 (3-of-4 sub-sampling), Q5 (pbrt-v4): ATN 18:42: Q1 = the pick (both arms at equal time on 4K RR), Q2 = an
-        optional harness arm judged by his eye, Q5 = pbrt-v4 on the known-answer scenes only; sent to upt28_. Owner:
+        optional harness arm judged by his eye, Q5 = pbrt-v4 on the known-answer scenes only; sent to upt28_. upt28_ DONE 19:09
+        (41 of 90 min; scratch\upt28_\handback.md): unified_pt.md v2.8 (2949 lines; Part A A0-A16 new, Part B = v2.7 with
+        75 marked 'v2.8:' edits, 0 deletions; .before_v28 = byte copy): all 46 critic items have a line (A0), 99 finding
+        ids mapped (A16); Q1-Q11 decided; ATN's later list O1-O11 (A1.2, each with numbers at its step; O6 = the RR DLL
+        310.9.16 vs 310.7.0 + preset, before U0's RR baselines; O11 = DXR 1.2 on AMD / Intel, before U7); new steps U0p,
+        U0r, U9-0 (RTXDI PT bridge), U10c, U6f (froxel arm), U12e; prerequisites P1-P13; E about 473 agent-hours + 70-100
+        GPU-hours serial. Found: v2.7's new key RayTracedSmokeShadows collides with an existing key (renamed
+        RayTracedSmokeTorchShadows); NRD torch-pair cost ~2.5-4 ms at 4K (not 0.3-0.6); unverified (marked U): PA23, PA24,
+        Remix 'one volume lights particles'. Implementation AFTER the CPU plan; an Opus xHigh review of v2.8 comes first
+        when the GPU lane reopens.
+        - [ ] PT DI PORT S8 READER (upt28_, 11-27): the 64-bit add-on's reader of the helper's PT DI word must test
+        (rt_di_ok & 1u) != 0u (unified_pt.md v2.8 A2). Owner: the S8 writer (RT-on-64) Owner:
         coord
         - [ ] SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stacked step; from now on
         steps on the same files run one after the other, different files side by side, Fable jobs first. Owner: coord
