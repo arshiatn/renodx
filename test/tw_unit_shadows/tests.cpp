@@ -22,7 +22,7 @@
 // 7. Shadow map work (Render's hook), Attila's and Rome II's, also with the 64-bit loader's Shadow refresh rest frames;
 //    7b the 64-bit route (the engine plugin's hook calling attila64_plugin_link.hpp's callbacks); 7c the callbacks'
 //    registration and drain on a block as the plugin publishes it; 7d the engine values on the port; 7e the start files'
-//    reader (start_files.hpp) over files in a temp folder.
+//    reader (start_files.hpp) over files in a temp folder; 7f the scale rows and Shadow Map Size's key on the port.
 // 8. Rome II's Two Shadow Cascades Under Rays (twrome2/shadow_cascades.hpp) over its shipped empire.retail.dll.
 #include <windows.h>
 #include <d3d11.h>
@@ -683,7 +683,7 @@ int main(int argc, char** argv) {
       renodx::utils::settings::Setting values_status;
       const auto present = [&](bool loader_frame_cap) {
         tw::engine_tweaks::Update(L"empire.retail.dll", options, nullptr, &values_found, &values_status);
-        link::MirrorRestartValues(loader_frame_cap);
+        link::MirrorRestartValues(loader_frame_cap, 0);
       };
       plugin::Block values_block;
       values_block.status.store(plugin::STATUS_READY);
@@ -864,6 +864,145 @@ int main(int argc, char** argv) {
       std::printf(
           "7e start files: the last line of a name counts (either case, '=' next), the value as written (CR / LF cut, "
           "not trimmed); no line / no file: none; FrameBridge's addon=off in either case; lines walked in order\n");
+    }
+    // 7f. The scale rows on the port (PublishScales, Shadow Map Size's mirror): a scale stored only when it changed, its
+    //     scales_active bit while it is not neutral and its row is offered (a row not offered: no bit, the scale still
+    //     stored; a scale of a row this add-on does not fold yet: no bit), one line per change of the bits, nothing on a
+    //     v1 block; the plugin's notices logged once per new bit; ShadowMapSize written clamped, one line per write, its
+    //     own pending flag against the key this start read (out of range: the game's sizes), only while its row is
+    //     offered; the scales kept at the detach.
+    {
+      const auto lines = [](std::string_view text) {
+        return std::ranges::count_if(logged, [text](const std::string& line) { return line.find(text) != std::string::npos; });
+      };
+      const auto shadow_key = [] {
+        const auto found = config.find("Attila64Plugin.Values|ShadowMapSize");
+        return (found == config.end() ? std::string("absent") : found->second);
+      };
+      plugin::Block scale_block;
+      scale_block.status.store(plugin::STATUS_READY);
+      for (uint32_t index = 0; index < plugin::SCALE_COUNT; ++index) {
+        scale_block.scales[index].store(plugin::NEUTRAL_SCALES[index]);
+      }
+      scale_block.rows_applied = plugin::RowBit(plugin::ROW_UNIT_LOD) | plugin::RowBit(plugin::ROW_MODEL_DETAIL)
+                                 | plugin::RowBit(plugin::ROW_SHADOW_MAP);
+      scale_block.rows_tried = scale_block.rows_applied;
+      link::internal::block = &scale_block;
+      link::internal::found.store(link::Found::READY);
+      config.clear();
+      logged.clear();
+      std::array<float, plugin::SCALE_COUNT> scales = plugin::NEUTRAL_SCALES;
+      // Neutral: no bit, no line.
+      link::PublishScales(scales);
+      CHECK(scale_block.scales_active.load() == 0 && logged.empty());
+      // Unit Detail 2x on foot soldiers and Model Detail 2x (its scale 1 / 4): bits 0 and 17, one line.
+      scales[0] = 2.f;
+      scales[plugin::SCALE_MODEL_DETAIL] = 0.25f;
+      link::PublishScales(scales);
+      CHECK(scale_block.scales[0].load() == 2.f && scale_block.scales[plugin::SCALE_MODEL_DETAIL].load() == 0.25f
+            && scale_block.scales[1].load() == 1.f && scale_block.scales_active.load() == 0x20001 && logged.size() == 1
+            && lines("engine scales active 0x20001") == 1);
+      link::PublishScales(scales);
+      CHECK(logged.size() == 1);
+      // The unit shadows' 0 (casters skipped): bit 16; a grass scale (not folded by this add-on yet): stored, no bit.
+      scales[16] = 0.f;
+      scales[plugin::SCALE_GRASS_LOD] = 4.f;
+      link::PublishScales(scales);
+      CHECK(scale_block.scales[16].load() == 0.f && scale_block.scales[plugin::SCALE_GRASS_LOD].load() == 4.f
+            && scale_block.scales_active.load() == 0x30001 && lines("engine scales active 0x30001") == 1);
+      // Model Detail not offered (changed after the plugin; its hook may stay in): its bit clear, Unit Detail's kept.
+      scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_MODEL_DETAIL));
+      link::PublishScales(scales);
+      CHECK(scale_block.scales_active.load() == 0x10001 && lines("engine scales active 0x10001") == 1);
+      scale_block.rows_changed.store(0);
+      // Back to neutral: no bit, one line.
+      scales = plugin::NEUTRAL_SCALES;
+      link::PublishScales(scales);
+      CHECK(scale_block.scales_active.load() == 0 && scale_block.scales[0].load() == 1.f
+            && scale_block.scales[plugin::SCALE_GRASS_LOD].load() == 1.f && lines("engine scales active 0x0") == 1);
+      // A v1 block: nothing stored.
+      scale_block.bytes = static_cast<uint32_t>(plugin::BlockBytes(1));
+      scales[0] = 3.f;
+      link::PublishScales(scales);
+      CHECK(scale_block.scales[0].load() == 1.f && scale_block.scales_active.load() == 0);
+      scale_block.bytes = sizeof(plugin::Block);
+      scales[0] = 1.f;
+      // The notices: one line per new bit.
+      logged.clear();
+      scale_block.notices.fetch_or(plugin::NOTICE_REST_PACK);
+      link::PublishScales(scales);
+      link::PublishScales(scales);
+      CHECK(logged.size() == 1 && lines("engine plugin notices 0x1 (rest pack: yes, model table full: no)") == 1);
+      scale_block.notices.fetch_or(plugin::NOTICE_MODEL_TABLE_FULL);
+      link::PublishScales(scales);
+      CHECK(logged.size() == 2 && lines("engine plugin notices 0x3 (rest pack: yes, model table full: yes)") == 1);
+      // Shadow Map Size: this start read 1 (4096). The row at 1: nothing written, not pending; at 2: written, one line,
+      // pending (the audio note's flag stays clear); a row value past 2 (a hand-edited ReShade.ini): clamped; back at 1.
+      config["Attila64Plugin.Values|ShadowMapSize"] = "1";
+      logged.clear();
+      link::MirrorRestartValues(false, 1);
+      CHECK(shadow_key() == "1" && logged.empty() && !link::ShadowMapSizePending());
+      link::MirrorRestartValues(false, 2);
+      CHECK(shadow_key() == "2" && logged.size() == 1
+            && lines("engine value ShadowMapSize: 0x2 at the next start (this start: 0x1)") == 1
+            && link::ShadowMapSizePending() && !link::ValuesPending() && !link::SolFrameCapPending());
+      link::MirrorRestartValues(false, 7);
+      CHECK(shadow_key() == "2" && logged.size() == 1 && link::ShadowMapSizePending());
+      link::MirrorRestartValues(false, 1);
+      CHECK(shadow_key() == "1" && logged.size() == 2 && !link::ShadowMapSizePending());
+      // Its row not offered: the key left alone, no note.
+      scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_SHADOW_MAP));
+      link::MirrorRestartValues(false, 2);
+      CHECK(shadow_key() == "1" && logged.size() == 2 && !link::ShadowMapSizePending());
+      scale_block.rows_changed.store(0);
+      // The detach: the mirror's state reset, the scales kept (a hook reads them for the process).
+      scales[0] = 2.f;
+      link::PublishScales(scales);
+      link::MirrorRestartValues(false, 2);
+      CHECK(link::ShadowMapSizePending());
+      link::Uninstall();
+      CHECK(!link::ShadowMapSizePending() && !link::internal::shadow_map_size_mirrored.has_value()
+            && link::internal::notices_logged == 0 && scale_block.scales[0].load() == 2.f
+            && scale_block.scales_active.load() == 1);
+      // A start that read a key out of range (the plugin kept the game's sizes): the row at 0 is this start's; at 1
+      // pending.
+      link::internal::shadow_map_size_at_start.reset();
+      config["Attila64Plugin.Values|ShadowMapSize"] = "5";
+      link::internal::found.store(link::Found::READY);
+      logged.clear();
+      link::MirrorRestartValues(false, 0);
+      CHECK(shadow_key() == "0" && lines("engine value ShadowMapSize: 0x0 at the next start (this start: 0x0)") == 1
+            && !link::ShadowMapSizePending());
+      link::MirrorRestartValues(false, 1);
+      CHECK(shadow_key() == "1" && link::ShadowMapSizePending());
+      // A start the plugin saw as not DX11 (a restart-only value with a key: NOT_DX11): nothing patched, so the row at
+      // the key's 1 is pending; the same value APPLIED: not pending.
+      link::internal::shadow_map_size_at_start = 1;
+      link::MirrorRestartValues(false, 1);
+      CHECK(!link::ShadowMapSizePending());
+      plugin::TweakSlot route_slot = {.name = "SOUND_DEFAULT_BUFFER_SIZE_IN_KB", .default_bits = 0x5da4,
+                                      .written_bits = 0x5da4, .type = plugin::TWEAK_UINT, .verdict = plugin::VERDICT_OK,
+                                      .restart_only = 1, .restart_state = plugin::RESTART_NOT_DX11};
+      tw::engine_tweaks::Option route_option = {.tweaks = {{.name = "SOUND_DEFAULT_BUFFER_SIZE_IN_KB", .integer = true}}};
+      std::array<tw::engine_tweaks::Option*, 1> route_options = {&route_option};
+      scale_block.tweaks = &route_slot;
+      scale_block.tweak_count = 1;
+      scale_block.tweaks_status.store(plugin::TWEAKS_READY);
+      CHECK(link::FindTweaks(route_options));
+      logged.clear();
+      link::MirrorRestartValues(false, 1);
+      CHECK(link::ShadowMapSizePending() && logged.empty());
+      route_slot.restart_state = plugin::RESTART_APPLIED;
+      link::MirrorRestartValues(false, 1);
+      CHECK(!link::ShadowMapSizePending());
+      link::Uninstall();
+      link::internal::block = nullptr;
+      link::Install();
+      std::printf(
+          "7f scale rows: a scale stored on a change, its bit while not neutral and its row offered (not offered or not "
+          "folded: none), one line per change of the bits, nothing on a v1 block; notices once per new bit; "
+          "ShadowMapSize clamped, one line per write, its own pending flag against this start's key (out of range: the "
+          "game's sizes; a NOT_DX11 start: 0), left alone while its row is not offered; the scales kept at the detach\n");
     }
     plugin_route = false;
     pass::active.store(false);

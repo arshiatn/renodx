@@ -80,7 +80,23 @@ foreach ($name in $pluginCases.Keys) {
   $table[$name] = @{ addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0
                      plugin = $pluginCases[$name][0]
                      lines = @($identity, $mapped) + @($pluginCases[$name] | Select-Object -Skip 1 | ForEach-Object { "[Total War] 64-bit Attila: $_" }) + $upgraded
-                     forbid = @('engine plugin not installed', 'callbacks registered') }
+                     forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active', 'engine plugin notices') }
+}
+# The scale rows (a v2 block offering Unit Detail, Model Detail and Shadow Map Size, rows 0x3b, with the rest-pack
+# notice raised) and the case's settings in [renodx-preset1], asymmetric so a wrong index changes the mask: Unit Detail
+# Cavalry and Artillery (1, 3), Unit Animation (8-11), Facial (13), Footstep (15) and Model Detail (17) at 2x give bits
+# 0x2af0a (one line; Foot Soldiers, Elephants, the fade widths 4-7, Variety 12, Hand 14 and the unit shadows 16 stay
+# neutral), Shadow Map Size 4096 is written for the next start, the notice logged once.
+$table['plugin_scales'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = '1 59 0 2 59 1'
+  ini = @('GraphicsUnitDetailMedium=2', 'GraphicsUnitDetailHuge=2', 'GraphicsUnitAnimation=2', 'GraphicsFacialAnimation=2',
+          'GraphicsFootstepEffects=2', 'GraphicsObjectDetail=2', 'GraphicsShadowMapSize=1')
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x3b',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x3b',
+            '[Total War] 64-bit Attila: engine scales active 0x2af0a',
+            '[Total War] 64-bit Attila: engine value ShadowMapSize: 0x1 at the next start (this start: 0x0)',
+            '[Total War] 64-bit Attila: engine plugin notices 0x1 (rest pack: yes, model table full: no)') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered')
 }
 # Registration end to end: rows forced wanted (RENODX_TW_PLUGIN_WANT), the callbacks registered at a present, the fake
 # hooks' thread calling into them, then unregistered and drained inside ReShade's unload before the add-on is freed.
@@ -181,12 +197,13 @@ foreach ($name in $Cases) {
   $env:RENODX_F7_PLUGIN = $case.plugin
   $env:RENODX_TW_PLUGIN_WANT = $case.want
   $env:ATTILA_NO_PLUGINS = $case.no_plugins
-  # A fresh ini: no LoadFromDllMain key, the tutorial done (no splash), the add-on's output rows explicit.
-  @(
+  # A fresh ini: no LoadFromDllMain key, the tutorial done (no splash), the add-on's output rows explicit, then the
+  # case's own settings.
+  (@(
     '[ADDON]', 'DisabledAddons=', '[GENERAL]', 'EffectSearchPaths=', 'TextureSearchPaths=', 'PresetPath=.\ReShadePreset.ini',
     '[OVERLAY]', 'TutorialProgress=4', '[renodx]', "SwapChainEncoding=$($case.encoding)",
     '[renodx-preset1]', 'tonemapper=3', 'peak_white_nits=1000', 'diffuse_white_nits=203', 'graphics_white_nits=203', 'gamma_correction=1'
-  ) | Set-Content -LiteralPath (Join-Path $dir 'ReShade.ini') -Encoding ascii
+  ) + @($case.ini | Where-Object { $_ })) | Set-Content -LiteralPath (Join-Path $dir 'ReShade.ini') -Encoding ascii
   $env:RENODX_CAPTURE_EVERY = '1'
   $exeArgs = $case.args + ' gpu'
   $process = Start-Process -FilePath (Join-Path $dir 'attila64.exe') -ArgumentList $exeArgs -WorkingDirectory $dir -PassThru -NoNewWindow `
