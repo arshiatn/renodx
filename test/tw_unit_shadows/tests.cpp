@@ -684,7 +684,7 @@ int main(int argc, char** argv) {
       renodx::utils::settings::Setting values_status;
       const auto present = [&](bool loader_frame_cap) {
         tw::engine_tweaks::Update(L"empire.retail.dll", options, nullptr, &values_found, &values_status);
-        link::MirrorRestartValues(loader_frame_cap, 0);
+        link::MirrorRestartValues(loader_frame_cap, 0, true);
       };
       plugin::Block values_block;
       values_block.status.store(plugin::STATUS_READY);
@@ -1026,25 +1026,25 @@ int main(int argc, char** argv) {
       // pending (the audio note's flag stays clear); a row value past 2 (a hand-edited ReShade.ini): clamped; back at 1.
       config["Attila64Plugin.Values|ShadowMapSize"] = "1";
       logged.clear();
-      link::MirrorRestartValues(false, 1);
+      link::MirrorRestartValues(false, 1, true);
       CHECK(shadow_key() == "1" && logged.empty() && !link::ShadowMapSizePending());
-      link::MirrorRestartValues(false, 2);
+      link::MirrorRestartValues(false, 2, true);
       CHECK(shadow_key() == "2" && logged.size() == 1
             && lines("engine value ShadowMapSize: 0x2 at the next start (this start: 0x1)") == 1
             && link::ShadowMapSizePending() && !link::ValuesPending() && !link::SolFrameCapPending());
-      link::MirrorRestartValues(false, 7);
+      link::MirrorRestartValues(false, 7, true);
       CHECK(shadow_key() == "2" && logged.size() == 1 && link::ShadowMapSizePending());
-      link::MirrorRestartValues(false, 1);
+      link::MirrorRestartValues(false, 1, true);
       CHECK(shadow_key() == "1" && logged.size() == 2 && !link::ShadowMapSizePending());
       // Its row not offered: the key left alone, no note.
       scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_SHADOW_MAP));
-      link::MirrorRestartValues(false, 2);
+      link::MirrorRestartValues(false, 2, true);
       CHECK(shadow_key() == "1" && logged.size() == 2 && !link::ShadowMapSizePending());
       scale_block.rows_changed.store(0);
       // The detach: the mirror's state reset, the scales kept (a hook reads them for the process).
       scales[0] = 2.f;
       link::PublishScales(scales);
-      link::MirrorRestartValues(false, 2);
+      link::MirrorRestartValues(false, 2, true);
       CHECK(link::ShadowMapSizePending());
       link::Uninstall();
       CHECK(!link::ShadowMapSizePending() && !link::internal::shadow_map_size_mirrored.has_value()
@@ -1056,15 +1056,15 @@ int main(int argc, char** argv) {
       config["Attila64Plugin.Values|ShadowMapSize"] = "5";
       link::internal::found.store(link::Found::READY);
       logged.clear();
-      link::MirrorRestartValues(false, 0);
+      link::MirrorRestartValues(false, 0, true);
       CHECK(shadow_key() == "0" && lines("engine value ShadowMapSize: 0x0 at the next start (this start: 0x0)") == 1
             && !link::ShadowMapSizePending());
-      link::MirrorRestartValues(false, 1);
+      link::MirrorRestartValues(false, 1, true);
       CHECK(shadow_key() == "1" && link::ShadowMapSizePending());
       // A start the plugin saw as not DX11 (a restart-only value with a key: NOT_DX11): nothing patched, so the row at
       // the key's 1 is pending; the same value APPLIED: not pending.
       link::internal::shadow_map_size_at_start = 1;
-      link::MirrorRestartValues(false, 1);
+      link::MirrorRestartValues(false, 1, true);
       CHECK(!link::ShadowMapSizePending());
       plugin::TweakSlot route_slot = {.name = "SOUND_DEFAULT_BUFFER_SIZE_IN_KB", .default_bits = 0x5da4,
                                       .written_bits = 0x5da4, .type = plugin::TWEAK_UINT, .verdict = plugin::VERDICT_OK,
@@ -1076,16 +1076,97 @@ int main(int argc, char** argv) {
       scale_block.tweaks_status.store(plugin::TWEAKS_READY);
       CHECK(link::FindTweaks(route_options));
       logged.clear();
-      link::MirrorRestartValues(false, 1);
+      link::MirrorRestartValues(false, 1, true);
       CHECK(link::ShadowMapSizePending() && logged.empty());
       route_slot.restart_state = plugin::RESTART_APPLIED;
-      link::MirrorRestartValues(false, 1);
+      link::MirrorRestartValues(false, 1, true);
       CHECK(!link::ShadowMapSizePending());
+      // Faster Game CPU Code (its row offered; ShadowMapSize's key stays 1, the row's 1: no other line). This start read
+      // the key absent (on), once: the row On writes nothing, not pending; Off writes 0 with one line, pending; a hand
+      // edit after the read is not read again; On writes 1, not pending; not offered: nothing written, not pending.
+      const std::string code_entry = "Attila64Plugin.Values|FasterGameCpuCode";
+      const auto code_key = [&code_entry] {
+        const auto found = config.find(code_entry);
+        return (found == config.end() ? std::string("absent") : found->second);
+      };
+      // A start that reads the key anew (the detach keeps this start's key: reset by hand) with `text` in the file.
+      const auto code_start = [&code_entry](const char* text) {
+        link::Uninstall();
+        link::internal::game_code_at_start.reset();
+        link::internal::found.store(link::Found::READY);
+        if (text == nullptr) {
+          config.erase(code_entry);
+        } else {
+          config[code_entry] = text;
+        }
+        logged.clear();
+      };
+      scale_block.rows_applied |= plugin::RowBit(plugin::ROW_GAME_CODE);
+      scale_block.rows_tried |= plugin::RowBit(plugin::ROW_GAME_CODE);
+      logged.clear();
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "absent" && logged.empty() && !link::GameCodePending()
+            && link::internal::game_code_at_start == std::optional<bool>(true));
+      link::MirrorRestartValues(false, 1, false);
+      CHECK(code_key() == "0" && logged.size() == 1
+            && lines("engine value FasterGameCpuCode: 0x0 at the next start (this start: 0x1)") == 1
+            && link::GameCodePending() && !link::ShadowMapSizePending() && !link::SolFrameCapPending());
+      config[code_entry] = "1";
+      link::MirrorRestartValues(false, 1, false);
+      CHECK(code_key() == "1" && logged.size() == 1 && link::GameCodePending());
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && logged.size() == 2
+            && lines("engine value FasterGameCpuCode: 0x1 at the next start (this start: 0x1)") == 1
+            && !link::GameCodePending());
+      scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_GAME_CODE));
+      link::MirrorRestartValues(false, 1, false);
+      CHECK(code_key() == "1" && logged.size() == 2 && !link::GameCodePending());
+      scale_block.rows_changed.store(0);
+      // The detach: mirrored and pending reset, this start's key kept (the next READY reads the file again, but not as
+      // this start's): text the plugin reads as 0 is written again, against this start's On.
+      link::MirrorRestartValues(false, 1, false);
+      CHECK(link::GameCodePending());
+      link::Uninstall();
+      CHECK(!link::GameCodePending() && !link::internal::game_code_read && !link::internal::game_code_mirrored.has_value()
+            && link::internal::game_code_at_start == std::optional<bool>(true));
+      link::internal::found.store(link::Found::READY);
+      config[code_entry] = "abc";
+      logged.clear();
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && lines("engine value FasterGameCpuCode: 0x1 at the next start (this start: 0x1)") == 1
+            && !link::GameCodePending());
+      // Read as the plugin reads it (GetPrivateProfileIntW): text 0 (off), written again; 0x1 and empty on, written
+      // again; a plain number left as it is when the row matches it (0 / Off, 1 / On: no line, not pending).
+      code_start("abc");
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && lines("engine value FasterGameCpuCode: 0x1 at the next start (this start: 0x0)") == 1
+            && link::GameCodePending());
+      code_start("0x1");
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && lines("engine value FasterGameCpuCode: 0x1 at the next start (this start: 0x1)") == 1
+            && !link::GameCodePending());
+      code_start("");
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && logged.size() == 1 && !link::GameCodePending());
+      code_start("0");
+      link::MirrorRestartValues(false, 1, false);
+      CHECK(code_key() == "0" && logged.empty() && !link::GameCodePending());
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && lines("engine value FasterGameCpuCode: 0x1 at the next start (this start: 0x0)") == 1
+            && link::GameCodePending());
+      code_start("1");
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && logged.empty() && !link::GameCodePending());
+      code_start(nullptr);
       link::Uninstall();
       link::internal::block = nullptr;
       link::Install();
       std::printf(
-          "7f scale rows: a scale stored on a change, its bit while not neutral and its row offered (not offered: none; "
+          "7f game code: FasterGameCpuCode read once as the plugin reads it (absent / empty / 0x1: on, text: 0), text "
+          "written again, one line per write, its own pending flag in both directions, left alone while its row is not "
+          "offered; the detach resets the mirror and keeps this start's key\n");
+      std::printf(
+          "7f scale rows:a scale stored on a change, its bit while not neutral and its row offered (not offered: none; "
           "grass 19-21 by the grass row alone, campaign trees 18, sprites 22-23, a sprite scale not finite and above 0 sent as 0), "
           "one line per change of the bits, nothing on a v1 "
           "block; notices once per new bit; "

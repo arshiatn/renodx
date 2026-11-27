@@ -3525,8 +3525,7 @@ void ConfigureAddon() {
     settings.erase(game_code);
     game_code_row->label = "Faster Game CPU Code (restart)";
     game_code_row->section = CPU_SECTION;
-    game_code_row->tooltip = "Faster versions of some of the game's own CPU code (sprite soldiers), same results.\n"
-                             "Parts another mod already changed are left as that mod made them.";
+    game_code_row->tooltip = "Faster versions of some of the game's own CPU code (sprite soldiers), same results.";
     game_code_row->is_visible = [] { return GameCodeRowShown(PluginRow::GAME_CODE); };
     cpu_rows.insert(cpu_rows.end(),
                     {
@@ -3536,9 +3535,8 @@ void ConfigureAddon() {
                             .label = RESTART_NOW,
                             .section = CPU_SECTION,
                             .tint = RESTART_TINT,
-                            .is_visible = [] {
-                              return GameCodeRowShown(PluginRow::GAME_CODE)
-                                     && twattila::attila64_plugin_link::GameCodePending();
+                            .is_visible = [row = game_code_row] {
+                              return row->is_visible() && twattila::attila64_plugin_link::GameCodePending();
                             },
                         },
                     });

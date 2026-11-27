@@ -122,7 +122,8 @@ Check ($text.Contains('{.match = "FasterGameCpuCode", .plugin_row = PluginRow::G
 $gc = Block 'const auto game_code = std::ranges::find(settings, "FasterGameCpuCode", &renodx::utils::settings::Setting::key);' "`n                    });"
 Check ($gc.Contains('game_code_row->label = "Faster Game CPU Code (restart)";') -and $gc.Contains('game_code_row->section = CPU_SECTION;') `
        -and $gc.Contains('game_code_row->is_visible = [] { return GameCodeRowShown(PluginRow::GAME_CODE); };') `
-       -and $gc.Contains('.label = RESTART_NOW,') -and $gc.Contains('twattila::attila64_plugin_link::GameCodePending()')) 'FasterGameCpuCode on the CPU page: (restart) label, shown by its row, restart note'
+       -and $gc.Contains('.label = RESTART_NOW,') -and $gc.Contains('return row->is_visible() && twattila::attila64_plugin_link::GameCodePending();')) 'FasterGameCpuCode on the CPU page: (restart) label, shown by its row, restart note'
+Check ($gc.Contains("game_code_row->tooltip = `"Faster versions of some of the game's own CPU code (sprite soldiers), same results.`";")) 'FasterGameCpuCode port tooltip (one sentence)'
 Check ($text -match 'MirrorRestartValues\(loader_frame_cap_row != 0\.f, static_cast<int>\(shadow_map_size\),\s+engine_code_row != 0\.f\);') 'FasterGameCpuCode mirrored for the next start'
 Check ((Read-Source 'graphics_page.hpp') -match '(?s)\.key = "FasterGameCpuCode",.{0,300}?\.label = "Faster Game CPU Code",') 'FasterGameCpuCode 32-bit label unchanged'
 Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t MIN_GAME_CPUS = 8;') 'MIN_GAME_CPUS 8'
