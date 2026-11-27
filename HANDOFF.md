@@ -18372,7 +18372,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         (c2_smoke_gate2.log; want 'CPU sets 14 (logical 0-13)') STARTED 23:35. DONE 23:41 (ab_runs\20261127_233443_Smoke): BOTH arms
         'CPU sets 14 (logical 0-13)' = the rule is live after the restart; E64-sr2 PASS; E64-mv clean exit, no WER, only
         check 6 NO (0xC2AA8FDA again, 32-bit 0 of 21) -> waits for rts1_'s item X6, then -Analyze or one more -C2
-        smoke -> F12 -> the sprite gate (6 starts) + the MSAA start. rrts2_ (Opus xHigh, 9 min;
+        smoke -> F12 -> the sprite gate (6 starts) + the MSAA start.
+        rts1_ S1 DONE (33 of 60 min; scratch\rts1_\handback.md): patch a64_ab_rts1_patch.py b626750c -> e34b3001 (25
+        edits, .bak_rts1_; live file untouched): -R1 / -R2 / -R2Kill / -R3 as R2.10 (no new rule lines), refusals
+        (two R switches, R + -C2 / -Warp / -Probe / -Wpr, -PerfFix only with -R1); old dry runs 0 lines differ;
+        controls refuse (no nvngx_dlssd, sha mismatch, 310.7, planted helper, live-helper note, E64-dlaa relabel);
+        -R2 / -R3 exit 2 until the coord fills rt_stage (incl. a real recorder build). Item X6: check 6 demands only
+        hashes the 32-bit reference draws (232229 copy PASS, 0ECFE74C-removed copy NO); -Analyze does not rewrite
+        smoke_pass -> a fresh -C2 smoke after the apply. Open: no jitter 'applied' line yet (info); Streamline sl.*
+        not in the set (R1.5 names none); own choices (ATTILA_SHADOW_EVERY=1 on RT arms but sr2, picture limits, a
+        left-alone line of ours stops the batch); E64-rt2c after S5e. Reviews rrts1_ (Opus xHigh) + frts1_ (Sonnet
+        High) STARTED 23:44; apply after both. rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
