@@ -18288,7 +18288,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         full PASS on the PerfFix stack), clean exit, no WER. ATN 22:3x YES to the new a64_ab starts ('You can [do] the extras
         stuffs that you said above'): the sprite CPU gate (AA Off, row Off vs On at Sprite Size 4) + one start with the
         game's MSAA (gfx_aa 3). Coord: run them NOW, before the sprite fix merges (design 3.3 gates the merge), not in
-        the big batch; the arms go into spf_'s a64_ab patch in its fix round (after rspf_).
+        the big batch; the arms go into spf_'s a64_ab patch in its fix round (after rspf_). rspf_ (Opus xHigh) GO WITH CHANGES, no MUST
+        (merge after the CPU gate): S1 spf_'s base run kept part 5's poke (own clean base: 17 failures), S2 'nothing
+        jittered' cannot fail -> applied_frame + a TAA control, S3 tools\tw\warp_tests\aa\taa_test.cpp:230
+        in::temporal -> camera_watched, S4 an ours: cite at :144; N1-N5. Fix round spf_ (resumed, Opus Medium, est 30,
+        + the 3 new a64_ab starts) STARTED 22:3x.
+        ATN 22:4x asked: Fable before the batch? Leftovers vs RT port files? -> RT-on-64 S2 rts2_ (Opus High per the
+        design; frame_trace.hpp + dyn_census.py, free files) STARTED 22:44. S1 (a64_ab) after spf_'s a64_ab patch; S5a
+        (addon.cpp / link / rt_scene) after spf_ + pxp_ phase 2. Coord: the 32-bit backup plan is DONE (b32_ 17:44, docs
+        only, 32-bit stays frozen); PORT ADD-ON RE-ATTACH is a note for a future path (unreachable today); MENU STUTTER
+        a1 suggested 'leave' (the reads notice CPU Set changes after start; not the stutter's cause) = ATN's call.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
