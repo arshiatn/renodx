@@ -726,6 +726,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
+- PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | ATN
 - RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the ... | coord
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
@@ -18109,7 +18110,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         Smoke staging (coord 19:54): main tree build\attila64_plugin = the p8b_1127 587a40a48 plugin fa744059 (backup
         of the old one in scratch\coord_\main_plugin_before_p8b_smoke.dll), a3_smoke\renodx-twattila.addon64 = the
         worktree's step 6 add-on (old one kept as .bak_p8b_smoke). Smoke = the batch stack (-Package pkg_fixes
-        -Exe64Sha 580efafe -PerfFix) dry run exit 0; the start STARTED 19:54 (scratch\coord_\p8b_smoke.log).
+        -Exe64Sha 580efafe -PerfFix) dry run exit 0; the start STARTED 19:54 (scratch\coord_\p8b_smoke.log). DONE 19:56 (ab_runs\20261127_195348_Smoke\1_B64P): clean exit, no crash / WER, rows
+        line ends ', battle step on, contact split on', '21 sites unchanged', rows offered / tried 0x3fff, CONTACT_ENTRY
+        applied; PASS (scriptable) NO on two items: (1) 'renodx_attila64: contact split: off (game code differs at
+        0x773b90+0x10)' = the 16-byte block 0x773ba0..0x773baf, inside an x87 round-down sequence (movw 0x400 / fnstcw /
+        fldcw / fistp) of that function; Sol's sources (src_1328, sol_fixes_1128) do not patch it; (2) C8 2.6: no
+        SPRITE_DISTANCE first-call line. Second start WITHOUT -PerfFix DONE 20:02 (ab_runs\20261127_195844_Smoke\1_E64):
+        PASS (scriptable part), no code-differs line, CONTACT_ENTRY first call seen -> PerfFix patches that block (its code
+        not read). The batch's Stage B line P15 (a64_ab :285) carries no PerfFix, so the batch is not blocked. E5b missed
+        the line in start 1 (item 1 caught it) = exactly p8b7_'s patch. Smoke folders sent to rp8b57_ for its smoke
+        section. Sprite finding: ReShade.log has 'Test: GraphicsSmallSoldiersAsSprites set to 1.' but no 'engine scales
+        active' line, so the sprite scale (MainFocalPixels / Sprite Size, addon.cpp ~2366) stayed 0: diagnosis spr_
+        (Fable 5.2 xHigh, read only, players' settings on port + 32-bit too) STARTED 20:05.
+        - [ ] PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code inside the 16-byte block
+        0x773ba0 (an x87 round-down in one of Stage B's 176 checked functions); Stage B then turns itself off
+        ('off (game code differs)', normal speed) for players with PerfFix. Options: (a) keep it so (safe, visible);
+        (b) mask that block (design 3.6), which needs to know what PerfFix writes there (its code is never read: ATN may
+        ask its author); a mask may reveal further spots one smoke at a time. The B64P smoke fails its item 1 until
+        decided. Owner: ATN
         - [ ] RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the p8b_1127 add-on until
         Stage B merges (then rebuild from atn-mods and stage that); build\attila64_plugin is p8b_1127's plugin until then.
         Owner: coord
