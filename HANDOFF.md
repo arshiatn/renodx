@@ -18451,7 +18451,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         (Tales FSR depth panel; harness arms), runs in the GPU lane after the batch; worktree links removed.
         [ ] Open item (fxh2o_): WH3 campaign map = 0.1 units a metre (campaign_metre) -> FSR factor 10 there, needs a
         per-request unit write (~10 min); other TW campaign maps unmeasured. Owner: the W-H2 fix round after reviews.
-        Reviews rfxh2_ (Opus xHigh) + ffxh2_ (Sonnet High), read-only, no builds (quiet PC for the gate), STARTED 00:17.
+        Reviews rfxh2_ (Opus xHigh) + ffxh2_ (Sonnet High), read-only, no builds (quiet PC for the gate), STARTED 00:17. ffxh2_
+        (7 min; scratch\ffxh2_\review.md) GO, 0 MUST: cites right (SDK 2.4.0, guide 310.6.0 pp. 25 / 27); X33 = the
+        1x1 exposure texture, 0 = old flags; X34 ours sound, every sender clamps 0-1; v33 append-only, no padding x86 /
+        x64, written before the helper starts; switch off = same bits; units right for TW / Ryse / Tales / Expeditions
+        / R.U.S.E., Shogun 2 / Rome R / D1 / D2 at 1 inferred (= today). S1 Shared::metres_per_unit default 0 -> 1.f;
+        S2 the test proves the write, not the helper's read (P2 does: X41 not proven before P1 / P2 run); S3 P2's pass
+        'above the A/A' too loose -> 10x A/A + a floor, _static.f32 as a second control; NITs (121-152 columns). Open
+        item: WH3 campaign factor 10 (1 / campaign_metre; rough scale, trees ~6 m a unit); Attila / Rome II / Thrones
+        campaign_metre 1 = unmeasured, others don't detect the campaign; fix = per-request write (~8 lines, no bump:
+        helper main.cpp:471 const -> read at :1242 / :1334, dlaa_bridge.hpp beside fsr_sharpness / fg_far, WH3 1.f /
+        RangeScale() a frame, a test line).
         ATN: 'for game runs (Your AA test and the big batch) please make sure you don't waste tokens stopping
         subagents. Let them finish then run. Then we continue the order you suggested before' -> rule lines in
         all_plans section 0 + memory.
