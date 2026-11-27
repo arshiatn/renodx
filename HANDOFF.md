@@ -17931,7 +17931,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         re-proof checks PASS on 6563e2199, no design fix; rri_ left JitterCamera / OnUpdateBufferRegion / Update
         byte-identical to 27ad6f414; re-anchor table for K4 in the hand-back; optional test line: 'non-camera uploads
         return false' (PK1:649) holds only with scaling off (with it on, :404-422 returns true, only c29 changed) -> K4's
-        brief adds that case. fx4b_ W4b DONE 18:0x (28 of 100 min; fx4b_1127: X18 5c3951ce1 rt_cache_fill_omm,
+        brief adds that case. hzc_ DONE 17:4x (6 of 20 min; scratch\hzc_\handback.md): W3 horizon threshold 32.4
+        rows (3 % of the height), 10 starts; deviation: middle 60 % of the width (full width locks onto a HUD edge);
+        lines sent to p91_ for T0; PK6 addendum written. fx4b_ W4b DONE 18:0x (28 of 100 min; fx4b_1127: X18 5c3951ce1 rt_cache_fill_omm,
         X14 28d186dbd BakeCutoff, X10 702792bc6, X09 c5f73e5cd; controls byte-identical; gated amd64 / x86 / Tales
         exit 0; handoff_plan\handbacks\fx4b__handback.md) -> resumed for X18's rt_reference / rt_probe twins, then
         Opus xHigh review + Sonnet High final; its 4K GPU jobs PARKED (CPU first). Owner: coord
