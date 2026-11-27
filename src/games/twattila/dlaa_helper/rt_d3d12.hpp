@@ -115,6 +115,7 @@
 #include "rt_reflect_reservoir.h"      // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir_omm.h"  // dxc -Fh (build.ps1)
 #include "rt_probe.h"             // dxc -Fh (build.ps1)
+#include "rt_probe_omm.h"         // dxc -Fh (build.ps1)
 #include "rt_scene_data.h"        // dxc -Fh (build.ps1)
 #include "rt_soft.h"              // dxc -Fh (build.ps1)
 #include "rt_sway.h"              // dxc -Fh (build.ps1)
@@ -198,7 +199,9 @@
 #include "rt_reference_digest.h"
 #include "rt_reference_group.h"
 #include "rt_reference_paths.h"
+#include "rt_reference_paths_omm.h"
 #include "rt_reference_reflect.h"
+#include "rt_reference_reflect_omm.h"
 #include "rt_reference_state.h"
 #define RENODX_REFERENCE 1
 #endif
@@ -768,13 +771,20 @@ class RtScene12 {
 #endif
       return made;
     };
+    // X18's control (CONTROL_DXR11_QUERIES_ON_OMM, tests only): rt_cache_fill, rt_probe and the reference's traced passes
+    // as their DXR 1.1 builds under DXR 1.2 too, as before (their queries undefined on a micromapped TLAS).
+#if defined(CONTROL_DXR11_QUERIES_ON_OMM)
+    constexpr bool QUERY_TWINS = false;
+#else
+    constexpr bool QUERY_TWINS = true;
+#endif
     // DXR 1.2: the ray queries that use the micromaps; else (or when they fail) DXR 1.1.
     dxr12_ = dxr12_ && pipeline(RT_TRACE_OMM, sizeof(RT_TRACE_OMM), &trace_pipeline_)
              && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_) && pipeline(RT_PATH_OMM, sizeof(RT_PATH_OMM), &path_pipeline_)
              && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_) && pipeline(RT_REUSE_OMM, sizeof(RT_REUSE_OMM), &reuse_pipeline_)
              && pipeline(RT_REFLECT_RESERVOIR_OMM, sizeof(RT_REFLECT_RESERVOIR_OMM), &reflect_reservoir_pipeline_)
              && pipeline(RT_FOG_OMM, sizeof(RT_FOG_OMM), &fog_pipeline_) && pipeline(RT_LIGHTS_OMM, sizeof(RT_LIGHTS_OMM), &lights_pipeline_)
-             && pipeline(RT_CACHE_FILL_OMM, sizeof(RT_CACHE_FILL_OMM), &cache_fill_pipeline_);
+             && (!QUERY_TWINS || pipeline(RT_CACHE_FILL_OMM, sizeof(RT_CACHE_FILL_OMM), &cache_fill_pipeline_));
     if (!dxr12_) {
       trace_pipeline_.Reset();
       bounce_pipeline_.Reset();
@@ -827,7 +837,10 @@ class RtScene12 {
         probe_hits_ = Buffer(ray_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       }
       void* mapped = nullptr;
-      bool made = probe_rays_ && probe_hits_ && SUCCEEDED(probe_rays_->Map(0, nullptr, &mapped)) && pipeline(RT_PROBE, sizeof(RT_PROBE), &probe_pipeline_);
+      // Its DXR 1.2 build on the micromapped TLAS (X18).
+      const std::span<const uint8_t> probe_code = (dxr12_ && QUERY_TWINS) ? std::span<const uint8_t>(RT_PROBE_OMM) : std::span<const uint8_t>(RT_PROBE);
+      bool made = probe_rays_ && probe_hits_ && SUCCEEDED(probe_rays_->Map(0, nullptr, &mapped))
+                  && pipeline(probe_code.data(), probe_code.size(), &probe_pipeline_);
       if (mapped != nullptr) {
         std::memcpy(mapped, rays.data(), ray_bytes);
         probe_rays_->Unmap(0, nullptr);
@@ -1083,14 +1096,16 @@ class RtScene12 {
       reference_.folder = (GetEnvironmentVariableW(L"RENODX_TW_REF_DUMP", dump.data(), static_cast<DWORD>(dump.size())) != 0)
                               ? std::filesystem::path(dump.data())
                               : (folder / L"tw_reference");
+      // The traced passes' DXR 1.2 builds on the micromapped TLAS (X18).
+      const bool traced_twins = dxr12_ && QUERY_TWINS;
       const std::array<std::pair<std::span<const uint8_t>, ComPtr<ID3D12PipelineState>*>, 7> passes = {{
           {RT_REFERENCE_ACCUMULATE, &reference_.accumulate},
           {RT_REFERENCE_CENSUS, &reference_.census},
           {RT_REFERENCE_DIGEST, &reference_.digest},
           {RT_REFERENCE_STATE, &reference_.state},
           {RT_REFERENCE_GROUP, &reference_.group},
-          {RT_REFERENCE_PATHS, &reference_.paths},
-          {RT_REFERENCE_REFLECT, &reference_.reflect},
+          {traced_twins ? std::span<const uint8_t>(RT_REFERENCE_PATHS_OMM) : std::span<const uint8_t>(RT_REFERENCE_PATHS), &reference_.paths},
+          {traced_twins ? std::span<const uint8_t>(RT_REFERENCE_REFLECT_OMM) : std::span<const uint8_t>(RT_REFERENCE_REFLECT), &reference_.reflect},
       }};
       const bool made = std::ranges::all_of(passes, [&](const auto& pass) { return pipeline(pass.first.data(), pass.first.size(), pass.second); });
       reference_.phase = made ? ReferencePhase::SETTLE : ReferencePhase::OFF;

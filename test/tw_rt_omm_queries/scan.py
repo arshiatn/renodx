@@ -9,21 +9,19 @@ the flag in allocateRayQuery2's third operand (bit 0), a 6.5 shader's allocateRa
 Rules:
 - a DXR 1.2 header (name *_omm, or a shader model 6.9 build: SER, SHaRC) opts in at every ray query, and has one;
 - a DXR 1.1 header that traces has its _omm twin (the helper runs the twin when the device has DXR 1.2: its TLAS may be
-  micromapped), or is one of TEST_ONLY (no twin yet; each an open follow-up, not in a player's frames);
+  micromapped), the test builds' too (rt_probe, rt_reference_paths / _reflect: a build with RENODX_TW_REFERENCE_BUILD
+  set holds them);
 - with rt_d3d12.hpp given: every DXR 1.2 header's array (its -Vn name) is read there (made into a pipeline).
 
   python -I test\\tw_rt_omm_queries\\scan.py <out folder of build.ps1> src\\games\\twattila\\dlaa_helper\\rt_d3d12.hpp
       the fixed helper: exit 0
   python -I test\\tw_rt_omm_queries\\scan.py <out folder of atn-mods 7e61f92ae's build.ps1>
-      CONTROL: rt_cache_fill has no twin, exit 1
+      CONTROL: rt_cache_fill, rt_probe, rt_reference_paths and rt_reference_reflect have no twin, exit 1
 """
 import pathlib
 import re
 import sys
 
-# Built only with RENODX_TW_PROBE / RENODX_TW_REFERENCE_BUILD runs (tests), plain RayQuery<> in their sources
-# (rt_probe.cs_6_5.hlsl:24; rt_reference.hlsli:250, :274, :298, :323): X18's open follow-up.
-TEST_ONLY = {'rt_probe', 'rt_reference_paths', 'rt_reference_reflect'}
 SM69 = {'rt_path_ser', 'rt_path_ser_one', 'rt_path_sharc', 'rt_path_sharc_one', 'rt_sharc_update', 'rt_sharc_update_regir'}
 PLAIN = re.compile(r'@dx\.op\.allocateRayQuery\(i32 178, i32 \d+\)')
 FLAGGED = re.compile(r'@dx\.op\.allocateRayQuery2\(i32 258, i32 \d+, i32 (\d+)\)')
@@ -44,7 +42,7 @@ for name, (plain, with_omm, without_omm) in queries.items():
       failures.append(f'{name}: DXR 1.2 build with {plain} plain and {without_omm} unflagged ray queries ({with_omm} flagged)')
     if host is not None and not re.search(r'\b' + name.upper() + r'\b', host):
       failures.append(f'{name}: {name.upper()} is read nowhere in rt_d3d12.hpp')
-  elif name + '_omm' not in queries and name not in TEST_ONLY:
+  elif name + '_omm' not in queries:
     failures.append(f'{name}: {plain} DXR 1.1 ray queries and no _omm twin (runs on the micromapped TLAS)')
 print(f'{len(queries)} headers with ray queries in {folder}')
 for line in failures:
