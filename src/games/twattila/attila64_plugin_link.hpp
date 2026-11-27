@@ -568,14 +568,20 @@ inline void MirrorRestartValues(bool sol_frame_cap, int shadow_map_size) {
         internal::shadow_map_size_at_start = ((key >= 0 && key <= plugin::SHADOW_MAP_SIZE_STEPS) ? key : 0);
       }
     }
+    // This start's sizes: the key's, unless the plugin saw the route as not DX11 and wrote nothing (seen on a
+    // restart-only value with a key: NOT_DX11; without such a key, the key's).
+    const bool not_dx11 = values_found && std::ranges::any_of(internal::restart_values, [](const internal::RestartValue& restart) {
+      return restart.slot != nullptr && restart.slot->restart_state == plugin::RESTART_NOT_DX11;
+    });
+    const int size_at_start = (not_dx11 ? 0 : *internal::shadow_map_size_at_start);
     const int size = std::clamp(shadow_map_size, 0, plugin::SHADOW_MAP_SIZE_STEPS);
     if (internal::shadow_map_size_mirrored != size) {
       reshade::set_config_value(nullptr, internal::VALUES_SECTION.data(), internal::SHADOW_MAP_SIZE_KEY.data(), size);
       internal::shadow_map_size_mirrored = size;
       renodx::utils::log::i(std::format("[Total War] 64-bit Attila: engine value {}: {:#x} at the next start (this start: {:#x})",
-                                        internal::SHADOW_MAP_SIZE_KEY.data(), size, *internal::shadow_map_size_at_start));
+                                        internal::SHADOW_MAP_SIZE_KEY.data(), size, size_at_start));
     }
-    shadow_pending = (size != *internal::shadow_map_size_at_start);
+    shadow_pending = (size != size_at_start);
   }
   internal::shadow_map_size_pending.store(shadow_pending, std::memory_order_relaxed);
 }
@@ -600,6 +606,7 @@ inline void PublishScales(const std::array<float, internal::plugin::SCALE_COUNT>
     if (block->scales[index].load(std::memory_order_relaxed) != scales[index]) {
       block->scales[index].store(scales[index], std::memory_order_relaxed);
     }
+    // Exact: the sliders' defaults give the neutral bits (1x, 1 / 1^2); a NaN counts as active.
     if (scales[index] != plugin::NEUTRAL_SCALES[index]) {
       active |= 1u << index;
     }

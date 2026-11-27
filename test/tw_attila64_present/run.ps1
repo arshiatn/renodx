@@ -83,14 +83,17 @@ foreach ($name in $pluginCases.Keys) {
                      forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active', 'engine plugin notices') }
 }
 # The scale rows (a v2 block offering Unit Detail, Model Detail and Shadow Map Size, rows 0x3b, with the rest-pack
-# notice raised) and the case's settings in [renodx-preset1]: Unit Detail 2x on foot soldiers and Model Detail 2x set
-# the scales' bits 0 and 17 (one line), Shadow Map Size 4096 is written for the next start, the notice logged once.
+# notice raised) and the case's settings in [renodx-preset1], asymmetric so a wrong index changes the mask: Unit Detail
+# Cavalry and Artillery (1, 3), Unit Animation (8-11), Facial (13), Footstep (15) and Model Detail (17) at 2x give bits
+# 0x2af0a (one line; Foot Soldiers, Elephants, the fade widths 4-7, Variety 12, Hand 14 and the unit shadows 16 stay
+# neutral), Shadow Map Size 4096 is written for the next start, the notice logged once.
 $table['plugin_scales'] = @{
   addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = '1 59 0 2 59 1'
-  ini = @('GraphicsUnitDetailSmall=2', 'GraphicsObjectDetail=2', 'GraphicsShadowMapSize=1')
+  ini = @('GraphicsUnitDetailMedium=2', 'GraphicsUnitDetailHuge=2', 'GraphicsUnitAnimation=2', 'GraphicsFacialAnimation=2',
+          'GraphicsFootstepEffects=2', 'GraphicsObjectDetail=2', 'GraphicsShadowMapSize=1')
   lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x3b',
             '[Total War] 64-bit Attila: engine plugin rows tried 0x3b',
-            '[Total War] 64-bit Attila: engine scales active 0x20001',
+            '[Total War] 64-bit Attila: engine scales active 0x2af0a',
             '[Total War] 64-bit Attila: engine value ShadowMapSize: 0x1 at the next start (this start: 0x0)',
             '[Total War] 64-bit Attila: engine plugin notices 0x1 (rest pack: yes, model table full: no)') + $upgraded
   forbid = @('engine plugin not installed', 'callbacks registered')

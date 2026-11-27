@@ -975,6 +975,26 @@ int main(int argc, char** argv) {
             && !link::ShadowMapSizePending());
       link::MirrorRestartValues(false, 1);
       CHECK(shadow_key() == "1" && link::ShadowMapSizePending());
+      // A start the plugin saw as not DX11 (a restart-only value with a key: NOT_DX11): nothing patched, so the row at
+      // the key's 1 is pending; the same value APPLIED: not pending.
+      link::internal::shadow_map_size_at_start = 1;
+      link::MirrorRestartValues(false, 1);
+      CHECK(!link::ShadowMapSizePending());
+      plugin::TweakSlot route_slot = {.name = "SOUND_DEFAULT_BUFFER_SIZE_IN_KB", .default_bits = 0x5da4,
+                                      .written_bits = 0x5da4, .type = plugin::TWEAK_UINT, .verdict = plugin::VERDICT_OK,
+                                      .restart_only = 1, .restart_state = plugin::RESTART_NOT_DX11};
+      tw::engine_tweaks::Option route_option = {.tweaks = {{.name = "SOUND_DEFAULT_BUFFER_SIZE_IN_KB", .integer = true}}};
+      std::array<tw::engine_tweaks::Option*, 1> route_options = {&route_option};
+      scale_block.tweaks = &route_slot;
+      scale_block.tweak_count = 1;
+      scale_block.tweaks_status.store(plugin::TWEAKS_READY);
+      CHECK(link::FindTweaks(route_options));
+      logged.clear();
+      link::MirrorRestartValues(false, 1);
+      CHECK(link::ShadowMapSizePending() && logged.empty());
+      route_slot.restart_state = plugin::RESTART_APPLIED;
+      link::MirrorRestartValues(false, 1);
+      CHECK(!link::ShadowMapSizePending());
       link::Uninstall();
       link::internal::block = nullptr;
       link::Install();
@@ -982,7 +1002,7 @@ int main(int argc, char** argv) {
           "7f scale rows: a scale stored on a change, its bit while not neutral and its row offered (not offered or not "
           "folded: none), one line per change of the bits, nothing on a v1 block; notices once per new bit; "
           "ShadowMapSize clamped, one line per write, its own pending flag against this start's key (out of range: the "
-          "game's sizes), left alone while its row is not offered; the scales kept at the detach\n");
+          "game's sizes; a NOT_DX11 start: 0), left alone while its row is not offered; the scales kept at the detach\n");
     }
     plugin_route = false;
     pass::active.store(false);

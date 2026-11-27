@@ -2475,7 +2475,8 @@ void ConfigureAddon() {
     std::ranges::find(engine_tests, "AudioSoundFileMemory", &twattila::engine_tests::EngineTest::key)->tooltip =
         "Memory for the loaded sound files. Restart the game. Game: 86 MB.";
     // Campaign Tree Detail waits for its hook: its value stays the game's until its row shows. Model Detail has no
-    // value (its scale goes to the plugin's hook); here for its row's visibility.
+    // value (its scale goes to the plugin's hook): kept for the 32-bit list's shape, it only adds the TweaksFound gate
+    // to its row.
     graphics_options = {&object_detail, &building_detail, &campaign_plants, &campaign_props};
   } else {
     graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
@@ -2737,10 +2738,9 @@ void ConfigureAddon() {
           .section = "Graphics (Experimental)",
           // The port: no lock (the plugin checks the game's bytes before it writes, so another mod's change refuses
           // the row).
-          .tooltip = (ATTILA64 ? "Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
-                                 "with it). More video memory. Applies after a restart."
-                               : "Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
-                                 "with it). More video memory. Applies after a restart. Locked by UI 4K Mod Compatibility."),
+          .tooltip = std::string("Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
+                                 "with it). More video memory. Applies after a restart.")
+                     + (ATTILA64 ? "" : " Locked by UI 4K Mod Compatibility."),
           .labels = {"2048 (Game's)", "4096", "8192"},
           .is_enabled = [] { return ATTILA64 || !shadow_size_locked; },
       },
