@@ -639,23 +639,30 @@ int main(int argc, char** argv) {
     link::Install();
     CHECK(link::Result() == link::Found::PENDING);
     // After a detach the next READY's first present writes the battle row's bit again, and the render row's only off
-    // its default: at it, the plugin's own bit (its RenderCore key) stays until the row changes.
+    // its default: at it, the plugin's own bit (its RenderCore key) stays until the row changes. Faster Battle Step's
+    // CORE_STEP is written at that first present too (the add-on owns it, Off included): these 3-argument calls pass
+    // its default (step_default_bit; the stores leave the bit clear, so the write shows), the 5-argument one the other
+    // value.
     const uint32_t render_default_bit = (link::RENDER_CORE_DEFAULT ? plugin::CORE_RENDER : 0u);
     const uint32_t render_other_bit = plugin::CORE_RENDER ^ render_default_bit;
+    const uint32_t step_default_bit = (link::BATTLE_STEP_DEFAULT ? plugin::CORE_STEP : 0u);
+    const uint32_t step_other_bit = plugin::CORE_STEP ^ step_default_bit;
     link::internal::block = &block;
     link::internal::found.store(link::Found::READY);
-    block.core_wanted.store(plugin::CORE_BATTLE | render_other_bit);
+    block.core_wanted.store(plugin::CORE_BATTLE | render_other_bit | step_other_bit);
     link::Update(0, false, link::RENDER_CORE_DEFAULT);
-    CHECK(block.core_wanted.load() == render_other_bit);
+    CHECK(block.core_wanted.load() == (render_other_bit | step_default_bit));
     link::Update(0, false, !link::RENDER_CORE_DEFAULT);
     link::Update(0, false, link::RENDER_CORE_DEFAULT);
-    CHECK(block.core_wanted.load() == render_default_bit);
+    CHECK(block.core_wanted.load() == (render_default_bit | step_default_bit));
+    link::Update(0, false, link::RENDER_CORE_DEFAULT, 0, !link::BATTLE_STEP_DEFAULT);
+    CHECK(block.core_wanted.load() == (render_default_bit | step_other_bit));
     link::Uninstall();
     link::Install();
     link::internal::found.store(link::Found::READY);
-    block.core_wanted.store(plugin::CORE_BATTLE | render_default_bit);
+    block.core_wanted.store(plugin::CORE_BATTLE | render_default_bit | step_other_bit);
     link::Update(0, true, !link::RENDER_CORE_DEFAULT);
-    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | render_other_bit));
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | render_other_bit | step_default_bit));
     link::Uninstall();
     link::internal::block = nullptr;
     link::Install();
