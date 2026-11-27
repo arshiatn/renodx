@@ -1317,8 +1317,8 @@ constexpr std::array<PluginNote, 9> PLUGIN_NOTES = {{
 
 // The core rows' status lines on the port, after the row's prefix ("Battle core: "), by the word's CoreState. Format
 // arguments: {0} / {1} logical CPU A / B, {2} the Win32 error (FAILED only). State 0 (not built) hides the rows. The
-// battle word never holds the render part's states (their texts as the plugin's log words them). The render row passes
-// its own error byte as text (RENDER_ERROR_LARGE: larger, see attila64_log.txt).
+// battle word never holds the render part's states (their texts close to the plugin's log). The render row passes its
+// own error byte (RENDER_ERROR_LARGE: larger, its FAILED line then points at attila64_log.txt).
 constexpr std::array<const char*, twattila::attila64_plugin::CORE_STATE_COUNT> CORE_STATE_TEXTS = {
     "",                                                                  // not built
     "on, waiting for a battle",                                          // CORE_WAITING
@@ -1332,7 +1332,7 @@ constexpr std::array<const char*, twattila::attila64_plugin::CORE_STATE_COUNT> C
     "not used: the render thread has its own CPU rule",                  // CORE_OWN_RULE
     "off in ReShade.ini (RenderCore=0)",                                 // CORE_OFF_INI
     "not used: the render thread was not found, or it ended",            // CORE_NO_THREAD
-    "not used: the render thread was mostly idle",                       // CORE_NOT_RENDER
+    "not used: the render thread was not busy enough to need it",        // CORE_NOT_RENDER
     "stopped with the battle core",                                      // CORE_WITH_BATTLE
 };
 static_assert(std::ranges::find(CORE_STATE_TEXTS, nullptr) == CORE_STATE_TEXTS.end(), "a text for every CoreState");
@@ -2355,7 +2355,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                ? plugin::RowBit(plugin::ROW_BONE_FLUSH)
                : 0u)
           | (pass_draw ? plugin::RowBit(plugin::ROW_PASS_DRAW) : 0u),
-          keep_battle_core_row != 0.f, keep_render_core_row != 0.f);
+          keep_battle_core_row != 0.f,
+          // Hidden until measured: the plugin's own bit stays (a saved On, from a copied 32-bit ini say, waits too).
+          (RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT));
     }
     // Everything below writes the 32-bit game's code or values.
     return;
@@ -3553,14 +3555,13 @@ void ConfigureAddon() {
                   if (state >= plugin::CORE_STATE_COUNT) return false;
                   const uint32_t logical_a = field(plugin::CORE_LOGICAL_A_SHIFT);
                   const uint32_t logical_b = field(plugin::CORE_LOGICAL_B_SHIFT);
-                  // One byte: RENDER_ERROR_LARGE stands for a larger error, which the plugin's log has.
                   const uint32_t error = field(plugin::RENDER_ERROR_SHIFT);
-                  const std::string error_text =
-                      (error == plugin::RENDER_ERROR_LARGE ? "in attila64_log.txt" : std::to_string(error));
                   const char* format = CORE_STATE_TEXTS[state];
                   switch (state) {
-                    // WAITING also holds while the bit is clear (the row Off, or the plugin's default kept).
+                    // WAITING, and WITH_BATTLE (a battle core gate or end), also hold while the bit is clear (the row
+                    // Off, or the plugin's default kept): off then.
                     case plugin::CORE_WAITING:
+                    case plugin::CORE_WITH_BATTLE:
                       if (!twattila::attila64_plugin_link::RenderCoreWanted()) {
                         format = "off";
                       }
@@ -3569,11 +3570,17 @@ void ConfigureAddon() {
                     case plugin::CORE_ACTIVE:
                       format = "on: logical CPUs {0} + {1} kept for the render thread";
                       break;
+                    // One byte: RENDER_ERROR_LARGE stands for a larger error, which the plugin's log has.
+                    case plugin::CORE_FAILED:
+                      if (error == plugin::RENDER_ERROR_LARGE) {
+                        format = "stopped: Windows refused (see attila64_log.txt)";
+                      }
+                      break;
                     default:
                       break;
                   }
                   ImGui::TextWrapped("Render core: %s",
-                                     std::vformat(format, std::make_format_args(logical_a, logical_b, error_text)).c_str());
+                                     std::vformat(format, std::make_format_args(logical_a, logical_b, error)).c_str());
                   return false;
                 },
                 .is_visible = render_core_shown,

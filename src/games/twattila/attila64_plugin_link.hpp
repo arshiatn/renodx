@@ -402,9 +402,12 @@ inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core) {
     internal::battle_core_written = battle_core;
   }
   // The render row's first present writes only a row off its default: at its default the bit stays the plugin's (its
-  // own RenderCore=1 included) until the row changes.
+  // own RenderCore=1 included) until the row changes. With RenderCore=0 (OFF_INI: off for the process) nothing is
+  // written.
   if (BlockV2() && internal::render_core_written != render_core) {
-    if (internal::render_core_written.has_value() || render_core != RENDER_CORE_DEFAULT) {
+    const bool off_in_ini =
+        ((RenderCoreStatus() >> plugin::CORE_STATE_SHIFT) & plugin::CORE_FIELD_MASK) == plugin::CORE_OFF_INI;
+    if (!off_in_ini && (internal::render_core_written.has_value() || render_core != RENDER_CORE_DEFAULT)) {
       write_core_bit(plugin::CORE_RENDER, render_core, "Keep Render Core Free");
     }
     internal::render_core_written = render_core;

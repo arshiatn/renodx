@@ -573,10 +573,18 @@ int main(int argc, char** argv) {
     CHECK(block.core_wanted.load() == (plugin::CORE_RENDER | plugin::CORE_STEP));
     link::Update(both, true, false);
     CHECK(block.core_wanted.load() == plugin::CORE_STEP);
+    // RenderCore=0 (the plugin's render word OFF_INI): no render write either way.
+    block.render_core_status.store(plugin::CORE_OFF_INI);
+    link::Update(both, true, true);
+    CHECK(block.core_wanted.load() == plugin::CORE_STEP);
+    block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
+    link::Update(both, true, false);
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER));
+    block.render_core_status.store(0);
     link::Update(both, true, link::RENDER_CORE_DEFAULT);
     block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
     block.bytes = static_cast<uint32_t>(plugin::BlockBytes(1));
-    link::Update(both, false, link::RENDER_CORE_DEFAULT);
+    link::Update(both, false, !link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER)
           && block.hooks_wanted.load() == both);
     block.bytes = sizeof(plugin::Block);
@@ -657,7 +665,8 @@ int main(int argc, char** argv) {
         "changed row not wanted, unregistered and drained (a hook leaving after 50 ms ends the wait); a drain past "
         "1 s keeps the reference; another add-on's callbacks left alone; after the detach nothing registers; Keep "
         "Battle Core Free writes only CORE_BATTLE, once per change, none on a v1 block, again after a detach; Keep "
-        "Render Core Free only CORE_RENDER, on and off, its first present only off its default\n");
+        "Render Core Free only CORE_RENDER, on and off, none with RenderCore=0 or on a v1 block, its first present only "
+        "off its default\n");
     // 7d. The engine values on the port (FindTweaks, MirrorRestartValues): each Tweak gets the plugin's checked value
     //     (live: the game's address; restart-only: an add-on cell at the default), a refused one none (the warning line);
     //     the mirror writes [Attila64Plugin.Values] clamped to tweaks.h's range, read once, written on a change with one

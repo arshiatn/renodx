@@ -142,7 +142,7 @@ Check ($text.Contains('return RENDER_CORE_ROW_MEASURED && GameCodeRowShown(Plugi
 $battle = $text.IndexOf('.key = "KeepBattleCoreFree",', [StringComparison]::Ordinal)
 $render = $text.IndexOf('const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree"', [StringComparison]::Ordinal)
 Check ($battle -ge 0 -and $render -gt $battle -and $render -lt $text.IndexOf('const auto moved = std::ranges::find(settings, "FewerConstantUploads"', [StringComparison]::Ordinal)) 'KeepRenderCoreFree after Keep Battle Core Free, before Fewer Constant Uploads'
-Check ($text -match 'keep_battle_core_row != 0\.f, keep_render_core_row != 0\.f\);') 'KeepRenderCoreFree written to the plugin (link Update)'
+Check ($text.Contains('(RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT));')) 'KeepRenderCoreFree written to the plugin (link Update) only once measured'
 Check ((Read-Source 'addon.cpp') -match '(?s)\.key = "KeepRenderCoreFree",.{0,300}?\.label = "Keep Render Core Free \(Experimental\)",\s+\.section = "Graphics \(Experimental\)",') 'KeepRenderCoreFree 32-bit label and section unchanged'
 Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t MIN_GAME_CPUS = 8;') 'MIN_GAME_CPUS 8'
 # Automatic L1 (inside its row, which stays Off above): parallel from 20000 effect instances, serial below 16000, never below
