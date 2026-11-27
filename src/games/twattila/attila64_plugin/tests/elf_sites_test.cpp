@@ -146,7 +146,7 @@ int wmain(int argc, wchar_t** argv) {
   };
   for (const Site& site : SITES) {
     if (site.row != ROW_SHADOW_MAP) continue;
-    if (site.length == 2 * sizeof(float)) {
+    if (IsShadowSizeSite(site)) {
       std::array<float, 2> size = {};
       std::memcpy(size.data(), at(site.address), sizeof(size));
       const float game_size = ((site.label == LABEL_SHADOW_SIZE_MEDIUM) ? 1024.f : 2048.f);
@@ -159,7 +159,7 @@ int wmain(int argc, wchar_t** argv) {
     }
   }
   // The rest pack's return address follows a call of the pack function.
-  Expect(*at(REST_PACK_RETURN - 5) == 0xe8 && REST_PACK_RETURN + word_at(REST_PACK_RETURN - 4) == SITES[LABEL_PACK_ENTRY].address,
+  Expect(*at(REST_PACK_RETURN - 5) == 0xe8 && REST_PACK_RETURN + static_cast<int32_t>(word_at(REST_PACK_RETURN - 4)) == SITES[LABEL_PACK_ENTRY].address,
          "rest pack: its return address is right after a call of the pack site");
 
   // Each engine value in the game's own code: its static constructor call passes the object, the name and a plain

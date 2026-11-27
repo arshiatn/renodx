@@ -38,8 +38,8 @@ static int failures = 0;
 static std::shared_mutex log_mutex;
 static std::vector<std::string> log_lines;
 static HookMode hook_mode = HOOK_NORMAL;
-// FakePatch refuses this call of the ones still to come (1 = the next); 0 = none.
-static int failing_patch_call = 0;
+// The calls FakePatch refuses of the ones still to come: bit 0 = the next, bit 1 = the one after; 0 = none.
+static uint32_t failing_patch_calls = 0;
 
 static void Expect(bool ok, const char* what) {
   ++checks;
@@ -81,7 +81,9 @@ static void* FakeCodeNearGame(size_t n) noexcept {
 }
 
 static int FakePatch(uintptr_t at, const uint8_t* expect, const uint8_t* bytes, size_t len) noexcept {
-  if (failing_patch_call != 0 && --failing_patch_call == 0) return 0;
+  const bool refused = (failing_patch_calls & 1u) != 0;
+  failing_patch_calls >>= 1;
+  if (refused) return 0;
   if (std::memcmp(reinterpret_cast<void*>(at), expect, len) != 0) return 0;
   std::memcpy(reinterpret_cast<void*>(at), bytes, len);
   return 1;
@@ -240,8 +242,8 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
          "the init lines");
   for (const Site& site : SITES) {
     char applied_line[96];
-    std::snprintf(applied_line, sizeof(applied_line), "renodx_attila64: site %s %#x: applied", LABEL_WORDS[site.label],
-                  site.address);
+    std::snprintf(applied_line, sizeof(applied_line), "renodx_attila64: site %s %#x: applied%s", LABEL_WORDS[site.label],
+                  site.address, ((site.kind == SITE_PATCH) ? " (game's bytes kept)" : ""));
     Expect(Logged(applied_line), "each site has its applied line");
     if (site.kind == SITE_HOOK) {
       Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each hook site jumps to the hook");

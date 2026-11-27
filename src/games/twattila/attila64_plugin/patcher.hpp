@@ -59,6 +59,11 @@ struct AppliedSite {
   bool applied = false;
 };
 
+// The shadow row's size sites hold the map's width and height as two floats; its cascade sites hold one number each.
+[[nodiscard]] constexpr bool IsShadowSizeSite(const Site& site) {
+  return site.row == ROW_SHADOW_MAP && site.kind == SITE_PATCH && site.length == 2 * sizeof(float);
+}
+
 // READY when the loader and the game build are the ones the sites were made for.
 [[nodiscard]] inline Status CheckIdentity(const LoaderApi& api) {
   if (api.api_version < LOADER_API_VERSION || api.game_lo != GAME_LO || api.game_hi < GAME_HI_MIN) {
@@ -115,7 +120,7 @@ struct AppliedSite {
 
 // An applied patch site out again (a later site of its row failed): the game's bytes back where ours were written.
 // False when the loader could not write them back; the site counts as out either way.
-inline bool RevertPatch(const LoaderApi& api, const Site& site, AppliedSite* applied) {
+[[nodiscard]] inline bool RevertPatch(const LoaderApi& api, const Site& site, AppliedSite* applied) {
   const uint8_t* expect = site.window.data() + SITE_MARGIN;
   applied->applied = false;
   if (std::memcmp(applied->bytes.data(), expect, site.length) == 0) return true;

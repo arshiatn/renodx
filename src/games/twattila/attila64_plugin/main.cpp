@@ -57,8 +57,6 @@ static_assert([] {
   }
   return length <= ROWS_LINE_CAPACITY;
 }(), "the rows line holds every row");
-// The shadow setup's size at Max and High, for the shadow row's line (Medium's is half; the sites hold the floats).
-inline constexpr uint32_t SHADOW_MAP_GAME_SIZE = 2048;
 inline constexpr DWORD PATH_CAPACITY = 1024;
 inline constexpr wchar_t INI_FILE[] = L"ReShade.ini";
 // MODULE_NAME for the loader's narrow file names (ASCII).
@@ -139,6 +137,10 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     if (!has_ini) return default_value;
     return static_cast<int>(GetPrivateProfileIntW(INI_SECTION, key, default_value, ini));
   };
+  // A whole-number key of [Attila64Plugin.Values]; 0 without it.
+  const auto values_int = [&](const wchar_t* key) {
+    return (has_ini ? static_cast<int>(GetPrivateProfileIntW(INI_VALUES_SECTION, key, 0, ini)) : 0);
+  };
   if (ini_int(INI_ENABLED, ENABLED_DEFAULT) == 0) {
     return refuse(STATUS_OFF, "[Attila64Plugin] Enabled=0 in ReShade.ini");
   }
@@ -189,10 +191,8 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
 
   // The restart-only keys the add-on wrote for this start. The loader reads its frame cap on the first frame, after
   // this init.
-  const int sol_frame_cap =
-      (has_ini ? static_cast<int>(GetPrivateProfileIntW(INI_VALUES_SECTION, INI_SOL_FRAME_CAP, 0, ini)) : 0);
   const HMODULE loader_c_library = tweaks::ImportedFrom(GetModuleHandleW(nullptr), "getenv");
-  tweaks::SetLoaderFrameCap(sol_frame_cap == 1, loader_c_library, *api);
+  tweaks::SetLoaderFrameCap(values_int(INI_SOL_FRAME_CAP) == 1, loader_c_library, *api);
   if (ini_int(INI_TWEAKS, TWEAKS_DEFAULT) != 0) {
     for (size_t index = 0; index < TWEAKS.size(); ++index) {
       if (!has_ini || !TWEAKS[index].restart_only) continue;
@@ -223,8 +223,7 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     }
   }
   // Shadow Map Size, restart-only like the engine values: the add-on's key, written only where the add-on runs.
-  const int shadow_map_size =
-      (has_ini ? static_cast<int>(GetPrivateProfileIntW(INI_VALUES_SECTION, INI_SHADOW_MAP_SIZE, 0, ini)) : 0);
+  const int shadow_map_size = values_int(INI_SHADOW_MAP_SIZE);
   const bool shadow_size_in_range = (shadow_map_size >= 1 && shadow_map_size <= SHADOW_MAP_SIZE_STEPS);
   const bool shadow_sizes_written = (shadow_size_in_range && dx11_route);
   for (size_t index = 0; index < SITES.size(); ++index) {
@@ -234,28 +233,31 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     if (check.refusal == REFUSAL_NONE && (block.rows_refused & RowBit(row)) != 0) {
       check.refusal = REFUSAL_ROW;
     }
+    // A size site's two floats become the game's x 2^ShadowMapSize, as the 32-bit add-on writes them
+    // (graphics_hooks.hpp shadow_map::Set). The cascade sites are only checked: the row is in once all of its sites
+    // are the game's, so a later key applies at the next start.
+    const bool size_rewritten = (shadow_sizes_written && IsShadowSizeSite(site));
     if (check.refusal == REFUSAL_NONE && site.kind == SITE_HOOK) {
       check.refusal = ApplySite(*api, site, REPLACEMENTS[site.label], &applied_sites[index]);
     } else if (check.refusal == REFUSAL_NONE) {
-      // A size site holds the map's width and height as two floats: the game's x 2^ShadowMapSize, as the 32-bit
-      // add-on writes them (graphics_hooks.hpp shadow_map::Set). The cascade sites are only checked: the row is in
-      // once all of its sites are the game's, so a later key applies at the next start.
       std::array<float, 2> size = {};
-      const bool size_rewritten =
-          shadow_sizes_written && (site.label == LABEL_SHADOW_SIZE_HIGH || site.label == LABEL_SHADOW_SIZE_MAX
-                                   || site.label == LABEL_SHADOW_SIZE_MEDIUM);
       if (size_rewritten) {
         std::memcpy(size.data(), site.window.data() + SITE_MARGIN, sizeof(size));
         size[0] *= static_cast<float>(1 << shadow_map_size);
         size[1] *= static_cast<float>(1 << shadow_map_size);
       }
-      const uint8_t* new_bytes = (size_rewritten ? reinterpret_cast<const uint8_t*>(size.data()) : nullptr);
-      check.refusal = ApplyPatch(*api, site, new_bytes, &applied_sites[index]);
+      check.refusal = ApplyPatch(*api, site, (size_rewritten ? reinterpret_cast<const uint8_t*>(size.data()) : nullptr),
+                                 &applied_sites[index]);
     }
     if (check.refusal == REFUSAL_NONE) {
       originals[site.label] = applied_sites[index].original;
       block.rows_applied |= RowBit(row);
-      loader->log("renodx_attila64: site %s %#x: applied", LABEL_WORDS[site.label], site.address);
+      // A patch site that was only checked is in too (the game-start count is the sites in), with its own words.
+      if (site.kind == SITE_PATCH && !size_rewritten) {
+        loader->log("renodx_attila64: site %s %#x: applied (game's bytes kept)", LABEL_WORDS[site.label], site.address);
+      } else {
+        loader->log("renodx_attila64: site %s %#x: applied", LABEL_WORDS[site.label], site.address);
+      }
     } else {
       block.rows_refused |= RowBit(row);
       const bool foreign = (check.refusal == REFUSAL_FOREIGN);
@@ -264,7 +266,10 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     }
   }
   // A row is on only when all of its sites are. A patch site that went in before a later site of its row failed comes
-  // out again (a hook cannot: it stays, and its row's bit stays clear).
+  // out again; when the loader cannot put its bytes back, the row stays refused and its log line names the site.
+  // A hook cannot come out: a refused row's hook stays in and the game keeps calling it, with the row's bit clear in
+  // rows_applied. So the add-on sets a row's scales_active bits only while the row is in rows_applied; a row with two
+  // hooks (the grass row) depends on that.
   block.rows_applied &= ~block.rows_refused;
   for (size_t index = 0; index < SITES.size(); ++index) {
     const Site& site = SITES[index];
@@ -281,7 +286,10 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   }
   if ((block.rows_applied & RowBit(ROW_SHADOW_MAP)) != 0) {
     if (shadow_sizes_written) {
-      loader->log("renodx_attila64: shadow map %u: patched", SHADOW_MAP_GAME_SIZE << shadow_map_size);
+      // The size at Max and High (Medium's is half), from the site's own float.
+      float game_size = 0.f;
+      std::memcpy(&game_size, SITES[LABEL_SHADOW_SIZE_MAX].window.data() + SITE_MARGIN, sizeof(game_size));
+      loader->log("renodx_attila64: shadow map %u: patched", static_cast<uint32_t>(game_size) << shadow_map_size);
     } else if (shadow_map_size == 0) {
       loader->log("renodx_attila64: shadow map: game's size");
     } else if (shadow_size_in_range) {

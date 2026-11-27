@@ -55,6 +55,7 @@ inline constexpr size_t VIEW_KIND_SLOT = 0x80 / sizeof(void*);  // the view's pa
 // frame's first pack (a big battle's rest).
 inline constexpr uintptr_t REST_PACK_RETURN = 0x33f6d11;
 inline constexpr uint32_t UNIT_LOD_SCALES = (1u << SCALE_MODEL_DETAIL) - 1u;  // scales_active bits 0-16
+static_assert(SCALE_UNIT_LOD == 0, "the unit LOD scales start at bit 0 and at the table's entry 0");
 
 // The add-on's unregister stores nullptr into `callbacks`, then waits (bounded) until `calls_in_flight` is 0
 // (plugin_block.h has its rules): with this increment-then-load (seq_cst on both sides) no callback starts after that

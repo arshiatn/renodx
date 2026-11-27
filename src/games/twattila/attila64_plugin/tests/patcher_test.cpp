@@ -442,7 +442,7 @@ int wmain(int argc, wchar_t** argv) {
                && site_untouched(site) && SiteUnchanged(site, applied),
            "patch: nothing to write, the site is in with the game's bytes");
     Expect(RevertPatch(api, site, &applied) && !applied.applied && site_untouched(site), "patch: out again, nothing to put back");
-    failing_patch_call = 1;
+    failing_patch_calls = 1u << 0;
     applied = {};
     Expect(ApplyPatch(api, site, doubled_bytes, &applied) == REFUSAL_WRITE_FAILED && !applied.applied && site_untouched(site),
            "patch: the loader's refusal leaves the game's bytes");
@@ -459,7 +459,7 @@ int wmain(int argc, wchar_t** argv) {
                && std::memcmp(at(site.address), expect, site.length) == 0,
            "patch: the way back puts the game's bytes in again");
     Expect(ApplyPatch(api, site, doubled_bytes, &applied) == REFUSAL_NONE, "patch: written again");
-    failing_patch_call = 1;
+    failing_patch_calls = 1u << 0;
     Expect(!RevertPatch(api, site, &applied) && !applied.applied && !site_untouched(site),
            "patch: a refused way back is reported, the site counts as out");
   }
@@ -825,9 +825,10 @@ int wmain(int argc, wchar_t** argv) {
     Expect(dll_bytes.find("\0renodx_attila64: render thread %lu\0"sv) != std::string::npos,
            "dll: the file holds the render thread's line as a whole string");
     Expect(dll_bytes.find("\0renodx_attila64: site %s %#x: applied\0"sv) != std::string::npos
+               && dll_bytes.find("\0renodx_attila64: site %s %#x: applied (game's bytes kept)\0"sv) != std::string::npos
                && dll_bytes.find("\0renodx_attila64: shadow map %u: patched\0"sv) != std::string::npos
                && dll_bytes.find("\0renodx_attila64: shadow map: game's size\0"sv) != std::string::npos,
-           "dll: the file holds the applied line and the shadow row's two lines as whole strings");
+           "dll: the file holds the two applied lines and the shadow row's two lines as whole strings");
   }
 
   const auto render_state_of = [](const Block* shared) {
@@ -1012,7 +1013,9 @@ int wmain(int argc, wchar_t** argv) {
     Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && plugin.block->rows_refused == 0
                && shadow_sizes(4096.f, 2048.f) && Logged("renodx_attila64: shadow map 4096: patched")
                && Logged("renodx_attila64: site SHADOW_SIZE_MAX 0x30e46eb: applied")
-               && Logged("renodx_attila64: site SHADOW_EXTRA_MAX 0x30e4717: applied") && !Logged("game's size"),
+               && !Logged("site SHADOW_SIZE_MAX 0x30e46eb: applied (")
+               && Logged("renodx_attila64: site SHADOW_EXTRA_MAX 0x30e4717: applied (game's bytes kept)")
+               && !Logged("game's size"),
            "shadow: ShadowMapSize=1 doubles the three sizes, the cascade sites are only checked");
     plugin.game_started(&api);
     Expect(plugin.block->rows_changed.load() == 0 && Logged(every_site_unchanged),
@@ -1070,10 +1073,10 @@ int wmain(int argc, wchar_t** argv) {
   }
   // The loader refuses the third write: the two sizes already written go back.
   write_game();
-  failing_patch_call = 3;
+  failing_patch_calls = 1u << 2;
   {
     const auto [plugin, result] = init_copy(L"shadow_write_fails", MODULE_NAME, api);
-    Expect(result == 0 && failing_patch_call == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
+    Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
                && plugin.block->rows_refused == RowBit(ROW_SHADOW_MAP) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
            "shadow: a refused write rolls the row back to the game's bytes");
     Expect(Logged("site SHADOW_SIZE_MEDIUM 0x30e4737: skipped (WRITE_FAILED)")
@@ -1082,6 +1085,47 @@ int wmain(int argc, wchar_t** argv) {
                && Logged("site SHADOW_EXTRA_MAX 0x30e4717: withdrawn (a later site of its row failed)")
                && !Logged("could not be put back"),
            "shadow: each site that was in has its withdrawn line");
+  }
+  // The loader refuses the second write: the sites after it are left out for their row, only the three before it
+  // were in and come out.
+  write_game();
+  failing_patch_calls = 1u << 1;
+  {
+    const auto [plugin, result] = init_copy(L"shadow_second_write_fails", MODULE_NAME, api);
+    Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
+               && plugin.block->rows_refused == RowBit(ROW_SHADOW_MAP) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
+           "shadow: a refused second write leaves the game's bytes everywhere");
+    Expect(Logged("site SHADOW_SIZE_MAX 0x30e46eb: skipped (WRITE_FAILED)") && Logged("site SHADOW_COUNT_MAX 0x30e470c: skipped (ROW)")
+               && Logged("site SHADOW_EXTRA_MAX 0x30e4717: skipped (ROW)") && Logged("site SHADOW_SIZE_MEDIUM 0x30e4737: skipped (ROW)")
+               && Logged("site SHADOW_SIZE_HIGH 0x30e46b7: withdrawn") && Logged("site SHADOW_COUNT_HIGH 0x30e46d8: withdrawn")
+               && Logged("site SHADOW_EXTRA_HIGH 0x30e46e3: withdrawn") && !Logged("_MAX 0x30e46eb: withdrawn")
+               && !Logged("_MAX 0x30e470c: withdrawn") && !Logged("_MAX 0x30e4717: withdrawn") && !Logged("_MEDIUM 0x30e4737: withdrawn")
+               && !Logged("could not be put back"),
+           "shadow: after a refused write the row's later sites are skipped for the row, only the earlier ones withdrawn");
+  }
+  // The loader refuses the third write and then the first put-back: that size keeps our bytes, its line says so, the
+  // row stays out and none of its sites is re-checked at the game's start.
+  write_game();
+  failing_patch_calls = (1u << 2) | (1u << 3);
+  {
+    const auto [plugin, result] = init_copy(L"shadow_put_back_fails", MODULE_NAME, api);
+    Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
+               && plugin.block->rows_refused == RowBit(ROW_SHADOW_MAP) && !Logged("renodx_attila64: shadow map"),
+           "shadow: a refused put-back leaves the row refused");
+    const std::array<float, 2> doubled = {4096.f, 4096.f};
+    Expect(std::memcmp(at(SITES[LABEL_SHADOW_SIZE_HIGH].address), doubled.data(), sizeof(doubled)) == 0
+               && site_untouched(SITES[LABEL_SHADOW_SIZE_MAX]) && site_untouched(SITES[LABEL_SHADOW_SIZE_MEDIUM]),
+           "shadow: only the size whose put-back was refused keeps our bytes");
+    Expect(Logged("site SHADOW_SIZE_HIGH 0x30e46b7: its bytes could not be put back")
+               && !Logged("site SHADOW_SIZE_HIGH 0x30e46b7: withdrawn")
+               && Logged("site SHADOW_SIZE_MAX 0x30e46eb: withdrawn (a later site of its row failed)")
+               && Logged("site SHADOW_SIZE_MEDIUM 0x30e4737: skipped (WRITE_FAILED)"),
+           "shadow: the put-back's own line names the site");
+    plugin.game_started(&api);
+    char hooks_unchanged[64];
+    std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", HOOK_SITE_COUNT);
+    Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged) && Logged("game started: 5 sites unchanged"),
+           "shadow: a site that could not be put back counts as out at the game's start");
   }
   SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, nullptr);
   set_ini_key_off(nullptr);
