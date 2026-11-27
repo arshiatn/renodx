@@ -218,12 +218,15 @@ template <typename Fn>
 // FNV-1a, 32 or 64 bits, with the reference's parameters (Fowler, Noll and Vo; public domain): the value of `count`
 // bytes from the running value `hash` on. One copy for every code check of the plugin (the grass draw's is the 32-bit
 // one, both rows' here the 64-bit one) and for the tests, which pin the same values on the game file.
+// No other width has parameters here: a narrower one would cut the prime short.
 template <typename Hash>
-  requires std::same_as<Hash, uint32_t> || std::same_as<Hash, uint64_t>
-inline constexpr Hash FNV_OFFSET_BASIS = static_cast<Hash>((sizeof(Hash) == sizeof(uint64_t)) ? 0xcbf29ce484222325 : 0x811c9dc5);
-template <typename Hash>
+concept FnvHash = std::same_as<Hash, uint32_t> || std::same_as<Hash, uint64_t>;
+template <FnvHash Hash>
+inline constexpr Hash FNV_OFFSET_BASIS =
+    static_cast<Hash>((sizeof(Hash) == sizeof(uint64_t)) ? 0xcbf29ce484222325 : 0x811c9dc5);
+template <FnvHash Hash>
 inline constexpr Hash FNV_PRIME = static_cast<Hash>((sizeof(Hash) == sizeof(uint64_t)) ? 0x100000001b3 : 0x01000193);
-template <typename Hash>
+template <FnvHash Hash>
 [[nodiscard]] static Hash Fnv1a(const uint8_t* bytes, size_t count, Hash hash = FNV_OFFSET_BASIS<Hash>) noexcept {
   for (size_t offset = 0; offset < count; ++offset) {
     hash = (hash ^ bytes[offset]) * FNV_PRIME<Hash>;
