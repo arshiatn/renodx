@@ -32,9 +32,10 @@ inline constexpr uint32_t SITE_MAX_LENGTH = 15;
 enum SiteLabel : uint8_t {
   LABEL_PACK_ENTRY,
   LABEL_VIEW_DRAW_ENTRY,
+  LABEL_STEP_ENTRY,
   LABEL_COUNT
 };
-inline constexpr std::array<const char*, LABEL_COUNT> LABEL_WORDS = {"PACK_ENTRY", "VIEW_DRAW_ENTRY"};
+inline constexpr std::array<const char*, LABEL_COUNT> LABEL_WORDS = {"PACK_ENTRY", "VIEW_DRAW_ENTRY", "STEP_ENTRY"};
 
 // One replaced range. window = memory [address - SITE_MARGIN, address + length + SITE_MARGIN), the rest zero.
 struct Site {
@@ -45,7 +46,7 @@ struct Site {
   std::array<uint8_t, (2 * SITE_MARGIN) + SITE_MAX_LENGTH> window = {};
 };
 
-inline constexpr std::array<Site, 2> SITES = {{
+inline constexpr std::array<Site, 3> SITES = {{
     {
         .address = 0x3416d50,
         .length = 5,
@@ -68,6 +69,17 @@ inline constexpr std::array<Site, 2> SITES = {{
             0x49, 0x89, 0xd7, 0x49, 0x89, 0xf6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         },
     },
+    {
+        .address = 0xbb4e00,
+        .length = 7,
+        .row = ROW_CPU_PLACEMENT,
+        .label = LABEL_STEP_ENTRY,
+        .window = {
+            0x50, 0xe8, 0xda, 0x11, 0x97, 0xff, 0x58, 0xc3, 0x48, 0x89, 0xc7, 0xe8, 0xd0, 0x62, 0x97, 0xff,
+            0x55, 0x53, 0x50, 0x48, 0x8b, 0x5f, 0x38, 0xbd, 0x01, 0x00, 0x00, 0x00, 0xbf, 0x01, 0x00, 0x00,
+            0x00, 0xe8, 0xfa, 0x35, 0x93, 0xff, 0x48, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
 }};
 
 enum ForeignOwner : uint8_t { OWNER_LOADER, OWNER_OTHER, OWNER_COUNT };
@@ -83,12 +95,13 @@ struct Foreign {
 
 // Ranges no run-time window shows: the loader's checks and writes after our init (game start, test mode, exit),
 // its init write with a shorter check, the hooks no row may take, and any foreign range or target near a site.
-inline constexpr std::array<Foreign, 16> FOREIGN = {{
+inline constexpr std::array<Foreign, 17> FOREIGN = {{
     {.address = 0x573320, .length = 5, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x5cafa0, .length = 8, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x5cafa8, .length = 0, .owner = OWNER_LOADER, .kind = FOREIGN_TARGET},
     {.address = 0xb9c700, .length = 8, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0xb9c708, .length = 0, .owner = OWNER_LOADER, .kind = FOREIGN_TARGET},
+    {.address = 0xbb4e2a, .length = 5, .owner = OWNER_OTHER, .kind = FOREIGN_RANGE},
     {.address = 0xdc5cfc, .length = 6, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x278c4c0, .length = 8, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x2c85270, .length = 11, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},

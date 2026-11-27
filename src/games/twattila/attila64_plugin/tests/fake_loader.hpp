@@ -172,16 +172,36 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const Block* shared = plugin.block;
   Expect(shared->version == VERSION && shared->bytes == BlockBytes(VERSION), "the block's version and size");
   Expect(shared->status.load(std::memory_order_acquire) == STATUS_READY, "the block is READY after init");
-  Expect(shared->rows_applied == (RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW)) && shared->rows_refused == 0,
-         "both rows applied");
-  Expect(Logged("game build ok") && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
-             && Logged("rows: bone flush on, pass draw on"),
+  const uint32_t rows = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT);
+  Expect(shared->rows_applied == rows && shared->rows_refused == 0, "the three rows applied");
+  // v2's initial values: the rows tried, the core default, the battle core waiting, the other status words not built,
+  // the scales neutral.
+  bool scales_neutral = true;
+  for (size_t scale = 0; scale < SCALE_COUNT; ++scale) {
+    scales_neutral = scales_neutral && shared->scales[scale].load() == NEUTRAL_SCALES[scale];
+  }
+  Expect(shared->rows_tried == rows && shared->core_wanted.load() == CORE_WANTED_DEFAULT
+             && shared->core_status.load() == (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT)
+             && shared->render_core_status.load() == 0 && shared->engine_status.load() == 0
+             && shared->tweaks_status.load() == TWEAKS_NONE && shared->tweak_count == 0 && shared->tweaks == nullptr
+             && shared->notices.load() == 0 && shared->scales_active.load() == 0 && scales_neutral
+             && NEUTRAL_SCALES[SCALE_SPRITE_DISTANCE] == 0.0f && NEUTRAL_SCALES[SCALE_DEAD_UNITS] == 1.0f,
+         "v2's initial values");
+  Expect(Logged("game build ok")
+             && Logged("Changes drawing, sound memory and CPU core use only; battles, replays and multiplayer stay the same.")
+             && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
+             && Logged("STEP_ENTRY 0xbb4e00: applied")
+             && Logged("rows: bone flush on, pass draw on, battle core on, unit lod -, model detail -, shadow map -, grass -, "
+                       "grass cells -, campaign trees -, sprites -"),
          "the init lines");
   for (const Site& site : SITES) {
     Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each site jumps to the hook");
   }
   plugin.game_started(&api);
-  Expect(shared->rows_changed.load() == 0 && Logged("game started: 2 sites unchanged"), "game start finds both sites unchanged");
+  // The count follows the sites table (a later site needs no edit here).
+  char started[64];
+  std::snprintf(started, sizeof(started), "game started: %zu sites unchanged", SITES.size());
+  Expect(shared->rows_changed.load() == 0 && Logged(started), "game start finds every site unchanged");
   return plugin;
 }
 

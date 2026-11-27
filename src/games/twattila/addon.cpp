@@ -1237,21 +1237,33 @@ inline bool GameCodeRowShown(PluginRow row) {
          && (twattila::attila64_plugin_link::RowsOffered() & (1u << static_cast<uint32_t>(row))) != 0;
 }
 
-// The note rows in graphics_status's place on the port, one per final lookup result: READY's shows while any of the
-// plugin's rows is not offered (its hook refused or changed), whether a settings row reads it or not.
-constexpr std::array<std::pair<twattila::attila64_plugin_link::Found, const char*>, 6> PLUGIN_NOTES = {{
-    {twattila::attila64_plugin_link::Found::NOT_INSTALLED,
-     "Engine options: the 64-bit engine plugin is not installed."},
-    {twattila::attila64_plugin_link::Found::OFF,
-     "Engine options: the 64-bit engine plugin is turned off in ReShade.ini."},
-    {twattila::attila64_plugin_link::Found::WRONG_GAME,
-     "Engine options: the 64-bit engine plugin does not support this game version."},
-    {twattila::attila64_plugin_link::Found::WRONG_LOADER,
-     "Engine options: the 64-bit engine plugin does not support this loader version."},
-    {twattila::attila64_plugin_link::Found::OTHER_VERSION,
-     "Engine options: the 64-bit engine plugin does not match this add-on's version."},
-    {twattila::attila64_plugin_link::Found::READY,
-     "Engine options: the 64-bit engine plugin could not turn on every engine option."},
+// The note rows in graphics_status's place on the port, at most one shown: one per final lookup result, READY's two
+// split by the block. A v1 block (an older plugin) shows the update note; a v2 block shows the other one while a row
+// the plugin tried is not offered (its hook refused or changed), whether a settings row reads it or not.
+struct PluginNote {
+  twattila::attila64_plugin_link::Found found = twattila::attila64_plugin_link::Found::PENDING;
+  bool v1_block = false;  // READY's note for a v1 block
+  const char* label = "";
+};
+constexpr std::array<PluginNote, 9> PLUGIN_NOTES = {{
+    {.found = twattila::attila64_plugin_link::Found::NOT_INSTALLED,
+     .label = "Engine options: the 64-bit engine plugin is not installed."},
+    {.found = twattila::attila64_plugin_link::Found::PLUGINS_OFF,
+     .label = "Engine options: plugins are switched off (ATTILA_NO_PLUGINS / ATTILA_PLAIN)."},
+    {.found = twattila::attila64_plugin_link::Found::NOT_LOADED,
+     .label = "Engine options: the 64-bit engine plugin is in plugins\\ but did not load (attila64_log.txt)."},
+    {.found = twattila::attila64_plugin_link::Found::OFF,
+     .label = "Engine options: the 64-bit engine plugin is turned off in ReShade.ini."},
+    {.found = twattila::attila64_plugin_link::Found::WRONG_GAME,
+     .label = "Engine options: the 64-bit engine plugin does not support this game version."},
+    {.found = twattila::attila64_plugin_link::Found::WRONG_LOADER,
+     .label = "Engine options: the 64-bit engine plugin does not support this loader version."},
+    {.found = twattila::attila64_plugin_link::Found::OTHER_VERSION,
+     .label = "Engine options: the 64-bit engine plugin does not match this add-on's version."},
+    {.found = twattila::attila64_plugin_link::Found::READY, .v1_block = true,
+     .label = "Engine options: update the 64-bit engine plugin for more options."},
+    {.found = twattila::attila64_plugin_link::Found::READY,
+     .label = "Engine options: the 64-bit engine plugin could not turn on every engine option."},
 }};
 
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
@@ -3117,19 +3129,21 @@ void ConfigureAddon() {
     // The plugin's note in graphics_status's place (the engine values it reports are the 32-bit game's): one row per
     // lookup result, at most one shown.
     auto note_at = std::ranges::find(settings, graphics_status);
-    for (const auto& [found, label] : PLUGIN_NOTES) {
+    for (const PluginNote& note : PLUGIN_NOTES) {
       note_at = std::next(settings.insert(
           note_at, new renodx::utils::settings::Setting{
                        .value_type = renodx::utils::settings::SettingValueType::TEXT,
-                       .label = label,
+                       .label = note.label,
                        .section = graphics_status->section,
                        .tint = twattila::graphics_page::WARNING_TINT,
-                       .is_visible = [found] {
+                       .is_visible = [note] {
                          const twattila::attila64_plugin_link::Found result = twattila::attila64_plugin_link::Result();
-                         if (result != found) return false;
-                         constexpr uint32_t EVERY_ROW = (1u << twattila::attila64_plugin::ROW_COUNT) - 1u;
-                         return result != twattila::attila64_plugin_link::Found::READY
-                                || twattila::attila64_plugin_link::RowsOffered() != EVERY_ROW;
+                         if (result != note.found) return false;
+                         if (result != twattila::attila64_plugin_link::Found::READY) return true;
+                         if (twattila::attila64_plugin_link::BlockV2()) {
+                           return !note.v1_block && twattila::attila64_plugin_link::RowsNotOffered();
+                         }
+                         return note.v1_block;
                        },
                    }));
     }

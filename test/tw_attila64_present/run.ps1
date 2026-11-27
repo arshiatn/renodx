@@ -8,18 +8,20 @@
 # leave an exe that does not exit). The C2 control (atn-mods before the bring-up) sits in testbin\attila64_present\c2,
 # the step-4 build (A2a without A2b, C5's control) in testbin\attila64_present\step4. A case folder that cannot be
 # emptied (a process still holds it) is replaced by <name>.2, .3, ... -BuildOnly: the exe and zz_capture, no case;
-# -NoBuild: the cases with the binaries built before.
-param([string]$Addon = '', [string[]]$Cases = @(), [switch]$Gpu, [switch]$Warp, [switch]$NoBuild, [switch]$BuildOnly)
+# -NoBuild: the cases with the binaries built before. -Stage: another staging folder for bin\ and run\ (an agent's own
+# test folder; the controls stay in the default one).
+param([string]$Addon = '', [string[]]$Cases = @(), [switch]$Gpu, [switch]$Warp, [switch]$NoBuild, [switch]$BuildOnly, [string]$Stage = '')
 $ErrorActionPreference = 'Stop'
 if ($Warp) { throw 'F7 on WARP loads no add-on (ReShade skips Microsoft Basic Render Driver devices): run it on the GPU (f7_gpu.sh)' }
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repoRoot 'test\tw_attila64_present'
 $tools = Join-Path $env:USERPROFILE '.claude\projects\D--Dev-renodx\tools\tw'
-$stage = Join-Path $tools 'testbin\attila64_present'
+$controls = Join-Path $tools 'testbin\attila64_present'
+$stage = if ($Stage -eq '') { $controls } else { $Stage }
 $binDir = Join-Path $stage 'bin'
 $reshade = Join-Path $tools 'testbin\reshade_suites\reshade680_amd64\ReShade64.dll'
 if ($Addon -eq '') { $Addon = Join-Path $repoRoot 'build\Release\renodx-twattila.addon64' }
-$addons = @{ current = $Addon; c2 = (Join-Path $stage 'c2\renodx-twattila.addon64'); step4 = (Join-Path $stage 'step4\renodx-twattila.addon64'); none = '' }
+$addons = @{ current = $Addon; c2 = (Join-Path $controls 'c2\renodx-twattila.addon64'); step4 = (Join-Path $controls 'step4\renodx-twattila.addon64'); none = '' }
 
 if (-not $NoBuild) {
   $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
@@ -60,11 +62,14 @@ foreach ($encoding in 'hdr10', 'scrgb', 'sdr') {
                                      lines = @($identity, $mapped, $noPlugin) + $upgraded + @($overlay) }
   }
 }
-# The engine plugin's block (fake_plugin.cpp, RENODX_F7_PLUGIN = "<status> <rows_applied> <rows_changed>"): found at the
-# game's init_device, its status logged once, frames as without it, no callbacks left in the block at the end.
+# The engine plugin's block (fake_plugin.cpp, RENODX_F7_PLUGIN = "<status> <rows_applied> <rows_changed> [<version>
+# [<rows_tried>]]"): found at the game's init_device, its status logged once, frames as without it, no callbacks left in
+# the block at the end. plugin_v1: an older plugin's 40-byte block; plugin_cpu_refused: the CPU row tried, not offered.
 $pluginCases = [ordered]@{
-  plugin_ready = @('1 3 0', 'engine plugin ready, rows offered 0x3')
-  plugin_changed = @('1 3 2', 'engine plugin ready, rows offered 0x1')
+  plugin_ready = @('1 3 0', 'engine plugin ready, rows offered 0x3', 'engine plugin rows tried 0x3')
+  plugin_changed = @('1 3 2', 'engine plugin ready, rows offered 0x1', 'engine plugin rows tried 0x3')
+  plugin_v1 = @('1 3 0 1', 'engine plugin ready (block v1: an older plugin, its first rows only), rows offered 0x3')
+  plugin_cpu_refused = @('1 3 0 2 7', 'engine plugin ready, rows offered 0x3', 'engine plugin rows tried 0x7')
   plugin_off = @('2 0 0', 'engine plugin off (ReShade.ini), rows offered 0x0')
   plugin_wrong_game = @('3 0 0', 'engine plugin off (another game build), rows offered 0x0')
   plugin_wrong_loader = @('4 0 0', 'engine plugin off (another loader version), rows offered 0x0')
@@ -74,7 +79,7 @@ $pluginCases = [ordered]@{
 foreach ($name in $pluginCases.Keys) {
   $table[$name] = @{ addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0
                      plugin = $pluginCases[$name][0]
-                     lines = @($identity, $mapped, "[Total War] 64-bit Attila: $($pluginCases[$name][1])") + $upgraded
+                     lines = @($identity, $mapped) + @($pluginCases[$name] | Select-Object -Skip 1 | ForEach-Object { "[Total War] 64-bit Attila: $_" }) + $upgraded
                      forbid = @('engine plugin not installed', 'callbacks registered') }
 }
 # Registration end to end: rows forced wanted (RENODX_TW_PLUGIN_WANT), the callbacks registered at a present, the fake
@@ -86,6 +91,16 @@ $table['plugin_calls'] = @{
             '[Total War] 64-bit Attila: engine plugin callbacks registered (rows wanted 0x3)') + $upgraded
   forbid = @('engine plugin not installed')
 }
+# The plugin's file in the loader's plugins\ but not loaded: by itself (the loader's log says why), or with the loader's
+# plugins switched off (ATTILA_NO_PLUGINS=1, or ATTILA_PLAIN set to nothing by the exe).
+$notLoaded = '[Total War] 64-bit Attila: engine plugin in plugins\ but not loaded (attila64_log.txt says why), rows offered 0x0'
+$switchedOff = '[Total War] 64-bit Attila: engine plugin not loaded: plugins switched off (ATTILA_NO_PLUGINS / ATTILA_PLAIN), rows offered 0x0'
+$table['plugin_not_loaded'] = @{ addon = 'current'; args = 'd3d11 fixed upgraded'; encoding = 0; plugins_dir = $true
+                                 lines = @($identity, $mapped, $notLoaded) + $upgraded; forbid = @('engine plugin not installed', 'switched off') }
+$table['plugin_no_plugins'] = @{ addon = 'current'; args = 'd3d11 fixed upgraded'; encoding = 0; plugins_dir = $true; no_plugins = '1'
+                                 lines = @($identity, $mapped, $switchedOff) + $upgraded; forbid = @('engine plugin not installed', 'but not loaded') }
+$table['plugin_plain_empty'] = @{ addon = 'current'; args = 'd3d11 fixed upgraded plain_empty'; encoding = 0; plugins_dir = $true
+                                  lines = @($identity, $mapped, $switchedOff) + $upgraded; forbid = @('engine plugin not installed', 'but not loaded') }
 $table['C1_1320'] = @{ addon = 'none'; args = 'd3d11 1320 plain'; encoding = 0; lines = @() }
 $table['C1_fixed'] = @{ addon = 'none'; args = 'd3d11 fixed plain'; encoding = 0; lines = @() }
 $table['C2_hdr10_1320'] = @{ addon = 'c2'; args = 'd3d11 1320 broken'; encoding = 0; lines = @() }
@@ -128,8 +143,13 @@ foreach ($name in $Cases) {
   $addonPath = $addons[$case.addon]
   if ($addonPath -ne '') { Copy-Item -LiteralPath $addonPath -Destination (Join-Path $dir 'renodx-twattila.addon64') }
   if ($case.plugin) { Copy-Item -LiteralPath (Join-Path $binDir 'renodx_attila64.dll') -Destination $dir }
+  if ($case.plugins_dir) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $dir 'plugins') | Out-Null
+    Copy-Item -LiteralPath (Join-Path $binDir 'renodx_attila64.dll') -Destination (Join-Path $dir 'plugins')
+  }
   $env:RENODX_F7_PLUGIN = $case.plugin
   $env:RENODX_TW_PLUGIN_WANT = $case.want
+  $env:ATTILA_NO_PLUGINS = $case.no_plugins
   # A fresh ini: no LoadFromDllMain key, the tutorial done (no splash), the add-on's output rows explicit.
   @(
     '[ADDON]', 'DisabledAddons=', '[GENERAL]', 'EffectSearchPaths=', 'TextureSearchPaths=', 'PresetPath=.\ReShadePreset.ini',

@@ -109,7 +109,7 @@ int wmain(int argc, wchar_t** argv) {
     Expect(CheckSite(moved, FOREIGN).refusal != REFUSAL_NONE, "control: the site moved by one");
 
     AppliedSite applied;
-    Expect(ApplySite(api, site, REPLACEMENTS[site.row], &applied) == REFUSAL_NONE, "the fake loader hooks the site");
+    Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE, "the fake loader hooks the site");
     Expect(*at(site.address) == 0xe9 && SiteUnchanged(site, applied), "the site jumps to the hook, snapshot matches");
     std::memcpy(at(site.address), site.window.data() + SITE_MARGIN, site.length);
     Expect(CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the site restored");

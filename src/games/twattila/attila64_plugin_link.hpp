@@ -11,9 +11,11 @@
 #include <atomic>
 #include <charconv>
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <mutex>
 #include <shared_mutex>
+#include <system_error>
 #include <utility>
 
 #include "../../utils/log.hpp"
@@ -38,6 +40,8 @@ enum class Found : uint8_t {
   WRONG_GAME,     // another game build
   WRONG_LOADER,   // another loader version (a plugin it never started included)
   OTHER_VERSION,  // a block this add-on does not read
+  PLUGINS_OFF,    // not loaded: ATTILA_NO_PLUGINS or ATTILA_PLAIN is set (the loader then loads no plugin)
+  NOT_LOADED,     // in <exe dir>\plugins\ but not loaded (the loader's log says why)
 };
 
 namespace internal {
@@ -137,6 +141,20 @@ inline uint32_t RowsOffered() {
   return internal::block->rows_applied & ~internal::block->rows_changed.load(std::memory_order_relaxed);
 }
 
+// With Result() READY: the block has v2's fields. A v1 block (an older plugin) offers its v1 rows only.
+inline bool BlockV2() {
+  return internal::block->version >= 2 && internal::block->bytes >= internal::plugin::BlockBytes(2);
+}
+
+// With Result() READY and BlockV2(): a row this add-on knows that the plugin tried but does not offer (its site
+// refused, or changed after it). Rows switched off in the ini are not tried. The CPU row is left out: refused, its rows
+// hide, and the plugin's log says why.
+inline bool RowsNotOffered() {
+  namespace plugin = internal::plugin;
+  constexpr uint32_t KNOWN_ROWS = ((1u << plugin::ROW_COUNT) - 1u) & ~plugin::RowBit(plugin::ROW_CPU_PLACEMENT);
+  return (internal::block->rows_tried & KNOWN_ROWS & ~RowsOffered()) != 0;
+}
+
 // At each init_device until READY, final at the first present (`last`): the loader loads its plugins before the game's
 // code runs, before the game's device. READY installs shadow_pass before the result is published, so no present's
 // Update runs before the install is complete.
@@ -147,7 +165,8 @@ inline void Lookup(bool last) {
   Found outcome = Found::NOT_INSTALLED;
   const char* outcome_text = "not installed";
   plugin::Block* found_block = nullptr;
-  if (const HMODULE module = GetModuleHandleW(plugin::MODULE_NAME); module != nullptr) {
+  const HMODULE module = GetModuleHandleW(plugin::MODULE_NAME);
+  if (module != nullptr) {
     const auto block_export = reinterpret_cast<plugin::BlockExportFn>(GetProcAddress(module, plugin::BLOCK_EXPORT));
     found_block = (block_export != nullptr ? block_export() : nullptr);
     outcome = Found::OTHER_VERSION;
@@ -182,10 +201,30 @@ inline void Lookup(bool last) {
     }
   }
   if (outcome != Found::READY && !last) return;
+  if (module == nullptr) {
+    // The loader loads no plugin while either variable is set, even to nothing (it tests getenv for non-null): the
+    // size query is 0 only for a variable that is not there.
+    std::array<wchar_t, MAX_PATH> exe_path = {};
+    const DWORD exe_length = GetModuleFileNameW(nullptr, exe_path.data(), static_cast<DWORD>(exe_path.size()));
+    std::error_code error;
+    if (GetEnvironmentVariableW(L"ATTILA_NO_PLUGINS", nullptr, 0) != 0
+        || GetEnvironmentVariableW(L"ATTILA_PLAIN", nullptr, 0) != 0) {
+      outcome = Found::PLUGINS_OFF;
+      outcome_text = "not loaded: plugins switched off (ATTILA_NO_PLUGINS / ATTILA_PLAIN)";
+    } else if (exe_length != 0 && exe_length < exe_path.size()
+               && std::filesystem::exists(
+                   std::filesystem::path(exe_path.data()).parent_path() / L"plugins" / plugin::MODULE_NAME, error)) {
+      outcome = Found::NOT_LOADED;
+      outcome_text = "in plugins\\ but not loaded (attila64_log.txt says why)";
+    }
+  }
   uint32_t rows = 0;
   if (outcome == Found::READY) {
     internal::block = found_block;
     rows = RowsOffered();
+    if (!BlockV2()) {
+      outcome_text = "ready (block v1: an older plugin, its first rows only)";
+    }
     std::array<char, 16> value = {};
     const DWORD length =
         GetEnvironmentVariableA("RENODX_TW_PLUGIN_WANT", value.data(), static_cast<DWORD>(value.size()));
@@ -197,6 +236,11 @@ inline void Lookup(bool last) {
   internal::found.store(outcome, std::memory_order_release);
   renodx::utils::log::i(
       std::format("[Total War] 64-bit Attila: engine plugin {}, rows offered {:#x}", outcome_text, rows));
+  // Its own line: the start checks read the line above to its end.
+  if (outcome == Found::READY && BlockV2()) {
+    renodx::utils::log::i(
+        std::format("[Total War] 64-bit Attila: engine plugin rows tried {:#x}", found_block->rows_tried));
+  }
   if (internal::test_wanted != 0) {
     renodx::utils::log::i(std::format(
         "[Total War] 64-bit Attila: rows {:#x} wanted from RENODX_TW_PLUGIN_WANT (tests only)", internal::test_wanted));
