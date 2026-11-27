@@ -1033,7 +1033,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | c8f_ / p8bf_ -> coord (map edits, then implementers)
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8bf_ / p6f_ -> coord (map edits, then implementers)
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
@@ -18147,8 +18147,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         S-C shows nothing); ep8 + WPR data line run / skip; T11 kill numbers later; PK9 S-A #2 + fallback in 1.3.28 form (his
         yes was 1.3.20); the Automatic start (+2 arms); the conditional WPR start without asking again; the spin check now or
         later; a refused row's READY note A (none, recommended) / B; a core floor for Automatic on small PCs (e.g. MIN_CORES 8)
-        or none; send the refreshed Sol note now / later; the default after the soak. Owner: c8f_ / p8bf_ -> coord (map edits,
-        then implementers)
+        or none; send the refreshed Sol note now / later; the default after the soak. c8f_ DONE 11-27 (c8_wave2_plan.md + pk1_uploads_64.md Rev 2; all shoulds, 2 declined with reasons): C8-M1 Task Waits =
+        exactly 'fast' (S28 picker.c:180-187), new 8.4 cases, row shown only on loader >= 1.3.24 (ModuleFileVersion,
+        $FAST_FROM); C8-M2 SOLCAP in W1p + W1a ('Loader Frame Cap (restart)', default Off): SetEnvironmentVariableA + the exe's
+        own UCRT _putenv + getenv read-back (the plugin is /MT; both exes import the UCRT environment dll), a player's own
+        ATTILA_FPS_CAP wins; pass = SOLCAP log line + a PresentMon menu stretch (Off > 250 fps, On <= 245; gfx_vsync false);
+        X-M1 every line in 1.3.28 form, depends on PK6-64; X-M2 new E4b0 step (coord or L2B W4) before any -EnginePlugin start
+        on a B0+ DLL, table 5.1 per DLL (B0 0x3 / 2 ... final E6 0x3ff, E5 17 + PK2P's); P1-M1 K4 after rri_'s merge, re-proves
+        'identical by construction' on rri_'s JitterCamera first. Steps C8: W1p / W2p / W3p / W4p Fable 5.2 Medium (75 / 90 / 90
+        / 90), W1a / N1 / W2a..W4a / T0 / CP Opus High; plugin lane ~345 min, add-on lane ~175; PK1 K1-K4 Opus High. ATN: the
+        two 1.3.28 -C2 rule lines; the -PerfFix Smoke pair only for the optional start; the CPU Set Setter rule for
+        run_rs_pkg_580efafeb5765d81\attila64.exe (w3 too); w3t only if asked; the CPU page answer gates CP. p6f_ (PK6-64, Opus
+        xHigh, the LAST fix round: owns every new a64_ab kind / check, collects ALL rule lines de-duplicated) STARTED 08:4x from
+        coord's p6f_inputs.md; Stage B's final lines sent when p8bf_ lands. Owner: p8bf_ / p6f_ -> coord (map edits, then
+        implementers)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
