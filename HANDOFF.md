@@ -17716,6 +17716,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         new build. NEXT (11-27 wave, analysis Opus xHigh, no GPU first): what in sdku_omm_dxc changes the path-tracing pass (DXC
         DXIL old vs new for the PT shaders; omm-lib 1.12's OMM layout vs traversal) + why sky_apart's pass labels moved; then fix
         or ATN's call (accept ~+0.7-0.8 % on these 2 PT modes for 1.12). G3 (grass recordings) stays PASS (same speed there). Owner: 11-27 analyst -> ATN
+        - [ ] 11-27 06:01 WAVE (coord; no agent cap; Fable only for PK8 Stage B). GPU plan: omx_ (OMM 1.12 PT slowdown cause,
+        Opus xHigh, no GPU first), rrd_ (Denoise Before Tone Mapping below 100 % design -> round_notes\designs\
+        rr_before_tonemap_below100.md), aaf3_ (FSR / XeSS feed at 4K), pdf_ (pdi4c_ follow-up boxes, branch pdf_1127), sssf_
+        (SSS test flake, branch ssst_1127), ndc_ (nothing-dropped audit, read-only), tolerance and guard constants round
+        (tune_1127a). CPU plan: c8b0_ (C8 B0 + B0a, branch c8b0_1127, first writer, no game runs), pk8b_ (PK8 Stage B design,
+        Fable 5.2 xHigh -> round_notes\attila64\designs\pk8_stage_b_design.md). Hand-backs: testbin\scratch\<prefix>\
+        handback.md. Next CPU writer after c8b0_: L2B W2 (binding order, cpu_plan_64_map.md 3.3). Owner: coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
