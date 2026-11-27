@@ -1339,6 +1339,18 @@ constexpr std::array<const char*, twattila::attila64_plugin::CORE_STATE_COUNT> C
 };
 static_assert(std::ranges::find(CORE_STATE_TEXTS, nullptr) == CORE_STATE_TEXTS.end(), "a text for every CoreState");
 
+// Faster Battle Step's status line on the port, after "Battle step: ", by its lane's EngineState (src: PK8 F1 item 7,
+// one table indexed by EngineState; the texts 11.1's). State 0 (not built) hides the row.
+constexpr std::array<const char*, twattila::attila64_plugin::ENGINE_CODE_DIFFERS + 1> BATTLE_STEP_TEXTS = {
+    "",                                                            // not built
+    "not used yet",                                                // ENGINE_NOT_USED_YET
+    "active",                                                      // ENGINE_ACTIVE
+    "partly (some battle data is new to it: normal speed there)",  // ENGINE_PARTLY
+    "off",                                                         // ENGINE_OFF
+    "off (ini)",                                                   // ENGINE_OFF_INI
+    "off (game code differs)",                                     // ENGINE_CODE_DIFFERS
+};
+
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
 // pass (whose replacement is the game's code only).
 constexpr std::array<twattila::ao_pass::AmbientOcclusionDraw, 1> AO_DRAWS = {{
@@ -1681,8 +1693,10 @@ float effects_on_all_cores_row = 0.f;
 // (attila64_plugin_link::Update). Its default is the plugin's (PK8 11.1: On once S-C passes and ATN says so, Q1).
 constexpr float FASTER_BATTLE_STEP_DEFAULT = (twattila::attila64_plugin_link::BATTLE_STEP_DEFAULT ? 1.f : 0.f);
 float faster_battle_step_row = FASTER_BATTLE_STEP_DEFAULT;
-// deviation: from PK8 11.1, which gives no state before S-C, because PK2P P1a's form applies until then: the row and
-// its status line show only once S-C measured it (true: a release step), and the add-on writes the plugin's default.
+// src: PK8 F1 item 4 (:228-229): CORE_WANTED_DEFAULT holds CORE_STEP for the S-C build, kept at the release only if
+// S-C passes and ATN says on (Q1). deviation: from PK8 11.1, which shows the row, because PK2P P1a's form hides it
+// until then: the row and its status line show only once S-C measured it (true: a release step), and the add-on
+// writes the plugin's default.
 constexpr bool BATTLE_STEP_ROW_MEASURED = false;
 // Loader Frame Cap (the port only, off: ATN 11-26): the 64-bit loader's 240 fps cap at the next start, through the
 // engine plugin (attila64_plugin_link::MirrorRestartValues).
@@ -3619,9 +3633,9 @@ void ConfigureAddon() {
                  && (PLUGIN_READY_FORCED || twattila::attila64_plugin_link::EffectsSlotOk());
         },
     });
-    // Faster Battle Step (PK8 11.1) and its status line, live, while the plugin built the row's lane (0: not built), once
-    // S-C measured it. The toggle hides while the row cannot run (BattleStep=0 in the ini, or the game's code differs);
-    // its line says why. The graphics preset buttons leave the row alone (not a look setting).
+    // Faster Battle Step (PK8 11.1) and its status line, live, while the plugin built the row's lane (0: not built),
+    // once S-C measured it. The toggle hides while the row cannot run (BattleStep=0 in the ini, or the game's code
+    // differs); its line says why. The graphics preset buttons leave the row alone (not a look setting).
     const auto battle_step_shown = [] {
       return BATTLE_STEP_ROW_MEASURED
              && twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY
@@ -3641,8 +3655,8 @@ void ConfigureAddon() {
                 .labels = {"Off", "On"},
                 .is_visible = [battle_step_shown] {
                   const uint32_t state = twattila::attila64_plugin_link::BattleStepState();
-                  return battle_step_shown() && GameCodeRowShown(PluginRow::BATTLE_STEP) && state != plugin::ENGINE_OFF_INI
-                         && state != plugin::ENGINE_CODE_DIFFERS;
+                  return battle_step_shown() && GameCodeRowShown(PluginRow::BATTLE_STEP)
+                         && state != plugin::ENGINE_OFF_INI && state != plugin::ENGINE_CODE_DIFFERS;
                 },
             },
             new renodx::utils::settings::Setting{
@@ -3650,33 +3664,15 @@ void ConfigureAddon() {
                 .section = CPU_SECTION,
                 .on_draw = [] {
                   const uint32_t state = twattila::attila64_plugin_link::BattleStepState();
-                  const char* text = nullptr;
-                  switch (state) {
-                    case plugin::ENGINE_NOT_USED_YET:
-                      text = "not used yet";
-                      break;
-                    case plugin::ENGINE_ACTIVE:
-                      text = "active";
-                      break;
-                    case plugin::ENGINE_PARTLY:
-                      text = "partly (some battle data is new to it: normal speed there)";
-                      break;
-                    case plugin::ENGINE_OFF:
-                      text = "off";
-                      break;
-                    case plugin::ENGINE_OFF_INI:
-                      text = "off (ini)";
-                      break;
-                    case plugin::ENGINE_CODE_DIFFERS:
-                      text = "off (game code differs)";
-                      break;
-                    // 0 (not built) or a state appended by a newer plugin: no line.
-                    default:
-                      return false;
-                  }
-                  // The plugin changes its lane at the hook's next call: the row's Off reads off at once.
+                  // 0 (not built) or a state appended by a newer plugin: no line.
+                  if (state == 0 || state >= BATTLE_STEP_TEXTS.size()) return false;
+                  const char* text = BATTLE_STEP_TEXTS[state];
+                  // The plugin changes its lane at the hook's next call: the row's Off reads off at once, its On
+                  // as the plugin's next state (OFF -> NOT_USED_YET).
                   if (faster_battle_step_row == 0.f && state < plugin::ENGINE_OFF) {
-                    text = "off";
+                    text = BATTLE_STEP_TEXTS[plugin::ENGINE_OFF];
+                  } else if (faster_battle_step_row != 0.f && state == plugin::ENGINE_OFF) {
+                    text = BATTLE_STEP_TEXTS[plugin::ENGINE_NOT_USED_YET];
                   }
                   ImGui::TextWrapped("Battle step: %s", text);
                   return false;
