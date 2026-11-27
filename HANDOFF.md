@@ -17970,7 +17970,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         VRAM ladder section; 4K gates, fix waves first. Two prior-art items from memory (marked unverified). The v2.8
         refresh (design only, no GPU): ATN 18:29 'run the v2.8 design with fable xhigh ... You can do it now. But don't
         implement it after' -> upt28_ (Fable 5.2 xHigh, design only) STARTED 18:29 (unified_pt.md v2.8 in place, backup
-        .before_v28); NO implementation after it until ATN says. ATN's answers: Q3 / Q4 / Q6 / Q8-Q11 = the picks; Q7
+        .before_v28); implementation AFTER the CPU plan (ATN 18:3x: 'we implement it after the cpu plan. Just not now'). ATN's answers: Q3 / Q4 / Q6 / Q8-Q11 = the picks; Q7
         froxel volume = a harness arm on 4K numbers, a tie decided on ATN's burning-city replay; Q1 (ReSTIR off under RR),
         Q2 (3-of-4 sub-sampling), Q5 (pbrt-v4) = ATN open (his follow-up questions answered in chat 18:29). Owner:
         coord
