@@ -135,7 +135,7 @@ void DiCurrentClear(uint index) {
   di_current_of[index + 64u] = 0xFFFFFFFFu;
 }
 void DiCurrentBuild(uint index) {
-  // guard inert: a light_count past b4's 128 lights; proof pending S5G; trace HARNESS_LIGHT_STRESS=125 (128 lights).
+  // guard inert: a light_count past b4's 128 lights; proof pdf_1127-S5G (every b4 count is CopyLights' SharedLightCount, at most RT_ALL_LIGHTS = 128, or the upload heap's zeroed start); trace HARNESS_LIGHT_STRESS=125 (128 lights).
   const uint count = min(light_count, 128u);
   [unroll]
   for (uint pair = 0u; pair < 2u; ++pair) {

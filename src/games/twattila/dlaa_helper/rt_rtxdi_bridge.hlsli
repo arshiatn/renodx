@@ -84,7 +84,7 @@ RAB_LightSample RAB_EmptyLightSample() {
 // src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:160 RAB_SamplePolymorphicLight.
 RAB_LightSample RAB_SamplePolymorphicLight(RAB_LightInfo light, RAB_Surface surface, float2 uv) {
   RAB_LightSample light_sample = RAB_EmptyLightSample();
-  // guard inert: a light_count past b4's 128 lights; proof pending S5G; trace HARNESS_LIGHT_STRESS=125 (128 lights).
+  // guard inert: a light_count past b4's 128 lights; proof pdf_1127-S5G (rt_di_surface.hlsli DiCurrentBuild's); trace HARNESS_LIGHT_STRESS=125 (128 lights).
   if (light.index < min(light_count, 128u)) {
     light_sample.position = lights[light.index].xyz;
     if (!(light_size <= 0.f) && (flags & RECONSTRUCTED) != 0u) {
@@ -118,7 +118,10 @@ float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample light_sample, RAB_Su
   // light keeps the game's unshadowed light.
   if (light_sample.light >= 128u || SetBit(surface.members, light_sample.light) == 0u) return 0.f;
   const float target = Luminance(DiLight(surface.texel, surface.position, light_sample.light));
-  return (target > 0.f) ? target : 0.f;  // guard output: a light at the surface's point (d = 0) gives NaN, read 0; box S10
+  // guard inert: a NaN target, only from a non-finite colour the addon sends (inf x 0): at d = 0 DiLight is 0, not NaN
+  // (its NaN direction meets max / saturate, which return the other operand / 0: spec:dxspecs@ba0b51c:d3d/archive/D3D11_3_FunctionalSpec.htm:442, :28865);
+  // proof pdf_1127-W4-7 (W4 part 7 passes with and without it); trace W4 part 7.
+  return (target > 0.f) ? target : 0.f;
 }
 #else
 float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample light_sample, RAB_Surface surface) { return 0.f; }
