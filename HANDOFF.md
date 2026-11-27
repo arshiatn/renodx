@@ -18428,7 +18428,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         9eeb9f82, backups .bak_rts1_ + .bak_coord_rts1_, parse 0); fresh -C2 smoke STARTED 00:32 (all agents done).
         [ ] RT S1 follow-up (owner: rts1_ resumed after the sprite gate, before any -R1 / -R2 start): crts1_ S1 (16
         hashes + comment), S2 coord: the stop needs top <= 1.00 x paper white, 1.00-1.02 x = info 'ATN's look'; NITs.
-        For ATN: rays arms before S5a may fail the 'pass kind N' item = data, not a tool fault. rrts2_ (Opus xHigh, 9 min;
+        For ATN: rays arms before S5a may fail the 'pass kind N' item = data, not a tool fault.
+        -C2 smoke 20261128_003123_Smoke on 9eeb9f82: both starts PASS, smoke_pass true (E64-sr2 + E64-mv), item 6 on
+        E64-mv: 0x5F9CD405 / 0x0ECFE74C / 0xDAC80ECC drawn, 0xC2AA8FDA 'not drawn, 32-bit 0 of 21 too (info)' (X6
+        works), 14 CPU sets each, clean exits, 0 WER. Sprite gate dry run: self-test ok for every arm. SPRITE GATE
+        (spr0,spr1 x3, -ReShade -PerfFix -EnginePlugin -Probe full) STARTED 00:39 (~56 min), then the MSAA start. rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
