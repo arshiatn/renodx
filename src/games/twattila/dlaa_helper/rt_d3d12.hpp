@@ -8698,6 +8698,8 @@ class RtScene12 {
           std::memcpy(write.transform, want.transform.data(), sizeof(write.transform));
           write.instanceID = want.id;
           write.instanceMask = want.mask;
+          // "Identical to InstanceContributionToHitGroupIndex" (nvapi.h:21319): the TLAS desc's, the place itself (AddInstance).
+          write.instanceContributionToHitGroupIndex = at;
           write.instanceFlags = want.flags;
           write.accelerationStructure = want.blas;
           written = want;

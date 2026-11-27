@@ -183,9 +183,11 @@ void main(uint3 id : SV_DispatchThreadID) {
   const uint at = ARGUMENTS + written * ARGUMENT_BYTES;
   if (slot < active_now) {
     // transform: "Identical to Transform in D3D12_RAYTRACING_INSTANCE_DESC" (nvapi.h:21315); userAABB 0, ignored without
-    // ENABLE_EXPLICIT_AABB (:21316); InstanceID and mask as the desc's (:21318-21319); no hit group contribution (the
-    // shaders read InstanceID only); flags: CULL_DISABLE and the desc's FORCE_OPAQUE (the CPU's mapping); the BLAS
-    // (rt_place already cleared its flag bits).
+    // ENABLE_EXPLICIT_AABB (:21316); InstanceID and mask as the desc's (:21318-21319); hit group contribution 0, not the
+    // desc's (:21320): there it is rt_place's frame drawn (rt_place.cs_6_5.hlsl:16-17), new for a drawn instance each
+    // frame, which MARK leaves out (a write each frame otherwise) and no shader reads from the scene (the first-hit probe
+    // alone prints it; compare_probe.py skips it at placed slots); flags: CULL_DISABLE and the desc's FORCE_OPAQUE (the
+    // CPU's mapping); the BLAS (rt_place already cleared its flag bits).
     const uint now_at = (first_instance + slot) * 64u;
     const uint4 tail = instances_written.Load4(now_at + 48u);
     operations.Store4(at, instances_written.Load4(now_at));
