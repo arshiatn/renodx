@@ -1029,6 +1029,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW OF THE 64-BIT DESIGNS (cpu_plan_64_map.md 6 items 7 / 12: after Stag ... | lr1_
 - LAST REVIEW OF THE 64-BIT DESIGNS (cpu_plan_64_map.md 6 items 7 / 12: after Stag ... | ?
 - AA FEED AT 67 % IN THE SCENE PATH (aaf3_): the harness scene path renders and ev ... | next harness writer (after rri_ / the m1 implementer)
+- LAST REVIEW lr2_ DONE (attila64\designs\last_review_c8w2_pk6_pk1.md): C8 wave 2 ... | design fix rounds (after lr1_ / lr3_ / lr4_ / lr5_) -> coord
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17973,6 +17974,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         (tw_rt_harness.cpp ~4026; HARNESS_RR_SCALE only in the switch test), so aaf_'s columns exist at 100 % only; a 67 % arm
         needs: colour rendered + jitter-sampled at the input size, Evaluate given that size, the camera matrix passed for FSR
         (zero today when HARNESS_SR > 0). Owner: next harness writer (after rri_ / the m1 implementer)
+        - [ ] LAST REVIEW lr2_ DONE (attila64\designs\last_review_c8w2_pk6_pk1.md): C8 wave 2 / PK6-64 / PK1-64 all GO WITH
+        CHANGES (B0 / B0a match plan 2.1 / 2.3 field by field). MUSTs: X-M1 every planned a64_ab batch line runs the 1.3.20 exe
+        ($PKG = run_1320 a64_ab:58, -C2 refuses -Package :121, -ReShade takes one of -PerfFix / -Package :97-99) -> PK6 opens
+        -Package for -C2 and -ReShade -PerfFix (new rule lines = ATN; CPU Set Setter rule for
+        run_rs_pkg_580efafeb5765d81\attila64.exe = coord may add); X-M2 a64_ab E4 / E5 (:1932) / E6 (:1938-1941) break at the
+        next -EnginePlugin start on a B0 plugin -> B0's E4 pattern in before any such start, then PK6 reads E4-E6 from the
+        start's own log; C8-M1 Task Waits row backwards on 1.3.28 (picker.c:180-187 spins only for exactly 'fast') -> fix the
+        reader, tests (c8 :830 / :894-895 / :902), pending note, loader gate >= 1.3.24; C8-M2 SOLCAP has no wave and its env
+        path can't work (the plugin is /MT, build.ps1:19) -> W1p + W1a, the exe's own runtime via GetProcAddress +
+        SetEnvironmentVariableA, a menu fps > 240 pass line; P6-M1 the golden gate is pinned to the 11-25 1.3.20 dump (pk6 :123)
+        -> a 1.3.28 golden or an X-pair compare across loader builds; P1-M1 anti_aliasing.hpp row now 'F5 G18 / G20 -> rri_ ->
+        PK1 N1' (coord fixed map 3.3 11-27). Models: W1p..W4p = engine changes (Fable 5.2 Medium); W1a..W4a, N1, CP, T0, all
+        PK6, PK1 K1-K4 = Opus High. Shoulds: 1.3.28 FOREIGN / W0 re-check, the OpenGL choice README line, PLUGIN_VERSION '1' vs
+        the pass line's '2:', GRASS scale numbers, c8 :675 125 / 127 / 130, PK6 noise / PDB / offsets on 1.3.28, one placement
+        owner per start, absorb the fast / fastl2b kinds; anchor by text. Owner: design fix rounds (after lr1_ / lr3_ / lr4_ /
+        lr5_) -> coord
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
