@@ -638,7 +638,7 @@ int main(int argc, char** argv) {
       };
       float live_value = 2.f;
       float wrong_kind_value = 1.f;
-      std::array<plugin::TweakSlot, 6> slots = {
+      std::array<plugin::TweakSlot, 8> slots = {
           plugin::TweakSlot{.name = "LIVE_FLOAT", .value_address = reinterpret_cast<uintptr_t>(&live_value),
                             .default_bits = std::bit_cast<uint32_t>(2.f), .written_bits = std::bit_cast<uint32_t>(2.f),
                             .type = plugin::TWEAK_FLOAT, .verdict = plugin::VERDICT_OK},
@@ -652,6 +652,10 @@ int main(int argc, char** argv) {
           plugin::TweakSlot{.name = "SOUND_DEFAULT_BUFFER_LOW_RATIO", .default_bits = 0x3f666666,
                             .written_bits = 0x3f666666, .type = plugin::TWEAK_FLOAT, .verdict = plugin::VERDICT_OK,
                             .restart_only = 1, .restart_state = plugin::RESTART_APPLIED},
+          plugin::TweakSlot{.name = "CHANGED_TWO", .type = plugin::TWEAK_FLOAT, .verdict = plugin::VERDICT_CHANGED},
+          // A restart-only value of another type than this add-on's range for it.
+          plugin::TweakSlot{.name = "SOUND_LOWER_ENGINE_DEFAULT_BUFFER_SIZE_IN_KB", .type = plugin::TWEAK_INT,
+                            .verdict = plugin::VERDICT_OK, .restart_only = 1, .restart_state = plugin::RESTART_APPLIED},
       };
       plugin::TweakSlot& memory_slot = slots[4];
       tw::engine_tweaks::Option live = {.scale = 1.5f, .tweaks = {{.name = "LIVE_FLOAT"}}};
@@ -660,7 +664,11 @@ int main(int argc, char** argv) {
       tw::engine_tweaks::Option memory = {.scale = 2.f,
                                           .tweaks = {{.name = "SOUND_DEFAULT_BUFFER_SIZE_IN_KB", .integer = true}}};
       tw::engine_tweaks::Option ratio = {.tweaks = {{.name = "SOUND_DEFAULT_BUFFER_LOW_RATIO"}}};
-      std::array<tw::engine_tweaks::Option*, 4> options = {&live, &others, &memory, &ratio};
+      // Two values, one refused: neither applied (the row hides).
+      tw::engine_tweaks::Option half = {.scale = 2.f, .tweaks = {{.name = "LIVE_FLOAT"}, {.name = "CHANGED_TWO"}}};
+      tw::engine_tweaks::Option lower = {
+          .tweaks = {{.name = "SOUND_LOWER_ENGINE_DEFAULT_BUFFER_SIZE_IN_KB", .integer = true}}};
+      std::array<tw::engine_tweaks::Option*, 6> options = {&live, &others, &memory, &ratio, &half, &lower};
       bool values_found = true;  // the add-on's graphics_found after FindTweaks: Update only applies
       renodx::utils::settings::Setting values_status;
       const auto present = [&](bool loader_frame_cap) {
@@ -682,9 +690,12 @@ int main(int argc, char** argv) {
       CHECK(link::FindTweaks(options) && link::TweaksFound());
       CHECK(live.tweaks[0].value == &live_value && memory.tweaks[0].value != nullptr
             && *static_cast<const uint32_t*>(memory.tweaks[0].value) == 0x5da4 && ratio.tweaks[0].value != nullptr
-            && std::ranges::all_of(others.tweaks, [](const auto& tweak) { return tweak.value == nullptr; }));
+            && std::ranges::all_of(others.tweaks, [](const auto& tweak) { return tweak.value == nullptr; })
+            && half.tweaks[0].value == nullptr && half.tweaks[1].value == nullptr && lower.tweaks[0].value == nullptr);
       CHECK(link::OptionsRefused() && logged.size() == 1
-            && lines("engine options not turned on: rows 0x0, values CHANGED_ONE, WRONG_KIND") == 1);
+            && lines("engine options not turned on: rows 0x0, values CHANGED_ONE, WRONG_KIND, CHANGED_TWO, "
+                     "SOUND_LOWER_ENGINE_DEFAULT_BUFFER_SIZE_IN_KB")
+                   == 1);
       // The values: live scaled in the game's memory, the restart cell scaled; the mirror writes the changed key only,
       // one line, the frame cap key absent and off (no write).
       logged.clear();
@@ -790,7 +801,8 @@ int main(int argc, char** argv) {
       CHECK(link::Result() == link::Found::PENDING && !link::FindTweaks(options));
       std::printf(
           "7d engine values: pending check not found; live and restart values matched (absent / changed / wrong type "
-          "/ unlisted none, the refused named once); the mirror writes a changed key once with one line, clamped (top, "
+          "/ unlisted / a range of another type none, the refused named once; an option with one refused: none of "
+          "its values, nothing applied);the mirror writes a changed key once with one line, clamped (top, "
           "NaN low, float top); plan 2.3's four pending cases; Loader Frame Cap pending / not pending; a bad key "
           "rewritten; Tweaks=0 and a v1 block without values; Uninstall resets\n");
     }

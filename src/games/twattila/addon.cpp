@@ -1631,6 +1631,8 @@ float keep_battle_core_row = KEEP_BATTLE_CORE_DEFAULT;
 // Loader Frame Cap (the port only, off: ATN 11-26): the 64-bit loader's 240 fps cap at the next start, through the
 // engine plugin (attila64_plugin_link::MirrorRestartValues).
 float loader_frame_cap_row = 0.f;
+// The restart notes' text: UI 4K Mod Compatibility's, and the port's audio and Loader Frame Cap notes.
+constexpr const char* RESTART_NOW = "Restart the game now to apply this!";
 // Parallel Effect Update (Experimental, off): effect_update.hpp, the game's effect update on the worker pool. Parallel Effect Spawns
 // (off, needs the row above): its particle spawns on the pool too. Cached Particle Count (off): engine_code.hpp's visible particle sum
 // once per update of a node instead of once per view.
@@ -2526,8 +2528,11 @@ void ConfigureAddon() {
                         {"GraphicsBuildingDetail", 4.f}});
   vanilla_units.insert(vanilla_units.end(), atn_settings.begin(), atn_settings.end());
   auto* note = tw::engine_tweaks::Note();
-  note->label += " Some apply only after loading a battle or a save.\n"
-                 "The two presets below are the settings I would use myself.";
+  // The port: its first sentence alone while the preset buttons are hidden.
+  if constexpr (!ATTILA64) {
+    note->label += " Some apply only after loading a battle or a save.\n"
+                   "The two presets below are the settings I would use myself.";
+  }
   const auto unit_distance = [](size_t index, const std::string& key, const std::string& label,
                                 const std::string& units) {
     return tw::engine_tweaks::Slider(&unit_detail[index], key, label,
@@ -2561,7 +2566,7 @@ void ConfigureAddon() {
         ImGui::SameLine();
         const bool restart_pending = (ui_mod_compatibility != 0) != shadow_size_locked;
         ImGui::TextColored(ImVec4(1.f, 0.31f, 0.31f, 1.f), "%s",
-                           (restart_pending ? "Restart the game now to apply this!" : "Changing this needs a game restart."));
+                           (restart_pending ? RESTART_NOW : "Changing this needs a game restart."));
         return false;
       },
   };
@@ -3025,7 +3030,11 @@ void ConfigureAddon() {
   auto* grass_dump_row = settings.back();
   // The port has no at-start writes (the plugin applies the audio values at the next start): its change callback does
   // nothing (Append's rows call it).
-  twattila::engine_tests::Append(&settings, &engine_tests, (ATTILA64 ? static_cast<void (*)()>([] {}) : &SyncEarlyLoad));
+  if constexpr (ATTILA64) {
+    twattila::engine_tests::Append(&settings, &engine_tests, [] {});
+  } else {
+    twattila::engine_tests::Append(&settings, &engine_tests, &SyncEarlyLoad);
+  }
 
   // Appended Settings (Ambient Occlusion, Global Illumination)
   twattila::lighting_settings::Append(&settings, &shader_injection, [] { return rt_sliders.light_bounce != 0.f && twattila::feature_settings::Upscaling(aa_sliders); });
@@ -3168,10 +3177,9 @@ void ConfigureAddon() {
     namespace plugin = twattila::attila64_plugin;
     // The game-code rows wait for the 64-bit engine plugin: wrapped (never replaced) before AssignPages wraps them in
     // turn, so a row the plugin brings back lands on its own page. Their keys stay: saved values come back with the rows.
-    // A row bound to an engine value option (the tests: TWEAKS) shows only once every value of it was found. The
-    // Experimental note stays hidden until the preset buttons it names show.
-    const std::array<const renodx::utils::settings::Setting*, 5> keyless_rows = {note, ui_mod_row, graphics_status,
-                                                                                 grass_trace_row, grass_dump_row};
+    // A row bound to an engine value option (the tests: TWEAKS) shows only once every value of it was found.
+    const std::array<const renodx::utils::settings::Setting*, 4> keyless_rows = {ui_mod_row, graphics_status, grass_trace_row,
+                                                                                 grass_dump_row};
     for (auto* setting : settings) {
       const auto entry = std::ranges::find_if(GAME_CODE_ROWS, [setting](const GameCodeRow& row) {
         return (!setting->key.empty() && setting->key == row.match) || (!setting->group.empty() && setting->group == row.match);
@@ -3198,20 +3206,22 @@ void ConfigureAddon() {
                && (own == nullptr || own());
       };
     }
-    // The tests' empty lines and their note: only while a test of their section shows (an all-hidden section draws no
-    // header; the grass section's own rows show without the plugin, its note as before not).
+    // The tests' empty lines and their note, and the Experimental note: only while a value row of their section shows
+    // (an all-hidden section draws no header; the grass section's own rows show without the plugin, its note as before
+    // not).
     for (auto* setting : settings) {
-      if (!setting->key.empty() || setting->value_type != renodx::utils::settings::SettingValueType::TEXT
-          || std::ranges::none_of(engine_tests, [setting](const twattila::engine_tests::EngineTest& test) {
-               return test.section == setting->section;
-             })) {
+      if (setting != note
+          && (!setting->key.empty() || setting->value_type != renodx::utils::settings::SettingValueType::TEXT
+              || std::ranges::none_of(engine_tests, [setting](const twattila::engine_tests::EngineTest& test) {
+                   return test.section == setting->section;
+                 }))) {
         continue;
       }
       std::vector<const renodx::utils::settings::Setting*> section_rows;
       std::ranges::copy_if(settings, std::back_inserter(section_rows), [setting](const renodx::utils::settings::Setting* other) {
         return other->section == setting->section
-               && std::ranges::any_of(engine_tests, [other](const twattila::engine_tests::EngineTest& test) {
-                    return other->binding == &test.option.scale;
+               && std::ranges::any_of(graphics_options, [other](const tw::engine_tweaks::Option* option) {
+                    return other->binding == &option->scale;
                   });
       });
       setting->is_visible = [section_rows = std::move(section_rows)] {
@@ -3228,7 +3238,7 @@ void ConfigureAddon() {
                                          }),
                     new renodx::utils::settings::Setting{
                         .value_type = renodx::utils::settings::SettingValueType::TEXT,
-                        .label = "Restart the game now to apply this!",
+                        .label = RESTART_NOW,
                         .section = twattila::engine_tests::AUDIO,
                         .tint = RESTART_TINT,
                         .is_visible = [] { return twattila::attila64_plugin_link::ValuesPending(); },
@@ -3250,14 +3260,14 @@ void ConfigureAddon() {
                             .default_value = 0.f,
                             .label = "Loader Frame Cap (restart)",
                             .section = frame_limit_section,
-                            .tooltip = "The 64-bit loader's own 240 fps cap. Off (default): for a cap, use Frame Rate Limit, or Reflex\n"
-                                       "with V-Sync in the driver and G-Sync. Your own ATTILA_FPS_CAP wins. Applies after a restart.",
+                            .tooltip = "The 64-bit loader's own 240 fps cap. Off: no loader cap; use V-Sync or a\n"
+                                       "frame limit instead. Applies after a restart.",
                             .labels = {"Off", "On"},
                             .is_visible = loader_frame_cap_shown,
                         },
                         new renodx::utils::settings::Setting{
                             .value_type = renodx::utils::settings::SettingValueType::TEXT,
-                            .label = "Restart the game now to apply this!",
+                            .label = RESTART_NOW,
                             .section = frame_limit_section,
                             .tint = RESTART_TINT,
                             .is_visible = [loader_frame_cap_shown] {
@@ -3464,12 +3474,10 @@ bool AttachAddon() {
 
   if constexpr (ATTILA64) {
     // The port writes no at-start test (the plugin reads the audio values at its init). A ReShade.ini carried over from
-    // the 32-bit game may still list the add-on in [ADDON] LoadFromDllMain: said once, left as it is.
-    static bool early_load_checked = false;
+    // the 32-bit game may still list the add-on in [ADDON] LoadFromDllMain: said at the attach, left as it is.
     std::array<char, 4096> listed = {};
     size_t listed_size = listed.size();
-    if (!std::exchange(early_load_checked, true)
-        && reshade::get_config_value(nullptr, "ADDON", "LoadFromDllMain", listed.data(), &listed_size)) {
+    if (reshade::get_config_value(nullptr, "ADDON", "LoadFromDllMain", listed.data(), &listed_size)) {
       std::array<wchar_t, MAX_PATH> addon_path = {};
       GetModuleFileNameW(addon_module_handle, addon_path.data(), static_cast<DWORD>(addon_path.size()));
       const std::string addon_file = std::filesystem::path(addon_path.data()).filename().string();

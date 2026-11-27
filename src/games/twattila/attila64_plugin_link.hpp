@@ -394,8 +394,8 @@ inline void Update(uint32_t rows_wanted, bool battle_core) {
 // Every present with Result() READY until it returns true (the loader's drawing thread, before the values' Update):
 // each Tweak of `options` gets the value the plugin checked, matched by name (whichever side is newer). Live: the game's
 // own value; restart-only: an add-on cell holding the game's default (the restart mirror's). Another verdict, another
-// type than the add-on writes, a range this add-on does not know, or a name the plugin does not list: no value, so its
-// row hides. False while the plugin's check is pending; true without values on a v1 block or with Tweaks=0.
+// type than the add-on writes, a range this add-on does not know, or a name the plugin does not list: no value, and then
+// none for its whole option (its row hides). False while the plugin's check is pending; true without values on a v1 block or with Tweaks=0.
 inline bool FindTweaks(std::span<tw::engine_tweaks::Option* const> options) {
   using internal::block;
   namespace plugin = internal::plugin;
@@ -426,7 +426,9 @@ inline bool FindTweaks(std::span<tw::engine_tweaks::Option* const> options) {
           return known.restart_only && tweak.name == known.name;
         });
       }
-      if (slot->verdict != plugin::VERDICT_OK || !same_type || (slot->restart_only != 0 && entry == plugin::TWEAKS.end())) {
+      // A restart-only value also needs this add-on's range for it, of the slot's type (the mirror clamps by it).
+      if (slot->verdict != plugin::VERDICT_OK || !same_type
+          || (slot->restart_only != 0 && (entry == plugin::TWEAKS.end() || entry->type != slot->type))) {
         refused += std::format("{}{}", (refused.empty() ? "" : ", "), tweak.name);
         continue;
       }
@@ -437,6 +439,13 @@ inline bool FindTweaks(std::span<tw::engine_tweaks::Option* const> options) {
       internal::RestartValue& restart = internal::restart_values[static_cast<size_t>(slot - slots.begin())];
       restart = {.bits = slot->default_bits, .slot = &*slot, .entry = &*entry};
       tweak.value = &restart.bits;
+    }
+    // An option missing a value gets none (its row hides): nothing applied part-way while the player cannot see it. Its
+    // restart cells keep the default.
+    if (std::ranges::any_of(option->tweaks, [](const tw::engine_tweaks::Tweak& tweak) { return tweak.value == nullptr; })) {
+      for (tw::engine_tweaks::Tweak& tweak : option->tweaks) {
+        tweak.value = nullptr;
+      }
     }
   }
   internal::tweaks_refused.store(!refused.empty(), std::memory_order_relaxed);
@@ -462,8 +471,11 @@ inline void MirrorRestartValues(bool sol_frame_cap) {
   const std::unique_lock lock(internal::mutex);
   if (internal::found.load(std::memory_order_relaxed) != Found::READY || !BlockV2()) return;
   bool pending = false;
+  // The cells of this READY's find only: Uninstall keeps the last ones (the add-on's detach still reads the Tweaks' values
+  // in them after it), so before the next find they are not walked.
+  const bool values_found = internal::tweaks_found.load(std::memory_order_relaxed);
   for (internal::RestartValue& restart : internal::restart_values) {
-    if (restart.slot == nullptr) continue;
+    if (!values_found || restart.slot == nullptr) continue;
     const uint32_t low = restart.entry->low_bits;
     const uint32_t high = restart.entry->high_bits;
     uint32_t bits = restart.bits;
