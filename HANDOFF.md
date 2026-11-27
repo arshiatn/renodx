@@ -1032,6 +1032,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr2_ DONE (attila64\designs\last_review_c8w2_pk6_pk1.md): C8 wave 2 ... | design fix rounds (after lr1_ / lr3_ / lr4_ / lr5_) -> coord
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2bw2_ -> L2B W3 / W4 writers
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
+- LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17916,7 +17917,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         64; rt_scene.hlsli + rt_trace.cs_6_5.hlsl, before S6), then S6 implementer (after pdf_ frees rt_d3d12.hpp + an addon.cpp
         slot). Owner: coord (after sms_).
         S1 numbers in (lsp3_, item 7 box): fog cap 2 stays on spheres, two-instance cost +0.5-5.9 %, parked radius-0 dead slot,
-        no flag change, PTLAS smoke out of S6; sent to smr_ 07:1x
+        no flag change, PTLAS smoke out of S6; sent to smr_ 07:1x.
+        S3 DONE (smr_ 11-27, designs\smoke_spheres_review.md): GO WITH CHANGES; model Q right as the default. MUSTs: skip cards
+        inside the backoff; the header clear must not overwrite room (rt_d3d12.hpp:464); instance B's InstanceID from the first
+        card, interleaved tails -> quads; harness rows shared by SMOKE_STRESS / FAR_CARDS + no changing-count switch -> a
+        harness edit slot in S6; BuildEx / PrebuildInfoEx failure -> quads in the same request; gates: a force switch for G1b /
+        G1(c), G1c bounded on pixels > 0.05. For ATN: real frames 0.90-1.17x trace, night1 build + trace ~0.8x, gain in game
+        unproven until S4; Round = darker, harder rims (tooltip fix). Fix round ssf_ (Opus xHigh, smoke_spheres.md only) + S5
+        scr_ (Opus High, scr_1127: rt_scene.hlsli + rt_trace.cs_6_5.hlsl, ATN YES 11-26, gate 4K capped vs uncapped) STARTED
+        07:3x
         - [ ] SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start in the game batch (recorder helper,
         constantinople_aa107f05.replay, cpl2's camera, Smoke Shadow Quality Maximum, DLAA 3840x2160, PTLAS off, 2-4 frames);
         needs a runner + review and ATN's rule line before he leaves 11-27 evening. RUNNER WRITTEN (sgr_ 11-27,
@@ -18030,6 +18039,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> proof before a main-only state ships; vfxauto + the A15 EffectsMode literal are in no PK6 table; a refused PK9 row
         raises READY's player note (link :154) = ATN's call; gen_plugin_sites.py:45 still reads src_1320 (l2bw2_'s W1 runs it on
         src_1328). Owner: design fix rounds (after lr4_ / lr5_) -> coord; ATN (the conditional arm, the READY note)
+        - [ ] LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Rev 1 GO WITH CHANGES (5 MUSTs);
+        shader_hash_64 GO (SAME holds on 1.3.28 and on our package); menu_stutter_1s GO WITH CHANGES (1 MUST); PK4-64 MOOT
+        CONFIRMED on 1.3.28 (main waits <= ~0.23 ms a frame vs the 1 ms reopen line; its section 4 = the map 6 item 9
+        paragraph); backup_32bit GO WITH CHANGES (1 MUST). MUSTs: RM1 R1-R3 run on 1.3.28 + fixes (-Package pkg_fixes
+        20261126_1617, exe 580efafe...), not run_rs_c64 (1.3.20); S1 lifts a64_ab's -ReShade -PerfFix + -Package refusal (:98,
+        :121); the 13 rule lines re-issued in that form. RM2 a crash stop rule for 1.3.28's filter (game-code crashes end in
+        ExitProcess(4) with no WER, loader.c:936-958): stop on a CRASH / FATAL line, a crash_report file or exit code 4; collect
+        the 'Windows DLL raised exception' lines that name our modules. RM3 the PT DI order is a cycle (R1 after 4d, 4d after 4b
+        = S8, S8 needs R1 data) -> R1 / R2 after 4d's harness half, R3 = 4d's game half (ATN confirms). RM4 Two Shadow Cascades
+        Under Rays on the port has no owner (C8 and rtp each defer it) -> S5e (plugin patch of the 4 imm32 sites, restart-only
+        key, Fable 5.2 Medium) or ATN drops it. RM5 the helper on the port (S1) is the only enabler for Denoise Before Tone
+        Mapping, rri_'s below-100 % work, rrb_ G3s / O1, E64-dlaa and 64-bit recordings -> S1 lands before the big batch; an
+        RR-before-tone-map arm or its owner; ATN decides whether R1 / E64-dlaa join the batch. MS1 menu stutter: a 1.3.25 /
+        1.3.28 addendum (Sol's film clock fix, shim_sys.c:156-168, is the likely root cause); the hand test + b2 only if ATN
+        still sees it. BM1 Denoise Before Tone Mapping has no backup_32bit section-2 row / FROZEN line -> F12 (class B). 13
+        SHOULDs (S5a re-based on B0's link: clear the mirror in internal::Unregister, PLUGINS_OFF / NOT_LOADED / v1 in the truth
+        table; risk 8.5 via core_status + the helper process handle, not an env var; a PK9 effects thread check; F7's 1280x720
+        vs the 4K rule; map 3.3a writer rows outdated) + a line-drift table. Models: S5e Fable 5.2 Medium; S1 / S2 / S5a-c / S8
+        Opus High; S4 Opus xHigh; runs Low. Owner: design fix rounds (after lr4_) -> coord; ATN (RM3 order, RM4 keep / drop, RM5
+        batch scope, MS1 by eye)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
