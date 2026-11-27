@@ -725,7 +725,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI PORT S8 READER (upt28_, 11-27): the 64-bit add-on's reader of the helper's ... | the S8 writer (RT-on-64) Owner: coord
 - SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
-- CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | coord
+- CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
+- PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
 - HANDOFF AUDIT APPLIED 18:0x: hfm_ (Opus xHigh) merged the 8 parts (testbin\scrat ... | coord (section 11 items follow the CPU-first rule)
 - CPU FIRST (ATN 11-27 17:3x): 'Unified PT should come after the fixes BUT ... don ... | coord
@@ -18060,7 +18061,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         in their own checks.
         Stage B step 5 p8b5_ (Fable Medium) STARTED 18:37 on p8b_1127 (merge
         atn-mods, fold step 2's CONTACT_ENTRY onto the installed generator in its own copy + install.sh, ONE wiring
-        commit, 3 serial test runs); then step 6 (Opus) after W-A3 merges. Note: HANDOFF clock stamps 19:xx above were an
+        commit, 3 serial test runs); DONE 19:32 (55 of 50 min, 30 of it the 3 serial runs; scratch\p8b5_\handback.md):
+        origin/p8b_1127 616576097 (merge d2cd866c3 of atn-mods fe8ff5078, one conflict hunk in battle_step_test.cpp,
+        both sides kept; then ONE wiring commit, 9 files): ROW_CONTACT_SPLIT = 13 (ROW_COUNT 14), key ContactSplit, no
+        CORE_SPLIT in the default; 22 sites (CONTACT_ENTRY 0x5df300), M0 0x3fff, rows line ends ', contact split on',
+        '21 sites unchanged' on the game file, engine_status 0x0401 after a default-ini start; ours: one ENGINE_ROWS table
+        for both rows in main.cpp (replaces Stage A's two blocks); Fnv1a<Hash> template; fallback edits in
+        fake_loader.hpp / patcher_test.cpp / elf_sites_test.cpp (pinned lanes + rows line); lock / unlock / wake not in
+        sites.h (3.6 wants none). build.ps1 -Test -Elf x3 serial exit 0, 0 warnings, battle_step_test 14547, DLL
+        7d26d999 x3; generator check + G1 gate 0x5df300 PASS, sites.h = the folded write output; gen_contact_ranges .inc
+        unchanged (6ede3f21). Mutations 30: 28 killed, 1 equivalent, m15 SURVIVES (dropping code_read->store(false) at
+        game start, Stage A's line; seen only by a tick through the DLL's hook onto the real game function) -> for the
+        step 8 reviewer. Coord ran SCR\p8b5_\gen\install.sh 19:33 (both files installed, .bak_p8b5 kept).
+        Step 6 p8b6_ (Opus 5.5 Medium, trial; same worktree + branch, merge atn-mods first; link.hpp + addon.cpp
+        + their tests) and step 7 check p8b7_ (Fable 5.2 Medium; a64_ab copy + patch + dry runs only, no smoke) STARTED
+        19:33 side by side (different files); the smoke after step 6, then step 8 review.
+        - [ ] PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured like W-A3's; while hidden
+        the add-on writes NO CORE_SPLIT bit (P1a's rule), so the batch's ContactSplit=1 arms keep their bit. After the
+        batch + ATN's call (design 14: default Off, ATN decides): flip the row's MEASURED constant. Owner: coord Note: HANDOFF clock stamps 19:xx above were an
         hour ahead; real times from 18:15 on. p1pt_ (Fable Medium) DONE 19:1x (31 of 20
         min; scratch\p1pt_\handback.md; p1pt_1127 4b69a2f19 from b4f7442fa): ClearRenderThread shared by Release +
         the refused-write path, an ended render thread = CORE_NO_THREAD; tests 356 -> 362 (refused default write via a
