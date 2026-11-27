@@ -47,6 +47,9 @@ static const uint FOG_LIGHTS = 512u;     // the local lights' light in the fog t
 // Fast Leaf Shadows (v18, dlaa_bridge.h RT_FAST_LEAVES): the rays toward the sun, the ambient's and the lights' take
 // micromapped leaves' unknown states as known (no alpha tests for them: SceneRayFlags).
 static const uint FAST_LEAVES = 8192u;
+// The leaves have their opacity micromaps (dlaa_bridge.h RT_MICROMAPS, the player's Opacity Micromaps (Leaves), while the
+// helper bakes them: rt_d3d12.hpp leaf_micromaps_); without, CULL_NON_OPAQUE culls every leaf whole (TRACE_SURFACE).
+static const uint LEAF_MICROMAPS = 128u;
 // Importance-Sampled Torch Shadows (v18, dlaa_bridge.h RT_LIGHT_IMPORTANCE): rt_lights traces a few lights a pixel, picked
 // by what they give it (ReSTIR's candidates), the others keep their bits.
 static const uint LIGHT_IMPORTANCE = 16384u;
@@ -326,9 +329,17 @@ bool OccludedSolid(float3 origin, float3 direction, float range) {
 // culled query and its cut-outs' alpha test, X10: the leaves' solid micro-triangles block, their unknown ones not), where
 // Occluded's alpha test let every leaf block: under canopies a reused sample's light went dark that the paths saw lit.
 // Else Occluded (TRACE_SURFACE's alpha test; past MAX_CANDIDATES it blocks where TRACE_SURFACE keeps its nearest so far, a
-// chosen cost). CONTROL_VISIBILITY_ALPHA_TESTED: Occluded in every build, as before. A macro: the call each site made
-// before, so a build without micromaps (and the control) compiles to the same bytes.
-#if defined(OPACITY_MICROMAPS) && !defined(CONTROL_VISIBILITY_ALPHA_TESTED)
+// chosen cost). Where the leaves have no micromaps (LEAF_MICROMAPS off) Occluded, as TRACE_SURFACE alpha-tests them there.
+// CONTROL_VISIBILITY_ALPHA_TESTED: Occluded in every build, as before; CONTROL_SURFACE_LEAVES_CULLED: OccludedSolid without
+// leaf micromaps too. A macro where it is one call: the call each site made before, so a build without micromaps (and the
+// controls) compiles to the same bytes.
+#if defined(OPACITY_MICROMAPS) && !defined(CONTROL_VISIBILITY_ALPHA_TESTED) && !defined(CONTROL_SURFACE_LEAVES_CULLED)
+bool SurfaceOccluded(float3 origin, float3 direction, float range) {
+  if ((flags & LEAF_MICROMAPS) == 0u) return Occluded(origin, direction, range, NO_GRASS_SMOKE);
+  return OccludedSolid(origin, direction, range);
+}
+#define SURFACE_OCCLUDED(origin, direction, range) SurfaceOccluded((origin), (direction), (range))
+#elif defined(OPACITY_MICROMAPS) && !defined(CONTROL_VISIBILITY_ALPHA_TESTED)
 #define SURFACE_OCCLUDED(origin, direction, range) OccludedSolid((origin), (direction), (range))
 #else
 #define SURFACE_OCCLUDED(origin, direction, range) Occluded((origin), (direction), (range), NO_GRASS_SMOKE)
@@ -338,7 +349,20 @@ bool OccludedSolid(float3 origin, float3 direction, float range) {
 // CommittedStatus says whether one was; the smoke left out). With opacity micromaps solid surfaces only, the leaves'
 // solid parts among them (an alpha test for every candidate nearer than the hit, grass by the dozen, made them cost up
 // to 30 ms a frame, ATN 2026-10-29), and the solid cut-outs where their alpha test passes (X10, below); else
-// alpha-tested, at most MAX_CANDIDATES.
+// alpha-tested, at most MAX_CANDIDATES (TRACE_SURFACE_TESTED; with micromaps too where the leaves have none).
+#define TRACE_SURFACE_TESTED(query, ray)                                    \
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                   \
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, (ray));        \
+  {                                                                         \
+    uint surface_candidates = 0u;                                           \
+    while (query.Proceed()) {                                               \
+      if (++surface_candidates > MAX_CANDIDATES) {                          \
+        query.Abort();                                                      \
+      } else if (CANDIDATE_PASSES(query)) {                                 \
+        query.CommitNonOpaqueTriangleHit();                                 \
+      }                                                                     \
+    }                                                                       \
+  }
 #if defined(OPACITY_MICROMAPS) && !defined(CONTROL_SURFACE_CUT_OUTS_CULLED)
 // TRACE_SURFACE's hit with opacity micromaps, read as a RayQuery's committed one (its callers' query.Committed*()).
 struct SurfaceHit {
@@ -355,36 +379,47 @@ struct SurfaceHit {
   uint CommittedPrimitiveIndex() { return primitive_index; }
   float3x4 CommittedObjectToWorld3x4() { return object_to_world; }
 };
+// A query's committed triangle hit into a SurfaceHit.
+#define SURFACE_TAKE(hit, query)                                \
+  hit.status = COMMITTED_TRIANGLE_HIT;                          \
+  hit.ray_t = query.CommittedRayT();                            \
+  hit.instance_id = query.CommittedInstanceID();                \
+  hit.geometry_index = query.CommittedGeometryIndex();          \
+  hit.primitive_index = query.CommittedPrimitiveIndex();        \
+  hit.object_to_world = query.CommittedObjectToWorld3x4();
 
 // The culled query's nearest solid hit, then the solid cut-outs (CUT_OUTS) up to it, alpha-tested as TRACE_NEAREST (as
 // Occluded, the sun's and the lights' rays, and OccludedSolid's second query see them), the nearer kept. ours (X10, critic
 // rt_core B2): culled with the leaves, a cut-out's micro-triangles of no known state (its bake on its way; a wall's
 // triangle over more than a texture's width is unknown opaque, rt_omm_uvs) were holes to the paths, the bounce, SHaRC and
 // the reflections: light through thatched houses, fences, palisades; PathRadiance's sky test covered its misses only.
-// The leaves stay culled (their alpha tests' cost above); the cut-outs' own query keeps the alpha tests to them.
-// CONTROL_SURFACE_CUT_OUTS_CULLED: the culled query alone (and PathRadiance's sky test), today's macro to the byte.
+// The leaves stay culled (their alpha tests' cost above); the cut-outs' own query keeps the alpha tests to them (2-state
+// where SceneRayFlags ran: rt_trace's shown ray under Fast Leaf Shadows, as its sun rays). Where the leaves have no
+// micromaps (LEAF_MICROMAPS off: the player's Opacity Micromaps (Leaves) off) the culled query lost every leaf: ours, the
+// alpha-tested query instead, as a GPU without DXR 1.2 traces (review rfx4b_ MUST 2). CONTROL_SURFACE_LEAVES_CULLED: culled
+// there too, as before. CONTROL_SURFACE_CUT_OUTS_CULLED: the culled query alone (and PathRadiance's sky test), today's macro
+// to the byte.
 SurfaceHit TraceSurface(RayDesc ray) {
+  SurfaceHit hit = (SurfaceHit)0;
+#if !defined(CONTROL_SURFACE_LEAVES_CULLED)
+  if ((flags & LEAF_MICROMAPS) == 0u) {
+    TRACE_SURFACE_TESTED(tested, ray)
+    if (tested.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+      SURFACE_TAKE(hit, tested)
+    }
+    return hit;
+  }
+#endif
   SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) solid;
   solid.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, ray);
   solid.Proceed();
-  SurfaceHit hit = (SurfaceHit)0;
-  hit.status = solid.CommittedStatus();
-  if (hit.status == COMMITTED_TRIANGLE_HIT) {
-    hit.ray_t = solid.CommittedRayT();
-    hit.instance_id = solid.CommittedInstanceID();
-    hit.geometry_index = solid.CommittedGeometryIndex();
-    hit.primitive_index = solid.CommittedPrimitiveIndex();
-    hit.object_to_world = solid.CommittedObjectToWorld3x4();
+  if (solid.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+    SURFACE_TAKE(hit, solid)
     ray.TMax = hit.ray_t;
   }
   TRACE_NEAREST(cut_out, ray, CUT_OUTS)
   if (cut_out.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
-    hit.status = COMMITTED_TRIANGLE_HIT;
-    hit.ray_t = cut_out.CommittedRayT();
-    hit.instance_id = cut_out.CommittedInstanceID();
-    hit.geometry_index = cut_out.CommittedGeometryIndex();
-    hit.primitive_index = cut_out.CommittedPrimitiveIndex();
-    hit.object_to_world = cut_out.CommittedObjectToWorld3x4();
+    SURFACE_TAKE(hit, cut_out)
   }
   return hit;
 }
@@ -395,19 +430,7 @@ SurfaceHit TraceSurface(RayDesc ray) {
   query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, (ray));                 \
   query.Proceed();
 #else
-#define TRACE_SURFACE(query, ray)                                         \
-  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                   \
-  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, (ray));        \
-  {                                                                         \
-    uint surface_candidates = 0u;                                           \
-    while (query.Proceed()) {                                               \
-      if (++surface_candidates > MAX_CANDIDATES) {                          \
-        query.Abort();                                                      \
-      } else if (CANDIDATE_PASSES(query)) {                                 \
-        query.CommitNonOpaqueTriangleHit();                                 \
-      }                                                                     \
-    }                                                                       \
-  }
+#define TRACE_SURFACE(query, ray) TRACE_SURFACE_TESTED(query, ray)
 #endif
 
 uint OctahedralEncode(float3 normal) {

@@ -145,12 +145,14 @@ static const uint REUSE_VALIDATION_PERIOD = 3u;
 #else
 #define REUSE_SUSPECTS (reuse_tests & REUSE_TEST_VALIDATE_KEEP_LIGHT)
 #endif
-// The fidelity fixes' controls (11-26 wave 3; -D in a build of its own, never in build.ps1: a lab stem swap or the WARP
-// tests, one build A / B against the shipped one): CONTROL_TARGET_PAST_RANGE (X02, ReuseTarget), CONTROL_HISTORY_NO_DEPTH
+// The fidelity fixes' controls (11-26 wave 3; -D in a build of its own: a lab stem swap, the WARP tests, or a whole control
+// helper from build.ps1 with RENODX_TW_CONTROL_DEFINES, which it announces; one build A / B against the shipped one,
+// never a player's): CONTROL_TARGET_PAST_RANGE (X02, ReuseTarget), CONTROL_HISTORY_NO_DEPTH
 // (X05, HistoryDepthMatches' callers), CONTROL_TEMPORAL_NO_SHIFT (X04, PathTraceTexel), CONTROL_F16_STORE_RAW (X11,
 // StoredHalf; rt_trace.cs_6_5.hlsl's too), CONTROL_NRD_CHOSEN_HIT (X23), CONTROL_N_DOT_V_CLAMP (X48, ViewFacingNormal),
 // CONTROL_SURFACE_CUT_OUTS_CULLED (X10, rt_scene.hlsli TraceSurface and PathRadiance's sky test),
-// CONTROL_VISIBILITY_ALPHA_TESTED (X09, rt_scene.hlsli SURFACE_OCCLUDED's callers here);
+// CONTROL_VISIBILITY_ALPHA_TESTED (X09, rt_scene.hlsli SURFACE_OCCLUDED's callers here), CONTROL_SURFACE_LEAVES_CULLED
+// (rt_scene.hlsli LEAF_MICROMAPS: TRACE_SURFACE / SURFACE_OCCLUDED cull the leaves without their micromaps too);
 // REUSE_W_CLAMP_OFF / REUSE_CLAMP_TRACE (X08, at REUSE_W_CLAMP). X01's and X06's are bits (rt_reuse_bits.h).
 #if defined(REUSE_NEAR)
 // Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
@@ -2066,7 +2068,7 @@ void ReflectPixel(uint2 id) {
         nearest = min(nearest, first_distance);
         ++met;
       }
-    } else if (occlusion && !SURFACE_OCCLUDED(origin, direction, reflection_range)) {
+    } else if (occlusion && !Occluded(origin, direction, reflection_range, NO_GRASS_SMOKE)) {
       open += weight;
     }
   }

@@ -3941,7 +3941,7 @@ class RtScene12 {
 #endif
       const std::array<uint32_t, 12> settings = {
           frame,
-          (!reflections && nrd_light) ? TRACE_NRD_BOUNCE : 0u,
+          ((!reflections && nrd_light) ? TRACE_NRD_BOUNCE : 0u) | (leaf_micromaps_ ? dlaa_bridge::RT_MICROMAPS : 0u),
           std::bit_cast<uint32_t>(bounce_range),
           std::clamp(shared.rt_bounce_rays, 1u, 32u),
           shared.rt_width,
@@ -7647,7 +7647,8 @@ class RtScene12 {
       // New leaves whose micromaps are baked (with an addon's RT_MICROMAPS, while there is room): their positions, UVs and
       // mask slice copied after the builds.
       std::vector<MicromapRead> micromap_reads = std::move(set_micromap_reads);
-      size_t micromap_room = (bake_micromaps_ && dxr12_ && (shared.rt_flags & dlaa_bridge::RT_MICROMAPS) != 0)
+      leaf_micromaps_ = bake_micromaps_ && dxr12_ && (shared.rt_flags & dlaa_bridge::RT_MICROMAPS) != 0;
+      size_t micromap_room = leaf_micromaps_
                                  ? MICROMAP_BAKES - std::min(MICROMAP_BAKES, micromap_reads_.size() + micromap_queue_.size()
                                                                                  + MicromapsBaking() + micromaps_baked_.size())
                                  : 0u;
@@ -8735,7 +8736,8 @@ class RtScene12 {
     const std::array<uint32_t, 12> settings = {
         frame,
         (shared.rt_flags & ~(dlaa_bridge::RT_LOCAL_LIGHTS | dlaa_bridge::RT_NRD | dlaa_bridge::RT_AO_REBLUR | dlaa_bridge::RT_START_PAST | dlaa_bridge::RT_LIGHTS_IN_BOUNCE
-                             | dlaa_bridge::RT_LIGHT_RATIO))
+                             | dlaa_bridge::RT_LIGHT_RATIO | dlaa_bridge::RT_MICROMAPS))
+            | (leaf_micromaps_ ? dlaa_bridge::RT_MICROMAPS : 0u)
             | (local_lights ? dlaa_bridge::RT_LOCAL_LIGHTS : 0u) | (lights_in_bounce ? dlaa_bridge::RT_LIGHTS_IN_BOUNCE : 0u) | (light_ratio ? dlaa_bridge::RT_LIGHT_RATIO : 0u)
             | (smoke_scene ? TRACE_SMOKE : 0u) | (nrd_sun ? dlaa_bridge::RT_NRD : 0u) | (nrd_ambient ? TRACE_NRD_AMBIENT : 0u),
         std::bit_cast<uint32_t>(std::clamp(shared.rt_ambient_range, 0.1f, 100.02711f)),
@@ -11011,6 +11013,9 @@ class RtScene12 {
   OmmGpu omm_gpu_;
 #endif
   bool gpu_micromaps_ = false;  // GPU Micromap Baking ready (MakeGpuBaker)
+  // The leaves get their micromaps (the last scene build's: DXR 1.2, the OMM SDK, the addon's RT_MICROMAPS): RT_MICROMAPS
+  // in the shaders' settings (rt_scene.hlsli LEAF_MICROMAPS; without it TRACE_SURFACE alpha-tests the leaves).
+  bool leaf_micromaps_ = false;
   ComPtr<ID3D12InfoQueue> info_queue_;  // RENODX_TW_D3D12_DEBUG
   HRESULT debug_result_ = S_FALSE;
   // For the log: the device's start, a slow request's report (GPU over SLOW_MS; at most SLOW_REPORTS), a garbage
