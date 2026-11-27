@@ -82,7 +82,7 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     for (uint light = 0u; light < count; ++light) {
       const float3 to_light = lights[light].xyz - light_origin;
       const float light_distance = length(to_light);
-      if (light_distance < lights[light].w && light_distance > 1.0003098e-3f && (!planar || dot(to_light, normal) > 0.f)) reached = WithBit(reached, light);
+      if (light_distance < lights[light].w && light_distance > LIGHT_RAY_FLOOR && (!planar || dot(to_light, normal) > 0.f)) reached = WithBit(reached, light);
     }
     TileReach(reached);
   }
