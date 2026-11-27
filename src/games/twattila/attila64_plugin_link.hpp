@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <format>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <system_error>
 #include <utility>
@@ -44,6 +45,10 @@ enum class Found : uint8_t {
   NOT_LOADED,     // in <exe dir>\plugins\ but not loaded (the loader's log says why)
 };
 
+// Keep Battle Core Free's default: the plugin's initial core_wanted bit.
+inline constexpr bool BATTLE_CORE_DEFAULT =
+    (attila64_plugin::CORE_WANTED_DEFAULT & attila64_plugin::CORE_BATTLE) != 0;
+
 namespace internal {
 
 namespace plugin = twattila::attila64_plugin;
@@ -65,6 +70,8 @@ static bool registered = false;
 static bool lost = false;  // another add-on holds the callbacks: not tried again until the detach
 static bool registered_logged = false;
 static HMODULE module_reference = nullptr;
+// Under the mutex: Keep Battle Core Free's core_wanted bit as this add-on last wrote it (none yet: nullopt).
+static std::optional<bool> battle_core_written;
 // Written into each measured call's PassMeasure::reserved at pass_begin: a pass_end of another registration is ignored.
 static std::atomic<uint32_t> epoch = 0;
 // A callback caught an exception: logged once at the next present (the callbacks log only shadow_pass's learned-kind
@@ -146,13 +153,16 @@ inline bool BlockV2() {
   return internal::block->version >= 2 && internal::block->bytes >= internal::plugin::BlockBytes(2);
 }
 
-// With Result() READY and BlockV2(): a row this add-on knows that the plugin tried but does not offer (its site
-// refused, or changed after it). Rows switched off in the ini are not tried. The CPU row is left out: refused, its rows
-// hide, and the plugin's log says why.
-inline bool RowsNotOffered() {
-  namespace plugin = internal::plugin;
-  constexpr uint32_t KNOWN_ROWS = ((1u << plugin::ROW_COUNT) - 1u) & ~plugin::RowBit(plugin::ROW_CPU_PLACEMENT);
-  return (internal::block->rows_tried & KNOWN_ROWS & ~RowsOffered()) != 0;
+// With Result() READY and BlockV2(): the rows the plugin tried (bit: attila64_plugin::Row), final at its READY. Rows
+// switched off in the ini are not tried.
+inline uint32_t RowsTried() {
+  return internal::block->rows_tried;
+}
+
+// With Result() READY: the battle part's core_status (attila64_plugin::CoreState and its fields); 0 for a v1 block (it
+// has no such field) or a plugin that did not build the part.
+inline uint64_t BattleCoreStatus() {
+  return BlockV2() ? internal::block->core_status.load(std::memory_order_relaxed) : 0;
 }
 
 // At each init_device until READY, final at the first present (`last`): the loader loads its plugins before the game's
@@ -239,7 +249,7 @@ inline void Lookup(bool last) {
   // Its own line: the start checks read the line above to its end.
   if (outcome == Found::READY && BlockV2()) {
     renodx::utils::log::i(
-        std::format("[Total War] 64-bit Attila: engine plugin rows tried {:#x}", found_block->rows_tried));
+        std::format("[Total War] 64-bit Attila: engine plugin rows tried {:#x}", RowsTried()));
   }
   if (internal::test_wanted != 0) {
     renodx::utils::log::i(std::format(
@@ -248,12 +258,29 @@ inline void Lookup(bool last) {
 }
 
 // Every present with Result() READY (the loader's drawing thread): the rows whose hooks are wanted now (bit:
-// attila64_plugin::Row). The callbacks are registered while any is wanted and offered.
-inline void Update(uint32_t rows_wanted) {
+// attila64_plugin::Row), and whether Keep Battle Core Free is on. The callbacks are registered while any is wanted and
+// offered.
+inline void Update(uint32_t rows_wanted, bool battle_core) {
   using internal::block;
+  namespace plugin = internal::plugin;
   const std::unique_lock lock(internal::mutex);
   // A present still running while the add-on detaches: Uninstall came first (DETACHED), nothing is registered again.
   if (internal::found.load(std::memory_order_relaxed) != Found::READY) return;
+  // Only the row's own bit changes (the plugin's other parts keep theirs): at the first present after READY and after
+  // every change of the row, a preset slot's load included. The plugin applies it at its next battle step or watchdog
+  // tick.
+  if (BlockV2() && internal::battle_core_written != battle_core) {
+    if (battle_core) {
+      block->core_wanted.fetch_or(plugin::CORE_BATTLE, std::memory_order_relaxed);
+    } else {
+      block->core_wanted.fetch_and(~plugin::CORE_BATTLE, std::memory_order_relaxed);
+    }
+    internal::battle_core_written = battle_core;
+    if ((RowsOffered() & plugin::RowBit(plugin::ROW_CPU_PLACEMENT)) != 0) {
+      renodx::utils::log::i(
+          std::format("[Total War] 64-bit Attila: Keep Battle Core Free {}", (battle_core ? "on" : "off")));
+    }
+  }
   if (internal::callback_failed.load(std::memory_order_relaxed) && !internal::callback_failure_logged) {
     internal::callback_failure_logged = true;
     renodx::utils::log::e(
@@ -313,6 +340,7 @@ inline void Uninstall() {
   internal::test_wanted = 0;
   internal::lost = false;
   internal::registered_logged = false;
+  internal::battle_core_written.reset();
   internal::callback_failed = false;
   internal::callback_failure_logged = false;
 }

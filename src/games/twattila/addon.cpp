@@ -1172,6 +1172,7 @@ constexpr bool PLUGIN_READY_FORCED = false;
 // The rows the 64-bit engine plugin can bring back: its rows (attila64_plugin::Row). NONE: hidden on the port.
 enum class PluginRow : uint8_t {
   PASS_DRAW = twattila::attila64_plugin::ROW_PASS_DRAW,
+  CPU_PLACEMENT = twattila::attila64_plugin::ROW_CPU_PLACEMENT,
   NONE = 0xFF,
 };
 
@@ -1265,6 +1266,28 @@ constexpr std::array<PluginNote, 9> PLUGIN_NOTES = {{
     {.found = twattila::attila64_plugin_link::Found::READY,
      .label = "Engine options: the 64-bit engine plugin could not turn on every engine option."},
 }};
+
+// The core rows' status lines on the port, after the row's prefix ("Battle core: "), by the word's CoreState. Format
+// arguments: {0} / {1} logical CPU A / B, {2} the Win32 error (FAILED only). State 0 (not built) hides the rows. The
+// battle word never holds the render part's states. The render row passes its own error byte (RENDER_ERROR_LARGE:
+// larger, see attila64_log.txt), so its FAILED text needs that case.
+constexpr std::array<const char*, twattila::attila64_plugin::CORE_STATE_COUNT> CORE_STATE_TEXTS = {
+    "",                                                                  // not built
+    "on, waiting for a battle",                                          // CORE_WAITING
+    "on: logical CPUs {0} + {1} kept free",                              // CORE_ACTIVE
+    "not used: no free CPU core with two threads in the largest cache",  // CORE_NO_SMT
+    "not used: too few CPU cores for the game",                          // CORE_FEW_CORES
+    "not used: more than 64 CPU threads",                                // CORE_UNSUPPORTED
+    "stopped: another program changed the game's CPU cores",             // CORE_YIELDED
+    "stopped: Windows refused (error {2})",                              // CORE_FAILED
+    "not used: no free core beside the battle core",                     // CORE_NO_CORE
+    "not used: its thread has a CPU rule of its own",                    // CORE_OWN_RULE
+    "off in ReShade.ini (RenderCore=0)",                                 // CORE_OFF_INI
+    "not used: its thread was not found, or it ended",                   // CORE_NO_THREAD
+    "not used: its thread was mostly idle",                              // CORE_NOT_RENDER
+    "stopped with the battle core",                                      // CORE_WITH_BATTLE
+};
+static_assert(std::ranges::find(CORE_STATE_TEXTS, nullptr) == CORE_STATE_TEXTS.end(), "a text for every CoreState");
 
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
 // pass (whose replacement is the game's code only).
@@ -1592,6 +1615,10 @@ float fewer_driver_waits_row = 0.f;
 float effect_prefetch_row = 0.f;
 // Keep Render Core Free (Experimental, off): cpu_sets.hpp.
 float keep_render_core_row = 0.f;
+// Keep Battle Core Free (the port only, on): the 64-bit engine plugin's battle core, its core_wanted bit
+// (attila64_plugin_link::Update).
+constexpr float KEEP_BATTLE_CORE_DEFAULT = (twattila::attila64_plugin_link::BATTLE_CORE_DEFAULT ? 1.f : 0.f);
+float keep_battle_core_row = KEEP_BATTLE_CORE_DEFAULT;
 // Parallel Effect Update (Experimental, off): effect_update.hpp, the game's effect update on the worker pool. Parallel Effect Spawns
 // (off, needs the row above): its particle spawns on the pool too. Cached Particle Count (off): engine_code.hpp's visible particle sum
 // once per update of a node instead of once per view.
@@ -2191,7 +2218,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           (twattila::object_motion::internal::active.load(std::memory_order_relaxed)
                ? plugin::RowBit(plugin::ROW_BONE_FLUSH)
                : 0u)
-          | (pass_draw ? plugin::RowBit(plugin::ROW_PASS_DRAW) : 0u));
+          | (pass_draw ? plugin::RowBit(plugin::ROW_PASS_DRAW) : 0u),
+          keep_battle_core_row != 0.f);
     }
     // Everything below writes the 32-bit game's code or values.
     return;
@@ -3114,6 +3142,7 @@ void ConfigureAddon() {
                                              .lights_in_bounce = &rt_sliders.lights_in_bounce,
                                              .light_ratio = &rt_sliders.light_ratio});
   if constexpr (ATTILA64) {
+    namespace plugin = twattila::attila64_plugin;
     // The game-code rows wait for the 64-bit engine plugin: wrapped (never replaced) before AssignPages wraps them in
     // turn, so a row the plugin brings back lands on its own page. Their keys stay: saved values come back with the rows.
     const std::array<const renodx::utils::settings::Setting*, 6> keyless_rows = {note, ui_mod_row, graphics_status,
@@ -3142,12 +3171,68 @@ void ConfigureAddon() {
                          if (result != note.found) return false;
                          if (result != twattila::attila64_plugin_link::Found::READY) return true;
                          if (twattila::attila64_plugin_link::BlockV2()) {
-                           return !note.v1_block && twattila::attila64_plugin_link::RowsNotOffered();
+                           // A known row tried but not offered (its site refused, or changed after it). The CPU row
+                           // is left out: refused, its rows hide, and the plugin's log says why.
+                           constexpr uint32_t KNOWN_ROWS =
+                               ((1u << plugin::ROW_COUNT) - 1u) & ~plugin::RowBit(plugin::ROW_CPU_PLACEMENT);
+                           return !note.v1_block
+                                  && (twattila::attila64_plugin_link::RowsTried() & KNOWN_ROWS
+                                      & ~twattila::attila64_plugin_link::RowsOffered())
+                                         != 0;
                          }
                          return note.v1_block;
                        },
                    }));
     }
+    // Keep Battle Core Free and its status line below the note, while the plugin offers the CPU row and built its battle
+    // part (state 0: not built). The graphics preset buttons leave the row alone (not a look setting); it is saved per
+    // preset slot like every row.
+    const auto battle_core_shown = [] {
+      return GameCodeRowShown(PluginRow::CPU_PLACEMENT)
+             && ((twattila::attila64_plugin_link::BattleCoreStatus() >> plugin::CORE_STATE_SHIFT)
+                 & plugin::CORE_FIELD_MASK)
+                    != 0;
+    };
+    settings.insert(
+        note_at,
+        {
+            new renodx::utils::settings::Setting{
+                .key = "KeepBattleCoreFree",
+                .binding = &keep_battle_core_row,
+                .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                .default_value = KEEP_BATTLE_CORE_DEFAULT,
+                .label = "Keep Battle Core Free",
+                .section = graphics_status->section,
+                .tooltip = "Big battles can run faster: the battle simulation gets a CPU core to itself. Same picture.\n"
+                           "Changes take effect at once. If it says stopped, restart the game to try again.",
+                .labels = {"Off", "On"},
+                .is_visible = battle_core_shown,
+            },
+            new renodx::utils::settings::Setting{
+                .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+                .section = graphics_status->section,
+                .on_draw = [] {
+                  const uint64_t status = twattila::attila64_plugin_link::BattleCoreStatus();
+                  const auto field = [status](uint32_t shift) {
+                    return static_cast<uint32_t>(status >> shift) & plugin::CORE_FIELD_MASK;
+                  };
+                  const uint32_t state = field(plugin::CORE_STATE_SHIFT);
+                  // A state appended by a newer plugin: no line.
+                  if (state >= plugin::CORE_STATE_COUNT) return false;
+                  const uint32_t logical_a = field(plugin::CORE_LOGICAL_A_SHIFT);
+                  const uint32_t logical_b = field(plugin::CORE_LOGICAL_B_SHIFT);
+                  const auto error =
+                      static_cast<uint32_t>((status >> plugin::CORE_ERROR_SHIFT) & plugin::CORE_ERROR_MASK);
+                  // WAITING also holds while the row is off: the plugin waits for its bit.
+                  const bool off = (state == plugin::CORE_WAITING && keep_battle_core_row == 0.f);
+                  const char* format = (off ? "off" : CORE_STATE_TEXTS[state]);
+                  ImGui::TextWrapped("Battle core: %s",
+                                     std::vformat(format, std::make_format_args(logical_a, logical_b, error)).c_str());
+                  return false;
+                },
+                .is_visible = battle_core_shown,
+            },
+        });
   }
   twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
