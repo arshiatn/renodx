@@ -18012,7 +18012,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         main tree: plugin test exit 0 (0 failures, 14216 checks, the 3 game-file tests ran), gated amd64 twattila exit 0. Next: Stage B step 5 (Fable Medium) on p8b_1127. wa3_ (Opus Medium
         trial) STARTED 18:15: PK8 W-A3 'Faster Battle Step' add-on row (link.hpp + addon.cpp, P9-4's pattern incl.
         rp94_ MUST-1) on wa3_1127 = p8a_1127 + atn-mods, plus the F7 cases for P9-4 + W-A3 (built only); coord runs F7
-        after it as one GPU-lock job (ATN 18:15: GPU OK for CPU work). Note: HANDOFF clock stamps 19:xx above were an
+        after it as one GPU-lock job (ATN 18:15: GPU OK for CPU work). wa3_ DONE 18:36 (21 of 40 min;
+        scratch\wa3_\handback.md): wa3_1127 = f39f7e1d1 + atn-mods e2073705c (284dc6d0c), d88940ac5 (row + link: the
+        add-on owns CORE_STEP from its first present, Off included; 11.1's tooltip + 6 statuses; 'Faster Battle Step
+        on|off' line) + 4fd0fe4bb (F7: fake_plugin fields 10-11, 6 cases); deviation: before S-C P1a's 'hidden until
+        measured' form, the add-on writes the plugin's default On, BATTLE_STEP_ROW_MEASURED flips at the release step;
+        CORE_STEP written even when the row is not offered (only the line gated); gated amd64 + x86 exit 0, x86 page
+        389 -> 389, 3 mutations caught. F7 run by coord 18:37 (GPU lock, f7_gpu.sh): 9 passed of 9 (3 P9-4 + 3 W-A3 +
+        3 render core regression; scratch\coord_f7_wa3.log). Review rwa3_ (Opus xHigh) STARTED 18:37, deviation first;
+        then Sonnet High final; then merge. Stage B step 5 p8b5_ (Fable Medium) STARTED 18:37 on p8b_1127 (merge
+        atn-mods, fold step 2's CONTACT_ENTRY onto the installed generator in its own copy + install.sh, ONE wiring
+        commit, 3 serial test runs); then step 6 (Opus) after W-A3 merges. Note: HANDOFF clock stamps 19:xx above were an
         hour ahead; real times from 18:15 on. p1pt_ (Fable Medium) DONE 19:1x (31 of 20
         min; scratch\p1pt_\handback.md; p1pt_1127 4b69a2f19 from b4f7442fa): ClearRenderThread shared by Release +
         the refused-write path, an ended render thread = CORE_NO_THREAD; tests 356 -> 362 (refused default write via a
@@ -18077,8 +18087,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         byte-identical with atn-mods, 112 with all five controls; check.py + scan.py PASS; gated amd64 + x86 exit 0.
         Split branch fx4b_a_1127 (X18 + X14 only, from e2073705c, pushed 18:23): scan.py PASS, X14 test PASS, gated
         amd64 + x86 exit 0. Open: the pack step should refuse a folder with CONTROL_BUILD.txt (pack owner); J2 / J3
-        (Leaves-off arms + both visibility controls) before X10 / X09 merge (PARKED). Sonnet High final sfx4b_ (the
-        one GPU-lane agent, read only) STARTED 18:29; then merge fx4b_a_1127. Look list -> ATN. Owner: coord
+        (Leaves-off arms + both visibility controls) before X10 / X09 merge (PARKED). Sonnet High final sfx4b_ DONE: GO, 1 NIT (scratch\sfx4b_\review.md: the 4 cherry-picks = the fixed commits'
+        patch-ids, 0e517ce29 = build.ps1's control switch only, nothing of X10 / X09; its own helper build 112 headers
+        identical + 4 twins, scan.py PASS (FAIL 4 on the base), X14 all 255 opaque; J1 is a later proof, not a merge
+        gate (rt_d3d12.hpp:783-798 drops DXR 1.2 on a failed pipeline, no crash); NIT rt_path.hlsli:148 comment, fixed
+        on fx4b_1127). fx4b_a_1127 (X18 + X14) MERGED fe8ff5078 (18:37); main tree: gated amd64 + x86 twattila and amd64 talesofarise exit 0.
+        X10 / X09 stay on fx4b_1127, PARKED behind J2 / J3 (their review points closed). Look list -> ATN. Owner: coord
         - [ ] OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable 5.2 medium is really
         good ... Tell me later after which one is worth it'): Opus implementers Medium for well-specified steps (add-on
         rows, tooling, cite waves, ports, small fix rounds), High for shader math / big merge-ups / no line-level
