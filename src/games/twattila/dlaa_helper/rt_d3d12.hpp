@@ -8421,7 +8421,7 @@ class RtScene12 {
         slow_report_ += std::format("{}[TW ray tracing] Partitioned TLAS: {} of {} instances lost to a shared place.", (slow_report_.empty() ? "" : "\n"),
                                     lost, instance_count);
       }
-      auto* writes =reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE*>(slot->ptlas_data + PTLAS_WRITES_OFFSET);
+      auto* writes = reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE*>(slot->ptlas_data + PTLAS_WRITES_OFFSET);
       uint32_t write_count = 0;
       const auto write_place = [&](uint32_t at) {
         PtlasInstance& written = ptlas_written_[at];
