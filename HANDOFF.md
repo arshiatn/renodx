@@ -18077,7 +18077,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         test file only: 34eb7337d M1 (busy_fix.diff), 67f4dbe8f S1 (refused_step, refusal in the 3 Expects), 1472ec887
         N1 / N2 / N4; controls: old exe fails 1 of 3 copies a round, fixed 9 / 9; S1 old = terminate without a FAIL
         line, new = 3 FAILs; gate serial exit 0, then 3 copies x 3 rounds exit 0; DLL d1653f38 unchanged. Sonnet High
-        final fp1pt_ (incl. one plugin test on the merged result) STARTED 18:58; then merge. p91_
+        final fp1pt_ (incl. one plugin test on the merged result) DONE 19:1x (11 min): GO, no MUST / SHOULD / NIT (M1 = the
+        busy_fix.diff as written, S1's 3 Expects hold, controls match, merge-tree clean, its plugin test 0 failures).
+        MERGED 7c8ee51a2 (19:22, --no-ff, pushed): main-tree plugin build.ps1 -Test -Elf exit 0, 0 failures
+        (battle_core 362 / 0; elf_sites_test, game_code_test, battle_step_test ran; testbin\scratch\coord_\p1p_merge.log);
+        no gated add-on build (battle_core.hpp is only in the plugin). The watchdog read failure box stays open. p91_
         (Opus Medium) DONE 18:03 (29 of 60 min; scratch\p91_\handback.md): two sha-gated a64_ab patches, NOT applied:
         (1) a64_ab_pk9p1_patch.py 02cf94e1 -> ebcc5c91 (PK9 P1-P5 + P5-6 replay; HALF_ENTRY needs no edit), (2)
         a64_ab_c8t0_patch.py ebcc5c91 -> 62fef322 (T0 + hzc_'s 4 horizon pieces); h91 21 / 21, A13 unchanged forms
