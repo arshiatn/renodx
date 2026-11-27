@@ -314,6 +314,9 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     block.core_status.store(uint64_t{CORE_WAITING} << CORE_STATE_SHIFT, std::memory_order_relaxed);
     battle_core::ApplyRenderCoreKey(&block, ini_int(INI_RENDER_CORE, -1));
   }
+  if ((block.rows_applied & RowBit(ROW_PARALLEL_EFFECTS)) != 0) {
+    ApplyEffectsModeKey(&block, ini_int(INI_EFFECTS_MODE, -1));
+  }
   char rows[ROWS_LINE_CAPACITY] = {};
   size_t rows_length = 0;
   for (uint32_t row = 0; row < ROW_COUNT && rows_length < sizeof(rows); ++row) {

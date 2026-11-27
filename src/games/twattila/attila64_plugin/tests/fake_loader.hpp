@@ -254,7 +254,8 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
              && Logged("STEP_ENTRY 0xbb4e00: applied") && Logged("renodx_attila64: shadow map: game's size")
              && Logged("rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
                        "grass on, grass cells on, campaign trees on, sprites -, reserved -, parallel effects on")
-             && Logged("EFFECT_WALK_ENTRY 0x32fbf60: applied"),
+             && Logged("EFFECT_WALK_ENTRY 0x32fbf60: applied")
+             && Logged("renodx_attila64: parallel effects mode Off (ini EffectsMode)"),
          "the init lines");
   for (const Site& site : SITES) {
     char applied_line[96];

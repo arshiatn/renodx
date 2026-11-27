@@ -278,6 +278,14 @@ inline constexpr std::array<uint8_t, 102> GRASS_CELL_TAIL = {
     0x5b, 0x41, 0x5c, 0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f, 0x5d,  // pop rbx / r12 / r13 / r14 / r15 / rbp
     0xc3,                                                  // ret
 };
+// Effect walk: push rbp / r15 / r14 / r13 / r12 / rbx, sub rsp 0x178 and the first four bytes of movss [rsp + 0x28],
+// xmm1 (the window). The tail only returns: what the walk's hook does shows in the game's flag.
+inline constexpr std::array<uint8_t, 20> EFFECT_WALK_TAIL = {
+    0x24, 0x28,                                            // the window's f3 0f 11 4c: movss [rsp+0x28], xmm1
+    0x48, 0x81, 0xc4, 0x78, 0x01, 0x00, 0x00,              // add rsp, 0x178
+    0x5b, 0x41, 0x5c, 0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f, 0x5d,  // pop rbx / r12 / r13 / r14 / r15 / rbp
+    0xc3,                                                  // ret
+};
 // Campaign tree: the same pushes, sub rsp 0x68, mov r12d, r9d and the first four bytes of mov [rsp + 0x20], r8 (the
 // window). The tail returns its record's address.
 inline constexpr std::array<uint8_t, 75> CAMPAIGN_TREE_TAIL = {
@@ -447,6 +455,7 @@ int wmain(int argc, wchar_t** argv) {
     write_tail(LABEL_GRASS_DRAW_ENTRY, GRASS_DRAW_TAIL);
     write_tail(LABEL_GRASS_CELL_ENTRY, GRASS_CELL_TAIL);
     write_tail(LABEL_CAMPAIGN_TREE_ENTRY, CAMPAIGN_TREE_TAIL);
+    write_tail(LABEL_EFFECT_WALK_ENTRY, EFFECT_WALK_TAIL);
     {
       // The plugin's init takes the grass draw for the game's by the hash of its first bytes: five bytes past the fake
       // draw's code are set so that the fake one hashes the same. FNV-1a's steps can be undone, so the last two bytes
@@ -1374,6 +1383,14 @@ int wmain(int argc, wchar_t** argv) {
                && dll_bytes.find("\0renodx_attila64: shadow map %u: patched\0"sv) != std::string::npos
                && dll_bytes.find("\0renodx_attila64: shadow map: game's size\0"sv) != std::string::npos,
            "dll: the file holds the two applied lines and the shadow row's two lines as whole strings");
+    // The parallel effects row's word marks a DLL that reads the EffectsMode key: a whole string of its own (no line
+    // of the row ends in it), and the key's name is in the file too (a wide string).
+    const std::wstring_view mode_key(INI_EFFECTS_MODE);
+    Expect(dll_bytes.find("\0parallel effects\0"sv) != std::string::npos
+               && dll_bytes.find(std::string_view(reinterpret_cast<const char*>(mode_key.data()),
+                                                  (mode_key.size() + 1) * sizeof(wchar_t)))
+                      != std::string::npos,
+           "dll: the file holds the parallel effects row's word as a whole string, and the EffectsMode key");
   }
 
   const auto render_state_of = [](const Block* shared) {
@@ -1461,6 +1478,39 @@ int wmain(int argc, wchar_t** argv) {
     Expect(false, "dll: init for the changed-later case");
   }
 
+  // The EffectsMode key: the two effect bits at init with the mode's line, and the DLL's walk hook through the site.
+  // 2 (On): the first walk stores 1 in the game's flag; 0 then puts the loader's value back, once.
+  for (const int mode_key : {1, 2, 0, 7}) {
+    DeleteFileW(ini_path.c_str());
+    WritePrivateProfileStringW(INI_SECTION, INI_EFFECTS_MODE, std::to_wstring(mode_key).c_str(), ini_path.c_str());
+    write_game();
+    const auto [plugin, result] = init_copy((std::wstring(L"effects_mode_") + std::to_wstring(mode_key)).c_str(), MODULE_NAME, api);
+    if (result != 0) {
+      Expect(false, "dll: init for an EffectsMode case");
+      continue;
+    }
+    const uint32_t effect_bits = ((mode_key == 1) ? (CORE_EFFECTS | CORE_EFFECTS_AUTO) : ((mode_key == 2) ? CORE_EFFECTS : 0));
+    char mode_line[96];
+    std::snprintf(mode_line, sizeof(mode_line), "renodx_attila64: parallel effects mode %s (ini EffectsMode)",
+                  EFFECTS_MODE_WORDS[EffectsModeOf(effect_bits)]);
+    Expect(plugin.block->core_wanted.load() == (CORE_WANTED_DEFAULT | effect_bits) && Logged(mode_line)
+               && Logged("EffectsMode=7 is not 0, 1 or 2 (no change)") == (mode_key == 7),
+           "dll: the EffectsMode key sets the two effect bits at init and says the mode");
+    plugin.game_started(&api);
+    if (mode_key == 1) continue;  // Automatic reads a node's table: effect_guard_test
+    const auto walk_site = reinterpret_cast<EffectWalkFn>(uintptr_t{SITES[LABEL_EFFECT_WALK_ENTRY].address});
+    *at(EFFECT_FLAG) = 0;
+    walk_site(nullptr, 0.f, 0.f);
+    Expect(Logged("renodx_attila64: parallel effects: offered (loader guards in place)")
+               && Logged("renodx_attila64: EFFECT_WALK_ENTRY: first call (thread ") && *at(EFFECT_FLAG) == ((mode_key == 2) ? 1 : 0),
+           "dll: the walk's first call says so, and On stores 1 in the game's flag");
+    plugin.block->core_wanted.fetch_xor(CORE_EFFECTS);
+    walk_site(nullptr, 0.f, 0.f);
+    Expect(*at(EFFECT_FLAG) == ((mode_key == 2) ? 0 : 1), "dll: the add-on's change of the mode shows at the next walk");
+    WriteTweakObjects();
+  }
+  set_ini_key_off(nullptr);
+
   // The game's parallel effect flag is offered only behind the loader's guards: with one guard entry that is not the
   // loader's hook, or with the game's read of the flag changed, its slot is ABSENT (the row's hook is in and inert).
   for (const bool guard_case : {true, false}) {
@@ -1508,6 +1558,10 @@ int wmain(int argc, wchar_t** argv) {
                && plugin.block->rows_refused == RowBit(row) && plugin.block->rows_tried == others
                && Logged("skipped (OFF)") && only_its_site_untouched,
            "dll: a row's install key 0 leaves that row out, and out of the rows tried");
+    Expect(Logged("renodx_attila64: site EFFECT_WALK_ENTRY 0x32fbf60: skipped (OFF)") == (row == ROW_PARALLEL_EFFECTS)
+               && Logged(", parallel effects off") == (row == ROW_PARALLEL_EFFECTS)
+               && Logged("parallel effects mode ") == (row != ROW_PARALLEL_EFFECTS),
+           "dll: without the parallel effects row its site is skipped, its row is off and the mode key is not read");
     // Both core status words are built only with the row in (without it the RenderCore key is not read either).
     const bool built = (row != ROW_CPU_PLACEMENT);
     Expect(plugin.block->core_status.load() == (built ? (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT) : 0)
