@@ -125,17 +125,24 @@ int wmain(int argc, wchar_t** argv) {
       Expect(*at(site.address - 2) == 0x48 && *at(site.address - 1) == 0xb8 && size[0] == game_size && size[1] == game_size,
              "shadow: a size site is a mov rax, imm64 of the game's size twice");
     } else {
+      // A COUNT site writes the field Medium's first write does, an EXTRA site the second's (their disp32).
+      const bool count_site = (site.label == LABEL_SHADOW_COUNT_HIGH || site.label == LABEL_SHADOW_COUNT_MAX);
       Expect(site.length == sizeof(uint32_t) && *at(site.address - 7) == 0x41 && *at(site.address - 6) == 0xc7
-                 && *at(site.address - 5) == 0x85 && word_at(site.address) <= 4,
-             "shadow: a cascade site is the immediate of a mov dword [r13 + disp32], imm32");
+                 && *at(site.address - 5) == 0x85 && word_at(site.address) <= 4
+                 && (count_site || site.label == LABEL_SHADOW_EXTRA_HIGH || site.label == LABEL_SHADOW_EXTRA_MAX)
+                 && word_at(site.address - 4) == word_at(MEDIUM_CASCADES_ADDRESS + (count_site ? 3 : 14)),
+             "shadow: a cascade site is the immediate of a mov dword [r13 + disp32], imm32, to Medium's field");
     }
   }
   // Medium's own cascade writes follow its size's two stores, end where the three settings' paths meet (High jumps
   // there), and are the numbers the row writes at High and Max.
   Expect(std::memcmp(at(MEDIUM_CASCADES_ADDRESS), MEDIUM_CASCADES.data(), MEDIUM_CASCADES.size()) == 0
-             && word_at(MEDIUM_CASCADES_ADDRESS + MEDIUM_COUNT_OFFSET) == 2 && word_at(MEDIUM_CASCADES_ADDRESS + MEDIUM_EXTRA_OFFSET) == 0
-             && MEDIUM_CASCADES_ADDRESS == SITES[LABEL_SHADOW_SIZE_MEDIUM].address + SITES[LABEL_SHADOW_SIZE_MEDIUM].length + 7 + 11
-             && *at(0x30e46e7) == 0xeb && 0x30e46e7 + 2 + *at(0x30e46e8) == MEDIUM_CASCADES_ADDRESS + MEDIUM_CASCADES.size(),
+             && word_at(MEDIUM_CASCADES_ADDRESS + MEDIUM_COUNT_OFFSET) == 2
+             && word_at(MEDIUM_CASCADES_ADDRESS + MEDIUM_EXTRA_OFFSET) == 0
+             && MEDIUM_CASCADES_ADDRESS
+                    == SITES[LABEL_SHADOW_SIZE_MEDIUM].address + SITES[LABEL_SHADOW_SIZE_MEDIUM].length + 7 + 11
+             && *at(0x30e46e7) == 0xeb
+             && 0x30e46e7 + 2 + *at(0x30e46e8) == MEDIUM_CASCADES_ADDRESS + MEDIUM_CASCADES.size(),
          "shadow: Medium's own cascade writes are 2 and 0, where patcher.hpp says");
   // The rest pack's return address follows a call of the pack function.
   Expect(*at(REST_PACK_RETURN - 5) == 0xe8 && REST_PACK_RETURN + static_cast<int32_t>(word_at(REST_PACK_RETURN - 4)) == SITES[LABEL_PACK_ENTRY].address,
@@ -542,16 +549,16 @@ int wmain(int argc, wchar_t** argv) {
       std::array<uint32_t, 4> cascades;
       const char* line;
     };
-    const uintptr_t fourth_site = SITES[LABEL_SHADOW_EXTRA_MAX].address;
     const std::wstring ini_path = std::wstring(exe_dir_wide) + L"\\ReShade.ini";
     SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, "1");
     for (const CascadeCase& cascade_case : {
              CascadeCase{L"cascades_1", L"1", 0, true, TWO_CASCADES, "renodx_attila64: shadow cascades 2: patched"},
              CascadeCase{L"cascades_0", L"0", 0, true, GAME_CASCADES, "renodx_attila64: shadow cascades: game's counts"},
-             CascadeCase{L"cascades_differs", L"1", fourth_site, false, GAME_CASCADES,
+             CascadeCase{L"cascades_differs", L"1", SITES[LABEL_SHADOW_EXTRA_MAX].address, false, GAME_CASCADES,
                          "renodx_attila64: site SHADOW_EXTRA_MAX 0x30e4717: skipped (DIFFERS)"},
              CascadeCase{L"cascades_medium", L"1", MEDIUM_CASCADES_ADDRESS + MEDIUM_COUNT_OFFSET, false, GAME_CASCADES,
-                         "renodx_attila64: shadow cascades: Medium's own writes at 0x30e4751 are not the game's, the shadow map row stays out"},
+                         "renodx_attila64: shadow cascades: Medium's own writes at 0x30e4751 are not the game's, "
+                         "the shadow map row stays out"},
          }) {
       const Plugin copy = copy_on_the_game_again(cascade_case.folder);
       WritePrivateProfileStringW(INI_VALUES_SECTION, INI_SHADOW_CASCADES, cascade_case.key, ini_path.c_str());

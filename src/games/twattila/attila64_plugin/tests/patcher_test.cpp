@@ -2107,6 +2107,16 @@ int wmain(int argc, wchar_t** argv) {
     plugin.game_started(&api);
     Expect(plugin.block->rows_changed.load() == RowBit(ROW_SHADOW_MAP) && Logged("SHADOW_EXTRA_MAX changed after we patched it"),
            "cascades: a later change of a written count is seen");
+    *at(SITES[LABEL_SHADOW_EXTRA_MAX].address) ^= 1;
+    plugin.block->rows_changed.store(0);
+    plugin.game_started(&api);
+    Expect(plugin.block->rows_changed.load() == 0 && !Logged("Medium's own writes changed"),
+           "cascades: Medium's writes unchanged at the game's start, no line");
+    *at(MEDIUM_CASCADES_ADDRESS + MEDIUM_COUNT_OFFSET) ^= 1;
+    plugin.game_started(&api);
+    Expect(plugin.block->rows_changed.load() == RowBit(ROW_SHADOW_MAP)
+               && Logged("renodx_attila64: shadow cascades: Medium's own writes changed after we patched the counts"),
+           "cascades: Medium's writes changed after the counts were written are seen at the game's start");
   }
   {
     const auto [plugin, result] = cascade_case(L"cascades_1_size_1", L"1", L"1", true, 0);
@@ -2123,6 +2133,10 @@ int wmain(int argc, wchar_t** argv) {
                && Logged("renodx_attila64: shadow cascades: game's counts") && !Logged("game's counts (")
                && Logged("renodx_attila64: site SHADOW_EXTRA_MAX 0x30e4717: applied (game's bytes kept)"),
            "cascades: ShadowCascades=0 keeps the game's bytes, the row is in");
+    *at(MEDIUM_CASCADES_ADDRESS + MEDIUM_COUNT_OFFSET) ^= 1;
+    plugin.game_started(&api);
+    Expect(plugin.block->rows_changed.load() == 0 && !Logged("Medium's own writes changed"),
+           "cascades: with nothing written Medium's writes are not watched at the game's start");
   }
   {
     const auto [plugin, result] = cascade_case(L"cascades_not_dx11", L"1", L"0", false, 0);

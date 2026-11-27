@@ -104,6 +104,12 @@ inline constexpr std::array<uint8_t, 22> MEDIUM_CASCADES = {
 };
 inline constexpr size_t MEDIUM_COUNT_OFFSET = 7;   // the first write's number, what a COUNT site holds
 inline constexpr size_t MEDIUM_EXTRA_OFFSET = 18;  // the second write's, what an EXTRA site holds
+static_assert(MEDIUM_EXTRA_OFFSET + sizeof(uint32_t) <= MEDIUM_CASCADES.size()
+                  && std::ranges::all_of(SITES, [](const Site& site) {
+                       return site.row != ROW_SHADOW_MAP || site.kind != SITE_PATCH || IsShadowSizeSite(site)
+                              || site.length == sizeof(uint32_t);
+                     }),
+              "a cascade site holds one 32-bit number, as each of Medium's two writes");
 
 // READY when the loader and the game build are the ones the sites were made for.
 [[nodiscard]] inline Status CheckIdentity(const LoaderApi& api) {

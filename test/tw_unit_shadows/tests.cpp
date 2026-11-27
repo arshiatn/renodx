@@ -1136,7 +1136,8 @@ int main(int argc, char** argv) {
       link::MirrorShadowCascades(false);
       CHECK(cascades_key() == "absent" && logged.size() == 2);
       link::MirrorShadowCascades(true);
-      CHECK(cascades_key() == "1" && logged.size() == 3 && lines("engine value ShadowCascades: 0x1 at the next start") == 1);
+      CHECK(cascades_key() == "1" && logged.size() == 3
+            && lines("engine value ShadowCascades: 0x1 at the next start (this start: 0x0)") == 1);
       link::MirrorShadowCascades(true);
       CHECK(cascades_key() == "1" && logged.size() == 3);
       link::MirrorShadowCascades(false);
@@ -1146,6 +1147,18 @@ int main(int argc, char** argv) {
       link::MirrorShadowCascades(true);
       CHECK(cascades_key() == "0" && logged.size() == 6 && lines("engine value ShadowCascades: 0x0 at the next start") == 2);
       scale_block.rows_changed.store(0);
+      // A hand-edited key the plugin reads as 1 (hex): this start wrote the cascades, and the text is written back
+      // as the row's 0. A plain 1 with the row wanted: nothing written.
+      for (const auto& [text, wanted, key_after, writes] :
+           {std::tuple{"0x1", false, "0", 1}, std::tuple{"1", true, "1", 0}, std::tuple{"1", false, "0", 1}}) {
+        config["Attila64Plugin.Values|ShadowCascades"] = text;
+        link::internal::shadow_cascades_mirrored.reset();
+        link::internal::shadow_cascades_at_start.reset();
+        logged.clear();
+        link::MirrorShadowCascades(wanted);
+        CHECK(cascades_key() == key_after && logged.size() == static_cast<size_t>(writes)
+              && lines("engine value ShadowCascades: 0x0 at the next start (this start: 0x1)") == writes);
+      }
       // The detach: the mirror's state reset, the scales kept (a hook reads them for the process).
       scales[0] = 2.f;
       link::PublishScales(scales);
