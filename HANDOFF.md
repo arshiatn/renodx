@@ -727,6 +727,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
 - PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | ATN Step 8 review rp8b57_ (Opus xHigh) DONE 20:11 (19 of 35 
+- SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the ... | coord
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
@@ -18138,7 +18139,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         amend: in the fix commit), N4 ini order (optional), N5 a64_ab :2865 note, N6 PARTLY text for ATN at release.
         Point 4 -> design 14 addendum written (one PARTLY text, no reason field). Fix rounds STARTED 20:11: p8b7_ M1 + N5
         (a64_ab patch, scratch only) beside p8b5_ S1 + N1 + N4 (plugin files); then p8b6_ N2 (addon.cpp, same
-        worktree, after p8b5_); then Sonnet High FINAL; then apply the a64_ab patch and merge p8b_1127.
+        worktree, after p8b5_); then Sonnet High FINAL; then apply the a64_ab patch and merge p8b_1127. p8b7_ fix round DONE
+        20:18 (7 of 15 min): patch scratch\p8b7_\a64_ab_p8b7_patch.py now 4 changes, 1910c724 -> c0e29cdb (M1: w3 / w3t
+        Pin ContactSplit='0' at :345 / :346; N5: :2865 note build-derived); harness 21 / 21 patched, 17 / 21 unpatched (the
+        4 controls); 22 dry-run forms, exit codes unchanged, only the N5 note differs; -AB -Arms w3 / w3t exit 1 on both
+        copies by F12 (no passed E64-mv smoke for the staged plugin): pre-existing gate, not the patch.
+        - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
+        under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
+        Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
+        MainFocalPixels() is 0 and the sprite bit never sets (smoke 1: 'GraphicsSmallSoldiersAsSprites set to 1', no
+        'engine scales active'). Works under SMAA T2x / TAA / DLSS / FSR / XeSS; Dead Unit Detail works everywhere. Fix
+        (design 3.2): anti_aliasing.hpp keeps the main view's projection at its sun light draw whenever a host asks
+        (Settings::main_focal), the hosts set it from the row, tooltips lose 'Needs TAA ...'; tests: tw_unit_shadows 5b
+        (fails today) + the 2.6 row. CPU gate (3.3): AA Off, row Off vs On at Sprite Size 4 (same picture), before the
+        merge. Files: anti_aliasing.hpp, twattila / twrome2 / twthronesofbritannia addon.cpp, tw_unit_shadows tests.cpp:
+        AFTER the Stage B merge (addon.cpp + tests.cpp are Stage B's until then). Bug fix = on by default. Also the next
+        a64_ab writer: E64-sr2 must require 'engine scales active 0xc00000' (Dead Unit Detail alone hides the bug).
+        Owner: coord (implementer Opus after the Stage B merge)
         - [ ] RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the p8b_1127 add-on until
         Stage B merges (then rebuild from atn-mods and stage that); build\attila64_plugin is p8b_1127's plugin until then.
         Owner: coord
