@@ -17968,7 +17968,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         visibility kinds; no-OMM reference + bake diff; RTXPT turns ReSTIR off under RR -> no-reuse arm; RTXDI 3.2 PT
         module as U9's NVIDIA arm; settings matrix (~95 keys); helper / add-on half per step; resets / device loss /
         VRAM ladder section; 4K gates, fix waves first. Two prior-art items from memory (marked unverified). The v2.8
-        refresh (design only, no GPU) NEEDS ATN: the critic picks 'now', the CPU-first rule says wait. Owner:
+        refresh (design only, no GPU): ATN 18:29 'run the v2.8 design with fable xhigh ... You can do it now. But don't
+        implement it after' -> upt28_ (Fable 5.2 xHigh, design only) STARTED 18:29 (unified_pt.md v2.8 in place, backup
+        .before_v28); NO implementation after it until ATN says. ATN's answers: Q3 / Q4 / Q6 / Q8-Q11 = the picks; Q7
+        froxel volume = a harness arm on 4K numbers, a tie decided on ATN's burning-city replay; Q1 (ReSTIR off under RR),
+        Q2 (3-of-4 sub-sampling), Q5 (pbrt-v4) = ATN open (his follow-up questions answered in chat 18:29). Owner:
         coord
         - [ ] CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules
         cpq_\cpu_common_1127.md): PK9 P9-3 MERGED 6563e2199 (re-check rp93m_ GO, 0 MUST; SHOULD done = the folded
@@ -18029,7 +18033,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         memory is WRITECOMBINE (0x404); at 0xe0000 / 0x380000 every arm sits at the same ~32 GB/s, as in the CPU-only
         wc rows, so the limit is the write path, not the routine; deciding cells (map5, others): no single-thread arm
         ahead in all 4 runs (U ahead 2 of 4 at 0x38000, behind 2); only T2 / T4 (+10..18 % at 0x38000) = 6.3's split,
-        its own design. -> M2 CLOSED as 6.0 (c): leave, no note, no code (PK5 addendum). Side line for ATN: with a
+        its own design. -> M2 CLOSED as 6.0 (c): leave, no note, no code (PK5 addendum). ATN 18:29 asked about
+        CPUs without V-cache: coord added --small-l3 to the bench (exe 9ada01ee, old f16a93a5 kept as m2b_f16a93a5.exe,
+        m2b.cpp.bak_coord_l3) and ran map x2 on CCD 1 (32 MB L3, core 18): deciding cells (others) still no arm ahead
+        in both runs; cold source: U / R +5..10 % over Z in every run (more than on CCD 0). So only if a plain Zen 4's
+        rows fall out of its smaller L3; at most ~0.1-0.15 ms a frame; Intel not measured. Side line for ATN: with a
         cold source, ucrtbase memcpy / rep movsb are +4..5 % in every run (at most ~0.07 ms a frame; the game's source
         is 'others'); a note to the loader's author only if ATN asks. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
         backup_32bit.md Rev 3 (2.8 rows L1-L13 + G9-G11, 2.9 audit rows H1-H11; no 32-bit class moved); FROZEN 32-BIT
@@ -18052,8 +18060,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         digest (rt_d3d12.hpp:3407), J2 control both visibility controls, X14 test all 255. X18 + X14 may merge after
         the NITs (no speed gate) -> split branch fx4b_a_1127; X10 / X09 wait for GPU gates J2 / J3 (PARKED). Design Q
         DECIDED (reviewer's pick, no code): the reference stays for judging estimators; the bake is judged by a second
-        reference run with micromaps off (RTXPT Sample.cpp:1642-1676). Fix round fx4b_ (resumed, Opus High) STARTED
-        19:3x; then Sonnet High final. Look list -> ATN. Owner: coord
+        reference run with micromaps off (RTXPT Sample.cpp:1642-1676). Fix round fx4b_ (resumed, Opus High) DONE 18:27 (23 of 30 min; handbacks\fx4b__handback.md 'Fix round'):
+        fx4b_1127 3be34026a (X18 / X14: QUERY_TWINS at class scope, OMM_STEMS 9 / 8, X14 test over all 255 cutoffs)
+        + 7f6b0d88b (X10 / X09: MUST 1 rt_path.hlsli:2071 back to Occluded(..., NO_GRASS_SMOKE); MUST 2 was this
+        wave's regression: with Opacity Micromaps (Leaves) off the reuse rays missed leaves too -> the helper's
+        leaf_micromaps_ sets RT_MICROMAPS, without it TraceSurface / SURFACE_OCCLUDED alpha-test leaves as on DXR 1.1,
+        control CONTROL_SURFACE_LEAVES_CULLED; Leaves-off speed = the DXR 1.1 cost (up to 30 ms of leaf alpha tests,
+        ATN 10-29) -> look / speed list for ATN; SHOULD 3 control builds warn + CONTROL_BUILD.txt); DXR 1.1 headers
+        byte-identical with atn-mods, 112 with all five controls; check.py + scan.py PASS; gated amd64 + x86 exit 0.
+        Split branch fx4b_a_1127 (X18 + X14 only, from e2073705c, pushed 18:23): scan.py PASS, X14 test PASS, gated
+        amd64 + x86 exit 0. Open: the pack step should refuse a folder with CONTROL_BUILD.txt (pack owner); J2 / J3
+        (Leaves-off arms + both visibility controls) before X10 / X09 merge (PARKED). Sonnet High final sfx4b_ (the
+        one GPU-lane agent, read only) STARTED 18:29; then merge fx4b_a_1127. Look list -> ATN. Owner: coord
         - [ ] OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable 5.2 medium is really
         good ... Tell me later after which one is worth it'): Opus implementers Medium for well-specified steps (add-on
         rows, tooling, cite waves, ports, small fix rounds), High for shader math / big merge-ups / no line-level
