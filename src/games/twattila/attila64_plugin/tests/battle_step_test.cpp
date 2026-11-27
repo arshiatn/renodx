@@ -1273,6 +1273,7 @@ enum OwnerAction : uint32_t {
   ACTION_MOVE_OTHER,        // game code that moves another object: the row's reasoning says it never happens
   ACTION_FENCE_PUSH_AND_MOVE,  // class H's path with a write the reasoning does not cover: what the fence is for
   ACTION_SWAP_LISTED,       // once: the object list's entry at OBJECT_VALUE changes places with the next
+  ACTION_GROW_LIST,         // once: the object list gets two entries longer (the memory behind it holds objects)
 };
 
 struct ContactScene {
@@ -1296,8 +1297,10 @@ struct OwnerCall {
   bool operator==(const OwnerCall&) const = default;
 };
 std::vector<OwnerCall> owner_calls;
+uint32_t swapped_calls = 0;  // the calls out of a walk over the row's kept nodes
 ATTILA64_GAME_CALL void FakeOwner(void* owner, void* walking) noexcept {
   owner_calls.push_back({reinterpret_cast<uintptr_t>(owner), reinterpret_cast<uintptr_t>(walking)});
+  swapped_calls += ((At<void*>(walking, OBJECT_CELLS) == contact_cells.entries.data()) ? 1 : 0);
   switch (At<uint32_t>(walking, OBJECT_ACTION)) {
     case ACTION_FENCE_PUSH:
       ++At<uint32_t>(scene.fence, FENCE_COUNT);
@@ -1324,6 +1327,10 @@ ATTILA64_GAME_CALL void FakeOwner(void* owner, void* walking) noexcept {
       At<uint32_t>(walking, OBJECT_ACTION) = ACTION_NONE;
       break;
     }
+    case ACTION_GROW_LIST:
+      At<uint32_t>(scene.manager, CONTACT_OBJECT_COUNT) += 2;
+      At<uint32_t>(walking, OBJECT_ACTION) = ACTION_NONE;
+      break;
     default:
       break;
   }
@@ -1491,6 +1498,20 @@ void FreshContact() {
 bool LaneIs(EngineState lane) { return block.engine_status.load() == (uint32_t{lane} << ENGINE_SPLIT_SHIFT); }
 
 // One tick on the world as it was kept: the owner calls it made and the memory after it.
+// The last case that compared the game's pass with the row's, for the line of a run that ends in an access violation
+// (a null link read, a write past a list). First in line: the run may have no stack left to unwind.
+const char* contact_case = "none";
+LONG WINAPI ContactException(EXCEPTION_POINTERS* info) noexcept {
+  if (info->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION) return EXCEPTION_CONTINUE_SEARCH;
+  // Without the C runtime first: a write past the row's arrays may have gone through the test's own state.
+  static constexpr char LINE[] = "FAIL: access violation in the contact part\n";
+  DWORD written = 0;
+  WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), LINE, sizeof(LINE) - 1, &written, nullptr);
+  std::printf("FAIL: access violation at 0x%llx, in or after the contact case: %s\n",
+              static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(info->ExceptionRecord->ExceptionAddress)), contact_case);
+  TerminateProcess(GetCurrentProcess(), EXCEPTION_ACCESS_VIOLATION);
+  return EXCEPTION_CONTINUE_SEARCH;
+}
 struct ContactOutcome {
   bool handled = false;  // by the row; otherwise the game's function ran
   uint32_t regions = 0;
@@ -1502,6 +1523,7 @@ struct ContactOutcome {
 ContactOutcome RunContact(bool with_row, uint32_t threads = 0, bool fresh = true) {
   RestoreContactWorld();
   owner_calls.clear();
+  swapped_calls = 0;
   game_memory.clear();
   note_game_memory = true;
   regions = 0;
@@ -1535,6 +1557,7 @@ bool Same(const ContactOutcome& left, const ContactOutcome& right) {
 // The world as built now through the game's pass, then through the row with the step's thread alone and with three
 // helpers: all the same. Returns the run with the step's thread alone.
 ContactOutcome ExpectContactSame(const char* what) {
+  contact_case = what;
   KeepContactWorld();
   const ContactOutcome game = RunContact(false);
   const ContactOutcome threaded = RunContact(true, 3);
@@ -1743,6 +1766,15 @@ void RunContactCases() {
     Expect(cells_untouched(), "contact base: the swap's cell entries are zero but each head pointer, after a tick too");
     const ContactOutcome again = RunContact(true, 0, false);
     Expect(again.handled && step_lines.size() == 1, "contact base: a second tick logs nothing");
+    // An id's first node only, as the game's id set does it: a neighbour twice in one cell is visited and kept once
+    // (and its own walk meets its second node there, once: 107 visits and kept nodes for the 106 of the base).
+    RestoreContactWorld();
+    std::vector<void*> objects = base_scene();
+    AddToCell(objects[1], At<void**>(At<void*>(objects[0], OBJECT_CELLS), CELL_HEAD), 8);
+    Expect(ExpectContactSame("an object twice in one cell").handled && contact.visited == 107 && contact.listed == 107,
+           "an object twice in one cell: visited once, kept once");
+    base_scene();
+    KeepContactWorld();
     // Control: detect drops one passing node (here in the seam, with the region open: the first helper's slot does
     // every chunk, then the first kept list is emptied).
     on_region = [] {
@@ -1909,14 +1941,37 @@ void RunContactCases() {
     At<float>(objects[0], OBJECT_VALUE) = 1500.f;
     const ContactOutcome alone = ExpectContactSame("a changed object list: the game's walk from there on");
     Expect(alone.handled && alone.calls.size() == 54, "a changed object list: the row's tick, the moved object's neighbour found");
+    // The 38 pairs before place 1500 call out of a swapped walk; none after it does.
+    Expect(swapped_calls == 38, "a changed object list: no kept nodes from the changed place on");
   }
   {
-    // Walks that visit more ids than the visited list holds: 2100 objects in one cell, in pairs far from each other.
+    // Game code that makes the object list longer under the pass: a place past the list detect saw is the game's
+    // walk, whatever an earlier tick left in the row's items there. The first tick leaves the last two places'
+    // objects with empty kept lists; the second starts two objects shorter, and the first owner call brings them
+    // back, now neighbours.
+    base_scene(2101);
+    Expect(ExpectContactSame("a longer object list: the tick before").handled, "a longer object list: the tick before");
+    std::vector<void*> objects = base_scene(2101);
+    MakeNeighbours(objects[2099], objects[2100]);
+    At<uint32_t>(scene.manager, CONTACT_OBJECT_COUNT) -= 2;
+    contact_case = "a longer object list";
+    At<uint32_t>(objects[0], OBJECT_ACTION) = ACTION_GROW_LIST;
+    KeepContactWorld();
+    const ContactOutcome game = RunContact(false);
+    const ContactOutcome row = RunContact(true, 0, false);
+    Expect(row.handled && Same(game, row) && row.calls.size() == 54 && contact_items[2100].object == objects[2100]
+               && contact_items[2100].mode == CONTACT_FAST && contact_items[2100].node_count == 0,
+           "a longer object list: a place past the list detect saw takes the game's walk");
+  }
+  {
+    // Walks that visit more ids than the visited list holds: 2100 objects in one cell, in pairs far from each other
+    // (the first with the last, and so on inwards). The first object is each chain walk's last node, past the
+    // visited list, and its id's word is no other's: a mark left there would hide it from its neighbour, the last.
     NewContactScene(2108, 8192);
     void** head = NewHead();
     for (uint32_t object = 0; object < 2100; ++object) {
-      const float x = (10.f * static_cast<float>(object / 2)) + (0.25f * static_cast<float>(object % 2));
-      AddToCell(NewObject(fast_tables[object % 2], object, x, 0.f, 1), head, 8);
+      const float x = (10.f * static_cast<float>(std::min(object, 2099 - object))) + ((object < 1050) ? 0.f : 0.25f);
+      AddToCell(NewObject(fast_tables[object % 2], ((object == 0) ? 30000 : object), x, 0.f, 1), head, 8);
     }
     const ContactOutcome alone = ExpectContactSame("one cell: every walk visits every other object");
     Expect(alone.handled && alone.calls.size() == 1050 && contact.visited == uint64_t{2100} * 2099 && contact.listed == 2100,
@@ -2033,12 +2088,24 @@ void RunContactCases() {
     Expect(RunContact(true, 0, false).handled && LaneIs(ENGINE_ACTIVE) && step_lines.size() == lines_before,
            "lane: active again without a second line");
     // The two summary lines, at the 1000th and the 3000th tick the row did.
-    for (const uint32_t ticks : SUMMARY_TICKS) {
+    // Between the two, a tick with a tail entry is the game's and counts as one.
+    for (const uint32_t ticks : {1000u, 2000u, 3000u}) {
       contact.handled_ticks = ticks - 1;
+      const size_t lines_before_tick = step_lines.size();
       char line[96];
       std::snprintf(line, sizeof(line), "renodx_attila64: contact split: %u ticks (region mean ", ticks);
-      Expect(RunContact(true, 0, false).handled && LinesWith(line) == 1 && LinesWith("own chunks 100 %, visited ") != 0
-                 && LinesWith(", plain 0 %, fence ticks 0 (first at tick 0, index 0), original ticks 0)") != 0,
+      char tail[96];
+      std::snprintf(tail, sizeof(tail), ", plain 0 %%, fence ticks 0 (first at tick 0, index 0), original ticks %u)", ticks / 3000);
+      const bool handled = RunContact(true, 0, false).handled;
+      if (ticks == 2000) {
+        Expect(handled && step_lines.size() == lines_before_tick, "summary: no line at the 2000th tick");
+        RestoreContactWorld();
+        At<uint32_t>(scene.manager, CONTACT_TAIL_COUNT) = 1;
+        Expect(!ContactTick(scene.manager, &block, api) && LinesWith("contact split: partly (ships)") == 1,
+               "summary: a tick with a tail entry between the lines");
+        continue;
+      }
+      Expect(handled && LinesWith(line) == 1 && LinesWith("own chunks 100 %, visited ") != 0 && LinesWith(tail) == 1,
              "summary: one line at the 1000th and at the 3000th tick");
     }
     Expect(std::ranges::all_of(step_lines, [](const std::string& line) { return line.size() < 1024; }),
@@ -2546,6 +2613,7 @@ int wmain(int argc, wchar_t** argv) {
   EnterClass(fenced_table.data(), CONTACT_FENCED);
   EnterClass(naval_table.data(), CONTACT_NAVAL);
   unknown_table[TABLE_OWNER_CALL] = reinterpret_cast<void*>(&FakeOwner);
+  AddVectoredExceptionHandler(1, &ContactException);
   RunContactCases();
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
