@@ -18378,6 +18378,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         batch -> apply results -> the three WPRs + Nsight (capture only) -> GPU lane -> the last ride (one fresh W3
         WPR first). ATN 23:3x: 'Your suggestion sounds great' -> all_plans section 7 + 8 updated. ATN: 'When I talk
         about plan I am talking about the all plan md file'.
+        ATN 23:4x: 'What is next for GPU Plan? I still got 2% left on fable (ultra sub) so we could probably do
+        one fable medium implementation' -> coord: next in the GPU lane = fix waves (all_plans 2.7). W2 (X50 / X51)
+        landed with pdi4c_ (X51's one-frame count left); W-H2 (X33 dead exposure, X34 dead FSR Sharpness slider, X41
+        FSR / FG units in UE games) is ready (pdi4c_ + W-H merged) -> fxh2_ (Fable 5.2 Medium, worktree fxh2_1127,
+        est 60; bridge append-only + version; code + gated builds + tests only, proof job P written, not run: the
+        GPU lane opens after the batch) STARTED 23:41. Merge after reviews + its proof (gate before merge).
         rts2_ S2b DONE (18 of 30 min; 1d7ced4f9 on rts2_1127, not merged): ' stencil func F/B pass F/B fail F/B
         depthfail F/B' (stencil on only), ' dsv ro <d><s>', new ' | views' (rtv<n> / dsv / t<n> view formats) before
         ' | instanced'; 19 gated builds, tests x2, scale_audit byte-equal, census controls. Reviews rrts2_ (Opus
