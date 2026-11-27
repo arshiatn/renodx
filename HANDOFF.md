@@ -18218,7 +18218,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         fixed build path for releases. -> MERGED 23:58 a4d9a5353 (plugin part; the add-on side keeps its size guard,
         lane 7 shows no text until the add-on round). Coord: main-tree plugin build + tests and gated x86 twattila /
         twrome2 / thrones + amd64 twattila (plugin_block.h is shared) STARTED 23:58 (scratch\coord_\pxp_merge); that
-        DLL gets staged, then a -PerfFix smoke on it.
+        DLL gets staged, then a -PerfFix smoke on it. DONE: main-tree build exit 0 (14564 checks, 0 failures; elf_sites_test,
+        game_code_test, battle_step_test ran), gated x86 twattila / twrome2 / thrones + amd64 twattila exit 0; DLL
+        f3a14087 STAGED in build\attila64_plugin. -PerfFix smoke 20261128_001111_Smoke on f3a14087: PASS (smoke_pass
+        true), 0 'another mod changed' lines, 'site CONTACT_ENTRY 0x5df300: applied', CONTACT_ENTRY first call, rows
+        all on, 21 sites unchanged, clean exit, 0 WER / dumps.
         - [ ] PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also run on the PerfFix stack
         once (same result as without PerfFix). Owner: coord (batch prep)
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
