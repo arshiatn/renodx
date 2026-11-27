@@ -17859,6 +17859,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-second ReadProcessCpus / SystemCpuSets
         reads from cpu_sets.hpp Update() (:569-595, present thread); not tied to the stutter (likely Sol's 1.3.25 film clock
         fix). Owner: coord (cpu_sets.hpp's next writer)
+        ATN 23:2x: 'We could remove the 1 second menu stutter after everything when we don't need it. Maybe add it to
+        parked section of our plan?' -> PARKED (all_plans 3.5): after the batch, last ride and final bench.
         - [ ] SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creates per Sol release' to the
         sol_fixes_<ver> checklist and record '1.3.28: same (lr5_ 11-27)'; note pkg_fixes (580efafe) = plain 1.3.28 code, b1 =
         pkg_b1 (454ddb62); 1328 Present return is dx11_device.inc:497-498. Owner: coord (next sol_fixes round)
@@ -18349,7 +18351,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         rts2_ S2b DONE (18 of 30 min; 1d7ced4f9 on rts2_1127, not merged): ' stencil func F/B pass F/B fail F/B
         depthfail F/B' (stencil on only), ' dsv ro <d><s>', new ' | views' (rtv<n> / dsv / t<n> view formats) before
         ' | instanced'; 19 gated builds, tests x2, scale_audit byte-equal, census controls. Reviews rrts2_ (Opus
-        xHigh) + frts2_ (Sonnet High) STARTED 23:25; merge after both (frame_trace.hpp has no other writer).
+        xHigh) + frts2_ (Sonnet High) STARTED 23:25; merge after both (frame_trace.hpp has no other writer). frts2_ (1 min) GO, 0 MUST: S1
+        frame_trace.hpp:337 / :366 / :378 brace-less ifs, S2 two 'stencil' tokens in one segment (a parser keyed on a
+        bare 'stencil' would see both; my non-recursive check of the tools\tw scripts was REFUSED by the permission
+        check, not retried -> the fix round renames the new token instead), NITs (lines > 120, v<fmt> vs f<fmt>, the
+        census hash regex, the :321 comment).
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
