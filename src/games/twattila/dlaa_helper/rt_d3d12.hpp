@@ -643,8 +643,8 @@ class RtScene12 {
       free_set_units_.free = {{0, SET_POOL_BYTES / 16}};
       if (clusters_) free_templates_.free = {{0, static_cast<uint32_t>(TEMPLATE_POOL_BYTES / template_bytes_)}};
     }
-    // The partitioned TLAS: an instance per static record (its index) and one for the units, PTLAS_PARTITION_SIZE a
-    // partition; a slot's write and update arguments, its two operations and their count. Only with RENODX_TW_PTLAS:
+    // The partitioned TLAS: an instance per static record (its index), per instanced mesh's instance and one for the
+    // units' BLAS or each cluster BLAS (PTLAS_INSTANCES), PTLAS_PARTITION_SIZE a partition; a slot's write and update arguments, its two operations and their count. Only with RENODX_TW_PTLAS:
     // a city siege in Attila stalled each frame by ~0.3 s with it, the TLAS built whole costs 0.10-0.16 ms (ATN's log
     // 2026-10-29: all a PTLAS could save), and it has no placed meshes (v14: rt_place writes the TLAS's descs only).
     NvU32 ptlas_caps = 0;
@@ -663,8 +663,9 @@ class RtScene12 {
       const NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS params = {
           .version = NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS_VER, .pInput = &ptlas_inputs_, .pInfo = &info};
       bool made = NvAPI_D3D12_GetRaytracingPartitionedTlasIndirectPrebuildInfo(device_.Get(), &params) == NVAPI_OK;
-      // Two partitioned TLASes in turn (each build reads the last one, never in place) and the operations in device memory
-      // (NVAPI: indirectOps / indirectOpCount in NON_PIXEL_SHADER_RESOURCE), copied from the slot's upload buffer.
+      // Two partitioned TLASes in turn (each build reads the last one, never in place) and the operations in device memory,
+      // copied from the slot's upload buffer: ours (as first written), not NVAPI's ask (nvapi.h allows a build in place,
+      // and an upload buffer's GENERIC_READ holds the NON_PIXEL_SHADER_RESOURCE its operations need).
       if (made) {
         for (auto& buffer : ptlas_buffers_) {
           buffer = Buffer(info.resultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
@@ -4750,9 +4751,10 @@ class RtScene12 {
   static_assert(CLUSTER_BLAS_COUNT_OFFSET + 4 <= CLUSTER_INDICES_OFFSET);
   static constexpr uint64_t CLUSTER_RECORDS_OFFSET = CLUSTER_INDICES_OFFSET + 256;
   static constexpr uint64_t CLUSTER_UPLOAD_BYTES = CLUSTER_RECORDS_OFFSET + uint64_t{MAX_CLUSTERS} * 16;
-  // The partitioned TLAS: an instance per static record and the units' last, this many a partition; a slot's upload
-  // buffer: the write arguments (104 bytes each), the update arguments (16), the two operations, their count.
-  static constexpr uint32_t PTLAS_INSTANCES = MAX_INSTANCES + 1;
+  // The partitioned TLAS: an instance per static record and per instanced mesh's instance, then the units' BLAS or each
+  // cluster BLAS (MAX_INSTANCES + its index), this many a partition; a slot's upload buffer: the write arguments (104
+  // bytes each), the update arguments (16), the two operations, their count.
+  static constexpr uint32_t PTLAS_INSTANCES = MAX_INSTANCES + CLUSTER_BLASES;
   static constexpr uint32_t PTLAS_PARTITION_SIZE = 256;
   static constexpr uint64_t PTLAS_WRITES_OFFSET = 0;
   static constexpr uint64_t PTLAS_OPS_OFFSET = uint64_t{PTLAS_INSTANCES} * 104;
@@ -8254,7 +8256,7 @@ class RtScene12 {
       for (const size_t blas : {size_t{0}, size_t{1}, size_t{2}}) {
         if (!cluster_built[blas] || instance_count >= MAX_INSTANCES) continue;
         AddInstance(slot, &instance_count, cluster_blases_[blas]->GetGPUVirtualAddress(), units_record_, blas == 1 || units_masked_, nullptr,
-                    MAX_INSTANCES, (blas == 1) ? GRASS_SWAY_INSTANCE : SOLID_INSTANCE);
+                    MAX_INSTANCES + static_cast<uint32_t>(blas), (blas == 1) ? GRASS_SWAY_INSTANCE : SOLID_INSTANCE);
       }
       triangles += dynamic_triangles;
     } else if (units_built && instance_count < MAX_INSTANCES) {
@@ -8268,7 +8270,7 @@ class RtScene12 {
     if (smoke_scene) {
       UINT smoke_desc = MAX_INSTANCES - 1;
       AddInstance(slot, &smoke_desc, (smoke_clustered ? cluster_blases_[3] : smoke_blas_)->GetGPUVirtualAddress(), smoke_record, true, nullptr,
-                  MAX_INSTANCES, SMOKE_INSTANCE);
+                  MAX_INSTANCES + 3, SMOKE_INSTANCE);
     }
     // Placed meshes (v14; not with the partitioned TLAS): rt_place writes their descs after the CPU's instances, this
     // request's draws' (the new captures', then the placements') and those kept from the last dispatch; the TLAS takes
@@ -8390,18 +8392,20 @@ class RtScene12 {
 #if defined(RENODX_NVAPI_CLUSTERS)
     if (ptlas_ != nullptr) {
       // The partitioned TLAS: this request's instances by their place (InstanceContributionToHitGroupIndex); a place whose
-      // BLAS, InstanceID, flags or transform changed is written, one last request had and this one not written inactive.
+      // BLAS, InstanceID, mask, flags or transform changed is written, one last request had and this one not written inactive.
       const uint32_t stamp = ++ptlas_stamp_;
       std::vector<uint32_t> places;
       places.reserve(instance_count);
       uint32_t active = 0;
       for (UINT index = 0; index < instance_count; ++index) {
         const D3D12_RAYTRACING_INSTANCE_DESC& instance = slot->instance_data[index];
-        const uint32_t at = std::min<uint32_t>(instance.InstanceContributionToHitGroupIndex, PTLAS_INSTANCES - 1);
+        const uint32_t at = instance.InstanceContributionToHitGroupIndex;
+        assert(at < PTLAS_INSTANCES);
         PtlasInstance& want = ptlas_wanted_[at];
         if (want.stamp != stamp) ++active;
         want = {.blas = instance.AccelerationStructure,
                 .id = instance.InstanceID,
+                .mask = instance.InstanceMask,
                 .flags = NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE
                          | (((instance.Flags & D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE) != 0)
                                 ? NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_INSTANCE_FLAG_FORCE_OPAQUE
@@ -8424,7 +8428,7 @@ class RtScene12 {
         const PtlasInstance& want = ptlas_wanted_[at];
         const bool active = want.stamp == stamp;
         const bool changed = active ? (written.blas != want.blas || written.flags != want.flags || written.id != want.id
-                                       || written.transform != want.transform)
+                                       || written.mask != want.mask || written.transform != want.transform)
                                     : (written.flags != UINT32_MAX && written.blas != 0);
         if (!changed) return;
         auto& write = writes[write_count++];
@@ -8432,6 +8436,7 @@ class RtScene12 {
         if (active) {
           std::memcpy(write.transform, want.transform.data(), sizeof(write.transform));
           write.instanceID = want.id;
+          write.instanceMask = want.mask;
           write.instanceFlags = want.flags;
           write.accelerationStructure = want.blas;
           written = want;
@@ -8441,7 +8446,6 @@ class RtScene12 {
           write.transform[2][2] = 1.f;
           written = {.blas = 0, .id = 0, .flags = 0};
         }
-        write.instanceMask = 0xFF;
         write.instanceIndex = at;
         write.partitionIndex = at / PTLAS_PARTITION_SIZE;
       };
@@ -10966,6 +10970,7 @@ class RtScene12 {
   struct PtlasInstance {
     uint64_t blas = 0;
     uint32_t id = 0;
+    uint32_t mask = 0;  // the TLAS desc's InstanceMask (rays' masks skip smoke, grass, leaves)
     uint32_t flags = UINT32_MAX;  // never written
     std::array<float, 12> transform = {};
     uint32_t stamp = 0;  // the request it was wanted in (ptlas_wanted_)
