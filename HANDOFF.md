@@ -1042,6 +1042,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AO DURING THE PT AMBIENT WARM-UP (rllf_ M1, 11-27, bug fix -> always on): Attila ... | ATN (the warm-up look in the batch)
 - W3 HORIZON METRIC (p6rv2_ S3, 11-27): P6a2's camera proof for w3 / w3t is a byte ... | the next a64_ab writer after PK9 P1-P5 (C8 T0 or its own ste
 - ALL PLANS LIST (ATN 11-27 16:2x: 'Some stuffs are missing ... gather those forgo ... | coord
+- CPU FIRST (ATN 11-27 17:3x): 'Unified PT should come after the fixes BUT ... don ... | coord
 - GPU LANE (max 1 agent): fx4b_ = fix wave W4b (X18 rt_cache_fill / rt_reference O ... | coord
 - ONE PLAN FILE + MAX 1 GPU SUBAGENT (ATN 11-27 16:5x): (1) stay on all_plans_1127 ... | coord
 - ATN AWAY 11-27 ~17:00 FOR 2-3 DAYS (his answers 16:4x): (1) the BATCH MAY START ... | coord
@@ -18355,6 +18356,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         Thrones / WH3 fog_shadows_defaulted_on; the batch GPU-stall trace; alt-tab F1a / F1b / F7 / F8; NOTE: the
         snapshot has 5 stray CRs, so part line numbers differ by up to 4 between splitlines and grep -n: ticks match
         by box text, not line). Left: hfa_8. Owner: coord
+        - [ ] CPU FIRST (ATN 11-27 17:3x): 'Unified PT should come after the fixes BUT ... don't run anything from
+        that plan that is not CPU after fx4b_ fix wave please ... So my Fable usage hits 100% before my weekly usage'.
+        -> fx4b_ finishes (code + reviews); its GPU proof jobs and every GPU / RT / PT / look item stay PARKED in
+        all_plans_1127.md (section 0 + 7.5) until ATN says go; unified PT after the fix waves. CPU lane runs
+        Fable-first. Started 17:3x: PK9 re-check rp93m_ (Sonnet High; p93m_ DONE 17:05, p93_1127 c4d374f95, 3 runs
+        PASS, DLL 02a95fed, generators folded in scratch\p93m_\gen, install.sh after the merge), the HANDOFF audit
+        merge hfm_ (Opus xHigh, read only: section 11 draft + ticks.py --dry), the CPU start list cpq_ (Fable 5.2
+        xHigh, read only). ATN 17:4x asked which CPU items use Fable. Owner: coord
         - [ ] GPU LANE (max 1 agent): fx4b_ = fix wave W4b (X18 rt_cache_fill / rt_reference OMM twins, X14 bake
         cutoff + Tales port, X09 + X10 one visibility kind), Opus 5.5 High, branch fx4b_1127 in its own worktree,
         STARTED 17:1x (brief testbin\scratch\fx4b_\brief.md, est 100 min, stop at 200); then Opus xHigh review +
