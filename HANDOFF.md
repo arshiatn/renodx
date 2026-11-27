@@ -18082,7 +18082,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         step 8 reviewer. Coord ran SCR\p8b5_\gen\install.sh 19:33 (both files installed, .bak_p8b5 kept).
         Step 6 p8b6_ (Opus 5.5 Medium, trial; same worktree + branch, merge atn-mods first; link.hpp + addon.cpp
         + their tests) and step 7 check p8b7_ (Fable 5.2 Medium; a64_ab copy + patch + dry runs only, no smoke) STARTED
-        19:33 side by side (different files); the smoke after step 6, then step 8 review.
+        19:33 side by side (different files); the smoke after step 6, then step 8 review. p8b7_ DONE 19:43 (9 of 30 min;
+        scratch\p8b7_\handback.md): live a64_ab 1910c724 untouched; kinds ep8 / ep8tt8 / ep8b / ep8btt8, both PROBE_LINES,
+        the ContactSplit key row, A15's whole-string form and table-driven E4-E6 are already in; ONE difference: E5b
+        (:995) pins 'contact split: game code differs', but the Stage B DLL logs 'contact split: off (game code differs
+        at ...)', so an ep8b AB start would stay valid with only a note (13.1 P3 says invalid; the smoke fails on it
+        anyway). Patch scratch\p8b7_\a64_ab_p8b7_patch.py (one regex line, 1910c724 -> 346d2f1d, backup
+        a64_ab.pre_p8b7_1127.ps1; second apply refused); Plugin-Check harness 16 / 16 patched, 15 / 16 unpatched (only
+        the control); 18 dry-run forms identical, exit codes the same. Coord: the patch is applied after step 8's review
+        + FINAL (it reads steps 5-7); the smoke does not need it. Smoke later: '-Smoke -ReShade -EnginePlugin' (+ the
+        batch stack's -Package / -Exe64Sha variant), after the Stage B + step 6 build is staged in build\attila64_plugin
+        (today Stage A's 78b70936); pass lines in the hand-back (21 sites unchanged, rows offered 0x3fff, no code-differs
+        line). Its exe paths have no CPU Set Setter rule (affinity 0xFFFF): fine for a pass / fail smoke.
         - [ ] PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured like W-A3's; while hidden
         the add-on writes NO CORE_SPLIT bit (P1a's rule), so the batch's ContactSplit=1 arms keep their bit. After the
         batch + ATN's call (design 14: default Off, ATN decides): flip the row's MEASURED constant. Owner: coord Note: HANDOFF clock stamps 19:xx above were an
