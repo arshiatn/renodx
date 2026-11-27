@@ -59,6 +59,7 @@ inline constexpr uintptr_t GRASS_CELL_RECORD = 0x6c0000;
 inline constexpr uintptr_t CAMPAIGN_TREE_RECORD = 0x6d0000;
 inline constexpr uintptr_t SPRITE_BED = 0x6e0000;  // the sprite site's test bed (fake_loader.hpp WriteMidBed)
 inline constexpr uintptr_t PAIRS_RECORD = 0x6f0000;  // the synthetic pair resolver's record
+inline constexpr uintptr_t CONTACT_RECORD = 0x6f0010;  // the synthetic contact pass's, a PairsRecord too
 // What a caller loads into rbx, rbp, r12, r13, r14 and r15 before its call.
 inline constexpr std::array<uint64_t, 6> CALLER_SENTINELS = {0xb0b0b0b0b0b0b0b0, 0xb5b5b5b5b5b5b5b5, 0xc0c0c0c0c0c0c0c0,
                                                              0xd0d0d0d0d0d0d0d0, 0xe0e0e0e0e0e0e0e0, 0xf0f0f0f0f0f0f0f0};
@@ -322,6 +323,18 @@ inline constexpr std::array<uint8_t, 31> PAIRS_TAIL = {
     0x5b, 0x41, 0x5c, 0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f, 0x5d,  // pop rbx / r12 / r13 / r14 / r15 / rbp
     0xc3,                                                  // ret
 };
+// Contact pass: push rbp / r15 / r14 (the site), push r12 / rbx, sub rsp 0x2010, mov r15, rdi and the start of
+// mov al, [rip + a displacement] (the window, with the displacement's first byte, a zero): the tail's zeros end that
+// load on the byte after it.
+inline constexpr std::array<uint8_t, 35> CONTACT_TAIL = {
+    0x00, 0x00, 0x00,                                      // the load's displacement, its last three bytes
+    0x48, 0xb8, 0x10, 0x00, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rax, CONTACT_RECORD
+    0x48, 0x89, 0x38,                                      // mov [rax], rdi
+    0xff, 0x40, 0x08,                                      // inc dword [rax+8]
+    0x48, 0x81, 0xc4, 0x10, 0x20, 0x00, 0x00,              // add rsp, 0x2010
+    0x5b, 0x41, 0x5c, 0x41, 0x5e, 0x41, 0x5f, 0x5d,        // pop rbx / r12 / r14 / r15 / rbp
+    0xc3,                                                  // ret
+};
 
 // A caller in the fake game whose call instruction sits at `call_at` (so the callee sees call_at + 5 as its return
 // address): it loads CALLER_SENTINELS into the callee-saved registers, calls `target` with the arguments it got itself
@@ -505,6 +518,7 @@ int wmain(int argc, wchar_t** argv) {
       std::memcpy(at(sprite_end + SPRITE_SITE_TAIL.size()), &back, sizeof(back));
     }
     write_tail(LABEL_PAIRS_ENTRY, PAIRS_TAIL);
+    write_tail(LABEL_CONTACT_ENTRY, CONTACT_TAIL);
     {
       // The plugin's init takes the grass draw for the game's by the hash of its first bytes: five bytes past the fake
       // draw's code are set so that the fake one hashes the same. FNV-1a's steps can be undone, so the last two bytes
@@ -525,7 +539,7 @@ int wmain(int argc, wchar_t** argv) {
       bool met = false;
       for (uint32_t first = 0; first < 256 && !met; ++first) {
         fill[0] = static_cast<uint8_t>(first);
-        const uint32_t before = Fnv1a(draw, GRASS_DRAW_NO_LOD_BYTES - 4);
+        const uint32_t before = battle_step::Fnv1a<uint32_t>(draw, GRASS_DRAW_NO_LOD_BYTES - 4);
         for (uint32_t middle = 0; middle < (1u << 16) && !met; ++middle) {
           const uint32_t after_third = ((((before ^ (middle >> 8)) * PRIME) ^ (middle & 0xff)) * PRIME);
           if (!std::ranges::binary_search(wanted, after_third)) continue;
@@ -534,7 +548,7 @@ int wmain(int argc, wchar_t** argv) {
           for (uint32_t last = 0; last < (1u << 16) && !met; ++last) {
             fill[3] = static_cast<uint8_t>(last);
             fill[4] = static_cast<uint8_t>(last >> 8);
-            met = (Fnv1a(draw, GRASS_DRAW_NO_LOD_BYTES) == GRASS_DRAW_NO_LOD_HASH);
+            met = (battle_step::Fnv1a<uint32_t>(draw, GRASS_DRAW_NO_LOD_BYTES) == GRASS_DRAW_NO_LOD_HASH);
           }
         }
       }
@@ -624,7 +638,8 @@ int wmain(int argc, wchar_t** argv) {
                && REPLACEMENTS[LABEL_SPRITE_DISTANCE] == reinterpret_cast<void*>(&SpriteDistanceHandler)
                && MID_SITE_SCALES[LABEL_SPRITE_DISTANCE] == ((1u << SCALE_SPRITE_DISTANCE) | (1u << SCALE_DEAD_UNITS))
                && REPLACEMENTS[LABEL_EFFECT_WALK_ENTRY] == reinterpret_cast<void*>(&EffectWalkEntry)
-               && REPLACEMENTS[LABEL_PAIRS_ENTRY] == reinterpret_cast<void*>(&PairsEntry),
+               && REPLACEMENTS[LABEL_PAIRS_ENTRY] == reinterpret_cast<void*>(&PairsEntry)
+               && REPLACEMENTS[LABEL_CONTACT_ENTRY] == reinterpret_cast<void*>(&ContactEntry),
            "labels: each holds its own hook");
     Expect(LABEL_STEP_ENTRY == 2 && SITES[LABEL_STEP_ENTRY].row == ROW_CPU_PLACEMENT
                && SITES[ROW_BONE_FLUSH].label == LABEL_PACK_ENTRY && SITES[ROW_PASS_DRAW].label == LABEL_VIEW_DRAW_ENTRY
@@ -1386,6 +1401,14 @@ int wmain(int argc, wchar_t** argv) {
       Expect(pairs_record->manager == fake_manager.data() && pairs_record->calls == 2
                  && Logged("renodx_attila64: PAIRS_ENTRY: first call (thread "),
              "pairs: game code the row does not know, the game's function with its argument");
+      // The contact pass the same, and its own function: the pair resolver's record stays.
+      auto* contact_record = reinterpret_cast<PairsRecord*>(CONTACT_RECORD);
+      *contact_record = {};
+      reinterpret_cast<PairsFn>(SITES[LABEL_CONTACT_ENTRY].address)(fake_manager.data());
+      reinterpret_cast<PairsFn>(SITES[LABEL_CONTACT_ENTRY].address)(fake_manager.data());
+      Expect(contact_record->manager == fake_manager.data() && contact_record->calls == 2 && pairs_record->calls == 2
+                 && Logged("renodx_attila64: CONTACT_ENTRY: first call (thread "),
+             "contact: game code the row does not know, the game's function with its argument");
     }
 
     // The sprite site, through its bed: the soldier's record in r13, its display tables' entries in rax and rcx, its
@@ -1635,12 +1658,22 @@ int wmain(int argc, wchar_t** argv) {
   std::printf("  hooks: the DLL's own\n");
   write_game();
   // The test's game image holds the sites' windows only: the battle step row's check of the game's code refuses it,
-  // with its one line, and the row's hook passes every call on.
-  const Plugin main_plugin = ExpectPluginDll(api, copy_plugin(L"main", MODULE_NAME).c_str(), true, ENGINE_CODE_DIFFERS);
+  // with its one line, and the row's hook passes every call on. The contact split row the same, and its line names
+  // its first range (the lowest address) and that range's first block.
+  const Plugin main_plugin = ExpectPluginDll(api, copy_plugin(L"main", MODULE_NAME).c_str(), true, ENGINE_CODE_DIFFERS,
+                                             ENGINE_CODE_DIFFERS);
   Expect(std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("battle step: ") != std::string::npos; }) == 1
              && Logged("renodx_attila64: battle step: game code differs (") && Logged(", battle step on")
              && Logged("renodx_attila64: site PAIRS_ENTRY 0x79a690: applied"),
          "battle step: one line for the game code it does not know");
+  {
+    char differs_line[96];
+    std::snprintf(differs_line, sizeof(differs_line), "renodx_attila64: contact split: off (game code differs at 0x%x+0x0)",
+                  battle_step::CONTACT_RANGES.front().start);
+    Expect(std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("contact split: ") != std::string::npos; }) == 1
+               && Logged(differs_line) && Logged(", contact split on"),
+           "contact split: one line for the game code it does not know, with the place");
+  }
   if (main_plugin.block != nullptr) {
     // This thread ran the DLL's game start, so it is the DLL's render thread: its steps are never selected onto the
     // battle core (the test's own copy above, with no render thread, selects this thread).
@@ -1799,10 +1832,17 @@ int wmain(int argc, wchar_t** argv) {
            "dll: a row's install key 0 leaves that row out, and out of the rows tried");
     // The battle step row's own key 0 is its lane's word, with the game's code not read; with the row in, this image
     // is game code it does not know.
+    // The contact split row's the same, in its own lane.
     Expect(plugin.block->engine_status.load()
-                   == (uint32_t{(row == ROW_BATTLE_STEP) ? ENGINE_OFF_INI : ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT)
-               && Logged("battle step: ") == (row != ROW_BATTLE_STEP),
-           "dll: the battle step row's key 0 is its lane's off, without a line");
+                   == ((uint32_t{(row == ROW_BATTLE_STEP) ? ENGINE_OFF_INI : ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT)
+                       | (uint32_t{(row == ROW_CONTACT_SPLIT) ? ENGINE_OFF_INI : ENGINE_CODE_DIFFERS} << ENGINE_SPLIT_SHIFT))
+               && Logged("battle step: ") == (row != ROW_BATTLE_STEP) && Logged("contact split: ") == (row != ROW_CONTACT_SPLIT),
+           "dll: an engine row's key 0 is its lane's off, without a line");
+    Expect(Logged("renodx_attila64: site CONTACT_ENTRY 0x5df300: skipped (OFF)") == (row == ROW_CONTACT_SPLIT)
+               && Logged(", contact split off") == (row == ROW_CONTACT_SPLIT)
+               && Logged(", contact split on") == (row != ROW_CONTACT_SPLIT)
+               && plugin.block->core_wanted.load() == CORE_WANTED_DEFAULT,
+           "dll: the contact split row's key 0 is its site's skipped (OFF) line and its word off in the rows line");
     Expect(Logged("renodx_attila64: site PAIRS_ENTRY 0x79a690: skipped (OFF)") == (row == ROW_BATTLE_STEP)
                && Logged(", battle step off") == (row == ROW_BATTLE_STEP)
                && Logged(", battle step on") == (row != ROW_BATTLE_STEP),
@@ -1858,6 +1898,11 @@ int wmain(int argc, wchar_t** argv) {
                && Logged("PACK_ENTRY 0x3416d50: skipped (NO_MEMORY)") && Logged("SPRITE_DISTANCE 0xa5049c: skipped (NO_MEMORY)")
                && site_untouched(SITES[LABEL_SPRITE_DISTANCE]),
            "dll: no memory near the game leaves every hook and stub row out (the patch row needs none)");
+    // An engine row whose site is not in reads no game code: its lane says so without the row's code line.
+    Expect(plugin.block->engine_status.load()
+                   == ((uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT) | (uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_SPLIT_SHIFT))
+               && !Logged("battle step: ") && !Logged("contact split: "),
+           "dll: an engine row without its site is off, with no code line");
   }
   hook_mode = HOOK_NORMAL;
 

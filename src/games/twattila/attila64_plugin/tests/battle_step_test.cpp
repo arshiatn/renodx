@@ -16,6 +16,12 @@
 // game code that writes what the row's reasoning says it never writes), each reason for the game's own loop, an entry
 // while a call runs, the switch, the status lane and the row's log lines; and the text a batch tool looks for in the
 // DLL file.
+// The contact split row of the same file (ContactTick, behind hooks.hpp's ContactEntry) has its own part below:
+// its tables without the game file, and with it the checked code and table entries byte by byte, the code check's
+// lines, and the game's contact pass against the row on fake worlds. The row's helpers go through the engine's task
+// queue: the game's own fetch on a fake task manager, the test's lock, unlock and wake at the game's addresses, and
+// the test's task threads in the shape of the game's task-thread loop (leftover, skipped, nested and twice-run
+// helpers, the lock error, a region stress).
 // battle_step_test.exe <renodx_attila64.dll> [<game ELF>]; exit code = failures, or 77 with none when the game-file
 // part did not run.
 
@@ -23,6 +29,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -30,9 +38,13 @@
 #include <functional>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
+#include <mutex>
 #include <random>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <utility>
 #include <vector>
 
 #include "../hooks.hpp"
@@ -234,7 +246,17 @@ ATTILA64_GAME_CALL uintptr_t ModelJoinOne(void* group, void* soldier) noexcept {
 
 ATTILA64_GAME_CALL uintptr_t ModelStarted(void* /*group*/) noexcept { return 0; }
 
-ATTILA64_GAME_CALL void* TestMalloc(size_t bytes, uint32_t /*heap*/) noexcept { return Take(bytes); }
+// What the game's code took from the test's allocator while a contact case ran: each block's place in the arena and
+// its bytes.
+bool note_game_memory = false;
+std::vector<std::pair<size_t, size_t>> game_memory;
+ATTILA64_GAME_CALL void* TestMalloc(size_t bytes, uint32_t /*heap*/) noexcept {
+  void* taken = Take(bytes);
+  if (note_game_memory) {
+    game_memory.emplace_back(static_cast<size_t>(static_cast<uint8_t*>(taken) - arena), bytes);
+  }
+  return taken;
+}
 ATTILA64_GAME_CALL void TestFree(void* /*memory*/) noexcept {}
 
 // The fakes at the game's addresses while the game file is not mapped: any fixed order of the pairs does for a sort.
@@ -1227,6 +1249,1683 @@ void WriteJump(uintptr_t address, void* target) {
   code[11] = 0xe0;
 }
 
+// The contact split row (ContactTick, CheckContactCode) against the game's contact pass. Both run on the same fake
+// world in the game's layout (a manager with its environment, battle model, core, database and table; collision
+// objects whose cell entries are their nodes in the grid cells' chains) and must make the same owner calls in the same
+// order and leave the same memory. The game's pass is the game's own code, so these cases need the game file.
+// - Every fake object's table has the logging fake owner at +0x98, so a walk's one indirect call (0x8045e8) never
+//   enters game code: no case reaches 0x7856f0, and with it 0x785905 / 0x785914 / 0x785e60 / 0x272c070. The fake
+//   game table is therefore only a non-null word; nothing reads it.
+// - Shapes are null: 0x3002e20 returns 0 for two null shapes (0x3002e4b..0x300302e) and changes nothing.
+// - The id vector's memory is left out of the comparison: the game pushes every visited id, the row only the kept
+//   ones, and the count is 0 again after every object.
+
+// The test's own fields of a fake object, in bytes the game's code here does not touch.
+inline constexpr size_t OBJECT_ACTION = 0x120;  // what the fake owner does when this object is the walking one
+inline constexpr size_t OBJECT_TARGET = 0x128;
+inline constexpr size_t OBJECT_VALUE = 0x130;
+inline constexpr size_t OBJECT_BYTES = 0x140;
+inline constexpr size_t ID_SET_BYTES = 0x2020;
+inline constexpr uintptr_t CONTACT_LOOP = 0x5df300;
+inline constexpr uintptr_t TASK_MANAGER_GETTER = 0x3061e60;
+enum OwnerAction : uint32_t {
+  ACTION_NONE,
+  ACTION_FENCE_PUSH,        // class H's path: the fence count goes up and the walking object's flags lose two bits
+  ACTION_FENCE_APPEARS,     // the model's fence manager link turns from null to set
+  ACTION_DROP_ENVIRONMENT,  // the walking object's environment link turns null
+  ACTION_DROP_MODEL,        // the environment's model link turns null
+  ACTION_MOVE_OTHER,        // game code that moves another object: the row's reasoning says it never happens
+  ACTION_FENCE_PUSH_AND_MOVE,  // class H's path with a write the reasoning does not cover: what the fence is for
+  ACTION_SWAP_LISTED,       // once: the object list's entry at OBJECT_VALUE changes places with the next
+  ACTION_GROW_LIST,         // once: the object list gets two entries longer (the memory behind it holds objects)
+};
+
+struct ContactScene {
+  void* manager = nullptr;
+  void* environment = nullptr;
+  void* model = nullptr;
+  void* core = nullptr;
+  void* database = nullptr;
+  void* fence = nullptr;
+  void* task_manager = nullptr;
+  size_t id_data = 0;  // the id vector's first memory: its place in the arena and its bytes
+  size_t id_data_bytes = 0;
+};
+ContactScene scene;
+uint8_t* const id_set_memory = reinterpret_cast<uint8_t*>(GAME_ID_SET);
+std::vector<uint8_t> id_set_world;
+
+struct OwnerCall {
+  uintptr_t owner = 0;
+  uintptr_t walking = 0;
+  bool operator==(const OwnerCall&) const = default;
+};
+std::vector<OwnerCall> owner_calls;
+uint32_t swapped_calls = 0;  // the calls out of a walk over the row's kept nodes
+ATTILA64_GAME_CALL void FakeOwner(void* owner, void* walking) noexcept {
+  owner_calls.push_back({reinterpret_cast<uintptr_t>(owner), reinterpret_cast<uintptr_t>(walking)});
+  swapped_calls += ((At<void*>(walking, OBJECT_CELLS) == contact_cells.entries.data()) ? 1 : 0);
+  switch (At<uint32_t>(walking, OBJECT_ACTION)) {
+    case ACTION_FENCE_PUSH:
+      ++At<uint32_t>(scene.fence, FENCE_COUNT);
+      At<uint8_t>(walking, 0x60) &= 0xfc;
+      break;
+    case ACTION_FENCE_APPEARS:
+      At<void*>(scene.model, MODEL_FENCE_MANAGER) = scene.fence;
+      break;
+    case ACTION_DROP_ENVIRONMENT:
+      At<void*>(walking, OBJECT_ENVIRONMENT) = nullptr;
+      break;
+    case ACTION_DROP_MODEL:
+      At<void*>(scene.environment, ENVIRONMENT_MODEL) = nullptr;
+      break;
+    case ACTION_FENCE_PUSH_AND_MOVE:
+      ++At<uint32_t>(scene.fence, FENCE_COUNT);
+      [[fallthrough]];
+    case ACTION_MOVE_OTHER:
+      At<float>(At<void*>(walking, OBJECT_TARGET), OBJECT_X) = At<float>(walking, OBJECT_VALUE);
+      break;
+    case ACTION_SWAP_LISTED: {
+      void** listed = At<void**>(scene.manager, CONTACT_OBJECTS) + static_cast<uint32_t>(At<float>(walking, OBJECT_VALUE));
+      std::swap(listed[0], listed[1]);
+      At<uint32_t>(walking, OBJECT_ACTION) = ACTION_NONE;
+      break;
+    }
+    case ACTION_GROW_LIST:
+      At<uint32_t>(scene.manager, CONTACT_OBJECT_COUNT) += 2;
+      At<uint32_t>(walking, OBJECT_ACTION) = ACTION_NONE;
+      break;
+    default:
+      break;
+  }
+}
+
+// The fake objects' tables, each entered in the row's class table with the mode a case wants (the unknown one is not).
+// The two fast ones lie in one pool: the second is picked so that both hash to one slot of the class table.
+inline constexpr size_t TABLE_OWNER_CALL = 0x98 / sizeof(void*);
+std::array<void*, 4096> fast_table_pool = {};
+std::array<void**, 2> fast_tables = {};
+std::array<void*, 64> fenced_table = {};
+std::array<void*, 64> naval_table = {};
+std::array<void*, 64> unknown_table = {};
+void EnterClass(void** table, ContactMode mode) {
+  table[TABLE_OWNER_CALL] = reinterpret_cast<void*>(&FakeOwner);
+  uint8_t slot = ContactClassSlot(reinterpret_cast<uintptr_t>(table));
+  while (contact.classes[slot].vptr != 0) {
+    ++slot;
+  }
+  contact.classes[slot] = {.vptr = reinterpret_cast<uintptr_t>(table), .mode = mode};
+}
+
+// The engine's task queue under the row (T-B2): the fake task manager's list, written by the row's enqueue and by the
+// game's own fetch (0x6e88f0), with the test's lock, unlock and wake at the game's addresses, and the test's task
+// threads in the shape of the game's task-thread loop.
+inline constexpr uintptr_t FETCH_TASK = 0x6e88f0;
+using FetchTaskFn = HelperTask*(ATTILA64_GAME_CALL*)(void* task_manager, uint32_t flag) noexcept;
+const std::thread::id step_thread = std::this_thread::get_id();
+// The step thread's own: `regions` counts its lock calls inside a tick (one a region, with the region open and no
+// helper queued yet), `on_region` runs there, and `queue_lock_result` is what that call returns.
+bool in_tick = false;
+bool in_region_hook = false;
+uint32_t regions = 0;
+int queue_lock_result = 0;
+std::function<void()> on_region;
+bool leave_queued = false;  // a tick's helpers stay in the queue: no task thread answers, nothing drains
+uint32_t queue_faults = 0;  // a queue that was not empty and balanced after a drain
+
+std::mutex queue_mutex;
+std::atomic<std::thread::id> queue_holder;
+std::atomic<uint32_t> queue_locks = 0;
+std::atomic<uint32_t> queue_unlocks = 0;
+std::atomic<uint32_t> queue_wakes = 0;
+std::atomic<uint32_t> helpers_run = 0;
+std::atomic<uint32_t> parents_seen = 0;  // tasks with a parent: none of the row's may have one
+// The task threads: a wake posts all of them; the first `test_helpers` then fetch until the queue is empty.
+std::mutex pool_mutex;
+std::condition_variable pool_signal;
+uint64_t wake_generation = 0;
+std::array<uint64_t, HELPER_COUNT> pool_seen = {};
+uint32_t pool_busy = 0;
+uint32_t test_helpers = 0;
+bool pool_stop = false;
+std::atomic<bool> pool_yields = false;
+std::vector<std::thread> pool;
+
+ATTILA64_GAME_CALL int FakeQueueLock(void* /*lock*/) noexcept {
+  if (std::this_thread::get_id() == step_thread && in_tick && !in_region_hook) {
+    ++regions;
+    if (on_region) {
+      in_region_hook = true;
+      on_region();
+      in_region_hook = false;
+    }
+    if (queue_lock_result != 0) return queue_lock_result;
+  }
+  queue_mutex.lock();
+  queue_holder = std::this_thread::get_id();
+  ++queue_locks;
+  return 0;
+}
+// An unlock by a thread that does not hold the lock is counted and not done: the counts then differ for good.
+ATTILA64_GAME_CALL int FakeQueueUnlock(void* /*lock*/) noexcept {
+  ++queue_unlocks;
+  if (queue_holder.load() != std::this_thread::get_id()) return 1;
+  queue_holder = std::thread::id();
+  queue_mutex.unlock();
+  return 0;
+}
+ATTILA64_GAME_CALL void FakeQueueWake(void* /*task_manager*/) noexcept {
+  ++queue_wakes;
+  {
+    const std::lock_guard lock(pool_mutex);
+    ++wake_generation;
+  }
+  pool_signal.notify_all();
+}
+bool IsHelper(const HelperTask* task) { return task >= contact_helpers.data() && task < contact_helpers.data() + HELPER_COUNT; }
+bool Poisoned(const HelperTask& task) {
+  const auto* bytes = reinterpret_cast<const uint8_t*>(&task);
+  return std::all_of(bytes, bytes + offsetof(HelperTask, state), [](uint8_t byte) { return byte == 0xcc; });
+}
+// One fetched task as the game's task-thread loop handles it: the parent read first, the table's first entry, the
+// table read again, its second entry, and with no parent nothing of the task afterwards. A helper's engine part is
+// poisoned before the second call: nothing of the row's reads it from there on, until the next enqueue fills it.
+void RunFetchedTask(HelperTask* task) {
+  if (task->parent != nullptr) {
+    ++parents_seen;
+  }
+  task->table->run(task);
+  const HelperTable* table = task->table;
+  if (IsHelper(task)) {
+    ++helpers_run;
+    std::memset(static_cast<void*>(task), 0xcc, offsetof(HelperTask, state));
+  }
+  table->done(task, 0);
+}
+// Fetches until the queue is empty; returns the tasks it ran.
+uint32_t RunQueuedTasks(uint32_t flag, std::minstd_rand* random = nullptr) {
+  uint32_t count = 0;
+  for (;;) {
+    if (random != nullptr && (*random)() % 4 == 0) {
+      std::this_thread::yield();
+    }
+    HelperTask* task = reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, flag);
+    if (task == nullptr) return count;
+    // A task thread that is slow to start what it took: the helper runs late, in this region or a later one.
+    if (random != nullptr && (*random)() % 16 == 0) {
+      for (uint32_t wait = (*random)() % 4096; wait != 0; --wait) {
+        std::this_thread::yield();
+      }
+    }
+    RunFetchedTask(task);
+    ++count;
+  }
+}
+void TaskThread(uint32_t index) {
+  std::minstd_rand random(index + 1);
+  for (;;) {
+    bool active = false;
+    {
+      std::unique_lock lock(pool_mutex);
+      pool_signal.wait(lock, [&] { return pool_stop || pool_seen[index] != wake_generation; });
+      if (pool_stop) return;
+      pool_seen[index] = wake_generation;
+      active = index < test_helpers;
+      pool_busy += (active ? 1 : 0);
+    }
+    if (active) {
+      RunQueuedTasks(0, (pool_yields.load() ? &random : nullptr));
+      const std::lock_guard lock(pool_mutex);
+      --pool_busy;
+    }
+    pool_signal.notify_all();
+  }
+}
+void SetTaskThreads(uint32_t count) {
+  const std::lock_guard lock(pool_mutex);
+  test_helpers = count;
+}
+// Every task thread has answered the last wake and found the queue empty.
+void WaitForTaskThreads() {
+  std::unique_lock lock(pool_mutex);
+  pool_signal.wait(lock, [] {
+    return pool_busy == 0 && std::ranges::all_of(pool_seen, [](uint64_t seen) { return seen == wake_generation; });
+  });
+}
+// The queue's own fields of the fake task manager: its list (head, tail, count) and the game's counter.
+struct QueueFields {
+  std::array<uint8_t, TASK_MANAGER_COUNT + sizeof(uint32_t) - TASK_MANAGER_HEAD> list = {};
+  uint32_t inside = 0;
+  bool operator==(const QueueFields&) const = default;
+};
+QueueFields ReadQueue() {
+  QueueFields fields = {.inside = At<uint32_t>(scene.task_manager, TASK_MANAGER_INSIDE)};
+  std::memcpy(fields.list.data(), static_cast<uint8_t*>(scene.task_manager) + TASK_MANAGER_HEAD, fields.list.size());
+  return fields;
+}
+bool HelpersAre(uint32_t queued_bits) {
+  bool right = true;
+  for (uint32_t helper = 0; helper < HELPER_COUNT; ++helper) {
+    right = right && contact_helpers[helper].state.load() == (((queued_bits >> helper) & 1) != 0 ? HELPER_QUEUED : HELPER_FREE);
+  }
+  return right;
+}
+
+uintptr_t getter_variable = 0;  // where the game's getter keeps the task manager, from its own code
+// A new world without objects: the chain a tick reads (manager -> environment -> model with its tick and fence
+// manager; -> core -> database -> table), the task manager behind the game's getter, the game's statics as after the
+// pass's first call, and an id vector of `id_capacity`.
+void NewContactScene(uint32_t object_capacity, uint32_t id_capacity) {
+  ClearArena();
+  scene = {.manager = Take(0x408),
+           .environment = Take(0x70),
+           .model = Take(0x1e0),
+           .core = Take(0x28),
+           .database = Take(0x21a0),
+           .fence = Take(0x50),
+           .task_manager = Take(0x50)};
+  At<void*>(scene.manager, CONTACT_ENVIRONMENT) = scene.environment;
+  At<void*>(scene.manager, CONTACT_OBJECTS) = Take(object_capacity * sizeof(void*));
+  At<void*>(scene.environment, ENVIRONMENT_CORE) = scene.core;
+  At<void*>(scene.environment, ENVIRONMENT_MODEL) = scene.model;
+  At<uint32_t>(scene.model, MODEL_TICK) = 101;
+  At<void*>(scene.model, MODEL_FENCE_MANAGER) = scene.fence;
+  At<void*>(scene.core, CORE_DATABASE) = scene.database;
+  At<void*>(scene.database, DATABASE_TABLE) = Take(16);
+  At<uint32_t>(scene.task_manager, TASK_MANAGER_THREADS) = 8;
+  // The getter's own variable: mov rbx, [rip + rel32] at 0x3061e64.
+  int32_t variable_offset = 0;
+  std::memcpy(&variable_offset, reinterpret_cast<const void*>(TASK_MANAGER_GETTER + 7), sizeof(variable_offset));
+  *reinterpret_cast<void**>(TASK_MANAGER_GETTER + 11 + variable_offset) = scene.task_manager;
+  getter_variable = TASK_MANAGER_GETTER + 11 + static_cast<uintptr_t>(variable_offset);
+  *reinterpret_cast<uint8_t*>(TASK_FLAG) = 1;
+  *reinterpret_cast<float*>(CONTACT_RADIUS_ADDITION) = 0.f;
+  std::memset(id_set_memory, 0, ID_SET_BYTES);
+  At<uint8_t>(id_set_memory, ID_SET_GUARD) = 1;
+  At<uint32_t>(id_set_memory, ID_SET_CAPACITY) = id_capacity;
+  scene.id_data_bytes = id_capacity * sizeof(uint16_t);
+  if (id_capacity != 0) {
+    void* id_data = Take(scene.id_data_bytes);
+    At<void*>(id_set_memory, ID_SET_DATA) = id_data;
+    scene.id_data = static_cast<size_t>(static_cast<uint8_t*>(id_data) - arena);
+  }
+}
+// An enabled object at the list's end, of a class and with room for `cell_capacity` cell entries: flags, masks,
+// heights and the response's factors such that any neighbour of the same make within reach passes every filter.
+void* NewObject(void** table, uint32_t id, float x, float z, uint32_t cell_capacity) {
+  void* object = Take(OBJECT_BYTES);
+  At<void**>(object, 0) = table;
+  At<void*>(object, OBJECT_ENVIRONMENT) = scene.environment;
+  At<uint32_t>(object, 0x54) = UINT32_MAX;
+  At<uint8_t>(object, 0x58) = 1;
+  At<uint32_t>(object, 0x60) = 0x80;
+  At<uint32_t>(object, 0x68) = id;
+  At<float>(object, OBJECT_X) = x;
+  At<float>(object, OBJECT_Z) = z;
+  At<float>(object, OBJECT_HEIGHT) = 2.f;
+  At<float>(object, OBJECT_RADIUS) = 0.5f;
+  for (const size_t factor : {0x9c, 0xa0, 0xa4, 0xa8}) {
+    At<float>(object, factor) = 1.f;
+  }
+  At<void*>(object, OBJECT_CELLS) = Take(cell_capacity * CELL_BYTES);
+  At<void**>(scene.manager, CONTACT_OBJECTS)[At<uint32_t>(scene.manager, CONTACT_OBJECT_COUNT)] = object;
+  ++At<uint32_t>(scene.manager, CONTACT_OBJECT_COUNT);
+  return object;
+}
+// The object's next cell entry, at the head of a grid cell's chain: the entry is the object's node there.
+void AddToCell(void* object, void** head, uint32_t kind) {
+  void* entry = At<uint8_t*>(object, OBJECT_CELLS) + (At<uint32_t>(object, OBJECT_CELL_COUNT) * CELL_BYTES);
+  At<uint32_t>(entry, 0) = kind;
+  At<uint32_t>(entry, 4) = At<uint32_t>(object, 0x68);
+  At<void*>(entry, 8) = static_cast<uint8_t*>(object) + 0x58;
+  At<void*>(entry, 0x10) = object;
+  At<void*>(entry, 0x20) = *head;
+  At<void**>(entry, CELL_HEAD) = head;
+  *head = entry;
+  ++At<uint32_t>(object, OBJECT_CELL_COUNT);
+}
+void** NewHead() { return static_cast<void**>(Take(sizeof(void*))); }
+// `count` objects of the first fast class, each alone in its own grid cell, far from every other.
+std::vector<void*> NewPlainScene(uint32_t count, uint32_t id_capacity = 8192) {
+  NewContactScene(count + 8, id_capacity);
+  std::vector<void*> objects;
+  for (uint32_t object = 0; object < count; ++object) {
+    objects.push_back(NewObject(fast_tables[0], object, 10.f * static_cast<float>(object), 0.f, 4));
+    AddToCell(objects.back(), NewHead(), 8);
+  }
+  return objects;
+}
+// `other` moves next to `object` and into its grid cell: the earlier of the two in the list finds the other, every
+// filter passes, the response is written and the other's table is called.
+void MakeNeighbours(void* object, void* other) {
+  At<float>(other, OBJECT_X) = At<float>(object, OBJECT_X) + 0.25f;
+  AddToCell(other, At<void**>(At<void*>(object, OBJECT_CELLS), CELL_HEAD), 8);
+}
+
+void KeepContactWorld() {
+  KeepWorld();
+  id_set_world.assign(id_set_memory, id_set_memory + ID_SET_BYTES);
+}
+void RestoreContactWorld() {
+  std::memcpy(arena, world.data(), world.size());
+  std::memset(arena + world.size(), 0, arena_dirty - world.size());
+  arena_used = world.size();
+  arena_dirty = world.size();
+  std::memcpy(id_set_memory, id_set_world.data(), ID_SET_BYTES);
+}
+// The row's own state as at the game's start, with the row on.
+void FreshContact() {
+  step_lines.clear();
+  contact.reasons_logged.store(0);
+  contact.original_ticks.store(0);
+  contact.busy.store(false);
+  contact.table_off = false;
+  contact.skip_period = NO_PERIOD;
+  contact.handled_ticks = 0;
+  contact.fence_ticks = 0;
+  contact.first_fence_tick = 0;
+  contact.first_fence_index = 0;
+  contact.region_time = 0;
+  contact.longest_region = 0;
+  contact.join_wait = 0;
+  contact.own_chunks = 0;
+  contact.chunks = 0;
+  contact.visited = 0;
+  contact.listed = 0;
+  contact.plain_objects = 0;
+  contact.objects_seen = 0;
+  block.core_wanted.store(CORE_SPLIT);
+  block.engine_status.store(uint32_t{ENGINE_NOT_USED_YET} << ENGINE_SPLIT_SHIFT);
+}
+bool LaneIs(EngineState lane) { return block.engine_status.load() == (uint32_t{lane} << ENGINE_SPLIT_SHIFT); }
+
+// One tick on the world as it was kept: the owner calls it made and the memory after it.
+// The last case that compared the game's pass with the row's, for the line of a run that ends in an access violation
+// (a null link read, a write past a list). First in line: the run may have no stack left to unwind.
+const char* contact_case = "none";
+LONG WINAPI ContactException(EXCEPTION_POINTERS* info) noexcept {
+  if (info->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION) return EXCEPTION_CONTINUE_SEARCH;
+  // Without the C runtime first: a write past the row's arrays may have gone through the test's own state.
+  static constexpr char LINE[] = "FAIL: access violation in the contact part\n";
+  DWORD written = 0;
+  WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), LINE, sizeof(LINE) - 1, &written, nullptr);
+  std::printf("FAIL: access violation at 0x%llx, in or after the contact case: %s\n",
+              static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(info->ExceptionRecord->ExceptionAddress)), contact_case);
+  TerminateProcess(GetCurrentProcess(), EXCEPTION_ACCESS_VIOLATION);
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+struct ContactOutcome {
+  bool handled = false;  // by the row; otherwise the game's function ran
+  uint32_t regions = 0;
+  std::vector<OwnerCall> calls;
+  std::vector<uint8_t> memory;  // the arena, then the game's id set
+};
+// `with_row`: through the row's hook (the game's function on a false). `fresh`: the row's state as at the game's
+// start. `threads`: the helpers a region gets.
+// What the plugin's contact hook holds as the game's function: it only counts (Tick's caller runs the game's pass).
+uint32_t contact_passed_on = 0;
+ATTILA64_GAME_CALL void ContactPassOn(void* /*manager*/) noexcept { ++contact_passed_on; }
+// A tick through the row's hook, then the task threads' answer and what they left in the queue (taken as a task thread
+// takes a helper late, or the step thread in its own join). A tick the hook did not hand to the game's function was
+// done by the row; one it handed on is the caller's to run.
+bool Tick() {
+  in_tick = true;
+  const uint32_t passed_on_before = contact_passed_on;
+  twattila::attila64_plugin::ContactEntry(scene.manager);
+  const bool handled = contact_passed_on == passed_on_before;
+  in_tick = false;
+  if (!leave_queued) {
+    WaitForTaskThreads();
+    RunQueuedTasks(0);
+    queue_faults += ((ReadQueue() == QueueFields{} && HelpersAre(0) && queue_locks.load() == queue_unlocks.load()) ? 0 : 1);
+  }
+  return handled;
+}
+ContactOutcome RunContact(bool with_row, uint32_t threads = 0, bool fresh = true) {
+  // The queue is the engine's, not the world's: it stays as it is over the restore.
+  const QueueFields queue = ReadQueue();
+  RestoreContactWorld();
+  std::memcpy(static_cast<uint8_t*>(scene.task_manager) + TASK_MANAGER_HEAD, queue.list.data(), queue.list.size());
+  At<uint32_t>(scene.task_manager, TASK_MANAGER_INSIDE) = queue.inside;
+  owner_calls.clear();
+  swapped_calls = 0;
+  game_memory.clear();
+  note_game_memory = true;
+  regions = 0;
+  SetTaskThreads(leave_queued ? 0 : threads);
+  if (fresh) {
+    FreshContact();
+  }
+  const bool handled = with_row && Tick();
+  if (!handled) {
+    reinterpret_cast<PairsFn>(CONTACT_LOOP)(scene.manager);
+  }
+  note_game_memory = false;
+  ContactOutcome outcome = {.handled = handled,
+                            .regions = regions,
+                            .calls = owner_calls,
+                            .memory = std::vector<uint8_t>(arena, arena + arena_dirty)};
+  std::fill_n(outcome.memory.begin() + scene.id_data, scene.id_data_bytes, uint8_t{0});
+  // The queue's fields are compared by the cases that leave tasks in it.
+  const size_t queue_place = static_cast<size_t>(static_cast<uint8_t*>(scene.task_manager) - arena);
+  std::fill_n(outcome.memory.begin() + queue_place + TASK_MANAGER_HEAD, sizeof(QueueFields::list), uint8_t{0});
+  std::fill_n(outcome.memory.begin() + queue_place + TASK_MANAGER_INSIDE, sizeof(uint32_t), uint8_t{0});
+  for (const auto& [offset, bytes] : game_memory) {
+    std::fill_n(outcome.memory.begin() + offset, bytes, uint8_t{0});
+  }
+  outcome.memory.insert(outcome.memory.end(), id_set_memory, id_set_memory + ID_SET_BYTES);
+  return outcome;
+}
+bool Same(const ContactOutcome& left, const ContactOutcome& right) {
+  return left.calls == right.calls && left.memory == right.memory;
+}
+// The world as built now through the game's pass, then through the row with the step's thread alone and with three
+// helpers: all the same. Returns the run with the step's thread alone.
+ContactOutcome ExpectContactSame(const char* what) {
+  contact_case = what;
+  KeepContactWorld();
+  const ContactOutcome game = RunContact(false);
+  const ContactOutcome threaded = RunContact(true, 3);
+  ContactOutcome alone = RunContact(true);
+  Expect(Same(game, alone) && Same(game, threaded) && alone.handled == threaded.handled, what);
+  return alone;
+}
+// A tick the row must refuse before it touches anything: false, no region, the arena and the id set as they were.
+bool Refused() {
+  RestoreContactWorld();
+  regions = 0;
+  const bool handled = Tick();
+  return !handled && regions == 0 && std::memcmp(arena, world.data(), world.size()) == 0
+         && std::memcmp(id_set_memory, id_set_world.data(), ID_SET_BYTES) == 0;
+}
+// The kept world's tick: the next runs are that tick of the same battle.
+void KeepTick(uint32_t tick) {
+  RestoreContactWorld();
+  At<uint32_t>(scene.model, MODEL_TICK) = tick;
+  KeepContactWorld();
+}
+
+struct ContactShape {
+  uint32_t objects = 0;
+  uint32_t special_percent = 0;  // values 0, negative, NaN, infinite and huge in the geometry
+  uint32_t boundary_percent = 0;  // objects placed at reach +- 1 ulp of the one before
+  uint32_t fenced_per_mille = 0;
+  uint32_t big_objects = 0;  // with more cells than the row swaps
+  uint32_t id_capacity = 8192;
+  float radius_addition = 0.f;
+};
+// A random world: objects on a grid of unit cells, about two a cell, each in up to six cells around its own; every
+// byte the game's filters read takes each of its values somewhere.
+void BuildContactWorld(std::mt19937_64* random, const ContactShape& shape) {
+  const auto below = [&](uint32_t limit) { return static_cast<uint32_t>((*random)() % limit); };
+  const auto chance = [&](uint32_t percent) { return below(100) < percent; };
+  const auto unit = [&] { return static_cast<float>((*random)() >> 40) * 0x1p-24f; };
+  const auto special = [&](float normal) {
+    if (!chance(shape.special_percent)) return normal;
+    return std::array<float, 8>{0.f,   -normal, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(),
+                                -0.f, 1e30f,   -std::numeric_limits<float>::infinity(), 1e-30f}[below(8)];
+  };
+  NewContactScene(shape.objects + 8, shape.id_capacity);
+  *reinterpret_cast<float*>(CONTACT_RADIUS_ADDITION) = shape.radius_addition;
+  const uint32_t side = std::max<uint32_t>(1, static_cast<uint32_t>(std::sqrt(static_cast<float>(shape.objects) / 2.f)));
+  std::vector<void**> heads(size_t{side} * side);
+  for (void**& head : heads) {
+    head = NewHead();
+  }
+  const std::array<void*, 3> groups = {nullptr, reinterpret_cast<void*>(uintptr_t{0x10}), reinterpret_cast<void*>(uintptr_t{0x20})};
+  void* previous = nullptr;
+  for (uint32_t index = 0; index < shape.objects; ++index) {
+    const bool big = index < shape.big_objects;
+    void** table = fast_tables[below(2)];
+    const bool fenced = below(1000) < shape.fenced_per_mille;
+    if (fenced) {
+      table = fenced_table.data();
+    }
+    float x = unit() * static_cast<float>(side);
+    float z = unit() * static_cast<float>(side);
+    const float radius = 0.15f + (unit() * 0.45f);
+    const bool at_boundary = previous != nullptr && chance(shape.boundary_percent);
+    if (at_boundary) {
+      // Reach as the game adds it (with the addition on neither, one or both), then one float up or down.
+      const float reach = radius + At<float>(previous, OBJECT_RADIUS) + (static_cast<float>(below(3)) * shape.radius_addition);
+      x = At<float>(previous, OBJECT_X) + reach;
+      z = At<float>(previous, OBJECT_Z);
+      x = std::array<float, 3>{x, std::nextafter(x, 0.f), std::nextafter(x, 1e30f)}[below(3)];
+    }
+    // Ids are 16 bits in the id vector; a few alias another id's bit.
+    void* object = NewObject(table, index + (chance(2) ? 0x10000 : 0), special(x), special(z), (big ? 70 : 6));
+    At<uint32_t>(object, 0x54) = (chance(10) ? below(shape.objects) : UINT32_MAX);
+    At<uint8_t>(object, 0x58) = (chance(95) ? 1 : 0);
+    At<uint8_t>(object, 0x59) = (chance(5) ? 1 : 0);
+    At<uint8_t>(object, 0x5a) = (chance(10) ? 1 : 0);
+    At<uint8_t>(object, 0x5b) = (chance(20) ? 1 : 0);
+    uint32_t flags = (chance(60) ? 0x80 : 0);
+    for (const uint32_t flag : {0x1u, 0x2u, 0x4u, 0x20u, 0x200u, 0x8000u, 0x10000u}) {
+      flags |= (chance(30) ? flag : 0);
+    }
+    At<uint32_t>(object, 0x60) = (chance(4) ? 0 : flags);
+    At<uint32_t>(object, 0x64) = (chance(80) ? 0 : std::array<uint32_t, 6>{0x1, 0x80, 0x800, 0x2000, 0x4000, 0x801}[below(6)]);
+    At<void*>(object, 0x70) = groups[below(3)];
+    At<float>(object, OBJECT_Y) = special(unit());
+    At<float>(object, OBJECT_HEIGHT) = special(0.5f + (unit() * 2.5f));
+    At<float>(object, OBJECT_RADIUS) = special(radius);
+    At<uint16_t>(object, 0x98) = static_cast<uint16_t>(below(16));
+    for (const size_t factor : {0x9c, 0xa0, 0xa4, 0xa8}) {
+      At<float>(object, factor) = 0.5f + (unit() * 1.5f);
+    }
+    At<uint32_t>(object, 0xc4) = below(4);
+    At<float>(object, 0xc8) = unit();
+    At<float>(object, 0xd0) = unit();
+    At<uint32_t>(object, 0xe4) = below(3);
+    if (fenced && chance(50)) {
+      At<uint32_t>(object, OBJECT_ACTION) = ACTION_FENCE_PUSH;
+    }
+    const auto cell_of = [&](float place) {
+      return std::min(side - 1, static_cast<uint32_t>(std::max(0.f, std::isfinite(place) ? place : 0.f)));
+    };
+    const uint32_t cell_count = (big ? 70 : below(7));
+    for (uint32_t cell = 0; cell < cell_count; ++cell) {
+      const uint32_t column = std::min(side - 1, cell_of(x) + ((cell == 0) ? 0 : below(2)));
+      const uint32_t row = std::min(side - 1, cell_of(z) + ((cell == 0) ? 0 : below(2)));
+      AddToCell(object, heads[(size_t{row} * side) + column], (chance(50) ? 8 : below(10)));
+    }
+    if (at_boundary && At<uint32_t>(object, OBJECT_CELL_COUNT) < 6 && At<uint32_t>(previous, OBJECT_CELL_COUNT) != 0) {
+      AddToCell(object, At<void**>(At<void*>(previous, OBJECT_CELLS), CELL_HEAD), 8);
+    }
+    previous = object;
+  }
+}
+
+// The row's items of the last region as one value: each place's object, mode, counts and kept chain.
+uint64_t ItemsValue(uint32_t object_count) {
+  uint64_t value = FNV_OFFSET_BASIS<uint64_t>;
+  const auto add = [&](const auto& field) { value = Fnv1a(reinterpret_cast<const uint8_t*>(&field), sizeof(field), value); };
+  for (uint32_t place = 0; place < object_count; ++place) {
+    const ContactItem& item = contact_items[place];
+    add(item.object);
+    add(item.mode);
+    add(item.node_count);
+    add(item.mark_count);
+    const ContactNode* node = ((item.node_count != 0) ? &contact_nodes[item.first_node] : nullptr);
+    for (uint32_t kept = 0; kept < item.node_count; ++kept) {
+      add(node->kind);
+      add(node->id);
+      add(node->record);
+      add(node->owner);
+      node = node->next;
+    }
+  }
+  return value;
+}
+
+// A fake task of the engine's (no parent, not a child task), and one whose run is a join: it fetches as a task thread
+// does inside a join and runs what it gets.
+std::atomic<uint32_t> engine_tasks_done = 0;
+HelperTask* joined_task = nullptr;
+ATTILA64_GAME_CALL void FakeTaskRun(HelperTask* /*task*/) noexcept {}
+ATTILA64_GAME_CALL void FakeTaskDone(HelperTask* /*task*/, uint32_t /*flag*/) noexcept { ++engine_tasks_done; }
+ATTILA64_GAME_CALL void FakeJoinRun(HelperTask* /*task*/) noexcept {
+  joined_task = reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, 0);
+  if (joined_task != nullptr) {
+    RunFetchedTask(joined_task);
+  }
+}
+const HelperTable fake_task_table = {.run = &FakeTaskRun, .done = &FakeTaskDone};
+const HelperTable fake_join_table = {.run = &FakeJoinRun, .done = &FakeTaskDone};
+// The game's enqueue for one task, as the test's own copy.
+void LinkAtTail(HelperTask* task) {
+  void* const manager = scene.task_manager;
+  FakeQueueLock(nullptr);
+  if (At<void*>(manager, TASK_MANAGER_HEAD) == nullptr) {
+    At<void*>(manager, TASK_MANAGER_HEAD) = task;
+  } else {
+    At<HelperTask*>(manager, TASK_MANAGER_TAIL)->next = task;
+  }
+  task->previous = At<void*>(manager, TASK_MANAGER_TAIL);
+  task->next = nullptr;
+  At<void*>(manager, TASK_MANAGER_TAIL) = task;
+  task->in_queue = 1;
+  ++At<uint32_t>(manager, TASK_MANAGER_COUNT);
+  FakeQueueUnlock(nullptr);
+}
+// The queue holds exactly these tasks in this order, each linked both ways and marked as queued.
+bool QueueIs(const std::vector<HelperTask*>& tasks) {
+  void* const manager = scene.task_manager;
+  bool right = At<uint32_t>(manager, TASK_MANAGER_COUNT) == tasks.size() && At<uint32_t>(manager, TASK_MANAGER_INSIDE) == 0
+               && At<void*>(manager, TASK_MANAGER_HEAD) == (tasks.empty() ? nullptr : tasks.front())
+               && At<void*>(manager, TASK_MANAGER_TAIL) == (tasks.empty() ? nullptr : tasks.back());
+  for (size_t place = 0; place < tasks.size(); ++place) {
+    right = right && tasks[place]->in_queue == 1 && tasks[place]->previous == ((place != 0) ? tasks[place - 1] : nullptr)
+            && tasks[place]->next == ((place + 1 < tasks.size()) ? tasks[place + 1] : nullptr);
+  }
+  return right;
+}
+
+// T-B2, before any tick: the row's enqueue and its helpers against the game's own fetch, on the fake task manager.
+void RunQueueCases() {
+  const auto fetch = reinterpret_cast<FetchTaskFn>(FETCH_TASK);
+  HelperTask* const helpers = contact_helpers.data();
+  {
+    // The apply's four stores, in the source: the count before the pointer on the way in, the pointer before the
+    // count on the way out (one thread cannot see the order; another thread's read of the two fields can).
+    std::string path = __FILE__;
+    path.resize(path.find_last_of("\\/"));
+    path.resize(path.find_last_of("\\/") + 1);
+    std::ifstream file(path + "battle_step.hpp", std::ios::binary);
+    const std::string source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    size_t place = 0;
+    bool in_order = !source.empty();
+    for (const char* store : {".store(((item.node_count != 0) ? 1 : 0), std::memory_order_release);",
+                              ".store(contact_cells.entries.data(), std::memory_order_release);",
+                              "std::atomic_ref<void*>(At<void*>(object, OBJECT_CELLS)).store(cells, std::memory_order_release);",
+                              "std::atomic_ref<uint32_t>(At<uint32_t>(object, OBJECT_CELL_COUNT)).store(cell_count, std::memory_order_release);"}) {
+      const size_t found = source.find(store);
+      in_order = in_order && found != std::string::npos && found >= place && source.find(store, found + 1) == std::string::npos;
+      place = found;
+    }
+    Expect(in_order, "apply: the swap's four stores in the source, each once: count, pointer, call, pointer, count");
+  }
+  {
+    // The enqueue and the fetch, by hand, with no region open.
+    NewPlainScene(16);
+    KeepContactWorld();
+    FreshContact();
+    void* const manager = scene.task_manager;
+    Expect(HelpersAre(0) && QueueIs({}) && !contact.open, "tasks: nothing queued before the first case");
+    Expect(StartHelpers(manager, 3) && QueueIs({helpers, helpers + 1, helpers + 2}) && HelpersAre(0b111) && queue_wakes.load() == 1,
+           "tasks: three helpers at the tail in index order, one wake from the empty queue");
+    Expect(std::ranges::all_of(contact_helpers.begin(), contact_helpers.begin() + 3,
+                               [](const HelperTask& helper) {
+                                 return helper.table == &HELPER_TABLE && helper.parent == nullptr && helper.child == 1;
+                               }),
+           "tasks: a queued helper has the row's table, no parent and the child byte");
+    HelperTask engine_task = {.table = &fake_task_table};
+    LinkAtTail(&engine_task);
+    Expect(StartHelpers(manager, 5)
+               && QueueIs({helpers, helpers + 1, helpers + 2, &engine_task, helpers + 3, helpers + 4}) && HelpersAre(0b11111)
+               && queue_wakes.load() == 1,
+           "tasks: queued helpers are skipped, the free ones follow at the tail, no wake from a filled queue");
+    Expect(fetch(manager, 1) == &engine_task && fetch(manager, 1) == nullptr
+               && QueueIs({helpers, helpers + 1, helpers + 2, helpers + 3, helpers + 4}),
+           "tasks: a fetch for a thread that is no task thread takes the engine's task between the helpers, and no helper");
+    // A helper taken with no region open (late, or by the step thread's own join): it returns at once, also with a
+    // chunk of an earlier region's left (here one without objects).
+    contact.object_count = 0;
+    contact.chunk_count = 1;
+    contact.next_chunk.store(0);
+    contact.stop_bits.store(0);
+    HelperTask* const first = fetch(manager, 0);
+    if (first != nullptr) {
+      RunFetchedTask(first);
+    }
+    Expect(first == helpers && HelpersAre(0b11110) && Poisoned(helpers[0]) && contact.next_chunk.load() == 0
+               && QueueIs({helpers + 1, helpers + 2, helpers + 3, helpers + 4}) && helpers_run.load() == 1,
+           "tasks: a helper taken outside a region claims nothing, is free, and its task is not touched after its run");
+    // With helpers still queued, only the free ones below the count are linked, and none above it.
+    Expect(StartHelpers(manager, 1) && StartHelpers(manager, 2)
+               && QueueIs({helpers + 1, helpers + 2, helpers + 3, helpers + 4, helpers}) && HelpersAre(0b11111),
+           "tasks: a still-queued helper is skipped and no higher index takes its place");
+    Expect(StartHelpers(manager, 4) && QueueIs({helpers + 1, helpers + 2, helpers + 3, helpers + 4, helpers}),
+           "tasks: stale and new helpers together stay within the count");
+    Expect(RunQueuedTasks(0) == 5 && QueueIs({}) && HelpersAre(0) && helpers_run.load() == 6
+               && std::ranges::all_of(contact_helpers.begin(), contact_helpers.begin() + 5, Poisoned),
+           "tasks: the loop's shape empties the queue, every helper free");
+    // A helper taken nested inside another task's join.
+    HelperTask join_task = {.table = &fake_join_table};
+    LinkAtTail(&join_task);
+    Expect(StartHelpers(manager, 2) && QueueIs({&join_task, helpers, helpers + 1}) && queue_wakes.load() == 1,
+           "tasks: helpers behind a task of the engine's");
+    Expect(RunQueuedTasks(0) == 2 && joined_task == helpers && QueueIs({}) && HelpersAre(0) && helpers_run.load() == 8
+               && engine_tasks_done.load() == 1 && Poisoned(helpers[0]) && Poisoned(helpers[1]),
+           "tasks: a helper taken inside another task's join is run as in the loop");
+    // All fifteen, the first two after a run (their engine part poisoned): every link is written anew.
+    std::vector<HelperTask*> all;
+    for (HelperTask& helper : contact_helpers) {
+      all.push_back(&helper);
+    }
+    Expect(StartHelpers(manager, HELPER_COUNT) && QueueIs(all) && HelpersAre((1u << HELPER_COUNT) - 1) && queue_wakes.load() == 2,
+           "tasks: all fifteen helpers, linked anew, a second wake from the queue empty again");
+    Expect(RunQueuedTasks(0) == HELPER_COUNT && QueueIs({}) && HelpersAre(0), "tasks: fifteen runs, the queue empty");
+  }
+}
+// T-B2 with ticks: helpers left over from an earlier region, the lock error, the region under load.
+inline constexpr uint32_t STRESS_REGIONS = 100000;
+void RunRegionCases(const std::function<std::vector<void*>(uint32_t)>& base_scene) {
+  {
+    // Helpers left over from an earlier region. A tick whose helpers nobody takes leaves six queued; the next ticks
+    // start from that world and that queue.
+    base_scene(2100);
+    KeepContactWorld();
+    leave_queued = true;
+    const ContactOutcome before = RunContact(true);
+    Expect(before.handled && HelpersAre(0b111111) && At<uint32_t>(scene.task_manager, TASK_MANAGER_COUNT) == 6,
+           "leftover helpers: six stay queued after a tick nobody helped");
+    KeepContactWorld();
+    const ContactOutcome game = RunContact(false);
+    // The lock error with a leftover helper inside: it is taken with the region open, does its share and leaves; the
+    // lock call then fails. No helper's state and nothing of the queue is changed by the enqueue, the region is
+    // closed with no chunk left, and the tick is the game's.
+    QueueFields queue_at_lock = {};
+    on_region = [&] {
+      if (HelperTask* leftover = reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, 0); leftover != nullptr) {
+        RunFetchedTask(leftover);
+      }
+      queue_at_lock = ReadQueue();
+    };
+    queue_lock_result = 22;
+    const ContactOutcome refused = RunContact(true, 0, false);
+    Expect(!refused.handled && refused.regions == 1 && Same(game, refused) && ReadQueue() == queue_at_lock && HelpersAre(0b111110)
+               && At<uint32_t>(scene.task_manager, TASK_MANAGER_COUNT) == 5 && !contact.open && !contact.busy.load()
+               && contact.next_chunk.load() >= contact.chunk_count && LinesWith("renodx_attila64: contact split: partly (queue lock)") == 1,
+           "lock error: no helper and nothing of the queue changed, the region closed, a leftover helper gone, the game's tick");
+    Expect(!RunContact(true, 0, false).handled && HelpersAre(0b111100)
+               && LinesWith("renodx_attila64: contact split: partly (queue lock)") == 1,
+           "lock error: a second one takes the next leftover helper and logs nothing");
+    queue_lock_result = 0;
+    // The same helper twice in one region: the third leftover helper is taken with the region open (the step
+    // thread's enqueue is held back that long), does every chunk and turns free; the enqueue then queues it again
+    // with the first two, and skips those of the other three that are still queued or running. Task threads are
+    // fetching, as they do while the queue holds tasks: each of the three runs once or twice.
+    leave_queued = false;
+    const uint32_t runs_before = helpers_run.load();
+    const uint64_t own_chunks_before = contact.own_chunks;
+    HelperTask* taken = nullptr;
+    on_region = [&] {
+      taken = reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, 0);
+      if (taken != nullptr) {
+        RunFetchedTask(taken);
+      }
+      FakeQueueWake(nullptr);
+    };
+    const ContactOutcome twice = RunContact(true, 3, false);
+    on_region = nullptr;
+    Expect(twice.handled && Same(game, twice) && taken == &contact_helpers[2] && contact.own_chunks == own_chunks_before
+               && helpers_run.load() - runs_before >= 7 && helpers_run.load() - runs_before <= 10 && QueueIs({}) && HelpersAre(0),
+           "the same helper twice in one region: its first run does every chunk, the second finds none, the tick is the game's");
+  }
+  {
+    // The region under load: fifteen task threads that yield at random, no wait between regions (so helpers are taken
+    // late, left over, skipped and queued again), a world the game's pass answers nothing in (every pair is rejected
+    // by its flags after detect kept it), so every tick starts from the same one. Every region's items equal the
+    // one-thread detect's.
+    std::vector<void*> objects = NewPlainScene(MIN_OBJECTS + 1);
+    for (uint32_t object = 0; object + 1 < objects.size(); object += 2) {
+      MakeNeighbours(objects[object], objects[object + 1]);
+    }
+    for (void* object : objects) {
+      At<uint32_t>(object, 0x60) = 1;
+    }
+    At<uint32_t>(scene.task_manager, TASK_MANAGER_THREADS) = HELPER_COUNT + KEPT_OUT_THREADS;
+    KeepContactWorld();
+    const ContactOutcome alone = RunContact(true);
+    const uint64_t items_alone = ItemsValue(MIN_OBJECTS + 1);
+    // The id set must be empty after a tick: its count would grow with every region otherwise.
+    const bool repeatable = alone.handled && alone.calls.empty() && At<uint32_t>(id_set_memory, ID_SET_COUNT) == 0;
+    Expect(repeatable && contact.listed == MIN_OBJECTS && LinesWith("helpers 15)") == 1,
+           "region stress: a world without a response, every object but the last with one kept node, fifteen helpers a region");
+    const uint32_t runs_before = helpers_run.load();
+    const uint64_t own_chunks_before = contact.own_chunks;
+    uint32_t wrong_regions = 0;
+    pool_yields = true;
+    SetTaskThreads(HELPER_COUNT);
+    in_tick = true;
+    const auto start = std::chrono::steady_clock::now();
+    for (uint32_t region = 0; region < (repeatable ? STRESS_REGIONS : 0); ++region) {
+      const bool handled = ContactTick(scene.manager, &block, api);
+      // The close let everyone out: nothing writes the items from here on.
+      wrong_regions += ((handled && !contact.open && contact.next_chunk.load() >= contact.chunk_count
+                         && ItemsValue(MIN_OBJECTS + 1) == items_alone)
+                            ? 0
+                            : 1);
+      if (region % 64 == 0) {
+        std::this_thread::yield();
+      }
+    }
+    const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    in_tick = false;
+    WaitForTaskThreads();
+    RunQueuedTasks(0);
+    pool_yields = false;
+    const uint64_t chunks = uint64_t{STRESS_REGIONS} * contact.chunk_count;
+    std::printf("    region stress: %u regions in %.1f s, %u helper runs, the step's thread did %llu of %llu chunks\n", STRESS_REGIONS,
+                seconds, helpers_run.load() - runs_before, static_cast<unsigned long long>(contact.own_chunks - own_chunks_before),
+                static_cast<unsigned long long>(chunks));
+    Expect(wrong_regions == 0 && QueueIs({}) && HelpersAre(0) && helpers_run.load() - runs_before > STRESS_REGIONS
+               && helpers_run.load() - runs_before < STRESS_REGIONS * HELPER_COUNT && contact.own_chunks - own_chunks_before < chunks,
+           "region stress: every region's items equal the one-thread detect, the queue empty and every helper free at the end");
+  }
+}
+
+// T-B1 and T-B4's ticks: the game file is mapped, its allocator sent to the test's.
+void RunContactCases() {
+  std::printf("  contact split: the game's pass against the row\n");
+  const int failures_before = failures;
+  contact.code_read.store(true);
+  for (uint32_t index = 0; index < HELPER_COUNT; ++index) {
+    pool.emplace_back(&TaskThread, index);
+  }
+  RunQueueCases();
+  const auto active_line = [](uint32_t objects, uint32_t plain) {
+    char line[96];
+    std::snprintf(line, sizeof(line), "renodx_attila64: contact split: active (objects %u, plain %u, listed ", objects, plain);
+    return LinesWith(line);
+  };
+  const auto cells_untouched = [] {
+    bool untouched = contact_cells.none == nullptr && contact_cells.entries[0].head == &contact_cells.head;
+    for (size_t entry = 0; entry < contact_cells.entries.size(); ++entry) {
+      untouched = untouched && contact_cells.entries[entry].zero == decltype(ContactCell::zero){}
+                  && (entry == 0 || contact_cells.entries[entry].head == &contact_cells.none);
+    }
+    return untouched;
+  };
+
+  // Random worlds: under the row's object minimum (the game's function), then big enough for a region; plain
+  // geometry, special values, the reach boundary with and without the radius addition, class H objects, objects
+  // with more cells than the row swaps, an id vector the walks outgrow.
+  {
+    std::mt19937_64 random(0x636f6e74);
+    const auto below = [&](uint32_t limit) { return static_cast<uint32_t>(random() % limit); };
+    uint32_t handled = 0;
+    uint32_t with_calls = 0;
+    uint32_t fence_worlds = 0;
+    uint64_t listed = 0;
+    uint64_t visited = 0;
+    constexpr uint32_t WORLDS = 150;
+    for (uint32_t world_index = 0; world_index < WORLDS; ++world_index) {
+      ContactShape shape = {.objects = ((world_index < 20) ? below(MIN_OBJECTS) : MIN_OBJECTS + below(1000))};
+      switch (world_index % 5) {
+        case 1:
+          shape.special_percent = 3;
+          break;
+        case 2:
+          shape.boundary_percent = 30;
+          shape.radius_addition = ((below(2) == 0) ? 0.f : 0.1f);
+          break;
+        case 3:
+          shape.fenced_per_mille = 10;
+          shape.big_objects = below(3);
+          break;
+        case 4:
+          shape.id_capacity = std::array<uint32_t, 4>{0, 1, 8, 64}[below(4)];
+          shape.special_percent = 1;
+          shape.boundary_percent = 5;
+          shape.radius_addition = 0.05f;
+          break;
+        default:
+          break;
+      }
+      BuildContactWorld(&random, shape);
+      KeepContactWorld();
+      const ContactOutcome game = RunContact(false);
+      const ContactOutcome threaded = RunContact(true, 3);
+      const ContactOutcome alone = RunContact(true);
+      ++checks;
+      if (!Same(game, alone) || !Same(game, threaded)) {
+        ++failures;
+        std::printf("FAIL: contact world %u: the row differs from the game's pass (%s)\n", world_index,
+                    (Same(game, alone) ? "with helpers" : "alone"));
+      }
+      handled += (alone.handled ? 1 : 0);
+      with_calls += (game.calls.empty() ? 0 : 1);
+      fence_worlds += contact.fence_ticks;
+      listed += contact.listed;
+      visited += contact.visited;
+    }
+    std::printf("    %u worlds: %u done by the row, %u with owner calls, %u with a fence fire; visited %llu, kept %llu\n", WORLDS,
+                handled, with_calls, fence_worlds, visited, listed);
+    Expect(handled * 2 > WORLDS && with_calls * 2 > WORLDS && fence_worlds != 0 && listed != 0 && listed < visited,
+           "contact: the random worlds reach the row, the owner calls, the fence and a shorter list");
+  }
+
+  // The base case: neighbours every 40 objects. Done by the row, with its lane and its line once.
+  const auto base_scene = [](uint32_t count = 2100) {
+    std::vector<void*> objects = NewPlainScene(count);
+    for (uint32_t object = 0; object + 1 < count; object += 40) {
+      MakeNeighbours(objects[object], objects[object + 1]);
+    }
+    return objects;
+  };
+  {
+    base_scene();
+    const ContactOutcome alone = ExpectContactSame("contact base: neighbours pass the game's filters, the row does the tick");
+    Expect(alone.handled && alone.regions == 1 && alone.calls.size() == 53 && LaneIs(ENGINE_ACTIVE) && active_line(2100, 0) == 1
+               && step_lines.size() == 1 && LinesWith("listed 106, helpers 6)") == 1 && !contact.busy.load() && !contact.open,
+           "contact base: active, one line with the tick's sizes, the row free again");
+    Expect(cells_untouched(), "contact base: the swap's cell entries are zero but each head pointer, after a tick too");
+    const ContactOutcome again = RunContact(true, 0, false);
+    Expect(again.handled && step_lines.size() == 1, "contact base: a second tick logs nothing");
+    // An id's first node only, as the game's id set does it: a neighbour twice in one cell is visited and kept once
+    // (and its own walk meets its second node there, once: 107 visits and kept nodes for the 106 of the base).
+    RestoreContactWorld();
+    std::vector<void*> objects = base_scene();
+    AddToCell(objects[1], At<void**>(At<void*>(objects[0], OBJECT_CELLS), CELL_HEAD), 8);
+    Expect(ExpectContactSame("an object twice in one cell").handled && contact.visited == 107 && contact.listed == 107,
+           "an object twice in one cell: visited once, kept once");
+    base_scene();
+    KeepContactWorld();
+    // Control: detect drops one passing node (here in the seam, with the region open: the first helper's slot does
+    // every chunk, then the first kept list is emptied).
+    on_region = [] {
+      RunRegionShare(0);
+      for (ContactItem& item : contact_items) {
+        if (item.node_count != 0) {
+          item.node_count = 0;
+          break;
+        }
+      }
+    };
+    const ContactOutcome game = RunContact(false);
+    Expect(!Same(game, RunContact(true)), "control: a kept list without a passing node is found");
+    on_region = nullptr;
+  }
+  {
+    // Control: game code that moves another object. The first object's owner call moves a far object next to its
+    // cell neighbour, which the neighbour's kept list (made before) does not hold.
+    std::vector<void*> objects = base_scene();
+    AddToCell(objects[900], At<void**>(At<void*>(objects[800], OBJECT_CELLS), CELL_HEAD), 8);
+    KeepContactWorld();
+    Expect(Same(RunContact(false), RunContact(true)), "control base: two far objects in one cell");
+    RestoreContactWorld();
+    At<uint32_t>(objects[0], OBJECT_ACTION) = ACTION_MOVE_OTHER;
+    At<void*>(objects[0], OBJECT_TARGET) = objects[900];
+    At<float>(objects[0], OBJECT_VALUE) = At<float>(objects[800], OBJECT_X) + 0.25f;
+    KeepContactWorld();
+    const ContactOutcome game = RunContact(false);
+    Expect(!Same(game, RunContact(true)), "control: game code that moves another object is found");
+  }
+  {
+    // Control: a detect margin that is too small. Two objects in one cell, 0.998 of their radii's sum apart: the
+    // game's circle filter passes them, a margin of 0.99 on the squared reach does not.
+    std::vector<void*> objects = base_scene();
+    At<float>(objects[1], OBJECT_X) =
+        At<float>(objects[0], OBJECT_X) + (0.998f * (At<float>(objects[0], OBJECT_RADIUS) + At<float>(objects[1], OBJECT_RADIUS)));
+    const ContactOutcome alone = ExpectContactSame("control base: a pair just inside the game's circle");
+    Expect(alone.handled && alone.calls.size() == 53, "control base: the pair just inside the game's circle answers");
+    const ContactOutcome game = RunContact(false);
+    contact.reach_margin = 0.99;
+    const ContactOutcome tight = RunContact(true);
+    contact.reach_margin = REACH_MARGIN;
+    Expect(tight.handled && !Same(game, tight) && tight.calls.size() == 52, "control: a detect margin of 0.99 is found");
+  }
+  {
+    // Control: an apply without the restore. What it would leave in an object with two cells and a kept node (the swap's
+    // cell list and its count of one) is not the game's memory: the compare covers both fields.
+    std::vector<void*> objects = base_scene();
+    KeepContactWorld();
+    const ContactOutcome game = RunContact(false);
+    ContactOutcome row = RunContact(true);
+    Expect(row.handled && Same(game, row), "control base: the restored cell lists are the game's");
+    const size_t object_place = static_cast<size_t>(static_cast<uint8_t*>(objects[1]) - arena);
+    ContactOutcome no_pointer = row;
+    void* const swapped_cells = contact_cells.entries.data();
+    std::memcpy(no_pointer.memory.data() + object_place + OBJECT_CELLS, &swapped_cells, sizeof(swapped_cells));
+    ContactOutcome no_count = row;
+    const uint32_t swapped_count = 1;
+    std::memcpy(no_count.memory.data() + object_place + OBJECT_CELL_COUNT, &swapped_count, sizeof(swapped_count));
+    Expect(!Same(game, no_pointer) && !Same(game, no_count) && At<uint32_t>(objects[1], OBJECT_CELL_COUNT) == 2,
+           "control: an apply without the restore of the cell list or of its count is found");
+  }
+
+  // A stopped region: the tick is the game's, with the reason's line once, the row's lane partly, the row free, and
+  // no further region in the same 100 ticks. `stopped_at`: the chunk the stop is in, with the step's thread alone.
+  const auto expect_stop = [&](const char* line, uint32_t stopped_chunks, const char* what) {
+    KeepContactWorld();
+    for (uint32_t place = CHUNK_OBJECTS * stopped_chunks; place < 2100; ++place) {
+      contact_items[place].object = &scene;
+    }
+    const ContactOutcome game = RunContact(false);
+    const ContactOutcome alone = RunContact(true);
+    bool later_items_unwritten = contact.next_chunk.load() == stopped_chunks;
+    for (uint32_t place = CHUNK_OBJECTS * stopped_chunks; place < 2100; ++place) {
+      later_items_unwritten = later_items_unwritten && contact_items[place].object == &scene;
+    }
+    Expect(Same(game, alone) && !alone.handled && alone.regions == 1 && LinesWith(line) == 1 && step_lines.size() == 1
+               && LaneIs(ENGINE_PARTLY) && !contact.busy.load() && !contact.table_off && contact.skip_period == 1,
+           what);
+    Expect(later_items_unwritten, "stop: the claiming ends with the chunk that found it, later items stay unwritten");
+    const ContactOutcome threaded = RunContact(true, 3);
+    Expect(Same(game, threaded) && !threaded.handled && LinesWith(line) == 1, "stop: the same with helpers");
+    // The skip latch: the period's other ticks run no region; the re-sort tick is the game's as ever; the tick
+    // after it tries again.
+    KeepTick(150);
+    const ContactOutcome skipped = RunContact(true, 0, false);
+    Expect(Same(RunContact(false, 0, false), skipped) && !skipped.handled && skipped.regions == 0 && step_lines.size() == 1,
+           "skip latch: no region in the rest of the period");
+    KeepTick(200);
+    Expect(Refused(), "skip latch: the re-sort tick is the game's");
+    KeepTick(201);
+    Expect(RunContact(true, 0, false).regions == 1 && step_lines.size() == 1, "skip latch: the tick after the re-sort tick tries again");
+  };
+  {
+    std::vector<void*> objects = base_scene();
+    At<void**>(objects[5], 0) = unknown_table.data();
+    char line[96];
+    std::snprintf(line, sizeof(line), "renodx_attila64: contact split: partly (unknown class: vtable 0x%llx)",
+                  reinterpret_cast<uint64_t>(unknown_table.data()));
+    expect_stop(line, 1, "unknown class: the game's tick, the line with the table's pointer");
+  }
+  {
+    // The NAVAL class without a tail entry.
+    std::vector<void*> objects = base_scene();
+    At<void**>(objects[300], 0) = naval_table.data();
+    expect_stop("renodx_attila64: contact split: partly (ships)", 3, "naval class: the game's tick");
+  }
+  {
+    // An object of another environment, in the first chunk.
+    std::vector<void*> objects = base_scene();
+    At<void*>(objects[3], OBJECT_ENVIRONMENT) = Take(0x70);
+    expect_stop("renodx_attila64: contact split: partly (environment differs)", 1, "another environment: the game's tick");
+  }
+  {
+    // The node pool: every object in one cell, at one place, with flags the game's filters reject at once. Each walk
+    // keeps 2099 nodes, so the 126th object's does not fit.
+    NewContactScene(2108, 8192);
+    void** head = NewHead();
+    for (uint32_t object = 0; object < 2100; ++object) {
+      void* made = NewObject(fast_tables[0], object, 0.f, 0.f, 1);
+      At<uint32_t>(made, 0x60) = 1;
+      AddToCell(made, head, 8);
+    }
+    expect_stop("renodx_attila64: contact split: partly (list pool)", 1, "list pool: the game's tick");
+  }
+
+  // The table test: a null table or link. The game's own walk would build the table (a file read), so the game's
+  // function is not run here: the tick is refused untouched, the row is off until the game ends.
+  for (const uint32_t null_link : {0u, 1u, 2u}) {
+    base_scene();
+    void** const links[] = {&At<void*>(scene.database, DATABASE_TABLE), &At<void*>(scene.core, CORE_DATABASE),
+                            &At<void*>(scene.environment, ENVIRONMENT_CORE)};
+    void* const link_value = *links[null_link];
+    *links[null_link] = nullptr;
+    KeepContactWorld();
+    FreshContact();
+    Expect(Refused() && contact.table_off && LaneIs(ENGINE_PARTLY) && !contact.busy.load() && contact.skip_period == NO_PERIOD
+               && LinesWith("renodx_attila64: contact split: partly (game table not loaded)") == 1 && step_lines.size() == 1,
+           "table test: a null table or link refuses the tick and switches the row off");
+    // Sticky: with the table back, also after a re-sort tick; no exchange of `busy` (a set one stays, without the
+    // nested line); the lane comes back to partly after the player's off and on.
+    RestoreContactWorld();
+    *links[null_link] = link_value;
+    KeepContactWorld();
+    const ContactOutcome game = RunContact(false, 0, false);
+    const ContactOutcome later = RunContact(true, 0, false);
+    Expect(Same(game, later) && !later.handled && later.regions == 0, "table test: sticky with the table back");
+    KeepTick(201);
+    const ContactOutcome next_period = RunContact(true, 0, false);
+    Expect(!next_period.handled && next_period.regions == 0, "table test: sticky after a re-sort tick");
+    contact.busy.store(true);
+    Expect(Refused() && contact.busy.load(), "table test: an off row does not touch `busy`");
+    contact.busy.store(false);
+    block.core_wanted.store(0);
+    Expect(Refused() && LaneIs(ENGINE_OFF), "table test: the switch off shows off");
+    block.core_wanted.store(CORE_SPLIT);
+    Expect(Refused() && LaneIs(ENGINE_PARTLY) && contact.table_off && step_lines.size() == 1,
+           "table test: the switch on again shows partly, without a second line");
+  }
+
+  // The fence around a class H object (the 11th here, with a neighbour so that its owner call comes).
+  for (const OwnerAction action :
+       {ACTION_FENCE_PUSH, ACTION_NONE, ACTION_FENCE_APPEARS, ACTION_DROP_ENVIRONMENT, ACTION_DROP_MODEL}) {
+    std::vector<void*> objects = base_scene();
+    At<void**>(objects[10], 0) = fenced_table.data();
+    MakeNeighbours(objects[10], objects[11]);
+    At<uint32_t>(objects[10], OBJECT_ACTION) = action;
+    if (action == ACTION_NONE || action == ACTION_FENCE_APPEARS) {
+      At<void*>(scene.model, MODEL_FENCE_MANAGER) = nullptr;
+    }
+    const ContactOutcome alone = ExpectContactSame("fence: a class H object, the tick as the game's");
+    const bool fires = action != ACTION_NONE;
+    Expect(alone.handled && contact.fence_ticks == (fires ? 1u : 0u) && contact.first_fence_tick == (fires ? 101u : 0u)
+               && contact.first_fence_index == (fires ? 10u : 0u) && active_line(2100, 1) == 1 && LaneIs(ENGINE_ACTIVE),
+           "fence: fires on a count or a link that changed, not on a link that stays null");
+  }
+  {
+    // Class H's path with a write the reasoning does not cover (it moves a far object next to its cell neighbour):
+    // the fence fires, and every later object takes the game's walk, so the tick is still the game's.
+    std::vector<void*> objects = base_scene();
+    At<void**>(objects[10], 0) = fenced_table.data();
+    MakeNeighbours(objects[10], objects[11]);
+    AddToCell(objects[900], At<void**>(At<void*>(objects[800], OBJECT_CELLS), CELL_HEAD), 8);
+    At<uint32_t>(objects[10], OBJECT_ACTION) = ACTION_FENCE_PUSH_AND_MOVE;
+    At<void*>(objects[10], OBJECT_TARGET) = objects[900];
+    At<float>(objects[10], OBJECT_VALUE) = At<float>(objects[800], OBJECT_X) + 0.25f;
+    const ContactOutcome alone = ExpectContactSame("fence: what class H's path wrote is seen by the later walks");
+    Expect(alone.handled && contact.fence_ticks == 1 && alone.calls.size() == 56, "fence: the moved object's new neighbour answers");
+  }
+  {
+    // Game code that changes the object list under the pass (the reasoning says none does): from the first place
+    // that holds another object than detect saw, the game's walk.
+    std::vector<void*> objects = base_scene();
+    MakeNeighbours(objects[1500], objects[1700]);
+    At<uint32_t>(objects[0], OBJECT_ACTION) = ACTION_SWAP_LISTED;
+    At<float>(objects[0], OBJECT_VALUE) = 1500.f;
+    const ContactOutcome alone = ExpectContactSame("a changed object list: the game's walk from there on");
+    Expect(alone.handled && alone.calls.size() == 54, "a changed object list: the row's tick, the moved object's neighbour found");
+    // The 38 pairs before place 1500 call out of a swapped walk; none after it does.
+    Expect(swapped_calls == 38, "a changed object list: no kept nodes from the changed place on");
+  }
+  {
+    // Game code that makes the object list longer under the pass: a place past the list detect saw is the game's
+    // walk, whatever an earlier tick left in the row's items there. The first tick leaves the last two places'
+    // objects with empty kept lists; the second starts two objects shorter, and the first owner call brings them
+    // back, now neighbours.
+    base_scene(2101);
+    Expect(ExpectContactSame("a longer object list: the tick before").handled, "a longer object list: the tick before");
+    std::vector<void*> objects = base_scene(2101);
+    MakeNeighbours(objects[2099], objects[2100]);
+    At<uint32_t>(scene.manager, CONTACT_OBJECT_COUNT) -= 2;
+    contact_case = "a longer object list";
+    At<uint32_t>(objects[0], OBJECT_ACTION) = ACTION_GROW_LIST;
+    KeepContactWorld();
+    const ContactOutcome game = RunContact(false);
+    const ContactOutcome row = RunContact(true, 0, false);
+    Expect(row.handled && Same(game, row) && row.calls.size() == 54 && contact_items[2100].object == objects[2100]
+               && contact_items[2100].mode == CONTACT_FAST && contact_items[2100].node_count == 0,
+           "a longer object list: a place past the list detect saw takes the game's walk");
+  }
+  {
+    // Walks that visit more ids than the visited list holds: 2100 objects in one cell, in pairs far from each other
+    // (the first with the last, and so on inwards). The first object is each chain walk's last node, past the
+    // visited list, and its id's word is no other's: a mark left there would hide it from its neighbour, the last.
+    NewContactScene(2108, 8192);
+    void** head = NewHead();
+    for (uint32_t object = 0; object < 2100; ++object) {
+      const float x = (10.f * static_cast<float>(std::min(object, 2099 - object))) + ((object < 1050) ? 0.f : 0.25f);
+      AddToCell(NewObject(fast_tables[object % 2], ((object == 0) ? 30000 : object), x, 0.f, 1), head, 8);
+    }
+    const ContactOutcome alone = ExpectContactSame("one cell: every walk visits every other object");
+    Expect(alone.handled && alone.calls.size() == 1050 && contact.visited == uint64_t{2100} * 2099 && contact.listed == 2100,
+           "one cell: 2099 ids a walk, one kept");
+  }
+  {
+    // An object with more cells than the row swaps takes the game's walk.
+    std::vector<void*> objects = base_scene();
+    void* big = NewObject(fast_tables[1], 3000, -50.f, 0.f, FAKE_ENTRY_COUNT + 1);
+    for (uint32_t cell = 0; cell < FAKE_ENTRY_COUNT + 1; ++cell) {
+      AddToCell(big, At<void**>(At<void*>(objects[cell], OBJECT_CELLS), CELL_HEAD), 8);
+    }
+    At<float>(big, OBJECT_X) = At<float>(objects[64], OBJECT_X) + 0.25f;
+    const ContactOutcome alone = ExpectContactSame("many cells: the game's walk for that object");
+    Expect(alone.handled && active_line(2101, 1) == 1, "many cells: one plain object in the row's tick");
+    RestoreContactWorld();
+    At<uint32_t>(big, OBJECT_CELL_COUNT) = FAKE_ENTRY_COUNT;
+    Expect(ExpectContactSame("64 cells: swapped").handled && active_line(2101, 0) == 1, "64 cells: the row's own");
+  }
+  {
+    // The capacity rule: an id vector of four, and one walk that visits six ids. That tick is the game's (its own
+    // pushes grow the vector), with no latch and no change of the lane; the next one is the row's.
+    std::vector<void*> objects = NewPlainScene(2100, 4);
+    for (uint32_t other = 1; other < 7; ++other) {
+      AddToCell(objects[other], At<void**>(At<void*>(objects[0], OBJECT_CELLS), CELL_HEAD), 8);
+    }
+    const ContactOutcome alone = ExpectContactSame("id set: a walk past the id vector's capacity, the game's tick");
+    Expect(!alone.handled && alone.regions == 1 && contact.skip_period == NO_PERIOD && LaneIs(ENGINE_NOT_USED_YET)
+               && !contact.busy.load() && LinesWith("renodx_attila64: contact split: partly (id set)") == 1 && step_lines.size() == 1
+               && At<uint32_t>(id_set_memory, ID_SET_CAPACITY) == 8,
+           "id set: one line, no latch, the lane as it was, the game grew the vector");
+    Expect(Tick() && LaneIs(ENGINE_ACTIVE) && step_lines.size() == 2,
+           "id set: the next tick is the row's, and active");
+    // Exactly the capacity is no reason: five objects in one cell, each walk visits the four others.
+    objects = NewPlainScene(2100, 4);
+    for (uint32_t other = 1; other < 5; ++other) {
+      AddToCell(objects[other], At<void**>(At<void*>(objects[0], OBJECT_CELLS), CELL_HEAD), 8);
+    }
+    Expect(ExpectContactSame("id set: walks of exactly the capacity").handled && step_lines.size() == 1,
+           "id set: exactly the capacity is the row's");
+  }
+  {
+    // The queue lock error: no helper, no share, the region closed, the tick the game's; no latch.
+    base_scene();
+    queue_lock_result = 22;
+    const ContactOutcome alone = ExpectContactSame("queue lock: the game's tick");
+    Expect(!alone.handled && alone.regions == 1 && contact.skip_period == NO_PERIOD && LaneIs(ENGINE_PARTLY) && !contact.busy.load()
+               && !contact.open && contact.next_chunk.load() == 17 && step_lines.size() == 1
+               && LinesWith("renodx_attila64: contact split: partly (queue lock)") == 1,
+           "queue lock: one line, partly, no latch, the row free and the region closed with no chunk left");
+    queue_lock_result = 0;
+    const ContactOutcome next = RunContact(true, 0, false);
+    Expect(next.handled && LaneIs(ENGINE_PARTLY) && step_lines.size() == 2 && LinesWith("(nested)") == 0,
+           "queue lock: the next tick is the row's; partly stays");
+  }
+
+  // The gate's rows: each refuses the tick untouched.
+  {
+    base_scene();
+    KeepContactWorld();
+    FreshContact();
+    const auto row = [&](const std::function<void()>& set, EngineState lane, const char* line, const char* what) {
+      FreshContact();
+      RestoreContactWorld();
+      set();
+      const std::vector<uint8_t> kept_world = world;
+      const std::vector<uint8_t> kept_id_set = id_set_world;
+      KeepContactWorld();
+      const bool refused = Refused();
+      Expect(refused && LaneIs(lane) && step_lines.size() == ((line == nullptr) ? 0u : 1u) && (line == nullptr || LinesWith(line) == 1),
+             what);
+      Expect(Refused() && step_lines.size() == ((line == nullptr) ? 0u : 1u), "gate: the same row again logs nothing more");
+      world = kept_world;
+      id_set_world = kept_id_set;
+    };
+    row([] { block.core_wanted.store(CORE_BATTLE | CORE_STEP); }, ENGINE_OFF, nullptr, "gate: the row's bit clear, the lane off");
+    row([] { contact.code_read.store(false); }, ENGINE_NOT_USED_YET, nullptr, "gate: the game's code not as read");
+    contact.code_read.store(true);
+    row([] { At<uint8_t>(id_set_memory, ID_SET_GUARD) = 0; }, ENGINE_NOT_USED_YET, nullptr, "gate: the pass's first call");
+    row([] { At<uint8_t>(scene.manager, CONTACT_RESORT) = 1; }, ENGINE_NOT_USED_YET, nullptr, "gate: a re-sort asked for");
+    row([] { At<uint32_t>(scene.model, MODEL_TICK) = 300; }, ENGINE_NOT_USED_YET, nullptr, "gate: a re-sort tick");
+    row([] { At<uint32_t>(scene.manager, CONTACT_TAIL_COUNT) = 1; }, ENGINE_PARTLY, "renodx_attila64: contact split: partly (ships)",
+        "gate: a tail entry");
+    row([] { *reinterpret_cast<uint8_t*>(TASK_FLAG) = 0; }, ENGINE_PARTLY, "renodx_attila64: contact split: partly (too few task threads)",
+        "gate: a step without tasks");
+    *reinterpret_cast<uint8_t*>(TASK_FLAG) = 1;
+    // No task manager yet: the game's getter would build one (a block from the game's heap, thread starts). The row
+    // reads the getter's variable and calls nothing: no block is taken, nothing is written.
+    Expect(getter_variable == TASK_MANAGER_POINTER, "gate: the task manager's pointer is the variable of the game's getter");
+    game_memory.clear();
+    note_game_memory = true;
+    row([] { *reinterpret_cast<void**>(TASK_MANAGER_POINTER) = nullptr; }, ENGINE_PARTLY,
+        "renodx_attila64: contact split: partly (too few task threads)", "gate: no task manager yet");
+    note_game_memory = false;
+    Expect(game_memory.empty() && *reinterpret_cast<void**>(TASK_MANAGER_POINTER) == nullptr,
+           "gate: with no task manager the getter is not called (none is built)");
+    *reinterpret_cast<void**>(TASK_MANAGER_POINTER) = scene.task_manager;
+    row([] { At<uint32_t>(scene.task_manager, TASK_MANAGER_THREADS) = MIN_TASK_THREADS - 1; }, ENGINE_PARTLY,
+        "renodx_attila64: contact split: partly (too few task threads)", "gate: three task threads");
+    row([] { At<uint32_t>(scene.manager, CONTACT_OBJECT_COUNT) = MIN_OBJECTS - 1; }, ENGINE_NOT_USED_YET, nullptr, "gate: a short list");
+    row([] { At<uint32_t>(scene.manager, CONTACT_OBJECT_COUNT) = OBJECT_LIMIT + 1; }, ENGINE_NOT_USED_YET, nullptr,
+        "gate: more objects than ids");
+    row([] { contact.skip_period = 1; }, ENGINE_NOT_USED_YET, nullptr, "gate: the skip latch's period");
+    row([] { contact.busy.store(true); }, ENGINE_PARTLY, "renodx_attila64: contact split: partly (nested)", "gate: an entry while a tick runs");
+    Expect(contact.busy.load(), "gate: the entry that found the row busy leaves `busy` set");
+    contact.busy.store(false);
+
+    // The boundaries are the row's: four task threads, the shortest list, and a stale period of another battle.
+    FreshContact();
+    RestoreContactWorld();
+    At<uint32_t>(scene.task_manager, TASK_MANAGER_THREADS) = MIN_TASK_THREADS;
+    KeepContactWorld();
+    Expect(RunContact(true).handled && LinesWith("helpers 2)") == 1, "gate: four task threads are enough, two helpers");
+    KeepTick(250);
+    contact.skip_period = 1;
+    Expect(RunContact(true, 0, false).handled, "skip latch: a stale period skips only its own number");
+    // The lane: off with the bit clear, back with it set, active again without a second line.
+    block.core_wanted.store(0);
+    Expect(Refused() && LaneIs(ENGINE_OFF), "lane: off with the bit clear");
+    block.core_wanted.store(CORE_SPLIT);
+    KeepTick(300);
+    Expect(Refused() && LaneIs(ENGINE_NOT_USED_YET), "lane: the bit set again leaves off at the next tick, whatever the tick");
+    KeepTick(301);
+    const size_t lines_before = step_lines.size();
+    Expect(RunContact(true, 0, false).handled && LaneIs(ENGINE_ACTIVE) && step_lines.size() == lines_before,
+           "lane: active again without a second line");
+    // The two summary lines, at the 1000th and the 3000th tick the row did.
+    // Between the two, a tick with a tail entry is the game's and counts as one.
+    for (const uint32_t ticks : {1000u, 2000u, 3000u}) {
+      contact.handled_ticks = ticks - 1;
+      const size_t lines_before_tick = step_lines.size();
+      char line[96];
+      std::snprintf(line, sizeof(line), "renodx_attila64: contact split: %u ticks (region mean ", ticks);
+      char tail[96];
+      std::snprintf(tail, sizeof(tail), ", plain 0 %%, fence ticks 0 (first at tick 0, index 0), original ticks %u)", ticks / 3000);
+      const bool handled = RunContact(true, 0, false).handled;
+      if (ticks == 2000) {
+        Expect(handled && step_lines.size() == lines_before_tick, "summary: no line at the 2000th tick");
+        RestoreContactWorld();
+        At<uint32_t>(scene.manager, CONTACT_TAIL_COUNT) = 1;
+        Expect(!Tick() && LinesWith("contact split: partly (ships)") == 1,
+               "summary: a tick with a tail entry between the lines");
+        continue;
+      }
+      Expect(handled && LinesWith(line) == 1 && LinesWith("own chunks 100 %, visited ") != 0 && LinesWith(tail) == 1,
+             "summary: one line at the 1000th and at the 3000th tick");
+    }
+    Expect(std::ranges::all_of(step_lines, [](const std::string& line) { return line.size() < 1024; }),
+           "contact lines: each under 1 KB");
+  }
+  {
+    // The smallest list the row takes, and a short last chunk.
+    base_scene(MIN_OBJECTS);
+    Expect(ExpectContactSame("the shortest list").handled, "gate: 2048 objects are enough");
+    base_scene(MIN_OBJECTS + 1);
+    Expect(ExpectContactSame("a last chunk of one object").handled && contact.chunks == 17, "a last chunk of one object");
+  }
+  RunRegionCases(base_scene);
+  {
+    const std::lock_guard lock(pool_mutex);
+    pool_stop = true;
+  }
+  pool_signal.notify_all();
+  for (std::thread& task_thread : pool) {
+    task_thread.join();
+  }
+  pool.clear();
+  Expect(queue_faults == 0 && parents_seen.load() == 0 && queue_locks.load() == queue_unlocks.load(),
+         "tasks: after every tick's drain the queue is empty, every helper free, every lock call paired; no task had a parent");
+  block.engine_status.store(0);
+  block.core_wanted.store(CORE_STEP);
+  std::printf("  contact split: %d failure(s)\n", failures - failures_before);
+}
+
+inline constexpr char CODE_DIFFERS_LINE[] = "renodx_attila64: contact split: off (game code differs at 0x%llx+0x%x)";
+// One call of the row's code check as init makes its first: whether it held, and its line.
+struct CodeCheck {
+  bool held = false;
+  std::vector<std::string> lines;
+};
+CodeCheck CheckCode() {
+  contact.code_line_logged = false;
+  step_lines.clear();
+  const bool held = CheckContactCode(api);
+  return {.held = held && contact.code_read.load(), .lines = step_lines};
+}
+bool Names(const CodeCheck& check, uint64_t address, uint32_t offset) {
+  char line[96];
+  std::snprintf(line, sizeof(line), CODE_DIFFERS_LINE, address, offset);
+  return !check.held && !contact.code_read.load() && check.lines.size() == 1 && check.lines[0] == line;
+}
+
+// The contact split's tables, without the game file: the class table and its lookup, the ranges' order, the swap's
+// cell entries, the row's default, and the code check on memory that is not the game's.
+void RunContactTableChecks() {
+  uint64_t class_value = FNV_OFFSET_BASIS<uint64_t>;
+  std::array<uint32_t, 4> with_mode = {};
+  bool ascending = true;
+  bool found = true;
+  for (size_t index = 0; index < CONTACT_CLASSES.size(); ++index) {
+    const ContactClass& known = CONTACT_CLASSES[index];
+    std::array<uint8_t, sizeof(uint64_t) + 1> bytes = {};
+    const uint64_t vptr = known.vptr;
+    std::memcpy(bytes.data(), &vptr, sizeof(vptr));
+    bytes.back() = known.mode;
+    class_value = Fnv1a(bytes.data(), bytes.size(), class_value);
+    ++with_mode[known.mode];
+    ascending = ascending && (index == 0 || CONTACT_CLASSES[index - 1].vptr < known.vptr);
+    uint8_t slot = ContactClassSlot(known.vptr);
+    while (contact.classes[slot].vptr != 0 && contact.classes[slot].vptr != known.vptr) {
+      ++slot;
+    }
+    found = found && contact.classes[slot].vptr == known.vptr && contact.classes[slot].mode == known.mode;
+  }
+  Expect(CONTACT_CLASSES.size() == 55 && with_mode[CONTACT_FAST] == 53 && with_mode[CONTACT_FENCED] == 1
+             && with_mode[CONTACT_NAVAL] == 1 && ascending && class_value == 0x3565fe60c67e4d69,
+         "class table: 55 classes in pointer order, 53 fast, one fenced, one naval, the census's check value");
+  Expect(found && std::ranges::count_if(contact.classes, [](const ContactClass& slot) { return slot.vptr != 0; }) == 55,
+         "class table: the lookup finds each class with its mode and holds nothing else");
+
+  bool ranges_in_order = true;
+  for (size_t index = 0; index < CONTACT_RANGES.size(); ++index) {
+    const ContactRange& range = CONTACT_RANGES[index];
+    ranges_in_order = ranges_in_order && range.size != 0
+                      && (index == 0 || CONTACT_RANGES[index - 1].start + CONTACT_RANGES[index - 1].size <= range.start);
+    if (range.mask != CONTACT_NO_MASK) {
+      ranges_in_order = ranges_in_order && range.mask < CONTACT_MASKS.size() && CONTACT_MASKS[range.mask].start >= range.start
+                        && CONTACT_MASKS[range.mask].start + CONTACT_MASKS[range.mask].size <= range.start + range.size;
+    }
+  }
+  bool entries_in_order = true;
+  for (size_t index = 1; index < CONTACT_ENTRIES.size(); ++index) {
+    const battle_step::ContactEntry& before = CONTACT_ENTRIES[index - 1];
+    const battle_step::ContactEntry& entry = CONTACT_ENTRIES[index];
+    entries_in_order = entries_in_order && (before.vtable < entry.vtable || (before.vtable == entry.vtable && before.slot < entry.slot));
+  }
+  Expect(ranges_in_order && CONTACT_RANGES.size() == 184 && CONTACT_RANGE_CHECKS.size() == 2441 && entries_in_order
+             && CONTACT_ENTRIES.size() == 1415 && CONTACT_ENTRY_CHAIN == 0x43d70ccc80a103b8,
+         "code tables: 184 ranges in address order without overlap, each mask inside its range; 1415 entries in order");
+  Expect((CORE_WANTED_DEFAULT & CORE_SPLIT) == 0, "the contact split's bit is not in the build's default");
+  // The row's place in the block and in the site table: appended after the battle step's, its key as the batch tool
+  // writes it, its one site the contact pass's first bytes, which the code check's range of the pass leaves out.
+  Expect(ROW_BATTLE_STEP == 12 && ROW_CONTACT_SPLIT == 13 && ROW_COUNT == 14
+             && std::wstring_view(ROW_INI_KEYS[ROW_CONTACT_SPLIT]) == L"ContactSplit" && CORE_SPLIT == 1u << 3
+             && ENGINE_SPLIT_SHIFT == 8,
+         "the contact split's row, key, bit and lane");
+  const Site& contact_site = SITES[LABEL_CONTACT_ENTRY];
+  Expect(contact_site.address == CONTACT_LOOP && contact_site.length == HOOK_BYTES && contact_site.row == ROW_CONTACT_SPLIT
+             && contact_site.kind == SITE_HOOK
+             && std::ranges::count_if(SITES, [](const Site& site) { return site.row == ROW_CONTACT_SPLIT; }) == 1
+             && std::ranges::any_of(CONTACT_RANGES, [&](const ContactRange& range) {
+                  return range.start == contact_site.address + contact_site.length && range.size == 0x358 - HOOK_BYTES;
+                }),
+         "the contact split's site: the pass's first five bytes, outside the code check");
+
+  bool cells_zero = contact_cells.head == nullptr && contact_cells.none == nullptr
+                    && contact_cells.entries[0].head == &contact_cells.head;
+  for (size_t entry = 0; entry < contact_cells.entries.size(); ++entry) {
+    cells_zero = cells_zero && contact_cells.entries[entry].zero == decltype(ContactCell::zero){}
+                 && (entry == 0 || contact_cells.entries[entry].head == &contact_cells.none);
+  }
+  Expect(cells_zero && contact_cells.entries.size() == FAKE_ENTRY_COUNT,
+         "swap cells: 64 entries, zero but each head pointer, the first to the head slot and the others to the null one");
+
+  // Memory that is not the game's: the first range is named, once however often the check runs.
+  Expect(Names(CheckCode(), CONTACT_RANGES[0].start, 0), "code check: memory that is not the game's is refused, the first range named");
+  step_lines.clear();
+  Expect(!CheckContactCode(api) && step_lines.empty(), "code check: a second miss logs nothing");
+}
+
+// T-B3 and the code check's lines, on the game file as the plugin's init finds it (mapped, the stack-check rewrite
+// done, the game's allocator still its own).
+void RunContactByteChecks() {
+  const auto at = [](uintptr_t address) { return reinterpret_cast<uint8_t*>(address); };
+  const auto masked = [](const ContactRange& range, uint32_t offset) {
+    return range.mask != CONTACT_NO_MASK && range.start + offset - CONTACT_MASKS[range.mask].start < CONTACT_MASKS[range.mask].size;
+  };
+  // Each range's value and check words again, byte by byte: a word after every 16th byte and after the last.
+  // The census's own value is the 176 whole functions' bytes, unmasked, as one chain: every range but the eight
+  // that are a function's part or outside the light closure.
+  constexpr std::array<uint32_t, 8> NOT_CENSUS_FUNCTIONS = {0x5df305, 0x6e88f5, 0x803e70, 0xba51a0, 0xc501c0, 0x3061e60, 0x3062aa0, 0x3062d00};
+  size_t check_index = 0;
+  bool ranges_hold = true;
+  uint64_t census_value = FNV_OFFSET_BASIS<uint64_t>;
+  uint32_t census_functions = 0;
+  for (const ContactRange& range : CONTACT_RANGES) {
+    uint64_t hash = FNV_OFFSET_BASIS<uint64_t>;
+    for (uint32_t offset = 0; offset < range.size; ++offset) {
+      const uint8_t byte = (masked(range, offset) ? uint8_t{0} : *at(range.start + offset));
+      hash = Fnv1a(&byte, 1, hash);
+      if (offset % 16 == 15 || offset + 1 == range.size) {
+        ranges_hold = ranges_hold && check_index < CONTACT_RANGE_CHECKS.size() && static_cast<uint16_t>(hash) == CONTACT_RANGE_CHECKS[check_index];
+        ++check_index;
+      }
+    }
+    if (hash != range.value) {
+      std::printf("  contact range %#x+%#x: not the table's value\n", range.start, range.size);
+      ranges_hold = false;
+    }
+    if (std::ranges::find(NOT_CENSUS_FUNCTIONS, range.start) == NOT_CENSUS_FUNCTIONS.end()) {
+      census_value = Fnv1a<uint64_t>(at(range.start), range.size, census_value);
+      ++census_functions;
+    }
+  }
+  Expect(ranges_hold && check_index == CONTACT_RANGE_CHECKS.size(),
+         "contact code: every range's value (masked where the table masks) and every check word are the game's, in memory");
+  Expect(census_functions == 176 && census_value == 0x9fb6fdf272eda086, "contact code: the census's value over its 176 functions, unmasked");
+  // The design's named ranges with their values; the task-thread loop's is the masked one.
+  constexpr std::array<CodeRange, 16> NAMED_RANGES = {{
+      {.address = 0x5df305, .length = 0x353, .hash = 0xf1c67b3ac5c52819}, {.address = 0x803e70, .length = 0x7f7, .hash = 0xb4eeb581f66bba51},
+      {.address = 0x6b7f50, .length = 0x122, .hash = 0x90b774c9bf1883e0}, {.address = 0xc501c0, .length = 0xf, .hash = 0x6228baa51b3be82c},
+      {.address = 0x7856d0, .length = 0x15, .hash = 0x4dc09ac03f94d7aa},  {.address = 0x807630, .length = 0x2c, .hash = 0xac0085666de6660d},
+      {.address = 0x7856f0, .length = 0x499, .hash = 0xdb37f23b20d93d1b}, {.address = 0x807660, .length = 0x223, .hash = 0x991769e1cc561873},
+      {.address = 0xb29860, .length = 5, .hash = 0x5355f252f285f1e8},     {.address = 0x95c090, .length = 0xe6, .hash = 0x14aa7c24caa5e9e6},
+      {.address = 0xb409e0, .length = 0xb7, .hash = 0x5dc12e54833395cd},  {.address = 0xba51a0, .length = 0xb1, .hash = 0x19afaa62477ed725},
+      {.address = 0x6e88f5, .length = 0x108, .hash = 0x4042fdbb65bfeef4}, {.address = 0x3062d00, .length = 0xb8, .hash = 0xe829e488b475825f},
+      {.address = 0x3062aa0, .length = 0x67, .hash = 0xdb25a6d158992c20}, {.address = 0x3061e60, .length = 0x5d, .hash = 0xa74e22f15a95c1c6},
+  }};
+  const auto range_at = [](uint32_t start) {
+    const auto range = std::ranges::find(CONTACT_RANGES, start, &ContactRange::start);
+    return ((range != CONTACT_RANGES.end()) ? &*range : nullptr);
+  };
+  bool named_hold = true;
+  for (const CodeRange& named : NAMED_RANGES) {
+    const ContactRange* range = range_at(named.address);
+    named_hold = named_hold && range != nullptr && range->size == named.length && range->value == named.hash;
+  }
+  Expect(named_hold && Fnv1a<uint64_t>(at(0x3062d00), 0xb8) == 0x5ca2674289a8b5b7 && Fnv1a<uint64_t>(at(CONTACT_LOOP), 0x358) == 0x875d9d8f5e3c3893
+             && range_at(0x3062d00)->mask != CONTACT_NO_MASK && CONTACT_MASKS[range_at(0x3062d00)->mask].start == 0x3062d92
+             && CONTACT_MASKS[range_at(0x3062d00)->mask].size == 4 && CONTACT_MASKS.size() == 1,
+         "contact code: the named ranges with the design's values; one mask, on the task-thread loop's four bytes");
+
+  // The entries: the chain and each check word again; every word is the start of a function of the census's list
+  // (a range, or one of the 15 math leaves that are not in the value).
+  constexpr std::array<uint32_t, 15> MATH_LEAVES = {0x3002e20, 0x3003660, 0x30040f0, 0x3004a70, 0x3004c60, 0x3005d80, 0x3007cf0, 0x301d610,
+                                                    0x301ff20, 0x30200f0, 0x3020980, 0x3025cf0, 0x3026090, 0x3027ec0, 0x30678e0};
+  const auto entry_word = [&](const battle_step::ContactEntry& entry) { return reinterpret_cast<uint64_t*>(at(uintptr_t{entry.vtable} + entry.slot)); };
+  // The entries' chain on the memory as it is: its end value, and the first entry whose check word differs (the
+  // last entry if none does).
+  struct Chain {
+    uint64_t value = 0;
+    size_t named = 0;
+  };
+  const auto chain_now = [&] {
+    Chain chain = {.value = FNV_OFFSET_BASIS<uint64_t>, .named = CONTACT_ENTRIES.size()};
+    for (size_t index = 0; index < CONTACT_ENTRIES.size(); ++index) {
+      chain.value = Fnv1a(reinterpret_cast<const uint8_t*>(entry_word(CONTACT_ENTRIES[index])), sizeof(uint64_t), chain.value);
+      if (chain.named == CONTACT_ENTRIES.size() && static_cast<uint16_t>(chain.value) != CONTACT_ENTRIES[index].check) {
+        chain.named = index;
+      }
+    }
+    chain.named = std::min(chain.named, CONTACT_ENTRIES.size() - 1);
+    return chain;
+  };
+  {
+    bool words_are_functions = true;
+    std::vector<uint32_t> vtables;
+    std::vector<uint16_t> slots;
+    for (const battle_step::ContactEntry& entry : CONTACT_ENTRIES) {
+      const uint64_t word = *entry_word(entry);
+      words_are_functions = words_are_functions && word <= UINT32_MAX
+                            && ((range_at(static_cast<uint32_t>(word)) != nullptr
+                                 && std::ranges::find(NOT_CENSUS_FUNCTIONS, word) == NOT_CENSUS_FUNCTIONS.end())
+                                || std::ranges::find(MATH_LEAVES, word) != MATH_LEAVES.end());
+      vtables.push_back(entry.vtable);
+      slots.push_back(entry.slot);
+    }
+    std::ranges::sort(vtables);
+    std::ranges::sort(slots);
+    const Chain chain = chain_now();
+    Expect(chain.value == CONTACT_ENTRY_CHAIN && chain.named == CONTACT_ENTRIES.size() - 1
+               && static_cast<uint16_t>(chain.value) == CONTACT_ENTRIES.back().check,
+           "contact entries: the chain's end value and every check word are the game's");
+    Expect(words_are_functions && std::ranges::unique(vtables).begin() - vtables.begin() == 235
+               && std::ranges::unique(slots).begin() - slots.begin() == 37,
+           "contact entries: every word is a function start of the census's list; 235 tables, 37 slots");
+  }
+  // The class table against the game: each class's mode from the two words of its table, by the census's rule.
+  {
+    bool modes_hold = true;
+    for (const ContactClass& known : CONTACT_CLASSES) {
+      const uint64_t first = *reinterpret_cast<const uint64_t*>(at(known.vptr + 0x98));
+      const uint64_t second = *reinterpret_cast<const uint64_t*>(at(known.vptr + 0xa0));
+      const bool first_fast = first == 0x7856d0 || first == 0x807630;
+      ContactMode mode = CONTACT_PLAIN;
+      if (first_fast && (second == 0x7856f0 || second == 0x807660 || second == 0xb29860)) {
+        mode = CONTACT_FAST;
+      } else if (first == 0x7856d0 && second == 0x95c090) {
+        mode = CONTACT_FENCED;
+      } else if (second == 0xc516d0) {
+        mode = CONTACT_NAVAL;
+      }
+      modes_hold = modes_hold && mode == known.mode;
+    }
+    bool targets_hold = true;
+    for (const uint32_t target : {0x7856d0u, 0x807630u, 0x7856f0u, 0x807660u, 0xb29860u, 0x95c090u, 0xc516d0u}) {
+      targets_hold = targets_hold && range_at(target) != nullptr;
+    }
+    Expect(modes_hold && targets_hold, "class table: each mode follows from the game's two table words; the seven targets are function starts");
+  }
+  {
+    // The engine's enqueue as read (the region's will be its transcription), and the table chain's source where the
+    // row's table test says: the walk's loads at 0x785e74 and the accessor's at 0x272c07f, both inside checked ranges.
+    constexpr std::array<uint8_t, 13> WALK_LOADS = {0x49, 0x8b, 0x45, 0x18, 0x48, 0x8b, 0x40, 0x58, 0x48, 0x8b, 0x78, 0x20, 0xe8};
+    constexpr std::array<uint8_t, 7> ACCESSOR_LOAD = {0x48, 0x8b, 0x83, 0x98, 0x21, 0x00, 0x00};
+    int32_t accessor_offset = 0;
+    std::memcpy(&accessor_offset, at(0x785e81), sizeof(accessor_offset));
+    Expect(Fnv1a<uint64_t>(at(0x5df9a5), 0x5dfb9c - 0x5df9a5) == 0x3af36b1c2f92753b, "contact code: the engine's enqueue is the one read");
+    Expect(std::memcmp(at(0x785e74), WALK_LOADS.data(), WALK_LOADS.size()) == 0 && 0x785e85 + accessor_offset == 0x272c070
+               && std::memcmp(at(0x272c07f), ACCESSOR_LOAD.data(), ACCESSOR_LOAD.size()) == 0 && range_at(0x785e60) != nullptr
+               && range_at(0x785e60)->size == 0x50f && range_at(0x272c070) != nullptr && range_at(0x272c070)->size == 0x123
+               && OBJECT_ENVIRONMENT == 0x18 && ENVIRONMENT_CORE == 0x58 && CORE_DATABASE == 0x20 && DATABASE_TABLE == 0x2198,
+           "table test: the chain is the game's (object +0x18, +0x58, +0x20, the accessor's +0x2198), in checked code");
+  }
+
+  // The check itself: it holds without a line, also with a hook's jump in the pass's first five bytes.
+  {
+    const CodeCheck game = CheckCode();
+    Expect(game.held && game.lines.empty(), "code check: the game file passes, without a line");
+    std::array<uint8_t, HOOK_BYTES> game_bytes = {};
+    std::memcpy(game_bytes.data(), at(CONTACT_LOOP), HOOK_BYTES);
+    const std::array<uint8_t, HOOK_BYTES> jump = {0xe9, 0x12, 0x34, 0x56, 0x00};
+    std::memcpy(at(CONTACT_LOOP), jump.data(), HOOK_BYTES);
+    Expect(CheckCode().held, "code check: it passes with the hook's jump in the pass's five bytes");
+    std::memcpy(at(CONTACT_LOOP), game_bytes.data(), HOOK_BYTES);
+  }
+  // A changed byte: the line names the range's start and the byte's 16-byte block. Under a mask: no miss.
+  {
+    bool named = true;
+    for (const ContactRange& range : CONTACT_RANGES) {
+      for (const uint32_t offset : {0u, range.size / 2u, range.size - 1u}) {
+        if (masked(range, offset)) continue;
+        *at(range.start + offset) ^= 0x40;
+        named = named && Names(CheckCode(), range.start, offset & ~15u);
+        *at(range.start + offset) ^= 0x40;
+      }
+    }
+    Expect(named, "code check: a changed byte is found, the line names its range and block");
+    bool masked_pass = true;
+    for (uint32_t byte = 0; byte < CONTACT_MASKS[0].size; ++byte) {
+      *at(CONTACT_MASKS[0].start + byte) ^= 0xff;
+      masked_pass = masked_pass && CheckCode().held;
+      *at(CONTACT_MASKS[0].start + byte) ^= 0xff;
+    }
+    *at(CONTACT_MASKS[0].start - 1) ^= 1;
+    const bool before_mask = Names(CheckCode(), 0x3062d00, 0x90);
+    *at(CONTACT_MASKS[0].start - 1) ^= 1;
+    *at(CONTACT_MASKS[0].start + CONTACT_MASKS[0].size) ^= 1;
+    Expect(masked_pass && before_mask && Names(CheckCode(), 0x3062d00, 0x90),
+           "code check: a changed byte under the mask is no miss; the bytes beside the mask are checked");
+    *at(CONTACT_MASKS[0].start + CONTACT_MASKS[0].size) ^= 1;
+  }
+  // A changed table word: the line names its table and slot.
+  {
+    bool named = true;
+    for (size_t index = 0; index < CONTACT_ENTRIES.size(); index += 7) {
+      const battle_step::ContactEntry& entry = CONTACT_ENTRIES[(index == 0) ? CONTACT_ENTRIES.size() - 1 : index - 1];
+      *entry_word(entry) ^= 0x10;
+      named = named && Names(CheckCode(), entry.vtable, entry.slot);
+      *entry_word(entry) ^= 0x10;
+    }
+    Expect(named, "code check: a changed table word is found, the line names its table and slot");
+    // A changed word whose own check word still matches (found by search): the 64-bit end value still refuses it,
+    // and the line names a later entry.
+    constexpr size_t CHANGED = 100;
+    const uint64_t game_word = *entry_word(CONTACT_ENTRIES[CHANGED]);
+    uint64_t before_changed = FNV_OFFSET_BASIS<uint64_t>;
+    for (size_t index = 0; index < CHANGED; ++index) {
+      before_changed = Fnv1a(reinterpret_cast<const uint8_t*>(entry_word(CONTACT_ENTRIES[index])), sizeof(uint64_t), before_changed);
+    }
+    uint64_t other_word = game_word;
+    do {
+      other_word += uint64_t{1} << 32;
+    } while (static_cast<uint16_t>(Fnv1a(reinterpret_cast<const uint8_t*>(&other_word), sizeof(other_word), before_changed))
+             != CONTACT_ENTRIES[CHANGED].check);
+    *entry_word(CONTACT_ENTRIES[CHANGED]) = other_word;
+    const Chain chain = chain_now();
+    Expect(chain.value != CONTACT_ENTRY_CHAIN && chain.named > CHANGED
+               && Names(CheckCode(), CONTACT_ENTRIES[chain.named].vtable, CONTACT_ENTRIES[chain.named].slot),
+           "code check: a changed word whose check word matches is still refused, by the chain's 64-bit end value");
+    *entry_word(CONTACT_ENTRIES[CHANGED]) = game_word;
+  }
+  // One line however many misses: at init and again at the game's start.
+  {
+    *at(CONTACT_RANGES[3].start) ^= 1;
+    const CodeCheck first = CheckCode();
+    step_lines.clear();
+    Expect(!first.held && first.lines.size() == 1 && !CheckContactCode(api) && step_lines.empty(), "code check: a second miss logs no second line");
+    *at(CONTACT_RANGES[3].start) ^= 1;
+    const CodeCheck again = CheckCode();
+    Expect(again.held && again.lines.empty() && contact.code_read.load(), "code check: the game's bytes back, it holds again");
+  }
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -1251,6 +2950,9 @@ int wmain(int argc, wchar_t** argv) {
   // The plugin's hook as its init leaves it: the loader, and the game's function it passes on to.
   loader = &api;
   originals[LABEL_PAIRS_ENTRY] = reinterpret_cast<void*>(&PassOn);
+  originals[LABEL_CONTACT_ENTRY] = reinterpret_cast<void*>(&ContactPassOn);
+  // The hook's first-call line is patcher_test's: here it would be one more line in the first tick's case.
+  first_call_logged[LABEL_CONTACT_ENTRY].store(true);
 
   // The DLL file holds the row's word as one whole string of its own (a zero byte before and after): the batch tool
   // looks for exactly that. The bare bytes would not do, they are in every "battle step: ..." line too. The row's
@@ -1265,6 +2967,12 @@ int wmain(int argc, wchar_t** argv) {
                && dll_bytes.find("\0renodx_attila64: battle step: game code differs (%#x+%#x)\0"sv) != std::string::npos,
            "dll: the file holds the row's three lines as whole strings");
     Expect((CORE_WANTED_DEFAULT & CORE_STEP) != 0, "the row's bit is in the build's default");
+    // The contact split row's word the same, and its code check's line in the format the batch reads.
+    Expect(dll_bytes.find("\0contact split\0"sv) != std::string::npos,
+           "dll: the file holds the contact split row's word as a whole string");
+    Expect(dll_bytes.find(std::string(1, '\0') + CODE_DIFFERS_LINE + std::string(1, '\0')) != std::string::npos
+               && dll_bytes.find("\0renodx_attila64: contact split: partly (%s)\0"sv) != std::string::npos,
+           "dll: the file holds the contact split row's lines as whole strings");
   }
 
   manager_table[MANAGER_CREATE_SLOT] = reinterpret_cast<void*>(&FakeCreate);
@@ -1290,6 +2998,7 @@ int wmain(int argc, wchar_t** argv) {
   FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
   games = {&Transcription};
   RunCases("model", 10000, 1, 0x70616972);
+  RunContactTableChecks();
 
   GameImage image;
   if (argc < 3 || MapGameElf(argv[2], &image) != 0) {
@@ -1301,7 +3010,7 @@ int wmain(int argc, wchar_t** argv) {
   // Each code range in memory as the plugin's init finds it (MapGameElf applies the loader's stack-check rewrite):
   // the row's hashes are the memory's.
   for (const CodeRange& range : CODE_RANGES) {
-    Expect(Fnv1a64(at(range.address), range.length) == range.hash, "code: each range's hash is the game's, in memory");
+    Expect(Fnv1a<uint64_t>(at(range.address), range.length) == range.hash, "code: each range's hash is the game's, in memory");
   }
   for (const TableWord& word : TABLE_WORDS) {
     Expect(*reinterpret_cast<const uint64_t*>(uintptr_t{word.address}) == word.value, "code: each table word is the game's");
@@ -1339,11 +3048,13 @@ int wmain(int argc, wchar_t** argv) {
     *at(word.address) ^= 1;
   }
   {
-    // Nothing enters the resolver past its first byte: no rel32 call or jump (e8, e9, 0f 8x) and no rel8 jump (eb, 7x,
+    // Nothing enters the resolver or the contact pass past its first byte: no rel32 call or jump (e8, e9, 0f 8x) and no rel8 jump (eb, 7x,
     // e0..e3) in the code segment ends in the hook's other four bytes, and no pointer in the data does. A raw scan:
     // a hit would be read by hand.
     uint32_t into_the_site = 0;
-    const auto inside = [](uint64_t target) { return target > RESOLVER && target < RESOLVER + HOOK_BYTES; };
+    const auto inside = [](uint64_t target) {
+      return (target > RESOLVER && target < RESOLVER + HOOK_BYTES) || (target > CONTACT_LOOP && target < CONTACT_LOOP + HOOK_BYTES);
+    };
     for (uintptr_t address = GAME_LO; address + 8 <= image.writable_lo; ++address) {
       const uint8_t* code = at(address);
       int32_t rel32 = 0;
@@ -1365,13 +3076,18 @@ int wmain(int argc, wchar_t** argv) {
         ++into_the_site;
       }
     }
-    Expect(into_the_site == 0, "code: nothing jumps or points into the hook's bytes past the first");
+    Expect(into_the_site == 0, "code: nothing jumps or points into either hook's bytes past the first");
   }
+  RunContactByteChecks();
 
   // The game's own code: its allocator's two entries go to the test's (the only functions outside the game file the
   // resolver's closure calls), the group kinds are copies of the game's tables with the fake "take me back" answer.
   WriteJump(GAME_MALLOC, reinterpret_cast<void*>(&TestMalloc));
   WriteJump(GAME_FREE, reinterpret_cast<void*>(&TestFree));
+  // The task queue's lock, unlock and wake (the first two are import stubs, the third posts the engine's threads).
+  WriteJump(QUEUE_LOCK, reinterpret_cast<void*>(&FakeQueueLock));
+  WriteJump(QUEUE_UNLOCK, reinterpret_cast<void*>(&FakeQueueUnlock));
+  WriteJump(QUEUE_WAKE, reinterpret_cast<void*>(&FakeQueueWake));
   FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
   for (size_t kind = 0; kind < group_tables.size(); ++kind) {
     std::memcpy(group_tables[kind].data(), at(GROUP_VPTRS[kind]), sizeof(group_tables[kind]));
@@ -1383,6 +3099,21 @@ int wmain(int argc, wchar_t** argv) {
   }
   games = {reinterpret_cast<PairsFn>(uintptr_t{RESOLVER}), &Transcription};
   RunCases("game file", 4000, 3, 0x67616d65);
+  fast_tables[0] = fast_table_pool.data();
+  for (size_t place = 64; place + 64 < fast_table_pool.size() && fast_tables[1] == nullptr; ++place) {
+    if (ContactClassSlot(reinterpret_cast<uintptr_t>(&fast_table_pool[place])) == ContactClassSlot(reinterpret_cast<uintptr_t>(fast_tables[0]))) {
+      fast_tables[1] = &fast_table_pool[place];
+    }
+  }
+  Expect(fast_tables[1] != nullptr, "contact: two fake tables that share a slot of the class table");
+  for (void** table : fast_tables) {
+    EnterClass(table, CONTACT_FAST);
+  }
+  EnterClass(fenced_table.data(), CONTACT_FENCED);
+  EnterClass(naval_table.data(), CONTACT_NAVAL);
+  unknown_table[TABLE_OWNER_CALL] = reinterpret_cast<void*>(&FakeOwner);
+  AddVectoredExceptionHandler(1, &ContactException);
+  RunContactCases();
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
   return failures;

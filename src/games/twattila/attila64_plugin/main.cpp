@@ -7,9 +7,9 @@
 // functions: two for the Attila add-on (plugin_block.h), the battle step's task, to keep a CPU core free for it and
 // one for the render thread (battle_core.hpp; that row works without the add-on), the scale rows' (hooks.hpp; one
 // of them inside a function, through the plugin's own trampoline: trampoline.hpp), and the battle step's pair
-// resolver (battle_step.hpp; it works without the add-on too). It also checks the game's engine values for the
-// add-on, writes the restart-only ones, sets the loader's frame cap (tweaks.hpp), writes the shadow map sizes the
-// add-on's key asks for into the game's shadow setup, and puts hand-made stubs in front of game code
+// resolver and contact pass (battle_step.hpp; they work without the add-on too). It also checks the game's engine
+// values for the add-on, writes the restart-only ones, sets the loader's frame cap (tweaks.hpp), writes the shadow map
+// sizes the add-on's key asks for into the game's shadow setup, and puts hand-made stubs in front of game code
 // (game_code.hpp: the same results, faster). The loader loads it from its plugins folder, after its own patches
 // and before any game code runs; the add-on finds its block once ReShade loads it. Built by build.ps1.
 
@@ -50,7 +50,7 @@ inline constexpr size_t ROW_WORD_CAPACITY = 32;  // a longer word does not compi
 inline constexpr std::array<std::array<char, ROW_WORD_CAPACITY>, ROW_COUNT> ROW_WORDS = {{
     {"bone flush"}, {"pass draw"},        {"battle core"}, {"unit lod"},       {"model detail"},
     {"shadow map"}, {"grass"},            {"grass cells"}, {"campaign trees"}, {"sprites"},
-    {"game code"},  {"parallel effects"}, {"battle step"}}};
+    {"game code"},  {"parallel effects"}, {"battle step"}, {"contact split"}}};
 static_assert(std::ranges::none_of(ROW_WORDS, [](const auto& word) { return word.front() == 0 || word.back() != 0; }),
               "a word for every row, with its zero byte");
 // The rows with a site in this build; the rows line shows the others as "-".
@@ -81,6 +81,28 @@ inline constexpr auto MODULE_NAME_NARROW = [] {
 }();
 
 std::array<AppliedSite, SITES.size()> applied_sites = {};
+
+// The engine rows (battle_step.hpp): each with its switch in core_wanted, its lane of engine_status, and the check of
+// the game code its reasoning stands on, at init and again at the game's start.
+struct EngineRow {
+  Row row = ROW_COUNT;
+  uint32_t core_bit = 0;
+  uint32_t lane_shift = 0;
+  std::atomic<bool>* code_read = nullptr;
+  bool (*check_code)(const LoaderApi& loader) noexcept = nullptr;
+};
+inline constexpr std::array<EngineRow, 2> ENGINE_ROWS = {{
+    {.row = ROW_BATTLE_STEP,
+     .core_bit = CORE_STEP,
+     .lane_shift = ENGINE_STEP_SHIFT,
+     .code_read = &battle_step::state.code_read,
+     .check_code = &battle_step::CheckGameCode},
+    {.row = ROW_CONTACT_SPLIT,
+     .core_bit = CORE_SPLIT,
+     .lane_shift = ENGINE_SPLIT_SHIFT,
+     .code_read = &battle_step::contact.code_read,
+     .check_code = &battle_step::CheckContactCode},
+}};
 
 // A restart-only value's key in [Attila64Plugin.Values], read at init for the game's start.
 struct RestartKey {
@@ -221,10 +243,11 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     block.tweaks_status.store(TWEAKS_PENDING, std::memory_order_relaxed);
   }
 
-  grass_draw_code_read.store(Fnv1a(reinterpret_cast<const uint8_t*>(uintptr_t{SITES[LABEL_GRASS_DRAW_ENTRY].address}),
+  grass_draw_code_read.store(
+      battle_step::Fnv1a<uint32_t>(reinterpret_cast<const uint8_t*>(uintptr_t{SITES[LABEL_GRASS_DRAW_ENTRY].address}),
                                    GRASS_DRAW_NO_LOD_BYTES)
-                                 == GRASS_DRAW_NO_LOD_HASH,
-                             std::memory_order_relaxed);
+          == GRASS_DRAW_NO_LOD_HASH,
+      std::memory_order_relaxed);
   // Every site is checked before any is written: a row goes in whole or not at all, and one site's bytes can lie in
   // another's window (the shadow sizes and cascade counts).
   std::array<SiteCheck, SITES.size()> site_checks = {};
@@ -429,29 +452,29 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   if ((block.rows_applied & RowBit(ROW_PARALLEL_EFFECTS)) != 0) {
     ApplyEffectsModeKey(&block, ini_int(INI_EFFECTS_MODE, -1));
   }
-  // The battle step row: its lane of engine_status from here on (not 0: the add-on shows the row), and its switch.
-  // BattleStep 0 left the site out above, 1 sets the row's bit for a start without the add-on, anything else keeps
-  // the build's default (while that default holds the bit, the key 1 changes nothing, and no test can tell it from
-  // no key: one is due with the build whose default is without the bit). The row runs only with its site in and the
-  // game's code as read (checked again at the game's start); with the key 0 nothing is read.
-  {
-    const int battle_step_key = ini_int(ROW_INI_KEYS[ROW_BATTLE_STEP], -1);
-    if (battle_step_key == 1) {
-      block.core_wanted.fetch_or(CORE_STEP, std::memory_order_relaxed);
+  // The engine rows: each one's lane of engine_status from here on (not 0: the add-on shows the row), and its switch.
+  // Its install key 0 left the site out above, 1 sets the row's bit for a start without the add-on, anything else
+  // keeps the build's default (the battle step's default holds its bit, so its key 1 changes nothing and no test can
+  // tell it from no key; the contact split's does not). A row runs only with its site in and the game's code as read
+  // (checked again at the game's start); with the key 0 nothing is read and no line is written.
+  for (const EngineRow& engine : ENGINE_ROWS) {
+    const int install_key = ini_int(ROW_INI_KEYS[engine.row], -1);
+    if (install_key == 1) {
+      block.core_wanted.fetch_or(engine.core_bit, std::memory_order_relaxed);
     }
     EngineState lane = ENGINE_OFF_INI;
-    if (battle_step_key != 0) {
-      const bool code_read = (block.rows_applied & RowBit(ROW_BATTLE_STEP)) != 0 && battle_step::CheckGameCode(*api);
-      battle_step::state.code_read.store(code_read, std::memory_order_relaxed);
+    if (install_key != 0) {
+      const bool code_read = (block.rows_applied & RowBit(engine.row)) != 0 && engine.check_code(*api);
+      engine.code_read->store(code_read, std::memory_order_relaxed);
       lane = ENGINE_CODE_DIFFERS;
       if (code_read) {
         lane = ENGINE_OFF;
-        if ((block.core_wanted.load(std::memory_order_relaxed) & CORE_STEP) != 0) {
+        if ((block.core_wanted.load(std::memory_order_relaxed) & engine.core_bit) != 0) {
           lane = ENGINE_NOT_USED_YET;
         }
       }
     }
-    battle_step::SetLane(&block, lane);
+    battle_step::SetLane(&block, lane, engine.lane_shift);
   }
   char rows[ROWS_LINE_CAPACITY] = {};
   size_t rows_length = 0;
@@ -500,17 +523,20 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
     std::array<uint8_t, GRASS_DRAW_NO_LOD_BYTES> code = {};
     std::memcpy(code.data(), reinterpret_cast<const void*>(uintptr_t{draw.address}), code.size());
     std::memcpy(code.data(), draw.window.data() + SITE_MARGIN, draw.length);
-    if (Fnv1a(code.data(), code.size()) != GRASS_DRAW_NO_LOD_HASH) {
+    if (battle_step::Fnv1a<uint32_t>(code.data(), code.size()) != GRASS_DRAW_NO_LOD_HASH) {
       grass_draw_code_read.store(false, std::memory_order_relaxed);
       loader->log(GRASS_DRAW_CODE_LINE);
     }
   }
-  // The battle step's code once more, after the loader's late writes; its site was re-checked above.
-  if (battle_step::state.code_read.load(std::memory_order_relaxed)
-      && ((block.rows_changed.load(std::memory_order_relaxed) & RowBit(ROW_BATTLE_STEP)) != 0
-          || !battle_step::CheckGameCode(*loader))) {
-    battle_step::state.code_read.store(false, std::memory_order_relaxed);
-    battle_step::SetLane(&block, ENGINE_CODE_DIFFERS);
+  // The engine rows' code once more, after the loader's late writes, for each row whose check held at init; its site
+  // was re-checked above.
+  for (const EngineRow& engine : ENGINE_ROWS) {
+    if (engine.code_read->load(std::memory_order_relaxed)
+        && ((block.rows_changed.load(std::memory_order_relaxed) & RowBit(engine.row)) != 0
+            || !engine.check_code(*loader))) {
+      engine.code_read->store(false, std::memory_order_relaxed);
+      battle_step::SetLane(&block, ENGINE_CODE_DIFFERS, engine.lane_shift);
+    }
   }
   // The engine values, once: the game's static constructors have built them, and its sound start (the reader of the
   // restart-only ones) comes later in its main.

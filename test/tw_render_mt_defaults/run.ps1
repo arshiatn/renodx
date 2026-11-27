@@ -142,7 +142,11 @@ Check ($text.Contains('return RENDER_CORE_ROW_MEASURED && GameCodeRowShown(Plugi
 $battle = $text.IndexOf('.key = "KeepBattleCoreFree",', [StringComparison]::Ordinal)
 $render = $text.IndexOf('const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree"', [StringComparison]::Ordinal)
 Check ($battle -ge 0 -and $render -gt $battle -and $render -lt $text.IndexOf('const auto moved = std::ranges::find(settings, "FewerConstantUploads"', [StringComparison]::Ordinal)) 'KeepRenderCoreFree after Keep Battle Core Free, before Fewer Constant Uploads'
-Check ($text.Contains('(RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT));')) 'KeepRenderCoreFree written to the plugin (link Update) only once measured'
+Check ($text.Contains('(RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT),')) 'KeepRenderCoreFree written to the plugin (link Update) only once measured'
+# Multithreaded Collisions (PK8 Stage B 14): default Off, hidden until measured, and no CORE_SPLIT write while hidden.
+Check ($text -match '(?m)^constexpr bool CONTACT_SPLIT_ROW_MEASURED = false;' -and $text -match '(?m)^float multithreaded_collisions_row = 0\.f;') 'MultithreadedCollisions hidden, starts at 0'
+Check ($text -match '(?s)\.key = "MultithreadedCollisions",.{0,200}?\.default_value = 0\.f,') 'MultithreadedCollisions default 0'
+Check ($text.Contains('(CONTACT_SPLIT_ROW_MEASURED ? std::optional<bool>(multithreaded_collisions_row != 0.f) : std::nullopt));')) 'MultithreadedCollisions written to the plugin (link Update) only once measured'
 Check ((Read-Source 'addon.cpp') -match '(?s)\.key = "KeepRenderCoreFree",.{0,300}?\.label = "Keep Render Core Free \(Experimental\)",\s+\.section = "Graphics \(Experimental\)",') 'KeepRenderCoreFree 32-bit label and section unchanged'
 Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t MIN_GAME_CPUS = 8;') 'MIN_GAME_CPUS 8'
 # Automatic L1 (inside its row, which stays Off above): parallel from 20000 effect instances, serial below 16000, never below

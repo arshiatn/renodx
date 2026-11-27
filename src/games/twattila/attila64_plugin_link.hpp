@@ -95,6 +95,8 @@ static std::optional<bool> render_core_written;
 static std::optional<uint32_t> effects_written;
 // Under the mutex: Faster Battle Step's CORE_STEP bit as this add-on last wrote it (none yet: nullopt).
 static std::optional<bool> battle_step_written;
+// Under the mutex: Multithreaded Collisions' CORE_SPLIT bit as this add-on last wrote it (none yet: nullopt).
+static std::optional<bool> contact_split_written;
 // The loader's effect value (tweaks.h): the plugin checks its guards with it at the game's start (PK9 7.3). Its slot
 // is looked up by name for the verdict only; no Tweak is bound to it, so the plugin's walk hook stays its one writer.
 inline constexpr std::string_view EFFECTS_SLOT = "VFX_PARALLEL_UPDATER";
@@ -269,13 +271,11 @@ inline bool RenderCoreWanted() {
   return (internal::block->core_wanted.load(std::memory_order_relaxed) & internal::plugin::CORE_RENDER) != 0;
 }
 
-// With Result() READY: the battle step row's lane of engine_status (attila64_plugin::EngineState); 0 for a v1 block or
-// a plugin that did not build the row.
-inline uint32_t BattleStepState() {
-  namespace plugin = internal::plugin;
+// With Result() READY: an engine row's lane of engine_status (attila64_plugin::EngineState) at `shift`
+// (ENGINE_STEP_SHIFT, ENGINE_SPLIT_SHIFT); 0 for a v1 block or a plugin that did not build the row.
+inline uint32_t EngineLaneState(uint32_t shift) {
   if (!BlockV2()) return 0;
-  return (internal::block->engine_status.load(std::memory_order_relaxed) >> plugin::ENGINE_STEP_SHIFT)
-         & plugin::ENGINE_LANE_MASK;
+  return (internal::block->engine_status.load(std::memory_order_relaxed) >> shift) & internal::plugin::ENGINE_LANE_MASK;
 }
 
 // With Result() READY and BlockV2(): an engine option the plugin could not turn on: a known row tried but not offered
@@ -413,10 +413,11 @@ inline void Lookup(bool last) {
 
 // Every present with Result() READY (the loader's drawing thread): the rows whose hooks are wanted now (bit:
 // attila64_plugin::Row), whether Keep Battle Core Free and Keep Render Core Free are on, Effects on All Cores' stop
-// (0 Off, 1 Automatic, 2 On) and whether Faster Battle Step is on (tw_unit_shadows' calls pass neither: Off and the
-// plugin's default). The callbacks are registered while any row is wanted and offered.
+// (0 Off, 1 Automatic, 2 On), whether Faster Battle Step is on and whether Multithreaded Collisions is on (nullopt:
+// its row hidden, the plugin's bit left alone; tw_unit_shadows' calls pass none: Off, the plugin's default and nullopt).
+// The callbacks are registered while any row is wanted and offered.
 inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uint32_t effects_stop = 0,
-                   bool battle_step = BATTLE_STEP_DEFAULT) {
+                   bool battle_step = BATTLE_STEP_DEFAULT, std::optional<bool> contact_split = std::nullopt) {
   using internal::block;
   namespace plugin = internal::plugin;
   const std::unique_lock lock(internal::mutex);
@@ -482,6 +483,16 @@ inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uin
   if (BlockV2() && internal::battle_step_written != battle_step) {
     write_core_bit(plugin::CORE_STEP, battle_step, plugin::ROW_BATTLE_STEP, "Faster Battle Step");
     internal::battle_step_written = battle_step;
+  }
+  // Multithreaded Collisions: CORE_SPLIT is written only while the row shows (src: PK2P P1a via rp1a_ S1, a hidden row
+  // writes no bit; deviation: from W-A3's form above, which writes its hidden default, because the batch's arms set
+  // ContactSplit=1 / 0 in the plugin's ini with the add-on loaded, and a hidden Off would clear their bit). Then, as
+  // PK8 Stage B 3.7 has it, fetch_or / fetch_and while the plugin offers ROW_CONTACT_SPLIT (a site left out or changed:
+  // nothing to switch). The plugin reads the bit at the hook's next call.
+  if (contact_split.has_value() && BlockV2() && (RowsOffered() & plugin::RowBit(plugin::ROW_CONTACT_SPLIT)) != 0
+      && internal::contact_split_written != contact_split) {
+    write_core_bit(plugin::CORE_SPLIT, *contact_split, plugin::ROW_CONTACT_SPLIT, "Multithreaded Collisions");
+    internal::contact_split_written = contact_split;
   }
   if (internal::callback_failed.load(std::memory_order_relaxed) && !internal::callback_failure_logged) {
     internal::callback_failure_logged = true;
@@ -808,6 +819,7 @@ inline void Uninstall() {
   internal::render_core_written.reset();
   internal::effects_written.reset();
   internal::battle_step_written.reset();
+  internal::contact_split_written.reset();
   internal::callback_failed = false;
   internal::callback_failure_logged = false;
   // The next READY finds the values again (a kept image's Tweaks too) and reads the keys again; this start's frame cap,

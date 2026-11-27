@@ -1192,6 +1192,7 @@ enum class PluginRow : uint8_t {
   GAME_CODE = twattila::attila64_plugin::ROW_GAME_CODE,
   PARALLEL_EFFECTS = twattila::attila64_plugin::ROW_PARALLEL_EFFECTS,
   BATTLE_STEP = twattila::attila64_plugin::ROW_BATTLE_STEP,
+  CONTACT_SPLIT = twattila::attila64_plugin::ROW_CONTACT_SPLIT,
   TWEAKS = 0xFE,
   NONE = 0xFF,
 };
@@ -1339,9 +1340,11 @@ constexpr std::array<const char*, twattila::attila64_plugin::CORE_STATE_COUNT> C
 };
 static_assert(std::ranges::find(CORE_STATE_TEXTS, nullptr) == CORE_STATE_TEXTS.end(), "a text for every CoreState");
 
-// Faster Battle Step's status line on the port, after "Battle step: ", by its lane's EngineState (src: PK8 F1 item 7,
-// one table indexed by EngineState; the texts 11.1's). State 0 (not built) hides the row.
-constexpr std::array<const char*, twattila::attila64_plugin::ENGINE_CODE_DIFFERS + 1> BATTLE_STEP_TEXTS = {
+// An engine row's status line on the port, by its lane's EngineState (src: PK8 F1 item 7, one table indexed by
+// EngineState). State 0 (not built) hides the row.
+using EngineTexts = std::array<const char*, twattila::attila64_plugin::ENGINE_CODE_DIFFERS + 1>;
+// Faster Battle Step's, after "Battle step: " (the texts PK8 11.1's).
+constexpr EngineTexts BATTLE_STEP_TEXTS = {
     "",                                                            // not built
     "not used yet",                                                // ENGINE_NOT_USED_YET
     "active",                                                      // ENGINE_ACTIVE
@@ -1349,6 +1352,20 @@ constexpr std::array<const char*, twattila::attila64_plugin::ENGINE_CODE_DIFFERS
     "off",                                                         // ENGINE_OFF
     "off (ini)",                                                   // ENGINE_OFF_INI
     "off (game code differs)",                                     // ENGINE_CODE_DIFFERS
+};
+// Multithreaded Collisions', after "Collisions: " (src: PK8 Stage B 14). deviation: from 14's three reason texts
+// ("partly (ships: normal speed)", "partly (too few CPU threads)", "partly (very large battle: normal speed)"),
+// because lane B has one PARTLY value and no reason (3.7): every PARTLY reads as 14's Rev 2 / Rev 4 text for the log
+// reasons, "partly (normal speed)", true for each reason (the original runs those ticks); the reason is in the
+// loader's log.
+constexpr EngineTexts CONTACT_SPLIT_TEXTS = {
+    "",                         // not built
+    "not used yet",             // ENGINE_NOT_USED_YET
+    "active",                   // ENGINE_ACTIVE
+    "partly (normal speed)",    // ENGINE_PARTLY
+    "off",                      // ENGINE_OFF
+    "off (ini)",                // ENGINE_OFF_INI
+    "off (game code differs)",  // ENGINE_CODE_DIFFERS
 };
 
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
@@ -1698,6 +1715,13 @@ float faster_battle_step_row = FASTER_BATTLE_STEP_DEFAULT;
 // until then: the row and its status line show only once S-C measured it (true: a release step), and the add-on
 // writes the plugin's default.
 constexpr bool BATTLE_STEP_ROW_MEASURED = false;
+// Multithreaded Collisions (the port only, Experimental, Off: PK8 Stage B 14): the 64-bit engine plugin's contact
+// split, its CORE_SPLIT core_wanted bit (attila64_plugin_link::Update).
+float multithreaded_collisions_row = 0.f;
+// deviation: from PK8 Stage B 14, which gives no state before the batch, because PK2P P1a's form hides the row (as
+// BATTLE_STEP_ROW_MEASURED does): the row and its status line show only once the batch measured it (true: a release
+// step, ATN decides the default), and while hidden the add-on writes no CORE_SPLIT (rp1a_ S1).
+constexpr bool CONTACT_SPLIT_ROW_MEASURED = false;
 // Loader Frame Cap (the port only, off: ATN 11-26): the 64-bit loader's 240 fps cap at the next start, through the
 // engine plugin (attila64_plugin_link::MirrorRestartValues).
 float loader_frame_cap_row = 0.f;
@@ -2387,7 +2411,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           static_cast<uint32_t>(effects_on_all_cores_row),
           // Hidden until measured: the plugin's default bit is written (a hand-edited Off waits too).
           (BATTLE_STEP_ROW_MEASURED ? faster_battle_step_row != 0.f
-                                    : twattila::attila64_plugin_link::BATTLE_STEP_DEFAULT));
+                                    : twattila::attila64_plugin_link::BATTLE_STEP_DEFAULT),
+          // Hidden until measured: no CORE_SPLIT write, so the plugin's ContactSplit key holds (a saved On waits too).
+          (CONTACT_SPLIT_ROW_MEASURED ? std::optional<bool>(multithreaded_collisions_row != 0.f) : std::nullopt));
     }
     // Everything below writes the 32-bit game's code or values.
     return;
@@ -3633,53 +3659,93 @@ void ConfigureAddon() {
                  && (PLUGIN_READY_FORCED || twattila::attila64_plugin_link::EffectsSlotOk());
         },
     });
-    // Faster Battle Step (PK8 11.1) and its status line, live, while the plugin built the row's lane (0: not built),
-    // once S-C measured it. The toggle hides while the row cannot run (BattleStep=0 in the ini, or the game's code
-    // differs); its line says why. The graphics preset buttons leave the row alone (not a look setting).
-    const auto battle_step_shown = [] {
-      return BATTLE_STEP_ROW_MEASURED
-             && twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY
-             && twattila::attila64_plugin_link::BattleStepState() != 0;
+    // The engine rows (PK8 11.1 Faster Battle Step, PK8 Stage B 14 Multithreaded Collisions) and their status lines,
+    // live, while the plugin built the row's lane (0: not built), once their batch measured them. The toggle hides
+    // while the row cannot run (its key 0 in the plugin's ini, or the game's code differs); its line says why. The
+    // graphics preset buttons leave the rows alone (not look settings).
+    struct EngineRow {
+      const char* key = nullptr;
+      float* binding = nullptr;
+      float default_value = 0.f;
+      const char* label = nullptr;
+      const char* tooltip = nullptr;
+      PluginRow plugin_row = PluginRow::NONE;
+      uint32_t lane_shift = 0;
+      const EngineTexts* texts = nullptr;
+      const char* status_prefix = nullptr;
+      bool measured = false;
     };
-    cpu_rows.insert(
-        cpu_rows.end(),
-        {
-            new renodx::utils::settings::Setting{
-                .key = "FasterBattleStep",
-                .binding = &faster_battle_step_row,
-                .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-                .default_value = FASTER_BATTLE_STEP_DEFAULT,
-                .label = "Faster Battle Step",
-                .section = CPU_SECTION,
-                .tooltip = "Speeds up how units steer around each other in big battles. Same battle results.",
-                .labels = {"Off", "On"},
-                .is_visible = [battle_step_shown] {
-                  const uint32_t state = twattila::attila64_plugin_link::BattleStepState();
-                  return battle_step_shown() && GameCodeRowShown(PluginRow::BATTLE_STEP)
-                         && state != plugin::ENGINE_OFF_INI && state != plugin::ENGINE_CODE_DIFFERS;
-                },
-            },
-            new renodx::utils::settings::Setting{
-                .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
-                .section = CPU_SECTION,
-                .on_draw = [] {
-                  const uint32_t state = twattila::attila64_plugin_link::BattleStepState();
-                  // 0 (not built) or a state appended by a newer plugin: no line.
-                  if (state == 0 || state >= BATTLE_STEP_TEXTS.size()) return false;
-                  const char* text = BATTLE_STEP_TEXTS[state];
-                  // The plugin changes its lane at the hook's next call: the row's Off reads off at once, its On
-                  // as the plugin's next state (OFF -> NOT_USED_YET).
-                  if (faster_battle_step_row == 0.f && state < plugin::ENGINE_OFF) {
-                    text = BATTLE_STEP_TEXTS[plugin::ENGINE_OFF];
-                  } else if (faster_battle_step_row != 0.f && state == plugin::ENGINE_OFF) {
-                    text = BATTLE_STEP_TEXTS[plugin::ENGINE_NOT_USED_YET];
-                  }
-                  ImGui::TextWrapped("Battle step: %s", text);
-                  return false;
-                },
-                .is_visible = battle_step_shown,
-            },
-        });
+    const auto add_engine_row = [&cpu_rows](const EngineRow& row) {
+      const auto status_shown = [row] {
+        return row.measured
+               && twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY
+               && twattila::attila64_plugin_link::EngineLaneState(row.lane_shift) != 0;
+      };
+      cpu_rows.insert(
+          cpu_rows.end(),
+          {
+              new renodx::utils::settings::Setting{
+                  .key = row.key,
+                  .binding = row.binding,
+                  .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                  .default_value = row.default_value,
+                  .label = row.label,
+                  .section = CPU_SECTION,
+                  .tooltip = row.tooltip,
+                  .labels = {"Off", "On"},
+                  .is_visible = [row, status_shown] {
+                    const uint32_t state = twattila::attila64_plugin_link::EngineLaneState(row.lane_shift);
+                    return status_shown() && GameCodeRowShown(row.plugin_row)
+                           && state != plugin::ENGINE_OFF_INI && state != plugin::ENGINE_CODE_DIFFERS;
+                  },
+              },
+              new renodx::utils::settings::Setting{
+                  .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+                  .section = CPU_SECTION,
+                  .on_draw = [row] {
+                    const uint32_t state = twattila::attila64_plugin_link::EngineLaneState(row.lane_shift);
+                    // 0 (not built) or a state appended by a newer plugin: no line.
+                    if (state == 0 || state >= row.texts->size()) return false;
+                    const char* text = (*row.texts)[state];
+                    // The plugin changes its lane at the hook's next call: the row's Off reads off at once, its On
+                    // as the plugin's next state (OFF -> NOT_USED_YET).
+                    if (*row.binding == 0.f && state < plugin::ENGINE_OFF) {
+                      text = (*row.texts)[plugin::ENGINE_OFF];
+                    } else if (*row.binding != 0.f && state == plugin::ENGINE_OFF) {
+                      text = (*row.texts)[plugin::ENGINE_NOT_USED_YET];
+                    }
+                    ImGui::TextWrapped("%s: %s", row.status_prefix, text);
+                    return false;
+                  },
+                  .is_visible = status_shown,
+              },
+          });
+    };
+    add_engine_row({
+        .key = "FasterBattleStep",
+        .binding = &faster_battle_step_row,
+        .default_value = FASTER_BATTLE_STEP_DEFAULT,
+        .label = "Faster Battle Step",
+        .tooltip = "Speeds up how units steer around each other in big battles. Same battle results.",
+        .plugin_row = PluginRow::BATTLE_STEP,
+        .lane_shift = plugin::ENGINE_STEP_SHIFT,
+        .texts = &BATTLE_STEP_TEXTS,
+        .status_prefix = "Battle step",
+        .measured = BATTLE_STEP_ROW_MEASURED,
+    });
+    // src: PK8 Stage B 14 (name, tooltip, default Off; the texts in CONTACT_SPLIT_TEXTS).
+    add_engine_row({
+        .key = "MultithreadedCollisions",
+        .binding = &multithreaded_collisions_row,
+        .default_value = 0.f,
+        .label = "Multithreaded Collisions (Experimental)",
+        .tooltip = "Checks soldier collisions on more CPU threads. Same battle results.",
+        .plugin_row = PluginRow::CONTACT_SPLIT,
+        .lane_shift = plugin::ENGINE_SPLIT_SHIFT,
+        .texts = &CONTACT_SPLIT_TEXTS,
+        .status_prefix = "Collisions",
+        .measured = CONTACT_SPLIT_ROW_MEASURED,
+    });
     // The renderer's CPU row (its 32-bit place: Graphics 2 of 2). Fewer Driver Waits stays there, hidden (GAME_CODE_ROWS).
     const auto moved = std::ranges::find(settings, "FewerConstantUploads", &renodx::utils::settings::Setting::key);
     (*moved)->section = CPU_SECTION;
