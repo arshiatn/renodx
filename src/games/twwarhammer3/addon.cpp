@@ -3532,7 +3532,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp); none under the rays'
   // AO, which leaves GT-VBAO's setting as it was (graphics_page's rays_replace_ao) and skips it with the game's passes.
   // After rt_scene::Update: GameSsaoOut for the coming frame, as its draws read it (before it, each change came one present
-  // late: a new helper scene's first frame ran GT-VBAO without both, rllf_ N4).
+  // late: a new helper scene's first frame ran GT-VBAO without both).
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f && !twattila::ao_skip::GameSsaoOut();
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
