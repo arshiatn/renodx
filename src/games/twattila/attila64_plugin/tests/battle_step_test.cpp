@@ -41,6 +41,7 @@
 #include <limits>
 #include <mutex>
 #include <random>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -2607,6 +2608,10 @@ void RunContactCases() {
 }
 
 inline constexpr char CODE_DIFFERS_LINE[] = "renodx_attila64: contact split: off (game code differs at 0x%llx+0x%x)";
+inline constexpr char OTHER_MOD_LINE[] =
+    "renodx_attila64: contact split: off (another mod changed the game code at 0x%llx: hash 0x%016llx is not the game's or PerfFix 7.5's)";
+// The other mod's windows: the pinned masks, the list's first 18.
+inline constexpr size_t WINDOW_COUNT = 18;
 // One call of the row's code check as init makes its first: whether it held, and its line.
 struct CodeCheck {
   bool held = false;
@@ -2670,6 +2675,13 @@ void RunContactTableChecks() {
     }
   }
   ranges_in_order = ranges_in_order && mask_index == CONTACT_MASKS.size();
+  // The pin's shape: the 18 windows hold two allowed values each, the task-thread loop's mask none; the check's
+  // copy is the table.
+  Expect(std::ranges::all_of(std::span(CONTACT_MASKS).first(WINDOW_COUNT), [](const ContactMask& mask) { return mask.value_count == 2; })
+             && CONTACT_MASKS.size() == WINDOW_COUNT + 1 && CONTACT_MASKS.back().value_count == 0
+             && CONTACT_MASK_VALUES.size() == 2 * WINDOW_COUNT && contact.mask_values == CONTACT_MASK_VALUES
+             && ENGINE_OTHER_MOD == ENGINE_CODE_DIFFERS + 1 && ENGINE_OTHER_MOD <= ENGINE_LANE_MASK,
+         "pin: 18 windows with two allowed values each, the task-thread loop's mask without; the new lane state is appended");
   bool entries_in_order = true;
   for (size_t index = 1; index < CONTACT_ENTRIES.size(); ++index) {
     const battle_step::ContactEntry& before = CONTACT_ENTRIES[index - 1];
@@ -2704,8 +2716,10 @@ void RunContactTableChecks() {
   Expect(cells_zero && contact_cells.entries.size() == FAKE_ENTRY_COUNT,
          "swap cells: 64 entries, zero but each head pointer, the first to the head slot and the others to the null one");
 
-  // Memory that is not the game's: the first range is named, once however often the check runs.
-  Expect(Names(CheckCode(), CONTACT_RANGES[0].start, 0), "code check: memory that is not the game's is refused, the first range named");
+  // Memory that is not the game's: the first range is named, once however often the check runs. No window is named
+  // (their ranges are not the game's either), and the row is off for the game's code, not for another mod.
+  Expect(Names(CheckCode(), CONTACT_RANGES[0].start, 0) && !contact.other_mod,
+         "code check: memory that is not the game's is refused, the first range named and no window");
   step_lines.clear();
   Expect(!CheckContactCode(api) && step_lines.empty(), "code check: a second miss logs nothing");
 }
@@ -2847,6 +2861,23 @@ void RunContactByteChecks() {
          "contact code: the six functions with the other mod's windows hold 2, 2, 4, 4, 4, 2 masks; unmasked each is the census's value, the table's is the masked one");
   Expect(windows_decode && window == 18 && window_bytes == 744,
          "contact code: each of the 18 windows (744 bytes) is the game's nine-instruction control-word block, inside its function");
+  // The pin: a window's first allowed value is the game's, FNV-1a 64 over the window's own bytes in the game file;
+  // its second is not in yet (the game's again).
+  {
+    bool game_values = true;
+    for (size_t index = 0; index < WINDOW_COUNT; ++index) {
+      const ContactMask& mask = CONTACT_MASKS[index];
+      uint64_t hash = FNV_OFFSET_BASIS<uint64_t>;
+      for (uint32_t byte = 0; byte < mask.size; ++byte) {
+        hash = (hash ^ *at(mask.start + byte)) * 0x100000001b3;
+      }
+      if (hash != CONTACT_MASK_VALUES[2 * index] || hash != CONTACT_MASK_VALUES[2 * index + 1]) {
+        std::printf("  contact mask %#x+%u: its first allowed value is not the game file's\n", mask.start, mask.size);
+        game_values = false;
+      }
+    }
+    Expect(game_values, "pin: each window's allowed value is the game file's, re-computed from its bytes");
+  }
   Expect(!shifted_decode && !is_control_word_block(CONTACT_MASKS.back().start, CONTACT_MASKS.back().size),
          "contact code: a window one byte off, one byte shorter or longer, or the task-thread loop's mask is no such block");
 
@@ -2933,10 +2964,22 @@ void RunContactByteChecks() {
            "table test: the chain is the game's (object +0x18, +0x58, +0x20, the accessor's +0x2198), in checked code");
   }
 
+  // A refused check's lines are the other mod's line for each of `windows`, in order, each with its window's start
+  // and the value of the bytes that stand there now.
+  const auto names_windows = [&](const CodeCheck& check, std::span<const ContactMask> windows) {
+    if (check.held || contact.code_read.load() || check.lines.size() != windows.size()) return false;
+    for (size_t index = 0; index < windows.size(); ++index) {
+      char line[160];
+      std::snprintf(line, sizeof(line), OTHER_MOD_LINE, uint64_t{windows[index].start},
+                    Fnv1a<uint64_t>(at(windows[index].start), windows[index].size));
+      if (check.lines[index] != line) return false;
+    }
+    return true;
+  };
   // The check itself: it holds without a line, also with a hook's jump in the pass's first five bytes.
   {
     const CodeCheck game = CheckCode();
-    Expect(game.held && game.lines.empty(), "code check: the game file passes, without a line");
+    Expect(game.held && game.lines.empty() && !contact.other_mod, "code check: the game file passes, without a line");
     std::array<uint8_t, HOOK_BYTES> game_bytes = {};
     std::memcpy(game_bytes.data(), at(CONTACT_LOOP), HOOK_BYTES);
     const std::array<uint8_t, HOOK_BYTES> jump = {0xe9, 0x12, 0x34, 0x56, 0x00};
@@ -2956,31 +2999,109 @@ void RunContactByteChecks() {
       }
     }
     Expect(named, "code check: a changed byte is found, the line names its range and block");
-    // Every mask: each of its bytes changed is no miss; the byte before it and the byte behind it are checked, and
-    // the line names that byte's block of the mask's range.
+    // Every mask: each byte of an unpinned one changed is no miss; each byte of a window changed is the other
+    // mod's line with the window's start and its bytes' value, and nothing else. The byte before a mask and the
+    // byte behind it are checked as the game's code, and the line names that byte's block of the mask's range.
     bool masked_pass = true;
+    bool windows_named = true;
     bool beside_named = true;
     for (const ContactMask& mask : CONTACT_MASKS) {
       for (uint32_t byte = 0; byte < mask.size; ++byte) {
         *at(mask.start + byte) ^= 0xff;
-        if (!CheckCode().held) {
+        const CodeCheck check = CheckCode();
+        if (mask.value_count == 0 && !check.held) {
           std::printf("  contact mask %#x+%u: the byte at +%u is checked\n", mask.start, mask.size, byte);
           masked_pass = false;
+        }
+        if (mask.value_count != 0 && !(names_windows(check, std::span(&mask, 1)) && contact.other_mod)) {
+          std::printf("  contact mask %#x+%u: the byte at +%u is not pinned, or the window not named\n", mask.start, mask.size, byte);
+          windows_named = false;
         }
         *at(mask.start + byte) ^= 0xff;
       }
       const auto range = std::ranges::find_if(CONTACT_RANGES, [&](const ContactRange& candidate) { return mask.start - candidate.start < candidate.size; });
       for (const uint32_t beside : {mask.start - 1, mask.start + mask.size}) {
         *at(beside) ^= 1;
-        if (range == CONTACT_RANGES.end() || !Names(CheckCode(), range->start, (beside - range->start) & ~15u)) {
+        if (range == CONTACT_RANGES.end() || !Names(CheckCode(), range->start, (beside - range->start) & ~15u) || contact.other_mod) {
           std::printf("  contact mask %#x+%u: the byte at %#x beside it is not checked, or not named\n", mask.start, mask.size, beside);
           beside_named = false;
         }
         *at(beside) ^= 1;
       }
     }
-    Expect(masked_pass, "code check: a changed byte under a mask is no miss, for every byte of the 19 masks");
+    Expect(masked_pass, "code check: a changed byte under the unpinned mask is no miss, for each of its bytes");
+    Expect(windows_named, "pin: a changed byte inside a window is refused with the other mod's line naming the window, for every byte of the 18");
     Expect(beside_named, "code check: the byte before and the byte behind each mask are checked, the line names their block");
+  }
+  // The pin's second value: bytes that are not the game's pass in a window once their value stands in that window's
+  // second slot (or, the control of the list's first place, in its first), and in no other window's.
+  {
+    bool second_passes = true;
+    bool first_passes = true;
+    bool other_slots_refuse = true;
+    for (size_t window = 0; window < WINDOW_COUNT; ++window) {
+      const ContactMask& mask = CONTACT_MASKS[window];
+      *at(mask.start + 4 + window) ^= 0x5a;
+      const uint64_t value = Fnv1a<uint64_t>(at(mask.start), mask.size);
+      for (size_t other = 0; other < WINDOW_COUNT; ++other) {
+        if (other != window) {
+          contact.mask_values[2 * other + 1] = value;
+        }
+      }
+      other_slots_refuse = other_slots_refuse && names_windows(CheckCode(), std::span(&mask, 1));
+      contact.mask_values = CONTACT_MASK_VALUES;
+      contact.mask_values[2 * window + 1] = value;
+      const CodeCheck check = CheckCode();
+      second_passes = second_passes && check.held && check.lines.empty() && !contact.other_mod;
+      contact.mask_values = CONTACT_MASK_VALUES;
+      contact.mask_values[2 * window] = value;
+      first_passes = first_passes && CheckCode().held;
+      contact.mask_values = CONTACT_MASK_VALUES;
+      *at(mask.start + 4 + window) ^= 0x5a;
+    }
+    Expect(second_passes, "pin: a window's second allowed value passes, without a line");
+    Expect(first_passes, "pin: the same value in the window's first place passes");
+    Expect(other_slots_refuse, "pin: a value that is allowed in every other window is refused in this one");
+  }
+  // Every refused window gets its line, in address order, in one check; a second check logs nothing. With a byte of
+  // the game's code changed as well, that range's line comes too and the row is off for the game's code.
+  {
+    const std::span windows = std::span(CONTACT_MASKS).first(WINDOW_COUNT);
+    for (const ContactMask& mask : windows) {
+      *at(mask.start + mask.size - 1) ^= 0x21;
+    }
+    const CodeCheck all = CheckCode();
+    step_lines.clear();
+    Expect(names_windows(all, windows) && contact.other_mod && !CheckContactCode(api) && step_lines.empty() && contact.other_mod,
+           "pin: all 18 windows changed give 18 lines, one per window; a second check logs nothing");
+    // The changed byte of the game's code lies behind every window: its line is the last.
+    *at(CONTACT_RANGES.back().start) ^= 1;
+    CodeCheck both = CheckCode();
+    char line[96];
+    std::snprintf(line, sizeof(line), CODE_DIFFERS_LINE, uint64_t{CONTACT_RANGES.back().start}, 0u);
+    const bool differs_last = !both.lines.empty() && both.lines.back() == line;
+    if (differs_last) {
+      both.lines.pop_back();
+    }
+    Expect(differs_last && names_windows(both, windows) && !contact.other_mod,
+           "pin: with a byte outside the windows changed too, the 18 lines and the game-code line; the row is off for the game's code");
+    *at(CONTACT_RANGES.back().start) ^= 1;
+    for (const ContactMask& mask : windows) {
+      *at(mask.start + mask.size - 1) ^= 0x21;
+    }
+    // A window changed in a function whose other code is changed too: the game-code line alone, for that function.
+    bool function_named = true;
+    for (const ContactMask& mask : windows) {
+      const auto range = std::ranges::find_if(CONTACT_RANGES, [&](const ContactRange& candidate) { return mask.start - candidate.start < candidate.size; });
+      *at(mask.start + 6) ^= 4;
+      *at(range->start) ^= 1;
+      function_named = function_named && Names(CheckCode(), range->start, 0) && !contact.other_mod;
+      *at(range->start) ^= 1;
+      *at(mask.start + 6) ^= 4;
+    }
+    Expect(function_named, "pin: a changed window in a function that differs elsewhere gets no line of its own, the function's game-code line stands");
+    const CodeCheck again = CheckCode();
+    Expect(again.held && again.lines.empty() && !contact.other_mod, "pin: the game's bytes back, it holds again");
   }
   // A changed table word: the line names its table and slot.
   {

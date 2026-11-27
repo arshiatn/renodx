@@ -169,6 +169,10 @@ enum EngineState : uint8_t {
   ENGINE_OFF,           // its core_wanted bit is clear
   ENGINE_OFF_INI,       // its install key is 0
   ENGINE_CODE_DIFFERS,  // a fingerprint or a site check failed, at init or at the game's start
+  // Appended (the add-on's tables go by ENGINE_CODE_DIFFERS + 1 until it knows this one): the row's code is the game's
+  // but for a spot another mod is known to change, and what stands there now is neither the game's nor that mod's
+  // known bytes (an update of that mod).
+  ENGINE_OTHER_MOD,
 };
 
 enum TweaksStatus : uint32_t {

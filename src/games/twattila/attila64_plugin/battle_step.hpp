@@ -18,6 +18,7 @@
 #include <cstring>
 #include <mutex>
 #include <shared_mutex>
+#include <span>
 #include <type_traits>
 
 #include "loader_api.h"
@@ -781,9 +782,12 @@ inline constexpr auto CONTACT_CLASSES = std::to_array<ContactClass>({
 // value after that block, so a miss can name its first differing block. The entries: one FNV-1a 64 chain over the
 // 8-byte words at vtable + slot, in this order; the end value is the pass / fail, each check word (the low 16 bits
 // of the running value after that entry) only names the first differing entry.
+// A pinned mask (value_count != 0): FNV-1a 64 over its own bytes in memory must be one of its allowed values, which
+// follow those of the masks before it in CONTACT_MASK_VALUES.
 struct ContactMask {
   uint32_t start = 0;
   uint16_t size = 0;
+  uint16_t value_count = 0;
 };
 
 // A range's check words follow those of the ranges before it in CONTACT_RANGE_CHECKS, (size + 15) / 16 of them;
@@ -806,27 +810,57 @@ struct ContactEntry {
 // above the run of masks it holds for.
 inline constexpr auto CONTACT_MASKS = std::to_array<ContactMask>({
     // another mod (PerfFix 7.5, x87fix) replaces the float -> int block here, in place; same integer for every float32 input, own stack slots only
-    {.start = 0x773ba6, .size = 36},
-    {.start = 0x773bf4, .size = 36},
-    {.start = 0x776c6c, .size = 36},
-    {.start = 0x776cbb, .size = 36},
-    {.start = 0x78c91d, .size = 36},
-    {.start = 0x78c96b, .size = 36},
-    {.start = 0x78c9b1, .size = 36},
-    {.start = 0x78c9f6, .size = 36},
-    {.start = 0x796ce1, .size = 60},
-    {.start = 0x796d4b, .size = 60},
-    {.start = 0x796db5, .size = 60},
-    {.start = 0x796e1b, .size = 60},
-    {.start = 0x7dfe8d, .size = 36},
-    {.start = 0x7dfedc, .size = 36},
-    {.start = 0x7dff2a, .size = 36},
-    {.start = 0x7dff75, .size = 36},
-    {.start = 0x7e0683, .size = 36},
-    {.start = 0x7e06cd, .size = 36},
+    {.start = 0x773ba6, .size = 36, .value_count = 2},
+    {.start = 0x773bf4, .size = 36, .value_count = 2},
+    {.start = 0x776c6c, .size = 36, .value_count = 2},
+    {.start = 0x776cbb, .size = 36, .value_count = 2},
+    {.start = 0x78c91d, .size = 36, .value_count = 2},
+    {.start = 0x78c96b, .size = 36, .value_count = 2},
+    {.start = 0x78c9b1, .size = 36, .value_count = 2},
+    {.start = 0x78c9f6, .size = 36, .value_count = 2},
+    {.start = 0x796ce1, .size = 60, .value_count = 2},
+    {.start = 0x796d4b, .size = 60, .value_count = 2},
+    {.start = 0x796db5, .size = 60, .value_count = 2},
+    {.start = 0x796e1b, .size = 60, .value_count = 2},
+    {.start = 0x7dfe8d, .size = 36, .value_count = 2},
+    {.start = 0x7dfedc, .size = 36, .value_count = 2},
+    {.start = 0x7dff2a, .size = 36, .value_count = 2},
+    {.start = 0x7dff75, .size = 36, .value_count = 2},
+    {.start = 0x7e0683, .size = 36, .value_count = 2},
+    {.start = 0x7e06cd, .size = 36, .value_count = 2},
     // the probe (-Probe arms only) rewrites the rel32 of the task fetch call at 0x3062d91 to its timing wrapper; the e8 byte stays; 3.6 masks these 4 bytes
     {.start = 0x3062d92, .size = 4},
 });
+
+// The pin (ours; ATN 11-27): a pinned mask's allowed values, in the masks' order. First the game's (from the game
+// file), then PerfFix 7.5's (from a run's log line, never from its files); that one is not in yet, the game's stands twice.
+inline constexpr auto CONTACT_MASK_VALUES = std::to_array<uint64_t>({
+    0x55531ace933876c4, 0x55531ace933876c4,  // 0x773ba6
+    0x55531ace933876c4, 0x55531ace933876c4,  // 0x773bf4
+    0xf5c052d4f067c394, 0xf5c052d4f067c394,  // 0x776c6c
+    0xf5c052d4f067c394, 0xf5c052d4f067c394,  // 0x776cbb
+    0x7e941fe1e1ecbb64, 0x7e941fe1e1ecbb64,  // 0x78c91d
+    0x7e941fe1e1ecbb64, 0x7e941fe1e1ecbb64,  // 0x78c96b
+    0x7e941fe1e1ecbb64, 0x7e941fe1e1ecbb64,  // 0x78c9b1
+    0x7e941fe1e1ecbb64, 0x7e941fe1e1ecbb64,  // 0x78c9f6
+    0x6b0d2025cb862f06, 0x6b0d2025cb862f06,  // 0x796ce1
+    0x6b0d2025cb862f06, 0x6b0d2025cb862f06,  // 0x796d4b
+    0x6b0d2025cb862f06, 0x6b0d2025cb862f06,  // 0x796db5
+    0x6b0d2025cb862f06, 0x6b0d2025cb862f06,  // 0x796e1b
+    0x3d919fdcfa3ceca4, 0x3d919fdcfa3ceca4,  // 0x7dfe8d
+    0x3d919fdcfa3ceca4, 0x3d919fdcfa3ceca4,  // 0x7dfedc
+    0x3d919fdcfa3ceca4, 0x3d919fdcfa3ceca4,  // 0x7dff2a
+    0x3d919fdcfa3ceca4, 0x3d919fdcfa3ceca4,  // 0x7dff75
+    0x22f775a34fce1104, 0x22f775a34fce1104,  // 0x7e0683
+    0x22f775a34fce1104, 0x22f775a34fce1104,  // 0x7e06cd
+});
+static_assert([] {
+  size_t value_count = 0;
+  for (const auto& mask : CONTACT_MASKS) {
+    value_count += mask.value_count;
+  }
+  return value_count;
+}() == CONTACT_MASK_VALUES.size());
 
 inline constexpr auto CONTACT_RANGES = std::to_array<ContactRange>({
     {.value = 0xa3703b1a918cfbeb, .start = 0x4e8a70, .size = 0x3},
@@ -2730,6 +2764,7 @@ struct ContactState {
   std::atomic<uint32_t> reasons_logged = 0;    // bit per ContactReason
   std::atomic<uint32_t> original_ticks = 0;    // the ticks a reason or the skip latch left to the game's loop
   bool code_line_logged = false;
+  bool other_mod = false;                      // the last code check's only misses were pinned masks
   bool table_off = false;                      // never cleared
   uint32_t skip_period = NO_PERIOD;            // tick / RESORT_PERIOD of a region that ended with a stop bit
   // The summary lines' sums over the handled ticks.
@@ -2749,6 +2784,7 @@ struct ContactState {
 
   // The tests' fake tables stand in here, and a margin that is too small for one control.
   double reach_margin = REACH_MARGIN;
+  std::array<uint64_t, CONTACT_MASK_VALUES.size()> mask_values = CONTACT_MASK_VALUES;
   std::array<ContactClass, CLASS_SLOTS> classes = [] {
     std::array<ContactClass, CLASS_SLOTS> slots = {};
     for (const ContactClass& known : CONTACT_CLASSES) {
@@ -2778,22 +2814,29 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
               && std::is_trivially_destructible_v<ContactSlot> && std::is_trivially_destructible_v<ContactCells>);
 
 // Whether the game's code and table entries the contact split's reasoning is about are the ones read: every range of
-// CONTACT_RANGES, then the entries' chain. The first that is not gets the row's one line, once: a range's start and
+// CONTACT_RANGES, then the entries' chain. The first that is not gets the row's one line: a range's start and
 // the offset of its first 16-byte block whose check word differs (the last block if none does), or an entry's table
 // and slot. The 64-bit values decide; the check words only name the place. Ours: a range's masked bytes are read as zero
 // whatever they hold: another patcher's known spots, each with its reason at CONTACT_MASKS.
+// Ours (the pin; ATN 11-27, so that the log alone says what changed): a pinned mask's own bytes must hash to one of its
+// allowed values, the two contents the row's reasoning was checked for. With anything else there the row is off as
+// for any other miss, and every such mask gets its own line where the rest of its range is the game's (in a range
+// that differs it is the game's code that is not the one read, not another mod's spot). The lines are written by the
+// first check that misses only.
 [[nodiscard]] static bool CheckContactCode(const LoaderApi& loader) noexcept {
-  const auto differs = [&](uint64_t address, uint32_t offset) {
-    contact.code_read.store(false, std::memory_order_relaxed);
-    if (!contact.code_line_logged) {
-      contact.code_line_logged = true;
+  const bool log_misses = !contact.code_line_logged;
+  bool differs = false;
+  bool other_mod = false;
+  const auto differs_at = [&](uint64_t address, uint32_t offset) {
+    differs = true;
+    if (log_misses) {
       loader.log("renodx_attila64: contact split: off (game code differs at 0x%llx+0x%x)", address, offset);
     }
-    return false;
   };
   constexpr uint32_t BLOCK_BYTES = 16;
   size_t check_index = 0;
   size_t mask_index = 0;
+  size_t value_index = 0;
   for (const ContactRange& range : CONTACT_RANGES) {
     const uint32_t block_count = (range.size + BLOCK_BYTES - 1) / BLOCK_BYTES;
     uint64_t hash = FNV_OFFSET_BASIS<uint64_t>;
@@ -2817,22 +2860,44 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
       }
     }
     check_index += block_count;
-    mask_index += range.mask_count;
-    if (hash != range.value) return differs(range.start, std::min(first_differing, block_count - 1) * BLOCK_BYTES);
-  }
-  uint64_t chain = FNV_OFFSET_BASIS<uint64_t>;
-  const ContactEntry* named = &CONTACT_ENTRIES.back();
-  bool found = false;
-  for (const ContactEntry& entry : CONTACT_ENTRIES) {
-    chain = Fnv1a(reinterpret_cast<const uint8_t*>(uintptr_t{entry.vtable} + entry.slot), sizeof(uint64_t), chain);
-    if (!found && static_cast<uint16_t>(chain) != entry.check) {
-      named = &entry;
-      found = true;
+    for (const size_t end = mask_index + range.mask_count; mask_index < end; ++mask_index) {
+      const ContactMask& mask = CONTACT_MASKS[mask_index];
+      const std::span allowed(contact.mask_values.data() + value_index, mask.value_count);
+      value_index += mask.value_count;
+      if (mask.value_count == 0) continue;
+      const uint64_t mask_hash = Fnv1a<uint64_t>(reinterpret_cast<const uint8_t*>(uintptr_t{mask.start}), mask.size);
+      if (std::ranges::find(allowed, mask_hash) != allowed.end()) continue;
+      other_mod = true;
+      if (log_misses && hash == range.value) {
+        loader.log("renodx_attila64: contact split: off (another mod changed the game code at 0x%llx: hash 0x%016llx is not the game's or PerfFix 7.5's)",
+                   uint64_t{mask.start}, mask_hash);
+      }
+    }
+    // One line for the code outside the pinned masks: the first range's.
+    if (hash != range.value && !differs) {
+      differs_at(range.start, std::min(first_differing, block_count - 1) * BLOCK_BYTES);
     }
   }
-  if (chain != CONTACT_ENTRY_CHAIN) return differs(named->vtable, named->slot);
-  contact.code_read.store(true, std::memory_order_relaxed);
-  return true;
+  if (!differs) {
+    uint64_t chain = FNV_OFFSET_BASIS<uint64_t>;
+    const ContactEntry* named = &CONTACT_ENTRIES.back();
+    bool found = false;
+    for (const ContactEntry& entry : CONTACT_ENTRIES) {
+      chain = Fnv1a(reinterpret_cast<const uint8_t*>(uintptr_t{entry.vtable} + entry.slot), sizeof(uint64_t), chain);
+      if (!found && static_cast<uint16_t>(chain) != entry.check) {
+        named = &entry;
+        found = true;
+      }
+    }
+    if (chain != CONTACT_ENTRY_CHAIN) {
+      differs_at(named->vtable, named->slot);
+    }
+  }
+  const bool code_read = !differs && !other_mod;
+  contact.code_line_logged = contact.code_line_logged || !code_read;
+  contact.other_mod = other_mod && !differs;
+  contact.code_read.store(code_read, std::memory_order_relaxed);
+  return code_read;
 }
 
 // One participant's share of the open region: chunks of the object list, claimed one by one, each object's kept nodes
