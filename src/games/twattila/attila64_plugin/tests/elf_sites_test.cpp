@@ -21,14 +21,11 @@
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
-#include <vector>
 
 #include "../hooks.hpp"
 #include "../patcher.hpp"
 #include "../tweaks.h"
 #include "fake_loader.hpp"
-
-inline constexpr int EXIT_SKIPPED = 77;
 
 int wmain(int argc, wchar_t** argv) {
   using namespace twattila::attila64_plugin;
@@ -43,66 +40,17 @@ int wmain(int argc, wchar_t** argv) {
     std::printf("SKIPPED: elf_sites_test.exe <renodx_attila64.dll> <game ELF>\n");
     return EXIT_SKIPPED;
   }
-  HANDLE file = CreateFileW(argv[2], GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
-  LARGE_INTEGER size = {};
-  if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &size)) {
-    std::printf("SKIPPED: the game ELF could not be opened (error %lu)\n", GetLastError());
-    return EXIT_SKIPPED;
-  }
-  std::vector<uint8_t> elf(static_cast<size_t>(size.QuadPart));
-  DWORD got = 0;
-  for (size_t offset = 0; offset < elf.size(); offset += got) {
-    const auto chunk = static_cast<DWORD>(std::min<size_t>(elf.size() - offset, 1 << 24));
-    if (!ReadFile(file, elf.data() + offset, chunk, &got, nullptr) || got == 0) {
-      std::printf("FAIL: reading the game ELF (error %lu)\n", GetLastError());
-      return 1;
-    }
-  }
-  CloseHandle(file);
-
-  // ELF64 program headers: e_phoff at 0x20, e_phentsize 0x36, e_phnum 0x38; p_type, p_offset 8, p_vaddr 16,
-  // p_filesz 32, p_memsz 40.
-  const auto field = [&]<typename T>(size_t offset) {
-    T value = {};
-    if (offset + sizeof(T) <= elf.size()) {
-      std::memcpy(&value, elf.data() + offset, sizeof(T));
-    }
-    return value;
-  };
-  uintptr_t game_end = 0;
-  uintptr_t writable_lo = 0;  // the load segment the game writes: its data
-  uintptr_t writable_hi = 0;
-  const auto program_headers = field.operator()<uint64_t>(0x20);
-  for (uint16_t index = 0; index < field.operator()<uint16_t>(0x38); ++index) {
-    const size_t header = program_headers + (index * size_t{field.operator()<uint16_t>(0x36)});
-    if (field.operator()<uint32_t>(header) != 1) continue;  // PT_LOAD
-    const auto offset = field.operator()<uint64_t>(header + 8);
-    const auto address = field.operator()<uint64_t>(header + 16);
-    const auto file_bytes = field.operator()<uint64_t>(header + 32);
-    const auto memory_bytes = field.operator()<uint64_t>(header + 40);
-    if (address < GAME_LO || address + memory_bytes > GAME_RESERVE_END || offset + file_bytes > elf.size()) {
-      std::printf("FAIL: load segment %#llx + %#llx outside the game range or the file\n", address, memory_bytes);
-      return 1;
-    }
-    std::memcpy(reinterpret_cast<void*>(address), elf.data() + offset, file_bytes);
-    game_end = std::max<uintptr_t>(game_end, address + memory_bytes);
-    if ((field.operator()<uint32_t>(header + 4) & 2) != 0) {  // PF_W
-      writable_lo = address;
-      writable_hi = address + memory_bytes;
-    }
-  }
-  elf = {};
-  const int rewritten = ApplyStackRule(reinterpret_cast<uint8_t*>(GAME_LO), reinterpret_cast<const uint8_t*>(game_end));
-  std::printf("  mapped %#llx..%#llx, %d stack-check reads rewritten\n", uint64_t{GAME_LO}, uint64_t{game_end}, rewritten);
+  GameImage image;
+  if (const int mapped = MapGameElf(argv[2], &image); mapped != 0) return mapped;
 
   char exe_dir[MAX_PATH];
   GetModuleFileNameA(nullptr, exe_dir, MAX_PATH);
   *std::strrchr(exe_dir, '\\') = '\0';
-  LoaderApi api = MakeApi(exe_dir, game_end);
+  LoaderApi api = MakeApi(exe_dir, image.end);
   loader = &api;
   const auto at = [](uintptr_t address) { return reinterpret_cast<uint8_t*>(address); };
 
-  Expect(game_end == GAME_HI_MIN, "the last load segment ends where sites.h says");
+  Expect(image.end == GAME_HI_MIN, "the last load segment ends where sites.h says");
   Expect(CheckIdentity(api) == STATUS_READY, "the game file is the build sites.h was made for");
   *at(BUILD_ID_NOTE_ADDRESS + 16) ^= 1;
   Expect(CheckIdentity(api) == STATUS_WRONG_GAME, "control: a wrong build id");
@@ -263,7 +211,7 @@ int wmain(int argc, wchar_t** argv) {
   for (const TweakEntry& entry : TWEAKS) {
     if (entry.object == 0) continue;
     const TweakKind& kind = TWEAK_KINDS[entry.type];
-    bool ok = entry.object >= writable_lo && entry.object + kind.value_offset + kind.value_bytes <= writable_hi;
+    bool ok = entry.object >= image.writable_lo && entry.object + kind.value_offset + kind.value_bytes <= image.writable_hi;
     ok = ok && *at(entry.constructor_call) == 0xe8
          && entry.constructor_call + 5 + word_at(entry.constructor_call + 1) == kind.constructor;
     ok = ok && entry.default_store < entry.constructor_call && entry.constructor_call - entry.default_store < 0x80;
@@ -282,7 +230,7 @@ int wmain(int argc, wchar_t** argv) {
       if (*at(address) != 0xbe) continue;  // mov esi
       const uintptr_t text = word_at(address + 1);
       passes_name = passes_name
-                    || (text >= GAME_LO && text + TWEAK_NAME_CAPACITY <= game_end
+                    || (text >= GAME_LO && text + TWEAK_NAME_CAPACITY <= image.end
                         && std::strcmp(reinterpret_cast<const char*>(text), entry.name) == 0);
     }
     if (ok && passes_object && passes_name) {
@@ -295,7 +243,17 @@ int wmain(int argc, wchar_t** argv) {
   Expect(tweaks_in_code == TWEAKS.size() - 2, "tweaks: every object's constructor call passes its name and default");
 
   WriteTweakObjects();
-  const Plugin plugin = ExpectPluginDll(api, argv[1]);
+  // Every row in, the game code row's stubs with their gap too: one game run's code near the game fits what the
+  // loader's own code leaves of its page at the loader's worst (LOADER_OWN_NEAR_CODE_BYTES, read from loader 1.3.28's
+  // source: about 0x720 bytes of its own requests and 32 bytes for each of its 77 hooks, 0x10c0 with every one on;
+  // about 3 KiB in a default start). So 0xf40 are ours; a row that needs more could leave the game code row, the last
+  // to ask, without memory at a real start.
+  constexpr size_t LOADER_OWN_NEAR_CODE_BYTES = 0x10c0;
+  const size_t near_code_before = near_code_used;
+  const Plugin plugin = ExpectPluginDll(api, argv[1], false);
+  std::printf("  code near the game: %#zx bytes\n", near_code_used - near_code_before);
+  Expect(near_code_used - near_code_before <= LOADER_NEAR_CODE_BYTES - LOADER_OWN_NEAR_CODE_BYTES,
+         "dll: one game run's code near the game, the game code row's too, fits the loader's page");
   Expect(!Logged("grass draw: "), "grass draw: init finds the code that was read, the early return is on");
 
   // The sprite site in the game's own code, with the DLL's stub and handler: a bed enters where the game loads the

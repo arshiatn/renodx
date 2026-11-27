@@ -2,11 +2,13 @@
 # build\attila64_plugin (or -Out), with its sha256 beside it (renodx_attila64.dll.sha256, for a64_ab). It is not a CMake
 # target (the repository's targets are addons): clang-cl for the Linux calling convention and guaranteed tail calls,
 # kernel32 only. The player puts it into the loader's plugins folder under exactly this name.
-# -Test also builds the tests into -TestOut and runs them (patcher_test, tweaks_test and elf_sites_test with the DLL,
-# battle_core_test, model_lods_test and trampoline_test on their own; elf_sites_test with -Elf <the game's Linux
-# executable>; without it, or with the game's address range taken, that test is SKIPPED and says so in the last line);
-# the exit code is the number of failures.
-param([string]$Out = '', [switch]$Test, [string]$TestOut = '', [string]$Elf = '')
+# -Test also builds the tests into -TestOut and runs them (patcher_test, tweaks_test, elf_sites_test and game_code_test
+# with the DLL, battle_core_test, model_lods_test and trampoline_test on their own; elf_sites_test and game_code_test
+# with -Elf <the game's Linux executable>; without it, with a path that cannot be opened, or with the game's address
+# range taken, those tests are SKIPPED and say so in the last line); the exit code is the number of failures. -Bench has
+# game_code_test time its code instead of its long runs (every input of the half and of each of the sprite rows' lanes,
+# about 15 minutes on four threads): a -Bench run is no gate.
+param([string]$Out = '', [switch]$Test, [string]$TestOut = '', [string]$Elf = '', [switch]$Bench)
 $root = Resolve-Path "$PSScriptRoot\..\..\..\.."
 if (-not $Out) { $Out = Join-Path $root "build\attila64_plugin" }
 # Relative folders are taken from where the script was started, before any Set-Location.
@@ -34,7 +36,7 @@ New-Item -ItemType Directory -Force $TestOut | Out-Null
 # The tests' intermediate files stay out of the DLL's folder.
 Set-Location $TestOut
 foreach ($name in @('patcher_test', 'tweaks_test', 'elf_sites_test', 'battle_core_test', 'model_lods_test',
-                        'trampoline_test')) {
+                        'trampoline_test', 'game_code_test')) {
   Remove-Item "$TestOut\$name.exe" -ErrorAction SilentlyContinue
   # tweaks_test takes the C library as a DLL, as the loader exe does: the frame cap goes through that library's getenv.
   $test_flags = if ($name -eq 'tweaks_test') { $flags -replace '^/MT$', '/MD' } else { $flags }
@@ -55,9 +57,14 @@ $failures += $LASTEXITCODE
 # The plugin's own trampoline for a site inside a function, on test beds that hold every register and flag.
 & "$TestOut\trampoline_test.exe"
 $failures += $LASTEXITCODE
-if ($Elf) { & "$TestOut\elf_sites_test.exe" "$Out\renodx_attila64.dll" $Elf } else { & "$TestOut\elf_sites_test.exe" }
-# elf_sites_test exits with 77 when it did not run (tests\elf_sites_test.cpp).
-$elf_result = if ($LASTEXITCODE -eq 77) { 'elf_sites_test SKIPPED' } else { 'elf_sites_test ran' }
-if ($LASTEXITCODE -ne 77) { $failures += $LASTEXITCODE }
-"tests: $failures failure(s), $elf_result"
+# The tests on the game file exit with 77 when they did not run (tests\fake_loader.hpp EXIT_SKIPPED).
+$elf_results = @()
+foreach ($name in @('elf_sites_test', 'game_code_test')) {
+  $elf_arguments = if ($Elf) { @("$Out\renodx_attila64.dll", $Elf) } else { @() }
+  if ($Bench -and $Elf -and $name -eq 'game_code_test') { $elf_arguments += '-bench' }
+  & "$TestOut\$name.exe" @elf_arguments
+  $elf_results += if ($LASTEXITCODE -eq 77) { "$name SKIPPED" } else { "$name ran" }
+  if ($LASTEXITCODE -ne 77) { $failures += $LASTEXITCODE }
+}
+"tests: $failures failure(s), $($elf_results -join ', ')"
 exit $failures
