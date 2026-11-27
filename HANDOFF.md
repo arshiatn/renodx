@@ -17991,7 +17991,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         NIT-3 = tests.cpp not its file -> tw_unit_shadows' next owner); stop sequence 0->0xf ... 7->0x1f; both
         mutations caught; gated amd64 + x86 exit 0 (addon64 4c322b36, addon32 1fd276f2). F7's case needs
         fake_plugin.cpp + run.ps1 edits (test\tw_attila64_present) -> the batch prep. Sonnet High final fp94_
-        STARTED 19:1x; merge after it (addon.cpp order: P1a -> P9-4 -> W-A3 -> Stage B). m2d_ (Fable xHigh) DONE
+        STARTED 19:1x; merge after it (addon.cpp order: P1a -> P9-4 -> W-A3 -> Stage B). p1pt_ (Fable Medium) DONE 19:1x (31 of 20
+        min; scratch\p1pt_\handback.md; p1pt_1127 4b69a2f19 from b4f7442fa): ClearRenderThread shared by Release +
+        the refused-write path, an ended render thread = CORE_NO_THREAD; tests 356 -> 362 (refused default write via a
+        test-only import-slot swap, release with a refused read / an ended thread, full yield_line); only the ended-
+        thread check fails on today's header, the others by 5 mutations; DLL d1653f38 x4. FLAKE: run 2 of 3 SIDE BY
+        SIDE exited 1 on the old 'busy thread keeps the core' check (serial run 4 + 5x battle_core_test clean).
+        Review rp1pt_ (Opus xHigh) STARTED 19:2x incl. the flake's root cause (serial x2 + one loaded run). m2d_ (Fable xHigh) DONE
         17:58 (27 of 40 min; designs\pk5_m2_memcpy.md, scratch\m2d_\handback.md): ONE caller 0x339b4a4 (97.88 %,
         ~1.67 of 1.71 ms a frame), size 0xe0 x count, destination the loader's Map pointer of a dynamic VB; class (c),
         lever (d) only, no build target; PK5 10.1 / 10.3 corrected (addendum); section 10 copied into backup_32bit.md;
