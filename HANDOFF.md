@@ -18038,7 +18038,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         yet', dump lane_4_row_1 'off' -> 'not used yet'; BATTLE_STEP_TEXTS table by EngineState; F1 :228-229 cited);
         gated amd64 + x86 exit 0, x86 page unchanged; F7 needs no re-run (no case reads the status text, link.hpp
         unchanged); slip: its mutation script reverted the uncommitted fix once, redone on the committed tree. Sonnet
-        High final fwa3_ STARTED 18:53; then merge.
+        High final fwa3_ DONE: GO, nothing open. Coord merged it locally, gated amd64 + x86 exit 0, BUT
+        tw_unit_shadows amd64 FAILED (tests.cpp:649 exact core_wanted: its 3-argument Update calls now write CORE_STEP,
+        the hidden default On; NIT-3 grown) -> merge taken back, not pushed; fix round 2 wa3_ (test only, amd64 + x86,
+        one mutation) STARTED 18:57; then merge + checks again. Lesson: W-A3-type add-on rows run tw_unit_shadows
+        in their own checks.
         Stage B step 5 p8b5_ (Fable Medium) STARTED 18:37 on p8b_1127 (merge
         atn-mods, fold step 2's CONTACT_ENTRY onto the installed generator in its own copy + install.sh, ONE wiring
         commit, 3 serial test runs); then step 6 (Opus) after W-A3 merges. Note: HANDOFF clock stamps 19:xx above were an
