@@ -18186,6 +18186,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         amd64 exit 0, mutants 11 / 11, DLL ac52ed31 (staged in build\attila64_plugin; old f3cb7c8d in scratch\pxp_\out2).
         Coord -PerfFix smoke on ac52ed31 (pxp2_smoke_pf.log; pass = no 'contact split: off (...)' line) + reviews
         rpxp_ (Opus xHigh) + fpxp_ (Sonnet High) STARTED 23:17. Merge after both + the smoke.
+        fpxp_ (8 min; scratch\fpxp_\review.md) GO, 0 MUST: S1 add-on EngineTexts needs a nullptr static_assert when
+        sized ENGINE_OTHER_MOD + 1 (add-on part); S2 no test for a refused window + an entry-chain miss in one check;
+        S3 the 18 values only against the test's copy (the smoke is the gate); S4 a PerfFix change OUTSIDE the 18
+        windows logs 'game code differs', not 'another mod' -> the lane-6 text should say 'game update or another
+        mod' + point to the loader log (add-on part), so ATN still knows at once; N1-N5. Readers for the add-on part:
+        addon.cpp:1345 / 1347-1355 / 1361-1369 / 3705 / 3712-3721. Fix round after rpxp_.
         - [ ] PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also run on the PerfFix stack
         once (same result as without PerfFix). Owner: coord (batch prep)
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
