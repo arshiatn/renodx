@@ -726,7 +726,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
-- PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | ATN
+- PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | ATN Step 8 review rp8b57_ (Opus xHigh) DONE 20:11 (19 of 35 
 - RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the ... | coord
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
@@ -18128,6 +18128,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         (b) mask that block (design 3.6), which needs to know what PerfFix writes there (its code is never read: ATN may
         ask its author); a mask may reveal further spots one smoke at a time. The B64P smoke fails its item 1 until
         decided. Owner: ATN
+        Step 8 review rp8b57_ (Opus xHigh) DONE 20:11 (19 of 35 min; scratch\rp8b57_\review.md): GO WITH CHANGES; steps 5
+        + 6 right as built (own plugin test at 587a40a48: 0 failures, battle_step 14547; four stores + table test in the
+        smoke DLL as pinned); smoke: E64 matches every 11.1 line, lane B off with PerfFix acceptable for now (fail-safe,
+        row hidden). MUST M1: with the E5b patch the PerfFix arms P17 w3 / P18 w3t (no ContactSplit key) turn invalid on
+        a Stage B DLL -> Pin ContactSplit='0' in the same patch. SHOULD S1: an elf_sites_test case that kills m15 (the
+        line is needed); S2: -PerfFix smokes fail item 1 until ATN decides (pre-seed ContactSplit=0 or accept the line by
+        hand) -> waits for ATN. NITs: N1 Fnv1a constraint, N2 addon.cpp EngineRow initializers, N3 commit mark (cannot
+        amend: in the fix commit), N4 ini order (optional), N5 a64_ab :2865 note, N6 PARTLY text for ATN at release.
+        Point 4 -> design 14 addendum written (one PARTLY text, no reason field). Fix rounds STARTED 20:11: p8b7_ M1 + N5
+        (a64_ab patch, scratch only) beside p8b5_ S1 + N1 + N4 (plugin files); then p8b6_ N2 (addon.cpp, same
+        worktree, after p8b5_); then Sonnet High FINAL; then apply the a64_ab patch and merge p8b_1127.
         - [ ] RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the p8b_1127 add-on until
         Stage B merges (then rebuild from atn-mods and stage that); build\attila64_plugin is p8b_1127's plugin until then.
         Owner: coord
