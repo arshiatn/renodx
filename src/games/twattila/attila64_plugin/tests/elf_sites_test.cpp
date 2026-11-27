@@ -243,7 +243,7 @@ int wmain(int argc, wchar_t** argv) {
   Expect(tweaks_in_code == TWEAKS.size() - 2, "tweaks: every object's constructor call passes its name and default");
 
   WriteTweakObjects();
-  const Plugin plugin = ExpectPluginDll(api, argv[1]);
+  const Plugin plugin = ExpectPluginDll(api, argv[1], false);
   Expect(!Logged("grass draw: "), "grass draw: init finds the code that was read, the early return is on");
 
   // The sprite site in the game's own code, with the DLL's stub and handler: a bed enters where the game loads the

@@ -41,7 +41,8 @@ using namespace twattila::attila64_plugin;
 inline constexpr char PLUGIN_VERSION[] = "2";
 inline constexpr std::array<const char*, ROW_COUNT> ROW_WORDS = {
     "bone flush", "pass draw", "battle core", "unit lod",       "model detail",
-    "shadow map", "grass",     "grass cells", "campaign trees", "sprites"};
+    "shadow map", "grass",     "grass cells", "campaign trees", "sprites",
+    "game code"};
 static_assert(std::ranges::find(ROW_WORDS, nullptr) == ROW_WORDS.end(), "a word for every row");
 // The rows with a site in this build; the rows line shows the others as "-".
 inline constexpr uint32_t ROWS_WITH_SITES = [] {
@@ -243,6 +244,9 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     // (graphics_hooks.hpp shadow_map::Set). The cascade sites are only checked: the row is in once all of its sites
     // are the game's, so a later key applies at the next start.
     const bool size_rewritten = (shadow_sizes_written && IsShadowSizeSite(site));
+    // A hand-made stub's site belongs to its row's step after this loop, which takes its code memory after every other
+    // row's.
+    if (check.refusal == REFUSAL_NONE && site.kind == SITE_RAW_STUB) continue;
     if (check.refusal == REFUSAL_NONE && site.kind == SITE_HOOK) {
       check.refusal = ApplySite(*api, site, REPLACEMENTS[site.label], &applied_sites[index]);
     } else if (check.refusal == REFUSAL_NONE && site.kind == SITE_MID) {
@@ -273,6 +277,15 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
       loader->log("renodx_attila64: site %s %#x: skipped (%s%s%s)", LABEL_WORDS[site.label], site.address,
                   REFUSAL_WORDS[check.refusal], (foreign ? " " : ""), (foreign ? OWNER_WORDS[check.owner] : ""));
     }
+  }
+  // The game code row. Its stubs are not built yet: its sites are checked like every other and the row is in with
+  // nothing written.
+  if ((block.rows_tried & RowBit(ROW_GAME_CODE)) != 0 && (block.rows_refused & RowBit(ROW_GAME_CODE)) == 0) {
+    for (const Site& site : SITES) {
+      if (site.row != ROW_GAME_CODE) continue;
+      loader->log("renodx_attila64: site %s %#x: checked (check only)", LABEL_WORDS[site.label], site.address);
+    }
+    block.rows_applied |= RowBit(ROW_GAME_CODE);
   }
   // A row is on only when all of its sites are. A patch site that went in before a later site of its row failed comes
   // out again; when the loader cannot put its bytes back, the row stays refused and its log line names the site.

@@ -77,6 +77,7 @@ enum Row : uint32_t {
   ROW_GRASS_CELLS,     // the grass cell radius (scales 19 and 20)
   ROW_CAMPAIGN_TREES,  // Campaign Tree Detail Distance (scale 18)
   ROW_SPRITES,         // Small Soldiers as Sprites, Sprite Size and Dead Unit Detail (scales 22 and 23)
+  ROW_GAME_CODE,       // Faster Game CPU Code: hand-made stubs for game code (game_code.hpp), restart-only
   ROW_COUNT
 };
 
@@ -254,7 +255,7 @@ inline constexpr int TWEAKS_DEFAULT = 1;
 // Install the row's sites at all.
 inline constexpr const wchar_t* ROW_INI_KEYS[ROW_COUNT] = {L"BoneFlush", L"PassDraw",   L"CpuPlacement", L"UnitLod",
                                                            L"ModelDetail", L"ShadowMap", L"Grass",       L"GrassCells",
-                                                           L"CampaignTrees", L"Sprites"};
+                                                           L"CampaignTrees", L"Sprites",  L"GameCode"};
 inline constexpr int ROW_INSTALL_DEFAULT = 1;
 // The restart-only values the add-on writes and the plugin reads at init.
 inline constexpr wchar_t INI_VALUES_SECTION[] = L"Attila64Plugin.Values";

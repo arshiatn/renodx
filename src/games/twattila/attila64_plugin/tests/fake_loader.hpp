@@ -375,9 +375,11 @@ static Plugin LoadPlugin(const wchar_t* dll_path) {
 }
 
 // The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window and
-// every tweak object (WriteTweakObjects), with no ReShade.ini keys and no route note beside the test: every row with a
-// site goes in, and no patch site has other bytes to write.
-static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
+// every tweak object (WriteTweakObjects), with no route note beside the test and no ReShade.ini keys but, with
+// `game_code_key_off`, the game code row's install key 0 (an image without the game code that row stands on): every
+// other row with a site goes in, and no patch site has other bytes to write. A hand-made stub's site is in with our
+// jump, or only checked (its stub not built).
+static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, bool game_code_key_off) {
   const Plugin plugin = LoadPlugin(dll_path);
   if (plugin.init == nullptr) return plugin;
 
@@ -389,11 +391,12 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const Block* shared = plugin.block;
   Expect(shared->version == VERSION && shared->bytes == BlockBytes(VERSION), "the block's version and size");
   Expect(shared->status.load(std::memory_order_acquire) == STATUS_READY, "the block is READY after init");
+  const uint32_t rows_off = (game_code_key_off ? RowBit(ROW_GAME_CODE) : 0);
   uint32_t rows = 0;
   for (const Site& site : SITES) {
-    rows |= RowBit(static_cast<Row>(site.row));
+    rows |= RowBit(static_cast<Row>(site.row)) & ~rows_off;
   }
-  Expect(shared->rows_applied == rows && shared->rows_refused == 0, "every row with a site applied");
+  Expect(shared->rows_applied == rows && shared->rows_refused == rows_off, "every row with a site applied");
   // v2's initial values: the rows tried, the core default (no RenderCore key here), the battle core waiting, the render
   // core without its thread yet, the engine values waiting for the game's start, the other status words not built, the
   // scales neutral.
@@ -413,16 +416,31 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
              && Logged("Changes drawing, sound memory and CPU core use only; battles, replays and multiplayer stay the same.")
              && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
              && Logged("STEP_ENTRY 0xbb4e00: applied") && Logged("renodx_attila64: shadow map: game's size")
+             && Logged(game_code_key_off ? "grass on, grass cells on, campaign trees on, sprites on, game code off"
+                                         : "grass on, grass cells on, campaign trees on, sprites on, game code on")
              && Logged("rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
-                       "grass on, grass cells on, campaign trees on, sprites on"),
+                       "grass on, grass cells on, campaign trees on, sprites on, game code o"),
          "the init lines");
+  size_t sites_in = 0;
   for (const Site& site : SITES) {
     char applied_line[96];
     std::snprintf(applied_line, sizeof(applied_line), "renodx_attila64: site %s %#x: applied%s", LABEL_WORDS[site.label],
                   site.address, ((site.kind == SITE_PATCH) ? " (game's bytes kept)" : ""));
-    Expect(Logged(applied_line), "each site has its applied line");
+    char unwritten_line[96];
+    std::snprintf(unwritten_line, sizeof(unwritten_line), "renodx_attila64: site %s %#x: %s", LABEL_WORDS[site.label],
+                  site.address, (game_code_key_off ? "skipped (OFF)" : "checked (check only)"));
+    if (site.kind == SITE_RAW_STUB && !Logged(applied_line)) {
+      Expect(Logged(unwritten_line)
+                 && std::memcmp(reinterpret_cast<const void*>(uintptr_t{site.address}), site.window.data() + SITE_MARGIN,
+                                site.length)
+                        == 0,
+             "a hand-made stub's site that is not in keeps the game's bytes and says why");
+      continue;
+    }
+    ++sites_in;
+    Expect(Logged(applied_line) && !Logged(unwritten_line), "each site has its applied line");
     if (site.kind != SITE_PATCH) {
-      Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each hook and mid-function site jumps to ours");
+      Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each hook and stub site jumps to ours");
     } else {
       Expect(std::memcmp(reinterpret_cast<const void*>(uintptr_t{site.address}), site.window.data() + SITE_MARGIN, site.length) == 0,
              "each patch site keeps the game's bytes without a key");
@@ -431,7 +449,7 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   plugin.game_started(&api);
   // The count follows the sites table (a later site needs no edit here).
   char started[64];
-  std::snprintf(started, sizeof(started), "game started: %zu sites unchanged", SITES.size());
+  std::snprintf(started, sizeof(started), "game started: %zu sites unchanged", sites_in);
   Expect(shared->rows_changed.load() == 0 && Logged(started), "game start finds every site unchanged");
   // Every engine value checked once and published; nothing restart-only without its key.
   char tweaks_line[96];
