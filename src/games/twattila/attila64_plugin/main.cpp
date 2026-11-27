@@ -268,8 +268,8 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   // A row is on only when all of its sites are. A patch site that went in before a later site of its row failed comes
   // out again; when the loader cannot put its bytes back, the row stays refused and its log line names the site.
   // A hook cannot come out: a refused row's hook stays in and the game keeps calling it, with the row's bit clear in
-  // rows_applied. So the add-on sets a row's scales_active bits only while the row is in rows_applied; a row with two
-  // hooks (the grass row) depends on that.
+  // rows_applied. So the add-on sets a row's scales_active bits only while the row is in rows_applied, and the one row
+  // with two hooks (the grass row) tests its bit in rows_applied itself (hooks.hpp GrassRowRuns), final from here on.
   block.rows_applied &= ~block.rows_refused;
   for (size_t index = 0; index < SITES.size(); ++index) {
     const Site& site = SITES[index];
