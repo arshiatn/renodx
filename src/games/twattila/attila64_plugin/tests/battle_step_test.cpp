@@ -1271,6 +1271,8 @@ enum OwnerAction : uint32_t {
   ACTION_DROP_ENVIRONMENT,  // the walking object's environment link turns null
   ACTION_DROP_MODEL,        // the environment's model link turns null
   ACTION_MOVE_OTHER,        // game code that moves another object: the row's reasoning says it never happens
+  ACTION_FENCE_PUSH_AND_MOVE,  // class H's path with a write the reasoning does not cover: what the fence is for
+  ACTION_SWAP_LISTED,       // once: the object list's entry at OBJECT_VALUE changes places with the next
 };
 
 struct ContactScene {
@@ -1310,17 +1312,28 @@ ATTILA64_GAME_CALL void FakeOwner(void* owner, void* walking) noexcept {
     case ACTION_DROP_MODEL:
       At<void*>(scene.environment, ENVIRONMENT_MODEL) = nullptr;
       break;
+    case ACTION_FENCE_PUSH_AND_MOVE:
+      ++At<uint32_t>(scene.fence, FENCE_COUNT);
+      [[fallthrough]];
     case ACTION_MOVE_OTHER:
       At<float>(At<void*>(walking, OBJECT_TARGET), OBJECT_X) = At<float>(walking, OBJECT_VALUE);
       break;
+    case ACTION_SWAP_LISTED: {
+      void** listed = At<void**>(scene.manager, CONTACT_OBJECTS) + static_cast<uint32_t>(At<float>(walking, OBJECT_VALUE));
+      std::swap(listed[0], listed[1]);
+      At<uint32_t>(walking, OBJECT_ACTION) = ACTION_NONE;
+      break;
+    }
     default:
       break;
   }
 }
 
 // The fake objects' tables, each entered in the row's class table with the mode a case wants (the unknown one is not).
+// The two fast ones lie in one pool: the second is picked so that both hash to one slot of the class table.
 inline constexpr size_t TABLE_OWNER_CALL = 0x98 / sizeof(void*);
-std::array<std::array<void*, 64>, 2> fast_tables = {};
+std::array<void*, 4096> fast_table_pool = {};
+std::array<void**, 2> fast_tables = {};
 std::array<void*, 64> fenced_table = {};
 std::array<void*, 64> naval_table = {};
 std::array<void*, 64> unknown_table = {};
@@ -1428,7 +1441,7 @@ std::vector<void*> NewPlainScene(uint32_t count, uint32_t id_capacity = 8192) {
   NewContactScene(count + 8, id_capacity);
   std::vector<void*> objects;
   for (uint32_t object = 0; object < count; ++object) {
-    objects.push_back(NewObject(fast_tables[0].data(), object, 10.f * static_cast<float>(object), 0.f, 4));
+    objects.push_back(NewObject(fast_tables[0], object, 10.f * static_cast<float>(object), 0.f, 4));
     AddToCell(objects.back(), NewHead(), 8);
   }
   return objects;
@@ -1575,7 +1588,7 @@ void BuildContactWorld(std::mt19937_64* random, const ContactShape& shape) {
   void* previous = nullptr;
   for (uint32_t index = 0; index < shape.objects; ++index) {
     const bool big = index < shape.big_objects;
-    void** table = fast_tables[below(2)].data();
+    void** table = fast_tables[below(2)];
     const bool fenced = below(1000) < shape.fenced_per_mille;
     if (fenced) {
       table = fenced_table.data();
@@ -1817,7 +1830,7 @@ void RunContactCases() {
     NewContactScene(2108, 8192);
     void** head = NewHead();
     for (uint32_t object = 0; object < 2100; ++object) {
-      void* made = NewObject(fast_tables[0].data(), object, 0.f, 0.f, 1);
+      void* made = NewObject(fast_tables[0], object, 0.f, 0.f, 1);
       At<uint32_t>(made, 0x60) = 1;
       AddToCell(made, head, 8);
     }
@@ -1875,9 +1888,44 @@ void RunContactCases() {
            "fence: fires on a count or a link that changed, not on a link that stays null");
   }
   {
+    // Class H's path with a write the reasoning does not cover (it moves a far object next to its cell neighbour):
+    // the fence fires, and every later object takes the game's walk, so the tick is still the game's.
+    std::vector<void*> objects = base_scene();
+    At<void**>(objects[10], 0) = fenced_table.data();
+    MakeNeighbours(objects[10], objects[11]);
+    AddToCell(objects[900], At<void**>(At<void*>(objects[800], OBJECT_CELLS), CELL_HEAD), 8);
+    At<uint32_t>(objects[10], OBJECT_ACTION) = ACTION_FENCE_PUSH_AND_MOVE;
+    At<void*>(objects[10], OBJECT_TARGET) = objects[900];
+    At<float>(objects[10], OBJECT_VALUE) = At<float>(objects[800], OBJECT_X) + 0.25f;
+    const ContactOutcome alone = ExpectContactSame("fence: what class H's path wrote is seen by the later walks");
+    Expect(alone.handled && contact.fence_ticks == 1 && alone.calls.size() == 56, "fence: the moved object's new neighbour answers");
+  }
+  {
+    // Game code that changes the object list under the pass (the reasoning says none does): from the first place
+    // that holds another object than detect saw, the game's walk.
+    std::vector<void*> objects = base_scene();
+    MakeNeighbours(objects[1500], objects[1700]);
+    At<uint32_t>(objects[0], OBJECT_ACTION) = ACTION_SWAP_LISTED;
+    At<float>(objects[0], OBJECT_VALUE) = 1500.f;
+    const ContactOutcome alone = ExpectContactSame("a changed object list: the game's walk from there on");
+    Expect(alone.handled && alone.calls.size() == 54, "a changed object list: the row's tick, the moved object's neighbour found");
+  }
+  {
+    // Walks that visit more ids than the visited list holds: 2100 objects in one cell, in pairs far from each other.
+    NewContactScene(2108, 8192);
+    void** head = NewHead();
+    for (uint32_t object = 0; object < 2100; ++object) {
+      const float x = (10.f * static_cast<float>(object / 2)) + (0.25f * static_cast<float>(object % 2));
+      AddToCell(NewObject(fast_tables[object % 2], object, x, 0.f, 1), head, 8);
+    }
+    const ContactOutcome alone = ExpectContactSame("one cell: every walk visits every other object");
+    Expect(alone.handled && alone.calls.size() == 1050 && contact.visited == uint64_t{2100} * 2099 && contact.listed == 2100,
+           "one cell: 2099 ids a walk, one kept");
+  }
+  {
     // An object with more cells than the row swaps takes the game's walk.
     std::vector<void*> objects = base_scene();
-    void* big = NewObject(fast_tables[1].data(), 3000, -50.f, 0.f, FAKE_ENTRY_COUNT + 1);
+    void* big = NewObject(fast_tables[1], 3000, -50.f, 0.f, FAKE_ENTRY_COUNT + 1);
     for (uint32_t cell = 0; cell < FAKE_ENTRY_COUNT + 1; ++cell) {
       AddToCell(big, At<void**>(At<void*>(objects[cell], OBJECT_CELLS), CELL_HEAD), 8);
     }
@@ -1978,6 +2026,9 @@ void RunContactCases() {
     block.core_wanted.store(0);
     Expect(Refused() && LaneIs(ENGINE_OFF), "lane: off with the bit clear");
     block.core_wanted.store(CORE_SPLIT);
+    KeepTick(300);
+    Expect(Refused() && LaneIs(ENGINE_NOT_USED_YET), "lane: the bit set again leaves off at the next tick, whatever the tick");
+    KeepTick(301);
     const size_t lines_before = step_lines.size();
     Expect(RunContact(true, 0, false).handled && LaneIs(ENGINE_ACTIVE) && step_lines.size() == lines_before,
            "lane: active again without a second line");
@@ -2482,8 +2533,15 @@ int wmain(int argc, wchar_t** argv) {
   }
   games = {reinterpret_cast<PairsFn>(uintptr_t{RESOLVER}), &Transcription};
   RunCases("game file", 4000, 3, 0x67616d65);
-  for (auto& table : fast_tables) {
-    EnterClass(table.data(), CONTACT_FAST);
+  fast_tables[0] = fast_table_pool.data();
+  for (size_t place = 64; place + 64 < fast_table_pool.size() && fast_tables[1] == nullptr; ++place) {
+    if (ContactClassSlot(reinterpret_cast<uintptr_t>(&fast_table_pool[place])) == ContactClassSlot(reinterpret_cast<uintptr_t>(fast_tables[0]))) {
+      fast_tables[1] = &fast_table_pool[place];
+    }
+  }
+  Expect(fast_tables[1] != nullptr, "contact: two fake tables that share a slot of the class table");
+  for (void** table : fast_tables) {
+    EnterClass(table, CONTACT_FAST);
   }
   EnterClass(fenced_table.data(), CONTACT_FENCED);
   EnterClass(naval_table.data(), CONTACT_NAVAL);
