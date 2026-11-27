@@ -1030,6 +1030,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW OF THE 64-BIT DESIGNS (cpu_plan_64_map.md 6 items 7 / 12: after Stag ... | ?
 - AA FEED AT 67 % IN THE SCENE PATH (aaf3_): the harness scene path renders and ev ... | next harness writer (after rri_ / the m1 implementer)
 - LAST REVIEW lr2_ DONE (attila64\designs\last_review_c8w2_pk6_pk1.md): C8 wave 2 ... | design fix rounds (after lr1_ / lr3_ / lr4_ / lr5_) -> coord
+- LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2bw2_ -> L2B W3 / W4 writers
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17891,9 +17892,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] GPU ITEM 7 PLAN (i7s_ 11-27, tools\tw\round_notes\designs\gpu_item7_plan.md): smoke spheres S0 recording scan
         (lss0_), S1 probe round (lsp3_: parts A fog / sun-only cards / sphere flag + C PTLAS smoke arms P0-P3 run; part B old MG
         arms ready, not run), S2 design (sms_) STARTED 06:4x. Owner: lss0_ / lsp3_ / sms_ -> coord. S0 DONE (lss0_, lsp_\lsp3_\scan.md): no heavy frame in the 14 recordings (max 8,004 live
-        particles, 0.77 candidates a ray; densest night1_battle 1178 / night1_wide 2652) -> S4 needed; sgr_ writes its runner
+        particles, 0.77 candidates a ray; densest night1_battle 1178 / night1_wide 2652) -> S4 needed; sgr_ writes its runner. S1
+        DONE (lsp3_ 11-27, testbin\scratch\lsp_\lsp3_\handback.md + results\AC_20261127_070305\lsp3_table.md): 154 runs at 4K,
+        all self-checks pass, no device removal; none of the frames is heavy. A1 fog cap 2 vs uncapped: rule fails, cap 2 stays
+        on the sphere path. A2 cards beside the spheres: +0.5-5.9 % (<= 0.026 ms) on recorded frames, 2 dust frames over the 5 %
+        rule (5.5 / 5.9 %, numbers for ATN), synthetic 16-68 % cheaper; skip cards inside the backoff (S6 keeps it). A3 sphere
+        flag: no cost. A4 SKIP_PROCEDURAL on the sphere query: identical, rt_scene.hlsli:228 stays. M1 dead slots at 262,144:
+        NaN centre / parked radius 0 both 0.456 ms build, +0.0 ms trace (rule +0.3) -> parked radius 0. Spheres vs quads at cap
+        64: 0.53-0.75x synthetic >= 4000, 0.90-1.17x real frames. C PTLAS smoke P1-P3: 0.93-2.89 (rule <= 0.8) -> no PTLAS smoke
+        design, keep P0, dropped from S6. Part B (old MG) built, not run (ATN's MG question)
         - [ ] OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s part B traces only sun + fog rays, so
-        its numbers don't depend on unified PT. Owner: ATN (yes / wait)
+        its numbers don't depend on unified PT. Owner: ATN (yes / wait).
+        lsp3_ 11-27: part B = 48 runs (p0 / mg_list / mg_sorted / mg_shuffled, synthetic + 11 frames, cap 64, 4K, DRED), ~1-2
+        min under the GPU lock, line in lsp_\lsp3_\handback.md; the MG path has never run on the GPU
         - [ ] SMOKE SPHERES S3 review (Opus xHigh, smr_ STARTED 07:0x) of designs\smoke_spheres.md (S2 DONE sms_ 11-27: GPU pass
         rt_smoke_spheres.cs_6_5.hlsl makes spheres from the RT_SMOKE quads; default model Q = today's density on the
         sphere (the plan's uniform ball = the 'Round' choice: a departure S3 checks); Experimental row 'Smoke Shadows as
@@ -17902,7 +17913,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         + M1 decide S6's go; framing for ATN: after S5 the quads are exact at 32 / 64, so spheres add speed on heavy smoke
         + round shapes for fog-light / soft-sun rays; on everyday dust lsp2_ measured 1.02-1.15x slower (<= ~0.07 ms)), then S5 smoke caps retirement (ATN yes for 32 /
         64; rt_scene.hlsli + rt_trace.cs_6_5.hlsl, before S6), then S6 implementer (after pdf_ frees rt_d3d12.hpp + an addon.cpp
-        slot). Owner: coord (after sms_)
+        slot). Owner: coord (after sms_).
+        S1 numbers in (lsp3_, item 7 box): fog cap 2 stays on spheres, two-instance cost +0.5-5.9 %, parked radius-0 dead slot,
+        no flag change, PTLAS smoke out of S6; sent to smr_ 07:1x
         - [ ] SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start in the game batch (recorder helper,
         constantinople_aa107f05.replay, cpl2's camera, Smoke Shadow Quality Maximum, DLAA 3840x2160, PTLAS off, 2-4 frames);
         needs a runner + review and ATN's rule line before he leaves 11-27 evening. RUNNER WRITTEN (sgr_ 11-27,
@@ -17990,6 +18003,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         the pass line's '2:', GRASS scale numbers, c8 :675 125 / 127 / 130, PK6 noise / PDB / offsets on 1.3.28, one placement
         owner per start, absorb the fast / fastl2b kinds; anchor by text. Owner: design fix rounds (after lr1_ / lr3_ / lr4_ /
         lr5_) -> coord
+        - [ ] LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO WITH CHANGES. L2B premise holds on
+        1.3.28 (0c / 0d: 134.0 -> 121.35 ms, window 239.8 -> 219.9 s; steps 0 / 0b were no L2B result: the probe refused to
+        place without the CPU Set Setter rule). Review section 4 = the W2 brief: no plugin_block.h edit; LABEL_STEP_ENTRY last
+        in the generator + private table + per-label tests; masked core_wanted & CORE_BATTLE; CORE_WAITING store;
+        battle_core.hpp without hooks.hpp; ATN's start line in main.cpp. S2 = the 1.3.28 line '-AB -Arms ep1 -EnginePlugin
+        -Probe full -Package <pkg_fixes> -Exe64Sha 580efafeb5765d81...' under the run_pkg CPU Set Setter rule: needs a64_ab (ep1
+        kind, -EnginePlugin with -AB / -Probe, E4 / E5 for the new rows line + 3 sites), ATN's rule lines + his yes for ep1, and
+        the analyzer's 'probe collides with PerfFix' INVALID flag fixed or waived (its 1.3.20 banner). PK2P: a 1.3.28 premise
+        paragraph (spin off -> gain likely lower), ATN's Q1 = (b) decided in S-C, F2 moved to run_pkg / -Package. Map 3.3
+        battle_core.hpp row fixed (Stage B no guest). l2bw2_ (Fable 5.2 Medium) STARTED 07:08 on l2bw2_1127 from c8b0_1127.
+        Owner: l2bw2_ -> L2B W3 / W4 writers; PK2P fix round
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
