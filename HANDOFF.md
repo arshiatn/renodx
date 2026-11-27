@@ -726,7 +726,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
-- PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | coord Step 8 review rp8b57_ (Opus xHigh) DONE 20:11 (19 of 3
+- PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | coord ATN 20:3x: 'You are allowed to look at his code to see
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the ... | coord
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
@@ -18140,6 +18140,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         if it is an in-place, register / stack-only rounding, mask those blocks (both PerfFix's and our speed); if not,
         our plugin restores the game's own bytes in those blocks only (ours used, PerfFix skipped there); (4) T-B3,
         smoke again, review. Owner: coord
+        ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
+        -> read-only conflict check pfx_ (Fable 5.2 xHigh; opens perffix_src read only, x87fix only; heapfix pkg stays
+        unopened; findings in our words) STARTED 20:35: the pattern, the replacement, results, thread safety, the blocks
+        inside the 176 functions, mask vs restore, any other PerfFix code patch inside them. It replaces steps (1)-(3).
         Step 8 review rp8b57_ (Opus xHigh) DONE 20:11 (19 of 35 min; scratch\rp8b57_\review.md): GO WITH CHANGES; steps 5
         + 6 right as built (own plugin test at 587a40a48: 0 failures, battle_step 14547; four stores + table test in the
         smoke DLL as pinned); smoke: E64 matches every 11.1 line, lane B off with PerfFix acceptable for now (fail-safe,
