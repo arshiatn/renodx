@@ -58,11 +58,11 @@ void main(uint2 pixel : SV_DispatchThreadID)
       const uint2 object_motion = t_object_motion.Load(int3(input, 0));
       colour = scene;
       if (drawn_depth != 0.f && MotionDepthMatches(drawn_depth, depth)) {
-        colour = max(MotionColour(t_drawn_motion.Load(int3(input, 0))), 0.25f);
+        colour = max(MotionColour(t_drawn_motion.Load(int3(input, 0))), 0.2500449f);
       } else if (MotionTexelWritten(object_motion) && MotionDepthMatches(MotionTexelDepth(object_motion), depth)) {
         colour = max(MotionColour(MotionTexelMotion(object_motion)), float3(0.3f, 0.25f, 0.1f));
       } else if (drawn_depth != 0.f || MotionTexelWritten(object_motion)) {
-        colour = float3(0.4f, 0.f, 0.f);
+        colour = float3(0.40000334f, 0.f, 0.f);
       }
     }
     t_rw_result[pixel] = float4(colour, current.a);
