@@ -94,8 +94,12 @@ float3 DiLight(uint4 texel, float3 position, uint light) {
 bool DiVisible(float3 origin, float3 light_point) {
   const float3 to_light = light_point - origin;
   const float light_distance = length(to_light);
-  // guard output: a light within 1 mm of the ray origin (or a NaN distance) reads shadowed, no ray; box S10.
-  if (!(light_distance > 1.0003098e-3f)) return false;
+  // src: commit:6c81d89c5 rt_lights.cs_6_5.hlsl:85, its reach test: a light point within LIGHT_RAY_FLOOR of the ray origin
+  // (or a NaN distance) gets no ray and keeps its bit (the game's unshadowed light), so DiVisible reads it visible (it
+  // read shadowed before pdf_1127, darker than the bits; W4 part 8). Exact for the light's centre (without Ray
+  // Reconstruction); under it the disk point from DI's half-float origin, at most ~0.7 mm off (4K census: 0 such lights).
+  // rt_path.hlsli:1787 (Torch and Fire Light in the Light Bounce) reads such a lamp unlit, the opposite rule: its own box.
+  if (!(light_distance > LIGHT_RAY_FLOOR)) return true;
 #if defined(DI_CONSERVATIVE)
   // Source: RTXDI RtxdiApplicationBridge.md, RAB_GetConservativeVisibility ("conservative visibility can skip
   // alpha-tested or translucent surfaces"; the initial samples' kept or discarded "computed in the same way").
@@ -135,7 +139,7 @@ void DiCurrentClear(uint index) {
   di_current_of[index + 64u] = 0xFFFFFFFFu;
 }
 void DiCurrentBuild(uint index) {
-  // guard inert: a light_count past b4's 128 lights; proof pending S5G; trace HARNESS_LIGHT_STRESS=125 (128 lights).
+  // guard inert: a light_count past b4's 128 lights; proof pdf_1127-S5G (every b4 count is CopyLights' SharedLightCount, at most RT_ALL_LIGHTS = 128, or the upload heap's zeroed start); trace HARNESS_LIGHT_STRESS=125 (128 lights).
   const uint count = min(light_count, 128u);
   [unroll]
   for (uint pair = 0u; pair < 2u; ++pair) {

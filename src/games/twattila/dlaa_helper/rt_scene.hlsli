@@ -116,6 +116,9 @@ bool LightLinear(uint index) {
 
 // Where the rays toward a local light stop before it (metres; at most half the way): its lamp, torch or fire's wood.
 static const float LIGHT_CLEARANCE = 0.5f;
+// ours: the nearest a light's point may be to a ray's origin and still get a ray (metres; nearer, or a NaN distance, the ray
+// has no direction): rt_lights' reach test leaves such a light its bit and DiVisible reads it visible, one value for both.
+static const float LIGHT_RAY_FLOOR = 1.0003098e-3f;
 
 float Luminance(float3 color) {
   return dot(color, float3(0.2126f, 0.7152f, 0.0722f));

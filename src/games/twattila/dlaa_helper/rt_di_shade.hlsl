@@ -22,7 +22,8 @@
 // ours: the one writer of the addon's two DI textures, the pixel's light by its model.
 void DiStore(uint2 pixel, uint model, float3 light) {
   // guard inert: NaN or infinite light to 0, light past the half floats' largest clamped there (none in a normal frame:
-  // DiLight's colours at 0 and up, B2); proof pending S6; trace S6's one-frame count.
+  // DiLight's colours at 0 and up, B2); proof pdf_1127-S6 (4K census: 0 of 68.65 M DI pixel-frames at 29 lights, 0 at
+  // 128 and under a pan, its control fired on 64.0 M; a select of a few ALU ops); trace S6's one-frame count.
   const float3 kept = (all(isfinite(light)) ? min(light, 65504.f) : 0.f);
   // src: spec:dxspecs@ba0b51c:d3d/archive/D3D11_3_FunctionalSpec.htm:617 a store into a smaller float format rounds toward zero.
   // ours: half the texture format's ULP at the value's binade added first, so the store rounds to nearest (the binade at
