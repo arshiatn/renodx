@@ -19,7 +19,8 @@ float2 DrawRenderShare() {
 
 // The frame's render share where a camera's view covers that part of its screen texture (DLSS below 100%: the main
 // view's cameras, their viewport the render scale's), else 1: for textures that hold the whole view (the bloom) read at
-// a screen texture's uv, whatever the draw's own viewport (the tone mapper draws its whole target: DrawRenderShare 1).
+// a screen texture's uv, whatever the draw's own viewport (OnToneMapperDraw binds cb12 at 1 when Ray Reconstruction's
+// display-size result is the tone mapper's scene).
 float2 CameraRenderShare(float4 screen_size, float4 viewport_dimensions) {
   const float2 frame = FrameRenderShare();
   const float2 camera = viewport_dimensions.xy / max(screen_size.xy, 1.f);

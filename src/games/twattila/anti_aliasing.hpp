@@ -102,7 +102,8 @@ struct Settings {
   bool ray_reconstruction = false;          // DLAA / DLSS: NVIDIA's Ray Reconstruction (guides from the G-buffer)
   uint32_t ray_reconstruction_preset = 0;  // NVSDK_NGX_RayReconstruction_Hint_Render_Preset (0: NVIDIA's)
   // Ray Reconstruction on the lit scene before the tone mapper (OnToneMapperDraw: linear, before exposure, bloom and
-  // grade; NVIDIA's order), at 100% render scale only; else after it, on its output.
+  // grade; NVIDIA's order), at every render scale (below 100% it also upscales there, and the tone mapper draws the
+  // display); else after it, on its output.
   bool rr_before_tone_map = false;
   // A Debug View drawn into the tone mapper's output for DLSS to stretch (Attila's SSS one, screen_space_shadows.hpp
   // OnTonemapDrawn): below 100% Ray Reconstruction stays after the tone mapper then.
@@ -1449,6 +1450,51 @@ inline bool MotionView(ID3D11Buffer* camera, object_motion::View* view) {
   return true;
 }
 
+// DLSS below 100%: the game's own viewports and scissor rectangles back where the scaled ones are still bound: after the
+// tone mapper (the game draws on without binding them again), and for its draw when Ray Reconstruction ran before it
+// (OnToneMapperDraw).
+inline void RestoreGameViewportsAndScissors(ID3D11DeviceContext* native) {
+  std::array<D3D11_VIEWPORT, 16> current = {};
+  UINT count = static_cast<UINT>(current.size());
+  native->RSGetViewports(&count, current.data());
+  {
+    const std::unique_lock viewport_lock(bound_viewports.mutex);
+    const auto& bound = bound_viewports;
+    bool still_scaled = count == bound.count && count != 0;
+    for (UINT index = 0; index < count && still_scaled; ++index) {
+      const auto& viewport = bound.scaled[index];
+      still_scaled = current[index].TopLeftX == viewport.x && current[index].TopLeftY == viewport.y
+                     && current[index].Width == viewport.width && current[index].Height == viewport.height;
+    }
+    if (still_scaled) {
+      std::array<D3D11_VIEWPORT, 16> original = {};
+      for (UINT index = 0; index < count; ++index) {
+        const auto& viewport = bound.original[index];
+        original[index] = {viewport.x, viewport.y, viewport.width, viewport.height, viewport.min_depth, viewport.max_depth};
+      }
+      native->RSSetViewports(count, original.data());
+    }
+  }
+  std::array<D3D11_RECT, 16> rects = {};
+  UINT rect_count = static_cast<UINT>(rects.size());
+  native->RSGetScissorRects(&rect_count, rects.data());
+  const std::unique_lock scissor_lock(bound_scissors.mutex);
+  const auto& bound = bound_scissors;
+  bool still_scaled = rect_count == bound.count && rect_count != 0;
+  for (UINT index = 0; index < rect_count && still_scaled; ++index) {
+    const auto& rect = bound.scaled[index];
+    still_scaled = rects[index].left == rect.left && rects[index].top == rect.top && rects[index].right == rect.right
+                   && rects[index].bottom == rect.bottom;
+  }
+  if (still_scaled) {
+    for (UINT index = 0; index < rect_count; ++index) {
+      const auto& rect = bound.original[index];
+      rects[index] = {rect.left, rect.top, rect.right, rect.bottom};
+    }
+    native->RSSetScissorRects(rect_count, rects.data());
+  }
+}
+
 }  // namespace internal
 
 // A post-processing draw after the output pass (lens flares, their vignette; their on_drawn): part of frame generation's
@@ -1468,17 +1514,19 @@ inline void OnOutputEffectDrawn(reshade::api::command_list* cmd_list) {
 }
 
 // The tone mapper is about to draw (its replaced shaders' on_draw; its scene's view at `scene_slot`): with
-// Settings::rr_before_tone_map, Ray Reconstruction on that scene (linear: before exposure, bloom and the grade) at 100%
-// render scale, its result bound in the scene's place for this draw (OnTonemapDrawn puts the game's view back). Not with
-// SR alone, FSR, XeSS, Ray Reconstruction refused by the helper or the Upscaling Debug View (drawn into the result after
-// the tone mapper): those keep the order after it.
+// Settings::rr_before_tone_map, Ray Reconstruction on that scene (linear: before exposure, bloom and the grade; below
+// 100%: from the render share's corner to the display, the tone mapper then drawing the display), its result bound in the
+// scene's place for this draw (OnTonemapDrawn puts the game's view back). Not with SR alone, FSR, XeSS, Ray
+// Reconstruction refused by the helper, the Upscaling Debug View (drawn into the result after the tone mapper) or below
+// 100% a stretched Debug View (Settings::stretched_debug_view): those keep the order after it.
 inline void OnToneMapperDraw(reshade::api::command_list* cmd_list, UINT scene_slot) {
   if (cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return;
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   const auto& settings = runtime.settings;
+  const bool scaled = internal::scaling.load(std::memory_order_relaxed);
   if (!settings.rr_before_tone_map || settings.method != Method::DLAA || !settings.ray_reconstruction
-      || runtime.objects.guides_frame != runtime.frame || internal::scaling.load(std::memory_order_relaxed)
+      || runtime.objects.guides_frame != runtime.frame || (scaled && settings.stretched_debug_view)
       || runtime.camera_frame != runtime.frame || !runtime.scene_depth || runtime.applied_frame == runtime.frame
       || settings.debug_view != 0 || dlaa_bridge::bridge.rr_refused) {
     return;
@@ -1514,13 +1562,21 @@ inline void OnToneMapperDraw(reshade::api::command_list* cmd_list, UINT scene_sl
   // The target's size and format, as OnTonemapDrawn's call (the storage made once).
   if (!internal::PrepareSize(device.Get(), target_desc.Width, target_desc.Height, target_desc.Format, settings.method)) return;
   frame_trace::Mark("tone mapper draw: Ray Reconstruction on the scene before it");
-  internal::Apply(native, scene.Get(), false, true);
+  internal::Apply(native, scene.Get(), scaled, true);
   if (runtime.upscaled_frame != runtime.frame) return;
   ID3D11ShaderResourceView* result = runtime.objects.result_srv.Get();
   native->PSSetShaderResources(scene_slot, 1, &result);
   runtime.scene_view = scene_view;
   runtime.scene_slot = scene_slot;
   runtime.scene_reconstructed_frame = runtime.frame;
+  if (scaled) {
+    // Below 100% Ray Reconstruction's result fills the display: the tone mapper draws the display (the game's own
+    // viewport and scissor, as after it) and reads its other inputs as whole views (cb12's shares 1: render_scale.hlsli
+    // CameraRenderShare, the bloom at its display uv). view_share's OnCommand bound its cb12 before this callback (the
+    // command-wide callbacks run first); the next patched draw binds its own again.
+    internal::RestoreGameViewportsAndScissors(native);
+    view_share::internal::Bind(native, {1.f, 1.f, 1.f, 1.f}, reshade::api::pipeline_stage::pixel_shader);
+  }
 }
 
 // The tone mapper drew (its replaced shaders' on_drawn): its target anti-aliased when it is the display's size.
@@ -1581,46 +1637,7 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
   internal::Apply(native, target.Get(), scaled, false);
   if (later) frame_generation::KeepOutput(native, target.Get());
   if (scaled) {
-    // The game's viewports and scissor rectangles back if the scaled ones are still bound.
-    std::array<D3D11_VIEWPORT, 16> current = {};
-    UINT count = static_cast<UINT>(current.size());
-    native->RSGetViewports(&count, current.data());
-    {
-      const std::unique_lock viewport_lock(internal::bound_viewports.mutex);
-      const auto& bound = internal::bound_viewports;
-      bool still_scaled = count == bound.count && count != 0;
-      for (UINT index = 0; index < count && still_scaled; ++index) {
-        const auto& viewport = bound.scaled[index];
-        still_scaled = current[index].TopLeftX == viewport.x && current[index].TopLeftY == viewport.y
-                       && current[index].Width == viewport.width && current[index].Height == viewport.height;
-      }
-      if (still_scaled) {
-        std::array<D3D11_VIEWPORT, 16> original = {};
-        for (UINT index = 0; index < count; ++index) {
-          const auto& viewport = bound.original[index];
-          original[index] = {viewport.x, viewport.y, viewport.width, viewport.height, viewport.min_depth, viewport.max_depth};
-        }
-        native->RSSetViewports(count, original.data());
-      }
-    }
-    std::array<D3D11_RECT, 16> rects = {};
-    UINT rect_count = static_cast<UINT>(rects.size());
-    native->RSGetScissorRects(&rect_count, rects.data());
-    const std::unique_lock scissor_lock(internal::bound_scissors.mutex);
-    const auto& bound = internal::bound_scissors;
-    bool still_scaled = rect_count == bound.count && rect_count != 0;
-    for (UINT index = 0; index < rect_count && still_scaled; ++index) {
-      const auto& rect = bound.scaled[index];
-      still_scaled = rects[index].left == rect.left && rects[index].top == rect.top && rects[index].right == rect.right
-                     && rects[index].bottom == rect.bottom;
-    }
-    if (still_scaled) {
-      for (UINT index = 0; index < rect_count; ++index) {
-        const auto& rect = bound.original[index];
-        rects[index] = {rect.left, rect.top, rect.right, rect.bottom};
-      }
-      native->RSSetScissorRects(rect_count, rects.data());
-    }
+    internal::RestoreGameViewportsAndScissors(native);
   }
   frame_trace::Mark("anti-aliasing done");
 }
