@@ -46,6 +46,8 @@ static HookMode hook_mode = HOOK_NORMAL;
 static uint32_t failing_patch_calls = 0;
 // The same for FakeHook: a refused call finds no memory near the game.
 static uint32_t failing_hook_calls = 0;
+// The same for FakeCodeNearGame's calls for more than no bytes.
+static uint32_t failing_code_calls = 0;
 
 static void Expect(bool ok, const char* what) {
   ++checks;
@@ -84,7 +86,13 @@ static void* FakeCodeNearGame(size_t n) noexcept {
     pages = static_cast<uint8_t*>(VirtualAlloc(reinterpret_cast<void*>(at), 32 * LOADER_NEAR_CODE_BYTES,
                                                MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
   }
-  if (pages == nullptr || hook_mode == HOOK_NO_MEMORY || near_code_used + n > 32 * LOADER_NEAR_CODE_BYTES) return nullptr;
+  const bool refused = (n != 0 && (failing_code_calls & 1u) != 0);
+  if (n != 0) {
+    failing_code_calls >>= 1;
+  }
+  if (refused || pages == nullptr || hook_mode == HOOK_NO_MEMORY || near_code_used + n > 32 * LOADER_NEAR_CODE_BYTES) {
+    return nullptr;
+  }
   near_code_used += n;
   return pages + near_code_used - n;
 }

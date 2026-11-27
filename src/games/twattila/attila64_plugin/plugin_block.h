@@ -266,6 +266,10 @@ inline constexpr wchar_t INI_SOL_FRAME_CAP[] = L"SolFrameCap";
 // makes them x 2^n (Max and High 2048, Medium 1024). The add-on writes 0, 1 or 2. Written only on the DirectX 11 route.
 inline constexpr wchar_t INI_SHADOW_MAP_SIZE[] = L"ShadowMapSize";
 inline constexpr int SHADOW_MAP_SIZE_STEPS = 2;  // the largest ShadowMapSize
+// Faster Game CPU Code for the next start, read as a decimal integer: 0 writes none of the game code row's stubs (the
+// row is still checked, and in when its checks pass), anything else, or absent, writes them. The add-on writes 0 or 1.
+inline constexpr wchar_t INI_FASTER_GAME_CODE[] = L"FasterGameCpuCode";
+inline constexpr int FASTER_GAME_CODE_DEFAULT = 1;
 // Two Shadow Cascades for the next start (0 or 1). Reserved: no plugin reads it yet and the add-on does not write it;
 // ROW_SHADOW_MAP only checks the cascade sites.
 inline constexpr wchar_t INI_SHADOW_CASCADES[] = L"ShadowCascades";

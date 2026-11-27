@@ -7,8 +7,9 @@
 // functions: two for the Attila add-on (plugin_block.h), the battle step's task, to keep a CPU core free for it and
 // one for the render thread (battle_core.hpp; that row works without the add-on), and the scale rows' (hooks.hpp; one
 // of them inside a function, through the plugin's own trampoline: trampoline.hpp). It also checks the game's engine
-// values for the add-on, writes the restart-only ones, sets the loader's frame cap (tweaks.hpp), and writes the shadow
-// map sizes the add-on's key asks for into the game's shadow setup. The loader loads it from its plugins folder, after
+// values for the add-on, writes the restart-only ones, sets the loader's frame cap (tweaks.hpp), writes the shadow
+// map sizes the add-on's key asks for into the game's shadow setup, and puts hand-made stubs in front of game code
+// (game_code.hpp: the same results, faster). The loader loads it from its plugins folder, after
 // its own patches and before any game code runs; the add-on finds its block once
 // ReShade loads it. Built by build.ps1.
 
@@ -25,6 +26,7 @@
 
 #include "../module_version.hpp"
 #include "battle_core.hpp"
+#include "game_code.hpp"
 #include "hooks.hpp"
 #include "loader_api.h"
 #include "patcher.hpp"
@@ -140,9 +142,10 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     if (!has_ini) return default_value;
     return static_cast<int>(GetPrivateProfileIntW(INI_SECTION, key, default_value, ini));
   };
-  // A whole-number key of [Attila64Plugin.Values]; 0 without it.
-  const auto values_int = [&](const wchar_t* key) {
-    return (has_ini ? static_cast<int>(GetPrivateProfileIntW(INI_VALUES_SECTION, key, 0, ini)) : 0);
+  // A whole-number key of [Attila64Plugin.Values]; its default without it.
+  const auto values_int = [&](const wchar_t* key, int default_value) {
+    return (has_ini ? static_cast<int>(GetPrivateProfileIntW(INI_VALUES_SECTION, key, default_value, ini))
+                    : default_value);
   };
   if (ini_int(INI_ENABLED, ENABLED_DEFAULT) == 0) {
     return refuse(STATUS_OFF, "[Attila64Plugin] Enabled=0 in ReShade.ini");
@@ -195,7 +198,7 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   // The restart-only keys the add-on wrote for this start. The loader reads its frame cap on the first frame, after
   // this init.
   const HMODULE loader_c_library = tweaks::ImportedFrom(GetModuleHandleW(nullptr), "getenv");
-  tweaks::SetLoaderFrameCap(values_int(INI_SOL_FRAME_CAP) == 1, loader_c_library, *api);
+  tweaks::SetLoaderFrameCap(values_int(INI_SOL_FRAME_CAP, 0) == 1, loader_c_library, *api);
   if (ini_int(INI_TWEAKS, TWEAKS_DEFAULT) != 0) {
     for (size_t index = 0; index < TWEAKS.size(); ++index) {
       if (!has_ini || !TWEAKS[index].restart_only) continue;
@@ -224,13 +227,21 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     if (ini_int(ROW_INI_KEYS[row], ROW_INSTALL_DEFAULT) != 0) {
       block.rows_tried |= RowBit(row);
       site_checks[index] = CheckSite(SITES[index], FOREIGN);
+      // A hand-made stub stands on all of its row's held game code, not only on its own range: the sprite rows' stub
+      // computes what the half's function computes.
+      if (site_checks[index].refusal == REFUSAL_NONE && SITES[index].kind == SITE_RAW_STUB
+          && !std::ranges::all_of(HELD_RANGES, [row](const HeldRange& range) {
+               return range.row != row || HeldRangeUnchanged(range, false);
+             })) {
+        site_checks[index].refusal = REFUSAL_HELD;
+      }
     }
     if (site_checks[index].refusal != REFUSAL_NONE) {
       block.rows_refused |= RowBit(row);
     }
   }
   // Shadow Map Size, restart-only like the engine values: the add-on's key, written only where the add-on runs.
-  const int shadow_map_size = values_int(INI_SHADOW_MAP_SIZE);
+  const int shadow_map_size = values_int(INI_SHADOW_MAP_SIZE, 0);
   const bool shadow_size_in_range = (shadow_map_size >= 1 && shadow_map_size <= SHADOW_MAP_SIZE_STEPS);
   const bool shadow_sizes_written = (shadow_size_in_range && dx11_route);
   for (size_t index = 0; index < SITES.size(); ++index) {
@@ -278,17 +289,94 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
                   REFUSAL_WORDS[check.refusal], (foreign ? " " : ""), (foreign ? OWNER_WORDS[check.owner] : ""));
     }
   }
-  // The game code row. Its stubs are not built yet: its sites are checked like every other and the row is in with
-  // nothing written.
+  // The game code row (pk5_game_code_64.md 4.1), after every other row has its code memory: when the loader's page is
+  // full, only this row stays out. All of its built stubs go into one piece of code memory, whole before the first
+  // site points at it, then the sites one by one; a site that fails ends the row (the loop below takes its earlier
+  // sites out again). With the add-on's value key 0 nothing is written and the row is in: its checks passed, and the
+  // key is the player's own.
   if ((block.rows_tried & RowBit(ROW_GAME_CODE)) != 0 && (block.rows_refused & RowBit(ROW_GAME_CODE)) == 0) {
-    for (const Site& site : SITES) {
-      if (site.row != ROW_GAME_CODE) continue;
-      loader->log("renodx_attila64: site %s %#x: checked (check only)", LABEL_WORDS[site.label], site.address);
+    const bool stubs_wanted = values_int(INI_FASTER_GAME_CODE, FASTER_GAME_CODE_DEFAULT) != 0;
+    Refusal row_refusal = REFUSAL_NONE;
+    uintptr_t stubs_address = 0;
+    if (stubs_wanted) {
+      // First with the gap in front, then without it (ours: without the gap the results are the same, only the speed
+      // rule of game_code.hpp's LEAD_GAP_BYTES is not kept).
+      size_t lead = game_code::LEAD_GAP_BYTES;
+      const size_t aligned_bytes = (game_code::BLOCK_ALIGNMENT - 1) + game_code::LAYOUT.bytes;
+      auto* memory = static_cast<uint8_t*>(api->code_near_game(lead + aligned_bytes));
+      if (memory == nullptr) {
+        lead = 0;
+        memory = static_cast<uint8_t*>(api->code_near_game(aligned_bytes));
+      }
+      stubs_address = (reinterpret_cast<uintptr_t>(memory) + lead + (game_code::BLOCK_ALIGNMENT - 1))
+                      & ~uintptr_t{game_code::BLOCK_ALIGNMENT - 1};
+      std::array<uint8_t, game_code::LAYOUT.bytes> code;
+      code.fill(0xcc);  // int3 between the blocks
+      bool in_reach = true;
+      for (const Site& site : SITES) {
+        const game_code::Stub& stub = game_code::STUBS[site.label];
+        if (stub.code.empty()) continue;
+        uint8_t* stub_code = code.data() + game_code::LAYOUT.offsets[site.label];
+        std::memcpy(stub_code, stub.code.data(), stub.code.size());
+        // The game's own code behind the stub, as the checks above just read it (its site still holds the game's bytes).
+        if (stub.held_copy_follows) {
+          const HeldRange& range = *std::ranges::find(HELD_RANGES, site.label, &HeldRange::label);
+          std::memcpy(stub_code + stub.code.size(), reinterpret_cast<const void*>(uintptr_t{range.lo}),
+                      range.hi - range.lo);
+        }
+        in_reach = in_reach
+                   && trampoline::InJumpReach(site.address, stubs_address + game_code::LAYOUT.offsets[site.label]);
+      }
+      DWORD close_error = 0;
+      if (memory == nullptr || !in_reach) {
+        row_refusal = REFUSAL_NO_MEMORY;
+      } else if (!WriteNearCode(reinterpret_cast<uint8_t*>(stubs_address), code, &close_error)) {
+        row_refusal = REFUSAL_WRITE_FAILED;
+      } else if (close_error != 0) {
+        loader->log("renodx_attila64: game code stubs: their code near the game stays writable (error %lu)", close_error);
+      }
     }
-    block.rows_applied |= RowBit(ROW_GAME_CODE);
+    char stub_words[128] = {};
+    size_t stub_words_length = 0;
+    for (size_t index = 0; index < SITES.size(); ++index) {
+      const Site& site = SITES[index];
+      if (site.row != ROW_GAME_CODE) continue;
+      const game_code::Stub& stub = game_code::STUBS[site.label];
+      const uintptr_t stub_address = stubs_address + game_code::LAYOUT.offsets[site.label];
+      const bool written = (stubs_wanted && !stub.code.empty() && row_refusal == REFUSAL_NONE);
+      const Refusal refusal = (written ? ApplyJump(*api, site, stub_address, &applied_sites[index]) : row_refusal);
+      if (refusal != REFUSAL_NONE) {
+        loader->log("renodx_attila64: site %s %#x: skipped (%s%s%s)", LABEL_WORDS[site.label], site.address,
+                    REFUSAL_WORDS[refusal], "", "");
+        // The row's later sites are not tried.
+        row_refusal = (written ? REFUSAL_ROW : row_refusal);
+        block.rows_refused |= RowBit(ROW_GAME_CODE);
+      } else if (written) {
+        loader->log("renodx_attila64: site %s %#x: applied", LABEL_WORDS[site.label], site.address);
+        const int words = std::snprintf(stub_words + stub_words_length, sizeof(stub_words) - stub_words_length,
+                                        "%s%s %#x bytes at %#zx", ((stub_words_length == 0) ? "" : ", "), stub.word,
+                                        game_code::LAYOUT.sizes[site.label], stub_address);
+        stub_words_length = std::min(stub_words_length + std::max(words, 0), sizeof(stub_words) - 1);
+      } else if (stubs_wanted) {
+        // Its stub is not built: the site and its held code stay watched for the row's other stubs.
+        loader->log("renodx_attila64: site %s %#x: checked (check only)", LABEL_WORDS[site.label], site.address);
+      } else {
+        loader->log("renodx_attila64: site %s %#x: checked (value 0)", LABEL_WORDS[site.label], site.address);
+      }
+    }
+    if (row_refusal == REFUSAL_NONE) {
+      block.rows_applied |= RowBit(ROW_GAME_CODE);
+      // Where our code is, for a crash address or a profiler's samples in the loader's page (it holds the loader's own
+      // code too).
+      if (stub_words_length != 0) {
+        loader->log("renodx_attila64: game code stubs %#zx..%#zx (%s)", stubs_address,
+                    stubs_address + game_code::LAYOUT.bytes, stub_words);
+      }
+    }
   }
-  // A row is on only when all of its sites are. A patch site that went in before a later site of its row failed comes
-  // out again; when the loader cannot put its bytes back, the row stays refused and its log line names the site.
+  // A row is on only when all of its sites are. A patch site or a hand-made stub's site that went in before a later
+  // site of its row failed comes out again (the stub's code stays, unused; the loader has no call to give it back); when
+  // the loader cannot put its bytes back, the row stays refused and its log line names the site.
   // A hook cannot come out (a mid-function site is left in like one; no row has one beside another site): a refused
   // row's hook stays in and the game keeps calling it, with the row's bit clear in rows_applied. So the add-on sets a
   // row's scales_active bits only while the row is in rows_applied, and the one row with two hooks (the grass row)
@@ -296,7 +384,7 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   block.rows_applied &= ~block.rows_refused;
   for (size_t index = 0; index < SITES.size(); ++index) {
     const Site& site = SITES[index];
-    if (site.kind != SITE_PATCH || !applied_sites[index].applied
+    if ((site.kind != SITE_PATCH && site.kind != SITE_RAW_STUB) || !applied_sites[index].applied
         || (block.rows_refused & RowBit(static_cast<Row>(site.row))) == 0) {
       continue;
     }
@@ -358,6 +446,16 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
       block.rows_changed.fetch_or(RowBit(static_cast<Row>(site.row)));
       loader->log("renodx_attila64: site %s changed after we patched it", LABEL_WORDS[site.label]);
     }
+  }
+  // The game code a written stub stands on (with none written, no code of ours runs on it): the range without our
+  // jump where its site is written, the whole range where the site was only checked. No count: a line only on a change.
+  for (const HeldRange& range : HELD_RANGES) {
+    const bool row_written = std::ranges::any_of(SITES, [&range](const Site& site) {
+      return site.row == range.row && site.kind == SITE_RAW_STUB && applied_sites[site.label].applied;
+    });
+    if (!row_written || HeldRangeUnchanged(range, applied_sites[range.label].applied)) continue;
+    block.rows_changed.fetch_or(RowBit(static_cast<Row>(range.row)));
+    loader->log("renodx_attila64: site %s changed after we patched it", LABEL_WORDS[range.label]);
   }
   loader->log("renodx_attila64: game started: %u sites unchanged", unchanged);
   // The grass draw's code once more, after the loader's late writes: our jump is in its first bytes now, so the
