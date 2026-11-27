@@ -18143,7 +18143,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         20:18 (7 of 15 min): patch scratch\p8b7_\a64_ab_p8b7_patch.py now 4 changes, 1910c724 -> c0e29cdb (M1: w3 / w3t
         Pin ContactSplit='0' at :345 / :346; N5: :2865 note build-derived); harness 21 / 21 patched, 17 / 21 unpatched (the
         4 controls); 22 dry-run forms, exit codes unchanged, only the N5 note differs; -AB -Arms w3 / w3t exit 1 on both
-        copies by F12 (no passed E64-mv smoke for the staged plugin): pre-existing gate, not the patch.
+        copies by F12 (no passed E64-mv smoke for the staged plugin): pre-existing gate, not the patch. p8b5_ fix round DONE 20:25 (14 of 30
+        min): f77245504 N1 (one FnvHash concept; Fnv1a<uint16_t>(p, n, h) no longer compiles), fff7320f3 S1 (elf_sites_test
+        kills m15: both new checks fail with it, PASS 339 without; mutants 29 killed + m17 equivalent) + N4 (stale
+        ReShade.ini deleted first) + N3's deviation mark in its message; build.ps1 -Test -Elf exit 0, 0 warnings, DLL
+        ed1e21a1. p8b6_ fix round DONE 20:29: b7b7d6de6 N2 (EngineRow default member initializers); gated amd64 + x86
+        exit 0, tw_unit_shadows x2 PASS. Sonnet High FINAL fp8b_ (own plugin test at b7b7d6de6 + merge-tree) STARTED 20:28.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
