@@ -395,11 +395,13 @@ static Plugin LoadPlugin(const wchar_t* dll_path) {
 }
 
 // The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window and
-// every tweak object (WriteTweakObjects) and the loader's effect guards (WriteLoaderGuards), with no route note beside the test and no ReShade.ini keys but, with
-// `game_code_key_off`, the game code row's install key 0 (an image without the game code that row stands on): every
-// other row with a site goes in, and no patch site has other bytes to write. A hand-made stub's site is in with our
-// jump, or only checked (its stub not built).
-static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, bool game_code_key_off) {
+// every tweak object (WriteTweakObjects) and the loader's effect guards (WriteLoaderGuards), with no route note beside
+// the test and no ReShade.ini keys but, with `game_code_key_off`, the game code row's install key 0 (an image without
+// the game code that row stands on): every other row with a site goes in, and no patch site has other bytes to
+// write. A hand-made stub's site is in with our jump, or only checked (its stub not built). `step_lane`: what the
+// battle step row's check of the game's code must find on this image.
+static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, bool game_code_key_off,
+                              EngineState step_lane) {
   const Plugin plugin = LoadPlugin(dll_path);
   if (plugin.init == nullptr) return plugin;
 
@@ -427,7 +429,7 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, boo
   Expect(shared->rows_tried == rows && shared->core_wanted.load() == CORE_WANTED_DEFAULT
              && shared->core_status.load() == (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT)
              && shared->render_core_status.load() == (uint32_t{CORE_NO_THREAD} << CORE_STATE_SHIFT)
-             && shared->engine_status.load() == 0
+             && shared->engine_status.load() == (uint32_t{step_lane} << ENGINE_STEP_SHIFT)
              && shared->tweaks_status.load() == TWEAKS_PENDING && shared->tweak_count == 0 && shared->tweaks == nullptr
              && shared->notices.load() == 0 && shared->scales_active.load() == 0 && scales_neutral
              && NEUTRAL_SCALES[SCALE_SPRITE_DISTANCE] == 0.0f && NEUTRAL_SCALES[SCALE_DEAD_UNITS] == 1.0f,
@@ -436,14 +438,44 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, boo
              && Logged("Changes drawing, sound memory and CPU core use only; battles, replays and multiplayer stay the same.")
              && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
              && Logged("STEP_ENTRY 0xbb4e00: applied") && Logged("renodx_attila64: shadow map: game's size")
-             && Logged(game_code_key_off ? "grass on, grass cells on, campaign trees on, sprites on, game code off"
-                                         : "grass on, grass cells on, campaign trees on, sprites on, game code on")
-             && Logged("rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
-                       "grass on, grass cells on, campaign trees on, sprites on, game code o")
-
+             && Logged(game_code_key_off
+                           ? "rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
+                             "grass on, grass cells on, campaign trees on, sprites on, game code off, parallel effects on, "
+                             "battle step on"
+                           : "rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
+                             "grass on, grass cells on, campaign trees on, sprites on, game code on, parallel effects on, "
+                             "battle step on")
              && Logged("EFFECT_WALK_ENTRY 0x32fbf60: applied")
              && Logged("renodx_attila64: parallel effects mode Off (ini EffectsMode)"),
          "the init lines");
+  // The rows line follows the Row enum and the sites table (a later row needs no edit here): one entry per row, "on"
+  // for a row with a site, "off" for the row whose install key is 0 here and "-" for a row without a site. The
+  // rows' words up to this build's last row are in the init lines above.
+  const bool rows_line_follows_the_tables = [rows, rows_off] {
+    constexpr std::string_view LINE_START = "renodx_attila64: rows: ";
+    const std::shared_lock lock(log_mutex);
+    for (const std::string& line : log_lines) {
+      std::string_view entries = line;
+      if (!entries.starts_with(LINE_START)) continue;
+      entries.remove_prefix(LINE_START.size());
+      uint32_t row = 0;
+      while (!entries.empty() && row < ROW_COUNT) {
+        const size_t entry_end = std::min(entries.find(", "), entries.size());
+        std::string_view state = " -";
+        if (((rows >> row) & 1u) != 0) {
+          state = " on";
+        } else if (((rows_off >> row) & 1u) != 0) {
+          state = " off";
+        }
+        if (!entries.substr(0, entry_end).ends_with(state)) return false;
+        entries.remove_prefix(std::min(entry_end + std::string_view(", ").size(), entries.size()));
+        ++row;
+      }
+      return entries.empty() && row == ROW_COUNT;
+    }
+    return false;
+  }();
+  Expect(rows_line_follows_the_tables, "the rows line: an entry per row, on for each row with a site");
   size_t sites_in = 0;
   for (const Site& site : SITES) {
     char applied_line[96];

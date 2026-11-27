@@ -58,6 +58,7 @@ inline constexpr uintptr_t GRASS_DRAW_RECORD = 0x6b0000;     // records
 inline constexpr uintptr_t GRASS_CELL_RECORD = 0x6c0000;
 inline constexpr uintptr_t CAMPAIGN_TREE_RECORD = 0x6d0000;
 inline constexpr uintptr_t SPRITE_BED = 0x6e0000;  // the sprite site's test bed (fake_loader.hpp WriteMidBed)
+inline constexpr uintptr_t PAIRS_RECORD = 0x6f0000;  // the synthetic pair resolver's record
 // What a caller loads into rbx, rbp, r12, r13, r14 and r15 before its call.
 inline constexpr std::array<uint64_t, 6> CALLER_SENTINELS = {0xb0b0b0b0b0b0b0b0, 0xb5b5b5b5b5b5b5b5, 0xc0c0c0c0c0c0c0c0,
                                                              0xd0d0d0d0d0d0d0d0, 0xe0e0e0e0e0e0e0e0, 0xf0f0f0f0f0f0f0f0};
@@ -307,6 +308,20 @@ inline constexpr std::array<uint8_t, 75> CAMPAIGN_TREE_TAIL = {
     0x5b, 0x41, 0x5c, 0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f, 0x5d,  // pop rbx / r12 / r13 / r14 / r15 / rbp
     0xc3,                                                  // ret
 };
+// Pair resolver: the same pushes, sub rsp 0x28, mov r13, rdi and mov eax, [r13 + 0x1c] (the window): its argument must
+// be readable there.
+struct PairsRecord {
+  void* manager;
+  uint32_t calls;
+};
+inline constexpr std::array<uint8_t, 31> PAIRS_TAIL = {
+    0x48, 0xb8, 0x00, 0x00, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rax, PAIRS_RECORD
+    0x48, 0x89, 0x38,                                      // mov [rax], rdi
+    0xff, 0x40, 0x08,                                      // inc dword [rax+8]
+    0x48, 0x83, 0xc4, 0x28,                                // add rsp, 0x28
+    0x5b, 0x41, 0x5c, 0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f, 0x5d,  // pop rbx / r12 / r13 / r14 / r15 / rbp
+    0xc3,                                                  // ret
+};
 
 // A caller in the fake game whose call instruction sits at `call_at` (so the callee sees call_at + 5 as its return
 // address): it loads CALLER_SENTINELS into the callee-saved registers, calls `target` with the arguments it got itself
@@ -382,12 +397,16 @@ void PassEnd(uint32_t pass_kind, const PassMeasure& measure) noexcept {
 const Callbacks CALLBACKS = {.before_pack = &BeforePack, .pass_begin = &PassBegin, .pass_end = &PassEnd};
 const Callbacks OTHER_CALLBACKS = CALLBACKS;
 
-// The rows of this test's fake game. It does not hold the game code the game code row's stubs stand on, so every
-// plugin init here runs with that row's install key 0 (tests\game_code_test.cpp has the row, on the game's file).
-inline constexpr uint32_t ALL_ROWS = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT)
-                                     | RowBit(ROW_UNIT_LOD) | RowBit(ROW_MODEL_DETAIL) | RowBit(ROW_SHADOW_MAP)
-                                     | RowBit(ROW_GRASS) | RowBit(ROW_GRASS_CELLS) | RowBit(ROW_CAMPAIGN_TREES)
-                                     | RowBit(ROW_SPRITES) | RowBit(ROW_PARALLEL_EFFECTS);
+// The rows of this test's fake game: every row with a site but the game code row. The fake game does not hold the
+// game code that row's stubs stand on, so every plugin init here runs with that row's install key 0
+// (tests\game_code_test.cpp has the row, on the game's file).
+inline constexpr uint32_t ALL_ROWS = [] {
+  uint32_t rows = 0;
+  for (const Site& site : SITES) {
+    rows |= RowBit(static_cast<Row>(site.row));
+  }
+  return rows & ~RowBit(ROW_GAME_CODE);
+}();
 inline constexpr uint32_t HOOK_SITE_COUNT = [] {
   uint32_t count = 0;
   for (const Site& site : SITES) {
@@ -485,6 +504,7 @@ int wmain(int argc, wchar_t** argv) {
       std::memcpy(at(sprite_end), SPRITE_SITE_TAIL.data(), SPRITE_SITE_TAIL.size());
       std::memcpy(at(sprite_end + SPRITE_SITE_TAIL.size()), &back, sizeof(back));
     }
+    write_tail(LABEL_PAIRS_ENTRY, PAIRS_TAIL);
     {
       // The plugin's init takes the grass draw for the game's by the hash of its first bytes: five bytes past the fake
       // draw's code are set so that the fake one hashes the same. FNV-1a's steps can be undone, so the last two bytes
@@ -603,7 +623,8 @@ int wmain(int argc, wchar_t** argv) {
                && REPLACEMENTS[LABEL_CAMPAIGN_TREE_ENTRY] == reinterpret_cast<void*>(&CampaignTreeEntry)
                && REPLACEMENTS[LABEL_SPRITE_DISTANCE] == reinterpret_cast<void*>(&SpriteDistanceHandler)
                && MID_SITE_SCALES[LABEL_SPRITE_DISTANCE] == ((1u << SCALE_SPRITE_DISTANCE) | (1u << SCALE_DEAD_UNITS))
-               && REPLACEMENTS[LABEL_EFFECT_WALK_ENTRY] == reinterpret_cast<void*>(&EffectWalkEntry),
+               && REPLACEMENTS[LABEL_EFFECT_WALK_ENTRY] == reinterpret_cast<void*>(&EffectWalkEntry)
+               && REPLACEMENTS[LABEL_PAIRS_ENTRY] == reinterpret_cast<void*>(&PairsEntry),
            "labels: each holds its own hook");
     Expect(LABEL_STEP_ENTRY == 2 && SITES[LABEL_STEP_ENTRY].row == ROW_CPU_PLACEMENT
                && SITES[ROW_BONE_FLUSH].label == LABEL_PACK_ENTRY && SITES[ROW_PASS_DRAW].label == LABEL_VIEW_DRAW_ENTRY
@@ -619,8 +640,10 @@ int wmain(int argc, wchar_t** argv) {
       Expect((site.kind == SITE_PATCH) == (site.row == ROW_SHADOW_MAP), "kinds: the shadow row's sites are the patches");
       shadow_sites += (site.row == ROW_SHADOW_MAP) ? 1 : 0;
     }
-    Expect(shadow_sites == 7 && HOOK_SITE_COUNT == 10 && JUMP_SITE_COUNT == 11 && SITES[LABEL_SPRITE_DISTANCE].kind == SITE_MID,
-           "kinds: 10 hook sites, the shadow row's 7 immediates, the sprite row's mid-function site");
+    Expect(shadow_sites == 7 && SITES[LABEL_SPRITE_DISTANCE].kind == SITE_MID && JUMP_SITE_COUNT == HOOK_SITE_COUNT + 1
+               && JUMP_SITE_COUNT == FAKE_GAME_SITE_COUNT - shadow_sites,
+           "kinds: the shadow row's 7 immediates, the sprite row's mid-function site, every other site of the fake game "
+           "a hook");
   }
 
   // Site checks on the real sites' windows.
@@ -1352,6 +1375,19 @@ int wmain(int argc, wchar_t** argv) {
     Expect((shared->notices.load() & NOTICE_MODEL_TABLE_FULL) == 0, "grass, campaign tree: no table notice");
     shared->rows_applied = rows_applied_before;
 
+    // The pair resolver: this image is not the game's code, so every call is the game's function with its argument,
+    // and nothing of the manager is read by the row.
+    {
+      auto* pairs_record = reinterpret_cast<PairsRecord*>(PAIRS_RECORD);
+      *pairs_record = {};
+      std::array<uint8_t, 0x20> fake_manager = {};
+      reinterpret_cast<PairsFn>(SITES[LABEL_PAIRS_ENTRY].address)(fake_manager.data());
+      reinterpret_cast<PairsFn>(SITES[LABEL_PAIRS_ENTRY].address)(fake_manager.data());
+      Expect(pairs_record->manager == fake_manager.data() && pairs_record->calls == 2
+                 && Logged("renodx_attila64: PAIRS_ENTRY: first call (thread "),
+             "pairs: game code the row does not know, the game's function with its argument");
+    }
+
     // The sprite site, through its bed: the soldier's record in r13, its display tables' entries in rax and rcx, its
     // random value - 0.5 in xmm0; the game's own next instructions store the result. Neutral: the game's two
     // instructions, no call of ours. Active: the cap by the soldier's height, the dead soldiers' scale, each alone and
@@ -1598,7 +1634,13 @@ int wmain(int argc, wchar_t** argv) {
 
   std::printf("  hooks: the DLL's own\n");
   write_game();
-  const Plugin main_plugin = ExpectPluginDll(api, copy_plugin(L"main", MODULE_NAME).c_str(), true);
+  // The test's game image holds the sites' windows only: the battle step row's check of the game's code refuses it,
+  // with its one line, and the row's hook passes every call on.
+  const Plugin main_plugin = ExpectPluginDll(api, copy_plugin(L"main", MODULE_NAME).c_str(), true, ENGINE_CODE_DIFFERS);
+  Expect(std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("battle step: ") != std::string::npos; }) == 1
+             && Logged("renodx_attila64: battle step: game code differs (") && Logged(", battle step on")
+             && Logged("renodx_attila64: site PAIRS_ENTRY 0x79a690: applied"),
+         "battle step: one line for the game code it does not know");
   if (main_plugin.block != nullptr) {
     // This thread ran the DLL's game start, so it is the DLL's render thread: its steps are never selected onto the
     // battle core (the test's own copy above, with no render thread, selects this thread).
@@ -1736,8 +1778,10 @@ int wmain(int argc, wchar_t** argv) {
                && !Logged("loader frame cap"),
            "dll: Enabled=0 refuses and writes nothing");
   }
-  for (const Row row : {ROW_BONE_FLUSH, ROW_PASS_DRAW, ROW_CPU_PLACEMENT, ROW_UNIT_LOD, ROW_MODEL_DETAIL, ROW_SHADOW_MAP,
-                        ROW_GRASS, ROW_GRASS_CELLS, ROW_CAMPAIGN_TREES, ROW_PARALLEL_EFFECTS}) {
+  // Every row of the fake game (the sites table says which).
+  for (uint32_t row_index = 0; row_index < ROW_COUNT; ++row_index) {
+    const auto row = static_cast<Row>(row_index);
+    if ((ALL_ROWS & RowBit(row)) == 0) continue;
     set_ini_key_off(ROW_INI_KEYS[row]);
     write_game();
     const auto [plugin, result] = init_copy(ROW_INI_KEYS[row], MODULE_NAME, api);
@@ -1753,6 +1797,16 @@ int wmain(int argc, wchar_t** argv) {
                && plugin.block->rows_refused == (RowBit(row) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == others
                && Logged("skipped (OFF)") && only_its_site_untouched,
            "dll: a row's install key 0 leaves that row out, and out of the rows tried");
+    // The battle step row's own key 0 is its lane's word, with the game's code not read; with the row in, this image
+    // is game code it does not know.
+    Expect(plugin.block->engine_status.load()
+                   == (uint32_t{(row == ROW_BATTLE_STEP) ? ENGINE_OFF_INI : ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT)
+               && Logged("battle step: ") == (row != ROW_BATTLE_STEP),
+           "dll: the battle step row's key 0 is its lane's off, without a line");
+    Expect(Logged("renodx_attila64: site PAIRS_ENTRY 0x79a690: skipped (OFF)") == (row == ROW_BATTLE_STEP)
+               && Logged(", battle step off") == (row == ROW_BATTLE_STEP)
+               && Logged(", battle step on") == (row != ROW_BATTLE_STEP),
+           "dll: the battle step row's key 0 is its site's skipped (OFF) line and its word off in the rows line");
     Expect(Logged("renodx_attila64: site EFFECT_WALK_ENTRY 0x32fbf60: skipped (OFF)") == (row == ROW_PARALLEL_EFFECTS)
                && Logged(", parallel effects off") == (row == ROW_PARALLEL_EFFECTS)
                && Logged("parallel effects mode ") == (row != ROW_PARALLEL_EFFECTS),
@@ -1885,7 +1939,9 @@ int wmain(int argc, wchar_t** argv) {
            "grass draw: the code as read at init, a draw past the last LOD is left out");
     *at(SITES[LABEL_GRASS_DRAW_ENTRY].address + GRASS_DRAW_NO_LOD_BYTES - 8) ^= 1;
     plugin.game_started(&api);
-    Expect(Logged(GRASS_DRAW_CODE_LINE) && Logged("game started: 18 sites unchanged") && grass_draw_once(1, 50.f, 0.f, true),
+    char sites_in[64];
+    std::snprintf(sites_in, sizeof(sites_in), "game started: %zu sites unchanged", FAKE_GAME_SITE_COUNT);
+    Expect(Logged(GRASS_DRAW_CODE_LINE) && Logged(sites_in) && grass_draw_once(1, 50.f, 0.f, true),
            "grass draw: a byte patched before game start leaves the line, every draw reaches the game");
     set_scale(plugin.block, SCALE_GRASS_LOD, 1.f);
     Expect(grass_update_once() && lods_are(GAME_LODS), "grass draw: a byte patched before game start, back at 1x");
@@ -2035,7 +2091,7 @@ int wmain(int argc, wchar_t** argv) {
     plugin.game_started(&api);
     char hooks_unchanged[64];
     std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", JUMP_SITE_COUNT);
-    Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged) && Logged("game started: 11 sites unchanged"),
+    Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged),
            "shadow: a site that could not be put back counts as out at the game's start");
   }
   SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, nullptr);

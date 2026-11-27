@@ -5,13 +5,13 @@
 
 // renodx_attila64.dll: a plugin of the 64-bit Attila loader (it runs the game's Linux build on Windows) that hooks game
 // functions: two for the Attila add-on (plugin_block.h), the battle step's task, to keep a CPU core free for it and
-// one for the render thread (battle_core.hpp; that row works without the add-on), and the scale rows' (hooks.hpp; one
-// of them inside a function, through the plugin's own trampoline: trampoline.hpp). It also checks the game's engine
-// values for the add-on, writes the restart-only ones, sets the loader's frame cap (tweaks.hpp), writes the shadow
-// map sizes the add-on's key asks for into the game's shadow setup, and puts hand-made stubs in front of game code
-// (game_code.hpp: the same results, faster). The loader loads it from its plugins folder, after
-// its own patches and before any game code runs; the add-on finds its block once
-// ReShade loads it. Built by build.ps1.
+// one for the render thread (battle_core.hpp; that row works without the add-on), the scale rows' (hooks.hpp; one
+// of them inside a function, through the plugin's own trampoline: trampoline.hpp), and the battle step's pair
+// resolver (battle_step.hpp; it works without the add-on too). It also checks the game's engine values for the
+// add-on, writes the restart-only ones, sets the loader's frame cap (tweaks.hpp), writes the shadow map sizes the
+// add-on's key asks for into the game's shadow setup, and puts hand-made stubs in front of game code
+// (game_code.hpp: the same results, faster). The loader loads it from its plugins folder, after its own patches
+// and before any game code runs; the add-on finds its block once ReShade loads it. Built by build.ps1.
 
 #include <windows.h>
 
@@ -27,6 +27,7 @@
 
 #include "../module_version.hpp"
 #include "battle_core.hpp"
+#include "battle_step.hpp"
 #include "game_code.hpp"
 #include "hooks.hpp"
 #include "loader_api.h"
@@ -42,11 +43,16 @@ namespace {
 using namespace twattila::attila64_plugin;
 
 inline constexpr char PLUGIN_VERSION[] = "2";
-inline constexpr std::array<const char*, ROW_COUNT> ROW_WORDS = {
-    "bone flush", "pass draw", "battle core", "unit lod",       "model detail",
-    "shadow map", "grass",     "grass cells", "campaign trees", "sprites",
-    "game code", "parallel effects"};
-static_assert(std::ranges::find(ROW_WORDS, nullptr) == ROW_WORDS.end(), "a word for every row");
+// One array of fixed-size words, not pointers to literals: each word then is a whole string in the DLL file (a zero
+// byte before and after), which the batch tool matches. A literal may be stored as the end of a longer one: "battle
+// step" was, of the battle core's "no battle step".
+inline constexpr size_t ROW_WORD_CAPACITY = 32;  // a longer word does not compile
+inline constexpr std::array<std::array<char, ROW_WORD_CAPACITY>, ROW_COUNT> ROW_WORDS = {{
+    {"bone flush"}, {"pass draw"},        {"battle core"}, {"unit lod"},       {"model detail"},
+    {"shadow map"}, {"grass"},            {"grass cells"}, {"campaign trees"}, {"sprites"},
+    {"game code"},  {"parallel effects"}, {"battle step"}}};
+static_assert(std::ranges::none_of(ROW_WORDS, [](const auto& word) { return word.front() == 0 || word.back() != 0; }),
+              "a word for every row, with its zero byte");
 // The rows with a site in this build; the rows line shows the others as "-".
 inline constexpr uint32_t ROWS_WITH_SITES = [] {
   uint32_t rows = 0;
@@ -58,8 +64,8 @@ inline constexpr uint32_t ROWS_WITH_SITES = [] {
 inline constexpr size_t ROWS_LINE_CAPACITY = 256;
 static_assert([] {
   size_t length = 1;  // the terminating zero
-  for (const char* word : ROW_WORDS) {
-    length += std::string_view(word).size() + std::string_view(", ").size() + std::string_view(" off").size();
+  for (const auto& word : ROW_WORDS) {
+    length += std::string_view(word.data()).size() + std::string_view(", ").size() + std::string_view(" off").size();
   }
   return length <= ROWS_LINE_CAPACITY;
 }(), "the rows line holds every row");
@@ -423,6 +429,30 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   if ((block.rows_applied & RowBit(ROW_PARALLEL_EFFECTS)) != 0) {
     ApplyEffectsModeKey(&block, ini_int(INI_EFFECTS_MODE, -1));
   }
+  // The battle step row: its lane of engine_status from here on (not 0: the add-on shows the row), and its switch.
+  // BattleStep 0 left the site out above, 1 sets the row's bit for a start without the add-on, anything else keeps
+  // the build's default (while that default holds the bit, the key 1 changes nothing, and no test can tell it from
+  // no key: one is due with the build whose default is without the bit). The row runs only with its site in and the
+  // game's code as read (checked again at the game's start); with the key 0 nothing is read.
+  {
+    const int battle_step_key = ini_int(ROW_INI_KEYS[ROW_BATTLE_STEP], -1);
+    if (battle_step_key == 1) {
+      block.core_wanted.fetch_or(CORE_STEP, std::memory_order_relaxed);
+    }
+    EngineState lane = ENGINE_OFF_INI;
+    if (battle_step_key != 0) {
+      const bool code_read = (block.rows_applied & RowBit(ROW_BATTLE_STEP)) != 0 && battle_step::CheckGameCode(*api);
+      battle_step::state.code_read.store(code_read, std::memory_order_relaxed);
+      lane = ENGINE_CODE_DIFFERS;
+      if (code_read) {
+        lane = ENGINE_OFF;
+        if ((block.core_wanted.load(std::memory_order_relaxed) & CORE_STEP) != 0) {
+          lane = ENGINE_NOT_USED_YET;
+        }
+      }
+    }
+    battle_step::SetLane(&block, lane);
+  }
   char rows[ROWS_LINE_CAPACITY] = {};
   size_t rows_length = 0;
   for (uint32_t row = 0; row < ROW_COUNT && rows_length < sizeof(rows); ++row) {
@@ -430,7 +460,7 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     const bool on = (block.rows_applied & bit) != 0;
     const char* state = (((ROWS_WITH_SITES & bit) != 0) ? (on ? "on" : "off") : "-");
     const int written = std::snprintf(rows + rows_length, sizeof(rows) - rows_length, "%s%s %s",
-                                      ((row == 0) ? "" : ", "), ROW_WORDS[row], state);
+                                      ((row == 0) ? "" : ", "), ROW_WORDS[row].data(), state);
     rows_length += std::max(written, 0);
   }
   loader->log("renodx_attila64: rows: %s", rows);
@@ -474,6 +504,13 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
       grass_draw_code_read.store(false, std::memory_order_relaxed);
       loader->log(GRASS_DRAW_CODE_LINE);
     }
+  }
+  // The battle step's code once more, after the loader's late writes; its site was re-checked above.
+  if (battle_step::state.code_read.load(std::memory_order_relaxed)
+      && ((block.rows_changed.load(std::memory_order_relaxed) & RowBit(ROW_BATTLE_STEP)) != 0
+          || !battle_step::CheckGameCode(*loader))) {
+    battle_step::state.code_read.store(false, std::memory_order_relaxed);
+    battle_step::SetLane(&block, ENGINE_CODE_DIFFERS);
   }
   // The engine values, once: the game's static constructors have built them, and its sound start (the reader of the
   // restart-only ones) comes later in its main.

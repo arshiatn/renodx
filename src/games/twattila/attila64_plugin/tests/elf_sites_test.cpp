@@ -21,6 +21,8 @@
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+#include <string>
+#include <vector>
 
 #include "../hooks.hpp"
 #include "../patcher.hpp"
@@ -292,7 +294,9 @@ int wmain(int argc, wchar_t** argv) {
   constexpr size_t LOADER_OWN_NEAR_CODE_BYTES = 0x10c0;
   WriteLoaderGuards();
   const size_t near_code_before = near_code_used;
-  const Plugin plugin = ExpectPluginDll(api, argv[1], false);
+  // The battle step row reads the game's own code here: as it expects, with no line.
+  const Plugin plugin = ExpectPluginDll(api, argv[1], false, ENGINE_NOT_USED_YET);
+  Expect(!Logged("battle step: "), "battle step: init finds the code that was read");
   std::printf("  code near the game: %#zx bytes\n", near_code_used - near_code_before);
   Expect(near_code_used - near_code_before <= LOADER_NEAR_CODE_BYTES - LOADER_OWN_NEAR_CODE_BYTES,
          "dll: one game run's code near the game, the game code row's too, fits the loader's page");
@@ -401,6 +405,36 @@ int wmain(int argc, wchar_t** argv) {
     Expect(capped && Logged("SPRITE_DISTANCE: first call"),
            "sprite run: the cap by the size's height, the size found from the game's own rcx; the first-call line");
     Expect(dead_scaled, "sprite run: a dead soldier's distance x its scale, with the cap and alone; a living one's not");
+  }
+
+  // The battle step row reads the game's code again at the game's start: a second copy of the DLL (its own module and
+  // globals) on the game file mapped again, with one byte of that code changed between its init and its game start.
+  {
+    Expect(MapGameElf(argv[2], &image) == 0, "battle step: the game file maps a second time");
+    WriteTweakObjects();
+    WriteLoaderGuards();
+    wchar_t copy_path[MAX_PATH];
+    GetModuleFileNameW(nullptr, copy_path, MAX_PATH);
+    *std::wcsrchr(copy_path, L'\\') = L'\0';
+    const std::wstring copy_dir = std::wstring(copy_path) + L"\\game_start_case";
+    CreateDirectoryW(copy_dir.c_str(), nullptr);
+    const std::wstring copy = copy_dir + L"\\" + MODULE_NAME;
+    Expect(CopyFileW(argv[1], copy.c_str(), FALSE) != FALSE, "battle step: a copy of the plugin DLL");
+    const Plugin second = LoadPlugin(copy.c_str());
+    Expect(second.init != nullptr && second.init(&api) == 0
+               && second.block->engine_status.load() == (uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT),
+           "battle step: a second copy's init on the game file mapped again");
+    if (second.init != nullptr) {
+      {
+        const std::scoped_lock lock(log_mutex);
+        log_lines.clear();
+      }
+      *at(battle_step::CODE_RANGES.back().address) ^= 1;
+      second.game_started(&api);
+      Expect(second.block->engine_status.load() == (uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT)
+                 && Logged("renodx_attila64: battle step: game code differs (") && second.block->rows_changed.load() == 0,
+             "battle step: code changed after init is found at the game's start, with the row's line");
+    }
   }
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);

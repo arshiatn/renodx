@@ -23,6 +23,7 @@
 #include <type_traits>
 
 #include "battle_core.hpp"
+#include "battle_step.hpp"
 #include "loader_api.h"
 #include "model_lods.hpp"
 #include "plugin_block.h"
@@ -686,6 +687,17 @@ static ATTILA64_GAME_CALL void* CampaignTreeEntry(const uint8_t* node, const uin
       node, model, position, fourth, fifth, sixth, first_float, second_float);
 }
 
+// ROW_BATTLE_STEP: the battle step's pair resolver (battle_step.hpp), which does the game's work with fewer calls or
+// leaves the call to the game's function (a tail call). ResolvePairs calls game code from a frame of ours: no frame
+// above this site catches (the generator's catch gate on it), so an exception there ends the game as it would
+// without the hook. The row reads core_wanted itself and ignores hooks_wanted.
+using PairsFn = void(ATTILA64_GAME_CALL*)(void* manager) noexcept;
+static ATTILA64_GAME_CALL void PairsEntry(void* manager) {
+  LogFirstCall(LABEL_PAIRS_ENTRY);
+  if (battle_step::ResolvePairs(manager, &block, *loader)) return;
+  [[clang::musttail]] return reinterpret_cast<PairsFn>(originals[LABEL_PAIRS_ENTRY])(manager);
+}
+
 // ROW_SPRITES, inside the soldier draw: where a soldier turns into a flat sprite. The site's two instructions make that
 // distance: xmm0 (the soldier's random value - 0.5) x its size's fade width ([rax]), + its size's sprite distance
 // ([rcx]); the game stores the sum and draws a sprite when the camera is farther away.
@@ -868,6 +880,7 @@ static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
   hooks[LABEL_CAMPAIGN_TREE_ENTRY] = reinterpret_cast<void*>(&CampaignTreeEntry);
   hooks[LABEL_SPRITE_DISTANCE] = reinterpret_cast<void*>(&SpriteDistanceHandler);
   hooks[LABEL_EFFECT_WALK_ENTRY] = reinterpret_cast<void*>(&EffectWalkEntry);
+  hooks[LABEL_PAIRS_ENTRY] = reinterpret_cast<void*>(&PairsEntry);
   return hooks;
 }();
 // Each mid-function site's scales: its handler is called only while a bit of them is set in scales_active.
