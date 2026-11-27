@@ -2,7 +2,8 @@
 # build\attila64_plugin (or -Out), with its sha256 beside it (renodx_attila64.dll.sha256, for a64_ab). It is not a CMake
 # target (the repository's targets are addons): clang-cl for the Linux calling convention and guaranteed tail calls,
 # kernel32 only. The player puts it into the loader's plugins folder under exactly this name.
-# -Test also builds the tests into -TestOut and runs them with the DLL (elf_sites_test with -Elf <the game's Linux
+# -Test also builds the tests into -TestOut and runs them (patcher_test and elf_sites_test with the DLL, battle_core_test
+# on its own; elf_sites_test with -Elf <the game's Linux
 # executable>; without it, or with the game's address range taken, that test is SKIPPED and says so in the last line);
 # the exit code is the number of failures.
 param([string]$Out = '', [switch]$Test, [string]$TestOut = '', [string]$Elf = '')
@@ -31,13 +32,16 @@ if (-not $TestOut) { throw "-Test needs -TestOut <folder for the test executable
 New-Item -ItemType Directory -Force $TestOut | Out-Null
 # The tests' intermediate files stay out of the DLL's folder.
 Set-Location $TestOut
-foreach ($name in @('patcher_test', 'elf_sites_test')) {
+foreach ($name in @('patcher_test', 'elf_sites_test', 'battle_core_test')) {
   Remove-Item "$TestOut\$name.exe" -ErrorAction SilentlyContinue
   & $clang @flags "$PSScriptRoot\tests\$name.cpp" "/Fe$TestOut\$name.exe" /link kernel32.lib
   if ($LASTEXITCODE -ne 0) { throw "$name.exe failed to build (clang-cl exit $LASTEXITCODE)" }
 }
 & "$TestOut\patcher_test.exe" "$Out\renodx_attila64.dll"
 $failures = $LASTEXITCODE
+# The battle core's pick tables, and its live cases on this process's own CPU sets.
+& "$TestOut\battle_core_test.exe"
+$failures += $LASTEXITCODE
 if ($Elf) { & "$TestOut\elf_sites_test.exe" "$Out\renodx_attila64.dll" $Elf } else { & "$TestOut\elf_sites_test.exe" }
 # elf_sites_test exits with 77 when it did not run (tests\elf_sites_test.cpp).
 $elf_result = if ($LASTEXITCODE -eq 77) { 'elf_sites_test SKIPPED' } else { 'elf_sites_test ran' }

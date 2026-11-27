@@ -5,13 +5,15 @@
 
 // The plugin's unit test on a fake game image at the game's addresses (no game file needed): identity, the site checks
 // and their refusals, the loader's hook and the re-check, the stack-check rule, the hook bodies on synthetic game
-// functions at the real sites (this file's copy of hooks.hpp and the built DLL's own) with the add-on's callbacks, the
-// callback drain, and the built DLL's init with each refusal (copies of the DLL under dll_cases\, a ReShade.ini next to
+// functions at the real sites (this file's copy of hooks.hpp and the built DLL's own) with the add-on's callbacks and
+// one live battle-core reserve on this process's own CPU sets, the callback drain, and the built DLL's init with each
+// refusal (copies of the DLL under dll_cases\, a ReShade.ini next to
 // this exe for the ini keys).
 // patcher_test.exe <renodx_attila64.dll>; exit code = failures.
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -35,6 +37,8 @@ using namespace twattila::attila64_plugin::test;
 inline constexpr uintptr_t PACK_RECORD = 0x610000;  // the synthetic pack stores its 8 arguments here and counts
 inline constexpr uintptr_t DRAW_RECORD = 0x630000;  // the synthetic draw stores its 3 arguments here and counts
 inline constexpr uintptr_t RULE_SITE = 0x640000;
+inline constexpr uintptr_t STEP_RECORD = 0x650000;  // the synthetic step stores what its task holds here and counts
+inline constexpr uint64_t STEP_RESULT = 0x5eed0000c0de;
 
 struct PackRecord {
   std::array<uint64_t, 8> arguments;
@@ -42,6 +46,10 @@ struct PackRecord {
 };
 struct DrawRecord {
   std::array<uint64_t, 3> arguments;
+  uint32_t calls;
+};
+struct StepRecord {
+  uint64_t task_field;
   uint32_t calls;
 };
 
@@ -77,6 +85,21 @@ inline constexpr std::array<uint8_t, 42> DRAW_TAIL = {
     0x5b, 0x41, 0x5c, 0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f,  // pop rbx / r12 / r13 / r14 / r15
     0xc3, 0xcc,                                            // ret
 };
+
+// Step: push rbp / rbx / rax and mov rbx, [task + 0x38] (the site), then mov ebp, 1, mov edi, 1 and a call (the
+// window; its target gets a ret) and the first byte of the next instruction, a REX.W prefix. The tail returns
+// STEP_RESULT (the game's returns 0).
+inline constexpr size_t STEP_TASK_FIELD = 0x38;
+inline constexpr std::array<uint8_t, 34> STEP_TAIL = {
+    0x89, 0xd8,                                            // the window's 48: mov rax, rbx
+    0x48, 0xb9, 0x00, 0x00, 0x65, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rcx, STEP_RECORD
+    0x48, 0x89, 0x01,                                      // mov [rcx], rax
+    0xff, 0x41, 0x08,                                      // inc dword [rcx+8]
+    0x48, 0xb8, 0xde, 0xc0, 0x00, 0x00, 0xed, 0x5e, 0x00, 0x00,  // mov rax, STEP_RESULT
+    0x48, 0x83, 0xc4, 0x08,                                // add rsp, 8
+    0x5b, 0x5d,                                            // pop rbx / rbp
+};
+inline constexpr uint8_t RET = 0xc3;
 
 // The fake view: its vtable's pass-kind slot returns `kind`.
 struct FakeView {
@@ -121,6 +144,8 @@ void PassEnd(uint32_t pass_kind, const PassMeasure& measure) noexcept {
 const Callbacks CALLBACKS = {.before_pack = &BeforePack, .pass_begin = &PassBegin, .pass_end = &PassEnd};
 const Callbacks OTHER_CALLBACKS = CALLBACKS;
 
+inline constexpr uint32_t ALL_ROWS = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT);
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -150,13 +175,21 @@ int wmain(int argc, wchar_t** argv) {
     }
     const uintptr_t pack_end = SITES[ROW_BONE_FLUSH].address + SITES[ROW_BONE_FLUSH].length + SITE_MARGIN;
     const uintptr_t draw_end = SITES[ROW_PASS_DRAW].address + SITES[ROW_PASS_DRAW].length + SITE_MARGIN;
+    const uintptr_t step_end = SITES[ROW_CPU_PLACEMENT].address + SITES[ROW_CPU_PLACEMENT].length + SITE_MARGIN;
     std::memcpy(at(pack_end), PACK_TAIL.data(), PACK_TAIL.size());
     std::memcpy(at(draw_end), DRAW_TAIL.data(), DRAW_TAIL.size());
+    std::memcpy(at(step_end), STEP_TAIL.data(), STEP_TAIL.size());
+    *at(step_end + STEP_TAIL.size()) = RET;
+    // The window's call rel32 ends one byte before the window does.
+    int32_t step_call = 0;
+    std::memcpy(&step_call, at(step_end - 5), sizeof(step_call));
+    *at(step_end - 1 + step_call) = RET;
     FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
   };
   const auto site_untouched = [&](const Site& site) {
     return std::memcmp(at(site.address), site.window.data() + SITE_MARGIN, site.length) == 0;
   };
+  const auto every_site_untouched = [&] { return std::ranges::all_of(SITES, site_untouched); };
   write_game();
 
   // Identity.
@@ -183,7 +216,8 @@ int wmain(int argc, wchar_t** argv) {
   Expect(CheckIdentity(api) == STATUS_WRONG_GAME, "identity: no ELF magic");
   *at(GAME_LO + 1) ^= 1;
 
-  // Block v2's size, and the per-site tables: one label per site, each with its hook.
+  // Block v2's size, and the per-site tables: one label per site, each label with its own hook (a swapped pair would
+  // put a hook with another signature at a game site).
   Expect(VERSION == 2 && BlockBytes(0) == 0 && BlockBytes(1) == 40 && BlockBytes(2) == 216 && sizeof(Block) == 216,
          "block: v1 is 40 bytes, v2 216");
   {
@@ -195,6 +229,13 @@ int wmain(int argc, wchar_t** argv) {
       labels_seen |= 1u << site.label;
     }
     Expect(labels_ok && labels_seen == (1u << LABEL_COUNT) - 1u, "labels: one per site, each with its hook");
+    Expect(REPLACEMENTS[LABEL_PACK_ENTRY] == reinterpret_cast<void*>(&PackEntry)
+               && REPLACEMENTS[LABEL_VIEW_DRAW_ENTRY] == reinterpret_cast<void*>(&ViewDrawEntry)
+               && REPLACEMENTS[LABEL_STEP_ENTRY] == reinterpret_cast<void*>(&StepTaskEntry),
+           "labels: each holds its own hook");
+    Expect(LABEL_STEP_ENTRY == 2 && SITES[LABEL_STEP_ENTRY].row == ROW_CPU_PLACEMENT && SITES[LABEL_STEP_ENTRY].label == LABEL_STEP_ENTRY
+               && SITES[ROW_BONE_FLUSH].label == LABEL_PACK_ENTRY && SITES[ROW_PASS_DRAW].label == LABEL_VIEW_DRAW_ENTRY,
+           "labels: the sites are in row order");
   }
 
   // Site checks on the real sites' windows.
@@ -265,6 +306,23 @@ int wmain(int argc, wchar_t** argv) {
   auto* draw_record = reinterpret_cast<DrawRecord*>(DRAW_RECORD);
   const auto pack = reinterpret_cast<PackFn>(SITES[ROW_BONE_FLUSH].address);
   const auto draw = reinterpret_cast<ViewDrawFn>(SITES[ROW_PASS_DRAW].address);
+  auto* step_record = reinterpret_cast<StepRecord*>(STEP_RECORD);
+  const auto step = reinterpret_cast<StepTaskFn>(SITES[ROW_CPU_PLACEMENT].address);
+  std::array<uint64_t, (STEP_TASK_FIELD / sizeof(uint64_t)) + 1> task = {};
+  task.back() = 0x7a5c;
+  const auto step_once = [&] {
+    step_record->task_field = 0;
+    return step(task.data()) == reinterpret_cast<void*>(STEP_RESULT) && step_record->task_field == task.back();
+  };
+  const auto default_cpu_sets = [] {
+    std::array<ULONG, 256> ids = {};
+    ULONG count = 0;
+    GetProcessDefaultCpuSets(GetCurrentProcess(), ids.data(), static_cast<ULONG>(ids.size()), &count);
+    return std::pair{ids, count};
+  };
+  const auto core_state_of = [](const Block* shared) {
+    return static_cast<uint32_t>(shared->core_status.load() >> CORE_STATE_SHIFT) & CORE_FIELD_MASK;
+  };
   const auto pack_once = [&] {
     uint32_t cursor = 0;
     uint32_t written = 0;
@@ -286,11 +344,12 @@ int wmain(int argc, wchar_t** argv) {
     return draw_record->arguments[0] == reinterpret_cast<uint64_t>(node.data()) && draw_record->arguments[1] == 0x2222
            && draw_record->arguments[2] == reinterpret_cast<uint64_t>(&view);
   };
-  // Every path of both bodies, through the given block (this exe's hooks.hpp copy or a DLL copy's).
+  // Every path of the bodies, through the given block (this exe's hooks.hpp copy or a DLL copy's).
   const auto expect_hook_bodies = [&](Block* shared) {
     active_block = shared;
     *pack_record = {};
     *draw_record = {};
+    *step_record = {};
     before_pack_calls = 0;
     pass_begin_calls = 0;
     pass_end_calls = 0;
@@ -333,6 +392,30 @@ int wmain(int argc, wchar_t** argv) {
     Expect(Logged("VIEW_DRAW_ENTRY: first call"), "draw: first-call line");
     shared->hooks_wanted.store(0);
     shared->callbacks.store(nullptr);
+
+    // The step: its bit clear, the placement does nothing and the game's step runs with its task; its bit set, one
+    // step reserves a core on this process (or finds why not, on a small machine), and the bit cleared releases it.
+    const auto default_before = default_cpu_sets();
+    const uint64_t status_before = shared->core_status.load();
+    shared->core_wanted.fetch_and(~CORE_BATTLE);
+    Expect(!Logged("STEP_ENTRY: first call") && step_once() && step_record->calls == 1 && Logged("STEP_ENTRY: first call"),
+           "step: the task reaches the game's step, its result comes back, its own first-call line");
+    Expect(shared->core_status.load() == status_before && default_cpu_sets() == default_before && !Logged("battle core:"),
+           "step: bit clear, nothing placed");
+    shared->core_wanted.store(CORE_WANTED_DEFAULT);
+    Expect(step_once() && step_record->calls == 2 && core_state_of(shared) != CORE_WAITING && core_state_of(shared) != 0
+               && Logged("battle core:"),
+           "step: bit set, the placement ran once before the game's step");
+    if (core_state_of(shared) == CORE_ACTIVE) {
+      Expect(default_cpu_sets() != default_before && Logged("battle core: logical"), "step: a core reserved");
+      shared->core_wanted.fetch_and(~CORE_BATTLE);
+      Expect(step_once() && step_record->calls == 3 && core_state_of(shared) == CORE_WAITING
+                 && default_cpu_sets() == default_before && Logged("battle core: released (turned off)"),
+             "step: bit cleared, released and the CPU sets put back");
+    } else {
+      std::printf("  step: no core on this machine (state %u): the release is not run\n", core_state_of(shared));
+    }
+    shared->core_wanted.store(CORE_WANTED_DEFAULT);
   };
 
   // This exe's copy of hooks.hpp.
@@ -433,7 +516,7 @@ int wmain(int argc, wchar_t** argv) {
     *at(SITES[ROW_PASS_DRAW].address + 1) ^= 1;
     plugin.game_started(&api);
     Expect(plugin.block->rows_changed.load() == RowBit(ROW_PASS_DRAW) && Logged("VIEW_DRAW_ENTRY changed after we patched it")
-               && Logged("game started: 1 sites unchanged"),
+               && Logged("game started: 2 sites unchanged"),
            "dll: game start finds a site changed after init");
   } else {
     Expect(false, "dll: init for the changed-later case");
@@ -443,19 +526,27 @@ int wmain(int argc, wchar_t** argv) {
   write_game();
   {
     const auto [plugin, result] = init_copy(L"off", MODULE_NAME, api);
-    Expect(result == 1 && status_of(plugin) == STATUS_OFF && Logged("Enabled=0") && site_untouched(SITES[0])
-               && site_untouched(SITES[1]),
+    Expect(result == 1 && status_of(plugin) == STATUS_OFF && Logged("Enabled=0") && every_site_untouched(),
            "dll: Enabled=0 refuses and writes nothing");
   }
-  for (const Row row : {ROW_BONE_FLUSH, ROW_PASS_DRAW}) {
+  for (const Row row : {ROW_BONE_FLUSH, ROW_PASS_DRAW, ROW_CPU_PLACEMENT}) {
     set_ini_key_off(ROW_INI_KEYS[row]);
     write_game();
     const auto [plugin, result] = init_copy(ROW_INI_KEYS[row], MODULE_NAME, api);
-    const Row other = (row == ROW_BONE_FLUSH) ? ROW_PASS_DRAW : ROW_BONE_FLUSH;
-    Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == RowBit(other)
-               && plugin.block->rows_refused == RowBit(row) && plugin.block->rows_tried == RowBit(other)
-               && Logged("skipped (OFF)") && site_untouched(SITES[row]) && !site_untouched(SITES[other]),
+    const uint32_t others = ALL_ROWS & ~RowBit(row);
+    bool only_its_site_untouched = true;
+    for (const Site& site : SITES) {
+      only_its_site_untouched = only_its_site_untouched && site_untouched(site) == (site.row == row);
+    }
+    Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == others
+               && plugin.block->rows_refused == RowBit(row) && plugin.block->rows_tried == others
+               && Logged("skipped (OFF)") && only_its_site_untouched,
            "dll: a row's install key 0 leaves that row out, and out of the rows tried");
+    // The battle core's status is built only with its row in.
+    const uint64_t waiting = uint64_t{CORE_WAITING} << CORE_STATE_SHIFT;
+    Expect(plugin.block->core_status.load() == ((row == ROW_CPU_PLACEMENT) ? 0 : waiting)
+               && plugin.block->render_core_status.load() == 0,
+           "dll: the battle core's status is built only with its row applied");
   }
   set_ini_key_off(nullptr);
 
@@ -463,11 +554,21 @@ int wmain(int argc, wchar_t** argv) {
   *at(SITES[ROW_BONE_FLUSH].address) ^= 1;
   {
     const auto [plugin, result] = init_copy(L"differs", MODULE_NAME, api);
-    Expect(result == 0 && plugin.block->rows_applied == RowBit(ROW_PASS_DRAW)
-               && plugin.block->rows_refused == RowBit(ROW_BONE_FLUSH)
-               && plugin.block->rows_tried == (RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW))
+    Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_BONE_FLUSH))
+               && plugin.block->rows_refused == RowBit(ROW_BONE_FLUSH) && plugin.block->rows_tried == ALL_ROWS
                && Logged("PACK_ENTRY 0x3416d50: skipped (DIFFERS)"),
            "dll: a site whose bytes differ is left out (still tried)");
+  }
+
+  write_game();
+  *at(SITES[ROW_CPU_PLACEMENT].address + SITES[ROW_CPU_PLACEMENT].length) ^= 1;
+  {
+    const auto [plugin, result] = init_copy(L"step_neighbour", MODULE_NAME, api);
+    Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_CPU_PLACEMENT))
+               && plugin.block->rows_refused == RowBit(ROW_CPU_PLACEMENT) && plugin.block->rows_tried == ALL_ROWS
+               && plugin.block->core_status.load() == 0 && site_untouched(SITES[ROW_CPU_PLACEMENT])
+               && Logged("STEP_ENTRY 0xbb4e00: skipped (NEIGHBOUR)"),
+           "dll: a patch next to the step site leaves the battle core out (tried, status not built)");
   }
 
   write_game();
@@ -475,8 +576,9 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"no_memory", MODULE_NAME, api);
     Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == 0
-               && plugin.block->rows_refused == (RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW)) && Logged("skipped (NO_MEMORY)"),
-           "dll: no memory near the game leaves both rows out");
+               && plugin.block->rows_refused == ALL_ROWS && plugin.block->core_status.load() == 0
+               && Logged("skipped (NO_MEMORY)"),
+           "dll: no memory near the game leaves every row out");
   }
   hook_mode = HOOK_NORMAL;
 
@@ -484,7 +586,7 @@ int wmain(int argc, wchar_t** argv) {
   *at(BUILD_ID_NOTE_ADDRESS + 20) ^= 1;
   {
     const auto [plugin, result] = init_copy(L"wrong_game", MODULE_NAME, api);
-    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_GAME && site_untouched(SITES[0]) && site_untouched(SITES[1]),
+    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_GAME && every_site_untouched(),
            "dll: another game build refuses and writes nothing");
   }
 
@@ -498,8 +600,7 @@ int wmain(int argc, wchar_t** argv) {
   }
   {
     const auto [plugin, result] = init_copy(L"renamed", L"renodx_attila64_old.dll", api);
-    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_LOADER && Logged("renamed") && site_untouched(SITES[0])
-               && site_untouched(SITES[1]),
+    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_LOADER && Logged("renamed") && every_site_untouched(),
            "dll: a renamed file refuses and writes nothing");
   }
   set_ini_key_off(nullptr);

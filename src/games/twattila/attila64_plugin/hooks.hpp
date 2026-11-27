@@ -12,13 +12,14 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "battle_core.hpp"
 #include "loader_api.h"
 #include "plugin_block.h"
 #include "sites.h"
 
-// The plugin's hooks on game code: the shared block, the callback guard and the two hook bodies. The game calls them
-// with its own (Linux) calling convention; they call the add-on's callbacks with the Windows one. The unit test runs
-// this file as shipped.
+// The plugin's hooks on game code: the shared block, the callback guard and the hook bodies. The game calls them with
+// its own (Linux) calling convention; they call the add-on's callbacks and the plugin's own code with the Windows one.
+// The unit test runs this file as shipped.
 namespace twattila::attila64_plugin {
 
 static Block block;
@@ -30,13 +31,14 @@ static const LoaderApi* loader = nullptr;
 static std::array<std::atomic_bool, LABEL_COUNT> first_call_logged = {};
 
 // The game functions' prototypes, typed noexcept: a C++ exception in game code is unwound by the game's own unwinder,
-// which cannot pass a frame of ours. The pack hook leaves no frame of ours while its original runs (a tail call); the
-// pass hook does on measured calls only, and no frame above it catches (the generator's catch gate on its site). So the
-// hook bodies need no landing pads, and every function they call is noexcept.
+// which cannot pass a frame of ours. The pack and step hooks leave no frame of ours while their originals run (a tail
+// call); the pass hook does on measured calls only, and no frame above it catches (the generator's catch gate on its
+// site). So the hook bodies need no landing pads, and every function they call is noexcept.
 using PackFn = bool(ATTILA64_GAME_CALL*)(void* self, void* context, bool flag, void* list, uint32_t first,
                                          uint32_t* cursor, uint32_t count, uint32_t* written) noexcept;
 using ViewDrawFn = void(ATTILA64_GAME_CALL*)(void* node, void* context, void* view) noexcept;
 using ViewKindFn = uint32_t(ATTILA64_GAME_CALL*)(void* view) noexcept;
+using StepTaskFn = void*(ATTILA64_GAME_CALL*)(void* task) noexcept;
 
 inline constexpr size_t NODE_ENABLED_OFFSET = 0x28;             // a byte; the game returns at once when it is 0
 inline constexpr size_t VIEW_KIND_SLOT = 0x80 / sizeof(void*);  // the view's pass kind, a virtual
@@ -120,8 +122,18 @@ static ATTILA64_GAME_CALL void ViewDrawEntry(void* node, void* context, void* vi
   }
 }
 
-// Each site's hook, by SiteLabel (patcher_test checks that every site has one).
+// ROW_CPU_PLACEMENT: the battle step's task, run beside the drawing on one of the game's task threads. The placement
+// (battle_core.hpp) reads core_wanted itself and ignores hooks_wanted; then the game's step with its own frame (a tail
+// call), so no local with a destructor here.
+static ATTILA64_GAME_CALL void* StepTaskEntry(void* task) {
+  LogFirstCall(LABEL_STEP_ENTRY);
+  battle_core::OnStepStart(&block, *loader);
+  [[clang::musttail]] return reinterpret_cast<StepTaskFn>(originals[LABEL_STEP_ENTRY])(task);
+}
+
+// Each site's hook, by SiteLabel (patcher_test checks that each label holds its own).
 static const std::array<void*, LABEL_COUNT> REPLACEMENTS = {reinterpret_cast<void*>(&PackEntry),
-                                                            reinterpret_cast<void*>(&ViewDrawEntry)};
+                                                            reinterpret_cast<void*>(&ViewDrawEntry),
+                                                            reinterpret_cast<void*>(&StepTaskEntry)};
 
 }  // namespace twattila::attila64_plugin

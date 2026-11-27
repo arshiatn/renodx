@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-// renodx_attila64.dll: a plugin of the 64-bit Attila loader (it runs the game's Linux build on Windows) that hooks two
-// game functions for the Attila add-on (plugin_block.h). The loader loads it from its plugins folder, after its own
+// renodx_attila64.dll: a plugin of the 64-bit Attila loader (it runs the game's Linux build on Windows) that hooks game
+// functions: two for the Attila add-on (plugin_block.h) and the battle step's task, to keep a CPU core free for it
+// (battle_core.hpp; that row works without the add-on). The loader loads it from its plugins folder, after its own
 // patches and before any game code runs; the add-on finds its block once ReShade loads it. Built by build.ps1.
 
 #include <windows.h>
@@ -151,7 +152,8 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
 
   loader->log(
       "renodx_attila64 %s: game build ok, loader api %u (%s) / exe %u.%u.%u.%u, game end %p, perffix64 %s, "
-      "other plugins: %s; changes drawing only (multiplayer peers may differ)",
+      "other plugins: %s. Changes drawing, sound memory and CPU core use only; battles, replays and multiplayer stay "
+      "the same.",
       PLUGIN_VERSION, api->api_version, api->engine_version, exe_version[0], exe_version[1], exe_version[2],
       exe_version[3], reinterpret_cast<void*>(api->game_hi), (perffix ? "loaded" : "off"), other_plugins);
 
@@ -179,6 +181,10 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   }
   // A row is on only when all of its sites are.
   block.rows_applied &= ~block.rows_refused;
+  // The battle core's status is built (not 0) only with its hook in; battle_core.hpp writes it from the first step on.
+  if ((block.rows_applied & RowBit(ROW_CPU_PLACEMENT)) != 0) {
+    block.core_status.store(uint64_t{CORE_WAITING} << CORE_STATE_SHIFT, std::memory_order_relaxed);
+  }
   char rows[ROWS_LINE_CAPACITY] = {};
   size_t rows_length = 0;
   for (uint32_t row = 0; row < ROW_COUNT && rows_length < sizeof(rows); ++row) {
