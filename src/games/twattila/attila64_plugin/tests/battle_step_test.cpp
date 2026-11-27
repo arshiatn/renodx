@@ -2861,22 +2861,47 @@ void RunContactByteChecks() {
          "contact code: the six functions with the other mod's windows hold 2, 2, 4, 4, 4, 2 masks; unmasked each is the census's value, the table's is the masked one");
   Expect(windows_decode && window == 18 && window_bytes == 744,
          "contact code: each of the 18 windows (744 bytes) is the game's nine-instruction control-word block, inside its function");
-  // The pin: a window's first allowed value is the game's, FNV-1a 64 over the window's own bytes in the game file;
-  // its second is not in yet (the game's again).
+  // The pin: a window's first allowed value is the game's, FNV-1a 64 over the window's own bytes in the game file.
+  // Its second is PerfFix 7.5's, as the plugin's own lines of a start with that mod gave it (the windows of one
+  // function hold the same bytes, before and after: one value per function).
   {
+    constexpr std::array<uint64_t, WINDOW_COUNT> OTHER_MOD_VALUES = {
+        0x70e83e6d1e406f93, 0x70e83e6d1e406f93, 0x54b5736cf1a6f163, 0x54b5736cf1a6f163, 0x4cf40bd417e02f03, 0x4cf40bd417e02f03,
+        0x4cf40bd417e02f03, 0x4cf40bd417e02f03, 0xfde0bad51b629e90, 0xfde0bad51b629e90, 0xfde0bad51b629e90, 0xfde0bad51b629e90,
+        0xfaa4fd17198eaa23, 0xfaa4fd17198eaa23, 0xfaa4fd17198eaa23, 0xfaa4fd17198eaa23, 0x5ed4575eb83eea53, 0x5ed4575eb83eea53,
+    };
     bool game_values = true;
+    bool other_mod_values = true;
+    size_t function_window = 0;
+    for (const MaskedFunction& function : MASKED_FUNCTIONS) {
+      // Within a function every window has the function's first window's two values, and no other function has them.
+      for (size_t index = function_window; index < function_window + function.mask_count; ++index) {
+        other_mod_values = other_mod_values && CONTACT_MASK_VALUES[2 * index] == CONTACT_MASK_VALUES[2 * function_window]
+                           && CONTACT_MASK_VALUES[2 * index + 1] == CONTACT_MASK_VALUES[2 * function_window + 1];
+      }
+      other_mod_values = other_mod_values
+                         && std::ranges::count(CONTACT_MASK_VALUES, CONTACT_MASK_VALUES[2 * function_window]) == function.mask_count
+                         && std::ranges::count(CONTACT_MASK_VALUES, CONTACT_MASK_VALUES[2 * function_window + 1]) == function.mask_count;
+      function_window += function.mask_count;
+    }
     for (size_t index = 0; index < WINDOW_COUNT; ++index) {
       const ContactMask& mask = CONTACT_MASKS[index];
       uint64_t hash = FNV_OFFSET_BASIS<uint64_t>;
       for (uint32_t byte = 0; byte < mask.size; ++byte) {
         hash = (hash ^ *at(mask.start + byte)) * 0x100000001b3;
       }
-      if (hash != CONTACT_MASK_VALUES[2 * index] || hash != CONTACT_MASK_VALUES[2 * index + 1]) {
+      if (hash != CONTACT_MASK_VALUES[2 * index]) {
         std::printf("  contact mask %#x+%u: its first allowed value is not the game file's\n", mask.start, mask.size);
         game_values = false;
       }
+      if (CONTACT_MASK_VALUES[2 * index + 1] != OTHER_MOD_VALUES[index] || CONTACT_MASK_VALUES[2 * index + 1] == hash) {
+        std::printf("  contact mask %#x+%u: its second allowed value is not the other mod's\n", mask.start, mask.size);
+        other_mod_values = false;
+      }
     }
-    Expect(game_values, "pin: each window's allowed value is the game file's, re-computed from its bytes");
+    Expect(game_values, "pin: each window's first allowed value is the game file's, re-computed from its bytes");
+    Expect(other_mod_values && function_window == WINDOW_COUNT,
+           "pin: each window's second allowed value is PerfFix 7.5's from the run, not the game's; one pair of values per function");
   }
   Expect(!shifted_decode && !is_control_word_block(CONTACT_MASKS.back().start, CONTACT_MASKS.back().size),
          "contact code: a window one byte off, one byte shorter or longer, or the task-thread loop's mask is no such block");

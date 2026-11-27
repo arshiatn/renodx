@@ -833,26 +833,26 @@ inline constexpr auto CONTACT_MASKS = std::to_array<ContactMask>({
 });
 
 // The pin (ours; ATN 11-27): a pinned mask's allowed values, in the masks' order. First the game's (from the game
-// file), then PerfFix 7.5's (from a run's log line, never from its files); that one is not in yet, the game's stands twice.
+// file), then PerfFix 7.5's (from a run's log line, never from its files).
 inline constexpr auto CONTACT_MASK_VALUES = std::to_array<uint64_t>({
-    0x55531ace933876c4, 0x55531ace933876c4,  // 0x773ba6
-    0x55531ace933876c4, 0x55531ace933876c4,  // 0x773bf4
-    0xf5c052d4f067c394, 0xf5c052d4f067c394,  // 0x776c6c
-    0xf5c052d4f067c394, 0xf5c052d4f067c394,  // 0x776cbb
-    0x7e941fe1e1ecbb64, 0x7e941fe1e1ecbb64,  // 0x78c91d
-    0x7e941fe1e1ecbb64, 0x7e941fe1e1ecbb64,  // 0x78c96b
-    0x7e941fe1e1ecbb64, 0x7e941fe1e1ecbb64,  // 0x78c9b1
-    0x7e941fe1e1ecbb64, 0x7e941fe1e1ecbb64,  // 0x78c9f6
-    0x6b0d2025cb862f06, 0x6b0d2025cb862f06,  // 0x796ce1
-    0x6b0d2025cb862f06, 0x6b0d2025cb862f06,  // 0x796d4b
-    0x6b0d2025cb862f06, 0x6b0d2025cb862f06,  // 0x796db5
-    0x6b0d2025cb862f06, 0x6b0d2025cb862f06,  // 0x796e1b
-    0x3d919fdcfa3ceca4, 0x3d919fdcfa3ceca4,  // 0x7dfe8d
-    0x3d919fdcfa3ceca4, 0x3d919fdcfa3ceca4,  // 0x7dfedc
-    0x3d919fdcfa3ceca4, 0x3d919fdcfa3ceca4,  // 0x7dff2a
-    0x3d919fdcfa3ceca4, 0x3d919fdcfa3ceca4,  // 0x7dff75
-    0x22f775a34fce1104, 0x22f775a34fce1104,  // 0x7e0683
-    0x22f775a34fce1104, 0x22f775a34fce1104,  // 0x7e06cd
+    0x55531ace933876c4, 0x70e83e6d1e406f93,  // 0x773ba6
+    0x55531ace933876c4, 0x70e83e6d1e406f93,  // 0x773bf4
+    0xf5c052d4f067c394, 0x54b5736cf1a6f163,  // 0x776c6c
+    0xf5c052d4f067c394, 0x54b5736cf1a6f163,  // 0x776cbb
+    0x7e941fe1e1ecbb64, 0x4cf40bd417e02f03,  // 0x78c91d
+    0x7e941fe1e1ecbb64, 0x4cf40bd417e02f03,  // 0x78c96b
+    0x7e941fe1e1ecbb64, 0x4cf40bd417e02f03,  // 0x78c9b1
+    0x7e941fe1e1ecbb64, 0x4cf40bd417e02f03,  // 0x78c9f6
+    0x6b0d2025cb862f06, 0xfde0bad51b629e90,  // 0x796ce1
+    0x6b0d2025cb862f06, 0xfde0bad51b629e90,  // 0x796d4b
+    0x6b0d2025cb862f06, 0xfde0bad51b629e90,  // 0x796db5
+    0x6b0d2025cb862f06, 0xfde0bad51b629e90,  // 0x796e1b
+    0x3d919fdcfa3ceca4, 0xfaa4fd17198eaa23,  // 0x7dfe8d
+    0x3d919fdcfa3ceca4, 0xfaa4fd17198eaa23,  // 0x7dfedc
+    0x3d919fdcfa3ceca4, 0xfaa4fd17198eaa23,  // 0x7dff2a
+    0x3d919fdcfa3ceca4, 0xfaa4fd17198eaa23,  // 0x7dff75
+    0x22f775a34fce1104, 0x5ed4575eb83eea53,  // 0x7e0683
+    0x22f775a34fce1104, 0x5ed4575eb83eea53,  // 0x7e06cd
 });
 static_assert([] {
   size_t value_count = 0;
