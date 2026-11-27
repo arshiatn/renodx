@@ -19,6 +19,7 @@
 #include <d3d11_4.h>
 #include <dbghelp.h>
 #include <dxgi1_6.h>
+#include <io.h>
 #include <nsight_graphics_sdk/NGFX_GPUTrace_D3D12.h>
 #include <nsight_graphics_sdk/NGFX_GraphicsCapture_D3D12.h>
 #include <shellapi.h>
@@ -239,13 +240,25 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // DRED report.
   MoveFileExW(log_path.c_str(), (folder + L"\\renodx-tw-dlaa64.old.log").c_str(), MOVEFILE_REPLACE_EXISTING);
   _wfopen_s(&log_file, log_path.c_str(), L"w");
+  // stderr into the log (a /SUBSYSTEM:WINDOWS exe has none): a failed assert's expression, file and line (below). The
+  // play and resident modes hold this log shut (kept_log, above), so their stderr stays unset; they reopen log_file into
+  // their own logs (below).
+  if (log_file != nullptr) {
+    _dup2(_fileno(log_file), 2);
+  }
   LogWithTime(std::format("[TW DLAA helper] Started (game {}).", game_id).c_str());
   wcsncpy_s(dump_path.data(), dump_path.size(), (folder + L"\\renodx-tw-dlaa64.dmp").c_str(), _TRUNCATE);
   SetUnhandledExceptionFilter(OnUnhandledFault);
   // The terminate handler is per thread (this one's); another thread's uncaught exception reaches abort, whose handler is
   // process-wide, as are the last two.
   std::set_terminate([] { StopOnCrtEnd("an uncaught C++ exception", twattila::dlaa_bridge::HELPER_EXIT_UNCAUGHT_EXCEPTION); });
-  std::signal(SIGABRT, [](int) { StopOnCrtEnd("an abort (another thread's uncaught C++ exception, or the CRT's)", twattila::dlaa_bridge::HELPER_EXIT_ABORT); });
+  std::signal(SIGABRT, [](int) {
+    StopOnCrtEnd("an abort (a failed assert: its text above; another thread's uncaught C++ exception, or the CRT's)",
+                 twattila::dlaa_bridge::HELPER_EXIT_ABORT);
+  });
+  // A failed assert (no NDEBUG here) writes to stderr (the log) and aborts into the handler above: in a /SUBSYSTEM:WINDOWS
+  // exe the UCRT's default is a task-modal Abort / Retry / Ignore box, its thread blocked behind a fullscreen game until a click.
+  _set_error_mode(_OUT_TO_STDERR);
   _set_purecall_handler([] { StopOnCrtEnd("a pure virtual call", twattila::dlaa_bridge::HELPER_EXIT_PURE_CALL); });
   _set_invalid_parameter_handler([](const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, uintptr_t) {
     StopOnCrtEnd("an invalid CRT parameter", twattila::dlaa_bridge::HELPER_EXIT_INVALID_PARAMETER);
