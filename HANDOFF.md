@@ -18350,7 +18350,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         hfa_3 DONE 17:1x (152: 41 DONE, 17 SUPERSEDED, 73 OPEN, 19 NEEDS_ATN, 2 STALE; ho_g07 Divinity 2 NOT merged,
         its release gate holds; 12292 eight features skipped without ATN's decision). hfa_5 DONE 17:1x (151: 47
         DONE, 27 SUPERSEDED, 65 OPEN, 9 NEEDS_ATN, 3 STALE; 23 new lines; unmerged branches sss_e2, sh_s1a NaN
-        guard, ho_g24, ho_g03_comptr). Left: hfa_4, hfa_8. Owner: coord
+        guard, ho_g24, ho_g03_comptr). hfa_4 DONE 17:2x (154: 60 DONE, 20 SUPERSEDED, 61 OPEN, 8 NEEDS_ATN, 5 STALE; 41 NEW; ho_gbf merged without
+        its job 8 timing gate; shared AO rule G20 follow-ups; F5 real motion into IN_MV / NRD; Expeditions G25 F1 + F2;
+        Thrones / WH3 fog_shadows_defaulted_on; the batch GPU-stall trace; alt-tab F1a / F1b / F7 / F8; NOTE: the
+        snapshot has 5 stray CRs, so part line numbers differ by up to 4 between splitlines and grep -n: ticks match
+        by box text, not line). Left: hfa_8. Owner: coord
         - [ ] GPU LANE (max 1 agent): fx4b_ = fix wave W4b (X18 rt_cache_fill / rt_reference OMM twins, X14 bake
         cutoff + Tales port, X09 + X10 one visibility kind), Opus 5.5 High, branch fx4b_1127 in its own worktree,
         STARTED 17:1x (brief testbin\scratch\fx4b_\brief.md, est 100 min, stop at 200); then Opus xHigh review +
