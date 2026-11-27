@@ -18058,8 +18058,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         ROOT CAUSE (reproduced): copies of the test pick the same render core and split it 100 / 54 / 46 %, one copy in
         three fails, base the same -> MUST M1 battle_core_test.cpp:1003-1010 named mutex + the spinner's priority
         (busy_fix.diff, 18 / 18 under load); SHOULD S1 :930-957 disarm the refused-write hook after each armed step;
-        SHOULD S2 a HANDOFF line for the untested watchdog read failure (box below); 4 NITs. Fix round p1ptf_ (Fable
-        Medium) STARTED 18:40; then Sonnet High final; then merge (battle_core files only). p91_
+        SHOULD S2 a HANDOFF line for the untested watchdog read failure (box below); 4 NITs. Fix round p1ptf_ (Fable Medium) DONE 18:58 (18 min; scratch\p1ptf_\handback.md): origin/p1pt_1127 1472ec887,
+        test file only: 34eb7337d M1 (busy_fix.diff), 67f4dbe8f S1 (refused_step, refusal in the 3 Expects), 1472ec887
+        N1 / N2 / N4; controls: old exe fails 1 of 3 copies a round, fixed 9 / 9; S1 old = terminate without a FAIL
+        line, new = 3 FAILs; gate serial exit 0, then 3 copies x 3 rounds exit 0; DLL d1653f38 unchanged. Sonnet High
+        final fp1pt_ (incl. one plugin test on the merged result) STARTED 18:58; then merge. p91_
         (Opus Medium) DONE 18:03 (29 of 60 min; scratch\p91_\handback.md): two sha-gated a64_ab patches, NOT applied:
         (1) a64_ab_pk9p1_patch.py 02cf94e1 -> ebcc5c91 (PK9 P1-P5 + P5-6 replay; HALF_ENTRY needs no edit), (2)
         a64_ab_c8t0_patch.py ebcc5c91 -> 62fef322 (T0 + hzc_'s 4 horizon pieces); h91 21 / 21, A13 unchanged forms
