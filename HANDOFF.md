@@ -729,6 +729,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | coord DECIDED 21:0x (coord, design 3
 - X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN pfx_ DONE 21:05 (Fable 5
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
+- RESTORE AFTER THE PXM MERGE (coord): build\attila64_plugin is pxm_1127's DLL 934 ... | coord
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
 - HANDOFF AUDIT APPLIED 18:0x: hfm_ (Opus xHigh) merged the 8 parts (testbin\scrat ... | coord (section 11 items follow the CPU-first rule)
@@ -18143,7 +18144,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         DECIDED 21:0x (coord, design 3.6 'a coordinator's decision per spot'; pfx_ pick (a)): MASK the 18 windows
         (both speed-ups run). Implementer pxm_ (Fable 5.2 Medium; gen_contact_ranges.py + battle_step.hpp + its test;
         T-B3 + controls) STARTED 21:06, then reviews, the short Sonnet High late-mask read, smokes with and without
-        -PerfFix. The pin (c) = ATN's call.
+        -PerfFix. The pin (c) = ATN's call. pxm_ DONE 21:25 (18 of 45 min; testbin\scratch\pxm_\handback.md):
+        pxm_1127 b5d43c300 (battle_step.hpp + its test; generator in place, .bak_pxm): ContactRange.masks = a count with a
+        running index, 19 masks (18 + the old one), six ranges new values + check words, the other 178 + 1415 entries +
+        chain byte-identical, 9fb6fdf272eda086 still the unmasked census value; no new log literal; build.ps1 -Test -Elf
+        0 failures, 0 warnings, DLL 934fc1c2; mutants 14 / 14, generator controls 4 / 4. Reviews rpxm_ (Opus xHigh) +
+        fpxm_ (Sonnet High, the N-S3 late-mask read) STARTED 21:3x. Smoke with -PerfFix on DLL 934fc1c2 STARTED 21:26
+        (build\attila64_plugin = pxm_'s until the merge; fd4d700b kept in scratch\coord_\stage_fd4d700b), then without.
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
         -> read-only conflict check pfx_ (Fable 5.2 xHigh; opens perffix_src read only, x87fix only; heapfix pkg stays
         unopened; findings in our words) STARTED 20:35: the pattern, the replacement, results, thread safety, the blocks
@@ -18218,6 +18225,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Stage B merges (then rebuild from atn-mods and stage that); build\attila64_plugin is p8b_1127's plugin until then.
         Owner: coord DONE 20:4x: a3_smoke add-on b37ef56c (atn-mods 66aa64b90), build\attila64_plugin
         fd4d700b.
+        - [ ] RESTORE AFTER THE PXM MERGE (coord): build\attila64_plugin is pxm_1127's DLL 934fc1c2 (for its smokes) until
+        pxm_ + S5e merge; then rebuild from atn-mods and stage that (old fd4d700b in scratch\coord_\stage_fd4d700b).
+        Owner: coord
         - [ ] PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured like W-A3's; while hidden
         the add-on writes NO CORE_SPLIT bit (P1a's rule), so the batch's ContactSplit=1 arms keep their bit. After the
         batch + ATN's call (design 14: default Off, ATN decides): flip the row's MEASURED constant. Owner: coord Note: HANDOFF clock stamps 19:xx above were an
