@@ -18176,6 +18176,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         0x..: hash 0x.. is not the game's or PerfFix 7.5's)', a new EngineState if the lane allows; phase 2 = the 18
         hashes from a run + the add-on text and one ReShade.log line (after the sprite fix's addon.cpp merge). With
         it, a changed PerfFix shows in ReShade.log at once; no per-version check needed.
+        pxp_ phase 1 DONE (27 of 40 min; c510ad82d + c81f4e6e7 on pxp_1127, not merged): 2 allowed values per window,
+        the new line, ENGINE_OTHER_MOD = 7; plugin test 0 failures, mutants 26 / 26, DLL f3cb7c8d. Coord -PerfFix
+        hash run (ab_runs\20261127_225810_Smoke\1_B64P): all 18 'another mod changed the game code at' lines, one
+        hash per function (6 values) -> pxp_ phase 2 (plugin only: PerfFix 7.5's values + a test) STARTED 23:07;
+        the add-on part (EngineTexts, text, is_visible, ReShade.log line) after the sprite merge (addon.cpp).
         - [ ] PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also run on the PerfFix stack
         once (same result as without PerfFix). Owner: coord (batch prep)
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
@@ -18298,6 +18303,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         (addon.cpp / link / rt_scene) after spf_ + pxp_ phase 2. Coord: the 32-bit backup plan is DONE (b32_ 17:44, docs
         only, 32-bit stays frozen); PORT ADD-ON RE-ATTACH is a note for a future path (unreachable today); MENU STUTTER
         a1 suggested 'leave' (the reads notice CPU Set changes after start; not the stutter's cause) = ATN's call.
+        spf_ fix round DONE (~17 min of 30; 8c6f18516 on spf_1127): S1-S4 + fspf_ SHOULD (is_main_view) fixed, N2 /
+        N5 skipped; 5b 0 failed amd64 + x86, defaults, gated twattila x2 / rome2 x86 / thrones x86; add-on 81c42b53;
+        a64_ab patch now c0e29cdb -> b626750c (kinds spr0 / spr1 / sprmsaa; sprmsaa writes gfx_aa 3 only in the test
+        home copy). Sonnet final cspf_ (High) STARTED 23:07. Gate blockers: A13 FIXED by coord (collide_d0.py
+        skips the CONTACT_MASKS table + lines naming it = read masks, never writes; main tree 0 hits, 22 skipped; a
+        planted 0x3062d95 still exits 1; backup collide_d0.py.bak_coord_mask). F4 / F12 need the CPU Set Setter rule
+        for run_rs_pkg_580efafeb5765d81\attila64.exe: the coord's config write (with a backup) was REFUSED by the
+        permission check -> NEEDS ATN (he adds the rule, CacheAFFINITY; CPU Set Setter runs elevated, so a file edit
+        may only count after its restart anyway). Then: apply the a64_ab patch, restage, -C2 smoke, 6 + 1 starts.
+        rts2_ DONE (21 of 40 min; fd2416979 on rts2_1127, not merged): ' ib <2|4>[ dynamic]' + ' vb15 stride <n>' at
+        the end of each draw's state; 19 gated builds, unit shadows + map trace x2, scale_audit byte-equal on old +
+        new, dyn_census.py in tools\tw\attila64\census (old table byte-equal, --need-ib control exits 1). Coord:
+        R1 needs the rest of R1.7 -> S2b (rts2_ resumed, Opus High, est 30: stencil func / ops, dsv ro, '| views')
+        STARTED 23:07; reviews + merge after S2b.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
