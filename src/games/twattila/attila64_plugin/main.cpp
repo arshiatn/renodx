@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
+#include <span>
 #include <string_view>
 
 #include "../module_version.hpp"
@@ -44,7 +45,7 @@ inline constexpr char PLUGIN_VERSION[] = "2";
 inline constexpr std::array<const char*, ROW_COUNT> ROW_WORDS = {
     "bone flush", "pass draw", "battle core", "unit lod",       "model detail",
     "shadow map", "grass",     "grass cells", "campaign trees", "sprites",
-    "game code"};
+    "game code", "parallel effects"};
 static_assert(std::ranges::find(ROW_WORDS, nullptr) == ROW_WORDS.end(), "a word for every row");
 // The rows with a site in this build; the rows line shows the others as "-".
 inline constexpr uint32_t ROWS_WITH_SITES = [] {
@@ -419,6 +420,9 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     block.core_status.store(uint64_t{CORE_WAITING} << CORE_STATE_SHIFT, std::memory_order_relaxed);
     battle_core::ApplyRenderCoreKey(&block, ini_int(INI_RENDER_CORE, -1));
   }
+  if ((block.rows_applied & RowBit(ROW_PARALLEL_EFFECTS)) != 0) {
+    ApplyEffectsModeKey(&block, ini_int(INI_EFFECTS_MODE, -1));
+  }
   char rows[ROWS_LINE_CAPACITY] = {};
   size_t rows_length = 0;
   for (uint32_t row = 0; row < ROW_COUNT && rows_length < sizeof(rows); ++row) {
@@ -481,6 +485,38 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
       const TweakEntry& entry = TWEAKS[index];
       TweakSlot* slot = &tweak_slots[index];
       tweaks::CheckTweak(entry, slot);
+      // The game's parallel effect flag is offered (OK) only while the loader's own hooks guard the code that flag
+      // turns on and the game's one read of it is the code that was read; else it is ABSENT, the add-on hides its row
+      // and the walk hook stays inert.
+      static_assert(TWEAKS[tweaks::LOADER_FLAG_TWEAK].object + TWEAK_KINDS[TWEAK_BOOL].value_offset == EFFECT_FLAG);
+      if (index == tweaks::LOADER_FLAG_TWEAK && slot->verdict == VERDICT_OK) {
+        const auto* image = reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr));
+        const auto* dos_header = reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+        const auto* nt_headers = reinterpret_cast<const IMAGE_NT_HEADERS*>(image + dos_header->e_lfanew);
+        const auto image_lo = reinterpret_cast<uintptr_t>(image);
+        const uintptr_t image_hi = image_lo + nt_headers->OptionalHeader.SizeOfImage;
+        if ((block.rows_applied & RowBit(ROW_PARALLEL_EFFECTS)) == 0) {
+          loader->log("renodx_attila64: parallel effects: not offered (its row is off)");
+          slot->verdict = VERDICT_ABSENT;
+        } else if (!LoaderHooked(EFFECT_GUARD_ENTRIES, image_lo, image_hi)) {
+          const auto not_the_loaders = std::ranges::find_if(EFFECT_GUARD_ENTRIES, [&](uintptr_t guard) {
+            return !LoaderHooked(std::array{guard}, image_lo, image_hi);
+          });
+          loader->log("renodx_attila64: parallel effects: not offered (%#llx not the loader's)",
+                      static_cast<unsigned long long>(*not_the_loaders));
+          slot->verdict = VERDICT_ABSENT;
+        } else if (std::memcmp(reinterpret_cast<const void*>(EFFECT_FLAG_READ_ADDRESS), EFFECT_FLAG_READ.data(),
+                               EFFECT_FLAG_READ.size())
+                   != 0) {
+          loader->log("renodx_attila64: parallel effects: not offered (flag read differs)");
+          slot->verdict = VERDICT_ABSENT;
+        } else {
+          loader->log("renodx_attila64: parallel effects: offered (loader guards in place)");
+          effect_walk.loader_value = static_cast<uint8_t>(slot->default_bits);
+          effect_walk.stored = effect_walk.loader_value;
+          effects_offered.store(true, std::memory_order_release);
+        }
+      }
       if (slot->verdict == VERDICT_ABSENT) continue;
       ++checked;
       if (slot->verdict != VERDICT_OK) {
@@ -507,6 +543,8 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
     loader->log("renodx_attila64: tweaks: %u checked, %u ok, %zu absent, restart-only: %u applied", checked, ok,
                 TWEAKS.size() - checked, restart_applied);
     block.tweaks_status.store(TWEAKS_READY, std::memory_order_release);
+  } else if (block.tweaks_status.load(std::memory_order_relaxed) == TWEAKS_NONE) {
+    loader->log("renodx_attila64: parallel effects: not offered (Tweaks=0)");
   }
   // This thread goes on to run the game's main: the render thread.
   if ((block.rows_applied & RowBit(ROW_CPU_PLACEMENT)) != 0) {

@@ -174,6 +174,33 @@ int wmain(int argc, wchar_t** argv) {
            {0xa56725, {0x48, 0x89, 0xd3}, "sprite: the reader of the alive bit keeps the soldier's record (rdx) in rbx"},
            {0xa56786, {0xf6, 0x83, 0x1c, 0x01, 0x00, 0x00, 0x01, 0x75, 0x3a, 0xf3, 0x0f, 0x10, 0x8b, 0x18, 0x01, 0x00, 0x00},
             "sprite: only with bit 0 of the flags byte clear it reads the record's float at +0x118"},
+           // The parallel effects row: the bytes the loader checks before it hooks its five guards, and each
+           // instruction of the walk and of the per-type update whose number sites.h holds.
+           {0x34e0130, {0x8b, 0x47, 0x14, 0x85, 0xc0}, "effects: the pool take's first bytes"},
+           {0x34e0170, {0x8b, 0x46, 0x04, 0x85, 0xc0}, "effects: the pool's list take's first bytes"},
+           {0x34e01a0, {0x53, 0x48, 0x83, 0xec, 0x10}, "effects: the pool return's first bytes"},
+           {0x32ffa60, {0x48, 0x8b, 0xbf, 0x28, 0x02, 0x00, 0x00, 0x48, 0x8b, 0x07, 0x48, 0x8b, 0x40, 0x40, 0xff, 0xe0},
+            "effects: the spawn thunk"},
+           {0x35314b0, {0x41, 0x57, 0x41, 0x56, 0x53, 0x49, 0x89, 0xfe, 0x41, 0x8b, 0x5e, 0x30, 0x41, 0x3b, 0x5e, 0x34, 0x74, 0x3c},
+            "effects: the piece body's first bytes"},
+           {0x32fc384, {0x49, 0x8b, 0x84, 0x24}, "effect walk: mov rax, [r12 + the table's slots]"},
+           {0x32fc38c, {0x41, 0x8b, 0x8c, 0x24}, "effect walk: mov ecx, [r12 + the table's capacity]"},
+           {0x32fc394, {0x48, 0x8d, 0x0c, 0x49, 0x48, 0x8d, 0x0c, 0xc8}, "effect walk: the end is slots + capacity x 24"},
+           {0x32fc2f6, {0x49, 0x8d, 0x84, 0x24}, "effect walk: lea rax, [r12 + the empty key]"},
+           {0x32fc303, {0x49, 0x8d, 0x84, 0x24}, "effect walk: lea rax, [r12 + the deleted key]"},
+           {0x32fc32c, {0x48, 0x8b, 0x7e}, "effect walk: mov rdi, [rsi + the slot's value]"},
+           {0x32fc330, {0x48, 0x85, 0xff}, "effect walk: a null value is skipped"},
+           {0x32fc354, {0x48, 0x83, 0xc6}, "effect walk: add rsi, a slot's bytes"},
+           {0x32fc36a, {0xe8}, "effect walk: the first key compare is a direct call"},
+           {0x32fc37b, {0xe8}, "effect walk: the second key compare is a direct call"},
+           {0x34ad19e, {0x49, 0x89, 0xfe}, "effect type update: r14 is the type"},
+           {0x34ad1c6, {0x41, 0x8b, 0x5e}, "effect type update: mov ebx, [r14 + the instance count]"},
+           // The walk's second way in: a two-byte jump to it, 16 bytes before (the hook comment's note).
+           {0x32fbf50, {0xeb, 0x0e}, "effect walk: the jump to the walk before it"},
+           // The key compare: lengths (a uint32_t at 0) first, then the bytes at +8; it only reads and returns in al.
+           {0x50def0, {0x44, 0x8b, 0x07, 0x44, 0x3b, 0x06, 0x75, 0x2a, 0x45, 0x85, 0xc0, 0xb0, 0x01, 0x74, 0x22, 0x48, 0x8b,
+                       0x57, 0x08, 0x48, 0x8b, 0x76, 0x08},
+            "effect walk: the key compare reads two counted strings"},
        }) {
     Expect(std::equal(fact.bytes.begin(), fact.bytes.end(), at(fact.address)), fact.what);
   }
@@ -242,6 +269,20 @@ int wmain(int argc, wchar_t** argv) {
   std::printf("  tweaks: %zu constructor calls match\n", tweaks_in_code);
   Expect(tweaks_in_code == TWEAKS.size() - 2, "tweaks: every object's constructor call passes its name and default");
 
+  // The parallel effects row's numbers in the game's own code (sites.h's effect block).
+  Expect(std::memcmp(at(EFFECT_FLAG_READ_ADDRESS), EFFECT_FLAG_READ.data(), EFFECT_FLAG_READ.size()) == 0
+             && EFFECT_FLAG_READ_ADDRESS + EFFECT_FLAG_READ.size() + word_at(EFFECT_FLAG_READ_ADDRESS + 2) == EFFECT_FLAG
+             && EFFECT_FLAG == TWEAKS[tweaks::LOADER_FLAG_TWEAK].object + TWEAK_KINDS[TWEAK_BOOL].value_offset,
+         "effects: the game's read of the flag is the code that was read, and the flag is the value of the tweak the loader "
+         "writes");
+  Expect(word_at(0x32fc384 + 4) == EFFECT_TABLE_SLOTS && word_at(0x32fc38c + 4) == EFFECT_TABLE_CAPACITY
+             && word_at(0x32fc2f6 + 4) == EFFECT_EMPTY_KEY && word_at(0x32fc303 + 4) == EFFECT_DELETED_KEY
+             && *at(0x32fc32c + 3) == EFFECT_SLOT_VALUE && *at(0x32fc354 + 3) == EFFECT_SLOT_BYTES && EFFECT_SLOT_BYTES == 24
+             && *at(0x34ad1c6 + 3) == EFFECT_TYPE_COUNT,
+         "effect walk: each offset of sites.h is the operand of the walk's own instruction");
+  Expect(0x32fc36a + 5 + word_at(0x32fc36a + 1) == EFFECT_KEY_EQUAL && 0x32fc37b + 5 + word_at(0x32fc37b + 1) == EFFECT_KEY_EQUAL,
+         "effect walk: both key compares call the function sites.h names");
+
   WriteTweakObjects();
   // Every row in, the game code row's stubs with their gap too: one game run's code near the game fits what the
   // loader's own code leaves of its page at the loader's worst (LOADER_OWN_NEAR_CODE_BYTES, read from loader 1.3.28's
@@ -249,6 +290,7 @@ int wmain(int argc, wchar_t** argv) {
   // about 3 KiB in a default start). So 0xf40 are ours; a row that needs more could leave the game code row, the last
   // to ask, without memory at a real start.
   constexpr size_t LOADER_OWN_NEAR_CODE_BYTES = 0x10c0;
+  WriteLoaderGuards();
   const size_t near_code_before = near_code_used;
   const Plugin plugin = ExpectPluginDll(api, argv[1], false);
   std::printf("  code near the game: %#zx bytes\n", near_code_used - near_code_before);

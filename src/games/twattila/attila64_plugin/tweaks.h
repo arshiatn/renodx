@@ -47,9 +47,12 @@ struct TweakEntry {
   uint8_t type = TWEAK_BOOL;
   bool restart_only = false;  // read once as the game starts: written at the game's start from its key
   bool game_writes = false;   // the game stores it itself, so its value at the game's start is not the default
+  // The loader stores it before the game's start (its own switch): 0 or 1 there. The plugin's own hook is its only
+  // other writer, and only while the loader's guards hold (main.cpp): no option of the add-on is bound to it.
+  bool loader_writes = false;
 };
 
-inline constexpr std::array<TweakEntry, 83> TWEAKS = {{
+inline constexpr std::array<TweakEntry, 84> TWEAKS = {{
     {.name = "battle_building_lod0_distance", .object = 0x526cdb8, .constructor_call = 0x4d7d5f,
      .default_store = 0x4d7d18, .default_bits = 0x42c80000, .type = TWEAK_FLOAT},
     {.name = "battle_building_lod1_distance", .object = 0x526ce20, .constructor_call = 0x4d7dbf,
@@ -214,6 +217,8 @@ inline constexpr std::array<TweakEntry, 83> TWEAKS = {{
      .default_bits = 0x400, .low_bits = 0x400, .high_bits = 0x2000, .type = TWEAK_UINT, .restart_only = true},
     {.name = "SOUND_STREAM_MANAGER_BUFFER_SIZE_IN_KB", .object = 0x51629b8, .constructor_call = 0x4a1cbe, .default_store = 0x4a1c7d,
      .default_bits = 0x100, .low_bits = 0x100, .high_bits = 0x800, .type = TWEAK_UINT, .restart_only = true},
+    {.name = "VFX_PARALLEL_UPDATER", .object = 0x526f210, .constructor_call = 0x4db0e2,
+     .default_store = 0x4db09e, .default_bits = 0x0, .type = TWEAK_BOOL, .loader_writes = true},
 }};
 
 }  // namespace twattila::attila64_plugin

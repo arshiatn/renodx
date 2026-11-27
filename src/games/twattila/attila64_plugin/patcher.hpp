@@ -251,4 +251,24 @@ struct AppliedSite {
   return std::memcmp(reinterpret_cast<const void*>(site.address), applied.bytes.data(), site.length) == 0;
 }
 
+// True when every entry holds the loader's own entry hook: a jmp rel32 to its way in, `mov rax, imm64; jmp rax`, whose
+// target lies in [image_lo, image_hi), the loader's image. The jump is followed to the way in, so both of the loader's
+// layouts hold (the way in 16 bytes into its block, or at its start). A plugin's hook through the loader has the same
+// shape and targets its own DLL. No entries: false. The jump's target is read without a range check: a jump written by
+// a working tool lands in mapped code, and a broken one would crash the game at that function's first call anyway.
+// The game's parallel effect update corrupts its heap without these guards (the loader's own notes).
+[[nodiscard]] inline bool LoaderHooked(std::span<const uintptr_t> entries, uintptr_t image_lo, uintptr_t image_hi) {
+  return !entries.empty() && std::ranges::all_of(entries, [&](uintptr_t entry) {
+    const auto* jump = reinterpret_cast<const uint8_t*>(entry);
+    if (jump[0] != 0xE9) return false;
+    int32_t displacement = 0;
+    std::memcpy(&displacement, jump + 1, sizeof(displacement));
+    const auto* way_in = reinterpret_cast<const uint8_t*>(entry + 5 + static_cast<intptr_t>(displacement));
+    uint64_t target = 0;
+    std::memcpy(&target, way_in + 2, sizeof(target));
+    return way_in[0] == 0x48 && way_in[1] == 0xB8 && way_in[10] == 0xFF && way_in[11] == 0xE0 && target >= image_lo
+           && target < image_hi;
+  });
+}
+
 }  // namespace twattila::attila64_plugin

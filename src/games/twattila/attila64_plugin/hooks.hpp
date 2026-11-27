@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -72,6 +73,9 @@ using GrassCellFn = void(ATTILA64_GAME_CALL*)(const uint8_t* scrub, const uint8_
 using CampaignTreeFn = void*(ATTILA64_GAME_CALL*)(const uint8_t* node, const uint32_t* model, void* position,
                                                   uintptr_t fourth, uintptr_t fifth, uintptr_t sixth, float first_float,
                                                   float second_float) noexcept;
+using EffectWalkFn = void(ATTILA64_GAME_CALL*)(uint8_t* node, float first_float, float second_float) noexcept;
+// The game's compare of two counted strings (lengths, then bytes): it only reads, and the order does not matter.
+using EffectKeyEqualFn = bool(ATTILA64_GAME_CALL*)(const void* key, const void* other) noexcept;
 
 inline constexpr size_t NODE_ENABLED_OFFSET = 0x28;             // a byte; the game returns at once when it is 0
 inline constexpr size_t VIEW_KIND_SLOT = 0x80 / sizeof(void*);  // the view's pass kind, a virtual
@@ -238,6 +242,73 @@ struct CallbackScope {
 
   const Callbacks* callbacks = nullptr;
 };
+
+// ROW_PARALLEL_EFFECTS, the walk hook's state. Main only, read from the game's code: the walk has two ways in. One is
+// its direct caller, which sits in one virtual slot (+0x70) of the node, and that slot's one call chain starts in the
+// game's main. The other is a two-byte jump to the walk at 0x32fbf50, 16 bytes before it, which sits in the node's
+// slot +0x140: no call through that slot on an effect node was found (every call and load-then-call of a slot +0x140
+// was read; none is in effect or scene code), so it counts as not reached, by search and not by proof. So plain values
+// without a lock, and the hook's own thread check below for the second way. The game's start writes loader_value and
+// stored on the loader's thread before it sets effects_offered (release); the hook reads them only after its acquire
+// load.
+//
+// The mode is two bits of core_wanted (plugin_block.h): Off = no CORE_EFFECTS, Automatic = both, On = CORE_EFFECTS
+// alone. Each walk sets the game's flag for the update the walk then runs: Off = the loader's value, On = 1,
+// Automatic = this node's state by the rule below. The flag is stored only when the target is not the plugin's last
+// store, or at the first deciding walk in a new mode that is not Off (the loader's own switches may have changed the
+// byte meanwhile; they are not supported in Automatic and On). In Off the plugin stores only to undo its own store.
+enum EffectsMode : uint8_t {
+  EFFECTS_OFF,
+  EFFECTS_AUTOMATIC,
+  EFFECTS_ON,
+};
+inline constexpr std::array<const char*, 3> EFFECTS_MODE_WORDS = {"Off", "Automatic", "On"};
+[[nodiscard]] constexpr EffectsMode EffectsModeOf(uint32_t wanted) {
+  if ((wanted & CORE_EFFECTS) == 0) return EFFECTS_OFF;
+  return ((wanted & CORE_EFFECTS_AUTO) != 0) ? EFFECTS_AUTOMATIC : EFFECTS_ON;
+}
+// The Automatic rule, the 32-bit add-on's (src/games/twattila/effect_update.hpp, its UnitRule and Automatic L1 note):
+// each walk sums the node's effect instances with the game's own slot test; the node runs parallel from AUTO_ON
+// instances on and serial again below AUTO_OFF, never below AUTO_FLOOR; a table with more slots than TABLE_SLOT_LIMIT
+// is not summed. The four numbers are that file's, measured on the 32-bit game's own parallel walk: no 64-bit number
+// exists yet. Deviations from it, ours: the state is per node (that file has one walk state: its walk has one node),
+// in EFFECT_NODE_LIMIT entries (one walk per node and frame and one place that builds effect nodes, so a battle has
+// few); a node beyond them leaves the flag as it is. An entry no walk used for EFFECT_NODE_STALE_WALKS walks is taken
+// again (ours: a node dies with its battle, and without it the fifth node of a session would end Automatic for good).
+// The walks counted are Automatic's own, so a stretch in Off or On ages no entry. A dead node's pointer is only
+// compared, never read; a new node at a dead one's address finds its entry and starts with its state (the threshold
+// it meets first is then AUTO_OFF, once).
+inline constexpr uint32_t TABLE_SLOT_LIMIT = 4096;
+inline constexpr uint32_t AUTO_FLOOR = 256;
+inline constexpr uint32_t AUTO_ON = 20000;
+inline constexpr uint32_t AUTO_OFF = 16000;
+inline constexpr size_t EFFECT_NODE_LIMIT = 4;
+inline constexpr uint64_t EFFECT_NODE_STALE_WALKS = 1024;
+struct EffectNode {
+  const uint8_t* node = nullptr;  // null: free
+  uint64_t walked = 0;            // EffectWalk::walks at its last walk
+  bool parallel = false;
+};
+struct EffectWalk {
+  uint8_t loader_value = 0;  // the flag as the loader left it at the game's start
+  uint8_t stored = 0;        // the plugin's last store; loader_value before any
+  EffectsMode mode = EFFECTS_OFF;  // the last deciding walk's
+  bool change_logged = false;      // the first state change's line carries the table's capacity and the sum's time
+  bool node_limit_logged = false;
+  bool slot_limit_logged = false;
+  uint64_t walks = 0;  // in Automatic
+  std::array<EffectNode, EFFECT_NODE_LIMIT> nodes = {};
+};
+static EffectWalk effect_walk;
+// The thread of the first offered walk. Ours, not the game's or the loader's: the state above is main-only by what
+// was read from the game's code, and the walk's second way in is unreached only by search. A walk on another thread
+// would race that state, so it gets the game's walk alone (the flag as it is) and one line. On the read path it is
+// one thread id compare per walk and changes nothing: every walk is on this thread.
+static std::atomic<DWORD> effect_walk_thread = 0;
+static std::atomic_bool effect_thread_logged = false;
+// The loader's five guards hold their entries and the game's read of the flag is the code that was read: checked once
+// at the game's start (main.cpp). Without it the hook only calls the game's walk.
+static std::atomic_bool effects_offered = false;
 
 // The calling site's own line (a row with several sites shows which of them the game called).
 static void LogFirstCall(SiteLabel label) noexcept {
@@ -657,6 +728,131 @@ static ATTILA64_GAME_CALL void SpriteDistanceHandler(trampoline::MidContext* con
   context->resume = uint64_t{SITES[LABEL_SPRITE_DISTANCE].address} + SITES[LABEL_SPRITE_DISTANCE].length;
 }
 
+// The plugin's [Attila64Plugin] EffectsMode key at init, before READY (an A/B without the add-on): absent (-1) no
+// change, 0 Off, 1 Automatic, 2 On; another value changes nothing. Then the mode's line.
+static void ApplyEffectsModeKey(Block* shared, int key) noexcept {
+  if (key == 0) {
+    shared->core_wanted.fetch_and(~(CORE_EFFECTS | CORE_EFFECTS_AUTO), std::memory_order_relaxed);
+  } else if (key == 1) {
+    shared->core_wanted.fetch_or(CORE_EFFECTS | CORE_EFFECTS_AUTO, std::memory_order_relaxed);
+  } else if (key == 2) {
+    shared->core_wanted.fetch_and(~CORE_EFFECTS_AUTO, std::memory_order_relaxed);
+    shared->core_wanted.fetch_or(CORE_EFFECTS, std::memory_order_relaxed);
+  } else if (key != -1) {
+    loader->log("renodx_attila64: parallel effects: EffectsMode=%d is not 0, 1 or 2 (no change)", key);
+  }
+  loader->log("renodx_attila64: parallel effects mode %s (ini EffectsMode)",
+              EFFECTS_MODE_WORDS[EffectsModeOf(shared->core_wanted.load(std::memory_order_relaxed))]);
+}
+
+// ROW_PARALLEL_EFFECTS: the walk over a scene node's effect types, once per node and frame on the game's main thread
+// (twice for a node the sky's environment bake draws again: the same sum, so no second store). Sets the game's
+// parallel flag for this walk (EffectWalk's note), then the game's walk with its own frame.
+static ATTILA64_GAME_CALL void EffectWalkEntry(uint8_t* node, float first_float, float second_float) {
+  LogFirstCall(LABEL_EFFECT_WALK_ENTRY);
+  bool on_walk_thread = false;
+  if (effects_offered.load(std::memory_order_acquire)) {
+    const DWORD thread = GetCurrentThreadId();
+    DWORD first_thread = effect_walk_thread.load(std::memory_order_relaxed);
+    if (first_thread == 0) {
+      // The first offered walk's thread becomes the walks' thread. Lost to another thread's walk, first_thread is
+      // that thread's.
+      if (effect_walk_thread.compare_exchange_strong(first_thread, thread)) {
+        first_thread = thread;
+      }
+    }
+    on_walk_thread = (first_thread == thread);
+    if (!on_walk_thread && !effect_thread_logged.exchange(true)) {
+      loader->log("renodx_attila64: parallel effects: the effect update ran on thread %lu, not on its usual thread %lu: "
+                  "left to the game there",
+                  thread, first_thread);
+    }
+  }
+  if (on_walk_thread) {
+    EffectWalk* walk = &effect_walk;
+    const EffectsMode mode = EffectsModeOf(block.core_wanted.load(std::memory_order_relaxed));
+    uint8_t target = ((mode == EFFECTS_ON) ? 1 : walk->loader_value);
+    // A walk that cannot decide (a node beyond the entries, a table above the limit) leaves the flag and the last mode
+    // as they are, so the first store of a new mode waits for a walk that can.
+    bool decided = true;
+    if (mode == EFFECTS_AUTOMATIC) {
+      ++walk->walks;
+      auto state = std::ranges::find(walk->nodes, node, &EffectNode::node);
+      if (state == walk->nodes.end()) {
+        state = std::ranges::min_element(walk->nodes, {}, &EffectNode::walked);
+        if (state->node == nullptr || walk->walks - state->walked > EFFECT_NODE_STALE_WALKS) {
+          *state = {.node = node};
+        } else {
+          state = walk->nodes.end();
+        }
+      }
+      const uint32_t capacity = *reinterpret_cast<const uint32_t*>(node + EFFECT_TABLE_CAPACITY);
+      decided = (state != walk->nodes.end() && capacity <= TABLE_SLOT_LIMIT);
+      if (state == walk->nodes.end()) {
+        if (!walk->node_limit_logged) {
+          walk->node_limit_logged = true;
+          loader->log("renodx_attila64: parallel effects: more than %zu nodes, the others' flag is left as it is",
+                      EFFECT_NODE_LIMIT);
+        }
+      } else {
+        state->walked = walk->walks;
+      }
+      if (decided) {
+        LARGE_INTEGER sum_start = {};
+        if (!walk->change_logged) {
+          QueryPerformanceCounter(&sum_start);
+        }
+        // The game's own walk of the table (read from its code; elf_sites_test holds each instruction): a slot whose
+        // key is the table's empty or deleted key is skipped before its value is read (a deleted slot may keep a
+        // dead pointer), then a null value; the count is the one the game's per-type update reads.
+        const auto key_equal = reinterpret_cast<EffectKeyEqualFn>(EFFECT_KEY_EQUAL);
+        const auto* slots = *reinterpret_cast<const uint8_t* const*>(node + EFFECT_TABLE_SLOTS);
+        uint32_t instances = 0;
+        for (uint32_t index = 0; index < capacity; ++index) {
+          const uint8_t* slot = slots + (index * EFFECT_SLOT_BYTES);
+          if (key_equal(slot, node + EFFECT_EMPTY_KEY) || key_equal(slot, node + EFFECT_DELETED_KEY)) continue;
+          const auto* type = *reinterpret_cast<const uint8_t* const*>(slot + EFFECT_SLOT_VALUE);
+          if (type != nullptr) {
+            instances += *reinterpret_cast<const uint32_t*>(type + EFFECT_TYPE_COUNT);
+          }
+        }
+        const bool parallel = (instances >= AUTO_FLOOR && instances >= (state->parallel ? AUTO_OFF : AUTO_ON));
+        if (parallel != state->parallel) {
+          state->parallel = parallel;
+          char first_change[64] = "";
+          if (!walk->change_logged) {
+            walk->change_logged = true;
+            LARGE_INTEGER sum_end = {};
+            LARGE_INTEGER frequency = {};
+            QueryPerformanceCounter(&sum_end);
+            QueryPerformanceFrequency(&frequency);
+            std::snprintf(first_change, sizeof(first_change), ", table capacity %u, sum %lld us", capacity,
+                          (sum_end.QuadPart - sum_start.QuadPart) * 1000000 / frequency.QuadPart);
+          }
+          loader->log((parallel ? "renodx_attila64: parallel effects: node %td on (%u instances, from %u)%s"
+                                : "renodx_attila64: parallel effects: node %td off (%u, below %u)%s"),
+                      state - walk->nodes.begin(), instances, (parallel ? AUTO_ON : AUTO_OFF), first_change);
+        }
+        target = (parallel ? 1 : 0);
+      } else if (capacity > TABLE_SLOT_LIMIT && !walk->slot_limit_logged) {
+        walk->slot_limit_logged = true;
+        loader->log("renodx_attila64: parallel effects: a table of %u slots (above %u) is not summed, its flag is left "
+                    "as it is",
+                    capacity, TABLE_SLOT_LIMIT);
+      }
+    }
+    if (decided) {
+      if (target != walk->stored || (mode != walk->mode && mode != EFFECTS_OFF)) {
+        *reinterpret_cast<uint8_t*>(EFFECT_FLAG) = target;
+        walk->stored = target;
+      }
+      walk->mode = mode;
+    }
+  }
+  [[clang::musttail]] return reinterpret_cast<EffectWalkFn>(originals[LABEL_EFFECT_WALK_ENTRY])(node, first_float,
+                                                                                             second_float);
+}
+
 // Each hook site's hook and each mid-function site's handler, by SiteLabel; a patch site has none (patcher_test checks
 // that each label holds its own).
 static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
@@ -671,6 +867,7 @@ static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
   hooks[LABEL_GRASS_CELL_ENTRY] = reinterpret_cast<void*>(&GrassCellEntry);
   hooks[LABEL_CAMPAIGN_TREE_ENTRY] = reinterpret_cast<void*>(&CampaignTreeEntry);
   hooks[LABEL_SPRITE_DISTANCE] = reinterpret_cast<void*>(&SpriteDistanceHandler);
+  hooks[LABEL_EFFECT_WALK_ENTRY] = reinterpret_cast<void*>(&EffectWalkEntry);
   return hooks;
 }();
 // Each mid-function site's scales: its handler is called only while a bit of them is set in scales_active.

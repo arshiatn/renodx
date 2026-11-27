@@ -25,6 +25,7 @@
 #include "../plugin_block.h"
 #include "../sites.h"
 #include "../tweaks.h"
+#include "../tweaks.hpp"
 
 // The tests' stand-in for the 64-bit Attila loader: its plugin interface v1 written from its documented behaviour (an
 // entry hook copies the first bytes to code near the game, jumps back after them, and enters through
@@ -256,6 +257,17 @@ static void WriteTweakObjects() {
   }
 }
 
+// The loader's five guards of the game's parallel effect update, as its own entry hooks leave them (their targets in
+// this exe's image: the tests' loader), and the game's read of the flag. Once per game image: a second call would hook
+// the hooks.
+static void WriteLoaderGuards() {
+  for (const uintptr_t entry : EFFECT_GUARD_ENTRIES) {
+    Expect(FakeHook(entry, reinterpret_cast<const uint8_t*>(entry), 5, reinterpret_cast<void*>(&FakeLog)) != nullptr,
+           "the fake loader hooks an effect guard entry");
+  }
+  std::memcpy(reinterpret_cast<void*>(EFFECT_FLAG_READ_ADDRESS), EFFECT_FLAG_READ.data(), EFFECT_FLAG_READ.size());
+}
+
 // Every register a mid-function site can see or change, for a test bed (WriteMidBed).
 struct Registers {
   // By register number: rax, rcx, rdx, rbx, rsp (stored only), rbp, rsi, rdi, r8-r15.
@@ -383,7 +395,7 @@ static Plugin LoadPlugin(const wchar_t* dll_path) {
 }
 
 // The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window and
-// every tweak object (WriteTweakObjects), with no route note beside the test and no ReShade.ini keys but, with
+// every tweak object (WriteTweakObjects) and the loader's effect guards (WriteLoaderGuards), with no route note beside the test and no ReShade.ini keys but, with
 // `game_code_key_off`, the game code row's install key 0 (an image without the game code that row stands on): every
 // other row with a site goes in, and no patch site has other bytes to write. A hand-made stub's site is in with our
 // jump, or only checked (its stub not built).
@@ -427,7 +439,10 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, boo
              && Logged(game_code_key_off ? "grass on, grass cells on, campaign trees on, sprites on, game code off"
                                          : "grass on, grass cells on, campaign trees on, sprites on, game code on")
              && Logged("rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
-                       "grass on, grass cells on, campaign trees on, sprites on, game code o"),
+                       "grass on, grass cells on, campaign trees on, sprites on, game code o")
+
+             && Logged("EFFECT_WALK_ENTRY 0x32fbf60: applied")
+             && Logged("renodx_attila64: parallel effects mode Off (ini EffectsMode)"),
          "the init lines");
   size_t sites_in = 0;
   for (const Site& site : SITES) {
@@ -466,6 +481,10 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, boo
   Expect(shared->tweaks_status.load(std::memory_order_acquire) == TWEAKS_READY && shared->tweak_count == TWEAKS.size()
              && shared->tweaks != nullptr && Logged(tweaks_line) && !Logged(": refused ("),
          "game start checks and publishes the engine values");
+  const TweakSlot& effect_flag = shared->tweaks[tweaks::LOADER_FLAG_TWEAK];
+  Expect(effect_flag.verdict == VERDICT_OK && effect_flag.value_address == 0
+             && Logged("renodx_attila64: parallel effects: offered (loader guards in place)") && !Logged("not offered"),
+         "game start offers the parallel effect flag behind the loader's guards");
   // The thread that runs the game's start is the render thread: captured once, with its own line.
   char render_thread[64];
   std::snprintf(render_thread, sizeof(render_thread), "renodx_attila64: render thread %lu", GetCurrentThreadId());
