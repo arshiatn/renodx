@@ -3527,8 +3527,12 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   sss_settings.enabled = sss_settings.enabled && !rt_settings.sun_shadows;
   twattila::screen_space_shadows::Update(swapchain, sss_settings);
   traced_lights::bend_runs.store(sss_settings.enabled, std::memory_order_relaxed);
+  tw::ao_trace::OnPresent();
+  twattila::rt_scene::Update(rt_settings);
   // GT-VBAO's Temporal Smoothing (its noise moving each frame) and Denoiser (twattila/ao_filter.hpp); none under the rays'
   // AO, which leaves GT-VBAO's setting as it was (graphics_page's rays_replace_ao) and skips it with the game's passes.
+  // After rt_scene::Update: GameSsaoOut for the coming frame, as its draws read it (before it, each change came one present
+  // late: a new helper scene's first frame ran GT-VBAO without both, rllf_ N4).
   const bool bitmask_ao = shader_injection.ssao_mode >= 1.f && !twattila::ao_skip::GameSsaoOut();
   static uint32_t ao_frame = 0;
   shader_injection.ssao_frame =
@@ -3536,8 +3540,6 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   twattila::ao_filter::Update(swapchain, {.temporal = bitmask_ao && shader_injection.ssao_temporal != 0.f,
                                           .edge_fix = shader_injection.ssao_edge_fix != 0.f,
                                           .denoise = bitmask_ao && shader_injection.ssao_denoise != 0.f});
-  tw::ao_trace::OnPresent();
-  twattila::rt_scene::Update(rt_settings);
   // A DLSS Preset saved at v38's Auto (3) loads as L (the row's last choice).
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
