@@ -962,7 +962,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gts_ FOLLOW-UPS (11-26 17:22, scratch\gts_\pc\compare_c.txt): DI hashing on a wo ... | gts_ (11-27)
 - pdi4c_ r6 FINAL (origin/pdi4c_step4c_r6 148731b35; hand-back pdi4c_handback.md:5 ... | coord
 - GAME BLOCK 11-26 17:23-18:18 (11 starts, all clean exits): (a) 1.3.28 smoke with ... | coord / ATN (b1 upstream, 0b yes)
-- NEXT MERGE sdku_omm_dxc: its G1-G3 (Nsight DXC speed gate, OMM grass recording p ... | 11-27 GPU wave
 - CPU STEP 0b (19:30): spin on + L2B 134.72 = base 134.74 ms in one batch -> nothi ... | ATN (rule) / coord
 - PT DI S5G: the light_count mins' guard proofs (rt_di_surface.hlsli DiCurrentBuil ... | pdi4c_ follow-up (11-27+)
 - PT DI S6: DiStore's NaN / Inf / 65504 net, a one-frame count proving it inert (p ... | pdi4c_ follow-up (11-27+)
@@ -979,11 +978,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
-- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | aff_ (FSR) / ATN (XeSS yes / no)
+- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | aff_ (FSR + XeSS)
 - RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | coord (briefs)
 - A/B LOOKS WAIT (ATN 11-27): every look / A/B check (AA feed, O2 thin shadows at ... | ATN (end of plans)
 - GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds a ... | coord
-- sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the de ... | ATN (merge yes / no
 - 11-27 06:01 WAVE (coord; no agent cap; Fable only for PK8 Stage B). GPU plan: om ... | coord
 - NOTHING-DROPPED AUDIT 11-27 (ndc_, testbin\scratch\ndc_\handback.md): 22 report ... | next audit agent
 - O2 AT THE DEFAULT FOLIAGE 0.5 (o2_ handback:47-48): the 1/3 row stays at 0.507x, ... | ATN (accept the number) -> next SSS designer
@@ -1008,13 +1006,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT RUN-TO-RUN STATES (omx_ 11-27): two GPU states fixed per run in both builds ( ... | GPU plan (Opus xHigh design, later)
 - PT GATE METHOD (omx_ 11-27): sort runs by state first, or judge on the whole-run ... | ATN (yes / no) -> tools agent
 - GPU ITEM 7 PLAN (i7s_ 11-27, tools\tw\round_notes\designs\gpu_item7_plan.md): sm ... | lss0_ / lsp3_ / sms_ -> coord
-- OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s p ... | ATN (yes / wait)
+- OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s p ... | mgf_
 - SMOKE SPHERES S3 review (Opus xHigh, smr_ STARTED 07:0x) of designs\smoke_sphere ... | coord (after sms_)
 - SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | ATN (rule lines) -> game batch
-- PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | ptf_
+- PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | ptr_ -> coord (merge on GO)
 - OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; th ... | ATN (keep / remove)
-- HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + ... | m1i_ (STARTED 08:3x) with a before / after note
-- M1 / 2.9a DESIGN DONE (m1d_ 11-27, round_notes\designs\m1_29a_redesign.md): harn ... | m1i_
+- HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + ... | the next run of those rows
+- M1 / 2.9a DESIGN DONE (m1d_ 11-27, round_notes\designs\m1_29a_redesign.md): harn ... | coord (adopt + D1 rows) / next M1 designer (C3 / C4 text)
 - M1 D1 ROWS (m1d_): two proposed all_modes.sh rows (the file belongs to the h4k_ ... | coord (with the m1 implementer)
 - LIGHT BOUNCE FAILURE PATH (m1d_): a bounce that fails after a dark trace (helper ... | m1 implementer (R4 number) -> ATN (fix or accept)
 - LIGHT BOUNCE RESOLVE ACROSS A CARRY SWITCH (m1d_): light_bounce.hpp:709-717 (var ... | ATN (eye, after the plans)
@@ -1029,17 +1027,18 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr2_ DONE (attila64\designs\last_review_c8w2_pk6_pk1.md): C8 wave 2 ... | design fix rounds (after lr1_ / lr3_ / lr4_ / lr5_) -> coord
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
-- LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
+- LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | ATN (RM4)
 - DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | coord (ATN's census answer)
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
 - PK6-64 WAVE 1 (Opus High, pk6_tooling_64.md R11) STARTED 08:1x: p6a1_ = a64_ab.p ... | p6rv1_ -> ATN (apply yes) -> coord (apply + DryRuns) -> P6a2
-- 11-27 08:3x HAND-BACKS (coord). P1p DONE (p1p_, Fable 5.2 Medium, ~20 of 60 min; ... | coord (reviews -> merges
-- HARNESS SCENE DROP + LEARNED LIGHT (pdf_ 11-27, new): di_mode.hpp Observe builds ... | llf_ (fix) / next harness writer after m1i_ (slot_light befo
+- 11-27 08:3x HAND-BACKS (coord). P1p DONE (p1p_, Fable 5.2 Medium, ~20 of 60 min; ... | cen1a_ / cen1b_ -> coord
+- HARNESS SCENE DROP + LEARNED LIGHT (pdf_ 11-27, new): di_mode.hpp Observe builds ... | hw2_ (switches, slot_light) -> coord (proof, reviews, merge)
 - LAMP 1 MM RULE (pdr_ S5, 11-27): rt_path.hlsli:1787 (Torch and Fire Light / Shad ... | next rt_path writer
 - S6 ONE-FRAME TRACE (pdr_ S4, 11-27): rt_di_shade.hlsl:26 names a one-frame trace ... | next DI agent
 - P1p UNTESTED BRANCHES (fp1p_ S1 / S2, 11-27): battle_core.hpp:649-658 (refused d ... | next battle_core
+- PTLAS X19 (ptf_ 11-27, new, also today): under PTLAS 2 of 3 CPU-instanced mesh i ... | next PTLAS agent (after ptf_'s merge)
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17648,7 +17647,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] pdi4c_ MERGED 34b70eeef: all_modes_check -Rev 148731b35 PASS at 4K 18:18-19:30 (h0\runs\all_20261126_181849:
         census clean, 1655 / 1655 M6 equal, checks / dumps / repeat PASS; first run on the digest path, ~1 MB written).
         Builds after the merge: twattila amd64 + x86 exit 0, helper 19:45 (RTXDI found). Owner: coord
-        - [ ] NEXT MERGE sdku_omm_dxc: its G1-G3 (Nsight DXC speed gate, OMM grass recording picture + speed, GPU baker) at 4K are
+        - [x] NEXT MERGE sdku_omm_dxc: its G1-G3 (Nsight DXC speed gate, OMM grass recording picture + speed, GPU baker) at 4K are
         NOT run -> 11-27 (gate before merge). sdk3_ 11-26: G1 PASS on the default PT mode only (Nsight 6.614 / 6.613 ms,
         tools\tw\nsight\runs\sdk3_{old,new}_2); other modes + G2 / G3 open (G2 / G3 need a new game-run form: omm-lib.dll
         A/B swap + GPU Micromap Baking on = ATN's rule line). Owner: 11-27 GPU wave
@@ -17758,7 +17757,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Upscaler test 100 / 67 %: FSR linear within 3 % (today 15-20 % too bright); XeSS linear 6-12 % darker on bars /
         texture. Recommendation: FSR linear = a bug fix (better on every row); XeSS linear with the u1 cost = ATN's call. The
         fix (not made): drop the !Upscales(method) exclusion in anti_aliasing.hpp Apply + re-run tw_aa_frame_gamma; it waits
-        for rri_ (anti_aliasing.hpp's writer now). FSR fix aff_ (Opus High, branch aff_1127 from dd66a5300, anti_aliasing.hpp; XeSS untouched; GPU test job prepared only while 2 agents wait) STARTED 08:5x. Owner: aff_ (FSR) / ATN (XeSS yes / no)
+        for rri_ (anti_aliasing.hpp's writer now). FSR fix aff_ (Opus High, branch aff_1127 from dd66a5300, anti_aliasing.hpp; XeSS untouched; GPU test job prepared only while 2 agents wait) STARTED 08:5x. ATN 11-27: XeSS yes if there is no black raise and no purple -> aff_ adds it as its own commit (told 09:1x). Owner: aff_ (FSR + XeSS)
         - [x] rrbi_ RUNNER FIX (coord 11-26): gpu_job_g1.ps1 did not clear HARNESS_SR between runs (aaf2_'s first RR arms
         inherited preset M; set aside in results_invalid\, re-run alone); now in its clear list (backup .bak_coord1126).
         aaf_'s rows unaffected (every line set it). Owner: done
@@ -17784,7 +17783,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         coord (backups .bak_coord1 / .bak_coord2): the player's log is <dump>\renodx-tw-play.log (was read from stdout), the exit
         code needs the cached process handle, the trim keeps that log; gpu_trace.ps1 puts --frames first, so the player's '0'
         goes in -Frames 0. LEFT before the merge: G1 on the other PT modes (gate before merge). Owner: done
-        - [ ] sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the default, then merge; G2 = accepted
+        - [x] sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the default, then merge; G2 = accepted
         synthetic (ATN), G3 PASS. sdk4_ 11-27 (testbin\scratch\sdk4_\handback.md, traces nsight\runs\sdk4_*): 2 pairs each,
         old / new ms: paths_sharc PASS (-0.5 / -12.3 %, one slow old run), nrd_bounce_paths PASS (-0.06 / +0.06), reflect_own
         PASS (-0.45 / +0.33); strict misses (new <= old + 1 % in both pairs) inside their A/A spread: paths_ser +2.85 / -1.11
@@ -17809,7 +17808,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         0 differ; omm-lib 1.10 vs 1.12 on the 12 micromap modes (56 runs at 4K, same exe + helper, only the dll swapped):
         pictures 0 bytes apart in 11 modes, leaf_stress reflection = run-to-run noise (same size within one dll),
         visibility bit-identical everywhere; trace 2.312 vs 2.291 / 2.303 vs 2.304 ms; GPU bake +0.57 % (29.21 -> 29.37
-        ms). Verdict: merge (= copy the two git-ignored binaries into main's bin\ and build\downloads\omm). Owner: ATN
+        ms). Verdict: merge (= copy the two git-ignored binaries into main's bin\ and build\downloads\omm). ATN 11-27 'just merge': MERGED 46075d216 (pushed); bin\dxc.exe / dxcompiler.dll / dxil.dll + build\downloads\omm\extracted (4 files) copied from the worktree, sha-checked, the old ones in testbin\scratch\coord_1127\omm_dxc_backup\; main helper build exit 0, 0 warnings. 370 / 375 = the two recordings' counts (ground / unit); every micromap GPU-baked, none on the CPU. Owner: done
         (merge yes / no; G1's pre-set rule failed on noise, so it is his call)
         - [ ] 11-27 06:01 WAVE (coord; no agent cap; Fable only for PK8 Stage B). GPU plan: omx_ (OMM 1.12 PT slowdown cause,
         Opus xHigh, no GPU first), rrd_ (Denoise Before Tone Mapping below 100 % design -> round_notes\designs\
@@ -17911,9 +17910,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         64: 0.53-0.75x synthetic >= 4000, 0.90-1.17x real frames. C PTLAS smoke P1-P3: 0.93-2.89 (rule <= 0.8) -> no PTLAS smoke
         design, keep P0, dropped from S6. Part B (old MG) built, not run (ATN's MG question)
         - [ ] OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s part B traces only sun + fog rays, so
-        its numbers don't depend on unified PT. Owner: ATN (yes / wait).
+        its numbers don't depend on unified PT. ATN 11-27: yes, now.
         lsp3_ 11-27: part B = 48 runs (p0 / mg_list / mg_sorted / mg_shuffled, synthetic + 11 frames, cap 64, 4K, DRED), ~1-2
-        min under the GPU lock, line in lsp_\lsp3_\handback.md; the MG path has never run on the GPU
+        min under the GPU lock, line in lsp_\lsp3_\handback.md; the MG path has never run on the GPU. mgr_ 08:51: p0 12 / 12 pass, but no MG arm gave a number: 33 / 36 exit 2 at list->Close() (0x80070057, commands recorded wrong), 3 (live_proof2_3761) skip at NvAPI_D3D12_GetRaytracingMultiIndirectClusterOperationRequirementsInfo; no DRED; lsp3_table.py throws on --help. mgf_ (Opus High: lsp_probe.cpp / .hlsl, build.ps1, lsp3_gpu_job.ps1, lsp3_table.py) STARTED 09:1x: fix + part B again. Owner: mgf_
         - [ ] SMOKE SPHERES S3 review (Opus xHigh, smr_ STARTED 07:0x) of designs\smoke_spheres.md (S2 DONE sms_ 11-27: GPU pass
         rt_smoke_spheres.cs_6_5.hlsl makes spheres from the RT_SMOKE quads; default model Q = today's density on the
         sphere (the plan's uniform ball = the 'Round' choice: a departure S3 checks); Experimental row 'Smoke Shadows as
@@ -17972,7 +17971,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ~45 min after pdf_ frees
         rt_d3d12.hpp; gate = 4K harness first hits PTLAS on vs off + an active-instance assert. Then the O-PTLAS stall replay
         (RENODX_TW_PTLAS=1, headless Nsight + DRED); the C2 update-op stall test (can stall 4-5 s) only with ATN home. 'Retry at
-        ~1 ms TLAS' is not met (0.10-0.5 ms measured), U12b stays parked. ptf_ (Opus High, branch ptf_1127) STARTED 08:3x. Owner: ptf_
+        ~1 ms TLAS' is not met (0.10-0.5 ms measured), U12b stays parked. ptf_ DONE 08:5x (~30 min; origin/ptf_1127: a39a8e4ba lost-place log line, d6ea3c8db X16 mask from the desc + X17 a place per cluster BLAS (PTLAS_INSTANCES = MAX + CLUSTER_BLASES, assert), 1b7527b27, 30c97fb8e X18 NEW: units / cluster BLASes rebuilt at one address kept their first bounds -> places >= MAX rewritten every request; 97 headers same; gated amd64 / x86 61; 4K gate: the grass control loses 2 of 7 instances, the fix none; the final build fails only instanced mesh + placed instance = X19 + B23). Final reviews: ptrs_ (Sonnet High) GO, 5 SHOULDs (shadowed 'active' :8398 / :8429, direct <cassert>, stale comment :647-648 / :4756, X18 rebuilds the PTLAS every request -> P2 measures it against 0.10-0.16 ms or forces only built / refit BLASes, ungated log line); ptr_ (Opus xHigh) STARTED 09:1x. Owner: ptr_ -> coord (merge on GO)
         - [ ] OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; the 80 ms (rt_scene.hlsli:189) was the
         10-29 harness with every ray kind meeting the smoke (instance mask alone 81.5 -> 7.9 ms); 14->138 / 6->143 ms (:217-218)
         = smoke as candidates of the main sun + fog rays, fixed in helper63 321434abd. Dead MG code stays in rt_d3d12.hpp
@@ -17980,12 +17979,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + 0.5 + j)/s - 0.5
         (tw_rt_harness.cpp:3981-3982); the game and the upscaler test use i + 0.5 - j (anti_aliasing.hpp:444-447 / 1131-1134;
         tw_rt_harness.cpp:232-234 / 326): the picture shakes 2j against what RR is told. A fix changes that path's old baselines
-        (rrbi_ rows). Owner: m1i_ (STARTED 08:3x) with a before / after note
+        (rrbi_ rows). m1i_ DONE 08:48: the sampler now reads i - j on both axes, RR still told +j (= anti_aliasing.hpp:444-447 / 1131-1132, HARNESS_UPSCALER, HARNESS_RR_INPUT); every HARNESS_RR_IMAGE + HARNESS_RR_JITTER row (rrbi_, hrr_ / h4k_ with both) re-baselines on its next run (testbin\scratch\m1i_\jitter_sign_note.md). Owner: the next run of those rows
         - [ ] M1 / 2.9a DESIGN DONE (m1d_ 11-27, round_notes\designs\m1_29a_redesign.md): harness-only (the add-on's two-frame
         handshake, rt_core.hpp:3600-3603 / :3770, never asks under alternating bounce-free frames; the D1 row's env
         RENODX_TW_LIGHTS_IN_BOUNCE=1 asks every frame = the root cause). Option C, 0 helper / add-on bytes:
         HARNESS_LIGHTS_IN_BOUNCE, HARNESS_GI_SWITCH_LAST_OFF, <prefix>_lights.txt, m1_check.py cadence; gates G1-G3 + A/A; ~95
-        min + 13 4K jobs. m1i_ (Opus High) STARTED 08:3x. Owner: m1i_
+        min + 13 4K jobs. m1i_ DONE 08:48 (29 of 190 min; 26 4K jobs, 2 lock holds; tw_rt_harness.cpp E359A34A -> 4CFB4AF5, backup .before_m1i; exe testbin\scratch\m1i_\harness_new\tw_rt_harness_4k.exe 04055405): every gate and control as wanted (A/A 0 bytes; G1 / G2 60 / 60 frames 0 bytes; G3 16 dark frames all bounced, 0 MISS; the controls fail; R4 exactly 1 MISS at frame 30). Two design defects fixed: 'a dark mask word is 0' can't work (rt_lights starts words at 0xFFFFFFFF, :224) -> cadence compares with mode 0's mask (dark = lacks bits, an added bit = FAIL); bounced_frame -1 asked at frame 0 -> -2 (the add-on wraps the same way, rt_core.hpp:1056: one frame early, no bug). Left: adopt m1i_\m1_check.py (cadence) over pdi4c_'s; amend the design's C3 / C4 text; section 6 (R4's one-frame miss, the carry-switch resolve = ATN's eye, the frame-0 wrap); 2 proposed D1 rows in m1i_\handback.md (all_modes.sh not edited). Owner: coord (adopt + D1 rows) / next M1 designer (C3 / C4 text)
         - [ ] M1 D1 ROWS (m1d_): two proposed all_modes.sh rows (the file belongs to the h4k_ baseline; not edited). Owner: coord
         (with the m1 implementer)
         - [ ] LIGHT BOUNCE FAILURE PATH (m1d_): a bounce that fails after a dark trace (helper lost / timed out, reuse memory
@@ -18121,8 +18120,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         SHOULDs (S5a re-based on B0's link: clear the mirror in internal::Unregister, PLUGINS_OFF / NOT_LOADED / v1 in the truth
         table; risk 8.5 via core_status + the helper process handle, not an env var; a PK9 effects thread check; F7's 1280x720
         vs the 4K rule; map 3.3a writer rows outdated) + a line-drift table. Models: S5e Fable 5.2 Medium; S1 / S2 / S5a-c / S8
-        Opus High; S4 Opus xHigh; runs Low. Owner: design fix rounds (after lr4_) -> coord; ATN (RM3 order, RM4 keep / drop, RM5
-        batch scope, MS1 by eye)
+        Opus High; S4 Opus xHigh; runs Low. Owner: design fix rounds (after lr4_) -> coord; ATN 11-27: RM3 order OK (harness half now, the game half in the big batch); RM5 R1 + E64-dlaa join the batch; MS1 gone on 1.3.28 (b1 + Sol's clock fix) -> closed; RM4 explained (2 sun cascades instead of 3-4 under RT shadows, 4.4-4.8 ms of render thread in the forest view), keep / drop asked again (coord: keep, S5e Fable Medium). Owner: ATN (RM4)
         - [ ] DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s / backup_32bit per lr5_; map 6 item
         9 + 3.3a texts in its hand-back for coord; the 13 rule lines in 1.3.28 form), p2f_ (PK2P per lr1_), c8f_ (C8 wave 2 +
         PK1-64 per lr2_), ssf_ (smoke_spheres.md per smr_ + lsp3_). PK6-64 / PK5-64 / PK9 / PK8 fix rounds wait for lr4_ (lr4_ DONE 07:5x: p8bf_ Fable 5.2 xHigh Stage B, p8af_
@@ -18266,13 +18264,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         / E5 (DI / E_ref 1.00016, bits 1.00180), M2 remainder, S4 (keep 4), M1-trans 0 frames, R11G11B10 census (o0 rounds
         toward zero again each prepared_light level, ~-0.56 % a level, theory); partial: S7 (recordings only), E3 (harness only;
         in-game 4b open); pdi4c_ (b) / (c) / (d) ticked; (a) Nsight split + cost lead, (e) picture check (ATN's eye), (f) F2,
-        (g) NV1 (game start) open -> next DI agent; pdf_\gpu raw dumps ~15 GB kept (ATN decides). Final reviews DONE: pds_ (Sonnet High) GO WITH CHANGES (2 SHOULDs: part 7 can't fail with or without the fix; the d = 0 comments say NaN where DiLight is 0); pdr_ (Opus xHigh, testbin\scratch\pdr_\review.md) GO WITH CHANGES: fix right (keep the floor absolute), cites real, M1 the same comment fix, S1 W4 part 8 that hits the fix (light 0 at one pixel's DI ray origin, control 6c81d89c5 = 0), S2 one named 1 mm constant beside LIGHT_CLEARANCE, S3 retag rt_di_surface.hlsli:97-99, S4 + S5 = boxes below; 'S6 closed' = on the harness recordings only. pdf_ fix round (resumed: M1, S1-S3, NITs) STARTED 08:5x; merge after it. PK8 Stage B Rev 3 DONE (p8bf_, 16 min measured; pk8_stage_b_design.md
+        (g) NV1 (game start) open -> next DI agent; pdf_\gpu raw dumps ~15 GB kept (ATN decides). Final reviews DONE: pds_ (Sonnet High) GO WITH CHANGES (2 SHOULDs: part 7 can't fail with or without the fix; the d = 0 comments say NaN where DiLight is 0); pdr_ (Opus xHigh, testbin\scratch\pdr_\review.md) GO WITH CHANGES: fix right (keep the floor absolute), cites real, M1 the same comment fix, S1 W4 part 8 that hits the fix (light 0 at one pixel's DI ray origin, control 6c81d89c5 = 0), S2 one named 1 mm constant beside LIGHT_CLEARANCE, S3 retag rt_di_surface.hlsli:97-99, S4 + S5 = boxes below; 'S6 closed' = on the harness recordings only. pdf_ fix round DONE 08:47 (facd00234 one LIGHT_RAY_FLOOR constant beside LIGHT_CLEARANCE + tags; b97ba67b1 part 7 text + W4 part 8: parts 0-8 PASS, the control fails part 8 only; 118 helper headers unchanged by the round). MERGED d41605096 (pushed); main helper build exit 0, 0 warnings. PK8 Stage B Rev 3 DONE (p8bf_, 16 min measured; pk8_stage_b_design.md
         1304 -> 1528 lines): M1 vtable-pointer class table (55: 53 FAST, H, N) + one FNV over every called vtable entry (census
         W9), M2 ELF debug-info source for W8 + the owner field's static type, M3 W4a reachability half, M4 one stop_bits word +
         skip latch (skip_period = tick / 100) so 'normal speed' holds; S1-S7 taken; deviation: STOP_NAVAL latches too; count
         fix: the 14 register sites are inside the 111; census notes = designs\pk8_b_census_1a.md / _1b.md; steps 1a 210 + 45, 1b
         180 + 40, 2 30, 3 220, 4 130, 5 75, 6 60, 7 45 + 1 start, 8 110. ATN: census before Stage A (recommended yes), steps 2-8
-        go, ep8tt8 now, no guest, census effort, scope notes, default Off. Owner: coord (reviews -> merges; ATN's answers)
+        go, ep8tt8 now, no guest, census effort, scope notes, default Off. ATN 11-27: go for Stage B and the rest ('finish everything for the big batch'), ep8tt8 now, census effort OK, default Off until the batch; guest + the two scope notes explained (the guest stays out). Census 1a cen1a_ + 1b cen1b_ (Fable 5.2 High, read-only, private notes designs\pk8_b_census_1a.md / _1b.md) STARTED 09:1x; then an Opus xHigh check of each. Owner: cen1a_ / cen1b_ -> coord
         - [ ] HARNESS SCENE DROP + LEARNED LIGHT (pdf_ 11-27, new): di_mode.hpp Observe builds slot_light on one thread (8.3 M
         px x 32 lights) at the first E / bits frame, > 10 s with no request -> the helper's 10 s idle release drops the RT scene
         and reopens it (every 60-frame E run at frame 2, pdi4c_'s m2c_* too; A/B ratios still like for like). After
@@ -18280,7 +18278,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         0.251, texture mean x0.12); the M1-trans bounce drop was this. Not root-caused: harness start order, or the
         learned-light path with ambient on from a scene's first frame (also a game start / RT back after 10 s off). Next:
         slot_light before frame 0 or in parallel, then a never-DI test with a forced 11 s gap after frame 5; pdr_ reads the
-        helper side. pdr_ (11-27): REAL IN GAME. A re-made helper scene starts with zeroed learned light (rt_d3d12.hpp:6285-6302) and never learns while PT Ambient runs on the game's sun (rt_cache_fill:86, rt_cache_resolve:22-25 / :45) -> grey far bounce (rt_path.hlsli:349-350), KeptShade 0 (:366-369), no sky (:537-543); the add-on's 150-frame warm-up (rt_core.hpp:808, :3834-3835) restarts only after 30 frames without a Light Bounce, not on a helper device change (:4505-4527). Hits after a lost scene (GPU fault / hang / failed request; medium) for the rest of the battle until a PT toggle (the rt_path.hlsli:365 'ATN: too dark until toggled' may be this), and after an idle release with <= 30 presents in >= 10 s (low); game start / loading / RT off-on are fine at >= 3 fps. Fix (bug fix, always on): llf_ (Opus High, branch llf_1127, rt_core.hpp only: reset the warm-up on a device change / re-made scene; ~2.5 s of the game's ambient after a restart) STARTED 08:5x, its GPU proof job (>= 11 s forced gap after frame 5) waits for a GPU waiter slot; later option: the helper carries the 5 light_kept_ values (rt_d3d12.hpp after ptf_). Owner: llf_ (fix) / next harness writer after m1i_ (slot_light before frame 0, di_mode.hpp)
+        helper side. pdr_ (11-27): REAL IN GAME. A re-made helper scene starts with zeroed learned light (rt_d3d12.hpp:6285-6302) and never learns while PT Ambient runs on the game's sun (rt_cache_fill:86, rt_cache_resolve:22-25 / :45) -> grey far bounce (rt_path.hlsli:349-350), KeptShade 0 (:366-369), no sky (:537-543); the add-on's 150-frame warm-up (rt_core.hpp:808, :3834-3835) restarts only after 30 frames without a Light Bounce, not on a helper device change (:4505-4527). Hits after a lost scene (GPU fault / hang / failed request; medium) for the rest of the battle until a PT toggle (the rt_path.hlsli:365 'ATN: too dark until toggled' may be this), and after an idle release with <= 30 presents in >= 10 s (low); game start / loading / RT off-on are fine at >= 3 fps. Fix (bug fix, always on): llf_ (Opus High, branch llf_1127, rt_core.hpp only: reset the warm-up on a device change / re-made scene; ~2.5 s of the game's ambient after a restart) DONE (f338d5a23 on llf_1127, ~15 min: path_frames = 0 AND path_ambient_on = false on a device change, rt_core.hpp:4505-4510, so no frame skips the game's AO without RT ambient; covers lost scene / idle release / stalled resume, each ++rt_device; tw_path_frames case 5 fails before, 1-5 pass after; gated amd64 twattila + twwarhammer3, x86 twattila + twrome2 + twthronesofbritannia: 61 warnings; cost ~2.5 s of the game's ambient + 1 frame). Its proof (llf_\proof_spec.md, 5 arms at 4K) needs HARNESS_GAP + HARNESS_AMBIENT_RESTART -> hw2_ (Opus High, harness writer after m1i_; also slot_light before frame 0 + rrr_ S1 / S2) STARTED 09:1x; then the GPU proof, reviews (Opus xHigh + Sonnet High), merge; later option: the helper carries the 5 light_kept_ values (rt_d3d12.hpp after ptf_). Owner: hw2_ (switches, slot_light) -> coord (proof, reviews, merge)
         - [ ] LAMP 1 MM RULE (pdr_ S5, 11-27): rt_path.hlsli:1787 (Torch and Fire Light / Shadows from the Light Bounce) reads a
         lamp within 1 mm as UNLIT with 1e-3f, the opposite of rt_lights.cs_6_5.hlsl:85 and (after pdf_1127) DiVisible. Pick one
         rule (likely lit, as the bits) + one named constant; DXIL / 4K harness check. Owner: next rt_path writer
@@ -18291,6 +18289,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         GetThreadSelectedCpuSets) have no test; the N1 'render thread %lu keeps the CPU sets it has' line can print after the
         render thread has ended (should be NO_THREAD); test yield_line prefix NIT. Owner: next battle_core.hpp writer (after C8
         W4p)
+        - [ ] PTLAS X19 (ptf_ 11-27, new, also today): under PTLAS 2 of 3 CPU-instanced mesh instances are missing (z -0.50 /
+        0.75; 2.00 passes); not the per-request rewrite, not the partitions (two reverted experiments); ptrs_'s hint: a static
+        BLAS reused at one address keeps old bounds, check BLAS build order vs PTLAS write order. With B23 it still separates
+        PTLAS from TLAS (P2 measures both). Needs a harness dump of first-hit InstanceID + distance per ray kind (harness writer
+        after hw2_). Owner: next PTLAS agent (after ptf_'s merge)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
