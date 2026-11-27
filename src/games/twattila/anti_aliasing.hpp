@@ -80,7 +80,9 @@ enum class Method : uint8_t {
 constexpr bool Upscales(Method method) { return method >= Method::DLAA; }
 
 // A method that jitters the main view's camera and keeps its camera and depth each frame: SMAA T2x, TAA, an upscaler.
-constexpr bool Temporal(Method method) { return method == Method::SMAA_T2X || method == Method::TAA || Upscales(method); }
+constexpr bool Temporal(Method method) {
+  return method == Method::SMAA_T2X || method == Method::TAA || Upscales(method);
+}
 
 // The bridge's upscaler (dlaa_bridge.h's UPSCALER_*) for an upscaling method; DLSS for the others.
 constexpr uint32_t UpscalerOf(Method method) {
@@ -142,7 +144,8 @@ struct Settings {
   // it is (Apply; aaf_ 11-26), FSR and XeSS too (aaf3_ 11-27); Ray Reconstruction stays at `frame_gamma`.
   bool linear_frame = false;
   // A host wants MainFocalPixels under every method (Small Soldiers as Sprites): the camera uploads are watched and the
-  // display's size read under Off, SMAA and CMAA2 too.
+  // display's size read under Off, SMAA and CMAA2 too. ours: TAA's camera path (JitterCamera, OnSunDraw's main-view
+  // test) kept for one more caller; nothing jittered or written back outside a temporal method (spr_ 3.2).
   bool main_focal = false;
 };
 
@@ -679,9 +682,9 @@ inline bool WriteGuides(ID3D11DeviceContext* native, const std::array<ID3D11Shad
   return true;
 }
 
-// The sun light draws (the main view's lighting): the main view's focal (any method, any sample count); under a temporal
-// method also the camera they read (one the uploads noted) and the depth-stencil buffer (the display's size, one sample)
-// for this frame.
+// The sun light draws (the main view's lighting): the main view's focal (any method, any sample count); under a
+// temporal method also the camera they read (one the uploads noted) and the depth-stencil buffer (the display's size,
+// one sample) for this frame.
 constexpr auto OnSunDraw = []<typename T, typename Context>(
                                Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
@@ -708,11 +711,11 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     texture->GetDesc(&desc);
     const std::unique_lock lock(runtime.mutex);
     const auto upload = std::ranges::find(runtime.uploads, camera.Get(), &Upload::buffer);
-    const bool main_view = upload != runtime.uploads.end() && upload->camera.valid && desc.Width == runtime.display_width
-                           && desc.Height == runtime.display_height;
+    const bool is_main_view = upload != runtime.uploads.end() && upload->camera.valid
+                              && desc.Width == runtime.display_width && desc.Height == runtime.display_height;
     // deviation: from TAA's rule (one-sample depth), the main view's focal is kept under the game's MSAA, because a
     // projection needs no 1-sample depth.
-    if (main_view) {
+    if (is_main_view) {
       runtime.focal_projection = upload->camera.projection[5];
     }
     const bool temporal = Temporal(runtime.settings.method);
@@ -724,7 +727,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
         runtime.logged_msaa = true;
       }
     }
-    if (!main_view || desc.SampleDesc.Count != 1 || !temporal) return {};
+    if (!is_main_view || desc.SampleDesc.Count != 1 || !temporal) return {};
     if (runtime.camera_frame != runtime.frame) {
       runtime.previous_camera = runtime.camera;
       runtime.camera_frame = runtime.frame;
@@ -1847,7 +1850,8 @@ inline bool MainCamera(ID3D11Buffer* buffer, internal::Camera* camera) {
 // method and no Settings::main_focal).
 inline float MainFocalPixels() {
   const std::shared_lock lock(internal::runtime.mutex);
-  return std::max(0.f, static_cast<float>(internal::runtime.display_height) * internal::runtime.focal_projection * 0.5f);
+  const auto& runtime = internal::runtime;
+  return std::max(0.f, static_cast<float>(runtime.display_height) * runtime.focal_projection * 0.5f);
 }
 
 // Whether the game's MSAA drew the main view's sun light this frame or the last (a temporal method selected): TAA, SMAA T2x,

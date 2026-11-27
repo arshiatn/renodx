@@ -14,6 +14,9 @@
 //    off, or no camera yet: the game's bits; on: no farther than where a soldier of its size is N pixels tall (h x focal /
 //    d = N at random 0.5), the game's spread kept, nearer game distances untouched, sizes past 3 as 0; printed: where
 //    each size switches at 4K with a 40 degree vertical field of view.
+// 5b. The focal through anti_aliasing.hpp's own path on WARP (Update, the map / unmap events, one sun light draw) under
+//    every method at 1 and 4 samples, the row on and off; CONTROLs: no watch with the row off, nothing jittered outside
+//    a temporal method (and TAA's bytes do change), no main view -> no focal, no stale focal, the MSAA warning TAA's.
 // 6. Two Shadow Cascades Under Rays (graphics_hooks.hpp shadow_map) over the shadow setup's code as empire.retail.dll ships
 //    it (read from disk: tests.exe [empire.retail.dll]; no relocation in these bytes), in a page of ours as the found code:
 //    its pattern once; off, Set writes Shadow Map Size's bytes alone, as before the row (2x: the six sizes; 1x: the game's
@@ -297,6 +300,8 @@ int main(int argc, char** argv) {
   //     back buffer's viewport), the buffer and a depth target bound, one sun light draw, then MainFocalPixels.
   {
     namespace taa = twattila::anti_aliasing;
+    // Nothing left in TAA's camera by part 5 (a base run pokes its projection there).
+    aa.camera = {};
     using Microsoft::WRL::ComPtr;
     using Method = taa::Method;
     int failed = 0;
@@ -320,8 +325,10 @@ int main(int argc, char** argv) {
     commands.native = context;
     // Attila's camera buffer (36 registers).
     constexpr size_t CAMERA_FLOATS = 36 * 4;
-    const D3D11_BUFFER_DESC camera_desc = {.ByteWidth = CAMERA_FLOATS * 4, .Usage = D3D11_USAGE_DYNAMIC,
-                                           .BindFlags = D3D11_BIND_CONSTANT_BUFFER, .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
+    const D3D11_BUFFER_DESC camera_desc = {.ByteWidth = CAMERA_FLOATS * 4,
+                                           .Usage = D3D11_USAGE_DYNAMIC,
+                                           .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
+                                           .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
     ComPtr<ID3D11Buffer> camera;
     CHECK(SUCCEEDED(d3d->CreateBuffer(&camera_desc, nullptr, camera.GetAddressOf())));
     static const twattila::light_bounce::SunDraw SUN = {.shader_hash = 0x5b5b5b5bu, .camera_slot = 1};
@@ -359,15 +366,21 @@ int main(int argc, char** argv) {
       taa::Update(&swapchain, {.method = Method::OFF});
       // DLSS below 100%: it answered last frame, so this frame scales (and jitters).
       if (frame.render_scale < 1.f) aa.upscaled_frame = aa.frame;
-      taa::Update(&swapchain, {.method = frame.method, .render_scale = frame.render_scale, .main_focal = frame.main_focal});
+      // TAA / SMAA T2x ran last frame: this frame jitters under them (so a jitter outside them would show in the bytes).
+      aa.applied_frame = aa.frame;
+      taa::Update(&swapchain,
+                  {.method = frame.method, .render_scale = frame.render_scale, .main_focal = frame.main_focal});
       aa.upscaled_frame = UINT64_MAX;
+      aa.applied_frame = UINT64_MAX;
       uploaded = camera_bytes(frame.perspective, static_cast<float>(WIDTH / frame.viewport_divisor),
                               static_cast<float>(HEIGHT / frame.viewport_divisor), frame.tan_half);
       void* data = uploaded.data();
       const reshade::api::resource resource = {reinterpret_cast<uint64_t>(camera.Get())};
-      taa::internal::OnMapBufferRegion(&mock_device, resource, 0, UINT64_MAX, reshade::api::map_access::write_discard, &data);
+      taa::internal::OnMapBufferRegion(&mock_device, resource, 0, UINT64_MAX, reshade::api::map_access::write_discard,
+                                       &data);
       taa::internal::OnUnmapBufferRegion(&mock_device, resource);
-      const D3D11_TEXTURE2D_DESC depth_desc = {.Width = WIDTH / frame.depth_divisor, .Height = HEIGHT / frame.depth_divisor,
+      const D3D11_TEXTURE2D_DESC depth_desc = {.Width = WIDTH / frame.depth_divisor,
+                                               .Height = HEIGHT / frame.depth_divisor,
                                                .MipLevels = 1, .ArraySize = 1, .Format = DXGI_FORMAT_D24_UNORM_S8_UINT,
                                                .SampleDesc = {.Count = frame.samples}, .Usage = D3D11_USAGE_DEFAULT,
                                                .BindFlags = D3D11_BIND_DEPTH_STENCIL};
@@ -378,7 +391,8 @@ int main(int argc, char** argv) {
           .ViewDimension = (frame.samples > 1 ? D3D11_DSV_DIMENSION_TEXTURE2DMS : D3D11_DSV_DIMENSION_TEXTURE2D)};
       if (FAILED(d3d->CreateTexture2D(&depth_desc, nullptr, depth.GetAddressOf()))
           || FAILED(d3d->CreateDepthStencilView(depth.Get(), &view_desc, depth_view.GetAddressOf()))) {
-        std::printf("FAIL 5b: no %ux%u depth target with %u samples on WARP\n", depth_desc.Width, depth_desc.Height, frame.samples);
+        std::printf("FAIL 5b: no %ux%u depth target with %u samples on WARP\n", depth_desc.Width, depth_desc.Height,
+                    frame.samples);
         ++failed;
         return 0.f;
       }
@@ -391,9 +405,13 @@ int main(int argc, char** argv) {
       context->OMSetRenderTargets(0, nullptr, nullptr);
       return taa::MainFocalPixels();
     };
-    const auto focal_is = [](float focal_pixels, float expected) { return std::abs(focal_pixels - expected) < 1e-3f * EXPECTED; };
+    const auto focal_is = [](float focal_pixels, float expected) {
+      return std::abs(focal_pixels - expected) < 1e-3f * EXPECTED;
+    };
     const auto msaa_warnings = [] {
-      return std::ranges::count_if(logged, [](const std::string& line) { return line.find("the game's MSAA is on") != std::string::npos; });
+      return std::ranges::count_if(logged, [](const std::string& line) {
+        return line.find("the game's MSAA is on") != std::string::npos;
+      });
     };
     constexpr std::array<Method, 3> SPATIAL = {Method::OFF, Method::SMAA, Method::CMAA2};
     constexpr std::array<Method, 5> TEMPORAL = {Method::SMAA_T2X, Method::TAA, Method::DLAA, Method::FSR, Method::XESS};
@@ -405,9 +423,12 @@ int main(int argc, char** argv) {
     }
     // Fails before the fix: the row on under Off / SMAA / CMAA2 (one sample): the focal, the uploaded bytes untouched
     // (CONTROL: nothing jittered), the camera's log line.
+    const auto bytes_untouched = [&] {
+      return std::memcmp(uploaded.data(), camera_bytes(true, WIDTH, HEIGHT, TAN_HALF_FOV).data(), sizeof(uploaded)) == 0;
+    };
     for (const Method method : SPATIAL) {
       EXPECT(focal_is(run({.method = method, .main_focal = true}), EXPECTED));
-      EXPECT(std::memcmp(uploaded.data(), camera_bytes(true, WIDTH, HEIGHT, TAN_HALF_FOV).data(), sizeof(uploaded)) == 0);
+      EXPECT(bytes_untouched());
     }
     EXPECT(std::ranges::any_of(logged, [](const std::string& line) {
       return line.find("Anti-aliasing: the main view's camera found.") != std::string::npos;
@@ -427,6 +448,9 @@ int main(int argc, char** argv) {
     }
     EXPECT(focal_is(run({.method = Method::DLAA, .render_scale = 0.5f}), EXPECTED));
     EXPECT(taa::RenderSize()[1] < HEIGHT);  // CONTROL: it did scale
+    // CONTROL: TAA's upload IS jittered (the bit-identical check above can fail).
+    EXPECT(focal_is(run({.method = Method::TAA}), EXPECTED));
+    EXPECT(!bytes_untouched());
     // Fails before the fix: the temporal methods under the game's MSAA: the focal kept (a wider field of view, tan 0.5, so a
     // focal left from the one-sample frames above cannot pass), GameMsaa true, the warning, and CONTROL: no TAA camera this
     // frame (TAA's one-sample rule stays).
@@ -435,6 +459,8 @@ int main(int argc, char** argv) {
       EXPECT(taa::GameMsaa());
       EXPECT(aa.camera_frame != aa.frame);
     }
+    // A temporal method watches without the row too: TAA at 4 samples, the row off, keeps the focal.
+    EXPECT(focal_is(run({.method = Method::TAA, .samples = 4, .tan_half = 0.5f}), HEIGHT / (2.f * 0.5f)));
     EXPECT(msaa_warnings() == warnings_before + 1);
     // CONTROL: no main view, no focal: an orthographic camera, a half-size viewport, a half-size depth target.
     for (const Method method : {Method::OFF, Method::TAA}) {
@@ -451,7 +477,8 @@ int main(int argc, char** argv) {
     }
     taa::Update(&swapchain, {.method = Method::OFF});
 #undef EXPECT
-    std::printf("5b. main view's focal: %d failed (row on under Off / SMAA / CMAA2 and the game's MSAA: %.1f px at %ux%u)\n",
+    std::printf("5b. main view's focal: %d failed (row on under Off / SMAA / CMAA2 and the game's MSAA: %.1f px at "
+                "%ux%u)\n",
                 failed, EXPECTED, WIDTH, HEIGHT);
     if (failed != 0) return 1;
   }
