@@ -629,7 +629,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - U6 PART 1 MERGE (origin/u6f_fog bc623e2d3) together with part 2. Owner: coord (a ... | coord (after steps 3 + 5) SLOTS CLAIMED (coord): fog u85-u86
 - U6 PART 2 MUSTS (u6f_part1_review.md): P1 FOG_HISTORY = shade ran last trace at ... | u6f_ (part 2, after steps 3 + 5) pdi5_ STATUS (evening): G2 
 - D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | d11s_ d11s_ DONE (evening
-- FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | coord (keep current) / ATN (revive) d11r_ REVIEW: GO WITH CH
+- FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | coord Owner: coord (keep current) / ATN (revive) d11r_ REVIE
 - d11 NITs (64 vs 8 OM slots check on the first dump, static_cast<void>, stoull gu ... | coord
 - ATN'S ANSWERS 11-26 ~10:5x (to the overnight report): (1) P3 dark + P5 rule line ... | ATN (Q2) / coord (G4 flip)
 - ATN 11-26 ~11:5x (before work): (a) 'Always use 4K for everything' -> RULE (memo ... | ATN (paste) / coord
@@ -16455,6 +16455,40 @@ heading text are in HANDOFF_ARCHIVE.md)
         parked packages -> KRCF A/B, L2B-32, PK8 A-32, 4b-32). Top risks: untested 32-bit HEAD, 4 GB (37 MB largest
         free block once), no 32-bit CPU gate. RULE FOR 4b's S8 IMPLEMENTER (b32_): keep the pack + composite shared,
         gate only the port's depth format (keeps 4b-32 cheap).
+        b32_ REV 3 11-27 17:4x (backup_32bit.md 2.8 / 2.9; 61 items: 17 shared, 6 need a 32-bit port, 30 moot /
+        blocked, 8 runs to redo; + 11 parked 32-bit leftovers from the audit). No 32-bit class moved today. Lines:
+        F12 Denoise Before Tone Mapping + below 100 % (both merged: c45733245, 1df65fee1; addon.cpp ATTILA64 row,
+        anti_aliasing.hpp): 32-bit = B; needs the gate lifted + a 32-bit RR feed check + VA; first proof one 32-bit
+        RR start; effort ~0.5 day;
+        F13 C8 wave 2 rows on the port, B0 / W1p-W4p / W1a-W4a (attila64_plugin rows 3-9 + addon.cpp ATTILA64
+        blocks): 32-bit = C; needs nothing (the same rows ship on 32-bit); first proof done at each merge (x86
+        build, 32-bit page dump 389 rows SAME); effort 0;
+        F14 C8 N1 notes for Engine Performance Fix's FrameBridge upscaling + waving flags (addon.cpp ATTILA64,
+        start_files.hpp): 32-bit = B (small), only if a 32-bit release ships beside PerfFix 7.2-7.5 and ATN asks;
+        needs the 32-bit PerfFix's file names + off rule and the note outside the gate; first proof x86
+        tw_unit_shadows cases over 32-bit files; effort 1 round;
+        F15 PK1-64 K1 + K2 (addon.cpp ATTILA64: Fewer Constant Uploads on by default, Fewer Driver Waits hidden;
+        test\tw_injection_buffers case 8): 32-bit = B, the same lever is the parked fca_pk1 (F5); needs its revive;
+        first proof x86 tw_injection_buffers cases 1-8, then fca_pk1's trap runs; effort 0.5-1 day;
+        F16 PK5-64 Faster Game CPU Code (attila64_plugin game_code.hpp: the sprite rows' stub at 0x32d9de5 written,
+        the half's site 0x3009b90 check only): 32-bit = C; needs nothing (C01 items 2 / 7 ship on 32-bit); effort 0;
+        F17 PK9 Effects on All Cores (attila64_plugin row 11, walk hook 0x32fbf60; add-on row P9-4 in review):
+        32-bit = C; needs nothing (32-bit has its own L1 + Automatic L1 14be1b950); effort 0;
+        F18 PK6-64 tooling (a64_ab.ps1 P6a1 / P6a2, P6b, P6c): 32-bit = C; needs nothing; 32-bit still lacks the
+        step clock + final-state hash (backup_32bit.md 8 A1, F8); effort 0;
+        F19 the audit's 11 parked 32-bit leftovers = backup_32bit.md 2.9 H1-H11 (render_mt after-the-batch items,
+        the 32 MB op arena, engine_code hardening, the rigid-pool read, b3t_ tests T1 / T3, the NIT backlog, v170
+        release items, the exit drain raise rule, C / CR4 / EF4b carry-overs, ATN's 2 extra 11-19 runs, the bench
+        close race by stack): 32-bit = B 9 / D 2; needs a revive; steps in its section 5.
+        REFRESHED: F4 now 400 commits since v169 (173 on 11-25), incl. the 11-27 shared picture changes (FSR /
+        XeSS linear feed in HDR, the AO warm-up rule, PT Ambient learning again): the first 32-bit smoke also looks
+        at one FSR or XeSS picture in HDR and one Path-Traced Ambient start; F7 as built: L2B merged (87bb99dfb +
+        77e424509), PK8 Stage A on p8a_1127 b03587490 and Stage B steps 1a-4 on p8b_1127 2009923c6, both not merged;
+        costs unchanged (L2B-32 ~1.5-2 days, PK8 A-32 ~3-4 days, Stage B blocked on x87); F10 as built: PK2P's
+        render part d4afc29da, the port row hidden until measured (2c537c8b9); 32-bit = an A/B of the existing Keep
+        Render Core Free row, after the port's own S-C number.
+        SECOND PASS due after PK8 Stage B's FINAL (backup_32bit.md 8 A4: P9-4 / P9-1, W-A3, Stage B 5-8, S5e, T0 /
+        CP, M2 memcpy design, K3 / K4, RT-on-64 steps, the batch's 64-bit numbers). Owner: coord
         Owner: coord (keep current) / ATN (revive)
         d11r_ REVIEW: GO WITH CHANGES (designs\d3d11_pass_speed_review.md; hand-back d11r_review_handback.md). MUST
         M1 per-event copies on change; M2 CPU state dump + CB equality; M3 full own-state list; M4 Bend double-write
@@ -17940,7 +17974,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         SAME, a64 page = the new row + index shift; 2 mutations caught; gated amd64 + x86 exit 0. Deviation to rule on:
         Off leaves the bits alone at the first present (as Keep Render Core Free). It also edited the shared
         tools\tw\page_dump\dump_a64.cpp (outside its file list; backup .bak_p94_). Hardware F7 -> the batch (run.ps1
-        has no WARP mode). Review rp94_ (Opus xHigh) STARTED 18:3x. fx4b_ W4b DONE 18:0x (28 of 100 min; fx4b_1127: X18 5c3951ce1 rt_cache_fill_omm,
+        has no WARP mode). Review rp94_ (Opus xHigh) STARTED 18:3x. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
+        backup_32bit.md Rev 3 (2.8 rows L1-L13 + G9-G11, 2.9 audit rows H1-H11; no 32-bit class moved); FROZEN 32-BIT
+        box lines F13-F19 + refreshed F4 / F7 / F10 / F12 pasted; the short list tools\tw\attila64\backup_32bit.md
+        got its lines (sdku_ now merged); finding: none of 31 hand-backs carried a 32-bit line (the COMMON rule asks
+        for it again); second pass after Stage B's FINAL. fx4b_ W4b DONE 18:0x (28 of 100 min; fx4b_1127: X18 5c3951ce1 rt_cache_fill_omm,
         X14 28d186dbd BakeCutoff, X10 702792bc6, X09 c5f73e5cd; controls byte-identical; gated amd64 / x86 / Tales
         exit 0; handoff_plan\handbacks\fx4b__handback.md) -> resumed for X18's rt_reference / rt_probe twins: DONE 17:39 (10 of 20 min; cb5d5c68a: rt_reference.hlsli
         4 sites on SCENE_QUERY, rt_probe micromap query under OPACITY_MICROMAPS, build.ps1 rt_probe_omm +
