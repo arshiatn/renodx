@@ -48,6 +48,9 @@ int wmain(int argc, wchar_t** argv) {
   char exe_dir[MAX_PATH];
   GetModuleFileNameA(nullptr, exe_dir, MAX_PATH);
   *std::strrchr(exe_dir, '\\') = '\0';
+  // The second copy's case below writes a ReShade.ini beside this exe for one init: a run that ended in between left
+  // it, and with it the first init here would read that case's key.
+  DeleteFileA((std::string(exe_dir) + "\\ReShade.ini").c_str());
   LoaderApi api = MakeApi(exe_dir, image.end);
   loader = &api;
   const auto at = [](uintptr_t address) { return reinterpret_cast<uint8_t*>(address); };
@@ -428,6 +431,29 @@ int wmain(int argc, wchar_t** argv) {
     Expect(CopyFileW(argv[1], copy.c_str(), FALSE) != FALSE, "engine rows: a copy of the plugin DLL");
     return LoadPlugin(copy.c_str());
   };
+  // An engine row that the game's start turned off stays off at a later call of its hook: the row no longer reads
+  // its switch, so its lane does not go from "code differs" to "off". The two hooks' ways in are read from the sites'
+  // jumps (fake_loader.hpp FakeHook: the way in 16 bytes after the trampoline's start), and each trampoline starts
+  // with a ret from then on, so the game's function a hook passes the call to is that ret.
+  const auto engine_ways_in = [&] {
+    std::array<uintptr_t, 2> ways_in = {SITES[LABEL_PAIRS_ENTRY].address, SITES[LABEL_CONTACT_ENTRY].address};
+    for (uintptr_t& way_in : ways_in) {
+      int32_t to_way_in = 0;
+      std::memcpy(&to_way_in, at(way_in + 1), sizeof(to_way_in));
+      way_in += 5 + to_way_in;
+      *at(way_in - 16) = 0xc3;
+    }
+    return ways_in;
+  };
+  const auto hooks_leave_the_lanes = [&](const Plugin& plugin, const std::array<uintptr_t, 2>& ways_in) {
+    plugin.block->core_wanted.fetch_and(~(CORE_STEP | CORE_SPLIT));
+    std::array<uint8_t, 0x20> dummy_manager = {};
+    for (const uintptr_t way_in : ways_in) {
+      reinterpret_cast<PairsFn>(way_in)(dummy_manager.data());
+    }
+    return plugin.block->engine_status.load()
+           == ((uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT) | (uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_SPLIT_SHIFT));
+  };
   // The battle step row reads the game's code again at the game's start: one byte of that code changed between the
   // copy's init and its game start. The contact split row the same, here with its install key 1 (a ReShade.ini beside
   // this exe for the one init): the row's bit is set and its lane waits for the first tick; its changed byte is the
@@ -461,6 +487,8 @@ int wmain(int argc, wchar_t** argv) {
                          | (uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_SPLIT_SHIFT))
                  && Logged("renodx_attila64: contact split: off (game code differs at 0x803e70+0x0)"),
              "contact split: code changed after init is found at the game's start, with the row's line and the place");
+      Expect(hooks_leave_the_lanes(second, engine_ways_in()),
+             "engine rows: a row off for changed code stays off at its hook's next call");
     }
   }
   // A byte of each engine row's own jump changed between init and the game's start: the site's line, the row off
@@ -473,6 +501,7 @@ int wmain(int argc, wchar_t** argv) {
         const std::scoped_lock lock(log_mutex);
         log_lines.clear();
       }
+      const std::array<uintptr_t, 2> ways_in = engine_ways_in();
       *at(SITES[LABEL_PAIRS_ENTRY].address + 1) ^= 1;
       *at(SITES[LABEL_CONTACT_ENTRY].address + 1) ^= 1;
       third.game_started(&api);
@@ -484,6 +513,8 @@ int wmain(int argc, wchar_t** argv) {
                  && Logged("renodx_attila64: site CONTACT_ENTRY changed after we patched it")
                  && !Logged("battle step: ") && !Logged("contact split: "),
              "engine rows: a site changed after init turns its row off at the game's start, without a code line");
+      Expect(hooks_leave_the_lanes(third, ways_in),
+             "engine rows: a row off for a changed site stays off at its hook's next call");
     }
   }
 
