@@ -979,7 +979,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
-- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | 11-27 GPU wave
+- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | coord (FSR fix after rri_) / ATN (XeSS yes / no)
 - RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | coord (briefs)
 - A/B LOOKS WAIT (ATN 11-27): every look / A/B check (AA feed, O2 thin shadows at ... | ATN (end of plans)
 - GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds a ... | coord
@@ -989,7 +989,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - O2 AT THE DEFAULT FOLIAGE 0.5 (o2_ handback:47-48): the 1/3 row stays at 0.507x, ... | ATN (accept the number) -> next SSS designer
 - O2 NOT TIMED (o2_ handback:91): torch light mode, 960 / 1920 samples, the 1920-s ... | coord GPU plan (5090 parts)
 - O2d HOST CONTRACT (o2_ handback:83-86): O2d is exact only while no host marks de ... | next SSS writer
-- AA FEED: THRONES HDR t00 IS LINEAR was taken from aaf_ (aaf2_ handback:120), not ... | game batch (aaf3_ lists it)
+- AA FEED: THRONES HDR t00 IS LINEAR was taken from aaf_ (aaf2_ handback:120), not ... | game batch (aaf3_'s line: 1 Thrones x86 start, RENODX_TW_PAS
 - AA FEED: CMAA2 ON THE GPU (aaf2_ handback:122): only its CPU model was checked. ... | aaf3_ if the harness runs CMAA2, else the next AA agent
 - tw_romer_dlaa NOT RUN (aaf2_ handback:87). Owner: coord (next Rome Remastered bu ... | coord (next Rome Remastered build gate, low)
 - FLIP PNGs: no bin-to-PNG step for reference\flip_tool.py from the trimmed OMM du ... | tools agent
@@ -1029,6 +1029,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK8 STAGE B DESIGN DONE (pk8b_ Fable 5.2 xHigh 11-27, tools\tw\round_notes\attil ... | lr4_ (last review) -> ATN
 - LAST REVIEW OF THE 64-BIT DESIGNS (cpu_plan_64_map.md 6 items 7 / 12: after Stag ... | lr1_
 - LAST REVIEW OF THE 64-BIT DESIGNS (cpu_plan_64_map.md 6 items 7 / 12: after Stag ... | ?
+- AA FEED AT 67 % IN THE SCENE PATH (aaf3_): the harness scene path renders and ev ... | next harness writer (after rri_ / the m1 implementer)
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17739,7 +17740,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         brighter mid-tones under K / L / M; SMAA T2x root edges; CMAA2 Low misses a 0.6-stop edge at t00 0.5. Not verified:
         game picture (ATN A/B), Thrones' t00 linear (from aaf_), CMAA2 on GPU (CPU model). Owner: ATN (A/B after all plans)
         - [ ] AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both take linear HDR (FFX HDR flag,
-        XeSS default) so likely K's mismatch -> 4K measurement like aaf_'s, then ATN's word. Owner: 11-27 GPU wave
+        XeSS default) so likely K's mismatch -> 4K measurement like aaf_'s, then ATN's word. MEASURED (aaf3_ 11-27, testbin\scratch\aaf3_\handback.md, 28 runs at 4K, FSR 3.1.6 / XeSS 2.0.2): both get
+        t00^2.2 like K did; t00 darks below ~4.5e-4 reach them as 0 (RGBA16F) at every scale. Scene path 100 %, today ->
+        linear (truth): FSR dark PQ 12.5 -> 9.5 (5.6), dark noise 0.0194 -> 0.0022, u1 1.34 -> 0.96, fire tenth 381.8 -> 361.8
+        (351.6), edge 110.7 -> 85.7 (72.4); XeSS dark 9.4 -> 6.3, noise 0.0140 -> 0.0016, fire 364.5 -> 353.9, edge 90.0 ->
+        72.5, step worst 3.5 -> 1.6 %, BUT u1 mean 1.04 -> 0.78 and noise 0.024 -> 0.032 (the cost, like K's 0.96 -> 0.81).
+        Upscaler test 100 / 67 %: FSR linear within 3 % (today 15-20 % too bright); XeSS linear 6-12 % darker on bars /
+        texture. Recommendation: FSR linear = a bug fix (better on every row); XeSS linear with the u1 cost = ATN's call. The
+        fix (not made): drop the !Upscales(method) exclusion in anti_aliasing.hpp Apply + re-run tw_aa_frame_gamma; it waits
+        for rri_ (anti_aliasing.hpp's writer now). Owner: coord (FSR fix after rri_) / ATN (XeSS yes / no)
         - [x] rrbi_ RUNNER FIX (coord 11-26): gpu_job_g1.ps1 did not clear HARNESS_SR between runs (aaf2_'s first RR arms
         inherited preset M; set aside in results_invalid\, re-run alone); now in its clear list (backup .bak_coord1126).
         aaf_'s rows unaffected (every line set it). Owner: done
@@ -17810,8 +17819,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] O2d HOST CONTRACT (o2_ handback:83-86): O2d is exact only while no host marks depth negative with foliage 0; an
         assert, test or comment at the host contract. Owner: next SSS writer
         - [ ] AA FEED: THRONES HDR t00 IS LINEAR was taken from aaf_ (aaf2_ handback:120), not checked: one Thrones pass dump.
-        Owner: game batch (aaf3_ lists it)
-        - [ ] AA FEED: CMAA2 ON THE GPU (aaf2_ handback:122): only its CPU model was checked. Owner: aaf3_ if the harness runs
+        Owner: game batch (aaf3_'s line: 1 Thrones x86 start, RENODX_TW_PASS_DUMP=<folder>, HDR, Gamma Correction default, a battle /
+        replay, trigger 'renodx_pass_dump_now' = '1 thrones_t00'; pass = linear within 1 % on mid grey + the 2.0 control
+        rejected) unless thg0_'s CPU check from source (rrbi_'s g0_check.py on Thrones' tone mapper, 11-27) settles it
+        - [ ] AA FEED: CMAA2 ON THE GPU (aaf2_ handback:122): only its CPU model was checked. aaf3_ 11-27: the rt_harness has no CMAA2 /
+        SMAA path; the six CMAA2 compute passes run only on the game's D3D11 device; a GPU row needs a new D3D11 driver for
+        the full chain. Owner: aaf3_ if the harness runs
         CMAA2, else the next AA agent
         - [ ] tw_romer_dlaa NOT RUN (aaf2_ handback:87). Owner: coord (next Rome Remastered build gate, low)
         - [ ] FLIP PNGs: no bin-to-PNG step for reference\flip_tool.py from the trimmed OMM dumps (omr_ handback:87). Owner: tools
@@ -17955,6 +17968,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         real code on c8b0_1127: lr1_ L2B + PK2P (-> last_review_l2b_pk2p.md, + an L2B W2 checklist), lr2_ C8 wave 2 + PK6-64 +
         PK1-64, lr3_ PK5-64 + PK9, lr4_ PK8 Stage A + B, lr5_ RT-on-64 + shader_hash_64 + menu_stutter_1s + PK4-64 +
         backup_32bit cross-check (all in attila64\designs\last_review_*.md). Then L2B W2 (engine change -> Fable 5.2 Medium).
+        - [ ] AA FEED AT 67 % IN THE SCENE PATH (aaf3_): the harness scene path renders and evaluates at full size
+        (tw_rt_harness.cpp ~4026; HARNESS_RR_SCALE only in the switch test), so aaf_'s columns exist at 100 % only; a 67 % arm
+        needs: colour rendered + jitter-sampled at the input size, Evaluate given that size, the camera matrix passed for FSR
+        (zero today when HARNESS_SR > 0). Owner: next harness writer (after rri_ / the m1 implementer)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
