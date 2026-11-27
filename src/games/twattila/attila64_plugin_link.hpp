@@ -95,6 +95,13 @@ constexpr std::array<char, N> Narrow(const wchar_t (&wide)[N]) {
 }
 inline constexpr auto VALUES_SECTION = Narrow(plugin::INI_VALUES_SECTION);
 inline constexpr auto SOL_FRAME_CAP_KEY = Narrow(plugin::INI_SOL_FRAME_CAP);
+inline constexpr auto SHADOW_MAP_SIZE_KEY = Narrow(plugin::INI_SHADOW_MAP_SIZE);
+// The scales_active bits of each scale row's hooks: set only while the row is offered (a refused row's hook may stay
+// in, the plugin's main.cpp).
+inline constexpr std::array<std::pair<plugin::Row, uint32_t>, 2> ROW_SCALES = {{
+    {plugin::ROW_UNIT_LOD, (1u << plugin::SCALE_MODEL_DETAIL) - (1u << plugin::SCALE_UNIT_LOD)},
+    {plugin::ROW_MODEL_DETAIL, 1u << plugin::SCALE_MODEL_DETAIL},
+}};
 
 // A restart-only engine value a row writes, by its slot's index: the row's Tweak points `value` at `bits`, where
 // engine_tweaks' Apply writes the slider's bits; the restart mirror copies them, clamped, into ReShade.ini.
@@ -117,6 +124,13 @@ static std::atomic_bool values_pending = false;
 static std::optional<bool> sol_frame_cap_at_start;
 static std::optional<int> sol_frame_cap_mirrored;
 static std::atomic_bool sol_frame_cap_pending = false;
+// Shadow Map Size the same way: the key as this start read it (a value the plugin refuses: 0, the game's sizes), the
+// key as last read or written, and whether the row differs from this start's.
+static std::optional<int> shadow_map_size_at_start;
+static std::optional<int> shadow_map_size_mirrored;
+static std::atomic_bool shadow_map_size_pending = false;
+// Under the mutex: the plugin's notices bits already logged.
+static uint32_t notices_logged = 0;
 // Written into each measured call's PassMeasure::reserved at pass_begin: a pass_end of another registration is ignored.
 static std::atomic<uint32_t> epoch = 0;
 // A callback caught an exception: logged once at the next present (the callbacks log only shadow_pass's learned-kind
@@ -224,12 +238,15 @@ inline bool TweaksFound() {
 }
 
 // The restart mirror's pending states, for the "Restart the game now" notes: a restart-only value the next start would
-// read other than this start did, and Loader Frame Cap's.
+// read other than this start did, Loader Frame Cap's and Shadow Map Size's.
 inline bool ValuesPending() {
   return internal::values_pending.load(std::memory_order_relaxed);
 }
 inline bool SolFrameCapPending() {
   return internal::sol_frame_cap_pending.load(std::memory_order_relaxed);
+}
+inline bool ShadowMapSizePending() {
+  return internal::shadow_map_size_pending.load(std::memory_order_relaxed);
 }
 
 // At each init_device until READY, final at the first present (`last`): the loader loads its plugins before the game's
@@ -465,13 +482,14 @@ inline bool FindTweaks(std::span<tw::engine_tweaks::Option* const> options) {
 }
 
 // Every present with Result() READY on a v2 block, after the values' Update (the loader's drawing thread): the next
-// start's restart-only values and Loader Frame Cap (`sol_frame_cap`) into ReShade.ini [Attila64Plugin.Values], which the
-// plugin reads at its init. A value's bits are clamped to its slider's range first (tweaks.h's, as the plugin checks:
-// a hand-edited ReShade.ini may hold any slider value). Each key is read once, then written only when it differs, with
-// one log line per write (ReShade saves the file about 1 s later, at a present). Pending: a value whose next start
-// differs from this start's (the bits it applied, else the default; a key it refused or did not apply: always), and the
-// frame cap row against the key this start read.
-inline void MirrorRestartValues(bool sol_frame_cap) {
+// start's restart-only values, Loader Frame Cap (`sol_frame_cap`) and Shadow Map Size (`shadow_map_size`, while its row
+// is offered: a hidden row's saved key stays) into ReShade.ini [Attila64Plugin.Values], which the plugin reads at its
+// init. A value is clamped to its slider's range first (tweaks.h's, as the plugin checks: a hand-edited ReShade.ini may
+// hold any slider value). Each key is read once, then written only when it differs, with one log line per write
+// (ReShade saves the file about 1 s later, at a present). Pending: a value whose next start differs from this start's
+// (the bits it applied, else the default; a key it refused or did not apply: always), and each of the two rows against
+// the key this start read.
+inline void MirrorRestartValues(bool sol_frame_cap, int shadow_map_size) {
   namespace plugin = internal::plugin;
   const std::unique_lock lock(internal::mutex);
   if (internal::found.load(std::memory_order_relaxed) != Found::READY || !BlockV2()) return;
@@ -540,6 +558,65 @@ inline void MirrorRestartValues(bool sol_frame_cap) {
                                       internal::SOL_FRAME_CAP_KEY.data(), key, (cap_at_start ? 1 : 0)));
   }
   internal::sol_frame_cap_pending.store(sol_frame_cap != cap_at_start, std::memory_order_relaxed);
+  bool shadow_pending = false;
+  if ((RowsOffered() & plugin::RowBit(plugin::ROW_SHADOW_MAP)) != 0) {
+    if (!internal::shadow_map_size_mirrored.has_value()) {
+      int key = 0;  // absent: the game's sizes
+      reshade::get_config_value(nullptr, internal::VALUES_SECTION.data(), internal::SHADOW_MAP_SIZE_KEY.data(), key);
+      internal::shadow_map_size_mirrored = key;
+      if (!internal::shadow_map_size_at_start.has_value()) {
+        internal::shadow_map_size_at_start = ((key >= 0 && key <= plugin::SHADOW_MAP_SIZE_STEPS) ? key : 0);
+      }
+    }
+    const int size = std::clamp(shadow_map_size, 0, plugin::SHADOW_MAP_SIZE_STEPS);
+    if (internal::shadow_map_size_mirrored != size) {
+      reshade::set_config_value(nullptr, internal::VALUES_SECTION.data(), internal::SHADOW_MAP_SIZE_KEY.data(), size);
+      internal::shadow_map_size_mirrored = size;
+      renodx::utils::log::i(std::format("[Total War] 64-bit Attila: engine value {}: {:#x} at the next start (this start: {:#x})",
+                                        internal::SHADOW_MAP_SIZE_KEY.data(), size, *internal::shadow_map_size_at_start));
+    }
+    shadow_pending = (size != *internal::shadow_map_size_at_start);
+  }
+  internal::shadow_map_size_pending.store(shadow_pending, std::memory_order_relaxed);
+}
+
+// Every present with Result() READY on a v2 block (the loader's drawing thread): the scale rows' multipliers for the
+// plugin's hooks (attila64_plugin::Scale), the changed ones stored, then scales_active: a scale's bit while it is not
+// neutral and its row is offered (a clear bit: the hook leaves the game's call as it is). One log line when the bits
+// change, and one when the plugin raises a new notice (sticky bits). The scales stay at the add-on's detach.
+inline void PublishScales(const std::array<float, internal::plugin::SCALE_COUNT>& scales) {
+  using internal::block;
+  namespace plugin = internal::plugin;
+  const std::unique_lock lock(internal::mutex);
+  if (internal::found.load(std::memory_order_relaxed) != Found::READY || !BlockV2()) return;
+  uint32_t rows_scales = 0;
+  for (const auto& [row, bits] : internal::ROW_SCALES) {
+    if ((RowsOffered() & plugin::RowBit(row)) != 0) {
+      rows_scales |= bits;
+    }
+  }
+  uint32_t active = 0;
+  for (uint32_t index = 0; index < plugin::SCALE_COUNT; ++index) {
+    if (block->scales[index].load(std::memory_order_relaxed) != scales[index]) {
+      block->scales[index].store(scales[index], std::memory_order_relaxed);
+    }
+    if (scales[index] != plugin::NEUTRAL_SCALES[index]) {
+      active |= 1u << index;
+    }
+  }
+  active &= rows_scales;
+  if (block->scales_active.load(std::memory_order_relaxed) != active) {
+    block->scales_active.store(active, std::memory_order_relaxed);
+    renodx::utils::log::i(std::format("[Total War] 64-bit Attila: engine scales active {:#x}", active));
+  }
+  if (const uint32_t notices = block->notices.load(std::memory_order_relaxed);
+      (notices & ~internal::notices_logged) != 0) {
+    internal::notices_logged = notices;
+    renodx::utils::log::i(std::format(
+        "[Total War] 64-bit Attila: engine plugin notices {:#x} (rest pack: {}, model table full: {})", notices,
+        ((notices & plugin::NOTICE_REST_PACK) != 0 ? "yes" : "no"),
+        ((notices & plugin::NOTICE_MODEL_TABLE_FULL) != 0 ? "yes" : "no")));
+  }
 }
 
 // Addon attach: the lookup runs again (an add-on kept loaded across a detach).
@@ -561,13 +638,16 @@ inline void Uninstall() {
   internal::battle_core_written.reset();
   internal::callback_failed = false;
   internal::callback_failure_logged = false;
-  // The next READY finds the values again (a kept image's Tweaks too) and reads the keys again; this start's frame cap key
-  // stays.
+  // The next READY finds the values again (a kept image's Tweaks too) and reads the keys again; this start's frame cap and
+  // shadow map keys stay.
   internal::tweaks_found = false;
   internal::tweaks_refused = false;
   internal::values_pending = false;
   internal::sol_frame_cap_mirrored.reset();
   internal::sol_frame_cap_pending = false;
+  internal::shadow_map_size_mirrored.reset();
+  internal::shadow_map_size_pending = false;
+  internal::notices_logged = 0;
 }
 
 }  // namespace twattila::attila64_plugin_link

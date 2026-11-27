@@ -1181,6 +1181,9 @@ constexpr bool PLUGIN_READY_FORCED = false;
 enum class PluginRow : uint8_t {
   PASS_DRAW = twattila::attila64_plugin::ROW_PASS_DRAW,
   CPU_PLACEMENT = twattila::attila64_plugin::ROW_CPU_PLACEMENT,
+  UNIT_LOD = twattila::attila64_plugin::ROW_UNIT_LOD,
+  MODEL_DETAIL = twattila::attila64_plugin::ROW_MODEL_DETAIL,
+  SHADOW_MAP = twattila::attila64_plugin::ROW_SHADOW_MAP,
   TWEAKS = 0xFE,
   NONE = 0xFF,
 };
@@ -1194,24 +1197,25 @@ struct GameCodeRow {
 };
 
 constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
-    {.match = "GraphicsUnitDetailSmall"},
-    {.match = "GraphicsUnitDetailMedium"},
-    {.match = "GraphicsUnitDetailLarge"},
-    {.match = "GraphicsUnitDetailHuge"},
+    {.match = "GraphicsUnitDetailSmall", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsUnitDetailMedium", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsUnitDetailLarge", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsUnitDetailHuge", .plugin_row = PluginRow::UNIT_LOD},
     {.match = "GraphicsDeadUnits"},
-    {.match = "GraphicsUnitAnimation"},
-    {.match = "GraphicsFacialAnimation"},
-    {.match = "GraphicsHandAnimation"},
-    {.match = "GraphicsUnitVariety"},
-    {.match = "GraphicsFootstepEffects"},
-    {.match = "GraphicsObjectDetail"},
+    {.match = "GraphicsUnitAnimation", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsFacialAnimation", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsHandAnimation", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsUnitVariety", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsFootstepEffects", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsObjectDetail", .plugin_row = PluginRow::MODEL_DETAIL},
     {.match = "GraphicsBuildingDetail", .plugin_row = PluginRow::TWEAKS},
     {.match = "GraphicsCampaignDetail"},
     {.match = "GraphicsCampaignPlants", .plugin_row = PluginRow::TWEAKS},
     {.match = "GraphicsCampaignProps", .plugin_row = PluginRow::TWEAKS},
     {.match = "GraphicsGrassDistance"},
     {.match = "GraphicsGrassDensity"},
-    {.match = "GraphicsShadowMapSize"},
+    {.match = "GraphicsShadowMapSize", .plugin_row = PluginRow::SHADOW_MAP},
+    // Hidden on the port until ray-traced shadows: the plugin only checks the cascade sites.
     {.match = "RayTracedShadowCascades"},
     {.match = "GraphicsBigBattleFix"},
     {.match = "GraphicsSmallSoldiersAsSprites"},
@@ -2254,7 +2258,21 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       if (graphics_found) {
         tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, nullptr, &graphics_found, graphics_status);
       }
-      twattila::attila64_plugin_link::MirrorRestartValues(loader_frame_cap_row != 0.f);
+      twattila::attila64_plugin_link::MirrorRestartValues(loader_frame_cap_row != 0.f, static_cast<int>(shadow_map_size));
+      // The scale rows' hooks, folded as the 32-bit hooks fold them (graphics_hooks.hpp OnUnitDistances, its battle
+      // budget 1 until Big Battle Fix; engine_code.hpp's 1 / Model Detail squared); the other scales neutral.
+      std::array<float, plugin::SCALE_COUNT> scales = plugin::NEUTRAL_SCALES;
+      for (size_t size = 0; size < unit_detail.size(); ++size) {
+        scales[plugin::SCALE_UNIT_LOD + size] = unit_detail[size].scale;
+      }
+      std::fill_n(&scales[8], 4, unit_animation.scale);
+      scales[12] = unit_variety.scale;
+      scales[13] = facial_animation.scale;
+      scales[14] = hand_animation.scale;
+      scales[15] = footstep_effects.scale;
+      scales[16] = (twattila::rt_scene::CastersSkipped() ? 0.f : 1.f);
+      scales[plugin::SCALE_MODEL_DETAIL] = 1.f / (object_detail.scale * object_detail.scale);
+      twattila::attila64_plugin_link::PublishScales(scales);
       // shadow_pass's Update runs every present (it ends the frame's counts), here its second site: the 32-bit one
       // below waits for the at-start tests; the port has none.
       const bool pass_draw =
@@ -2456,8 +2474,9 @@ void ConfigureAddon() {
     // The port's tooltip where the 32-bit one does not hold (the 64-bit game has the room).
     std::ranges::find(engine_tests, "AudioSoundFileMemory", &twattila::engine_tests::EngineTest::key)->tooltip =
         "Memory for the loaded sound files. Restart the game. Game: 86 MB.";
-    // Model Detail and Campaign Tree Detail wait for their hooks: their values stay the game's until those rows show.
-    graphics_options = {&building_detail, &campaign_plants, &campaign_props};
+    // Campaign Tree Detail waits for its hook: its value stays the game's until its row shows. Model Detail has no
+    // value (its scale goes to the plugin's hook); here for its row's visibility.
+    graphics_options = {&object_detail, &building_detail, &campaign_plants, &campaign_props};
   } else {
     graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   }
@@ -2716,10 +2735,14 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Shadow Map Size",
           .section = "Graphics (Experimental)",
-          .tooltip = "Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
-                     "with it). More video memory. Applies after a restart. Locked by UI 4K Mod Compatibility.",
+          // The port: no lock (the plugin checks the game's bytes before it writes, so another mod's change refuses
+          // the row).
+          .tooltip = (ATTILA64 ? "Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
+                                 "with it). More video memory. Applies after a restart."
+                               : "Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
+                                 "with it). More video memory. Applies after a restart. Locked by UI 4K Mod Compatibility."),
           .labels = {"2048 (Game's)", "4096", "8192"},
-          .is_enabled = [] { return !shadow_size_locked; },
+          .is_enabled = [] { return ATTILA64 || !shadow_size_locked; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedShadowCascades",
@@ -3231,9 +3254,9 @@ void ConfigureAddon() {
                && (own == nullptr || own());
       };
     }
-    // The tests' empty lines and their note, and the Experimental note: only while a value row of their section shows
-    // (an all-hidden section draws no header; the grass section's own rows show without the plugin, its note as before
-    // not).
+    // The tests' empty lines and their note, and the Experimental note: only while a value or plugin row of their section
+    // shows (an all-hidden section draws no header; the grass section's own rows show without the plugin, its note as
+    // before not).
     for (auto* setting : settings) {
       if (setting != note
           && (!setting->key.empty() || setting->value_type != renodx::utils::settings::SettingValueType::TEXT
@@ -3245,9 +3268,13 @@ void ConfigureAddon() {
       std::vector<const renodx::utils::settings::Setting*> section_rows;
       std::ranges::copy_if(settings, std::back_inserter(section_rows), [setting](const renodx::utils::settings::Setting* other) {
         return other->section == setting->section
-               && std::ranges::any_of(graphics_options, [other](const tw::engine_tweaks::Option* option) {
-                    return other->binding == &option->scale;
-                  });
+               && (std::ranges::any_of(graphics_options,
+                                       [other](const tw::engine_tweaks::Option* option) {
+                                         return other->binding == &option->scale;
+                                       })
+                   || std::ranges::any_of(GAME_CODE_ROWS, [other](const GameCodeRow& row) {
+                        return row.plugin_row != PluginRow::NONE && !other->key.empty() && other->key == row.match;
+                      }));
       });
       setting->is_visible = [section_rows = std::move(section_rows)] {
         return std::ranges::any_of(section_rows, [](const renodx::utils::settings::Setting* row) {
@@ -3267,6 +3294,20 @@ void ConfigureAddon() {
                         .section = twattila::engine_tests::AUDIO,
                         .tint = RESTART_TINT,
                         .is_visible = [] { return twattila::attila64_plugin_link::ValuesPending(); },
+                    });
+    // Shadow Map Size's restart note, right after its row and in its section (the plugin patches the sizes at the next
+    // start): while the row shows.
+    const auto shadow_map_row = std::ranges::find(settings, "GraphicsShadowMapSize", &renodx::utils::settings::Setting::key);
+    settings.insert(std::next(shadow_map_row),
+                    new renodx::utils::settings::Setting{
+                        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                        .label = RESTART_NOW,
+                        .section = (*shadow_map_row)->section,
+                        .tint = RESTART_TINT,
+                        .is_visible = [row = *shadow_map_row] {
+                          return (row->is_visible == nullptr || row->is_visible())
+                                 && twattila::attila64_plugin_link::ShadowMapSizePending();
+                        },
                     });
     // Loader Frame Cap beside Frame Rate Limit, with its restart note (a v2 plugin reads it at the next start).
     const auto loader_frame_cap_shown = [] {
