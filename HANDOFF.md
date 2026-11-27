@@ -1033,7 +1033,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | c8f_ / p8bf_ / p59f_ -> coord (map edits, then implementers)
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | c8f_ / p8bf_ -> coord (map edits, then implementers)
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
@@ -18124,7 +18124,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         misses 'attila64_1124\' (SB:689). ATN: Q8 S-C line yes; Q9 W-AB patch if PK6 is late; Q3 init text 'Changes drawing,
         sound memory, CPU core use and battle speed only; battles, replays and multiplayer stay the same.'; B-S11 no guest;
         still open Q1 (default On after S-C), Q5 (offer to Sol), Q6 (Bitdefender exception for battle_step_test.exe = ATN only),
-        Q7 (ep8tt8). Owner: c8f_ / p8bf_ / p59f_ -> coord (map edits, then implementers)
+        Q7 (ep8tt8). p59f_ DONE 11-27 (pk5_game_code_64.md + pk9_effects_64.md Rev 2; all MUSTs + all SHOULDs; backups
+        testbin\scratch\p59f_\): PK5 ROW_GAME_CODE a v2 Row append, VERSION 2; section 8 gc0 / ep8+WPR lines in the 1.3.28 form
+        (preconditions all PK6-64's); 4.4b the E4 / E5 / E5b / E6 lines per kind; A15 matches '\0game code\0' (T12 in the built
+        DLL); sites.h lands in P5-3's first commit. PK9: CORE_EFFECTS 1<<4 / CORE_EFFECTS_AUTO 1<<5 (Off none, On EFFECTS,
+        Automatic both), each stop change one fetch_or / fetch_and; 3.1 the 1.3.28 premise (~163 forks a frame post the
+        sleepers, ~5x today's posts on main, per-post cost unmeasured; gain range + 20000 / 16000 / 256 thresholds marked 1.3.20
+        premises; F8 14.72 ms / 64.2 fps); PK8-DLL twin kinds ep1cvfxauto / ep1cvfxfast; A15 EffectsMode literal = the row word
+        'parallel effects'; section 16 = 9 rows for PK6 (coord p6f_inputs). Map: 'PK9 P1-P5' + PK5 P5-6 as an a64_ab fallback
+        slot (coord 11-27); a PK9 link slot only if ATN picks option A. Steps PK5: P5-3 / P5-4 Fable 5.2 Medium, others Opus
+        High; PK9: P9-3 Fable 5.2 Medium, P9-0 / 1 / 4 Opus High, P9-2 / 5 / 6 coord. ATN (11 items): PK5 gc0 line yes (only if
+        S-C shows nothing); ep8 + WPR data line run / skip; T11 kill numbers later; PK9 S-A #2 + fallback in 1.3.28 form (his
+        yes was 1.3.20); the Automatic start (+2 arms); the conditional WPR start without asking again; the spin check now or
+        later; a refused row's READY note A (none, recommended) / B; a core floor for Automatic on small PCs (e.g. MIN_CORES 8)
+        or none; send the refreshed Sol note now / later; the default after the soak. Owner: c8f_ / p8bf_ -> coord (map edits,
+        then implementers)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
