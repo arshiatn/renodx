@@ -731,7 +731,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also ... | coord (batch prep) ATN 20:3x: 'You are allowed to look at hi
 - X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN pfx_ DONE 21:05 (Fable 5
 - S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 d ... | the next attila64_plugin_link
-- S5E 1-CASCADE ARM (ATN's addendum): no game 1-cascade values exist (lowest Shado ... | ATN
+- S5E 1-CASCADE ARM (ATN's addendum): no game 1-cascade values exist (lowest Shado ... | ATN ATN 22:2x: 'Cannot we just turn off the whole shadow map
 - E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | coord (R3's a64_ab writer) SPRITES NEED A CAMERA fix spf_ (O
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
@@ -18190,7 +18190,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         form on Zen 4: 0.2 - 0.4 ns a block (rough); in game not plausible (a million blocks a frame for 0.2 ms; none
         of the 6 is in the contact segment's sample list). His big win is on old Intel (Nehalem control-word load
         throughput 31 cycles). Bench plan written (section 9), not run. Coord: upgrade parked unless ATN wants the
-        bench for Caesar.
+        bench for Caesar. ATN 22:2x: 'Park the AX512 idea please. It sounds great but maybe next week' ->
+        PARKED in all_plans section 3.5 (next week, on ATN's word).
         Step 8 review rp8b57_ (Opus xHigh) DONE 20:11 (19 of 35 min; scratch\rp8b57_\review.md): GO WITH CHANGES; steps 5
         + 6 right as built (own plugin test at 587a40a48: 0 failures, battle_step 14547; four stores + table test in the
         smoke DLL as pinned); smoke: E64 matches every 11.1 line, lane B off with PerfFix acceptable for now (fail-safe,
@@ -18254,6 +18255,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         attila64_plugin_link.hpp / main.cpp writer
         - [ ] S5E 1-CASCADE ARM (ATN's addendum): no game 1-cascade values exist (lowest Shadows skips the setup). ATN
         picks: an invented (1, 0) test value, or a timing arm at the game's lowest Shadows. Owner: ATN
+        ATN 22:2x: 'Cannot we just turn off the whole shadow map so it is 0ms?' -> coord: Skip the Game's Shadow Map
+        Work (shadow_pass.hpp) already skips every caster draw under the rays' shadows, except one pass a frame in turn
+        for the cut-out census (the rays learn alpha-tested shapes from it); a full off loses that census. Suggested:
+        no 1-cascade arm; the batch times Two Cascades with Skip on. ATN's answer pending.
         - [ ] E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade site lines ': applied',
         'shadow cascades 2: patched'; control E64-rt 'shadow cascades: game's counts'). Owner: coord (R3's a64_ab
         writer)
