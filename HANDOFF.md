@@ -1033,7 +1033,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | c8f_ / p8af_ / p8bf_ / p59f_ -> coord (map edits, then imple
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | c8f_ / p8bf_ / p59f_ -> coord (map edits, then implementers)
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
@@ -18114,7 +18114,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         restart only, Fable 5.2 Medium), ATN keep / drop (rtf_'s pick keep); RM5 S1 before the big batch, R2 arm E64-rrtm, G3 /
         G3s / O1 owners named, ATN decides R1 / E64-dlaa in the batch (pick both); MS1 section 8 (Sol's film clock fix the
         likely cause; ATN's by-eye look with SOLCAP Off at the end); BM1 F12 / K1. RS8: 35 includer files (Ryse / Tales /
-        Expeditions include twattila's rt_core.hpp). Map 3.3a + 6 item 9 replaced by coord 11-27. Owner: c8f_ / p8af_ / p8bf_ / p59f_ -> coord (map edits, then implementers)
+        Expeditions include twattila's rt_core.hpp). Map 3.3a + 6 item 9 replaced by coord 11-27. p8af_ DONE 11-27 (pk8_battle_step_64.md Rev 2; engine part 3.3 / 8.1 / 4.2 unchanged): A-M1 section 10.1 E4 / E5 / E5b /
+        E6 per arm (BattleStep 0: E5b accepts exactly 'site PAIRS_ENTRY 0x79a690: skipped (OFF)'; owner PK6-64's build-derived
+        E4-E6 + an E5b accept-OFF rule, else new step W-AB = an a64_ab patch ATN applies, before the first -EnginePlugin start
+        on a W-A2 DLL); A-M2 + new finding: patcher_test.cpp pins ALL_ROWS / '2 sites unchanged' / a row list too -> new step
+        W-A2a (Opus High, test-only) derives what is still literal (map row added); A-M3 kept wording, T-A3 checks '\0battle
+        step\0'; W-A1 no longer writes sites.h (write in W-A2's commit). Steps: W-A1 Opus High, W-A2a Opus High, W-A2 Fable 5.2
+        Medium, W-A3 Opus High, W-AB Opus High, R Opus xHigh + Sonnet High final, T Low. p8bf_ told the Stage B -Package path
+        misses 'attila64_1124\' (SB:689). ATN: Q8 S-C line yes; Q9 W-AB patch if PK6 is late; Q3 init text 'Changes drawing,
+        sound memory, CPU core use and battle speed only; battles, replays and multiplayer stay the same.'; B-S11 no guest;
+        still open Q1 (default On after S-C), Q5 (offer to Sol), Q6 (Bitdefender exception for battle_step_test.exe = ATN only),
+        Q7 (ep8tt8). Owner: c8f_ / p8bf_ / p59f_ -> coord (map edits, then implementers)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
