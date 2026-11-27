@@ -1186,53 +1186,113 @@ int wmain(int argc, wchar_t** argv) {
       set_scale(shared, SCALE_GRASS_RADIUS, 1.f);
       Expect(both_hold(200, 50.f, 300, 80.f), "two scrubs: at 1x before the crowd");
 
-      // More scrubs than states, through the hooks alone. The two above were last written at 1x; a crowd of 64 more
-      // at 2x fills the other 62 states (one of the crowd lives in a page of its own, to be freed), the last two of
-      // the crowd find none and keep the game's values, with the one line.
-      set_scale(shared, SCALE_GRASS_LOD, 4.f);
-      set_scale(shared, SCALE_GRASS_RADIUS, 2.f);
-      std::vector<std::array<uint8_t, 0x100>> crowd(MAX_SCRUBS, scrub);
-      auto* paged = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-      std::memcpy(paged, scrub.data(), scrub.size());
+      // More scrubs than one window's states, through the hooks alone. A scrub's state lies within SCRUB_WINDOW states
+      // of its address's home, so the crowd is picked from a block of memory by its home: every member's window is the
+      // same, and far from the two scrubs' above. (This file's ScrubHome is the DLL's: the same header.)
+      constexpr size_t CANDIDATES = 1u << 16;  // 64 a home
+      auto* region = static_cast<uint8_t*>(
+          VirtualAlloc(nullptr, CANDIDATES * scrub.size(), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+      const auto apart = [](size_t home, size_t other) {
+        const size_t distance = (home + SCRUB_STATES - other) % SCRUB_STATES;
+        return std::min(distance, SCRUB_STATES - distance) >= SCRUB_WINDOW;
+      };
+      const auto far_from_the_two = [&](size_t home) {
+        return apart(home, ScrubHome(scrub.data())) && apart(home, ScrubHome(second_scrub.data()));
+      };
+      size_t crowd_home = 0;
+      while (!far_from_the_two(crowd_home)) {
+        ++crowd_home;
+      }
+      // Two last written at 1x, the crowd of one window's size at 2x (its member PAGED's page is freed below), and
+      // two new ones for later.
+      constexpr size_t CROWD = SCRUB_WINDOW;
       constexpr size_t PAGED = 6;
-      const auto member = [&](size_t index) { return ((index == PAGED) ? paged : crowd[index].data()); };
+      std::vector<uint8_t*> same_home;
+      for (size_t candidate = 0; candidate < CANDIDATES && same_home.size() < CROWD + 4; ++candidate) {
+        uint8_t* object = region + (candidate * scrub.size());
+        if (ScrubHome(object) != crowd_home) continue;
+        // Each in a page of its own (the paged member's is freed below).
+        if (!same_home.empty() && (object - same_home.back()) < 0x1000) continue;
+        std::memcpy(object, ((same_home.size() >= CROWD + 2) ? second_scrub.data() : scrub.data()), scrub.size());
+        same_home.push_back(object);
+      }
+      Expect(same_home.size() == CROWD + 4, "scrubs of one home found");
+      const auto member = [&](size_t index) { return same_home[2 + index]; };
+      uint8_t* third_scrub = same_home[CROWD + 2];
+      uint8_t* fourth_scrub = same_home[CROWD + 3];
+      uint8_t* paged_page = region + ((member(PAGED) - region) / 0x1000 * 0x1000);
       const auto holds_after_update = [&](uint8_t* object, int32_t radius, float bias) {
         grass_update(object);
         grass_update(object);
         return std::memcmp(object + SCRUB_RADIUS, &radius, 4) == 0 && std::memcmp(object + SCRUB_BIAS, &bias, 4) == 0;
       };
+      const auto updates_pass = [&](uint64_t count) {
+        for (uint64_t update = 0; update < count; ++update) {
+          grass_update(member(0));
+        }
+      };
+      Expect(holds_after_update(same_home[0], 200, 50.f) && holds_after_update(same_home[1], 200, 50.f),
+             "two scrubs of the crowd's home at 1x");
+      set_scale(shared, SCALE_GRASS_LOD, 4.f);
+      set_scale(shared, SCALE_GRASS_RADIUS, 2.f);
       bool crowd_ok = true;
-      for (size_t index = 0; index < MAX_SCRUBS; ++index) {
-        crowd_ok = crowd_ok && holds_after_update(member(index), ((index < MAX_SCRUBS - 2) ? 201 : 200),
-                                                  ((index < MAX_SCRUBS - 2) ? 100.f : 50.f));
+      for (size_t index = 0; index < CROWD; ++index) {
+        crowd_ok = crowd_ok && holds_after_update(member(index), ((index < CROWD - 2) ? 201 : 200),
+                                                  ((index < CROWD - 2) ? 100.f : 50.f));
       }
-      Expect(crowd_ok && Logged("grass: more than 64 grass areas at once, the rest keep the game's radius"),
-             "scrubs past the table: the game's radius and bias, the line");
+      Expect(crowd_ok && Logged("grass: no state left for a grass area, it keeps the game's radius"),
+             "scrubs past their window: the game's radius and bias, the line");
       // Every state but one without an update for long.
-      for (uint64_t update = 0; update <= STALE_SCRUB_UPDATES; ++update) {
-        grass_update(member(0));
-      }
-      Expect(holds_after_update(member(MAX_SCRUBS - 2), 201, 100.f) && holds_after_update(member(MAX_SCRUBS - 1), 201, 100.f),
+      updates_pass(STALE_SCRUB_UPDATES + 1);
+      Expect(holds_after_update(member(CROWD - 2), 201, 100.f) && holds_after_update(member(CROWD - 1), 201, 100.f),
              "a stale state last written at 1x is taken (the two first scrubs')");
-      std::array<uint8_t, 0x100> third_scrub = second_scrub;
-      Expect(holds_after_update(third_scrub.data(), 300, 80.f) && grass_cell_once(third_scrub.data(), {1, 1}, 40401.f, 40401.f),
+      Expect(holds_after_update(third_scrub, 300, 80.f) && grass_cell_once(third_scrub, {1, 1}, 40401.f, 40401.f),
              "a stale state whose scrub still holds the 2x values is not taken: the new scrub keeps the game's");
       put(member(5), SCRUB_RADIUS, int32_t{999});
-      Expect(holds_after_update(third_scrub.data(), 300, 80.f), "a stale state whose scrub still holds one written value is not taken");
+      updates_pass(SCRUB_SEARCH_INTERVAL);
+      Expect(holds_after_update(third_scrub, 300, 80.f), "a stale state whose scrub still holds one written value is not taken");
+      // A refused scrub's window is searched again only SCRUB_SEARCH_INTERVAL update calls after the search that
+      // found nothing: a state that may be taken by now is not seen before.
       put(member(5), SCRUB_BIAS, 5.f);
-      Expect(holds_after_update(third_scrub.data(), 201, 160.f), "a stale state whose scrub holds other values is taken");
-      std::array<uint8_t, 0x100> fourth_scrub = second_scrub;
-      Expect(holds_after_update(fourth_scrub.data(), 300, 80.f), "no other stale state may be taken");
-      VirtualFree(paged, 0, MEM_RELEASE);
-      Expect(holds_after_update(fourth_scrub.data(), 201, 160.f), "a stale state whose scrub's memory is gone is taken");
+      updates_pass(SCRUB_SEARCH_INTERVAL - 4);
+      Expect(holds_after_update(third_scrub, 300, 80.f), "a refused scrub: no new search before the interval is over");
+      updates_pass(1);
+      Expect(holds_after_update(third_scrub, 201, 160.f), "a stale state whose scrub holds other values is taken, at the next search");
+      Expect(holds_after_update(fourth_scrub, 300, 80.f), "no other stale state may be taken");
+      VirtualFree(paged_page, 0x1000, MEM_DECOMMIT);
+      Expect(holds_after_update(fourth_scrub, 300, 80.f), "a refused scrub: its memory gone state is not seen before the interval either");
+      updates_pass(SCRUB_SEARCH_INTERVAL);
+      Expect(holds_after_update(fourth_scrub, 201, 160.f), "a stale state whose scrub's memory is gone is taken");
+
+      // A long session: many more short-lived scrubs than the 64 states of before, each updated a few times at 2x and
+      // left holding its 2x values, as a freed scrub's memory does. Every one is scaled (their homes all differ and lie
+      // away from the windows used above, so that the test does not depend on where its memory is).
+      constexpr size_t SESSION_SCRUBS = 200;
+      std::array<bool, SCRUB_STATES> home_used = {};
+      size_t session_scrubs = 0;
+      bool session_ok = true;
+      for (size_t candidate = 0; candidate < CANDIDATES && session_scrubs < SESSION_SCRUBS; ++candidate) {
+        uint8_t* object = region + (candidate * scrub.size());
+        const size_t home = ScrubHome(object);
+        if (home_used[home] || !apart(home, crowd_home) || !far_from_the_two(home)
+            || object - paged_page < 0x1000u) {
+          continue;
+        }
+        home_used[home] = true;
+        ++session_scrubs;
+        std::memcpy(object, scrub.data(), scrub.size());
+        session_ok = session_ok && holds_after_update(object, 201, 100.f) && grass_cell_once(object, {1, 1}, 40401.f, 3721.f);
+      }
+      Expect(session_scrubs == SESSION_SCRUBS && session_ok, "a long session: 200 scrubs one after another, every one scaled");
       // Back at 1x: a scrub that was idle all the time and kept its state comes back to the game's exact values, and
       // so do the others.
       set_scale(shared, SCALE_GRASS_LOD, 1.f);
       set_scale(shared, SCALE_GRASS_RADIUS, 1.f);
-      Expect(holds_after_update(member(1), 200, 50.f) && holds_after_update(member(MAX_SCRUBS - 3), 200, 50.f)
-                 && holds_after_update(third_scrub.data(), 300, 80.f) && holds_after_update(fourth_scrub.data(), 300, 80.f)
-                 && holds_after_update(member(0), 200, 50.f) && holds_after_update(member(MAX_SCRUBS - 1), 200, 50.f),
+      Expect(holds_after_update(member(1), 200, 50.f) && holds_after_update(member(CROWD - 3), 200, 50.f)
+                 && holds_after_update(third_scrub, 300, 80.f) && holds_after_update(fourth_scrub, 300, 80.f)
+                 && holds_after_update(member(0), 200, 50.f) && holds_after_update(member(CROWD - 1), 200, 50.f),
              "after a refused take: the idle scrub is exactly the game's at 1x, as every other");
+      VirtualFree(region, 0, MEM_RELEASE);
     }
 
     set_scale(shared, SCALE_CAMPAIGN_TREES, 4.f);

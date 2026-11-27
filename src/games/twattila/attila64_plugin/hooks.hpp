@@ -134,50 +134,51 @@ struct ScrubState {
   std::array<int32_t, MAX_SCRUB_SLOTS> slot_radius = {};
 };
 // Each scrub's own state, by its address: with one state for all, a second scrub updating in turn with the first would
-// have our written radius and bias taken for the game's. An entry is claimed at a scrub's first update. Entries are
-// not freed (nothing tells when the game frees a scrub); a new scrub with none unused takes the one longest without an
-// update among those ScrubStateFree allows. With none the scrub keeps the game's radius and bias, and one log line
-// says so.
+// have our written radius and bias taken for the game's. A state is claimed at a scrub's first update. States are not
+// freed (nothing tells when the game frees a scrub, and a freed scrub's memory mostly keeps the values written last),
+// so the table is sized for a long session: SCRUB_STATES states (about 1.1 MiB), found by the address's hash
+// (Fibonacci hashing: Knuth, The Art of Computer Programming 3, 6.4) within SCRUB_WINDOW states from its home, so the
+// cell hook's search is a few keys. A new scrub takes, of its window's states that may be taken, the one longest
+// without an update (a never used one first). A state may be taken when it was never used; or it had no update for
+// STALE_SCRUB_UPDATES update calls (a scrub the game draws is updated every frame) and its scrub cannot come back
+// holding a value of ours: its last update left the game's own values (1x), or its memory holds neither value written
+// last (the game set both again, or the scrub is gone: other memory, or none). A scrub that still holds a written
+// value may be alive and idle; with its state gone its next update would take our values for the game's and scale
+// them again, so it is never taken. With none to take the scrub keeps the game's radius and bias, one log line says
+// so, and its window is searched again only SCRUB_SEARCH_INTERVAL update calls later (the search asks the system
+// about each stale scrub's memory).
 // Not told apart (it needs both floats' exact bits): a new scrub at a freed one's address whose own radius or bias
 // is the value written last there, or the game setting such a value again; that value is taken for ours. No field of
 // a scrub is known to stay for its life and differ between scrubs, and a wrong guess there would take our values for
 // the game's.
-inline constexpr size_t MAX_SCRUBS = 64;
+inline constexpr size_t SCRUB_STATE_BITS = 10;
+inline constexpr size_t SCRUB_STATES = size_t{1} << SCRUB_STATE_BITS;
+inline constexpr size_t SCRUB_WINDOW = 16;
 inline constexpr uint64_t STALE_SCRUB_UPDATES = 1u << 20;
+inline constexpr uint64_t SCRUB_SEARCH_INTERVAL = 1u << 16;
 struct ScrubStates {
   std::shared_mutex mutex;
-  uint64_t updates = 0;                                // every update hook call that ran its body
-  std::array<const uint8_t*, MAX_SCRUBS> scrubs = {};  // beside the states: the cell hook's search reads these alone
-  std::array<ScrubState, MAX_SCRUBS> states = {};
+  uint64_t updates = 0;                                  // every update hook call that ran its body
+  std::array<const uint8_t*, SCRUB_STATES> scrubs = {};  // beside the states: the searches read these alone
+  // Per home: `updates` at the last search of its window that found no state to take; 0: none yet.
+  std::array<uint64_t, SCRUB_STATES> failed_searches = {};
+  std::array<ScrubState, SCRUB_STATES> states = {};
 };
 static ScrubStates scrub_states;
 static_assert(std::is_trivially_destructible_v<ScrubStates>);
-static std::atomic_bool scrub_table_full_logged = false;
-// Whether a new scrub may take this state (the caller holds the lock). A never used one; else one without an update
-// for STALE_SCRUB_UPDATES update calls (a scrub the game draws is updated every frame) whose scrub cannot come back
-// holding a value of ours: its last update left the game's own values (1x), or its memory holds neither value written
-// last (the game set both again, or the scrub is gone: other memory, or none). A scrub that still holds a written
-// value may be alive and idle; with its state gone its next update would take our values for the game's and scale
-// them again, so it is never taken.
-static_assert(SCRUB_BIAS == SCRUB_RADIUS + sizeof(int32_t));
-static bool ScrubStateFree(size_t index) noexcept {
-  const ScrubState& state = scrub_states.states[index];
-  if (state.updated == 0) return true;
-  if (scrub_states.updates - state.updated <= STALE_SCRUB_UPDATES) return false;
-  if (state.written_radius == state.game_radius && state.written_bias == state.game_bias) return true;
-  // The scrub may be freed: its page is asked for first (committed, no guard page, readable), and the read is the
-  // system's, which fails where a read of ours would fault. No answer or no read: not a scrub any more.
-  const uint8_t* values = scrub_states.scrubs[index] + SCRUB_RADIUS;
-  MEMORY_BASIC_INFORMATION page = {};
-  std::array<uint32_t, 2> held = {};  // the radius, the bias
-  SIZE_T bytes_read = 0;
-  if (VirtualQuery(values, &page, sizeof(page)) == 0 || page.State != MEM_COMMIT
-      || (page.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0
-      || ReadProcessMemory(GetCurrentProcess(), values, held.data(), sizeof(held), &bytes_read) == 0
-      || bytes_read != sizeof(held)) {
-    return true;
+static_assert(SCRUB_BIAS == SCRUB_RADIUS + sizeof(int32_t), "the take rule reads both in one read");
+static std::atomic_bool scrub_refused_logged = false;
+// The first state of a scrub's window.
+static size_t ScrubHome(const uint8_t* scrub) noexcept {
+  return static_cast<size_t>((reinterpret_cast<uintptr_t>(scrub) * 0x9e3779b97f4a7c15ull) >> (64 - SCRUB_STATE_BITS));
+}
+// The scrub's state, or SCRUB_STATES with none (the caller holds the lock).
+static size_t FindScrubState(const uint8_t* scrub) noexcept {
+  const size_t home = ScrubHome(scrub);
+  for (size_t step = 0; step < SCRUB_WINDOW; ++step) {
+    if (const size_t index = (home + step) % SCRUB_STATES; scrub_states.scrubs[index] == scrub) return index;
   }
-  return held[0] != static_cast<uint32_t>(state.written_radius) && held[1] != state.written_bias;
+  return SCRUB_STATES;
 }
 // The hooks that write game memory run their bodies from their row's first scale that is not neutral on, for the
 // process: back at 1x they write the game's values x 1, the game's bits (the 32-bit add-on's models_scaled).
@@ -382,31 +383,59 @@ static ATTILA64_GAME_CALL void GrassUpdateEntry(uint8_t* scrub) {
       std::memcpy(&lod_offset, node + NODE_LOD_OFFSET, sizeof(lod_offset));
     }
 
-    // This scrub's entry; else, of those that may be taken, the one longest without an update (a never used one
-    // first). Under a lock of its own: the game's update is called from here when there is none, with no local of
-    // ours alive.
-    size_t entry = MAX_SCRUBS;
+    // This scrub's state; else, of its window's states that may be taken (the rule above ScrubStates), the one
+    // longest without an update. Under a lock of its own: the game's update is called from here when there is none,
+    // with no local of ours alive.
+    size_t entry = SCRUB_STATES;
     bool first_update = false;
     {
       const std::scoped_lock lock(scrub_states.mutex);
       ++scrub_states.updates;
-      entry = static_cast<size_t>(std::ranges::find(scrub_states.scrubs, scrub) - scrub_states.scrubs.begin());
-      first_update = (entry == MAX_SCRUBS);
-      for (size_t index = 0; first_update && index < MAX_SCRUBS; ++index) {
-        if ((entry == MAX_SCRUBS || scrub_states.states[index].updated < scrub_states.states[entry].updated)
-            && ScrubStateFree(index)) {
-          entry = index;
+      entry = FindScrubState(scrub);
+      first_update = (entry == SCRUB_STATES);
+      const size_t home = ScrubHome(scrub);
+      if (first_update
+          && (scrub_states.failed_searches[home] == 0
+              || scrub_states.updates - scrub_states.failed_searches[home] >= SCRUB_SEARCH_INTERVAL)) {
+        for (size_t step = 0; step < SCRUB_WINDOW; ++step) {
+          const size_t index = (home + step) % SCRUB_STATES;
+          const ScrubState& state = scrub_states.states[index];
+          if (entry != SCRUB_STATES && state.updated >= scrub_states.states[entry].updated) continue;
+          bool may_be_taken = (state.updated == 0);
+          if (!may_be_taken && scrub_states.updates - state.updated > STALE_SCRUB_UPDATES) {
+            may_be_taken = (state.written_radius == state.game_radius && state.written_bias == state.game_bias);
+            if (!may_be_taken) {
+              // The scrub may be freed: its page is asked for first (committed, no guard page, readable), and the
+              // read is the system's, which fails where a read of ours would fault. No answer or no read: not a
+              // scrub any more.
+              const uint8_t* values = scrub_states.scrubs[index] + SCRUB_RADIUS;
+              MEMORY_BASIC_INFORMATION page = {};
+              std::array<uint32_t, 2> held = {};  // the radius, the bias
+              SIZE_T bytes_read = 0;
+              may_be_taken =
+                  VirtualQuery(values, &page, sizeof(page)) == 0 || page.State != MEM_COMMIT
+                  || (page.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0
+                  || ReadProcessMemory(GetCurrentProcess(), values, held.data(), sizeof(held), &bytes_read) == 0
+                  || bytes_read != sizeof(held)
+                  || (held[0] != static_cast<uint32_t>(state.written_radius) && held[1] != state.written_bias);
+            }
+          }
+          if (may_be_taken) {
+            entry = index;
+          }
+        }
+        if (entry == SCRUB_STATES) {
+          scrub_states.failed_searches[home] = scrub_states.updates;
         }
       }
-      if (entry != MAX_SCRUBS) {
+      if (entry != SCRUB_STATES) {
         scrub_states.scrubs[entry] = scrub;
         scrub_states.states[entry].updated = scrub_states.updates;
       }
     }
-    if (entry == MAX_SCRUBS) {
-      if (!scrub_table_full_logged.exchange(true)) {
-        loader->log("renodx_attila64: grass: more than %zu grass areas at once, the rest keep the game's radius",
-                    MAX_SCRUBS);
+    if (entry == SCRUB_STATES) {
+      if (!scrub_refused_logged.exchange(true)) {
+        loader->log("renodx_attila64: grass: no state left for a grass area, it keeps the game's radius");
       }
       [[clang::musttail]] return reinterpret_cast<GrassUpdateFn>(originals[LABEL_GRASS_UPDATE_ENTRY])(scrub);
     }
@@ -534,8 +563,8 @@ static ATTILA64_GAME_CALL void GrassCellEntry(const uint8_t* scrub, const uint8_
     std::memcpy(&record_count, cell + CELL_RECORD_COUNT, sizeof(record_count));
     std::memcpy(&records, cell + CELL_RECORDS, sizeof(records));
     const std::shared_lock lock(scrub_states.mutex);
-    const auto entry = static_cast<size_t>(std::ranges::find(scrub_states.scrubs, scrub) - scrub_states.scrubs.begin());
-    if (entry != MAX_SCRUBS && scrub_states.states[entry].slot_count != 0) {
+    if (const size_t entry = FindScrubState(scrub);
+        entry != SCRUB_STATES && scrub_states.states[entry].slot_count != 0) {
       const ScrubState& known = scrub_states.states[entry];
       int32_t radius = 0;
       for (uint32_t record = 0; record < record_count && radius < known.written_radius; ++record) {
