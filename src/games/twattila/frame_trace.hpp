@@ -162,6 +162,8 @@ using Microsoft::WRL::ComPtr;
 
 constexpr uint32_t MAX_LINES = 20000;
 constexpr uint32_t SCALED_PRESENTS = 600;
+// The PS shader resource slots a draw line lists: its inputs and its ' | views' formats, the same range.
+constexpr size_t INPUT_VIEW_SLOTS = 24;
 
 struct State {
   std::mutex mutex;
@@ -258,7 +260,7 @@ inline std::string DescribeCamera(ID3D11DeviceContext* context, ID3D11Buffer* bu
 
 template <typename GetViews>
 std::string DescribeInputs(GetViews get_views) {
-  std::array<ID3D11ShaderResourceView*, 24> views = {};
+  std::array<ID3D11ShaderResourceView*, INPUT_VIEW_SLOTS> views = {};
   get_views(static_cast<UINT>(views.size()), views.data());
   std::string inputs;
   for (uint32_t slot = 0; slot < views.size(); ++slot) {
@@ -269,8 +271,10 @@ std::string DescribeInputs(GetViews get_views) {
   return inputs;
 }
 
-// What a draw reads and how it blends and tests, for the trace's next line: vertex buffers (slot, stride, whether the CPU
-// writes it), other stages' shaders, each target's write mask and blend, stencil.
+// What a draw reads and how it blends and tests, for the trace's next line: vertex buffers (slot, stride, whether the
+// CPU writes it), other stages' shaders, each target's write mask and blend, stencil, cull, the index buffer, slot 15,
+// the stencil ops, the DSV's read-only flags; then ' | views': the bound target, depth and PS shader resource views'
+// formats.
 inline std::string DescribeDrawState(reshade::api::command_list* cmd_list, ID3D11DeviceContext* context) {
   std::string text = " | state";
   for (const auto [name, stage] : {std::pair{"gs", reshade::api::pipeline_stage::geometry_shader}, std::pair{"hs", reshade::api::pipeline_stage::hull_shader},
@@ -316,6 +320,70 @@ inline std::string DescribeDrawState(reshade::api::command_list* cmd_list, ID3D1
     D3D11_RASTERIZER_DESC rasterizer_desc = {};
     rasterizer->GetDesc(&rasterizer_desc);
     text += std::format(" cull {}{} bias {}", static_cast<int>(rasterizer_desc.CullMode), (rasterizer_desc.FrontCounterClockwise != FALSE ? " ccw" : ""), rasterizer_desc.DepthBias);
+  }
+  // ours: after the earlier fields, so the tokens before keep their places for the trace's parsers (scale_audit.py,
+  // dyn_census.py). The index buffer: its index size in bytes and whether the CPU writes it (a dynamic one gets no
+  // cluster set in the rays). Slot 15: the 64-bit port binds a zero buffer there for its 4-bone draws.
+  ComPtr<ID3D11Buffer> index_buffer;
+  DXGI_FORMAT index_format = DXGI_FORMAT_UNKNOWN;
+  context->IAGetIndexBuffer(index_buffer.GetAddressOf(), &index_format, nullptr);
+  if (index_buffer) {
+    D3D11_BUFFER_DESC desc = {};
+    index_buffer->GetDesc(&desc);
+    text += std::format(" ib {}{}", (index_format == DXGI_FORMAT_R32_UINT ? 4 : 2),
+                        (desc.Usage == D3D11_USAGE_DYNAMIC ? " dynamic" : ""));
+  }
+  ComPtr<ID3D11Buffer> slot15_buffer;
+  UINT slot15_stride = 0;
+  context->IAGetVertexBuffers(15, 1, slot15_buffer.GetAddressOf(), &slot15_stride, nullptr);
+  if (slot15_buffer) {
+    text += std::format(" vb15 stride {}", slot15_stride);
+  }
+  // ours (rt_port_64 R1.7), also after every earlier field: the stencil test's compares and ops, front/back
+  // (D3D11_COMPARISON_FUNC / D3D11_STENCIL_OP numbers); the bound DSV's read-only flags (d depth, s stencil); then the
+  // bound views' own formats as a segment of their own. The outputs and inputs before print the resources' formats,
+  // and a typeless target's view is what says how the draw reads or writes it.
+  if (depth_desc.StencilEnable != FALSE) {
+    const auto& front = depth_desc.FrontFace;
+    const auto& back = depth_desc.BackFace;
+    text += std::format(" stencil func {}/{} pass {}/{} fail {}/{} depthfail {}/{}",
+                        static_cast<int>(front.StencilFunc), static_cast<int>(back.StencilFunc),
+                        static_cast<int>(front.StencilPassOp), static_cast<int>(back.StencilPassOp),
+                        static_cast<int>(front.StencilFailOp), static_cast<int>(back.StencilFailOp),
+                        static_cast<int>(front.StencilDepthFailOp), static_cast<int>(back.StencilDepthFailOp));
+  }
+  std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> target_views = {};
+  ComPtr<ID3D11DepthStencilView> depth_view;
+  context->OMGetRenderTargets(static_cast<UINT>(target_views.size()), target_views.data(), depth_view.GetAddressOf());
+  std::string views;
+  for (uint32_t slot = 0; slot < target_views.size(); ++slot) {
+    if (target_views[slot] == nullptr) continue;
+    D3D11_RENDER_TARGET_VIEW_DESC view_desc = {};
+    target_views[slot]->GetDesc(&view_desc);
+    views += std::format(" rtv{} v{}", slot, static_cast<int>(view_desc.Format));
+    target_views[slot]->Release();
+  }
+  if (depth_view) {
+    D3D11_DEPTH_STENCIL_VIEW_DESC view_desc = {};
+    depth_view->GetDesc(&view_desc);
+    const bool depth_read_only = (view_desc.Flags & D3D11_DSV_READ_ONLY_DEPTH) != 0;
+    const bool stencil_read_only = (view_desc.Flags & D3D11_DSV_READ_ONLY_STENCIL) != 0;
+    if (depth_read_only || stencil_read_only) {
+      text += std::format(" dsv ro {}{}", (depth_read_only ? "d" : ""), (stencil_read_only ? "s" : ""));
+    }
+    views += std::format(" dsv v{}", static_cast<int>(view_desc.Format));
+  }
+  std::array<ID3D11ShaderResourceView*, INPUT_VIEW_SLOTS> shader_views = {};
+  context->PSGetShaderResources(0, static_cast<UINT>(shader_views.size()), shader_views.data());
+  for (uint32_t slot = 0; slot < shader_views.size(); ++slot) {
+    if (shader_views[slot] == nullptr) continue;
+    D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {};
+    shader_views[slot]->GetDesc(&view_desc);
+    views += std::format(" t{} v{}", slot, static_cast<int>(view_desc.Format));
+    shader_views[slot]->Release();
+  }
+  if (!views.empty()) {
+    text += " | views" + views;
   }
   return text;
 }
