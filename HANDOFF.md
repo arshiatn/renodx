@@ -18240,8 +18240,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         194927_AB, sha-pinned; same / X pair other loader / n/a / REFUSED), B4 det-level dumps, B5 per-kind pair rules (PK8 /
         PK2P / PK9 / PK5 gc0); self-test 31 PASS, 0 failed; 4 batches of 11-26 re-read: verdicts unchanged + 'golden: same'. Not
         live: B5 (no plugin start yet). For P6a2: start.json elf_sha / replay_sha (today the batch pins); optional plugin_ini
-        dict, else analyze_d0's KIND_INI must follow P6a1's kinds (Rv1 checks). p6b_ resumed for B5's PK2P lines = P1p's exact
-        literals. Owner: p6a1_ / p6c_ -> coord (Rv1)
+        dict, else analyze_d0's KIND_INI must follow P6a1's kinds (Rv1 checks). p6b_ resumed for B5's PK2P lines = P1p's exact literals: DONE 08:26 (1.5 min; reserve / capture / 7 outcome forms + scopes, controls may carry OFF_INI; 48 PASS; analyze_d0.py 3531fb29, test c25b3aee). Owner: p6a1_ / p6c_ -> coord (Rv1)
         - [ ] 11-27 08:3x HAND-BACKS (coord). P1p DONE (p1p_, Fable 5.2 Medium, ~20 of 60 min; branch p1p_1127 54f767537 from
         8773b421f, pushed, not merged; testbin\scratch\p1p_\handback.md): PickCores -> Picks {battle, render, keep},
         RENDER_POOL_CORES = 4, PublishRender the only render-word writer, ApplyRenderCoreKey / SetRenderThread, only CORE_RENDER
