@@ -41,6 +41,7 @@
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
 #include "../../utils/float16.hpp"
+#include "../../utils/path.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/resource_upgrade.hpp"
 #include "../../utils/settings.hpp"
@@ -2219,18 +2220,14 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       }
       // Engine Performance Fix (perffix64.dll, started by the loader before the game's code): its FrameBridge upscaling
       // and its waving flags as their files are at this start (the loader writes them from the start window's ticks
-      // before the add-on loads; both are read only at the start).
-      if (GetModuleHandleW(L"perffix64.dll") != nullptr) {
-        std::array<wchar_t, MAX_PATH> exe_path = {};
-        GetModuleFileNameW(nullptr, exe_path.data(), static_cast<DWORD>(exe_path.size()));
-        const std::filesystem::path exe_dir = std::filesystem::path(exe_path.data()).parent_path();
-        // <game>\FrameBridge\helper64.exe and no addon=off line (Sol's test, S28 picker.c:236-263). The loader sets every
-        // addon= line to the same text (S28 plugins.inc:92-116), so the last one is that text.
+      // before the add-on loads; both are read only at the start). No exe path: neither is read.
+      if (const std::filesystem::path exe_dir = renodx::utils::path::GetExecutableBasePath();
+          GetModuleHandleW(L"perffix64.dll") != nullptr && !exe_dir.empty()) {
+        // <game>\FrameBridge\helper64.exe and its settings.txt not saying off (S28 picker.c:236-263).
         const std::filesystem::path framebridge = exe_dir.parent_path() / L"FrameBridge";
-        const std::optional<std::string> addon = twattila::start_files::Value(framebridge / L"settings.txt", "addon");
         std::error_code error;
         framebridge_on = std::filesystem::exists(framebridge / L"helper64.exe", error)
-                         && !(addon.has_value() && twattila::start_files::StartsWithNoCase(*addon, "off"));
+                         && !twattila::start_files::FrameBridgeOff(framebridge / L"settings.txt");
         // PerfFix's own line for them on (its other flag wave lines say why not), and no flagwave_off.txt from the
         // start window's tick (S28 plugins.inc:200-211).
         bool flags_installed = false;

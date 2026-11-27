@@ -823,7 +823,8 @@ int main(int argc, char** argv) {
     }
     // 7e. The start files' reader (Sol's settings_get, S28 picker.c:54-70): the last line of a name counts, the name in
     //     either case and followed by '=', the value not trimmed and cut at CR / LF; no file or no line: none. The
-    //     add-on's FrameBridge test (the last addon= line starting with "off" in either case) and its lines walk.
+    //     add-on's FrameBridge test (FrameBridgeOff: the last addon= line starting with "off" in either case) and the
+    //     lines walk.
     {
       namespace start_files = twattila::start_files;
       const std::filesystem::path folder =
@@ -844,14 +845,16 @@ int main(int argc, char** argv) {
       CHECK(!start_files::Value(folder / "none.txt", "addon").has_value());
       CHECK(start_files::StartsWithNoCase("ADDON=OFF", "addon=off") && start_files::StartsWithNoCase("Off", "off")
             && !start_files::StartsWithNoCase("of", "off") && !start_files::StartsWithNoCase("on", "off"));
-      // FrameBridge's settings.txt as the loader leaves it (one addon= line), hand-edited, and without one.
-      const auto framebridge_off = [](const std::filesystem::path& file) {
-        const std::optional<std::string> addon = start_files::Value(file, "addon");
-        return addon.has_value() && start_files::StartsWithNoCase(*addon, "off");
-      };
-      CHECK(framebridge_off(write("fb_off.txt", "addon=off\r\nsuper_resolution=dlss\r\n")));
-      CHECK(framebridge_off(write("fb_upper.txt", "frame_generation=on\nADDON=OFF\n")));
-      CHECK(!framebridge_off(write("fb_on.txt", "addon=on\r\n")) && !framebridge_off(write("fb_none.txt", "x=1\n")));
+      // FrameBridge's settings.txt (the add-on's FrameBridgeOff): as the loader writes it, hand-edited, a mixed file
+      // the loader leaves alone (its last addon= line is the tick), without the line, and no file.
+      CHECK(start_files::FrameBridgeOff(write("fb_off.txt", "addon=off\r\nsuper_resolution=dlss\r\n")));
+      CHECK(start_files::FrameBridgeOff(write("fb_upper.txt", "frame_generation=on\nADDON=OFF\n"))
+            && start_files::FrameBridgeOff(write("fb_offx.txt", "addon=offx\n")));
+      CHECK(start_files::FrameBridgeOff(write("fb_mixed_off.txt", "addon=on\naddon=off\n"))
+            && !start_files::FrameBridgeOff(write("fb_mixed_on.txt", "addon=off\naddon=on\n")));
+      CHECK(!start_files::FrameBridgeOff(write("fb_on.txt", "addon=on\r\n"))
+            && !start_files::FrameBridgeOff(write("fb_of.txt", "addon=of\n"))
+            && !start_files::FrameBridgeOff(write("fb_none.txt", "x=1\n")) && !start_files::FrameBridgeOff(folder / "none.txt"));
       std::vector<std::string> lines_seen;
       start_files::ForEachLine(write("perffix64.log", "01:37:48.419 flag wave: on (a pack)\r\nlast"),
                                [&lines_seen](std::string_view line) { lines_seen.emplace_back(line); });

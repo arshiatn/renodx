@@ -47,4 +47,12 @@ inline std::optional<std::string> Value(const std::filesystem::path& file, std::
   return value;
 }
 
+// FrameBridge's settings.txt switches it off: its last addon= line starts with "off" in either case (Sol's addon=off
+// prefix, S28 picker.c:253-263). The loader leaves the last addon= line as the start window's tick (S28
+// plugins.inc:93-118). No file or no such line: on.
+inline bool FrameBridgeOff(const std::filesystem::path& settings) {
+  const std::optional<std::string> addon = Value(settings, "addon");
+  return addon.has_value() && StartsWithNoCase(*addon, "off");
+}
+
 }  // namespace twattila::start_files
