@@ -984,7 +984,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds a ... | coord
 - 11-27 06:01 WAVE (coord; no agent cap; Fable only for PK8 Stage B). GPU plan: om ... | coord
 - NOTHING-DROPPED AUDIT 11-27 (ndc_, testbin\scratch\ndc_\handback.md): 22 report ... | next audit agent
-- O2 AT THE DEFAULT FOLIAGE 0.5 (o2_ handback:47-48): the 1/3 row stays at 0.507x, ... | ATN (accept the number) -> next SSS designer
 - O2 NOT TIMED (o2_ handback:91): torch light mode, 960 / 1920 samples, the 1920-s ... | coord GPU plan (5090 parts)
 - O2d HOST CONTRACT (o2_ handback:83-86): O2d is exact only while no host marks de ... | next SSS writer
 - AA FEED: CMAA2 ON THE GPU (aaf2_ handback:122): only its CPU model was checked. ... | aaf3_ if the harness runs CMAA2, else the next AA agent
@@ -1043,6 +1042,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AO DURING THE PT AMBIENT WARM-UP (rllf_ M1, 11-27, bug fix -> always on): Attila ... | ATN (the warm-up look in the batch)
 - W3 HORIZON METRIC (p6rv2_ S3, 11-27): P6a2's camera proof for w3 / w3t is a byte ... | the next a64_ab writer after PK9 P1-P5 (C8 T0 or its own ste
 - ALL PLANS LIST (ATN 11-27 16:2x: 'Some stuffs are missing ... gather those forgo ... | coord (CHECK lines) / ATN (order)
+- ATN AWAY 11-27 ~17:00 FOR 2-3 DAYS (his answers 16:4x): (1) the BATCH MAY START ... | coord
 - THREE WPRs + LAST RIDE (ATN 11-27 16:3x): at the END of the big batch, on the ne ... | coord (batch end)
 - H KEEP OR NOT (ATN 11-27 16:3x rule: no fixed margins; not faster = ATN decides) ... | coord (after the last ride)
 - PORT ADD-ON RE-ATTACH (rw1a_ S5, 11-27): on the 64-bit port, a fresh add-on imag ... | the C8 / CP step that adds such a path (image_only + a 7d ca
@@ -17835,8 +17835,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         14 boxes got owners; handoff_index.py fixed (wrapped lines at the dash's indent were dropped: '?' 780 -> 511; coord,
         backup .bak_coord1127). Not audited line by line: the 33 attila64\*_handback.md of 11-25 00:00-05:55, the fa1_..fa9_ /
         crit_ tables (FIX WAVES boxes), sdk_audit_1126.md, tests_4k_audit_1126.md. Owner: next audit agent
-        - [ ] O2 AT THE DEFAULT FOLIAGE 0.5 (o2_ handback:47-48): the 1/3 row stays at 0.507x, so the design's <= 0.5x gate misses
-        at Attila's default Light Through Foliage; O2d helps only at 0. Owner: ATN (accept the number) -> next SSS designer
+        - [x] O2 AT THE DEFAULT FOLIAGE 0.5 (o2_ handback:47-48): the 1/3 row stays at 0.507x, so the design's <= 0.5x gate misses
+        at Attila's default Light Through Foliage; O2d helps only at 0. CLOSED: ATN 11-27 16:4x 'It is faster? Then go
+        ahead' -> O2 stays as merged (0.507x of the old cost = faster); the <= 0.5x gate is retired (no fixed margins,
+        any gain counts). Owner: done
         - [ ] O2 NOT TIMED (o2_ handback:91): torch light mode, 960 / 1920 samples, the 1920-sample cut, the Tales host; AMD
         wave64 / Intel. Owner: coord GPU plan (5090 parts); ATN (AMD / Intel, no such GPU here)
         - [ ] O2d HOST CONTRACT (o2_ handback:83-86): O2d is exact only while no host marks depth negative with foliage 0; an
@@ -18329,10 +18331,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         tooling (gto_ S4 / S5, metrics, known-answer scenes). Section 6 = old items with no open box (v121 AMD / Intel
         RT, RT reflections Rome II / Troy / Pharaoh, ACES notices, 11-17 steps 7 + 9, the 'after everything' items).
         Order after today's batch = section 7, waits for ATN. Owner: coord (CHECK lines) / ATN (order)
+        - [ ] ATN AWAY 11-27 ~17:00 FOR 2-3 DAYS (his answers 16:4x): (1) the BATCH MAY START once the CPU code
+        is done (order = all_plans_1127.md section 7: offline CPU first, then the batch, then results applied, then
+        WPRs + last ride); his TV stays on; if Windows drops the 3840x2160 HDR display, or a reboot is needed (GPU
+        resets), ask ATN when he is online: his brother turns the TV on / restarts; never force. (2) WPR settings
+        from the 11-24 run folders without showing him first. (3) O2 box closed (faster = keep). (4) PTLAS smoke
+        'go ahead' (asked as 'best arm 0.93x'; corrected to him: mixed): S6 takes a particle-count switch, p3_plain
+        (ours, unit quads in a plain TLAS) where faster (all 11 recorded light frames 0.70-0.84x of P0), P0 where
+        not (synthetic 4000+ 1.10-1.27x); p1 / p2 only 0.93-0.96x with a tenth changed at 262,144: S6 measures the
+        crossover per arm on the siege recording and keeps whichever is faster per class (lsp3_ handback.md:94-106;
+        addendum in designs\gpu_item7_plan.md). Owner: coord
         - [ ] THREE WPRs + LAST RIDE (ATN 11-27 16:3x): at the END of the big batch, on the newest build: (1) stress
         replay (W3) with our maxed-out Graphics 2 of 2 settings (the 11-24 FCA W3 ALL arm's), (2) day1 replay (D1) with the
-        same settings (D1 ALL), (3) stress replay with stock Graphics 2 of 2 (page 2 Reset); settings shown to ATN before
-        the run. Then one last full optimization analysis + optimize round (FCA shape). Plan: round_notes\start_1127.md.
+        same settings (D1 ALL), (3) stress replay with stock Graphics 2 of 2 (page 2 Reset); settings shown to ATN before the run -> ATN 11-27 16:4x: NOT needed ('Sure'): use the 11-24 run folders' settings as recorded. Then one last full optimization analysis + optimize round (FCA shape). Plan: round_notes\start_1127.md.
         ATN 11-27 16:08 APPROVED: Opus 5.5 xHigh analysts, one Fable 5.2 xHigh completeness critic, Fable 5.2 xHigh designs
         straight on 64-bit (no port); builds / reviews as on 11-27; the 8 thread areas + content areas (vegetation,
         buildings / siege, 3D soldiers end to end, terrain + water, effects, our RT / PT CPU side + add-on per-draw cost,
