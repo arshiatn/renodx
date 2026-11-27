@@ -1040,7 +1040,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - P1p UNTESTED BRANCHES (fp1p_ S1 / S2, 11-27): battle_core.hpp:649-658 (refused d ... | next battle_core
 - PTLAS X19 (ptf_ 11-27, new, also today): under PTLAS 2 of 3 CPU-instanced mesh i ... | rx19_ / rx19s_ / b23d_ -> coord
 - HELPER ASSERT = MODAL BOX (ptr_ S2, 11-27): the helper is /SUBSYSTEM:WINDOWS, /M ... | done (ATN told)
-- XESS WITHOUT AUTO EXPOSURE (raff_ S3, 11-27): one 4K harness A/B of XeSS with a ... | xae_ -> coord (GPU queue)
+- XESS WITHOUT AUTO EXPOSURE (raff_ S3, 11-27): one 4K harness A/B of XeSS with a ... | coord (job) -> ATN (the look)
 - AO DURING THE PT AMBIENT WARM-UP (rllf_ M1, 11-27, bug fix -> always on): Attila ... | ATN (the warm-up look in the batch)
 - W3 HORIZON METRIC (p6rv2_ S3, 11-27): P6a2's camera proof for w3 / w3t is a byte ... | the next a64_ab writer after PK9 P1-P5 (C8 T0 or its own ste
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
@@ -18301,7 +18301,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         then reaches main.cpp:248's SIGABRT handler). Fix: _set_error_mode(_OUT_TO_STDERR) in wWinMain (inert while asserts hold). x19_ DONE: bb291b742 + 22a1cdc31's _dup2 (the assert text lands in the helper log). MERGED f171c14c0. Owner: done (ATN told)
         - [ ] XESS WITHOUT AUTO EXPOSURE (raff_ S3, 11-27): one 4K harness A/B of XeSS with a fixed exposure scale instead of
         auto exposure (t00 is already exposed; Intel: auto exposure is for colour not yet exposed); it may cut XeSS's u1 / noise
-        cost on the linear feed. Helper side, one GPU-lock task, after aff_'s merge (merged e274735ee 09:44); the harness switch waits for the harness writer x19_. x19_ merged; xae_ (Opus High, branch xae_1127: a test switch, off = identical, + a coord-run 4K GPU job: XeSS ms + noise, A auto exposure vs B a fixed scale) STARTED 10:2x. Owner: xae_ -> coord (GPU queue)
+        cost on the linear feed. Helper side, one GPU-lock task, after aff_'s merge (merged e274735ee 09:44); the harness switch waits for the harness writer x19_. x19_ merged; xae_ (Opus High, branch xae_1127: a test switch, off = identical, + a coord-run 4K GPU job: XeSS ms + noise, A auto exposure vs B a fixed scale) STARTED 10:2x. xae_ DONE 10:4x (15 min; testbin\scratch\xae_\handback.md; origin/xae_1127 420d12f38, upscale_d3d12.hpp only, no add-on includes it): RENODX_TW_XESS_EXPOSURE (helper env var, read at Initialize; <s> = no XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE + exposureScale s; 'auto' = today's; either also times XeSS's dispatch into the status line); unset = same flags / scale 1, no query heap, 98 headers identical; helper 0 warnings; harness unchanged (8AF9BE4F). GPU job gpu_job_xae.ps1 (4K, 15 runs: tones t_, u1 noise u_, dark d_; ctl / off / A / B1 = 1 / B2 = 2.5, + t_B1r / t_Ar repeats) STARTED 10:4x by coord (one GPU-lock task). If B wins: a small commit to the flags + scale, ATN looks first (a fixed scale moves XeSS's internal tone-map point); SDR not covered. Owner: coord (job) -> ATN (the look)
         - [ ] AO DURING THE PT AMBIENT WARM-UP (rllf_ M1, 11-27, bug fix -> always on): Attila / Rome II / Thrones leave out the
         game's AO while PT Ambient is on and a trace is fresh (AmbientReplaced, rt_core.hpp:1179), but RT ambient only takes
         over once path_ambient_on is true -> every warm-up (150 frames, ~2.5 s: start, settings change, re-made helper scene)
