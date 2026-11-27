@@ -22,6 +22,7 @@
 #include <type_traits>
 
 #include "battle_core.hpp"
+#include "battle_step.hpp"
 #include "loader_api.h"
 #include "model_lods.hpp"
 #include "plugin_block.h"
@@ -569,6 +570,17 @@ static ATTILA64_GAME_CALL void* CampaignTreeEntry(const uint8_t* node, const uin
       node, model, position, fourth, fifth, sixth, first_float, second_float);
 }
 
+// ROW_BATTLE_STEP: the battle step's pair resolver (battle_step.hpp), which does the game's work with fewer calls or
+// leaves the call to the game's function (a tail call). ResolvePairs calls game code from a frame of ours: no frame
+// above this site catches (the generator's catch gate on it), so an exception there ends the game as it would
+// without the hook. The row reads core_wanted itself and ignores hooks_wanted.
+using PairsFn = void(ATTILA64_GAME_CALL*)(void* manager) noexcept;
+static ATTILA64_GAME_CALL void PairsEntry(void* manager) {
+  LogFirstCall(LABEL_PAIRS_ENTRY);
+  if (battle_step::ResolvePairs(manager, &block, *loader)) return;
+  [[clang::musttail]] return reinterpret_cast<PairsFn>(originals[LABEL_PAIRS_ENTRY])(manager);
+}
+
 // Each hook site's hook, by SiteLabel; a patch site has none (patcher_test checks that each label holds its own).
 static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
   std::array<void*, LABEL_COUNT> hooks = {};
@@ -581,6 +593,7 @@ static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
   hooks[LABEL_GRASS_DRAW_ENTRY] = reinterpret_cast<void*>(&GrassDrawEntry);
   hooks[LABEL_GRASS_CELL_ENTRY] = reinterpret_cast<void*>(&GrassCellEntry);
   hooks[LABEL_CAMPAIGN_TREE_ENTRY] = reinterpret_cast<void*>(&CampaignTreeEntry);
+  hooks[LABEL_PAIRS_ENTRY] = reinterpret_cast<void*>(&PairsEntry);
   return hooks;
 }();
 

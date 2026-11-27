@@ -46,6 +46,7 @@ enum SiteLabel : uint8_t {
   LABEL_GRASS_DRAW_ENTRY,
   LABEL_GRASS_CELL_ENTRY,
   LABEL_CAMPAIGN_TREE_ENTRY,
+  LABEL_PAIRS_ENTRY,
   LABEL_COUNT
 };
 inline constexpr std::array<const char*, LABEL_COUNT> LABEL_WORDS = {
@@ -53,6 +54,7 @@ inline constexpr std::array<const char*, LABEL_COUNT> LABEL_WORDS = {
     "MODEL_LOD_ENTRY", "SHADOW_SIZE_HIGH", "SHADOW_COUNT_HIGH", "SHADOW_EXTRA_HIGH",
     "SHADOW_SIZE_MAX", "SHADOW_COUNT_MAX", "SHADOW_EXTRA_MAX", "SHADOW_SIZE_MEDIUM",
     "GRASS_UPDATE_ENTRY", "GRASS_DRAW_ENTRY", "GRASS_CELL_ENTRY", "CAMPAIGN_TREE_ENTRY",
+    "PAIRS_ENTRY",
 };
 
 // HOOK: a function's first whole instructions, replaced by the loader's entry hook. PATCH: one instruction's
@@ -69,7 +71,7 @@ struct Site {
   std::array<uint8_t, (2 * SITE_MARGIN) + SITE_MAX_LENGTH> window = {};
 };
 
-inline constexpr std::array<Site, 16> SITES = {{
+inline constexpr std::array<Site, 17> SITES = {{
     {
         .address = 0x3416d50,
         .length = 5,
@@ -260,6 +262,18 @@ inline constexpr std::array<Site, 16> SITES = {{
             0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f, 0x5d, 0xc3, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x55, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x83, 0xec, 0x68, 0x45, 0x89,
             0xcc, 0x4c, 0x89, 0x44, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
+    {
+        .address = 0x79a690,
+        .length = 5,
+        .row = ROW_BATTLE_STEP,
+        .label = LABEL_PAIRS_ENTRY,
+        .kind = SITE_HOOK,
+        .window = {
+            0xc3, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x55, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x83, 0xec, 0x28, 0x49, 0x89,
+            0xfd, 0x41, 0x8b, 0x45, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         },
     },
 }};

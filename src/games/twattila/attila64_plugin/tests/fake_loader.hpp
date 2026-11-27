@@ -79,15 +79,16 @@ static bool Logged(const char* text) {
   return false;
 }
 
-// One 8 KB execute-read-write page in rel32 reach of the game, handed out front to back.
+// 16 KB of execute-read-write pages in rel32 reach of the game, handed out front to back (every init of the tests
+// takes a trampoline per hook site, and nothing gives one back).
 static void* FakeCodeNearGame(size_t n) noexcept {
   static uint8_t* page = nullptr;
   static size_t used = 0;
   for (uintptr_t at = 0x5300000; page == nullptr && at < 0x60000000; at += 0x10000) {
     page = static_cast<uint8_t*>(
-        VirtualAlloc(reinterpret_cast<void*>(at), 0x2000, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
+        VirtualAlloc(reinterpret_cast<void*>(at), 0x4000, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
   }
-  if (page == nullptr || used + n > 0x2000) return nullptr;
+  if (page == nullptr || used + n > 0x4000) return nullptr;
   used += n;
   return page + used - n;
 }
@@ -165,6 +166,63 @@ static int ApplyStackRule(uint8_t* begin, const uint8_t* end) {
   return rewritten;
 }
 
+// The Linux build's load segments copied to their addresses in the reserved game range (ReserveGame first), as the
+// file holds them: the caller applies the stack rule.
+struct GameFile {
+  uintptr_t end = 0;          // the last load segment's end
+  uintptr_t writable_lo = 0;  // the load segment the game writes: its data
+  uintptr_t writable_hi = 0;
+};
+enum MapResult : uint8_t { MAP_DONE, MAP_NOT_OPENED, MAP_FAILED };
+static MapResult MapGameFile(const wchar_t* path, GameFile* game) {
+  HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+  LARGE_INTEGER size = {};
+  if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &size)) {
+    std::printf("SKIPPED: the game ELF could not be opened (error %lu)\n", GetLastError());
+    return MAP_NOT_OPENED;
+  }
+  std::vector<uint8_t> elf(static_cast<size_t>(size.QuadPart));
+  DWORD got = 0;
+  for (size_t offset = 0; offset < elf.size(); offset += got) {
+    const auto chunk = static_cast<DWORD>(std::min<size_t>(elf.size() - offset, 1 << 24));
+    if (!ReadFile(file, elf.data() + offset, chunk, &got, nullptr) || got == 0) {
+      std::printf("FAIL: reading the game ELF (error %lu)\n", GetLastError());
+      return MAP_FAILED;
+    }
+  }
+  CloseHandle(file);
+
+  // ELF64 program headers: e_phoff at 0x20, e_phentsize 0x36, e_phnum 0x38; p_type, p_offset 8, p_vaddr 16,
+  // p_filesz 32, p_memsz 40.
+  const auto field = [&]<typename T>(size_t offset) {
+    T value = {};
+    if (offset + sizeof(T) <= elf.size()) {
+      std::memcpy(&value, elf.data() + offset, sizeof(T));
+    }
+    return value;
+  };
+  const auto program_headers = field.operator()<uint64_t>(0x20);
+  for (uint16_t index = 0; index < field.operator()<uint16_t>(0x38); ++index) {
+    const size_t header = program_headers + (index * size_t{field.operator()<uint16_t>(0x36)});
+    if (field.operator()<uint32_t>(header) != 1) continue;  // PT_LOAD
+    const auto offset = field.operator()<uint64_t>(header + 8);
+    const auto address = field.operator()<uint64_t>(header + 16);
+    const auto file_bytes = field.operator()<uint64_t>(header + 32);
+    const auto memory_bytes = field.operator()<uint64_t>(header + 40);
+    if (address < GAME_LO || address + memory_bytes > GAME_RESERVE_END || offset + file_bytes > elf.size()) {
+      std::printf("FAIL: load segment %#llx + %#llx outside the game range or the file\n", address, memory_bytes);
+      return MAP_FAILED;
+    }
+    std::memcpy(reinterpret_cast<void*>(address), elf.data() + offset, file_bytes);
+    game->end = std::max<uintptr_t>(game->end, address + memory_bytes);
+    if ((field.operator()<uint32_t>(header + 4) & 2) != 0) {  // PF_W
+      game->writable_lo = address;
+      game->writable_hi = address + memory_bytes;
+    }
+  }
+  return MAP_DONE;
+}
+
 // Every tweak object of tweaks.h in the reserved game range, as the game builds it: its type's table pointer, its
 // name as a counted UTF-16 string, its default.
 static void WriteTweakObjects() {
@@ -214,8 +272,9 @@ static Plugin LoadPlugin(const wchar_t* dll_path) {
 
 // The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window and
 // every tweak object (WriteTweakObjects), with no ReShade.ini keys and no route note beside the test: every row with a
-// site goes in, and no patch site has other bytes to write.
-static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
+// site goes in, and no patch site has other bytes to write. `step_lane`: what the battle step row's check of the
+// game's code must find on this image.
+static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, EngineState step_lane) {
   const Plugin plugin = LoadPlugin(dll_path);
   if (plugin.init == nullptr) return plugin;
 
@@ -238,7 +297,7 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   Expect(shared->rows_tried == ALL_ROWS && shared->core_wanted.load() == CORE_WANTED_DEFAULT
              && shared->core_status.load() == (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT)
              && shared->render_core_status.load() == (uint32_t{CORE_NO_THREAD} << CORE_STATE_SHIFT)
-             && shared->engine_status.load() == 0
+             && shared->engine_status.load() == (uint32_t{step_lane} << ENGINE_STEP_SHIFT)
              && shared->tweaks_status.load() == TWEAKS_PENDING && shared->tweak_count == 0 && shared->tweaks == nullptr
              && shared->notices.load() == 0 && shared->scales_active.load() == 0 && scales_neutral
              && NEUTRAL_SCALES[SCALE_SPRITE_DISTANCE] == 0.0f && NEUTRAL_SCALES[SCALE_DEAD_UNITS] == 1.0f,

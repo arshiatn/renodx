@@ -64,8 +64,8 @@ enum Status : uint32_t {
 };
 
 // One per feature; bit (1 << row) in rows_applied, rows_refused, rows_changed, rows_tried and hooks_wanted. Append only.
-// Reserved, no value yet: Big Battle Fix, Cached Particle Count and Exit Job Drain (parked), and the battle step's rows
-// ROW_BATTLE_STEP (ini key BattleStep) and ROW_CONTACT_SPLIT (ContactSplit).
+// Reserved, no value yet: Big Battle Fix, Cached Particle Count and Exit Job Drain (parked), and the battle step's
+// second row ROW_CONTACT_SPLIT (ini key ContactSplit).
 enum Row : uint32_t {
   ROW_BONE_FLUSH,      // before the game packs its animation textures: the add-on flushes its unit records
   ROW_PASS_DRAW,       // each scene node's draw into a view: the add-on may skip the game's shadow-map work
@@ -77,6 +77,7 @@ enum Row : uint32_t {
   ROW_GRASS_CELLS,     // the grass cell radius (scales 19 and 20)
   ROW_CAMPAIGN_TREES,  // Campaign Tree Detail Distance (scale 18)
   ROW_SPRITES,         // Small Soldiers as Sprites, Sprite Size and Dead Unit Detail (scales 22 and 23)
+  ROW_BATTLE_STEP,     // Faster Battle Step: the battle step's pair resolver (core_wanted CORE_STEP, engine_status)
   ROW_COUNT
 };
 
@@ -105,13 +106,13 @@ struct Callbacks {
 // core_wanted, per bit. The plugin tests each part's bit (`& CORE_BATTLE`, `& CORE_RENDER`) and ignores bits it does
 // not know. The add-on changes only its rows' bits (`fetch_or` / `fetch_and`) and never stores the whole word, so a bit
 // that no loaded row writes keeps the plugin's initial value. The initial value is CORE_WANTED_DEFAULT; the plugin's
-// RenderCore key then sets or clears CORE_RENDER at init.
+// RenderCore key then sets or clears CORE_RENDER at init, and its BattleStep key 1 sets CORE_STEP.
 inline constexpr uint32_t CORE_BATTLE = 1u << 0;  // Keep Battle Core Free
 inline constexpr uint32_t CORE_RENDER = 1u << 1;  // Keep Render Core Free
-inline constexpr uint32_t CORE_STEP = 1u << 2;    // reserved: the battle step row
+inline constexpr uint32_t CORE_STEP = 1u << 2;    // Faster Battle Step
 inline constexpr uint32_t CORE_SPLIT = 1u << 3;   // reserved: the contact split row
 // Both parts by default is a release step (this constant), not a layout change.
-inline constexpr uint32_t CORE_WANTED_DEFAULT = CORE_BATTLE;
+inline constexpr uint32_t CORE_WANTED_DEFAULT = CORE_BATTLE | CORE_STEP;
 
 // One state list for both core status words; 0 = not built. The render part has its own state and error. A render
 // failure or yield never ends the battle part. A shared (process-level) end or gate ends both, and the render word then
@@ -254,7 +255,8 @@ inline constexpr int TWEAKS_DEFAULT = 1;
 // Install the row's sites at all.
 inline constexpr const wchar_t* ROW_INI_KEYS[ROW_COUNT] = {L"BoneFlush", L"PassDraw",   L"CpuPlacement", L"UnitLod",
                                                            L"ModelDetail", L"ShadowMap", L"Grass",       L"GrassCells",
-                                                           L"CampaignTrees", L"Sprites"};
+                                                           L"CampaignTrees", L"Sprites",
+                                                           L"BattleStep"};
 inline constexpr int ROW_INSTALL_DEFAULT = 1;
 // The restart-only values the add-on writes and the plugin reads at init.
 inline constexpr wchar_t INI_VALUES_SECTION[] = L"Attila64Plugin.Values";

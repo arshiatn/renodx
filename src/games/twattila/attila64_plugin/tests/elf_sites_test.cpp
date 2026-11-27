@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+#include <string>
 #include <vector>
 
 #include "../hooks.hpp"
@@ -41,66 +42,23 @@ int wmain(int argc, wchar_t** argv) {
     std::printf("SKIPPED: elf_sites_test.exe <renodx_attila64.dll> <game ELF>\n");
     return EXIT_SKIPPED;
   }
-  HANDLE file = CreateFileW(argv[2], GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
-  LARGE_INTEGER size = {};
-  if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &size)) {
-    std::printf("SKIPPED: the game ELF could not be opened (error %lu)\n", GetLastError());
-    return EXIT_SKIPPED;
+  GameFile game;
+  switch (MapGameFile(argv[2], &game)) {
+    case MAP_NOT_OPENED: return EXIT_SKIPPED;
+    case MAP_FAILED:     return 1;
+    default:             break;
   }
-  std::vector<uint8_t> elf(static_cast<size_t>(size.QuadPart));
-  DWORD got = 0;
-  for (size_t offset = 0; offset < elf.size(); offset += got) {
-    const auto chunk = static_cast<DWORD>(std::min<size_t>(elf.size() - offset, 1 << 24));
-    if (!ReadFile(file, elf.data() + offset, chunk, &got, nullptr) || got == 0) {
-      std::printf("FAIL: reading the game ELF (error %lu)\n", GetLastError());
-      return 1;
-    }
-  }
-  CloseHandle(file);
-
-  // ELF64 program headers: e_phoff at 0x20, e_phentsize 0x36, e_phnum 0x38; p_type, p_offset 8, p_vaddr 16,
-  // p_filesz 32, p_memsz 40.
-  const auto field = [&]<typename T>(size_t offset) {
-    T value = {};
-    if (offset + sizeof(T) <= elf.size()) {
-      std::memcpy(&value, elf.data() + offset, sizeof(T));
-    }
-    return value;
-  };
-  uintptr_t game_end = 0;
-  uintptr_t writable_lo = 0;  // the load segment the game writes: its data
-  uintptr_t writable_hi = 0;
-  const auto program_headers = field.operator()<uint64_t>(0x20);
-  for (uint16_t index = 0; index < field.operator()<uint16_t>(0x38); ++index) {
-    const size_t header = program_headers + (index * size_t{field.operator()<uint16_t>(0x36)});
-    if (field.operator()<uint32_t>(header) != 1) continue;  // PT_LOAD
-    const auto offset = field.operator()<uint64_t>(header + 8);
-    const auto address = field.operator()<uint64_t>(header + 16);
-    const auto file_bytes = field.operator()<uint64_t>(header + 32);
-    const auto memory_bytes = field.operator()<uint64_t>(header + 40);
-    if (address < GAME_LO || address + memory_bytes > GAME_RESERVE_END || offset + file_bytes > elf.size()) {
-      std::printf("FAIL: load segment %#llx + %#llx outside the game range or the file\n", address, memory_bytes);
-      return 1;
-    }
-    std::memcpy(reinterpret_cast<void*>(address), elf.data() + offset, file_bytes);
-    game_end = std::max<uintptr_t>(game_end, address + memory_bytes);
-    if ((field.operator()<uint32_t>(header + 4) & 2) != 0) {  // PF_W
-      writable_lo = address;
-      writable_hi = address + memory_bytes;
-    }
-  }
-  elf = {};
-  const int rewritten = ApplyStackRule(reinterpret_cast<uint8_t*>(GAME_LO), reinterpret_cast<const uint8_t*>(game_end));
-  std::printf("  mapped %#llx..%#llx, %d stack-check reads rewritten\n", uint64_t{GAME_LO}, uint64_t{game_end}, rewritten);
+  const int rewritten = ApplyStackRule(reinterpret_cast<uint8_t*>(GAME_LO), reinterpret_cast<const uint8_t*>(game.end));
+  std::printf("  mapped %#llx..%#llx, %d stack-check reads rewritten\n", uint64_t{GAME_LO}, uint64_t{game.end}, rewritten);
 
   char exe_dir[MAX_PATH];
   GetModuleFileNameA(nullptr, exe_dir, MAX_PATH);
   *std::strrchr(exe_dir, '\\') = '\0';
-  LoaderApi api = MakeApi(exe_dir, game_end);
+  LoaderApi api = MakeApi(exe_dir, game.end);
   loader = &api;
   const auto at = [](uintptr_t address) { return reinterpret_cast<uint8_t*>(address); };
 
-  Expect(game_end == GAME_HI_MIN, "the last load segment ends where sites.h says");
+  Expect(game.end == GAME_HI_MIN, "the last load segment ends where sites.h says");
   Expect(CheckIdentity(api) == STATUS_READY, "the game file is the build sites.h was made for");
   *at(BUILD_ID_NOTE_ADDRESS + 16) ^= 1;
   Expect(CheckIdentity(api) == STATUS_WRONG_GAME, "control: a wrong build id");
@@ -234,7 +192,7 @@ int wmain(int argc, wchar_t** argv) {
   for (const TweakEntry& entry : TWEAKS) {
     if (entry.object == 0) continue;
     const TweakKind& kind = TWEAK_KINDS[entry.type];
-    bool ok = entry.object >= writable_lo && entry.object + kind.value_offset + kind.value_bytes <= writable_hi;
+    bool ok = entry.object >= game.writable_lo && entry.object + kind.value_offset + kind.value_bytes <= game.writable_hi;
     ok = ok && *at(entry.constructor_call) == 0xe8
          && entry.constructor_call + 5 + word_at(entry.constructor_call + 1) == kind.constructor;
     ok = ok && entry.default_store < entry.constructor_call && entry.constructor_call - entry.default_store < 0x80;
@@ -253,7 +211,7 @@ int wmain(int argc, wchar_t** argv) {
       if (*at(address) != 0xbe) continue;  // mov esi
       const uintptr_t text = word_at(address + 1);
       passes_name = passes_name
-                    || (text >= GAME_LO && text + TWEAK_NAME_CAPACITY <= game_end
+                    || (text >= GAME_LO && text + TWEAK_NAME_CAPACITY <= game.end
                         && std::strcmp(reinterpret_cast<const char*>(text), entry.name) == 0);
     }
     if (ok && passes_object && passes_name) {
@@ -266,8 +224,39 @@ int wmain(int argc, wchar_t** argv) {
   Expect(tweaks_in_code == TWEAKS.size() - 2, "tweaks: every object's constructor call passes its name and default");
 
   WriteTweakObjects();
-  ExpectPluginDll(api, argv[1]);
+  // The battle step row reads the game's own code here: as it expects, with no line.
+  ExpectPluginDll(api, argv[1], ENGINE_NOT_USED_YET);
+  Expect(!Logged("battle step: "), "battle step: init finds the code that was read");
   Expect(!Logged("grass draw: "), "grass draw: init finds the code that was read, the early return is on");
+
+  // The battle step row reads the game's code again at the game's start: a second copy of the DLL (its own module and
+  // globals) on the game file mapped again, with one byte of that code changed between its init and its game start.
+  {
+    const bool mapped_again = MapGameFile(argv[2], &game) == MAP_DONE;
+    ApplyStackRule(at(GAME_LO), at(game.end));
+    WriteTweakObjects();
+    wchar_t copy_path[MAX_PATH];
+    GetModuleFileNameW(nullptr, copy_path, MAX_PATH);
+    *std::wcsrchr(copy_path, L'\\') = L'\0';
+    const std::wstring copy_dir = std::wstring(copy_path) + L"\\game_start_case";
+    CreateDirectoryW(copy_dir.c_str(), nullptr);
+    const std::wstring copy = copy_dir + L"\\" + MODULE_NAME;
+    const Plugin plugin = (mapped_again && CopyFileW(argv[1], copy.c_str(), FALSE) != FALSE) ? LoadPlugin(copy.c_str()) : Plugin{};
+    Expect(plugin.init != nullptr && plugin.init(&api) == 0
+               && plugin.block->engine_status.load() == (uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT),
+           "battle step: a second copy's init on the game file mapped again");
+    if (plugin.init != nullptr) {
+      {
+        const std::scoped_lock lock(log_mutex);
+        log_lines.clear();
+      }
+      *at(battle_step::CODE_RANGES.back().address) ^= 1;
+      plugin.game_started(&api);
+      Expect(plugin.block->engine_status.load() == (uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT)
+                 && Logged("renodx_attila64: battle step: game code differs (") && plugin.block->rows_changed.load() == 0,
+             "battle step: code changed after init is found at the game's start, with the row's line");
+    }
+  }
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
   return failures;
