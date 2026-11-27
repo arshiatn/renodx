@@ -23,8 +23,12 @@
 //    gone; the history's picks (marked by their uv) follow their light to its new index (RAB_TranslateLightIndex, the
 //    temporal group's DiCurrentBuild) and the gone light's history is killed. CONTROL: light_previous each its own place
 //    (the lights not moved) must carry none to the new index and pick the gone light's history.
-// 7. A light at a pixel's point (d = 0, review pdi4cr_ S10): its target is NaN there, read 0; that pixel never picks it,
-//    every pixel's slm light finite and > 0.
+// 7. A light at a pixel's point (d = 0, review pdi4cr_ S10): DiLight is 0 there, so no NaN reaches the target or the
+//    reservoirs, with or without the target guard; that pixel never picks it, every pixel's slm light finite and > 0. It
+//    does not reach DiVisible's LIGHT_RAY_FLOOR (the pixel's ray origin is SurfaceOffset above its point).
+// 8. A light at a pixel's ray origin (d = 0 for DiVisible, review pdr_ S1), its tile listing that light alone: the pixel
+//    picks it and its slm light is > 0 (DiVisible reads a light within LIGHT_RAY_FLOOR visible, as rt_lights keeps its
+//    bit). CONTROL: 6c81d89c5's rt_di_surface.hlsli (read it shadowed) gives 0 there and fails.
 // tests.exe <repository> <folder of dxcompiler.dll and dxil.dll> <RTXDI Include folder>
 #include <windows.h>
 #include <d3d12.h>
@@ -798,9 +802,10 @@ int main(int argc, char** argv) {
               part6 ? "PASS" : "FAIL", carried, GROUP, wrong, gone, carried_identity, gone_identity);
   failures += part6 ? 0 : 1;
 
-  // 7. A light at a pixel's point (d = 0, its target NaN: RAB_GetLightSampleTargetPdfForSurface reads it 0): light 0 at
-  // pixel (20, 20)'s position, the others 2 m up. That pixel never picks light 0 and its slm light is finite and > 0, as
-  // every pixel's (light 0 lies in the floor's plane, target 0 elsewhere).
+  // 7. A light at a pixel's point (d = 0): light 0 at pixel (20, 20)'s position, the others 2 m up. DiLight is 0 there (its
+  // NaN direction meets max / saturate), so no NaN reaches the target or the reservoirs, with or without the target guard.
+  // That pixel never picks light 0 and its slm light is finite and > 0, as every pixel's (light 0 lies in the floor's
+  // plane, target 0 elsewhere). DiVisible's LIGHT_RAY_FLOOR is not reached: the ray origin is SurfaceOffset above the point.
   lights[0] = {positions[(20 * SIDE) + 20][0], positions[(20 * SIDE) + 20][1], positions[(20 * SIDE) + 20][2], 20.f};
   uint32_t at_light_bad = 0;
   uint32_t touched_bad = 0;
@@ -824,6 +829,36 @@ int main(int argc, char** argv) {
               "with the slm light not finite and > 0\n",
               part7 ? "PASS" : "FAIL", at_light_bad, touched_bad);
   failures += part7 ? 0 : 1;
+
+  // 8. Light 0 at pixel (20, 20)'s ray origin: its position plus the half-float offset rt_di_initial stored (di_origin at
+  // DiParity 1, the run's path_flags 0), added in f32 as rt_di_initial.hlsl adds it, so DiVisible's distance is 0 (under
+  // Ray Reconstruction the disk point is NaN there: normalize(0)); its target is DiLight's at the point, SurfaceOffset
+  // below (> 0). The others 2 m up again (part 7 moved light 0), that pixel's tile listing light 0 alone.
+  for (uint32_t light = 0; light < LIGHTS; ++light) lights[light] = {1.6f, 2.f, 1.6f, 20.f};
+  constexpr uint32_t AT = (20 * SIDE) + 20;
+  uint32_t origin_bad = 0;
+  double origin_light = 0.0;
+  {
+    std::vector<RTXDI_PackedDIReservoir> initial;
+    std::vector<RTXDI_PackedDIReservoir> shaded;
+    std::vector<uint8_t> slm;
+    std::vector<uint8_t> skin;
+    CHECK(run(false, FRAMES + 5, DI_NO_TEMPORAL, &initial, &shaded, &slm, &skin));
+    const std::vector<uint8_t> origins = read_texture(origin_textures[1].Get(), 8);
+    for (uint32_t axis = 0; axis < 3; ++axis) lights[0][axis] = positions[AT][axis] + static_cast<float>(half(origins, (size_t{AT} * 4) + axis));
+    tile_lists[(20 / TILE) * TILES + (20 / TILE)] = {0u};
+    CHECK(run(false, FRAMES + 6, DI_NO_TEMPORAL, &initial, &shaded, &slm, &skin));
+    for (const auto* reservoirs : {&initial, &shaded}) {
+      const RTXDI_PackedDIReservoir& reservoir = (*reservoirs)[place(20, 20)];
+      if (reservoir.lightData != LIGHT_VALID || !(std::isfinite(reservoir.weight) && reservoir.weight > 0.f)) ++origin_bad;
+    }
+    origin_light = half(slm, size_t{AT} * 4);
+  }
+  const bool part8 = origin_bad == 0 && std::isfinite(origin_light) && origin_light > 0.0;
+  std::printf("%s 8 a light at the pixel's ray origin (d = 0 for DiVisible): %u of its 2 reservoirs not light 0 with a finite W > 0; its slm "
+              "light %.4f (must be finite and > 0; CONTROL 6c81d89c5's rt_di_surface.hlsli: 0)\n",
+              part8 ? "PASS" : "FAIL", origin_bad, origin_light);
+  failures += part8 ? 0 : 1;
   std::printf(failures == 0 ? "ALL PASSED\n" : "FAILED\n");
   return failures == 0 ? 0 : 1;
 }
