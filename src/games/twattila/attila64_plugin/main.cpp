@@ -90,6 +90,8 @@ struct EngineRow {
   uint32_t lane_shift = 0;
   std::atomic<bool>* code_read = nullptr;
   bool (*check_code)(const LoaderApi& loader) noexcept = nullptr;
+  // Ours (ATN 11-27): set by a check whose only misses were another mod's known spots.
+  const bool* other_mod = nullptr;
 };
 inline constexpr std::array<EngineRow, 2> ENGINE_ROWS = {{
     {.row = ROW_BATTLE_STEP,
@@ -101,8 +103,14 @@ inline constexpr std::array<EngineRow, 2> ENGINE_ROWS = {{
      .core_bit = CORE_SPLIT,
      .lane_shift = ENGINE_SPLIT_SHIFT,
      .code_read = &battle_step::contact.code_read,
-     .check_code = &battle_step::CheckContactCode},
+     .check_code = &battle_step::CheckContactCode,
+     .other_mod = &battle_step::contact.other_mod},
 }};
+// Ours (ATN 11-27): the lane of an engine row whose code check did not hold, at init or at the game's start.
+EngineState RefusedLane(const EngineRow& engine) noexcept {
+  if (engine.other_mod != nullptr && *engine.other_mod) return ENGINE_OTHER_MOD;
+  return ENGINE_CODE_DIFFERS;
+}
 
 // A restart-only value's key in [Attila64Plugin.Values], read at init for the game's start.
 struct RestartKey {
@@ -505,7 +513,7 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     if (install_key != 0) {
       const bool code_read = (block.rows_applied & RowBit(engine.row)) != 0 && engine.check_code(*api);
       engine.code_read->store(code_read, std::memory_order_relaxed);
-      lane = ENGINE_CODE_DIFFERS;
+      lane = RefusedLane(engine);
       if (code_read) {
         lane = ENGINE_OFF;
         if ((block.core_wanted.load(std::memory_order_relaxed) & engine.core_bit) != 0) {
@@ -588,7 +596,7 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
         && ((block.rows_changed.load(std::memory_order_relaxed) & RowBit(engine.row)) != 0
             || !engine.check_code(*loader))) {
       engine.code_read->store(false, std::memory_order_relaxed);
-      battle_step::SetLane(&block, ENGINE_CODE_DIFFERS, engine.lane_shift);
+      battle_step::SetLane(&block, RefusedLane(engine), engine.lane_shift);
     }
   }
   // The engine values, once: the game's static constructors have built them, and its sound start (the reader of the

@@ -532,6 +532,44 @@ int wmain(int argc, wchar_t** argv) {
              "engine rows: a row off for a changed site stays off at its hook's next call");
     }
   }
+  // The contact split's pin: a byte inside one of the other mod's windows (the first one's, and the fifth's in another
+  // function) is neither the game's nor that mod's known byte. Changed before the copy's init, or between its init and
+  // its game start: the row's lane says another mod, with one line per window; the battle step's lane is its own.
+  for (const bool before_init : {true, false}) {
+    const Plugin pinned = copy_on_the_game_again((before_init ? L"other_mod_init_case" : L"other_mod_start_case"));
+    const auto change_windows = [&] {
+      *at(battle_step::CONTACT_MASKS[0].start + 5) ^= 1;
+      *at(battle_step::CONTACT_MASKS[4].start + 5) ^= 1;
+    };
+    {
+      const std::scoped_lock lock(log_mutex);
+      log_lines.clear();
+    }
+    if (before_init) {
+      change_windows();
+    }
+    Expect(pinned.init != nullptr && pinned.init(&api) == 0
+               && pinned.block->engine_status.load()
+                      == ((uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT) | (uint32_t{(before_init ? ENGINE_OTHER_MOD : ENGINE_OFF)} << ENGINE_SPLIT_SHIFT)),
+           "pin: a copy's init, the contact split's lane 'another mod' with a window changed before it");
+    if (pinned.init != nullptr) {
+      if (!before_init) {
+        change_windows();
+      }
+      pinned.game_started(&api);
+      Expect(pinned.block->engine_status.load()
+                     == ((uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT) | (uint32_t{ENGINE_OTHER_MOD} << ENGINE_SPLIT_SHIFT))
+                 && Logged("renodx_attila64: contact split: off (another mod changed the game code at 0x773ba6: hash 0x")
+                 && Logged("renodx_attila64: contact split: off (another mod changed the game code at 0x78c91d: hash 0x")
+                 && Logged("is not the game's or PerfFix 7.5's)") && !Logged("game code differs"),
+             "pin: a changed window gives the lane 'another mod' and each window's line, at init and at the game's start");
+      std::array<uint8_t, 0x20> dummy_manager = {};
+      pinned.block->core_wanted.fetch_or(CORE_SPLIT);
+      reinterpret_cast<PairsFn>(engine_ways_in()[1])(dummy_manager.data());
+      Expect(((pinned.block->engine_status.load() >> ENGINE_SPLIT_SHIFT) & ENGINE_LANE_MASK) == ENGINE_OTHER_MOD,
+             "pin: the row stays off for another mod at its hook's next call, switched on or not");
+    }
+  }
 
   // Two Shadow Cascades Under Rays on the game file, each case a copy's init on the file mapped again (a ReShade.ini
   // beside this exe for the one init, the DirectX 11 route by the loader's test switch): the key, a byte changed
