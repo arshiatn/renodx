@@ -8394,10 +8394,12 @@ class RtScene12 {
       const uint32_t stamp = ++ptlas_stamp_;
       std::vector<uint32_t> places;
       places.reserve(instance_count);
+      uint32_t active = 0;
       for (UINT index = 0; index < instance_count; ++index) {
         const D3D12_RAYTRACING_INSTANCE_DESC& instance = slot->instance_data[index];
         const uint32_t at = std::min<uint32_t>(instance.InstanceContributionToHitGroupIndex, PTLAS_INSTANCES - 1);
         PtlasInstance& want = ptlas_wanted_[at];
+        if (want.stamp != stamp) ++active;
         want = {.blas = instance.AccelerationStructure,
                 .id = instance.InstanceID,
                 .flags = NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE
@@ -8408,7 +8410,14 @@ class RtScene12 {
         std::memcpy(want.transform.data(), instance.Transform, sizeof(want.transform));
         places.push_back(at);
       }
-      auto* writes = reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE*>(slot->ptlas_data + PTLAS_WRITES_OFFSET);
+      // An instance index selects one instance (nvapi.h: one write a build): of instances sharing a place only the last
+      // reaches the PTLAS, the rest are missing from its picture.
+      if (const uint32_t lost = instance_count - active; lost != ptlas_lost_logged_) {
+        ptlas_lost_logged_ = lost;
+        slow_report_ += std::format("{}[TW ray tracing] Partitioned TLAS: {} of {} instances lost to a shared place.", (slow_report_.empty() ? "" : "\n"),
+                                    lost, instance_count);
+      }
+      auto* writes =reinterpret_cast<NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE*>(slot->ptlas_data + PTLAS_WRITES_OFFSET);
       uint32_t write_count = 0;
       const auto write_place = [&](uint32_t at) {
         PtlasInstance& written = ptlas_written_[at];
@@ -10965,6 +10974,7 @@ class RtScene12 {
   std::vector<PtlasInstance> ptlas_wanted_;
   std::vector<uint32_t> ptlas_places_;  // last request's
   uint32_t ptlas_stamp_ = 0;
+  uint32_t ptlas_lost_logged_ = 0;  // instances sharing a place at the last log line
   bool ptlas_built_ = false;
   std::vector<uint32_t> units_layout_;
   uint32_t units_refits_ = 0;
