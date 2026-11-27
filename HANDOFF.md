@@ -18369,7 +18369,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 23:3x: 'You are allowed to close cpu set setter and start it again!' -> coord: config backup
         (..._prerestart), schtasks /End CPUSetSetter (task '\CPUSetSetter', HighestAvailable, ATN's own logon task), the
         rule still in the file, schtasks /Run -> CPUSetSetter.exe running again (pid 35228). Check = a fresh -C2 smoke
-        (c2_smoke_gate2.log; want 'CPU sets 14 (logical 0-13)') STARTED 23:35. rrts2_ (Opus xHigh, 9 min;
+        (c2_smoke_gate2.log; want 'CPU sets 14 (logical 0-13)') STARTED 23:35. DONE 23:41 (ab_runs\20261127_233443_Smoke): BOTH arms
+        'CPU sets 14 (logical 0-13)' = the rule is live after the restart; E64-sr2 PASS; E64-mv clean exit, no WER, only
+        check 6 NO (0xC2AA8FDA again, 32-bit 0 of 21) -> waits for rts1_'s item X6, then -Analyze or one more -C2
+        smoke -> F12 -> the sprite gate (6 starts) + the MSAA start. rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
