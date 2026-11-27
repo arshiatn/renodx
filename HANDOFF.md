@@ -1013,6 +1013,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ns_index.py DIGEST CACHE keyed by the Nsight module hash alone (omx_ 11-27): rt_ ... | nsx_ (11-27)
 - PT RUN-TO-RUN STATES (omx_ 11-27): two GPU states fixed per run in both builds ( ... | GPU plan (Opus xHigh design, later)
 - PT GATE METHOD (omx_ 11-27): sort runs by state first, or judge on the whole-run ... | ATN (yes / no) -> tools agent
+- GPU ITEM 7 PLAN (i7s_ 11-27, tools\tw\round_notes\designs\gpu_item7_plan.md): sm ... | lss0_ / lsp3_ / sms_ -> coord
+- OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s p ... | ATN (yes / wait)
+- SMOKE SPHERES S3 review (Opus xHigh) of designs\smoke_spheres.md, then S5 smoke ... | coord (after sms_)
+- SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | coord (after lss0_)
+- PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | coord (after pdf_)
+- OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; th ... | ATN (keep / remove)
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17845,6 +17851,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         side: resolves ~0.3 % instead of ~2 %. The gates are ATN's. Owner: ATN (yes / no) -> tools agent
         - [x] TOLERANCE AND GUARD CONSTANTS (tune_1127a, 11-27): 2 shader files, picture unchanged (byte check of the affected
         shaders, tw_aa_frame_gamma PASS x86 / amd64 / Thrones / WH3), 14 builds exit 0; merged aeaa1a5c5. Owner: done
+        - [ ] GPU ITEM 7 PLAN (i7s_ 11-27, tools\tw\round_notes\designs\gpu_item7_plan.md): smoke spheres S0 recording scan
+        (lss0_), S1 probe round (lsp3_: parts A fog / sun-only cards / sphere flag + C PTLAS smoke arms P0-P3 run; part B old MG
+        arms ready, not run), S2 design (sms_) STARTED 06:4x. Owner: lss0_ / lsp3_ / sms_ -> coord
+        - [ ] OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s part B traces only sun + fog rays, so
+        its numbers don't depend on unified PT. Owner: ATN (yes / wait)
+        - [ ] SMOKE SPHERES S3 review (Opus xHigh) of designs\smoke_spheres.md, then S5 smoke caps retirement (ATN yes for 32 /
+        64; rt_scene.hlsli + rt_trace.cs_6_5.hlsl, before S6), then S6 implementer (after pdf_ frees rt_d3d12.hpp + an addon.cpp
+        slot). Owner: coord (after sms_)
+        - [ ] SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start in the game batch (recorder helper,
+        constantinople_aa107f05.replay, cpl2's camera, Smoke Shadow Quality Maximum, DLAA 3840x2160, PTLAS off, 2-4 frames);
+        needs a runner + review and ATN's rule line before he leaves 11-27 evening. Owner: coord (after lss0_)
+        - [ ] PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ~45 min after pdf_ frees
+        rt_d3d12.hpp; gate = 4K harness first hits PTLAS on vs off + an active-instance assert. Then the O-PTLAS stall replay
+        (RENODX_TW_PTLAS=1, headless Nsight + DRED); the C2 update-op stall test (can stall 4-5 s) only with ATN home. 'Retry at
+        ~1 ms TLAS' is not met (0.10-0.5 ms measured), U12b stays parked. Owner: coord (after pdf_)
+        - [ ] OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; the 80 ms (rt_scene.hlsli:189) was the
+        10-29 harness with every ray kind meeting the smoke (instance mask alone 81.5 -> 7.9 ms); 14->138 / 6->143 ms (:217-218)
+        = smoke as candidates of the main sun + fog rays, fixed in helper63 321434abd. Dead MG code stays in rt_d3d12.hpp
+        (:6835, :7813, :7823-7824, :8020-8023, :8267 / :8270, :10889), listed for ATN, not dropped. Owner: ATN (keep / remove)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
