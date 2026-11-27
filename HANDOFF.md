@@ -1034,6 +1034,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
 - DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | rtf_ / p2f_ / c8f_ / ssf_ -> coord (map edits, then implemen
+- LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -18067,9 +18068,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         batch scope, MS1 by eye)
         - [ ] DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s / backup_32bit per lr5_; map 6 item
         9 + 3.3a texts in its hand-back for coord; the 13 rule lines in 1.3.28 form), p2f_ (PK2P per lr1_), c8f_ (C8 wave 2 +
-        PK1-64 per lr2_), ssf_ (smoke_spheres.md per smr_ + lsp3_). PK6-64 / PK5-64 / PK9 / PK8 fix rounds wait for lr4_ (shared
+        PK1-64 per lr2_), ssf_ (smoke_spheres.md per smr_ + lsp3_). PK6-64 / PK5-64 / PK9 / PK8 fix rounds wait for lr4_ (lr4_ DONE 07:5x: p8bf_ Fable 5.2 xHigh Stage B, p8af_
+        Stage A, p59f_ PK5-64 + PK9 STARTED 07:5x; p6f_ PK6-64 last, after c8f_ / p59f_ / p8af_ / p8bf_) (shared
         PK6 tables, the A15 literal vs PK8's log string, core_wanted bits; lr4_ told 07:2x). Owner: rtf_ / p2f_ / c8f_ / ssf_ ->
         coord (map edits, then implementers)
+        - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
+        and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
+        fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
+        ms a step, under the 0.85 ms A/A band). MUSTs: A-M1 the E4 / E5 / E5b / E6 lines per arm + owner (ep1c logs 'skipped
+        (OFF)' -> fails E5b today); A-M2 tests\fake_loader.hpp pins the rows line + site count -> coord: derive from ROW_WORDS /
+        the sites table (l2bw2_ if small, else PK8 W-A2; map row added); A-M3 PK8 keeps its log wording, PK5's A15 matches whole
+        NUL-bounded strings; B-M1 sites.h regenerated only in step 5; B-M2 FenceCount null-safe; B-M3 W4 covers 0xb409e0's
+        subtree; B-M4 FAST by allow-list; B-M5 W6 covers all 86 fetch consumers + remove_and_execute writers; B-M6 map 3.3
+        places Stage B in every chain (coord DONE 11-27: plugin_block.h, main.cpp / hooks.hpp, sites.h, fake_loader, link,
+        addon.cpp, a64_ab, 3.3a link + addon.cpp); B-M7 CONTACT_ENTRY installed under the default ini -> ', contact split on' +
+        one site + one mask bit in every smoke; ep8 ContactSplit=0 hits E5b. Core bits: no collision (CORE_STEP 1<<2 /
+        CORE_SPLIT 1<<3 are B0's, PK9 1<<4 / 1<<5), all v2. Top SHOULDs: release stores / signal fence on the swap; a drawing
+        task can wait 2-4 ms (not one chunk) -> maybe one task thread free; gain low side -5..-14 ms. ATN decides: go for Stage
+        B steps 1-8 after Stage A + S-C; the batch line + ep8,ep8b,ep8btt8 and the conditional ep8tt8; the guest deferral;
+        census effort (High + xHigh read); scope notes (ships partly, mount class = the game's walk); default Off. Owner: p8af_
+        / p8bf_ -> coord; ATN (the six items)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
