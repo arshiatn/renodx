@@ -377,8 +377,12 @@ void main(uint3 id : SV_DispatchThreadID) {
           result = float2(0.f, NearestBlocker(start, toward, GRASS, grass_ray.TMin, grass.CommittedRayT()));
         }
       }
-      // The smoke apart where the sun still comes through: Smoke Shadow Quality's particles that dim it (8, 16 or 32).
-      if (facing && result.x > 0.f) result.x *= SmokeTransmittance(start, toward, 1.0e4f, 8u << ((flags >> SMOKE_QUALITY_SHIFT) & 3u));
+      // The smoke apart where the sun still comes through: Smoke Shadow Quality's particles that dim it (8 or 16; from 32
+      // on every one, SMOKE_UNCOUNTED).
+      if (facing && result.x > 0.f) {
+        const uint smoke_quality = (flags >> SMOKE_QUALITY_SHIFT) & 3u;
+        result.x *= SmokeTransmittance(start, toward, 1.0e4f, (smoke_quality >= 2u) ? SMOKE_UNCOUNTED : (8u << smoke_quality));
+      }
       sum += result;
       tint_sum += result.x * sun_tint;
     }

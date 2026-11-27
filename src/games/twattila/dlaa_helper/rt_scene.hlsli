@@ -185,11 +185,16 @@ bool AlphaPasses(uint record_index, uint primitive, float2 barycentrics) {
 // each ray's cost bounded).
 static const uint MAX_CANDIDATES = 64u;
 
-// The share of the sun's light left at which smoke counts as dark: its ray goes no further (each particle a candidate;
-// at 4K through 1000 particles the trace took 80 ms a frame, each sun ray dozens).
+// The share of the sun's light left at which smoke counts as dark: its ray goes no further (each particle a candidate).
+// The 80 ms a frame at 4K through 1000 particles once written here was helper29's harness with every ray kind meeting the
+// smoke (2026-10-29): its own instance mask took that trace to 7.9 ms (AO 29.2 -> 0.7, lights 34.2 -> 0.6).
 static const float SMOKE_DARK = 0.05f;
 // A candidate dimming less counts against no ray's particles (corners outside the disk, rims, chords behind its start).
 static const float SMOKE_FAINT = 0.05f;
+// SmokeTransmittance's `particles` with no count: every particle along the ray dims it (until SMOKE_DARK), whatever
+// order the BVH returns them in (Smoke Shadow Quality 32 / 64). At 4K the count caps there saved no time (lsp_ 11-26: 5.528 ms uncapped
+// against 5.523 at 32, city 4000; the error against every particle 0.0575 capped, 0.00056 uncapped; ATN's yes 11-26).
+static const uint SMOKE_UNCOUNTED = 0x7FFFFFFFu;
 
 // The TLAS's instance masks (rt_d3d12.hpp: solids 1, the smoke's own instance 2, the leaves' meshes 4): the rays toward
 // the sun meet all (ALL_INSTANCES); the others (the ambient, the local lights, the paths, the reflections) leave the
@@ -213,11 +218,13 @@ static const uint CUT_OUTS = 0x40u;
 static const float GRASS_AMBIENT_RANGE = 0.5f;  // metres: grass's share of the ambient's rays (the AO's and PT AO's)
 
 // The share of the sun's light the smoke along a ray lets through, in the smoke's own TLAS: of the first `particles` that
-// dim it at most, twice as many met at most. The sun's and the fog's rays meet the smoke apart from the rest: each particle
-// is a candidate, and with up to MAX_CANDIDATES of them a ray, 120K-235K particles of arrows' smoke a frame took the sun's
-// rays from 14 to 138 ms and the fog's from 6 to 143 ms (ATN's 2026-11-01 Constantinople profile; its late traces left grass
-// shadows flickering). Counting those that barely dim left holes and flicker in thick smoke (which a ray met first changes
-// from frame to frame; ATN 2026-11-02).
+// dim it at most, twice as many met at most (SMOKE_UNCOUNTED: no count). The sun's and the fog's rays meet the smoke apart
+// from the rest. The traces once written here had three causes, none of them today's smoke: 120K-235K particles of arrows'
+// smoke as candidates of the main sun and fog rays (up to MAX_CANDIDATES a ray) took the sun's rays from 14 to 138 ms and
+// the fog's from 6 to 143 ms (ATN's 2026-11-01 Constantinople profile), fixed by this ray of its own (helper63); the smoke
+// as Mega Geometry clusters in the particles' list order, each spanning the battlefield, took a trace from 3.6 to 194 ms
+// (helper65: a BLAS sorted by the builder since); every ray kind meeting the smoke, SMOKE_DARK's 80 ms. Counting those that
+// barely dim left holes and flicker in thick smoke (which a ray met first changes from frame to frame; ATN 2026-11-02).
 float SmokeTransmittance(float3 origin, float3 direction, float range, uint particles) {
   if ((flags & SMOKE_MET) == 0u) return 1.f;
   RayDesc ray;
