@@ -18234,7 +18234,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         MUST (own ELF decode: count sites +0xcc 0x30e46d8 High 3 / 0x30e470c Max 4, extra +0xb8; Medium's 22 bytes
         exact; lowest Shadows skips the setup; DLL fb0264cb again): S1 the comment + :74 enum comment, S2 'ours:' for
         writing 0 while not offered, S3 F7 = done (3 / 3); N1-N7. Fix round s5e_ (resumed, Fable 5.2 Medium, est 20)
-        STARTED 21:3x..
+        STARTED 21:3x.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
