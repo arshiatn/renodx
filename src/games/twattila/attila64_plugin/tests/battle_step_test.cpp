@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -35,6 +36,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <limits>
+#include <mutex>
 #include <random>
 #include <string>
 #include <string_view>
@@ -1353,22 +1355,153 @@ void EnterClass(void** table, ContactMode mode) {
   contact.classes[slot] = {.vptr = reinterpret_cast<uintptr_t>(table), .mode = mode};
 }
 
-// The row's seam for starting a region's helpers: the test's own threads.
+// The engine's task queue under the row (T-B2): the fake task manager's list, written by the row's enqueue and by the
+// game's own fetch (0x6e88f0), with the test's lock, unlock and wake at the game's addresses, and the test's task
+// threads in the shape of the game's task-thread loop.
+inline constexpr uintptr_t FETCH_TASK = 0x6e88f0;
+using FetchTaskFn = HelperTask*(ATTILA64_GAME_CALL*)(void* task_manager, uint32_t flag) noexcept;
+const std::thread::id step_thread = std::this_thread::get_id();
+// The step thread's own: `regions` counts its lock calls inside a tick (one a region, with the region open and no
+// helper queued yet), `on_region` runs there, and `queue_lock_result` is what that call returns.
+bool in_tick = false;
+bool in_region_hook = false;
+uint32_t regions = 0;
+int queue_lock_result = 0;
+std::function<void()> on_region;
+bool leave_queued = false;  // a tick's helpers stay in the queue: no task thread answers, nothing drains
+uint32_t queue_faults = 0;  // a queue that was not empty and balanced after a drain
+
+std::mutex queue_mutex;
+std::atomic<uint32_t> queue_locks = 0;
+std::atomic<uint32_t> queue_unlocks = 0;
+std::atomic<uint32_t> queue_wakes = 0;
+std::atomic<uint32_t> helpers_run = 0;
+std::atomic<uint32_t> parents_seen = 0;  // tasks with a parent: none of the row's may have one
+// The task threads: a wake posts all of them; the first `test_helpers` then fetch until the queue is empty.
+std::mutex pool_mutex;
+std::condition_variable pool_signal;
+uint64_t wake_generation = 0;
+std::array<uint64_t, HELPER_COUNT> pool_seen = {};
+uint32_t pool_busy = 0;
 uint32_t test_helpers = 0;
-uint32_t regions = 0;  // the seam's calls
-bool queue_lock_fails = false;
-std::function<void()> on_region;  // runs with the region open, before any helper
-std::vector<std::thread> helper_threads;
-bool TestEnqueue(uint32_t helper_count) noexcept {
-  ++regions;
-  if (queue_lock_fails) return false;
-  if (on_region) {
-    on_region();
+bool pool_stop = false;
+std::atomic<bool> pool_yields = false;
+std::vector<std::thread> pool;
+
+ATTILA64_GAME_CALL int FakeQueueLock(void* /*lock*/) noexcept {
+  if (std::this_thread::get_id() == step_thread && in_tick && !in_region_hook) {
+    ++regions;
+    if (on_region) {
+      in_region_hook = true;
+      on_region();
+      in_region_hook = false;
+    }
+    if (queue_lock_result != 0) return queue_lock_result;
   }
-  for (uint32_t helper = 0; helper < std::min(helper_count, test_helpers); ++helper) {
-    helper_threads.emplace_back([helper] { RunRegionShare(helper); });
+  queue_mutex.lock();
+  ++queue_locks;
+  return 0;
+}
+ATTILA64_GAME_CALL int FakeQueueUnlock(void* /*lock*/) noexcept {
+  ++queue_unlocks;
+  queue_mutex.unlock();
+  return 0;
+}
+ATTILA64_GAME_CALL void FakeQueueWake(void* /*task_manager*/) noexcept {
+  ++queue_wakes;
+  {
+    const std::lock_guard lock(pool_mutex);
+    ++wake_generation;
   }
-  return true;
+  pool_signal.notify_all();
+}
+bool IsHelper(const HelperTask* task) { return task >= contact_helpers.data() && task < contact_helpers.data() + HELPER_COUNT; }
+bool Poisoned(const HelperTask& task) {
+  const auto* bytes = reinterpret_cast<const uint8_t*>(&task);
+  return std::all_of(bytes, bytes + offsetof(HelperTask, state), [](uint8_t byte) { return byte == 0xcc; });
+}
+// One fetched task as the game's task-thread loop handles it: the parent read first, the table's first entry, the
+// table read again, its second entry, and with no parent nothing of the task afterwards. A helper's engine part is
+// poisoned before the second call: nothing of the row's reads it from there on, until the next enqueue fills it.
+void RunFetchedTask(HelperTask* task) {
+  if (task->parent != nullptr) {
+    ++parents_seen;
+  }
+  task->table->run(task);
+  const HelperTable* table = task->table;
+  if (IsHelper(task)) {
+    ++helpers_run;
+    std::memset(static_cast<void*>(task), 0xcc, offsetof(HelperTask, state));
+  }
+  table->done(task, 0);
+}
+// Fetches until the queue is empty; returns the tasks it ran.
+uint32_t RunQueuedTasks(uint32_t flag, std::minstd_rand* random = nullptr) {
+  uint32_t count = 0;
+  for (;;) {
+    if (random != nullptr && (*random)() % 4 == 0) {
+      std::this_thread::yield();
+    }
+    HelperTask* task = reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, flag);
+    if (task == nullptr) return count;
+    // A task thread that is slow to start what it took: the helper runs late, in this region or a later one.
+    if (random != nullptr && (*random)() % 16 == 0) {
+      for (uint32_t wait = (*random)() % 4096; wait != 0; --wait) {
+        std::this_thread::yield();
+      }
+    }
+    RunFetchedTask(task);
+    ++count;
+  }
+}
+void TaskThread(uint32_t index) {
+  std::minstd_rand random(index + 1);
+  for (;;) {
+    bool active = false;
+    {
+      std::unique_lock lock(pool_mutex);
+      pool_signal.wait(lock, [&] { return pool_stop || pool_seen[index] != wake_generation; });
+      if (pool_stop) return;
+      pool_seen[index] = wake_generation;
+      active = index < test_helpers;
+      pool_busy += (active ? 1 : 0);
+    }
+    if (active) {
+      RunQueuedTasks(0, (pool_yields.load() ? &random : nullptr));
+      const std::lock_guard lock(pool_mutex);
+      --pool_busy;
+    }
+    pool_signal.notify_all();
+  }
+}
+void SetTaskThreads(uint32_t count) {
+  const std::lock_guard lock(pool_mutex);
+  test_helpers = count;
+}
+// Every task thread has answered the last wake and found the queue empty.
+void WaitForTaskThreads() {
+  std::unique_lock lock(pool_mutex);
+  pool_signal.wait(lock, [] {
+    return pool_busy == 0 && std::ranges::all_of(pool_seen, [](uint64_t seen) { return seen == wake_generation; });
+  });
+}
+// The queue's own fields of the fake task manager: its list (head, tail, count) and the game's counter.
+struct QueueFields {
+  std::array<uint8_t, TASK_MANAGER_COUNT + sizeof(uint32_t) - TASK_MANAGER_HEAD> list = {};
+  uint32_t inside = 0;
+  bool operator==(const QueueFields&) const = default;
+};
+QueueFields ReadQueue() {
+  QueueFields fields = {.inside = At<uint32_t>(scene.task_manager, TASK_MANAGER_INSIDE)};
+  std::memcpy(fields.list.data(), static_cast<uint8_t*>(scene.task_manager) + TASK_MANAGER_HEAD, fields.list.size());
+  return fields;
+}
+bool HelpersAre(uint32_t queued_bits) {
+  bool right = true;
+  for (uint32_t helper = 0; helper < HELPER_COUNT; ++helper) {
+    right = right && contact_helpers[helper].state.load() == (((queued_bits >> helper) & 1) != 0 ? HELPER_QUEUED : HELPER_FREE);
+  }
+  return right;
 }
 
 // A new world without objects: the chain a tick reads (manager -> environment -> model with its tick and fence
@@ -1520,22 +1653,35 @@ struct ContactOutcome {
 };
 // `with_row`: through the row as the hook will call it (the game's function on a false). `fresh`: the row's state as
 // at the game's start. `threads`: the helpers a region gets.
+// A tick through the row, then the task threads' answer and what they left in the queue (taken as a task thread takes
+// a helper late, or the step thread in its own join).
+bool Tick() {
+  in_tick = true;
+  const bool handled = ContactTick(scene.manager, &block, api);
+  in_tick = false;
+  if (!leave_queued) {
+    WaitForTaskThreads();
+    RunQueuedTasks(0);
+    queue_faults += ((ReadQueue() == QueueFields{} && HelpersAre(0) && queue_locks.load() == queue_unlocks.load()) ? 0 : 1);
+  }
+  return handled;
+}
 ContactOutcome RunContact(bool with_row, uint32_t threads = 0, bool fresh = true) {
+  // The queue is the engine's, not the world's: it stays as it is over the restore.
+  const QueueFields queue = ReadQueue();
   RestoreContactWorld();
+  std::memcpy(static_cast<uint8_t*>(scene.task_manager) + TASK_MANAGER_HEAD, queue.list.data(), queue.list.size());
+  At<uint32_t>(scene.task_manager, TASK_MANAGER_INSIDE) = queue.inside;
   owner_calls.clear();
   swapped_calls = 0;
   game_memory.clear();
   note_game_memory = true;
   regions = 0;
-  test_helpers = threads;
+  SetTaskThreads(leave_queued ? 0 : threads);
   if (fresh) {
     FreshContact();
   }
-  const bool handled = with_row && ContactTick(scene.manager, &block, api);
-  for (std::thread& helper : helper_threads) {
-    helper.join();
-  }
-  helper_threads.clear();
+  const bool handled = with_row && Tick();
   if (!handled) {
     reinterpret_cast<PairsFn>(CONTACT_LOOP)(scene.manager);
   }
@@ -1545,6 +1691,10 @@ ContactOutcome RunContact(bool with_row, uint32_t threads = 0, bool fresh = true
                             .calls = owner_calls,
                             .memory = std::vector<uint8_t>(arena, arena + arena_dirty)};
   std::fill_n(outcome.memory.begin() + scene.id_data, scene.id_data_bytes, uint8_t{0});
+  // The queue's fields are compared by the cases that leave tasks in it.
+  const size_t queue_place = static_cast<size_t>(static_cast<uint8_t*>(scene.task_manager) - arena);
+  std::fill_n(outcome.memory.begin() + queue_place + TASK_MANAGER_HEAD, sizeof(QueueFields::list), uint8_t{0});
+  std::fill_n(outcome.memory.begin() + queue_place + TASK_MANAGER_INSIDE, sizeof(uint32_t), uint8_t{0});
   for (const auto& [offset, bytes] : game_memory) {
     std::fill_n(outcome.memory.begin() + offset, bytes, uint8_t{0});
   }
@@ -1569,7 +1719,7 @@ ContactOutcome ExpectContactSame(const char* what) {
 bool Refused() {
   RestoreContactWorld();
   regions = 0;
-  const bool handled = ContactTick(scene.manager, &block, api);
+  const bool handled = Tick();
   return !handled && regions == 0 && std::memcmp(arena, world.data(), world.size()) == 0
          && std::memcmp(id_set_memory, id_set_world.data(), ID_SET_BYTES) == 0;
 }
@@ -1671,12 +1821,262 @@ void BuildContactWorld(std::mt19937_64* random, const ContactShape& shape) {
   }
 }
 
+// The row's items of the last region as one value: each place's object, mode, counts and kept chain.
+uint64_t ItemsValue(uint32_t object_count) {
+  uint64_t value = FNV_OFFSET_BASIS;
+  const auto add = [&](const auto& field) { value = Fnv1a64(reinterpret_cast<const uint8_t*>(&field), sizeof(field), value); };
+  for (uint32_t place = 0; place < object_count; ++place) {
+    const ContactItem& item = contact_items[place];
+    add(item.object);
+    add(item.mode);
+    add(item.node_count);
+    add(item.mark_count);
+    const ContactNode* node = ((item.node_count != 0) ? &contact_nodes[item.first_node] : nullptr);
+    for (uint32_t kept = 0; kept < item.node_count; ++kept) {
+      add(node->kind);
+      add(node->id);
+      add(node->record);
+      add(node->owner);
+      node = node->next;
+    }
+  }
+  return value;
+}
+
+// A fake task of the engine's (no parent, not a child task), and one whose run is a join: it fetches as a task thread
+// does inside a join and runs what it gets.
+std::atomic<uint32_t> engine_tasks_done = 0;
+HelperTask* joined_task = nullptr;
+ATTILA64_GAME_CALL void FakeTaskRun(HelperTask* /*task*/) noexcept {}
+ATTILA64_GAME_CALL void FakeTaskDone(HelperTask* /*task*/, uint32_t /*flag*/) noexcept { ++engine_tasks_done; }
+ATTILA64_GAME_CALL void FakeJoinRun(HelperTask* /*task*/) noexcept {
+  joined_task = reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, 0);
+  if (joined_task != nullptr) {
+    RunFetchedTask(joined_task);
+  }
+}
+const HelperTable fake_task_table = {.run = &FakeTaskRun, .done = &FakeTaskDone};
+const HelperTable fake_join_table = {.run = &FakeJoinRun, .done = &FakeTaskDone};
+// The game's enqueue for one task, as the test's own copy.
+void LinkAtTail(HelperTask* task) {
+  void* const manager = scene.task_manager;
+  FakeQueueLock(nullptr);
+  if (At<void*>(manager, TASK_MANAGER_HEAD) == nullptr) {
+    At<void*>(manager, TASK_MANAGER_HEAD) = task;
+  } else {
+    At<HelperTask*>(manager, TASK_MANAGER_TAIL)->next = task;
+  }
+  task->previous = At<void*>(manager, TASK_MANAGER_TAIL);
+  task->next = nullptr;
+  At<void*>(manager, TASK_MANAGER_TAIL) = task;
+  task->in_queue = 1;
+  ++At<uint32_t>(manager, TASK_MANAGER_COUNT);
+  FakeQueueUnlock(nullptr);
+}
+// The queue holds exactly these tasks in this order, each linked both ways and marked as queued.
+bool QueueIs(const std::vector<HelperTask*>& tasks) {
+  void* const manager = scene.task_manager;
+  bool right = At<uint32_t>(manager, TASK_MANAGER_COUNT) == tasks.size() && At<uint32_t>(manager, TASK_MANAGER_INSIDE) == 0
+               && At<void*>(manager, TASK_MANAGER_HEAD) == (tasks.empty() ? nullptr : tasks.front())
+               && At<void*>(manager, TASK_MANAGER_TAIL) == (tasks.empty() ? nullptr : tasks.back());
+  for (size_t place = 0; place < tasks.size(); ++place) {
+    right = right && tasks[place]->in_queue == 1 && tasks[place]->previous == ((place != 0) ? tasks[place - 1] : nullptr)
+            && tasks[place]->next == ((place + 1 < tasks.size()) ? tasks[place + 1] : nullptr);
+  }
+  return right;
+}
+
+// T-B2: the row's enqueue and helpers against the game's own fetch, on the fake task manager.
+inline constexpr uint32_t STRESS_REGIONS = 100000;
+void RunTaskCases(const std::function<std::vector<void*>(uint32_t)>& base_scene) {
+  const auto fetch = reinterpret_cast<FetchTaskFn>(FETCH_TASK);
+  HelperTask* const helpers = contact_helpers.data();
+  {
+    // The apply's four stores, in the source: the count before the pointer on the way in, the pointer before the
+    // count on the way out (one thread cannot see the order; another thread's read of the two fields can).
+    std::string path = __FILE__;
+    path.resize(path.find_last_of("\\/"));
+    path.resize(path.find_last_of("\\/") + 1);
+    std::ifstream file(path + "battle_step.hpp", std::ios::binary);
+    const std::string source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    size_t place = 0;
+    bool in_order = !source.empty();
+    for (const char* store : {".store(((item.node_count != 0) ? 1 : 0), std::memory_order_release);",
+                              ".store(contact_cells.entries.data(), std::memory_order_release);",
+                              "std::atomic_ref<void*>(At<void*>(object, OBJECT_CELLS)).store(cells, std::memory_order_release);",
+                              "std::atomic_ref<uint32_t>(At<uint32_t>(object, OBJECT_CELL_COUNT)).store(cell_count, std::memory_order_release);"}) {
+      const size_t found = source.find(store);
+      in_order = in_order && found != std::string::npos && found >= place && source.find(store, found + 1) == std::string::npos;
+      place = found;
+    }
+    Expect(in_order, "apply: the swap's four stores in the source, each once: count, pointer, call, pointer, count");
+  }
+  {
+    // The enqueue and the fetch, by hand. A region ran before (T-B1), and it is closed.
+    base_scene(2100);
+    KeepContactWorld();
+    FreshContact();
+    void* const manager = scene.task_manager;
+    for (HelperTask& helper : contact_helpers) {
+      std::memset(static_cast<void*>(&helper), 0, offsetof(HelperTask, state));  // as at the game's start
+    }
+    queue_wakes = 0;
+    helpers_run = 0;
+    Expect(HelpersAre(0) && QueueIs({}) && contact.chunk_count != 0 && !contact.open, "tasks: nothing queued before the first case");
+    Expect(StartHelpers(manager, 3) && QueueIs({helpers, helpers + 1, helpers + 2}) && HelpersAre(0b111) && queue_wakes.load() == 1,
+           "tasks: three helpers at the tail in index order, one wake from the empty queue");
+    Expect(std::ranges::all_of(contact_helpers.begin(), contact_helpers.begin() + 3,
+                               [](const HelperTask& helper) {
+                                 return helper.table == &HELPER_TABLE && helper.parent == nullptr && helper.child == 1;
+                               }),
+           "tasks: a queued helper has the row's table, no parent and the child byte");
+    HelperTask engine_task = {.table = &fake_task_table};
+    LinkAtTail(&engine_task);
+    Expect(StartHelpers(manager, 5)
+               && QueueIs({helpers, helpers + 1, helpers + 2, &engine_task, helpers + 3, helpers + 4}) && HelpersAre(0b11111)
+               && queue_wakes.load() == 1,
+           "tasks: queued helpers are skipped, the free ones follow at the tail, no wake from a filled queue");
+    Expect(fetch(manager, 1) == &engine_task && fetch(manager, 1) == nullptr
+               && QueueIs({helpers, helpers + 1, helpers + 2, helpers + 3, helpers + 4}),
+           "tasks: a fetch for a thread that is no task thread takes the engine's task between the helpers, and no helper");
+    // A helper taken with no region open (late, or by the step thread's own join): it returns at once.
+    contact.next_chunk.store(0);
+    contact.stop_bits.store(0);
+    HelperTask* const first = fetch(manager, 0);
+    if (first != nullptr) {
+      RunFetchedTask(first);
+    }
+    Expect(first == helpers && HelpersAre(0b11110) && Poisoned(helpers[0]) && contact.next_chunk.load() == 0
+               && QueueIs({helpers + 1, helpers + 2, helpers + 3, helpers + 4}) && helpers_run.load() == 1,
+           "tasks: a helper taken outside a region claims nothing, is free, and its task is not touched after its run");
+    // With helpers still queued, only the free ones below the count are linked, and none above it.
+    Expect(StartHelpers(manager, 1) && StartHelpers(manager, 2)
+               && QueueIs({helpers + 1, helpers + 2, helpers + 3, helpers + 4, helpers}) && HelpersAre(0b11111),
+           "tasks: a still-queued helper is skipped and no higher index takes its place");
+    Expect(StartHelpers(manager, 4) && QueueIs({helpers + 1, helpers + 2, helpers + 3, helpers + 4, helpers}),
+           "tasks: stale and new helpers together stay within the count");
+    Expect(RunQueuedTasks(0) == 5 && QueueIs({}) && HelpersAre(0) && helpers_run.load() == 6
+               && std::ranges::all_of(contact_helpers.begin(), contact_helpers.begin() + 5, Poisoned),
+           "tasks: the loop's shape empties the queue, every helper free");
+    // A helper taken nested inside another task's join.
+    HelperTask join_task = {.table = &fake_join_table};
+    LinkAtTail(&join_task);
+    Expect(StartHelpers(manager, 2) && QueueIs({&join_task, helpers, helpers + 1}) && queue_wakes.load() == 1,
+           "tasks: helpers behind a task of the engine's");
+    Expect(RunQueuedTasks(0) == 2 && joined_task == helpers && QueueIs({}) && HelpersAre(0) && helpers_run.load() == 8
+               && engine_tasks_done.load() == 1 && Poisoned(helpers[0]) && Poisoned(helpers[1]),
+           "tasks: a helper taken inside another task's join is run as in the loop");
+    Expect(StartHelpers(manager, HELPER_COUNT) && HelpersAre((1u << HELPER_COUNT) - 1) && queue_wakes.load() == 2
+               && RunQueuedTasks(0) == HELPER_COUNT && QueueIs({}) && HelpersAre(0),
+           "tasks: all fifteen helpers, a second wake from the queue empty again");
+  }
+  {
+    // Helpers left over from an earlier region. A tick whose helpers nobody takes leaves six queued; the next ticks
+    // start from that world and that queue.
+    base_scene(2100);
+    KeepContactWorld();
+    leave_queued = true;
+    const ContactOutcome before = RunContact(true);
+    Expect(before.handled && HelpersAre(0b111111) && At<uint32_t>(scene.task_manager, TASK_MANAGER_COUNT) == 6,
+           "leftover helpers: six stay queued after a tick nobody helped");
+    KeepContactWorld();
+    const ContactOutcome game = RunContact(false);
+    // The lock error with a leftover helper inside: it is taken with the region open, does its share and leaves; the
+    // lock call then fails. No helper's state and nothing of the queue is changed by the enqueue, the region is
+    // closed with no chunk left, and the tick is the game's.
+    QueueFields queue_at_lock = {};
+    on_region = [&] {
+      RunFetchedTask(reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, 0));
+      queue_at_lock = ReadQueue();
+    };
+    queue_lock_result = 22;
+    const ContactOutcome refused = RunContact(true, 0, false);
+    Expect(!refused.handled && refused.regions == 1 && Same(game, refused) && ReadQueue() == queue_at_lock && HelpersAre(0b111110)
+               && At<uint32_t>(scene.task_manager, TASK_MANAGER_COUNT) == 5 && !contact.open && !contact.busy.load()
+               && contact.next_chunk.load() >= contact.chunk_count && LinesWith("renodx_attila64: contact split: partly (queue lock)") == 1,
+           "lock error: no helper and nothing of the queue changed, the region closed, a leftover helper gone, the game's tick");
+    Expect(!RunContact(true, 0, false).handled && HelpersAre(0b111100)
+               && LinesWith("renodx_attila64: contact split: partly (queue lock)") == 1,
+           "lock error: a second one takes the next leftover helper and logs nothing");
+    queue_lock_result = 0;
+    // The same helper twice in one region: the third leftover helper is taken with the region open (the step
+    // thread's enqueue is held back that long), does every chunk and turns free; the enqueue then queues it again
+    // with the first two, and skips those of the other three that are still queued or running. Task threads are
+    // fetching, as they do while the queue holds tasks: each of the three runs once or twice.
+    leave_queued = false;
+    const uint32_t runs_before = helpers_run.load();
+    const uint64_t own_chunks_before = contact.own_chunks;
+    HelperTask* taken = nullptr;
+    on_region = [&] {
+      taken = reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, 0);
+      RunFetchedTask(taken);
+      FakeQueueWake(nullptr);
+    };
+    const ContactOutcome twice = RunContact(true, 3, false);
+    on_region = nullptr;
+    Expect(twice.handled && Same(game, twice) && taken == &contact_helpers[2] && contact.own_chunks == own_chunks_before
+               && helpers_run.load() - runs_before >= 7 && helpers_run.load() - runs_before <= 10 && QueueIs({}) && HelpersAre(0),
+           "the same helper twice in one region: its first run does every chunk, the second finds none, the tick is the game's");
+  }
+  {
+    // The region under load: fifteen task threads that yield at random, no wait between regions (so helpers are taken
+    // late, left over, skipped and queued again), a world the game's pass answers nothing in (every pair is rejected
+    // by its flags after detect kept it), so every tick starts from the same one. Every region's items equal the
+    // one-thread detect's.
+    std::vector<void*> objects = NewPlainScene(MIN_OBJECTS + 1);
+    for (uint32_t object = 0; object + 1 < objects.size(); object += 2) {
+      MakeNeighbours(objects[object], objects[object + 1]);
+    }
+    for (void* object : objects) {
+      At<uint32_t>(object, 0x60) = 1;
+    }
+    At<uint32_t>(scene.task_manager, TASK_MANAGER_THREADS) = HELPER_COUNT + KEPT_OUT_THREADS;
+    KeepContactWorld();
+    const ContactOutcome alone = RunContact(true);
+    const uint64_t items_alone = ItemsValue(MIN_OBJECTS + 1);
+    Expect(alone.handled && alone.calls.empty() && contact.listed == MIN_OBJECTS && LinesWith("helpers 15)") == 1,
+           "region stress: a world without a response, every object but the last with one kept node, fifteen helpers a region");
+    const uint32_t runs_before = helpers_run.load();
+    const uint64_t own_chunks_before = contact.own_chunks;
+    uint32_t wrong_regions = 0;
+    pool_yields = true;
+    SetTaskThreads(HELPER_COUNT);
+    in_tick = true;
+    const auto start = std::chrono::steady_clock::now();
+    for (uint32_t region = 0; region < STRESS_REGIONS; ++region) {
+      const bool handled = ContactTick(scene.manager, &block, api);
+      // The close let everyone out: nothing writes the items from here on.
+      wrong_regions += ((handled && !contact.open && contact.next_chunk.load() >= contact.chunk_count
+                         && ItemsValue(MIN_OBJECTS + 1) == items_alone)
+                            ? 0
+                            : 1);
+      if (region % 64 == 0) {
+        std::this_thread::yield();
+      }
+    }
+    const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    in_tick = false;
+    WaitForTaskThreads();
+    RunQueuedTasks(0);
+    pool_yields = false;
+    const uint64_t chunks = uint64_t{STRESS_REGIONS} * contact.chunk_count;
+    std::printf("    region stress: %u regions in %.1f s, %u helper runs, the step's thread did %llu of %llu chunks\n", STRESS_REGIONS,
+                seconds, helpers_run.load() - runs_before, static_cast<unsigned long long>(contact.own_chunks - own_chunks_before),
+                static_cast<unsigned long long>(chunks));
+    Expect(wrong_regions == 0 && QueueIs({}) && HelpersAre(0) && helpers_run.load() - runs_before > STRESS_REGIONS
+               && helpers_run.load() - runs_before < STRESS_REGIONS * HELPER_COUNT && contact.own_chunks - own_chunks_before < chunks,
+           "region stress: every region's items equal the one-thread detect, the queue empty and every helper free at the end");
+  }
+}
+
 // T-B1 and T-B4's ticks: the game file is mapped, its allocator sent to the test's.
 void RunContactCases() {
   std::printf("  contact split: the game's pass against the row\n");
   const int failures_before = failures;
   contact.code_read.store(true);
-  contact.enqueue = &TestEnqueue;
+  for (uint32_t index = 0; index < HELPER_COUNT; ++index) {
+    pool.emplace_back(&TaskThread, index);
+  }
   const auto active_line = [](uint32_t objects, uint32_t plain) {
     char line[96];
     std::snprintf(line, sizeof(line), "renodx_attila64: contact split: active (objects %u, plain %u, listed ", objects, plain);
@@ -2003,7 +2403,7 @@ void RunContactCases() {
                && !contact.busy.load() && LinesWith("renodx_attila64: contact split: partly (id set)") == 1 && step_lines.size() == 1
                && At<uint32_t>(id_set_memory, ID_SET_CAPACITY) == 8,
            "id set: one line, no latch, the lane as it was, the game grew the vector");
-    Expect(ContactTick(scene.manager, &block, api) && LaneIs(ENGINE_ACTIVE) && step_lines.size() == 2,
+    Expect(Tick() && LaneIs(ENGINE_ACTIVE) && step_lines.size() == 2,
            "id set: the next tick is the row's, and active");
     // Exactly the capacity is no reason: five objects in one cell, each walk visits the four others.
     objects = NewPlainScene(2100, 4);
@@ -2016,13 +2416,13 @@ void RunContactCases() {
   {
     // The queue lock error: no helper, no share, the region closed, the tick the game's; no latch.
     base_scene();
-    queue_lock_fails = true;
+    queue_lock_result = 22;
     const ContactOutcome alone = ExpectContactSame("queue lock: the game's tick");
     Expect(!alone.handled && alone.regions == 1 && contact.skip_period == NO_PERIOD && LaneIs(ENGINE_PARTLY) && !contact.busy.load()
                && !contact.open && contact.next_chunk.load() == 17 && step_lines.size() == 1
                && LinesWith("renodx_attila64: contact split: partly (queue lock)") == 1,
            "queue lock: one line, partly, no latch, the row free and the region closed with no chunk left");
-    queue_lock_fails = false;
+    queue_lock_result = 0;
     const ContactOutcome next = RunContact(true, 0, false);
     Expect(next.handled && LaneIs(ENGINE_PARTLY) && step_lines.size() == 2 && LinesWith("(nested)") == 0,
            "queue lock: the next tick is the row's; partly stays");
@@ -2101,7 +2501,7 @@ void RunContactCases() {
         Expect(handled && step_lines.size() == lines_before_tick, "summary: no line at the 2000th tick");
         RestoreContactWorld();
         At<uint32_t>(scene.manager, CONTACT_TAIL_COUNT) = 1;
-        Expect(!ContactTick(scene.manager, &block, api) && LinesWith("contact split: partly (ships)") == 1,
+        Expect(!Tick() && LinesWith("contact split: partly (ships)") == 1,
                "summary: a tick with a tail entry between the lines");
         continue;
       }
@@ -2118,7 +2518,18 @@ void RunContactCases() {
     base_scene(MIN_OBJECTS + 1);
     Expect(ExpectContactSame("a last chunk of one object").handled && contact.chunks == 17, "a last chunk of one object");
   }
-  contact.enqueue = nullptr;
+  RunTaskCases(base_scene);
+  {
+    const std::lock_guard lock(pool_mutex);
+    pool_stop = true;
+  }
+  pool_signal.notify_all();
+  for (std::thread& task_thread : pool) {
+    task_thread.join();
+  }
+  pool.clear();
+  Expect(queue_faults == 0 && parents_seen.load() == 0 && queue_locks.load() == queue_unlocks.load(),
+         "tasks: after every tick's drain the queue is empty, every helper free, every lock call paired; no task had a parent");
   block.engine_status.store(0);
   block.core_wanted.store(CORE_STEP);
   std::printf("  contact split: %d failure(s)\n", failures - failures_before);
@@ -2589,6 +3000,10 @@ int wmain(int argc, wchar_t** argv) {
   // resolver's closure calls), the group kinds are copies of the game's tables with the fake "take me back" answer.
   WriteJump(GAME_MALLOC, reinterpret_cast<void*>(&TestMalloc));
   WriteJump(GAME_FREE, reinterpret_cast<void*>(&TestFree));
+  // The task queue's lock, unlock and wake (the first two are import stubs, the third posts the engine's threads).
+  WriteJump(QUEUE_LOCK, reinterpret_cast<void*>(&FakeQueueLock));
+  WriteJump(QUEUE_UNLOCK, reinterpret_cast<void*>(&FakeQueueUnlock));
+  WriteJump(QUEUE_WAKE, reinterpret_cast<void*>(&FakeQueueWake));
   FlushInstructionCache(GetCurrentProcess(), nullptr, 0);
   for (size_t kind = 0; kind < group_tables.size(); ++kind) {
     std::memcpy(group_tables[kind].data(), at(GROUP_VPTRS[kind]), sizeof(group_tables[kind]));

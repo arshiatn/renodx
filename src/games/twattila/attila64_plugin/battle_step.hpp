@@ -9,6 +9,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -2670,10 +2671,6 @@ struct ContactCells {
   std::array<ContactCell, FAKE_ENTRY_COUNT> entries = {};
 };
 
-// The step's thread starts the helpers of a region here (the engine's task queue; the tests' own threads): false when
-// nothing was started because the queue could not be locked.
-using EnqueueFn = bool (*)(uint32_t helper_count) noexcept;
-
 // `gate` closes the region: a participant holds it shared while it reads game memory, the step's thread takes it
 // exclusively to open and to close, so no helper reads game memory once the apply writes it. The claim counters and
 // `stop_bits` are each one independent atomic operation a claim. `busy` and `reasons_logged` tell a second entry.
@@ -2714,8 +2711,7 @@ struct ContactState {
   uint64_t plain_objects = 0;
   uint64_t objects_seen = 0;
 
-  // The tests' threads and fake tables stand in here.
-  EnqueueFn enqueue = nullptr;
+  // The tests' fake tables stand in here.
   std::array<ContactClass, CLASS_SLOTS> classes = [] {
     std::array<ContactClass, CLASS_SLOTS> slots = {};
     for (const ContactClass& known : CONTACT_CLASSES) {
@@ -2929,6 +2925,104 @@ static uint32_t RunRegionShare(uint32_t slot) noexcept {
   return chunks_done;
 }
 
+// The engine's task queue, as the game's own parallel-for in this pass's caller writes it (0x5df9a5..0x5dfb9c): the
+// task manager's list with its count, the counter the game keeps beside its lock, the lock (the game's import stubs,
+// 0 = locked) and the wake. A task is 0x48 bytes; a helper is one with its state behind.
+inline constexpr uintptr_t QUEUE_LOCK = 0x409d30;
+inline constexpr uintptr_t QUEUE_UNLOCK = 0x409d20;
+inline constexpr uintptr_t QUEUE_WAKE = 0x3062aa0;
+inline constexpr size_t TASK_MANAGER_HEAD = 0x18;
+inline constexpr size_t TASK_MANAGER_TAIL = 0x20;
+inline constexpr size_t TASK_MANAGER_COUNT = 0x28;
+inline constexpr size_t TASK_MANAGER_INSIDE = 0x40;
+inline constexpr size_t TASK_MANAGER_LOCK = 0x48;
+using QueueLockFn = int(ATTILA64_GAME_CALL*)(void* lock) noexcept;
+using QueueWakeFn = void(ATTILA64_GAME_CALL*)(void* task_manager) noexcept;
+
+enum HelperState : uint32_t { HELPER_FREE, HELPER_QUEUED };
+struct HelperTask {
+  const struct HelperTable* table = nullptr;
+  void* previous = nullptr;  // the queue's links: any task of the engine's
+  void* next = nullptr;
+  uint8_t in_queue = 0;      // the fetch unlinks a task only with this set
+  void* parent = nullptr;    // null: no consumer touches the task after its second table call
+  uint8_t child = 0;         // set: only task threads take it
+  uint32_t range_first = 0;  // the range, grain and body of the engine's parallel-for: not used
+  uint32_t range_last = 0;
+  uint64_t grain = 0;
+  void* body = nullptr;
+  std::atomic<uint32_t> state = HELPER_FREE;
+};
+static_assert(offsetof(HelperTask, next) == 0x10 && offsetof(HelperTask, in_queue) == 0x18
+              && offsetof(HelperTask, parent) == 0x20 && offsetof(HelperTask, child) == 0x28
+              && offsetof(HelperTask, state) == 0x48 && std::is_trivially_destructible_v<HelperTask>);
+// Helper k uses slot k. Between QUEUED and FREE a helper is run at most once, and FREE is the last thing its run
+// does, so a slot has one user at a time even when a helper left over from an earlier region is queued again in
+// the same one.
+static std::array<HelperTask, HELPER_COUNT> contact_helpers;
+
+ATTILA64_GAME_CALL static void RunHelper(HelperTask* task) noexcept {
+  const auto helper = static_cast<size_t>(task - contact_helpers.data());
+  assert(helper < HELPER_COUNT);  // the queue hands back our own objects only
+  RunRegionShare(static_cast<uint32_t>(helper));
+}
+// The release pairs with the enqueue's compare-exchange: the one order between this run's writes to the slot and the
+// next run's reads (two shared holders of the gate are not ordered).
+ATTILA64_GAME_CALL static void FreeHelper(HelperTask* task, uint32_t /*flag*/) noexcept {
+  task->state.store(HELPER_FREE, std::memory_order_release);
+}
+ATTILA64_GAME_CALL static void IgnoreHelperCall() noexcept {}
+// A task's table as the engine calls it: run, then "done" (after which the task is its owner's again); the engine
+// calls the other three only for a task with a parent.
+struct HelperTable {
+  void (ATTILA64_GAME_CALL* run)(HelperTask* task) noexcept = &RunHelper;
+  void (ATTILA64_GAME_CALL* done)(HelperTask* task, uint32_t flag) noexcept = &FreeHelper;
+  std::array<void (ATTILA64_GAME_CALL*)() noexcept, 3> others = {&IgnoreHelperCall, &IgnoreHelperCall, &IgnoreHelperCall};
+};
+inline constexpr HelperTable HELPER_TABLE;
+
+// Queues a region's helpers: the FREE ones among the first `helper_count` (one still queued from an earlier region
+// is skipped, and no higher index takes its place, so stale and new helpers together stay within the count). The
+// game's enqueue line by line (tail insertion, the wake only from an empty queue), with our own task objects, no
+// parent and the child byte set. Everything happens under the queue's lock: false = the lock call failed, and neither
+// a helper nor the queue was written. Ours, against the engine: it prints and goes on without the lock.
+[[nodiscard]] static bool StartHelpers(void* task_manager, uint32_t helper_count) noexcept {
+  void* const lock = static_cast<uint8_t*>(task_manager) + TASK_MANAGER_LOCK;
+  if (reinterpret_cast<QueueLockFn>(QUEUE_LOCK)(lock) != 0) return false;
+  ++At<uint32_t>(task_manager, TASK_MANAGER_INSIDE);
+  const uint32_t count_before = At<uint32_t>(task_manager, TASK_MANAGER_COUNT);
+  for (uint32_t helper = 0; helper < helper_count; ++helper) {
+    HelperTask& task = contact_helpers[helper];
+    uint32_t free_state = HELPER_FREE;
+    if (!task.state.compare_exchange_strong(free_state, HELPER_QUEUED, std::memory_order_acq_rel)) continue;
+    task.table = &HELPER_TABLE;
+    task.in_queue = 0;
+    task.parent = nullptr;
+    task.child = 1;
+    if (At<void*>(task_manager, TASK_MANAGER_HEAD) == nullptr) {
+      At<void*>(task_manager, TASK_MANAGER_HEAD) = &task;
+      At<void*>(task_manager, TASK_MANAGER_TAIL) = &task;
+      task.previous = nullptr;
+      task.next = nullptr;
+    } else {
+      void* const tail = At<void*>(task_manager, TASK_MANAGER_TAIL);
+      At<void*>(tail, offsetof(HelperTask, next)) = &task;
+      task.previous = tail;
+      task.next = nullptr;
+      At<void*>(task_manager, TASK_MANAGER_TAIL) = &task;
+    }
+    // Before the unlock on every path: the fetch hands out a task without this byte still linked.
+    task.in_queue = 1;
+    ++At<uint32_t>(task_manager, TASK_MANAGER_COUNT);
+  }
+  --At<uint32_t>(task_manager, TASK_MANAGER_INSIDE);
+  reinterpret_cast<QueueLockFn>(QUEUE_UNLOCK)(lock);
+  if (count_before == 0) {
+    reinterpret_cast<QueueWakeFn>(QUEUE_WAKE)(task_manager);
+  }
+  return true;
+}
+
 // The contact pass for `manager`: true = done here with the game's results, false = the caller runs the game's
 // function (nothing of the game's was written or called before a false, and the region is closed).
 [[nodiscard]] static bool ContactTick(void* manager, Block* block, const LoaderApi& loader) noexcept {
@@ -2972,7 +3066,8 @@ static uint32_t RunRegionShare(uint32_t slot) noexcept {
   if (At<uint8_t>(manager, CONTACT_RESORT) != 0 || tick % RESORT_PERIOD == 0) return false;
   if (At<uint32_t>(manager, CONTACT_TAIL_COUNT) != 0) return original(CONTACT_REASON_SHIPS);
   if (*reinterpret_cast<const uint8_t*>(TASK_FLAG) == 0) return original(CONTACT_REASON_THREADS);
-  const uint32_t task_threads = At<uint32_t>(reinterpret_cast<TaskManagerFn>(TASK_MANAGER_GETTER)(), TASK_MANAGER_THREADS);
+  void* const task_manager = reinterpret_cast<TaskManagerFn>(TASK_MANAGER_GETTER)();
+  const uint32_t task_threads = At<uint32_t>(task_manager, TASK_MANAGER_THREADS);
   if (task_threads < MIN_TASK_THREADS) return original(CONTACT_REASON_THREADS);
   const uint32_t object_count = At<uint32_t>(manager, CONTACT_OBJECT_COUNT);
   if (object_count < MIN_OBJECTS || object_count > OBJECT_LIMIT) return false;
@@ -3016,7 +3111,7 @@ static uint32_t RunRegionShare(uint32_t slot) noexcept {
     contact.stop_bits.store(0, std::memory_order_relaxed);
     contact.open = true;
   }
-  const bool started = contact.enqueue == nullptr || contact.enqueue(helper_count);
+  const bool started = StartHelpers(task_manager, helper_count);
   uint32_t own_chunks = 0;
   if (started) {
     own_chunks = RunRegionShare(OWNER_SLOT);
