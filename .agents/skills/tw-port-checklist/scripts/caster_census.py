@@ -132,6 +132,8 @@ for include in re.findall(r'#include "\./([\w.]+)"', addon):
 # Attila's (2026-11-25): SCENE_SHADERS = WithTwins<n, &Row::hash>(std::array<Row, m>{{ ... }}), each row with a TDD_TWINS
 # twin again under the twin's hash.
 scene = re.search(r'SCENE_SHADERS = (WithTwins<[^>]*>\(\s*std::array<[^{]*)?\{\{(.*?)\n\}\}(?(1)\));', addon, re.S)
+if scene is None and re.search(r'\bSCENE_SHADERS\s*=', addon):  # a new table shape: say so, never "held 0" (11-27)
+    raise SystemExit(f'{args.addon}: SCENE_SHADERS defined in a shape this census does not read')
 twins = dict(re.findall(r'\{\.game = 0x([0-9A-Fa-f]{8}), \.twin = 0x([0-9A-Fa-f]{8})\}', addon)) if scene and scene.group(1) else {}
 twins = {game.upper(): twin.upper() for game, twin in twins.items()}
 held = {}
