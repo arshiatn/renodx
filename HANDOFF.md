@@ -18053,8 +18053,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         fast kinds 0.81 ms = pk9:128, not 0.55; 2 NITs); T0 GO WITH CHANGES (MUST: the SOLCAP menu stretch skips c8:872's
         2 % / n/a rule, the 11-25 data ran uncapped ~225 fps and passed as '(cap on)'; SHOULD: the -PerfFix B64P start
         lacks 0:GraphicsSmallSoldiersAsSprites=1 + 125:memory=1 and 2.6's pass lines; 4 NITs); re-runs h91 21 / 21,
-        h_t0 11 / 11, test_lines 17 / 17. Fix round p91f_ (Opus Medium) STARTED 18:33; then a Sonnet High final; coord
-        applies. m2d_ (Fable xHigh) DONE
+        h_t0 11 / 11, test_lines 17 / 17. Fix round p91f_ (Opus Medium) DONE 18:4x (21 of 25 min; scratch\p91f_\handback.md): SOLCAP uses the 2 % / n/a
+        rule across both -C2 starts (the real 11-25 menu case fails the old copy), P5 fast-kind noise 0.81 ms (pk9:128),
+        B64P start + sprites entry + 125:memory=1 + 2.6's pass lines, all NITs; chain 02cf94e1 -> aa861112 -> 1910c724;
+        h91 21 / 21, horizon 17 / 17, A13 exit codes unchanged. Sonnet High final sp91_ STARTED 18:44; then coord
+        applies (python -I -B SCR\p91_64_ab_pk9p1_patch.py, then a64_ab_c8t0_patch.py). m2d_ (Fable xHigh) DONE
         17:58 (27 of 40 min; designs\pk5_m2_memcpy.md, scratch\m2d_\handback.md): ONE caller 0x339b4a4 (97.88 %,
         ~1.67 of 1.71 ms a frame), size 0xe0 x count, destination the loader's Map pointer of a dynamic VB; class (c),
         lever (d) only, no build target; PK5 10.1 / 10.3 corrected (addendum); section 10 copied into backup_32bit.md;
