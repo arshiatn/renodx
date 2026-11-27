@@ -15,6 +15,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -644,9 +645,10 @@ class RtScene12 {
       if (clusters_) free_templates_.free = {{0, static_cast<uint32_t>(TEMPLATE_POOL_BYTES / template_bytes_)}};
     }
     // The partitioned TLAS: an instance per static record (its index), per instanced mesh's instance and one for the
-    // units' BLAS or each cluster BLAS (PTLAS_INSTANCES), PTLAS_PARTITION_SIZE a partition; a slot's write and update arguments, its two operations and their count. Only with RENODX_TW_PTLAS:
-    // a city siege in Attila stalled each frame by ~0.3 s with it, the TLAS built whole costs 0.10-0.16 ms (ATN's log
-    // 2026-10-29: all a PTLAS could save), and it has no placed meshes (v14: rt_place writes the TLAS's descs only).
+    // units' BLAS or each cluster BLAS (PTLAS_INSTANCES), PTLAS_PARTITION_SIZE a partition; a slot's write arguments,
+    // its operation and their count. Only with RENODX_TW_PTLAS: a city siege in Attila stalled each frame by ~0.3 s with
+    // it, the TLAS built whole costs 0.10-0.16 ms (ATN's log 2026-10-29: all a PTLAS could save), and it has no placed
+    // meshes (v14: rt_place writes the TLAS's descs only).
     NvU32 ptlas_caps = 0;
     ptlas_ = nullptr;
     if (GetEnvironmentVariableW(L"RENODX_TW_PTLAS", nullptr, 0) != 0 && NvAPI_Initialize() == NVAPI_OK
@@ -664,8 +666,9 @@ class RtScene12 {
           .version = NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS_VER, .pInput = &ptlas_inputs_, .pInfo = &info};
       bool made = NvAPI_D3D12_GetRaytracingPartitionedTlasIndirectPrebuildInfo(device_.Get(), &params) == NVAPI_OK;
       // Two partitioned TLASes in turn (each build reads the last one, never in place) and the operations in device memory,
-      // copied from the slot's upload buffer: ours (as first written), not NVAPI's ask (nvapi.h allows a build in place,
-      // and an upload buffer's GENERIC_READ holds the NON_PIXEL_SHADER_RESOURCE its operations need).
+      // copied from the slot's upload buffer: ours, unmeasured, not NVAPI's ask (nvapi.h:21364 allows a build in place,
+      // the old PTLAS then invalid; :21366-21367 want the operations in NON_PIXEL_SHADER_RESOURCE, which an upload
+      // buffer's GENERIC_READ holds).
       if (made) {
         for (auto& buffer : ptlas_buffers_) {
           buffer = Buffer(info.resultDataMaxSizeInBytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
@@ -4753,7 +4756,7 @@ class RtScene12 {
   static constexpr uint64_t CLUSTER_UPLOAD_BYTES = CLUSTER_RECORDS_OFFSET + uint64_t{MAX_CLUSTERS} * 16;
   // The partitioned TLAS: an instance per static record and per instanced mesh's instance, then the units' BLAS or each
   // cluster BLAS (MAX_INSTANCES + its index), this many a partition; a slot's upload buffer: the write arguments (104
-  // bytes each), the update arguments (16), the two operations, their count.
+  // bytes each), then the operation (room for 64 bytes) and its count.
   static constexpr uint32_t PTLAS_INSTANCES = MAX_INSTANCES + CLUSTER_BLASES;
   static constexpr uint32_t PTLAS_PARTITION_SIZE = 256;
   static constexpr uint64_t PTLAS_WRITES_OFFSET = 0;
@@ -8265,7 +8268,8 @@ class RtScene12 {
     }
     // The smoke in a TLAS of its own (built after the scene's), its instance the slot's last desc (the CPU's stay far below):
     // its rays (rt_scene.hlsli SmokeTransmittance) walked the scene's TLAS too, ~150 K placed instances in ATN's archer
-    // battle (2026-11-01), and its overlapping particles widened the scene's for every ray.
+    // battle (2026-11-01), and its overlapping particles widened the scene's for every ray. Its desc is past instance_count,
+    // so its place (MAX_INSTANCES + 3) never enters the partitioned TLAS.
     const bool smoke_scene = (smoke_built || smoke_clustered) && smoke_tlas_ && smoke_tlas_scratch_ && instance_count < MAX_INSTANCES - 1;
     if (smoke_scene) {
       UINT smoke_desc = MAX_INSTANCES - 1;
@@ -8396,13 +8400,13 @@ class RtScene12 {
       const uint32_t stamp = ++ptlas_stamp_;
       std::vector<uint32_t> places;
       places.reserve(instance_count);
-      uint32_t active = 0;
+      uint32_t distinct_places = 0;
       for (UINT index = 0; index < instance_count; ++index) {
         const D3D12_RAYTRACING_INSTANCE_DESC& instance = slot->instance_data[index];
         const uint32_t at = instance.InstanceContributionToHitGroupIndex;
         assert(at < PTLAS_INSTANCES);
         PtlasInstance& want = ptlas_wanted_[at];
-        if (want.stamp != stamp) ++active;
+        if (want.stamp != stamp) ++distinct_places;
         want = {.blas = instance.AccelerationStructure,
                 .id = instance.InstanceID,
                 .mask = instance.InstanceMask,
@@ -8414,9 +8418,11 @@ class RtScene12 {
         std::memcpy(want.transform.data(), instance.Transform, sizeof(want.transform));
         places.push_back(at);
       }
-      // An instance index selects one instance (nvapi.h: one write a build): of instances sharing a place only the last
-      // reaches the PTLAS, the rest are missing from its picture.
-      if (const uint32_t lost = instance_count - active; lost != ptlas_lost_logged_) {
+      // An instance index selects one instance: of instances sharing a place only the last reaches the PTLAS, the rest are
+      // missing from its picture. nvapi.h:21321 allows one write a build per "partition index" on the instanceIndex
+      // field; ours reads it as per instance index: the first build writes up to 256 instances a partition and all reach
+      // the PTLAS, and spreading the places over partitions changed nothing (ptf_ exp2, 4K harness).
+      if (const uint32_t lost = instance_count - distinct_places; lost != ptlas_lost_logged_) {
         ptlas_lost_logged_ = lost;
         slow_report_ += std::format("{}[TW ray tracing] Partitioned TLAS: {} of {} instances lost to a shared place.", (slow_report_.empty() ? "" : "\n"),
                                     lost, instance_count);
@@ -8428,10 +8434,12 @@ class RtScene12 {
         const PtlasInstance& want = ptlas_wanted_[at];
         const bool active = want.stamp == stamp;
         // The units' BLAS and the cluster BLASes (places from MAX_INSTANCES) are rebuilt each request at the same address,
-        // and an instance keeps the bounds its last write saw: theirs are written every request (without it the harness's
-        // compact draws were missing from the PTLAS).
+        // and an instance keeps the bounds its last write saw (nvapi.h:21289, :21323, :21334: per-instance bounds that must
+        // cover the assigned BLAS): theirs are written once every request (without it the 4K harness's compact draws were
+        // missing from the PTLAS). So every request with units or clusters builds the PTLAS (P2 measures that cost).
         const bool changed = active ? (written.blas != want.blas || written.flags != want.flags || written.id != want.id
-                                       || written.mask != want.mask || written.transform != want.transform || at >= MAX_INSTANCES)
+                                       || written.mask != want.mask || written.transform != want.transform
+                                       || (at >= MAX_INSTANCES && written.stamp != stamp))
                                     : (written.flags != UINT32_MAX && written.blas != 0);
         if (!changed) return;
         auto& write = writes[write_count++];
