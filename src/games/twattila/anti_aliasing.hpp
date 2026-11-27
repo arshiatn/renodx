@@ -136,7 +136,7 @@ struct Settings {
   // AaFrameGamma22: the frame's own curve with Gamma Correction on); 2, their 2.0.
   float frame_gamma = 2.f;
   // The tone mapper writes linear (Attila's and Thrones' t00 in the HDR modes, rrbi_ G0): SMAA, CMAA2 and DLSS take it as
-  // it is (Apply; aaf_ 11-26), Ray Reconstruction, FSR and XeSS stay at `frame_gamma`.
+  // it is (Apply; aaf_ 11-26), FSR and XeSS too (aaf3_ 11-27); Ray Reconstruction stays at `frame_gamma`.
   bool linear_frame = false;
 };
 
@@ -1164,9 +1164,12 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       .cmaa2_simple_shape_blur = (sharp ? 0.07f : 0.1f),
       // aa.hlsli AaFrameLinear at 1. Settings::linear_frame (ours, ATN's word 11-26, aaf_'s 4K table): presets K / L / M
       // get the light (K) or its root (L / M; darkest tenth PQ code 11 -> 7, truth 5.6), SMAA's edges the root. Ray
-      // Reconstruction keeps ~t00^1.1 (on the root: 2x the noise, fireflies 25 % darker); FSR / XeSS not measured.
-      .frame_gamma = ((scene_linear
-                       || (runtime.settings.linear_frame && ((method == Method::DLAA) ? !reconstruct : !Upscales(method))))
+      // Reconstruction keeps ~t00^1.1 (on the root: 2x the noise, fireflies 25 % darker). FSR gets the light, as its HDR
+      // flag expects (FidelityFX SDK 2.4.0 super-resolution-upscaler.md:312: "linear color space"; aaf3_ 11-27, 4K:
+      // darkest tenth PQ 12.5 -> 9.5, 15-20 % too bright -> within 3 %; t00^2.2 in RGBA16F loses t00 below ~4.5e-4).
+      // XeSS too (xess_sr_developer_guide_english.md:299-300: "any linear color format"; ATN 11-27: darkest tenth PQ
+      // 9.4 -> 6.3, the darkest band kept; its cost, fine contrast darker: u1 1.04 -> 0.78).
+      .frame_gamma = ((scene_linear || (runtime.settings.linear_frame && (method != Method::DLAA || !reconstruct)))
                           ? 1.f
                           : runtime.settings.frame_gamma),
       .smaa_subsample_indices = subsample_indices,

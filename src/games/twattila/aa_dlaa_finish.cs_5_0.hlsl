@@ -17,7 +17,7 @@
 #include "./motion.hlsli"
 
 // 0: the tone mapper's output read as 2.0 encoded (WH3...; Rome II's hdr_to_screen gamma 2.2; Attila / Thrones in SDR
-// and for Ray Reconstruction / FSR / XeSS, their t00 linear: rrbi_ G0; their HDR otherwise aa.hlsli AaFrameLinear),
+// and for Ray Reconstruction, their t00 linear: rrbi_ G0; their HDR otherwise aa.hlsli AaFrameLinear),
 // 1 linear (Pharaoh / Troy: their ACES fits end without a root). Game copies define it first.
 #ifndef TW_AA_FRAME_LINEAR
 #define TW_AA_FRAME_LINEAR 0
