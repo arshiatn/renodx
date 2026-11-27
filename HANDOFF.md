@@ -1042,6 +1042,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AO DURING THE PT AMBIENT WARM-UP (rllf_ M1, 11-27, bug fix -> always on): Attila ... | ATN (the warm-up look in the batch)
 - W3 HORIZON METRIC (p6rv2_ S3, 11-27): P6a2's camera proof for w3 / w3t is a byte ... | the next a64_ab writer after PK9 P1-P5 (C8 T0 or its own ste
 - ALL PLANS LIST (ATN 11-27 16:2x: 'Some stuffs are missing ... gather those forgo ... | coord (CHECK lines) / ATN (order)
+- ONE PLAN FILE + MAX 1 GPU SUBAGENT (ATN 11-27 16:5x): (1) stay on all_plans_1127 ... | coord
 - ATN AWAY 11-27 ~17:00 FOR 2-3 DAYS (his answers 16:4x): (1) the BATCH MAY START ... | coord
 - THREE WPRs + LAST RIDE (ATN 11-27 16:3x): at the END of the big batch, on the ne ... | coord (batch end)
 - H KEEP OR NOT (ATN 11-27 16:3x rule: no fixed margins; not faster = ATN decides) ... | coord (after the last ride)
@@ -18331,6 +18332,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         tooling (gto_ S4 / S5, metrics, known-answer scenes). Section 6 = old items with no open box (v121 AMD / Intel
         RT, RT reflections Rome II / Troy / Pharaoh, ACES notices, 11-17 steps 7 + 9, the 'after everything' items).
         Order after today's batch = section 7, waits for ATN. Owner: coord (CHECK lines) / ATN (order)
+        - [ ] ONE PLAN FILE + MAX 1 GPU SUBAGENT (ATN 11-27 16:5x): (1) stay on all_plans_1127.md until ATN says
+        otherwise; start_1127.md is merged into it (pointer at its top); every new item goes in and every done /
+        dropped item comes out EVERY time, in the same step as the HANDOFF edit. (2) MAX 1 SUBAGENT FOR GPU WORK at
+        a time (GPU design, implementer, GPU review, lab / Nsight / harness job); CPU-lane + read-only agents not
+        capped. (3) His question 'unified PT to the top, or does it need the RT 64-bit port?': it does NOT need the
+        port to be built (helper shaders + harness); only its in-game Attila check needs the port (32-bit frozen).
+        GPU lane order now (all_plans section 7.5): fix waves left + open GPU bugs -> unified PT (design refresh,
+        U0 / H0, U-steps, ReSTIR PG inside) -> vMF S2-S6 -> NV2-NV9 -> D3D11 pass speed -> Nsight sweep -> Lane I
+        (spheres last). RT on the 64-bit port's code sits at the tail of the CPU writer order (map 3.3). Asked ATN
+        to confirm. Owner: coord
         - [ ] ATN AWAY 11-27 ~17:00 FOR 2-3 DAYS (his answers 16:4x): (1) the BATCH MAY START once the CPU code
         is done (order = all_plans_1127.md section 7: offline CPU first, then the batch, then results applied, then
         WPRs + last ride); his TV stays on; if Windows drops the 3840x2160 HDR display, or a reboot is needed (GPU
