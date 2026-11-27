@@ -13,8 +13,14 @@
 //    - both rows off; nothing traced yet (traced_frame UINT64_MAX) at frames 0, 1 and 7.
 // 4. The CONTROLS that must differ: the Warhammer copies' rule (Ray-Traced AO, traced_frame == frame || traced_frame + 1
 //    == frame) skips at frame 0 with nothing traced (UINT64_MAX + 1 wraps to 0); rt_scene::AmbientReplaced (30 frames of
-//    the rays' trace, either row) leaves it out over a Ray-Traced AO dropout and over Path-Traced Ambient's warm-up, where
-//    the sun then had no AO at all.
+//    the rays' trace) leaves it out over a Ray-Traced AO dropout (its frames 2-30: HANDOFF's OnAmbientOcclusionDraw item).
+// 5. Attila's, Rome II's and Thrones' rule (rt_scene::AmbientReplaced: their AO pass writes white) under Path-Traced
+//    Ambient alone is GameSsaoOut's: the game's AO through the warm-up (a fresh trace and bounce, path_ambient_on not yet,
+//    at frame 9 and 9 + 29), a path dropout and the rays without the Light Bounce; out once the paths take the game's
+//    ambient out. CONTROL (the rule before, the row and 30 frames of the rays' trace): out through every warm-up, the sun
+//    then had no AO at all for PATH_AMBIENT_FRAMES. The row turned off with path_ambient_on still the last bounce's: the
+//    game's (CONTROL: path_ambient_on alone left it out that frame). Both terms: the rays' AO with the paths on, and with
+//    the paths' warm-up, out in both rules.
 // No GPU work. tests.exe
 #include <windows.h>
 
@@ -105,10 +111,42 @@ int main() {
   CHECK(old_rule() && !out());
   set({.ambient_occlusion = true, .traced_frame = 3, .frame = 5});
   CHECK(rt::AmbientReplaced() && !out());
-  set({.path_ambient = true, .traced_frame = 9, .bounced_frame = 8, .frame = 9 + WINDOW - 1});
-  CHECK(rt::AmbientReplaced() && !out());
-  std::printf("4 CONTROLS: the old copies' rule (frame 0) and AmbientReplaced (a Ray-Traced AO dropout, the paths' warm-up) "
-              "differ: ok\n");
+  std::printf("4 CONTROLS: the old copies' rule (frame 0) and AmbientReplaced (a Ray-Traced AO dropout) differ: ok\n");
+
+  // 5.
+  const auto row_rule = [&] {
+    const std::unique_lock lock(runtime.mutex);
+    return runtime.settings.path_ambient && runtime.traced_frame != UINT64_MAX && runtime.traced_frame + WINDOW >= runtime.frame;
+  };
+  struct PathsCase {
+    State state;
+    bool left_out = false;
+  };
+  const PathsCase paths_cases[] = {
+      {.state = {.path_ambient = true, .traced_frame = 9, .bounced_frame = 8, .frame = 9}},
+      {.state = {.path_ambient = true, .traced_frame = 9, .bounced_frame = 9, .frame = 9}},
+      {.state = {.path_ambient = true, .traced_frame = 9 + WINDOW - 1, .bounced_frame = 9 + WINDOW - 2, .frame = 9 + WINDOW - 1}},
+      {.state = {.path_ambient = true, .path_ambient_on = true, .traced_frame = 9, .bounced_frame = 7, .frame = 9}},
+      {.state = {.path_ambient = true, .path_ambient_on = true, .traced_frame = 9, .frame = 9}},
+      {.state = {.path_ambient = true, .path_ambient_on = true, .traced_frame = 9, .bounced_frame = 8, .frame = 9}, .left_out = true},
+      {.state = {.path_ambient = true, .path_ambient_on = true, .traced_frame = 9, .bounced_frame = 9, .frame = 9}, .left_out = true},
+  };
+  for (const PathsCase& paths_case : paths_cases) {
+    set(paths_case.state);
+    CHECK(rt::AmbientReplaced() == paths_case.left_out && out() == paths_case.left_out && row_rule());
+  }
+  const auto stale_rule = [&] {
+    const std::unique_lock lock(runtime.mutex);
+    return runtime.path_ambient_on && runtime.bounced_frame != UINT64_MAX && runtime.bounced_frame + 1 >= runtime.frame;
+  };
+  set({.path_ambient_on = true, .traced_frame = 9, .bounced_frame = 8, .frame = 9});
+  CHECK(!rt::AmbientReplaced() && !out() && stale_rule());
+  set({.ambient_occlusion = true, .path_ambient = true, .path_ambient_on = true, .traced_frame = 9, .bounced_frame = 9, .frame = 9});
+  CHECK(rt::AmbientReplaced() && out());
+  set({.ambient_occlusion = true, .path_ambient = true, .traced_frame = 9, .bounced_frame = 8, .frame = 9});
+  CHECK(rt::AmbientReplaced() && out());
+  std::printf("5 AmbientReplaced under Path-Traced Ambient = GameSsaoOut: the game's AO through the warm-up, a path dropout, "
+              "no Light Bounce; out with the paths' ambient; CONTROL the rule before: out in all of them: ok\n");
   std::printf("AO SKIP ALL PASSED\n");
   return 0;
 }

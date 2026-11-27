@@ -21,6 +21,7 @@
 #include <format>
 #include <initializer_list>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <string>
 #include <utility>
@@ -298,8 +299,12 @@ inline bool StartsFromMainDepth() {
 
 // Path-Traced Light Bounce once the helper replaces the game's ambient with the paths' (their frames of history): the
 // paths' blocked rays are the occlusion, so the AO rays and GT-VBAO, whose result the s14 texel drops then, don't run.
+// path_ambient_on under its lock (its writers, Update and TraceLightBounce, hold it); no caller holds it.
 inline bool PathsReplaceAmbient() {
-  return state.traced_bounce == 2 && twattila::rt_scene::internal::runtime.path_ambient_on;
+  if (state.traced_bounce != 2) return false;
+  auto& runtime = twattila::rt_scene::internal::runtime;
+  const std::unique_lock lock(runtime.mutex);
+  return runtime.path_ambient_on;
 }
 
 inline const twattila::rt_scene::Host HOST = {

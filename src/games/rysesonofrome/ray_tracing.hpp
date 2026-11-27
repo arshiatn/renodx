@@ -408,7 +408,7 @@ inline void BindLightingInputs(ID3D11DeviceContext* context) {
   {
     auto& runtime = twattila::rt_scene::internal::runtime;
     const std::unique_lock runtime_lock(runtime.mutex);
-    paths_bring_sky = runtime.path_ambient_on && runtime.bounced_frame + 1 >= runtime.frame;
+    paths_bring_sky = twattila::rt_scene::internal::PathsReplaceAmbientNow();
   }
   const std::unique_lock lock(state.mutex);
   if (paths_bring_sky && state.no_probes && !state.probes_bound) {

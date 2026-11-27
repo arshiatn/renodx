@@ -809,7 +809,7 @@ constexpr uint32_t PATH_AMBIENT_FRAMES = 150;
 
 // Frames without the rays after which the game's ambient is its own again: a frame the helper missed now and then keeps
 // what stands in for it (no flicker), rays that stay off (the game's MSAA, the helper gone) give it back within half a
-// second. rt_scene::AmbientReplaced (the game's AO) and the paths' run for Path-Traced Ambient (PathFrames).
+// second. rt_scene::AmbientReplaced's rays' AO (the game's AO) and the paths' run for Path-Traced Ambient (PathFrames).
 constexpr uint64_t AMBIENT_REPLACED_FRAMES = 30;
 
 // The paths' run at a Light Bounce request: one frame more while they were traced within AMBIENT_REPLACED_FRAMES
@@ -1174,14 +1174,27 @@ inline bool Enabled() {
   return RaysBesideSpecularOcclusion(runtime.settings) || runtime.settings.specular_occlusion;
 }
 
-// The rows' ray-traced AO or Path-Traced Ambient, and the rays traced lately. Under the lock.
+// Path-Traced Ambient takes the game's ambient out (rt_scene OnPathAmbientDraw, ao_skip GameSsaoOut, Ryse's and Shogun 2's
+// hosts): the row on (path_ambient_on is TraceLightBounce's, after the frame's AO pass: the present that turns the row
+// off keeps the game's AO and ambient), after its warm-up (path_ambient_on), the paths traced this frame or the last.
+// Under the lock.
+inline bool PathsReplaceAmbientNow() {
+  return runtime.settings.path_ambient && runtime.path_ambient_on && runtime.bounced_frame != UINT64_MAX
+         && runtime.bounced_frame + 1 >= runtime.frame;
+}
+
+// The row's ray-traced AO with the rays traced lately, or the paths taking the game's ambient out
+// (PathsReplaceAmbientNow): the row alone would leave the game's AO out through each warm-up while the game's ambient
+// stays, no AO at all for PATH_AMBIENT_FRAMES (test/tw_ao_skip part 5). Under the lock.
 inline bool AmbientReplacedNow() {
-  return (runtime.settings.ambient_occlusion || runtime.settings.path_ambient) && runtime.traced_frame != UINT64_MAX
-         && runtime.traced_frame + AMBIENT_REPLACED_FRAMES >= runtime.frame;
+  const bool rays = runtime.settings.ambient_occlusion && runtime.traced_frame != UINT64_MAX
+                    && runtime.traced_frame + AMBIENT_REPLACED_FRAMES >= runtime.frame;
+  return rays || PathsReplaceAmbientNow();
 }
 
 // ambient_replaced from what AmbientReplacedNow reads, under the lock after each write of it: the settings and the frame
-// (Update), traced_frame (Trace); nothing else writes or resets them.
+// (Update), traced_frame (Trace), path_ambient_on (TraceLightBounce, Update's new helper scene), bounced_frame
+// (TraceLightBounce); nothing else writes or resets them.
 inline void PublishAmbientReplaced() {
   ambient_replaced.store(AmbientReplacedNow(), std::memory_order_release);
 }
@@ -3833,6 +3846,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
   native->CopySubresourceRegion(bridge.rt_light.texture.Get(), 0, 0, 0, 0, prepared_light, 0, &region);
   runtime.path_frames = PathFrames(runtime.path_frames, runtime.settings.path_tracing, runtime.bounced_frame, runtime.frame);
   runtime.path_ambient_on = runtime.settings.path_ambient && runtime.path_frames >= PATH_AMBIENT_FRAMES;
+  PublishAmbientReplaced();
   const dlaa_bridge::BounceRequest request = {
       .frame = static_cast<uint32_t>(runtime.frame),
       .width = runtime.traced_size[0],
@@ -3877,6 +3891,7 @@ inline bool TraceLightBounce(ID3D11DeviceContext* native, ID3D11Texture2D* prepa
   if (!bounced) return false;
   native->CopySubresourceRegion(traced, 0, 0, 0, 0, bridge.rt_bounce.texture.Get(), 0, &region);
   runtime.bounced_frame = runtime.frame;
+  PublishAmbientReplaced();
   runtime.bounce_scale = scale;
   return true;
 }
@@ -4500,14 +4515,18 @@ inline void Update(const Settings& settings) {
   // Capture's depth-stencil view read again next frame: none of the game's held past its frame (a resize's old depth goes).
   runtime.depth_seen = {};
   internal::light_frame.store((runtime.frame << 1) | uint64_t{settings.local_lights}, std::memory_order_relaxed);
-  // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed) or released its
-  // scene after 10 s without a trace (the rays off, a menu): every mesh captured again. Only the first is a warning.
+  // The helper started its ray tracing again (a GPU fault or hang removed its device, or a request failed), released its
+  // scene after 10 s without a trace (the rays off, a menu) or resumed it after a stall (dlaa_helper main.cpp: the stalled
+  // resume's ++rt_device): every mesh captured again. Only the first is a warning.
   if (const uint32_t device = dlaa_bridge::RayTracingDevice(); device != runtime.helper_device) {
     runtime.helper_device = device;
-    // The new scene's learned light (shade, sky scale, base colour) starts empty and is learned only while the paths run
-    // with the game's ambient: Path-Traced Ambient's warm-up again, else its far bounce stays grey and its sky dark.
+    // The new scene's learned light (shade, sky scale, base colour) starts empty (dlaa_helper rt_d3d12.hpp EnsureCache:
+    // new buffers, zeroed) and nothing is learned while RT_PATH_AMBIENT came within 2 frames (PATH_KEEP_LIGHT):
+    // Path-Traced Ambient's warm-up again, else its far bounce stays grey and its sky dark. The game's AO with it
+    // (AmbientReplacedNow).
     runtime.path_frames = 0;
     runtime.path_ambient_on = false;
+    internal::PublishAmbientReplaced();
     runtime.known.clear();
     runtime.short_keys.clear();
     for (auto& [set_key, mesh] : runtime.cluster_meshes) mesh.sent = false;

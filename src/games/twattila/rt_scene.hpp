@@ -870,7 +870,7 @@ constexpr auto OnPathAmbientDraw = []<typename T, typename Context>(Context& com
   if (native == nullptr || !frame_history::MainViewport(native)) return {};
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
-  if (!runtime.path_ambient_on || runtime.bounced_frame + 1 < runtime.frame) return {};
+  if (!internal::PathsReplaceAmbientNow()) return {};
   auto& objects = runtime.objects;
   if (bool foliage = false; screen_space_shadows::AmbientPatched(draw.shader_hash, &foliage)) {
     if (!objects.ambient_off) {

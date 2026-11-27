@@ -459,7 +459,7 @@ inline void WriteGuides(ID3D11DeviceContext* native, UINT gbuffer_slot) {
 inline bool PathAmbientNow() {
   auto& runtime = twattila::rt_scene::internal::runtime;
   const std::unique_lock lock(runtime.mutex);
-  return runtime.path_ambient_on && runtime.bounced_frame + 1 >= runtime.frame;
+  return twattila::rt_scene::internal::PathsReplaceAmbientNow();
 }
 
 // After the frame's first sun light draw: its traced AO (`ambient`, t41) into the game's SSAO target the collect left
