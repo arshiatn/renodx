@@ -663,6 +663,44 @@ int main(int argc, char** argv) {
     block.core_wanted.store(plugin::CORE_BATTLE | render_default_bit | step_other_bit);
     link::Update(0, true, !link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | render_other_bit | step_default_bit));
+    // Multithreaded Collisions (PK8 Stage B step 6), ROW_CONTACT_SPLIT offered: while the row is hidden (nullopt,
+    // the 3- and 5-argument calls) CORE_SPLIT is not written at the first present or later, either polarity (a batch
+    // arm's ContactSplit=1 / 0 holds); shown, the bit follows the row once per change; not offered, never written.
+    const uint32_t split_row = plugin::RowBit(plugin::ROW_CONTACT_SPLIT);
+    block.rows_applied |= split_row;
+    for (const uint32_t split_bit : {0u, plugin::CORE_SPLIT}) {
+      link::Uninstall();
+      link::Install();
+      link::internal::found.store(link::Found::READY);
+      block.core_wanted.store(plugin::CORE_BATTLE | split_bit);
+      link::Update(0, true, link::RENDER_CORE_DEFAULT);
+      CHECK((block.core_wanted.load() & plugin::CORE_SPLIT) == split_bit);
+      link::Update(0, false, link::RENDER_CORE_DEFAULT, 0, link::BATTLE_STEP_DEFAULT);
+      CHECK((block.core_wanted.load() & plugin::CORE_SPLIT) == split_bit);
+      link::Update(0, true, link::RENDER_CORE_DEFAULT, 0, !link::BATTLE_STEP_DEFAULT, std::nullopt);
+      CHECK((block.core_wanted.load() & plugin::CORE_SPLIT) == split_bit);
+    }
+    link::Uninstall();
+    link::Install();
+    link::internal::found.store(link::Found::READY);
+    block.core_wanted.store(plugin::CORE_BATTLE);
+    link::Update(0, true, link::RENDER_CORE_DEFAULT, 0, link::BATTLE_STEP_DEFAULT, true);
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | step_default_bit | plugin::CORE_SPLIT));
+    block.core_wanted.fetch_and(~plugin::CORE_SPLIT);
+    link::Update(0, true, link::RENDER_CORE_DEFAULT, 0, link::BATTLE_STEP_DEFAULT, true);
+    CHECK((block.core_wanted.load() & plugin::CORE_SPLIT) == 0);
+    block.core_wanted.fetch_or(plugin::CORE_SPLIT);
+    link::Update(0, true, link::RENDER_CORE_DEFAULT, 0, link::BATTLE_STEP_DEFAULT, false);
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | step_default_bit));
+    link::Uninstall();
+    link::Install();
+    block.rows_applied &= ~split_row;
+    link::internal::found.store(link::Found::READY);
+    for (const bool split_on : {true, false}) {
+      block.core_wanted.store(plugin::CORE_BATTLE | (split_on ? 0u : plugin::CORE_SPLIT));
+      link::Update(0, true, link::RENDER_CORE_DEFAULT, 0, link::BATTLE_STEP_DEFAULT, split_on);
+      CHECK((block.core_wanted.load() & plugin::CORE_SPLIT) == (split_on ? 0u : plugin::CORE_SPLIT));
+    }
     link::Uninstall();
     link::internal::block = nullptr;
     link::Install();
@@ -673,7 +711,8 @@ int main(int argc, char** argv) {
         "1 s keeps the reference; another add-on's callbacks left alone; after the detach nothing registers; Keep "
         "Battle Core Free writes only CORE_BATTLE, once per change, none on a v1 block, again after a detach; Keep "
         "Render Core Free only CORE_RENDER, on and off, none with RenderCore=0 or on a v1 block, its first present only "
-        "off its default\n");
+        "off its default; Multithreaded Collisions hidden: CORE_SPLIT untouched either way, shown: set / cleared once "
+        "per change, not offered: untouched\n");
     // 7d. The engine values on the port (FindTweaks, MirrorRestartValues): each Tweak gets the plugin's checked value
     //     (live: the game's address; restart-only: an add-on cell at the default), a refused one none (the warning line);
     //     the mirror writes [Attila64Plugin.Values] clamped to tweaks.h's range, read once, written on a change with one
