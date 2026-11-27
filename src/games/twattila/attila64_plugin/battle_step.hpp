@@ -40,10 +40,10 @@
 // The index (prior art, and where this differs):
 // - A chain per soldier of the groups that hold it is Box2D's per-body contact edge list (b2ContactManager::AddPair
 //   walks one body's edges instead of every contact; Erin Catto, MIT). PhysX's broad phase keys a hash by the pair
-//   (BpBroadPhaseShared.cpp PairManagerData, Apache-2.0), which answers "does this pair exist", not "which groups hold
+//   (BpBroadPhaseShared.cpp PairManagerData, BSD-3-Clause), which answers "does this pair exist", not "which groups hold
 //   this soldier", so it does not fit.
-// - A generation stamp per entry instead of clearing the table each call is the timestamp form of Briggs and Torczon,
-//   "An Efficient Representation for Sparse Sets" (1993).
+// - A generation stamp per entry instead of clearing the table each call is ours, and common practice (Briggs and
+//   Torczon's sparse sets, 1993, reach the same end by cross-checking two arrays).
 // - Ours: the candidates are visited in ascending list position, the new list before the older one, because the
 //   game's order of calls is part of the result; and nothing is allocated (fixed arrays, rebuilt per call).
 namespace twattila::attila64_plugin::battle_step {
@@ -77,7 +77,8 @@ inline constexpr uint32_t OLD_LIST = 1;
 inline constexpr size_t LIST_COUNT = 0xc;
 inline constexpr size_t LIST_GROUPS = 0x10;
 inline constexpr size_t MANAGER_ID_BITS = 0xd8;  // a pointer to the bits of the soldiers that are in a group
-// A group's members (MEMBER_LIMIT pointers) and their count, a soldier's id, a pair's two soldiers.
+// A group's started mark, its members (MEMBER_LIMIT pointers) and their count, a soldier's id, a pair's two soldiers.
+inline constexpr size_t GROUP_STARTED = 0x18;  // a byte: a started group takes no more members
 inline constexpr size_t GROUP_MEMBERS = 0x20;
 inline constexpr size_t GROUP_MEMBER_COUNT = 0x48;
 inline constexpr size_t SOLDIER_ID = 0x54;
@@ -128,7 +129,7 @@ inline constexpr std::array<CodeRange, 11> CODE_RANGES = {{
     {.address = 0x7e0570, .length = 0xb1, .hash = 0xd2aabb0a40df7f5a},
     {.address = 0x7e6070, .length = 3, .hash = 0x437eaa18167ba675},
     {.address = 0x7e6d50, .length = 4, .hash = 0xda93a4da712ddb7f},
-    {.address = 0x7e6180, .length = 3, .hash = 0xa3703b1a918cfbeb},
+    {.address = 0x7e6180, .length = 3, .hash = 0xa3703b1a918cfbeb},  // the pair test: ours, the design lists ten
 }};
 // The table words that lead to that code: both group kinds' join test, single join and answer, the constructor's own
 // table's single join, and the manager's create, retire, soldier test and pair test.
@@ -288,6 +289,11 @@ static void SetLane(Block* block, EngineState lane) noexcept {
         || member_count > MEMBER_LIMIT) {
       return REASON_TYPE;
     }
+    // A started group is not indexed, so no pair asks it: its join test is loads only whatever it holds (the single
+    // join asks the group's "may join once started" answer first, which is no for both kinds; CheckGameCode reads
+    // that code and both table words). Its members are also never read here: nothing in this call shows that they
+    // still are soldiers, while the game's own code reads every member of the other groups in the same call.
+    if (At<uint8_t>(group, GROUP_STARTED) != 0) return REASON_NONE;
     for (uint32_t member = first_member; member < member_count; ++member) {
       const uint32_t id = At<uint32_t>(At<void*>(group, GROUP_MEMBERS + (member * sizeof(void*))), SOLDIER_ID);
       if (id >= ID_LIMIT) return REASON_ID;
@@ -297,8 +303,10 @@ static void SetLane(Block* block, EngineState lane) noexcept {
         entry = {.generation = state.generation, .head = NO_NODE};
       }
       // A group's first member is in the index only if the group already has a place: the same group listed twice.
-      // A join through one place would leave the other without the new member, so such lists are not indexed (the
-      // game never builds them: it takes a group out of its list before it hands the group out again).
+      // A join through one place would leave the other without the new member, so the call goes to the game's
+      // function, or to the game's loop when the second place comes up during the call (the game never builds such
+      // lists: it takes a group out of its list before it hands the group out again). A group without members, or a
+      // started one, has nothing in the index and may be listed twice.
       for (uint32_t node = entry.head; member == 0 && node != NO_NODE; node = index.nodes[node].next) {
         const uint32_t other = index.nodes[node].where;
         if (list_groups(other >> WHERE_LIST_SHIFT)[other & ~(1u << WHERE_LIST_SHIFT)] == group) return REASON_TYPE;
@@ -360,7 +368,7 @@ static void SetLane(Block* block, EngineState lane) noexcept {
     first = pairs;
     last = pairs + pair_count;
     reinterpret_cast<FinishPairSortFn>(FINISH_PAIR_SORT)(&first, &last);
-    after_game_call();
+    // No look at `nested` here: it stays set, and each pair's own test comes before the index is read.
   }
 
   if (At<uint32_t>(manager, MANAGER_PAIR_COUNT) != 0) {
@@ -385,10 +393,10 @@ static void SetLane(Block* block, EngineState lane) noexcept {
             after_game_call();
             if (!plain) {
               // No group: appended as the game does, and the game's next read of it fails in the game's code.
-              const Reason reason =
-                  ((group == nullptr)
-                       ? REASON_TYPE
-                       : index_group(group, (NEW_LIST << WHERE_LIST_SHIFT) | (list_count(NEW_LIST) - 1), 0));
+              Reason reason = REASON_TYPE;
+              if (group != nullptr) {
+                reason = index_group(group, (NEW_LIST << WHERE_LIST_SHIFT) | (list_count(NEW_LIST) - 1), 0);
+              }
               if (reason != REASON_NONE) {
                 fall_back(reason);
               }
@@ -427,8 +435,8 @@ static void SetLane(Block* block, EngineState lane) noexcept {
                            != 0) {
                   fall_back(REASON_MEMBERS);
                 } else {
-                  const auto position = static_cast<uint32_t>(slot - groups);
-                  const Reason reason = index_group(group, (list << WHERE_LIST_SHIFT) | position, count_before);
+                  const Reason reason = index_group(
+                      group, (list << WHERE_LIST_SHIFT) | static_cast<uint32_t>(slot - groups), count_before);
                   if (reason != REASON_NONE) {
                     fall_back(reason);
                   }

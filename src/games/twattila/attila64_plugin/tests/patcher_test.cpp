@@ -1415,7 +1415,8 @@ int wmain(int argc, wchar_t** argv) {
   // with its one line, and the row's hook passes every call on.
   const Plugin main_plugin = ExpectPluginDll(api, copy_plugin(L"main", MODULE_NAME).c_str(), ENGINE_CODE_DIFFERS);
   Expect(std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("battle step: ") != std::string::npos; }) == 1
-             && Logged("renodx_attila64: battle step: game code differs ("),
+             && Logged("renodx_attila64: battle step: game code differs (") && Logged(", battle step on")
+             && Logged("renodx_attila64: site PAIRS_ENTRY 0x79a690: applied"),
          "battle step: one line for the game code it does not know");
   if (main_plugin.block != nullptr) {
     // This thread ran the DLL's game start, so it is the DLL's render thread: its steps are never selected onto the
@@ -1522,6 +1523,10 @@ int wmain(int argc, wchar_t** argv) {
                    == (uint32_t{(row == ROW_BATTLE_STEP) ? ENGINE_OFF_INI : ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT)
                && Logged("battle step: ") == (row != ROW_BATTLE_STEP),
            "dll: the battle step row's key 0 is its lane's off, without a line");
+    Expect(Logged("renodx_attila64: site PAIRS_ENTRY 0x79a690: skipped (OFF)") == (row == ROW_BATTLE_STEP)
+               && Logged(", battle step off") == (row == ROW_BATTLE_STEP)
+               && Logged(", battle step on") == (row != ROW_BATTLE_STEP),
+           "dll: the battle step row's key 0 is its site's skipped (OFF) line and its word off in the rows line");
     // Both core status words are built only with the row in (without it the RenderCore key is not read either).
     const bool built = (row != ROW_CPU_PLACEMENT);
     Expect(plugin.block->core_status.load() == (built ? (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT) : 0)

@@ -53,7 +53,6 @@ inline constexpr size_t PAIR_BYTES = 0x18;
 inline constexpr size_t SOLDIER_VALID = 0x58;  // the fake manager's answer for this soldier
 inline constexpr size_t SOLDIER_BYTES = 0x60;
 inline constexpr size_t GROUP_MANAGER = 0x10;
-inline constexpr size_t GROUP_STARTED = 0x18;  // a byte: a started group asks its own table before a join
 inline constexpr size_t GROUP_LIMIT = 0x50;
 inline constexpr size_t GROUP_RETIRE_ANSWER = 0x58;
 inline constexpr size_t GROUP_BYTES = 0x60;
@@ -100,7 +99,6 @@ enum CallKind : uint8_t {
   CALL_RETIRE,
   CALL_RETIRE_TEST,
   CALL_JOIN_TEST,
-  CALL_JOIN_ONE,
 };
 struct Call {
   CallKind kind = CALL_SORT;
@@ -117,6 +115,7 @@ uint64_t join_tests = 0;
 // What a case's fake game code does besides answering.
 std::function<void(void* manager, void* pair)> on_pair_test;
 std::function<void(void* manager, void* soldier)> on_valid;
+std::function<void(void* group)> on_retire_test;
 
 std::vector<std::string> step_lines;
 void QuietLog(const char* format, ...) noexcept {
@@ -189,6 +188,9 @@ ATTILA64_GAME_CALL void FakeRetire(void* manager, void* group) noexcept {
 }
 
 ATTILA64_GAME_CALL uintptr_t FakeRetireTest(void* group) noexcept {
+  if (on_retire_test) {
+    on_retire_test(group);
+  }
   const uintptr_t result = ANSWER_NOISE | At<uint8_t>(group, GROUP_RETIRE_ANSWER);
   calls.push_back({CALL_RETIRE_TEST, reinterpret_cast<uintptr_t>(group), 0, 0, result});
   return result;
@@ -214,7 +216,8 @@ ATTILA64_GAME_CALL uintptr_t LoggedJoinTest(void* group, void* first, void* seco
 }
 
 // The game's single join: a started group asks its table first (the game's answer is no), a full group says no, then
-// the manager's soldier test; a yes appends the soldier and sets its bit.
+// the manager's soldier test; a yes appends the soldier and sets its bit. Not in the call log, as the game's own is
+// not: what it does shows in the soldier test's call and in the memory.
 ATTILA64_GAME_CALL uintptr_t ModelJoinOne(void* group, void* soldier) noexcept {
   uintptr_t result = 0;
   void* manager = At<void*>(group, GROUP_MANAGER);
@@ -228,7 +231,6 @@ ATTILA64_GAME_CALL uintptr_t ModelJoinOne(void* group, void* soldier) noexcept {
     At<uint32_t*>(manager, MANAGER_ID_BITS)[id >> 5] |= 1u << (id & 31);
     result = 1;
   }
-  calls.push_back({CALL_JOIN_ONE, reinterpret_cast<uintptr_t>(group), reinterpret_cast<uintptr_t>(soldier), 0, result});
   return ANSWER_NOISE | result;
 }
 
@@ -713,13 +715,16 @@ void RunCases(const char* label, uint32_t random_cases, uint32_t hot_cases, uint
   }
 
   // Each reason for the game's own loop, with its line once however often it happens.
+  // Also: the row's lane says partly, and the row is free again for the next call.
   const auto expect_reason = [&](void* manager, Reason reason, uint32_t handled, const char* what) {
+    block.engine_status.store(uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT);
     const Outcome hooked = ExpectSame(manager, what);
     char line[96];
     std::snprintf(line, sizeof(line), "renodx_attila64: battle step: partly (%s)", REASON_WORDS[reason]);
+    const bool partly = block.engine_status.load() == (uint32_t{ENGINE_PARTLY} << ENGINE_STEP_SHIFT);
     const Outcome again = Run(manager, games[0], true, false);
     Expect(hooked.reasons == (1u << reason) && hooked.handled == handled && Same(hooked, again) && LinesWith(line) == 1
-               && LinesWith("battle step: ") == 1 && state.partly,
+               && LinesWith("battle step: ") == 1 && state.partly && partly && !state.busy.load(),
            what);
   };
   {
@@ -751,6 +756,23 @@ void RunCases(const char* label, uint32_t random_cases, uint32_t hot_cases, uint
     AddPair(manager, held, NewSoldier(12), 0.f);
     const Outcome hooked = ExpectSame(manager, "an empty group listed twice is no reason");
     Expect(hooked.reasons == 0 && hooked.handled == 1, "an empty group listed twice: done by the index");
+  }
+  {
+    // A started group is not indexed and never asked: its join test changes nothing whatever it holds. Its members
+    // are not read either: one here has an id past the table, the other is no soldier at all. The pair's soldier it
+    // holds joins nothing; the next pair is the index's as ever.
+    ClearArena();
+    void* manager = NewScene();
+    void* held = NewSoldier(10);
+    void* in_started = NewSoldier(11);
+    void* started = AddOldGroup(manager, {NewSoldier(ID_LIMIT + 4464), in_started});
+    AddMember(started, reinterpret_cast<void*>(uintptr_t{8}));
+    At<uint8_t>(started, GROUP_STARTED) = 1;
+    AddOldGroup(manager, {held});
+    AddPair(manager, in_started, NewSoldier(12), 0.f);
+    AddPair(manager, held, NewSoldier(13), 1.f);
+    const Outcome hooked = ExpectSame(manager, "a started group is never asked");
+    Expect(hooked.reasons == 0 && hooked.handled == 1, "a started group: not indexed, its members not read");
   }
   {
     // The manager hands out a group of another kind: the game's loop from there on, every call of that kind logged.
@@ -785,6 +807,106 @@ void RunCases(const char* label, uint32_t random_cases, uint32_t hot_cases, uint
     AddPair(manager, NewSoldier(13), held, 1.f);
     const Outcome hooked = ExpectSame(manager, "a pair soldier's id past the table is no reason");
     Expect(hooked.reasons == 0 && hooked.handled == 1, "a pair soldier's id past the table: done by the index");
+  }
+  {
+    // After a reason the index takes nothing more in: a new group of another kind then is no second reason.
+    ClearArena();
+    void* manager = NewScene();
+    void* held = NewSoldier(10);
+    AddOldGroup(manager, {held});
+    At<void**>(manager, MANAGER_SPARE_GROUPS)[0] = NewGroup(manager, other_group_table.data(), 2);
+    AddPair(manager, held, NewSoldier(ID_LIMIT + 4464), 0.f);
+    AddPair(manager, NewSoldier(20), NewSoldier(21), 1.f);
+    expect_reason(manager, REASON_ID, 1, "id: a soldier past the table joins, and a later new group is no second reason");
+  }
+  {
+    // An entry while the manager makes the new group (its second question about the pair's first soldier, from the
+    // group's single join): nested is the reason, and the new group, of another kind here, is not looked at.
+    ClearArena();
+    void* manager = NewScene();
+    At<void**>(manager, MANAGER_SPARE_GROUPS)[0] = NewGroup(manager, other_group_table.data(), 2);
+    void* first_new = NewSoldier(20);
+    AddPair(manager, first_new, NewSoldier(21), 0.f);
+    void* inner = NewScene();
+    void* inner_held = NewSoldier(10);
+    AddOldGroup(inner, {inner_held});
+    AddPair(inner, inner_held, NewSoldier(12), 0.f);
+    At<uint8_t>(first_new, SOLDIER_VALID) = 1;
+    on_valid = [=](void* asked, void* soldier) {
+      // The spare byte behind the answer counts the questions about this soldier.
+      if (asked == manager && soldier == first_new && ++At<uint8_t>(first_new, SOLDIER_VALID + 1) == 2) {
+        Resolve(inner);
+      }
+    };
+    expect_reason(manager, REASON_NESTED, 1, "nested: an entry while the manager makes a new group");
+    on_valid = nullptr;
+  }
+  {
+    // An entry after the pairs, from a group's "take me back" answer: the call was the index's, and still says so.
+    ClearArena();
+    void* manager = NewScene();
+    void* held = NewSoldier(10);
+    void* group = AddOldGroup(manager, {held});
+    AddPair(manager, held, NewSoldier(12), 0.f);
+    void* inner = NewScene();
+    void* inner_held = NewSoldier(10);
+    AddOldGroup(inner, {inner_held});
+    AddPair(inner, inner_held, NewSoldier(12), 0.f);
+    on_retire_test = [=](void* asked) {
+      if (asked == group && At<uint32_t>(inner, MANAGER_PAIR_COUNT) != 0) {
+        Resolve(inner);
+      }
+    };
+    expect_reason(manager, REASON_NESTED, 1, "nested: an entry after the pairs, in the game's two loops over the lists");
+    on_retire_test = nullptr;
+  }
+  {
+    // Fake game code gives the older list other memory (the same groups) under one pair's loop: the second candidate
+    // is not taken from it, the game's loop goes on in the memory it read.
+    ClearArena();
+    void* manager = NewScene();
+    void* in_both = NewSoldier(10);
+    AddOldGroup(manager, {in_both});
+    AddOldGroup(manager, {in_both});
+    void* joins = NewSoldier(12);
+    At<uint8_t>(joins, SOLDIER_VALID) = 0;
+    AddPair(manager, in_both, joins, 0.f);
+    void** moved = static_cast<void**>(Take(64 * sizeof(void*)));
+    std::copy_n(At<void**>(manager, MANAGER_LISTS[OLD_LIST] + LIST_GROUPS), 2, moved);
+    on_valid = [=](void* asked, void* soldier) {
+      if (asked != manager || soldier != joins) return;
+      // The first group's question gets a no and moves the list; the second group's gets a yes.
+      if (At<void**>(manager, MANAGER_LISTS[OLD_LIST] + LIST_GROUPS) == moved) {
+        At<uint8_t>(joins, SOLDIER_VALID) = 1;
+      } else {
+        At<void**>(manager, MANAGER_LISTS[OLD_LIST] + LIST_GROUPS) = moved;
+      }
+    };
+    expect_reason(manager, REASON_MEMBERS, 1, "changed members: the list's memory moved under a pair's loop");
+    on_valid = nullptr;
+  }
+  {
+    // An entry during the join test of a candidate at the list's end, which then says no: the game's loop is at its
+    // end too. Behind the end, a group of another kind, as above.
+    ClearArena();
+    void* manager = NewScene();
+    void* held = NewSoldier(10);
+    AddOldGroup(manager, {held});
+    At<void**>(manager, MANAGER_LISTS[OLD_LIST] + LIST_GROUPS)[1] = NewGroup(manager, other_group_table.data(), 2);
+    void* refused = NewSoldier(12);
+    At<uint8_t>(refused, SOLDIER_VALID) = 0;
+    AddPair(manager, held, refused, 0.f);
+    void* inner = NewScene();
+    void* inner_held = NewSoldier(10);
+    AddOldGroup(inner, {inner_held});
+    AddPair(inner, inner_held, NewSoldier(13), 0.f);
+    on_valid = [=](void* asked, void* soldier) {
+      if (asked == manager && soldier == refused && At<uint32_t>(inner, MANAGER_PAIR_COUNT) != 0) {
+        Resolve(inner);
+      }
+    };
+    expect_reason(manager, REASON_NESTED, 1, "nested: an entry during the last candidate's join test, which says no");
+    on_valid = nullptr;
   }
   {
     // More groups than the pool is sure to hold: one empty group listed 52429 times.
@@ -921,29 +1043,33 @@ void RunCases(const char* label, uint32_t random_cases, uint32_t hot_cases, uint
   // An entry while a call runs: the inner one runs the game's function, the outer one the game's loop for its rest.
   // The inner entry tells the outer one also when it fails an earlier test: the switch off, or another manager.
   // In the last variant the inner manager lists the outer one's group and joins a soldier to it, which the outer
-  // call's index cannot know: its later pair with that soldier is right only through the game's loop.
-  for (const uint32_t variant : {0u, 1u, 2u, 3u}) {
+  // call's index cannot know: its later pair with that soldier is right only through the game's loop. In the one after
+  // it, the entry comes in that later pair's own test.
+  for (const uint32_t variant : {0u, 1u, 2u, 3u, 4u}) {
     ClearArena();
     void* manager = NewScene();
     void* held = NewSoldier(10);
     void* group = AddOldGroup(manager, {held});
-    void* first_pair = AddPair(manager, held, NewSoldier(12), 0.f);
+    void* entry_pair = AddPair(manager, held, NewSoldier(12), 0.f);
     AddPair(manager, held, NewSoldier(13), 1.f);
     AddPair(manager, NewSoldier(14), NewSoldier(15), 2.f);
     void* inner = NewScene((variant == 2) ? other_manager_table.data() : manager_table.data());
-    if (variant == 3) {
+    if (variant >= 3) {
       void* joins_inside = NewSoldier(16);
       AddToList(inner, OLD_LIST, group);
       SetBit(inner, held);
       AddPair(inner, held, joins_inside, 0.f);
-      AddPair(manager, joins_inside, NewSoldier(17), 3.f);
+      void* later_pair = AddPair(manager, joins_inside, NewSoldier(17), 3.f);
+      if (variant == 4) {
+        entry_pair = later_pair;
+      }
     } else {
       void* inner_held = NewSoldier(10);
       AddOldGroup(inner, {inner_held});
       AddPair(inner, inner_held, NewSoldier(12), 0.f);
     }
     on_pair_test = [=](void*, void* pair) {
-      if (pair != first_pair) return;
+      if (pair != entry_pair) return;
       if (variant == 1) {
         block.core_wanted.store(0);
       }
@@ -954,6 +1080,30 @@ void RunCases(const char* label, uint32_t random_cases, uint32_t hot_cases, uint
     Expect(hooked.reasons == (1u << REASON_NESTED) && hooked.handled == 1 && !state.nested.load() && !state.busy.load()
                && LinesWith("renodx_attila64: battle step: partly (nested)") == 1,
            "nested: the outer call takes the game's loop, whatever test the inner one failed");
+    on_pair_test = nullptr;
+  }
+  {
+    // After an entry the index is not read again, also where it still names a group: the pair's soldier is in the
+    // second group for the index, and since the entry (another manager that lists the first group) in the first one
+    // too, which the game's loop asks first.
+    ClearArena();
+    void* manager = NewScene();
+    void* held = NewSoldier(10);
+    void* in_second = NewSoldier(11);
+    void* first_group = AddOldGroup(manager, {held});
+    AddOldGroup(manager, {in_second});
+    void* entry_pair = AddPair(manager, NewSoldier(14), NewSoldier(15), 0.f);
+    AddPair(manager, in_second, NewSoldier(17), 1.f);
+    void* inner = NewScene();
+    AddToList(inner, OLD_LIST, first_group);
+    SetBit(inner, held);
+    AddPair(inner, held, in_second, 0.f);
+    on_pair_test = [=](void*, void* pair) {
+      if (pair == entry_pair) {
+        Resolve(inner);
+      }
+    };
+    expect_reason(manager, REASON_NESTED, 1, "nested: the index is not read after an entry, also where it names a group");
     on_pair_test = nullptr;
   }
   {
@@ -1062,8 +1212,8 @@ void RunCases(const char* label, uint32_t random_cases, uint32_t hot_cases, uint
     Expect(Run(manager, games[0], true, false).handled == 1 && lane_is(ENGINE_PARTLY), "lane: partly after a reason");
     Expect(Run(manager, games[0], true, false).handled == 1 && lane_is(ENGINE_PARTLY) && step_lines.size() == 2,
            "lane: partly stays, with one line for its reason");
-    const bool lines_short = std::ranges::all_of(step_lines, [](const std::string& line) { return line.size() < 1024; });
-    Expect(lines_short, "lines: each under 1 KB (the loader's log allocates above that)");
+    Expect(std::ranges::all_of(step_lines, [](const std::string& line) { return line.size() < 1024; }),
+           "lines: each under 1 KB (the loader's log allocates above that)");
     block.engine_status.store(0);
   }
   std::printf("  %s: %d failure(s)\n", label, failures - failures_before);
@@ -1082,6 +1232,8 @@ void WriteJump(uintptr_t address, void* target) {
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
+  // Unbuffered: a run that ends in the game's code (an access violation) still shows the lines before it.
+  std::setvbuf(stdout, nullptr, _IONBF, 0);
   // First, before anything else can map there. Execute: the fakes at the game's addresses, then the game's own code.
   if (!ReserveGame(PAGE_EXECUTE_READWRITE)) {
     std::printf("FAIL: the game range 0x400000..0x527d000 is taken\n");

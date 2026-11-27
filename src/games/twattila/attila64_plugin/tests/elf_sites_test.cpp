@@ -232,7 +232,7 @@ int wmain(int argc, wchar_t** argv) {
   // The battle step row reads the game's code again at the game's start: a second copy of the DLL (its own module and
   // globals) on the game file mapped again, with one byte of that code changed between its init and its game start.
   {
-    const bool mapped_again = MapGameFile(argv[2], &game) == MAP_DONE;
+    Expect(MapGameFile(argv[2], &game) == MAP_DONE, "battle step: the game file maps a second time");
     ApplyStackRule(at(GAME_LO), at(game.end));
     WriteTweakObjects();
     wchar_t copy_path[MAX_PATH];
@@ -241,7 +241,8 @@ int wmain(int argc, wchar_t** argv) {
     const std::wstring copy_dir = std::wstring(copy_path) + L"\\game_start_case";
     CreateDirectoryW(copy_dir.c_str(), nullptr);
     const std::wstring copy = copy_dir + L"\\" + MODULE_NAME;
-    const Plugin plugin = (mapped_again && CopyFileW(argv[1], copy.c_str(), FALSE) != FALSE) ? LoadPlugin(copy.c_str()) : Plugin{};
+    Expect(CopyFileW(argv[1], copy.c_str(), FALSE) != FALSE, "battle step: a copy of the plugin DLL");
+    const Plugin plugin = LoadPlugin(copy.c_str());
     Expect(plugin.init != nullptr && plugin.init(&api) == 0
                && plugin.block->engine_status.load() == (uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT),
            "battle step: a second copy's init on the game file mapped again");

@@ -57,11 +57,7 @@ if ($Elf) { & "$TestOut\elf_sites_test.exe" "$Out\renodx_attila64.dll" $Elf } el
 $elf_result = if ($LASTEXITCODE -eq 77) { 'elf_sites_test SKIPPED' } else { 'elf_sites_test ran' }
 if ($LASTEXITCODE -ne 77) { $failures += $LASTEXITCODE }
 # The battle step row against the game's pair resolver; the same 77 when its game-file part did not run.
-if ($Elf) {
-  & "$TestOut\battle_step_test.exe" "$Out\renodx_attila64.dll" $Elf
-} else {
-  & "$TestOut\battle_step_test.exe" "$Out\renodx_attila64.dll"
-}
+& "$TestOut\battle_step_test.exe" "$Out\renodx_attila64.dll" $Elf
 $step_result = if ($LASTEXITCODE -eq 77) { 'battle_step_test game file SKIPPED' } else { 'battle_step_test ran' }
 if ($LASTEXITCODE -ne 77) { $failures += $LASTEXITCODE }
 "tests: $failures failure(s), $elf_result, $step_result"

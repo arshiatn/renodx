@@ -41,7 +41,7 @@ inline constexpr char PLUGIN_VERSION[] = "2";
 // One array of fixed-size words, not pointers to literals: each word then is a whole string in the DLL file (a zero
 // byte before and after), which the batch tool matches. A literal may be stored as the end of a longer one: "battle
 // step" was, of the battle core's "no battle step".
-inline constexpr size_t ROW_WORD_CAPACITY = 16;
+inline constexpr size_t ROW_WORD_CAPACITY = 32;  // a longer word does not compile
 inline constexpr std::array<std::array<char, ROW_WORD_CAPACITY>, ROW_COUNT> ROW_WORDS = {{
     {"bone flush"}, {"pass draw"}, {"battle core"}, {"unit lod"},       {"model detail"},
     {"shadow map"}, {"grass"},     {"grass cells"}, {"campaign trees"}, {"sprites"},
@@ -320,7 +320,8 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   }
   // The battle step row: its lane of engine_status from here on (not 0: the add-on shows the row), and its switch.
   // BattleStep 0 left the site out above, 1 sets the row's bit for a start without the add-on, anything else keeps
-  // the build's default. The row runs only with its site in and the game's code as read (checked again at the game's
+  // the build's default (while that default holds the bit, the key 1 changes nothing, and no test can tell it from
+  // no key: one is due with the build whose default is without the bit). The row runs only with its site in and the game's code as read (checked again at the game's
   // start); with the key 0 nothing is read.
   {
     const int battle_step_key = ini_int(ROW_INI_KEYS[ROW_BATTLE_STEP], -1);
@@ -333,8 +334,10 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
       battle_step::state.code_read.store(code_read, std::memory_order_relaxed);
       lane = ENGINE_CODE_DIFFERS;
       if (code_read) {
-        const bool wanted = (block.core_wanted.load(std::memory_order_relaxed) & CORE_STEP) != 0;
-        lane = (wanted ? ENGINE_NOT_USED_YET : ENGINE_OFF);
+        lane = ENGINE_OFF;
+        if ((block.core_wanted.load(std::memory_order_relaxed) & CORE_STEP) != 0) {
+          lane = ENGINE_NOT_USED_YET;
+        }
       }
     }
     battle_step::SetLane(&block, lane);
