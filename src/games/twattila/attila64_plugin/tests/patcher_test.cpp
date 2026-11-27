@@ -580,7 +580,7 @@ int wmain(int argc, wchar_t** argv) {
     plugin.game_started(&api);
     plugin.block->core_wanted.fetch_or(CORE_RENDER);
     Expect(step_once() && render_state_of(plugin.block) == CORE_OFF_INI && !Logged("renodx_attila64: render thread ")
-               && Logged("render core: off in ReShade.ini (RenderCore=0)") && !Logged("render core: logical"),
+               && Logged("render core: off in ReShade.ini, RenderCore=0 (render thread 0, error 0)") && !Logged("render core: logical"),
            "dll: RenderCore=0, nothing captured and no render core even with its bit set later");
     plugin.block->core_wanted.fetch_and(~(CORE_BATTLE | CORE_RENDER));
     Expect(step_once() && core_state_of(plugin.block) != CORE_ACTIVE, "dll: RenderCore=0, released again");

@@ -82,14 +82,14 @@ struct Pick {
 
 struct Picks {
   Pick battle;  // or the reason neither part is used
-  Pick render;  // or CORE_NO_CORE; CORE_WITH_BATTLE with a reason in `battle`
+  Pick render;  // or CORE_NO_CORE; CORE_WAITING: not asked for; CORE_WITH_BATTLE with a reason in `battle`
   IdList keep;  // the allowed CPUs without both cores
 };
 
 struct State {
   std::shared_mutex mutex;
-  Block* shared = nullptr;         // both set at the first reserve, for the watchdog
-  const LoaderApi* api = nullptr;
+  Block* shared = nullptr;         // set at the plugin's init and the game's start too (the render word's writers)
+  const LoaderApi* api = nullptr;  // set at the first reserve, for the watchdog
   PTP_TIMER timer = nullptr;       // made once, kept for the process (never closed, never waited for)
   CoreState core_state = CORE_WAITING;
   bool reserved = false;           // the process default is the one written: the watchdog runs, a release puts it back
@@ -342,10 +342,10 @@ static void RenderOutcome(State* state, CoreState outcome, DWORD error, std::spa
   switch (outcome) {
     case CORE_NO_CORE:    text = "not used: no free core next to the battle core"; break;
     case CORE_OWN_RULE:   text = "not used: the render thread has its own CPU rule"; break;
-    case CORE_OFF_INI:    text = "off in ReShade.ini (RenderCore=0)"; break;
+    case CORE_OFF_INI:    text = "off in ReShade.ini, RenderCore=0"; break;
     case CORE_NO_THREAD:  text = "not used: the render thread has ended"; break;
     case CORE_NOT_RENDER: text = "not used: the render thread was mostly idle"; break;
-    case CORE_YIELDED:    text = "stopped: another program changed the render thread's CPU sets (left as they are)"; break;
+    case CORE_YIELDED:    text = "stopped: another program changed the render thread's CPU sets, left as they are"; break;
     default:              text = "stopped: Windows refused"; break;
   }
   std::snprintf(line.data(), line.size(), "renodx_attila64: render core: %s (render thread %lu, error %lu)", text,
@@ -484,7 +484,6 @@ static VOID CALLBACK Watchdog(PTP_CALLBACK_INSTANCE /*instance*/, PVOID context,
       };
       std::array<ULONG, MAX_CPUS> selected;
       ULONG count = 0;
-      uint64_t cpu_100ns = 0;
       if (GetThreadSelectedCpuSets(watched->render_thread, selected.data(), MAX_CPUS, &count) == FALSE) {
         const DWORD error = GetLastError();
         if (WaitForSingleObject(watched->render_thread, 0) == WAIT_OBJECT_0) {
@@ -498,7 +497,8 @@ static VOID CALLBACK Watchdog(PTP_CALLBACK_INSTANCE /*instance*/, PVOID context,
         // Once per reserve. The render thread is busy nearly all of a battle (99 % measured); another thread would
         // hold a whole core for nothing. Below half: not it, until the next reserve looks again.
         watched->render_busy_checked = true;
-        if (ReadCpuTime(watched->render_thread, &cpu_100ns)
+        if (uint64_t cpu_100ns = 0;
+            ReadCpuTime(watched->render_thread, &cpu_100ns)
             && (cpu_100ns - watched->render_busy_cpu_100ns) * 2 < (now_ms - watched->render_busy_start_ms) * 10000) {
           ClearIfOurs(watched->render_thread, watched->render_ids);
           drop(CORE_NOT_RENDER, ERROR_SUCCESS);
@@ -648,8 +648,13 @@ static void OnStepStart(Block* shared, const LoaderApi& api) noexcept {
           }
           if (SetProcessDefaultCpuSets(GetCurrentProcess(), state.written.ids.data(), state.written.count) == FALSE) {
             const DWORD error = GetLastError();
-            if (state.render_state == CORE_ACTIVE) {
-              ClearIfOurs(state.render_thread, state.render_ids);
+            // Release's rule for the render thread: a clear that did not happen is a line.
+            if (state.render_state == CORE_ACTIVE && !ClearIfOurs(state.render_thread, state.render_ids)
+                && !state.render_clear_logged) {
+              state.render_clear_logged = true;
+              std::snprintf(render_line, sizeof(render_line),
+                            "renodx_attila64: render core: the render thread %lu keeps the CPU sets it has",
+                            state.render_tid);
             }
             refuse(CORE_FAILED, error, "the CPU set write");
           } else {

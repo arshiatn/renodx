@@ -174,7 +174,10 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const Plugin plugin = LoadPlugin(dll_path);
   if (plugin.init == nullptr) return plugin;
 
-  log_lines.clear();
+  {
+    const std::scoped_lock lock(log_mutex);
+    log_lines.clear();
+  }
   Expect(plugin.init(&api) == 0, "the plugin's init accepts the game");
   const Block* shared = plugin.block;
   Expect(shared->version == VERSION && shared->bytes == BlockBytes(VERSION), "the block's version and size");
@@ -213,11 +216,18 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   // The thread that runs the game's start is the render thread: captured once, with its own line.
   char render_thread[64];
   std::snprintf(render_thread, sizeof(render_thread), "renodx_attila64: render thread %lu", GetCurrentThreadId());
-  const size_t lines_before = log_lines.size();
+  const auto line_count = [] {
+    const std::shared_lock lock(log_mutex);
+    return log_lines.size();
+  };
+  const size_t lines_before = line_count();
   plugin.game_started(&api);
+  const bool sites_line_last = [] {
+    const std::shared_lock lock(log_mutex);
+    return std::string_view(log_lines.back()).starts_with("renodx_attila64: game started: ");
+  }();
   Expect(shared->render_core_status.load() == (uint32_t{CORE_WAITING} << CORE_STATE_SHIFT) && Logged(render_thread)
-             && !Logged("render core:") && std::string_view(log_lines.back()).starts_with("renodx_attila64: game started: ")
-             && log_lines.size() == lines_before + 1,
+             && !Logged("render core:") && sites_line_last && line_count() == lines_before + 1,
          "game start captures the render thread once: a second start logs only its sites line");
   return plugin;
 }

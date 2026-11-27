@@ -691,15 +691,17 @@ int wmain() {
     Sleep(4 * battle_core::watchdog_ms);
     shared.core_wanted.fetch_xor(CORE_STEP);
     step(0);
-    Sleep((9 * battle_core::watchdog_ms) / 2);  // ends between two ticks: the change below is the next step's, not the watchdog's
+    Sleep(4 * battle_core::watchdog_ms);
     Expect(RenderField(CORE_STATE_SHIFT) == CORE_ACTIVE && ProcessDefault() == kept_both && LinesWith("released") == 0,
            "bits: an unknown bit toggled releases neither core");
     shared.core_wanted.fetch_and(~CORE_RENDER);
     step(0);
-    Expect(StatusField(CORE_STATE_SHIFT) == CORE_WAITING && RenderField(CORE_STATE_SHIFT) == CORE_WAITING
-               && Selected(render_handle).empty() && ProcessDefault() == every_id && holders(core) == 0
-               && LinesWith("battle core: released (turned off)") == 1,
-           "bits: the render part turned off, both released at the next step");
+    // The watchdog may release first; then this step has already reserved the battle core alone.
+    Expect(WaitForLine("battle core: released (turned off)") && RenderField(CORE_STATE_SHIFT) == CORE_WAITING
+               && Selected(render_handle).empty()
+               && ((StatusField(CORE_STATE_SHIFT) == CORE_WAITING && ProcessDefault() == every_id && holders(core) == 0)
+                   || (StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && ProcessDefault() == kept && holders(core) == 1)),
+           "bits: the render part turned off, both released");
     step(0);
     Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_WAITING
                && Selected(render_handle).empty() && ProcessDefault() == kept && holders(core) == 1,
@@ -895,7 +897,7 @@ int wmain() {
     step(0);
     Expect(RenderField(CORE_STATE_SHIFT) == CORE_OFF_INI && battle_core::state.render_thread == nullptr
                && LinesWith("renodx_attila64: render thread ") == 0
-               && LinesWith("render core: off in ReShade.ini (RenderCore=0)") == 1 && StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE
+               && LinesWith("render core: off in ReShade.ini, RenderCore=0 (render thread 0, error 0)") == 1 && StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE
                && ProcessDefault() == kept && Selected(render_handle).empty(),
            "key: 0 captures nothing and never places, even with the bit set later");
 
