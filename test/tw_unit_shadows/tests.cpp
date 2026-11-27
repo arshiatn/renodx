@@ -854,7 +854,8 @@ int main(int argc, char** argv) {
             && !start_files::FrameBridgeOff(write("fb_mixed_on.txt", "addon=off\naddon=on\n")));
       CHECK(!start_files::FrameBridgeOff(write("fb_on.txt", "addon=on\r\n"))
             && !start_files::FrameBridgeOff(write("fb_of.txt", "addon=of\n"))
-            && !start_files::FrameBridgeOff(write("fb_none.txt", "x=1\n")) && !start_files::FrameBridgeOff(folder / "none.txt"));
+            && !start_files::FrameBridgeOff(write("fb_none.txt", "x=1\n"))
+            && !start_files::FrameBridgeOff(folder / "none.txt"));
       std::vector<std::string> lines_seen;
       start_files::ForEachLine(write("perffix64.log", "01:37:48.419 flag wave: on (a pack)\r\nlast"),
                                [&lines_seen](std::string_view line) { lines_seen.emplace_back(line); });
