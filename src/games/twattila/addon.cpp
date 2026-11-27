@@ -1232,7 +1232,8 @@ constexpr std::array<GameCodeRow, 42> GAME_CODE_ROWS = {{
     {.match = "FasterRenderLists"},
     {.match = "FasterJobWakeUps"},
     {.match = "FasterEffectPrefetch"},
-    {.match = "KeepRenderCoreFree"},
+    // The port's Keep Render Core Free is the plugin's render core (the 32-bit one moves the game's threads itself).
+    {.match = "KeepRenderCoreFree", .plugin_row = PluginRow::CPU_PLACEMENT},
     {.match = "FasterEmitterPrefetch"},
     {.match = "FasterParticlePrefetch"},
     {.match = "FasterSweepPrefetch"},
@@ -1316,8 +1317,8 @@ constexpr std::array<PluginNote, 9> PLUGIN_NOTES = {{
 
 // The core rows' status lines on the port, after the row's prefix ("Battle core: "), by the word's CoreState. Format
 // arguments: {0} / {1} logical CPU A / B, {2} the Win32 error (FAILED only). State 0 (not built) hides the rows. The
-// battle word never holds the render part's states. The render row passes its own error byte (RENDER_ERROR_LARGE:
-// larger, see attila64_log.txt), so its FAILED text needs that case.
+// battle word never holds the render part's states (their texts as the plugin's log words them). The render row passes
+// its own error byte as text (RENDER_ERROR_LARGE: larger, see attila64_log.txt).
 constexpr std::array<const char*, twattila::attila64_plugin::CORE_STATE_COUNT> CORE_STATE_TEXTS = {
     "",                                                                  // not built
     "on, waiting for a battle",                                          // CORE_WAITING
@@ -1327,11 +1328,11 @@ constexpr std::array<const char*, twattila::attila64_plugin::CORE_STATE_COUNT> C
     "not used: more than 64 CPU threads",                                // CORE_UNSUPPORTED
     "stopped: another program changed the game's CPU cores",             // CORE_YIELDED
     "stopped: Windows refused (error {2})",                              // CORE_FAILED
-    "not used: no free core beside the battle core",                     // CORE_NO_CORE
-    "not used: its thread has a CPU rule of its own",                    // CORE_OWN_RULE
+    "not used: no free core next to the battle core",                    // CORE_NO_CORE
+    "not used: the render thread has its own CPU rule",                  // CORE_OWN_RULE
     "off in ReShade.ini (RenderCore=0)",                                 // CORE_OFF_INI
-    "not used: its thread was not found, or it ended",                   // CORE_NO_THREAD
-    "not used: its thread was mostly idle",                              // CORE_NOT_RENDER
+    "not used: the render thread was not found, or it ended",            // CORE_NO_THREAD
+    "not used: the render thread was mostly idle",                       // CORE_NOT_RENDER
     "stopped with the battle core",                                      // CORE_WITH_BATTLE
 };
 static_assert(std::ranges::find(CORE_STATE_TEXTS, nullptr) == CORE_STATE_TEXTS.end(), "a text for every CoreState");
@@ -1661,8 +1662,12 @@ float fewer_constant_uploads_row = (ATTILA64 ? 1.f : 0.f);
 float fewer_driver_waits_row = 0.f;
 // Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site and particle update loop site.
 float effect_prefetch_row = 0.f;
-// Keep Render Core Free (Experimental, off): cpu_sets.hpp.
-float keep_render_core_row = 0.f;
+// Keep Render Core Free (32-bit: Experimental, off, cpu_sets.hpp; the port: the 64-bit engine plugin's render core, its
+// core_wanted bit, attila64_plugin_link::Update).
+constexpr float KEEP_RENDER_CORE_DEFAULT = ((ATTILA64 && twattila::attila64_plugin_link::RENDER_CORE_DEFAULT) ? 1.f : 0.f);
+float keep_render_core_row = KEEP_RENDER_CORE_DEFAULT;
+// The port's Keep Render Core Free shows only once its A/B measured it (true: a release step).
+constexpr bool RENDER_CORE_ROW_MEASURED = false;
 // Keep Battle Core Free (the port only, on): the 64-bit engine plugin's battle core, its core_wanted bit
 // (attila64_plugin_link::Update).
 constexpr float KEEP_BATTLE_CORE_DEFAULT = (twattila::attila64_plugin_link::BATTLE_CORE_DEFAULT ? 1.f : 0.f);
@@ -2112,7 +2117,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   // The bench's RENODX_TW_GAME_CPUS, else the count cpu_sets reads. value_or always evaluates its argument, so cpu_sets::Update
   // (Keep Render Core Free and the count's reads) runs every present either way: never move it into a branch that may skip it.
-  // The port: Keep Render Core Free off (it moves the 32-bit game's threads); the count's reads stay.
+  // The port: cpu_sets' Keep Render Core Free off (it moves the 32-bit game's threads; the port's row is the engine
+  // plugin's render core); the count's reads stay.
   const uint32_t game_cpus = game_cpus_env.value_or(twattila::cpu_sets::Update(!ATTILA64 && keep_render_core_row != 0.f, GAME_THREAD_MODULES));
   const bool fewer_constant_uploads = fewer_constant_uploads_row != 0.f;
   renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads, std::memory_order_relaxed);
@@ -2349,7 +2355,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                ? plugin::RowBit(plugin::ROW_BONE_FLUSH)
                : 0u)
           | (pass_draw ? plugin::RowBit(plugin::ROW_PASS_DRAW) : 0u),
-          keep_battle_core_row != 0.f);
+          keep_battle_core_row != 0.f, keep_render_core_row != 0.f);
     }
     // Everything below writes the 32-bit game's code or values.
     return;
@@ -2914,7 +2920,7 @@ void ConfigureAddon() {
           .key = "KeepRenderCoreFree",
           .binding = &keep_render_core_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
+          .default_value = KEEP_RENDER_CORE_DEFAULT,
           .label = "Keep Render Core Free (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "Keeps the second half of the render thread's CPU core free for it.\n"
@@ -3511,6 +3517,66 @@ void ConfigureAddon() {
                   return false;
                 },
                 .is_visible = battle_core_shown,
+            },
+        });
+    // Keep Render Core Free (its 32-bit place: Graphics (Experimental)) and its status line the same way, for the render
+    // part (render_core_status), once its A/B measured it. The toggle hides with RenderCore=0 (the plugin's own off for
+    // the process: the row cannot turn it on); its line says so.
+    const auto render_core_state = [] {
+      return (twattila::attila64_plugin_link::RenderCoreStatus() >> plugin::CORE_STATE_SHIFT) & plugin::CORE_FIELD_MASK;
+    };
+    const auto render_core_shown = [render_core_state] {
+      return RENDER_CORE_ROW_MEASURED && GameCodeRowShown(PluginRow::CPU_PLACEMENT) && render_core_state() != 0;
+    };
+    const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree", &renodx::utils::settings::Setting::key);
+    renodx::utils::settings::Setting* render_core_row = *render_core;
+    settings.erase(render_core);
+    render_core_row->label = "Keep Render Core Free";
+    render_core_row->section = CPU_SECTION;
+    render_core_row->tooltip = "Can raise the frame rate in big battles: the render thread gets a CPU core to itself. Same picture.\n"
+                               "Changes take effect at once. If it says stopped, restart the game to try again.";
+    render_core_row->is_visible = [render_core_shown, render_core_state] {
+      return render_core_shown() && render_core_state() != plugin::CORE_OFF_INI;
+    };
+    cpu_rows.insert(
+        cpu_rows.end(),
+        {
+            render_core_row,
+            new renodx::utils::settings::Setting{
+                .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+                .section = CPU_SECTION,
+                .on_draw = [] {
+                  const uint32_t status = twattila::attila64_plugin_link::RenderCoreStatus();
+                  const auto field = [status](uint32_t shift) { return (status >> shift) & plugin::CORE_FIELD_MASK; };
+                  const uint32_t state = field(plugin::CORE_STATE_SHIFT);
+                  // A state appended by a newer plugin: no line.
+                  if (state >= plugin::CORE_STATE_COUNT) return false;
+                  const uint32_t logical_a = field(plugin::CORE_LOGICAL_A_SHIFT);
+                  const uint32_t logical_b = field(plugin::CORE_LOGICAL_B_SHIFT);
+                  // One byte: RENDER_ERROR_LARGE stands for a larger error, which the plugin's log has.
+                  const uint32_t error = field(plugin::RENDER_ERROR_SHIFT);
+                  const std::string error_text =
+                      (error == plugin::RENDER_ERROR_LARGE ? "in attila64_log.txt" : std::to_string(error));
+                  const char* format = CORE_STATE_TEXTS[state];
+                  switch (state) {
+                    // WAITING also holds while the bit is clear (the row Off, or the plugin's default kept).
+                    case plugin::CORE_WAITING:
+                      if (!twattila::attila64_plugin_link::RenderCoreWanted()) {
+                        format = "off";
+                      }
+                      break;
+                    // The shared text says the core is kept free; this one is the render thread's.
+                    case plugin::CORE_ACTIVE:
+                      format = "on: logical CPUs {0} + {1} kept for the render thread";
+                      break;
+                    default:
+                      break;
+                  }
+                  ImGui::TextWrapped("Render core: %s",
+                                     std::vformat(format, std::make_format_args(logical_a, logical_b, error_text)).c_str());
+                  return false;
+                },
+                .is_visible = render_core_shown,
             },
         });
     // The renderer's CPU row (its 32-bit place: Graphics 2 of 2). Fewer Driver Waits stays there, hidden (GAME_CODE_ROWS).

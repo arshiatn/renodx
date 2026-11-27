@@ -535,42 +535,60 @@ int main(int argc, char** argv) {
     const uint32_t both = block.rows_applied;
     // Not READY: nothing registered.
     link::internal::block = &block;
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0);
     link::internal::found.store(link::Found::READY);
     const uint32_t epoch_before = link::internal::epoch.load();
-    link::Update(plugin::RowBit(plugin::ROW_PASS_DRAW), link::BATTLE_CORE_DEFAULT);
+    link::Update(plugin::RowBit(plugin::ROW_PASS_DRAW), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS
           && block.hooks_wanted.load() == plugin::RowBit(plugin::ROW_PASS_DRAW)
           && link::internal::module_reference != nullptr && link::internal::epoch.load() != epoch_before);
     const uint32_t epoch_registered = link::internal::epoch.load();
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.hooks_wanted.load() == both && link::internal::epoch.load() == epoch_registered);
     // The row's core_wanted bit: only CORE_BATTLE changes (another part's bit kept), written once per change of the
     // row (an equal present writes nothing); a v1 block (no core_wanted) gets no write.
     block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
-    link::Update(both, false);
+    link::Update(both, false, link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == plugin::CORE_RENDER);
     block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
-    link::Update(both, false);
+    link::Update(both, false, link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER));
     block.core_wanted.store(plugin::CORE_RENDER);
-    link::Update(both, true);
+    link::Update(both, true, link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER));
+    // Keep Render Core Free the same way: only CORE_RENDER changes, on and off (the battle part's bit and a bit no row
+    // writes kept), an equal present writes nothing.
+    block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_STEP);
+    link::Update(both, true, true);
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER | plugin::CORE_STEP));
+    block.core_wanted.store(plugin::CORE_RENDER);
+    link::Update(both, true, true);
+    CHECK(block.core_wanted.load() == plugin::CORE_RENDER);
+    block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER | plugin::CORE_STEP);
+    link::Update(both, true, false);
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_STEP));
+    block.core_wanted.store(plugin::CORE_STEP);
+    link::Update(both, true, true);
+    CHECK(block.core_wanted.load() == (plugin::CORE_RENDER | plugin::CORE_STEP));
+    link::Update(both, true, false);
+    CHECK(block.core_wanted.load() == plugin::CORE_STEP);
+    link::Update(both, true, link::RENDER_CORE_DEFAULT);
+    block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
     block.bytes = static_cast<uint32_t>(plugin::BlockBytes(1));
-    link::Update(both, false);
+    link::Update(both, false, link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER)
           && block.hooks_wanted.load() == both);
     block.bytes = sizeof(plugin::Block);
     block.rows_changed.store(plugin::RowBit(plugin::ROW_PASS_DRAW));
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.hooks_wanted.load() == plugin::RowBit(plugin::ROW_BONE_FLUSH)
           && block.callbacks.load() == &link::internal::CALLBACKS);
     block.rows_changed.store(0);
-    link::Update(0, link::BATTLE_CORE_DEFAULT);
+    link::Update(0, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0
           && link::internal::module_reference == nullptr);
-    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT);
+    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS && link::internal::epoch.load() != epoch_registered);
     // A hook still inside for 50 ms: the wait ends when it leaves, the reference released.
     block.calls_in_flight.store(1);
@@ -579,24 +597,24 @@ int main(int argc, char** argv) {
       block.calls_in_flight.store(0);
     });
     const ULONGLONG short_start = GetTickCount64();
-    link::Update(0, link::BATTLE_CORE_DEFAULT);
+    link::Update(0, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     const ULONGLONG short_wait = GetTickCount64() - short_start;
     leaving.join();
     CHECK(short_wait >= 30 && short_wait < 1000 && block.callbacks.load() == nullptr
           && link::internal::module_reference == nullptr);
-    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT);
+    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS);
     block.calls_in_flight.store(1);
     const ULONGLONG drain_start = GetTickCount64();
-    link::Update(0, link::BATTLE_CORE_DEFAULT);
+    link::Update(0, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(GetTickCount64() - drain_start >= 1000 && block.callbacks.load() == nullptr
           && link::internal::module_reference != nullptr);
     block.calls_in_flight.store(0);
     FreeLibrary(std::exchange(link::internal::module_reference, nullptr));
     constexpr plugin::Callbacks OTHER_ADDON = {};
     block.callbacks.store(&OTHER_ADDON);
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == &OTHER_ADDON && block.hooks_wanted.load() == 0 && !link::internal::registered
           && link::internal::lost && link::internal::module_reference == nullptr);
     link::Uninstall();
@@ -606,18 +624,30 @@ int main(int argc, char** argv) {
     // again.
     block.callbacks.store(nullptr);
     link::Lookup(true);
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(link::Result() == link::Found::DETACHED && block.callbacks.load() == nullptr
           && block.hooks_wanted.load() == 0);
     link::internal::block = nullptr;
     link::Install();
     CHECK(link::Result() == link::Found::PENDING);
-    // After a detach the next READY's first present writes the row's bit again.
+    // After a detach the next READY's first present writes the battle row's bit again, and the render row's only off
+    // its default: at it, the plugin's own bit (its RenderCore key) stays until the row changes.
+    const uint32_t render_default_bit = (link::RENDER_CORE_DEFAULT ? plugin::CORE_RENDER : 0u);
+    const uint32_t render_other_bit = plugin::CORE_RENDER ^ render_default_bit;
     link::internal::block = &block;
     link::internal::found.store(link::Found::READY);
-    block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
-    link::Update(0, false);
-    CHECK(block.core_wanted.load() == plugin::CORE_RENDER);
+    block.core_wanted.store(plugin::CORE_BATTLE | render_other_bit);
+    link::Update(0, false, link::RENDER_CORE_DEFAULT);
+    CHECK(block.core_wanted.load() == render_other_bit);
+    link::Update(0, false, !link::RENDER_CORE_DEFAULT);
+    link::Update(0, false, link::RENDER_CORE_DEFAULT);
+    CHECK(block.core_wanted.load() == render_default_bit);
+    link::Uninstall();
+    link::Install();
+    link::internal::found.store(link::Found::READY);
+    block.core_wanted.store(plugin::CORE_BATTLE | render_default_bit);
+    link::Update(0, true, !link::RENDER_CORE_DEFAULT);
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | render_other_bit));
     link::Uninstall();
     link::internal::block = nullptr;
     link::Install();
@@ -626,7 +656,8 @@ int main(int argc, char** argv) {
         "7c callbacks: the lookup final at the last try, registered while READY, wanted and offered, bits follow, a "
         "changed row not wanted, unregistered and drained (a hook leaving after 50 ms ends the wait); a drain past "
         "1 s keeps the reference; another add-on's callbacks left alone; after the detach nothing registers; Keep "
-        "Battle Core Free writes only CORE_BATTLE, once per change, none on a v1 block, again after a detach\n");
+        "Battle Core Free writes only CORE_BATTLE, once per change, none on a v1 block, again after a detach; Keep "
+        "Render Core Free only CORE_RENDER, on and off, its first present only off its default\n");
     // 7d. The engine values on the port (FindTweaks, MirrorRestartValues): each Tweak gets the plugin's checked value
     //     (live: the game's address; restart-only: an add-on cell at the default), a refused one none (the warning line);
     //     the mirror writes [Attila64Plugin.Values] clamped to tweaks.h's range, read once, written on a change with one

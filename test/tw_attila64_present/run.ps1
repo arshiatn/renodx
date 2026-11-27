@@ -175,6 +175,28 @@ foreach ($name in $gameCodeCases.Keys) {
              @(if (-not $gameCode.value) { $gameCodeValue })
   }
 }
+# The core rows (a v2 block offering the CPU row, rows 0x7, the render part built: render_core_status 1, WAITING): each
+# writes only its own core_wanted bit (a bit no row writes, CORE_STEP 4, kept); the exe checks the bits left.
+# plugin_render_core: Keep Render Core Free On, the plugin's bits 5 (battle + 4): 7. plugin_render_core_battle_off: Keep
+# Battle Core Free Off as well: 6. plugin_render_core_kept: the row at its default (Off), the plugin's bits 7 (its own
+# RenderCore=1): the first present writes no render bit, 7 kept.
+$renderCore = '[Total War] 64-bit Attila: Keep Render Core Free'
+$renderCoreCases = [ordered]@{
+  plugin_render_core = @{ plugin = '1 7 0 2 7 0 0 5 1'; ini = @('KeepRenderCoreFree=1'); bits = 7; battle = 'on'; render = 'on' }
+  plugin_render_core_battle_off = @{ plugin = '1 7 0 2 7 0 0 5 1'; ini = @('KeepBattleCoreFree=0', 'KeepRenderCoreFree=1'); bits = 6
+                                     battle = 'off'; render = 'on' }
+  plugin_render_core_kept = @{ plugin = '1 7 0 2 7 0 0 7 1'; ini = @(); bits = 7; battle = 'on' }
+}
+foreach ($name in $renderCoreCases.Keys) {
+  $core = $renderCoreCases[$name]
+  $table[$name] = @{
+    addon = 'current'; args = "d3d11 fixed upgraded plugin core_wanted_$($core.bits)"; encoding = 0; plugin = $core.plugin; ini = $core.ini
+    lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x7',
+              '[Total War] 64-bit Attila: engine plugin rows tried 0x7', "[Total War] 64-bit Attila: Keep Battle Core Free $($core.battle)") +
+            @(if ($core.render) { "$renderCore $($core.render)" }) + $upgraded
+    forbid = @('engine plugin not installed', 'callbacks registered', 'engine plugin notices') + @(if (-not $core.render) { $renderCore })
+  }
+}
 # Registration end to end: rows forced wanted (RENODX_TW_PLUGIN_WANT), the callbacks registered at a present, the fake
 # hooks' thread calling into them, then unregistered and drained inside ReShade's unload before the add-on is freed.
 $table['plugin_calls'] = @{
