@@ -3456,8 +3456,9 @@ void ConfigureAddon() {
                 [] { return waving_flags_on.load(std::memory_order_relaxed); }),
         });
     // The CPU page (Settings Mode 3), its section "CPU": every CPU row of this mod on the port, new CPU rows too (live
-    // rows plain, a restart-only one with "(restart)" in its label and its restart note after it). The engine
-    // performance fix's and the start window's sections wait for ATN's answer on where their keys come from.
+    // rows plain, a restart-only one with "(restart)" in its label and its restart note after it, a row live one way and
+    // restart-only the other with "(restart)" in its label and its tooltip saying which: Fewer Constant Uploads). The
+    // engine performance fix's and the start window's sections wait for ATN's answer on where their keys come from.
     constexpr const char* CPU_SECTION = "CPU";
     std::vector<renodx::utils::settings::Setting*> cpu_rows;
     // Keep Battle Core Free and its status line, while the plugin offers the CPU row and built its battle part (state 0:
@@ -3510,10 +3511,10 @@ void ConfigureAddon() {
             },
         });
     // The renderer's CPU row (its 32-bit place: Graphics 2 of 2). Fewer Driver Waits stays there, hidden (GAME_CODE_ROWS).
-    const auto fewer_constant_uploads = std::ranges::find(settings, "FewerConstantUploads", &renodx::utils::settings::Setting::key);
-    (*fewer_constant_uploads)->section = CPU_SECTION;
-    cpu_rows.push_back(*fewer_constant_uploads);
-    settings.erase(fewer_constant_uploads);
+    const auto moved = std::ranges::find(settings, "FewerConstantUploads", &renodx::utils::settings::Setting::key);
+    (*moved)->section = CPU_SECTION;
+    cpu_rows.push_back(*moved);
+    settings.erase(moved);
     settings.insert(std::ranges::find(settings, "About", &renodx::utils::settings::Setting::section), cpu_rows.begin(),
                     cpu_rows.end());
     renodx::utils::settings::section_tints.emplace_back(CPU_SECTION, 0xF0E68Cu);
@@ -3613,8 +3614,8 @@ bool AttachAddon() {
   // Rows saved at an old default (a preset saves every row, hidden ones too), each cleared once. 1 (before v149): NRD when
   // Ray Reconstruction is off, the banners' light and colour on. 2 (the render_mt defaults): the rows whose default changed
   // and the rows hidden now (a value saved earlier would stay on unseen). The 64-bit port has its own key,
-  // Attila64SettingsRevision (32-bit never reads it): 1 (PK1-64) Fewer Constant Uploads, on there by default. A later port
-  // default change takes the next number.
+  // Attila64SettingsRevision (32-bit never reads it): 1, the 64-bit port's first revision, Fewer Constant Uploads, on there
+  // by default. A later port default change takes the next number.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
   twattila::graphics_page::ClearSavedRows(2, {"DrawRecordingStage", "DrawRecordingDepthA", "DrawRecordingColourA", "DrawRecordingDepthB",
                                               "DrawRecordingColourB", "DrawRecordingFamilies", "AnimationRowsWorkers", "ParallelInstanceFill",

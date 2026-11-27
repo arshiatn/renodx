@@ -1,9 +1,14 @@
 # mods::shader's native D3D11 injection buffers (tests.cpp: PushNativeD3D11Injection on WARP, ReShade's command list
 # mocked). No game build needed. Run as x86 (Attila's) and amd64. -Hardware: case 8 alone, in its own process, on the
-# hardware adapter (a GPU test: run it in a GPU window, amd64). -OutDir: where the test exe goes (default
+# hardware adapter (a GPU test: run it in a GPU window; amd64 only, its default). -OutDir: where the test exe goes (default
 # testbin\tw_injection_buffers_<arch>, the maintainer's excluded folder).
 param([ValidateSet('x86', 'amd64')][string]$Architecture = 'x86', [switch]$Hardware, [string]$OutDir = '')
 $ErrorActionPreference = 'Stop'
+# Case 8 is the 64-bit port's gate: amd64 only (the default with -Hardware).
+if ($Hardware) {
+  if ($PSBoundParameters.ContainsKey('Architecture') -and $Architecture -ne 'amd64') { throw '-Hardware runs on amd64 only' }
+  $Architecture = 'amd64'
+}
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $testRoot = Join-Path $repoRoot 'test\tw_injection_buffers'
 $vsRoot = & 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe' -products '*' -latest -property installationPath
