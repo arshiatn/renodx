@@ -977,7 +977,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | coord / ATN (2048 vs 2304 slots)
 - DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | 11-27+ designer (start_1127
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
-- SSS TEST FLAKE: test/tw_screen_space_shadows case 2 (100 %, Auto Thickness pole ... | next SSS test agent
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
 - AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | 11-27 GPU wave
@@ -17683,9 +17682,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         shadow > 0.25 apart; 3-px 0.546 vs 0.523; 66.8 % passes) -> ATN: accept as numbers + eye check, or a fix design.
         Not verified: game picture, AMD / Intel, torch light mode, 960 / 1920 samples, Tales at run time. Owner: ATN (W11) ->
         coord merge
-        - [ ] SSS TEST FLAKE: test/tw_screen_space_shadows case 2 (100 %, Auto Thickness pole row, byte-identical plain shaders)
+        - [x] SSS TEST FLAKE: test/tw_screen_space_shadows case 2 (100 %, Auto Thickness pole row, byte-identical plain shaders)
         gave 182 vs bound 180 once on amd64 (o2_ 11-26), rerun 154: same bytes, different result = a nondeterministic test or
-        bound. Owner: next SSS test agent
+        bound. FIXED (sssf_ 11-27, testbin\scratch\sssf_\handback.md): ~155 far ground pixels (case 1's twice-written ones)
+        flip run to run on WARP; case 2 now runs 8 x off / on in turns and leaves varying pixels out (CHECK < 1/500); bound
+        unchanged. 20 process runs per arch: all pass, same numbers (pole 127 / 124 vs 153); 17 CONTROLs still fail; the 3
+        known W11 CHECKs (now lines 2539 x2 / 2740) as before. Merged 9704fa33f (ssst_1127, test only). Owner: done
         - [ ] O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spear shafts) cast a lighter shadow
         than the old A' at 58 % render scale (0.205 vs 0.265 in the WARP test); 66.7 %, 2/3, 50 %, 1/3 match. If ATN sees it,
         a W11 fix design (each pixel's own sample phase inside the shared grid, O2's cost kept; start_1127.md 3d,
