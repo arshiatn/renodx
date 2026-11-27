@@ -726,7 +726,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
-- PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | ATN Step 8 review rp8b57_ (Opus xHigh) DONE 20:11 (19 of 35 
+- PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | coord Step 8 review rp8b57_ (Opus xHigh) DONE 20:11 (19 of 3
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the ... | coord
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
@@ -17999,7 +17999,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         number. O11 'of course. I thought that DXR 1.0, 1.1 and 1.2 were working with those already' -> coord reads it
         as option (b): the DXR 1.2 gate (OMM + SER) opens per vendor where the device reports Raytracing Tier 1.2 + SM
         6.9, as Experimental, untested here (no AMD / Intel GPU); DXR 1.0 / 1.1 on AMD / Intel stay as planned; a device
-        that reports no 1.2 support runs the 1.1 path. ATN may correct the reading. Written into unified_pt.md's addendum.
+        that reports no 1.2 support runs the 1.1 path. ATN may correct the reading. Written into unified_pt.md's addendum. ATN 20:3x CONFIRMED O11 ('open DXR 1.2 to AMD and Intel
+        too please'); DXR 2.0 'probably in one month' = a later item of its own.
         - [ ] PT DI PORT S8 READER (upt28_, 11-27): the 64-bit add-on's reader of the helper's PT DI word must test
         (rt_di_ok & 1u) != 0u (unified_pt.md v2.8 A2). Owner: the S8 writer (RT-on-64) Owner:
         coord
@@ -18129,6 +18130,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         (b) mask that block (design 3.6), which needs to know what PerfFix writes there (its code is never read: ATN may
         ask its author); a mask may reveal further spots one smoke at a time. The B64P smoke fails its item 1 until
         decided. Owner: ATN
+        ATN 20:3x: 'Can we not force perffix not to change the part that we are changing? (Caesar would be fine.
+        You are allowed to see if it is not important and skip that part for his thing and we use ours)'. Fact
+        (PerfFix's own perffix64.log, smoke 1): 'x87fix: 2756 of 2756 rounding-mode blocks replaced'; heapfix.ini has no
+        per-fix key. Plan (after the Stage B merge; battle_step.hpp is Stage B's): (1) a plugin test switch that, at game
+        start, writes every fingerprinted range whose value differs + its live bytes (all of them, not only the first),
+        and the generator counts the x87 rounding-mode blocks inside the 176 functions from the ELF; (2) one -PerfFix
+        smoke with it; (3) we look at what PerfFix wrote there (the game's memory, ATN's go; perffix_src stays unopened):
+        if it is an in-place, register / stack-only rounding, mask those blocks (both PerfFix's and our speed); if not,
+        our plugin restores the game's own bytes in those blocks only (ours used, PerfFix skipped there); (4) T-B3,
+        smoke again, review. Owner: coord
         Step 8 review rp8b57_ (Opus xHigh) DONE 20:11 (19 of 35 min; scratch\rp8b57_\review.md): GO WITH CHANGES; steps 5
         + 6 right as built (own plugin test at 587a40a48: 0 failures, battle_step 14547; four stores + table test in the
         smoke DLL as pinned); smoke: E64 matches every 11.1 line, lane B off with PerfFix acceptable for now (fail-safe,
