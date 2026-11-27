@@ -18426,7 +18426,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         frame_trace.hpp:337 / :366 / :378 brace-less ifs, S2 two 'stencil' tokens in one segment (a parser keyed on a
         bare 'stencil' would see both; my non-recursive check of the tools\tw scripts was REFUSED by the permission
         check, not retried -> the fix round renames the new token instead), NITs (lines > 120, v<fmt> vs f<fmt>, the
-        census hash regex, the :321 comment).
+        census hash regex, the :321 comment). rts2_ fix round DONE 23:55 (20 of 25 min; a5bf2010b, not merged):
+        braces, nullptr offsets, INPUT_VIEW_SLOTS, comment, <= 120 columns, 'stencil func' kept, format unchanged;
+        dyn_census.py (not in git): ib on indexed lines only, utf-8-sig, exit 3 = flips / 2 = usage / 1 = --need-ib,
+        reference copied to census\out, README remake compares (fc /b), never overwrites; 19 gated builds, tests
+        x2, controls (remake byte-equal, BOM'd ref 47 / 48, edge ib 0 / 0). Left as S3 / S4 brief lines: rrts2_
+        NIT 6 (Capture refuses SO / UAV index buffers), NIT 7 (R1.7 field order), NIT 8 (rerun the parsers on R1's
+        first real 64-bit trace). Sonnet re-check crts2_ STARTED 23:55; merge after it.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
