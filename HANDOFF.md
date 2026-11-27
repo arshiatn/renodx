@@ -18324,6 +18324,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         replay (W3) with our maxed-out Graphics 2 of 2 settings (the 11-24 FCA W3 ALL arm's), (2) day1 replay (D1) with the
         same settings (D1 ALL), (3) stress replay with stock Graphics 2 of 2 (page 2 Reset); settings shown to ATN before
         the run. Then one last full optimization analysis + optimize round (FCA shape). Plan: round_notes\start_1127.md.
+        ATN 11-27 16:08 APPROVED: Opus 5.5 xHigh analysts, one Fable 5.2 xHigh completeness critic, Fable 5.2 xHigh designs
+        straight on 64-bit (no port); builds / reviews as on 11-27; the 8 thread areas + content areas (vegetation,
+        buildings / siege, 3D soldiers end to end, terrain + water, effects, our RT / PT CPU side + add-on per-draw cost,
+        streaming / IO, frame pacing); one 4K Nsight GPU trace per view beside the three WPRs.
         Owner: coord (batch end)
         - [ ] H KEEP OR NOT (ATN 11-27 16:3x rule: no fixed margins; not faster = ATN decides): PK5-64's half stub is
         about 10 % slower a call on normal inputs (0 % tiny, -6..-7 % mixed); coord suggests not written (check-only, code
