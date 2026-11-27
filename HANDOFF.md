@@ -18363,7 +18363,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Fable-first. Started 17:3x: PK9 re-check rp93m_ (Sonnet High; p93m_ DONE 17:05, p93_1127 c4d374f95, 3 runs
         PASS, DLL 02a95fed, generators folded in scratch\p93m_\gen, install.sh after the merge), the HANDOFF audit
         merge hfm_ (Opus xHigh, read only: section 11 draft + ticks.py --dry), the CPU start list cpq_ (Fable 5.2
-        xHigh, read only). ATN 17:4x asked which CPU items use Fable. Owner: coord
+        xHigh, read only). ATN 17:4x asked which CPU items use Fable (answered: Stage A merge-up, Stage B 5-7, cpq_, M2's
+        build if any; the last ride later); 'reviews + add-on steps on Fable too?' -> ATN 17:4x 'No not yet but a good
+        idea', he may switch it by phone. Owner: coord
         - [ ] GPU LANE (max 1 agent): fx4b_ = fix wave W4b (X18 rt_cache_fill / rt_reference OMM twins, X14 bake
         cutoff + Tales port, X09 + X10 one visibility kind), Opus 5.5 High, branch fx4b_1127 in its own worktree,
         STARTED 17:1x (brief testbin\scratch\fx4b_\brief.md, est 100 min, stop at 200); then Opus xHigh review +
