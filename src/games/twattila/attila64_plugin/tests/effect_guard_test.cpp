@@ -254,7 +254,8 @@ int wmain() {
     bool other_walks = false;
     std::thread([&] { other_walks = walk(0) && walk(1) && walk_record.flag == UNTOUCHED; }).join();
     Expect(other_walks && *flag == UNTOUCHED && effect_walk.walks == before.walks && effect_walk.mode == before.mode
-               && effect_walk.stored == 1 && LoggedCount("renodx_attila64: parallel effects: a walk on thread ") == 1
+               && effect_walk.stored == 1
+               && LoggedCount("renodx_attila64: parallel effects: the effect update ran on thread ") == 1
                && LoggedCount(": left to the game there") == 1,
            "thread: a walk on another thread is the game's alone, with one line");
     Expect(walk(0) && walk_record.flag == 0, "thread: the walks' thread goes on (Off after On here)");
