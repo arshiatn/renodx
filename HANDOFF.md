@@ -18374,6 +18374,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
         reads tw_frame_trace.txt (answers frts2_ S2). Fix round rts2_ (resumed, Opus High, est 25) STARTED 23:35.
+        ATN 23:3x asked to postpone the last ride (WPRs gathered, no analysis, then the GPU plan); coord suggested:
+        batch -> apply results -> the three WPRs + Nsight (capture only) -> GPU lane -> the last ride (one fresh W3
+        WPR first). ATN 23:3x: 'Your suggestion sounds great' -> all_plans section 7 + 8 updated. ATN: 'When I talk
+        about plan I am talking about the all plan md file'.
         rts2_ S2b DONE (18 of 30 min; 1d7ced4f9 on rts2_1127, not merged): ' stencil func F/B pass F/B fail F/B
         depthfail F/B' (stencil on only), ' dsv ro <d><s>', new ' | views' (rtv<n> / dsv / t<n> view formats) before
         ' | instanced'; 19 gated builds, tests x2, scale_audit byte-equal, census controls. Reviews rrts2_ (Opus
