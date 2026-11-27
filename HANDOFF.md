@@ -18041,7 +18041,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         High final fwa3_ DONE: GO, nothing open. Coord merged it locally, gated amd64 + x86 exit 0, BUT
         tw_unit_shadows amd64 FAILED (tests.cpp:649 exact core_wanted: its 3-argument Update calls now write CORE_STEP,
         the hidden default On; NIT-3 grown) -> merge taken back, not pushed; fix round 2 wa3_ (test only, amd64 + x86,
-        one mutation) STARTED 18:57; then merge + checks again. Lesson: W-A3-type add-on rows run tw_unit_shadows
+        one mutation) DONE 19:00: abbdcd6a9 (tests.cpp only: the post-detach checks expect step_default_bit, a
+        5-argument check writes the other value; the mutation fails line 654). W-A3 MERGED 71043eaf2 (19:04): main
+        tree gated amd64 + x86 twattila exit 0, tw_unit_shadows amd64 + x86 PASS. Next on link.hpp / addon.cpp: Stage B
+        step 6 (Opus) after step 5. Lesson: W-A3-type add-on rows run tw_unit_shadows
         in their own checks.
         Stage B step 5 p8b5_ (Fable Medium) STARTED 18:37 on p8b_1127 (merge
         atn-mods, fold step 2's CONTACT_ENTRY onto the installed generator in its own copy + install.sh, ONE wiring
