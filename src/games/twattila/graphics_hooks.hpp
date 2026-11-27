@@ -80,6 +80,10 @@ struct Scales {
   float focal_pixels = 0.f;
 };
 
+// Grass Density as its hooks take it, at least this: the scrub's bias is divided by it (a typed 0 stays finite). The
+// 64-bit port's fold sends it with the same floor.
+inline constexpr float GRASS_DENSITY_FLOOR = 0.010001118f;
+
 namespace internal {
 
 // float* __thiscall UnitDistances(EntityDisplay* display, float* out, uint32_t quality, ... 3 more) (+0x43c160): the
@@ -1279,7 +1283,7 @@ inline void Update(const Scales& scales, bool* installed, renodx::utils::setting
   internal::big_battle_fix.store(scales.big_battle_fix, std::memory_order_relaxed);
   internal::tree_distance_squared_scale.store(scales.campaign_trees * scales.campaign_trees, std::memory_order_relaxed);
   internal::grass_scale.store(scales.grass_distance, std::memory_order_relaxed);
-  internal::grass_density.store(std::max(scales.grass_density, 0.010001118f), std::memory_order_relaxed);
+  internal::grass_density.store(std::max(scales.grass_density, GRASS_DENSITY_FLOOR), std::memory_order_relaxed);
   // Grass Dump: no grass update for DUMP_PRESENTS presents (out of a battle, or it ended): written as it is, or given up.
   if (const int dump_state = internal::grass_dump.state.load(std::memory_order_relaxed);
       dump_state != internal::DUMP_IDLE && dump_state != internal::DUMP_CALLS) {
