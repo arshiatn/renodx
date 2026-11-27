@@ -1033,10 +1033,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8bf_ / p6f_ -> coord (map edits, then implementers)
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8bf_ -> coord (map edits, then implementers)
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
+- PK6-64 WAVE 1 (Opus High, pk6_tooling_64.md R11) STARTED 08:1x: p6a1_ = a64_ab.p ... | p6a1_ / p6b_ / p6c_ -> coord (Rv1)
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17941,6 +17942,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         implementer), 3 sphere pass + build.ps1, 4 rt_scene.hlsli (after scr_ merges), 5 rt_d3d12.hpp (after pdf_ / P1), 6
         dlaa_bridge.h bits, 7 gates (~25 GPU), 8 S6b addon.cpp row; S6a ~205 min, Opus High. Tooltip: 'RTX 50 only: smoke
         shadows from round particles. Round: darker, harder-edged rims.'
+        S5 scr_ DONE 11-27 08:08 (53 min; testbin\scratch\scr_\handback.md + gate_table.md): GATE FAILS ON MS -> NOT MERGED
+        (branch scr_1127 aefcb6a9b, pushed; worktree .claude\worktrees\scr_1127 kept: 8 external junctions + build\downloads,
+        remove the links alone first). Exact: 32 / 64 byte-identical uncapped, 8 / 16 unchanged, WARP max error 0.0005 (capped
+        0.1160), DXIL only rt_trace.h + rt_trace_omm.h. Cost at 4K (5090, median trace ms, A/A 0.00-0.02): opacity 0.35 / 4000
+        same; 0.05 / 4000 +7.48 (32) / +2.94 (64); 0.35 / 262k +4.28 / +2.61; 0.05 / 262k +20.73 / +16.30. lsp_'s 'uncapped =
+        capped' held only where SMOKE_DARK ends rays early. ATN: (a) keep the caps (revert the select, keep the R-A comments),
+        (b) retire only where free (check on S4's heavy recording), (c) order-independent LOD (SMOKE_LEAST per quality) or
+        spheres instead of counts. S6 notes: S6's G1 adds HARNESS_SMOKE_OPACITY=0.05 at 4000 + 262,144; 'spheres uncapped =
+        capped' (probe.md:262-266) unproven; any edit inside SmokeTransmittance changes rt_fog's DXIL; S6 step 4 waits on ATN's
+        (a) / (b) / (c) instead of scr_'s merge.
         - [ ] SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start in the game batch (recorder helper,
         constantinople_aa107f05.replay, cpl2's camera, Smoke Shadow Quality Maximum, DLAA 3840x2160, PTLAS off, 2-4 frames);
         needs a runner + review and ATN's rule line before he leaves 11-27 evening. RUNNER WRITTEN (sgr_ 11-27,
@@ -18187,8 +18198,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         N1 real but rare, fix exact (+ S1 memory orders); N2 real, fix partial (M1 / M2); N3 real, exact; sentinel safe.
         Kept-out thread GO for v1 (ATN's PC has 15 task threads: 13 helpers + step thread; under L2B the next arm is a CPU-based
         cap). Step 1 split 1a (~210 + 45) / 1b (~180 + 40), parallel, read only; it can start before Stage A on ATN's go. S7
-        privacy: ELF-derived names in the body -> neutral. Rev 3 by p8bf_ (Fable 5.2 xHigh, resumed) STARTED 09:1x. Owner: p8bf_
-        / p6f_ -> coord (map edits, then implementers)
+        privacy: ELF-derived names in the body -> neutral. Rev 3 by p8bf_ (Fable 5.2 xHigh, resumed) STARTED 09:1x. p6f_ DONE 11-27 08:0x (18 min; pk6_tooling_64.md Rev 2, 888 lines, backup testbin\scratch\p6f_\pk6_tooling_64.rev1.md):
+        R1 S1-S7 (-AB -EnginePlugin only on all-Plugin PROBE_LINES entries, DLL copied + removed per start; -C2 / -PerfFix /
+        -Wpr with -Package; -AB -ReShade for w3 / w3t only; refuse a ReShade.ini / dxgi.dll in run_1320 / run_pkg_*); R2 one ini
+        builder (plugin_ini_sha); R3 one $PLUGIN_KEYS table drives E4 / E5 / E5b / E6 for Smoke + AB; R4 1.3.28 golden
+        (194927_AB\1_B64P-base, fd18924d...) + 'golden (X pair, other loader)'; R5 Probe-Check masks the loader version token
+        (anchored), self-test on a scratch copy; R6 crash stops (exit 3) + 'ours' count; Pin field (one ep8 works on Stage A + B
+        DLLs); R7 1.3.28 noise (base spread 1.5 s, fps 0.3; L2B's 228 s line is 1.3.20's -> re-derive, 1.3.28 windows
+        219.0-219.9 s); R8 P1-P18; R10 D1-D40; R12 rule lines de-duplicated (26 pairs + 3 wildcards, in start_1127.md); CPU Set
+        Setter: run_pkg_580efafeb5765d81 has CacheAFFINITY, run_rs_pkg_580efafeb5765d81 MISSING (pairs 17-26). W4 is absorbed
+        into P6a1 (R9: ep1, P1, S1) since ATN's ep1 answer is still open; ATN's apply of the patch = his yes. Waves: P6a1
+        (a64_ab copy + patch, 65) / P6b (p0\analyze_d0.py + tests + golden json, 35) / P6c (wpr\*, 45) parallel, Rv1 Opus xHigh
+        20, ATN applies, P6a2 35, Rv2 Opus xHigh + Sonnet High 30. Map 3.3 'ep8vfx' -> ep1cvfx fixed. Owner: p8bf_ -> coord (map
+        edits, then implementers)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
@@ -18211,6 +18233,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creates per Sol release' to the
         sol_fixes_<ver> checklist and record '1.3.28: same (lr5_ 11-27)'; note pkg_fixes (580efafe) = plain 1.3.28 code, b1 =
         pkg_b1 (454ddb62); 1328 Present return is dx11_device.inc:497-498. Owner: coord (next sol_fixes round)
+        - [ ] PK6-64 WAVE 1 (Opus High, pk6_tooling_64.md R11) STARTED 08:1x: p6a1_ = a64_ab.ps1 as a patched copy + patch
+        script in testbin\scratch\p6a1_\ (coord applies after Rv1 GO + ATN's yes to the new arms; the deny line went 11-26), incl. W4's ep1 / P1 / S1 (R9); p6b_ =
+        tools\tw\attila64\p0\analyze_d0.py + test_analyze_d0.py + golden json; p6c_ = tools\tw\attila64\wpr\*. No runs, no GPU,
+        no game starts. Then Rv1 (Opus xHigh), coord applies P6a1 (on ATN's yes), coord runs the real file's DryRuns, P6a2, Rv2. Owner: p6a1_ /
+        p6b_ / p6c_ -> coord (Rv1)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
