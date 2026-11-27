@@ -1043,7 +1043,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AO DURING THE PT AMBIENT WARM-UP (rllf_ M1, 11-27, bug fix -> always on): Attila ... | ATN (the warm-up look in the batch)
 - W3 HORIZON METRIC (p6rv2_ S3, 11-27): P6a2's camera proof for w3 / w3t is a byte ... | the next a64_ab writer after PK9 P1-P5 (C8 T0 or its own ste
 - THREE WPRs + LAST RIDE (ATN 11-27 16:3x): at the END of the big batch, on the ne ... | coord (batch end)
-- H KEEP OR NOT (ATN 11-27 16:3x rule: no fixed margins; not faster = ATN decides) ... | ATN's answer
+- H KEEP OR NOT (ATN 11-27 16:3x rule: no fixed margins; not faster = ATN decides) ... | coord (after the last ride)
 - PORT ADD-ON RE-ATTACH (rw1a_ S5, 11-27): on the 64-bit port, a fresh add-on imag ... | the C8 / CP step that adds such a path (image_only + a 7d ca
 - FABLE FIRST (ATN 11-27 11:0x, weekly usage 36 %, 16 % of it Fable; 11:0x: 'Let a ... | coord (order of starts)
 - B23b WORLD TILES (ATN 11-27 11:0x 'Go right after'): right after B23 merges, PTL ... | coord (after B23's merge)
@@ -18327,7 +18327,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         Owner: coord (batch end)
         - [ ] H KEEP OR NOT (ATN 11-27 16:3x rule: no fixed margins; not faster = ATN decides): PK5-64's half stub is
         about 10 % slower a call on normal inputs (0 % tiny, -6..-7 % mixed); coord suggests not written (check-only, code
-        kept). Owner: ATN's answer
+        kept). ATN 11-27 ~16:0x: keep H for now, not written (it is slower); remove its code after the last ride's
+        analysis. Owner: coord (after the last ride)
         - [ ] PORT ADD-ON RE-ATTACH (rw1a_ S5, 11-27): on the 64-bit port, a fresh add-on image after a detach that follows a
         value lookup (the DLSS helper re-check, or a device re-create after a device loss) compounds the live values
         (engine_tweaks.hpp:691 skips non-MEM_IMAGE memory) and loses SolFrameCap's start value. Unreachable today (plan 2.3
