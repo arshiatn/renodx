@@ -1000,6 +1000,11 @@ int wmain() {
                && Selected(render_handle).empty() && ProcessDefault() == kept && StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE
                && LinesWith("released") == 0,
            "busy: an idle thread is not the render thread, the battle core stays");
+    // The rule reads the thread's CPU time, and its two CPUs stay open to other processes: the busy thread outranks
+    // normal work there, and copies of this test take turns (each picks the same render core).
+    const HANDLE busy_turn = CreateMutexW(nullptr, FALSE, L"Local\\renodx_attila64_battle_core_test_busy");
+    WaitForSingleObject(busy_turn, INFINITE);
+    SetThreadPriority(render_handle, THREAD_PRIORITY_TIME_CRITICAL);
     render.busy = true;
     render.Run(RENDER_NOTHING);
     reserve_again();
@@ -1008,6 +1013,9 @@ int wmain() {
                && LinesWith("mostly idle") == 1,
            "busy: looked at again at the next reserve, a busy thread keeps the core");
     render.busy = false;
+    SetThreadPriority(render_handle, THREAD_PRIORITY_NORMAL);
+    ReleaseMutex(busy_turn);
+    CloseHandle(busy_turn);
     battle_core::render_busy_after_ms = 600000;
 
     // RenderCore=0: off for the process. Nothing is captured, and the bit set later reserves no render core.
