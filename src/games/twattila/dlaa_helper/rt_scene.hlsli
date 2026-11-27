@@ -319,6 +319,21 @@ bool OccludedSolid(float3 origin, float3 direction, float range) {
   return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT || Occluded(origin, direction, range, CUT_OUTS);
 }
 
+// Whether TRACE_SURFACE's surfaces block a ray (the smoke and the grass left out): the visibility of the samples its rays
+// found, the paths' and the reflections' (their validation, reuse, shift and final rays). src: Lin et al. 2022, "Generalized
+// Resampled Importance Sampling" (one target function in every domain: a sample tested by another visibility than the one
+// that made it biases its reuse; critic X09, fidelity rt_core F8 / B1). With opacity micromaps OccludedSolid (TRACE_SURFACE's
+// culled query and its cut-outs' alpha test, X10: the leaves' solid micro-triangles block, their unknown ones not), where
+// Occluded's alpha test let every leaf block: under canopies a reused sample's light went dark that the paths saw lit.
+// Else Occluded (TRACE_SURFACE's alpha test; past MAX_CANDIDATES it blocks where TRACE_SURFACE keeps its nearest so far, a
+// chosen cost). CONTROL_VISIBILITY_ALPHA_TESTED: Occluded in every build, as before. A macro: the call each site made
+// before, so a build without micromaps (and the control) compiles to the same bytes.
+#if defined(OPACITY_MICROMAPS) && !defined(CONTROL_VISIBILITY_ALPHA_TESTED)
+#define SURFACE_OCCLUDED(origin, direction, range) OccludedSolid((origin), (direction), (range))
+#else
+#define SURFACE_OCCLUDED(origin, direction, range) Occluded((origin), (direction), (range), NO_GRASS_SMOKE)
+#endif
+
 // The nearest surface along a ray of the Light Bounce, its paths or the reflections (its query, committed:
 // CommittedStatus says whether one was; the smoke left out). With opacity micromaps solid surfaces only, the leaves'
 // solid parts among them (an alpha test for every candidate nearer than the hit, grass by the dozen, made them cost up

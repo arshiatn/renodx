@@ -7,9 +7,11 @@ CONTROL_VISIBILITY_ALPHA_TESTED CONTROL_BAKE_CUTOFF_RAW" (every fix's control); 
 2. X10: every TRACE_SURFACE of a DXR 1.2 build (its culled query: RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | CULL_NON_OPAQUE,
    640, on NO_GRASS_SMOKE, 197) has the solid cut-outs' alpha-tested nearest query beside it (512 on CUT_OUTS, 64); the
    control build has none.
-3. X09: the reuse / validation / final rays of the paths and reflections test TRACE_SURFACE's visibility: accept-first
-   culled queries (644) on NO_GRASS_SMOKE come with an alpha-tested CUT_OUTS one (516 on 64) each; with the control, the
-   alpha-tested ones on NO_GRASS_SMOKE (516 on 197) as before.
+3. X09: the reuse / validation / final rays of the paths and reflections test TRACE_SURFACE's visibility (OccludedSolid):
+   every accept-first culled query (644) on NO_GRASS_SMOKE has an alpha-tested CUT_OUTS one (516 on 64) beside it, and
+   as many alpha-tested ones on NO_GRASS_SMOKE (516 on 197) as the control has more are gone; every ReSTIR GI reuse
+   build and ReflectPixel's (rt_reflect*, not rt_reflect_reservoir: its temporal pass has no such ray) moves one or more;
+   the paths' (rt_path*) only with the test switches (Validate's drop).
 Pairs are (the query's template flags, its TraceRayInline's instance mask), counted a header.
 
   python -I test\\tw_rt_visibility_kind\\check.py <fixed> <control> <base>   (exit 0: all hold)
@@ -26,8 +28,8 @@ CUT_OUT_NEAREST = (512, 64)
 SOLID_ANY = (644, 197)
 CUT_OUT_ANY = (516, 64)
 ALPHA_ANY = (516, 197)
-# The builds whose reuse / final rays X09 moves (rt_path.hlsli's ReSTIR GI and the reflections' reservoirs).
-X09_BUILDS = ('rt_reuse', 'rt_reflect', 'rt_path')
+# The builds with reuse / final rays that X09 must move (ReuseTexel's, ReflectPixel's).
+X09_BUILDS = ('rt_reuse', 'rt_reflect_omm', 'rt_reflect_one_omm', 'rt_path_tests_omm')
 
 
 def pairs(path):
@@ -53,17 +55,17 @@ for header in sorted(fixed.glob('*.h')):
   if not now:
     continue
   was = pairs(control / header.name) if (control / header.name).exists() else collections.Counter()
-  if now == was:
-    continue
-  print(f'| {header.stem} | {now[SURFACE]} | {now[CUT_OUT_NEAREST]} | {now[SOLID_ANY]} | {now[CUT_OUT_ANY]} | {now[ALPHA_ANY]} | '
-        f'{was[CUT_OUT_NEAREST]}, {was[ALPHA_ANY]} |')
+  if now != was:
+    print(f'| {header.stem} | {now[SURFACE]} | {now[CUT_OUT_NEAREST]} | {now[SOLID_ANY]} | {now[CUT_OUT_ANY]} | {now[ALPHA_ANY]} | '
+          f'{was[CUT_OUT_NEAREST]}, {was[ALPHA_ANY]} |')
   if now[SURFACE] and now[CUT_OUT_NEAREST] < now[SURFACE]:
     failures.append(f'X10 {header.stem}: {now[SURFACE]} TRACE_SURFACE queries, {now[CUT_OUT_NEAREST]} cut-out queries')
   if was[CUT_OUT_NEAREST]:
     failures.append(f'X10 {header.stem}: the control build has cut-out nearest queries')
-  if header.stem.endswith('_omm') and header.stem.startswith(X09_BUILDS):
+  if header.stem.endswith('_omm') or header.stem.startswith(('rt_path_s', 'rt_sharc')):
     moved = now[SOLID_ANY] - was[SOLID_ANY]
-    if moved <= 0 or now[CUT_OUT_ANY] - was[CUT_OUT_ANY] < moved or was[ALPHA_ANY] - now[ALPHA_ANY] != moved:
+    must_move = header.stem.startswith(X09_BUILDS)
+    if (must_move and moved <= 0) or now[CUT_OUT_ANY] < now[SOLID_ANY] or was[ALPHA_ANY] - now[ALPHA_ANY] != moved:
       failures.append(f'X09 {header.stem}: {moved} rays moved to the solid kind, alpha-tested {was[ALPHA_ANY]} -> {now[ALPHA_ANY]}')
 for line in failures:
   print('FAIL ' + line)

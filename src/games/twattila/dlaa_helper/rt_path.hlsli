@@ -149,7 +149,8 @@ static const uint REUSE_VALIDATION_PERIOD = 3u;
 // tests, one build A / B against the shipped one): CONTROL_TARGET_PAST_RANGE (X02, ReuseTarget), CONTROL_HISTORY_NO_DEPTH
 // (X05, HistoryDepthMatches' callers), CONTROL_TEMPORAL_NO_SHIFT (X04, PathTraceTexel), CONTROL_F16_STORE_RAW (X11,
 // StoredHalf; rt_trace.cs_6_5.hlsl's too), CONTROL_NRD_CHOSEN_HIT (X23), CONTROL_N_DOT_V_CLAMP (X48, ViewFacingNormal),
-// CONTROL_SURFACE_CUT_OUTS_CULLED (X10, rt_scene.hlsli TraceSurface and PathRadiance's sky test);
+// CONTROL_SURFACE_CUT_OUTS_CULLED (X10, rt_scene.hlsli TraceSurface and PathRadiance's sky test),
+// CONTROL_VISIBILITY_ALPHA_TESTED (X09, rt_scene.hlsli SURFACE_OCCLUDED's callers here);
 // REUSE_W_CLAMP_OFF / REUSE_CLAMP_TRACE (X08, at REUSE_W_CLAMP). X01's and X06's are bits (rt_reuse_bits.h).
 #if defined(REUSE_NEAR)
 // Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
@@ -1090,7 +1091,7 @@ float4 StoredHalf(float4 value) {
 float Validate(inout Reservoir previous, float3 origin, bool contact) {
   const float3 to_hit = previous.hit - origin;
   const float hit_distance = length(to_hit);
-  if (hit_distance <= 9.999733e-4f || ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_DROP) != 0u && Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE))) {
+  if (hit_distance <= 9.999733e-4f || ((REUSE_SUSPECTS & REUSE_TEST_VALIDATE_NO_DROP) != 0u && SURFACE_OCCLUDED(origin, to_hit / hit_distance, hit_distance * 0.99f))) {
     previous.count = 0.f;
     return 0.f;
   }
@@ -1486,7 +1487,7 @@ bool RAB_ValidateGISampleWithJacobian(inout float jacobian) {
 }
 bool RAB_GetConservativeVisibility(RAB_Surface surface, float3 position) {
   const float3 to_sample = position - surface.origin;
-  return !Occluded(surface.origin, normalize(to_sample), length(to_sample) * 0.99f, NO_GRASS_SMOKE);
+  return !SURFACE_OCCLUDED(surface.origin, normalize(to_sample), length(to_sample) * 0.99f);
 }
 #include "Rtxdi/Utils/RandomSamplerState.hlsli"
 #include "Rtxdi/GI/SpatialResampling.hlsli"
@@ -1690,7 +1691,7 @@ void ReuseTexel(uint2 id) {
     float target = ReuseTarget(origin, normal, other_origin, other);
     if ((REUSE_SUSPECTS & REUSE_TEST_NEIGHBOUR_VISIBILITY) != 0u && target > 0.f) {
       const float3 to_other = other.hit - origin;
-      if (Occluded(origin, normalize(to_other), length(to_other) * 0.99f, NO_GRASS_SMOKE)) target = 0.f;
+      if (SURFACE_OCCLUDED(origin, normalize(to_other), length(to_other) * 0.99f)) target = 0.f;
     }
     merged |= 1u << neighbour;
     if (pairwise) {
@@ -1730,7 +1731,7 @@ void ReuseTexel(uint2 id) {
       if (jacobian_cut && !(jacobian > 0.1f && jacobian < 10.f)) target_there = 0.f;
       if ((REUSE_SUSPECTS & REUSE_BIAS_RAYTRACED) != 0u && target_there > 0.f) {
         const float3 to_hit = there.hit - other_origin;
-        if (Occluded(other_origin, normalize(to_hit), length(to_hit) * 0.99f, NO_GRASS_SMOKE)) target_there = 0.f;
+        if (SURFACE_OCCLUDED(other_origin, normalize(to_hit), length(to_hit) * 0.99f)) target_there = 0.f;
       }
       if (chosen == neighbour) chosen_target = target_there;
       targets += target_there * LoadReservoir(reuse_samples[set], reuse_data[set], texel).count;
@@ -1756,7 +1757,7 @@ void ReuseTexel(uint2 id) {
   // of its lamp.
   const uint lights_mode = lights_in_bounce & LIGHTS_MODE;
   float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && (reuse_tests & REUSE_TEST_NO_SKY) == 0u && lights_mode != 2u) ? bounce[id].rgb : 0.f;
-  if (lights_mode != 2u && combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
+  if (lights_mode != 2u && combined.weight > 0.f && hit_distance > 1e-3f && !SURFACE_OCCLUDED(origin, to_hit / hit_distance, hit_distance * 0.99f)) {
     arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }
   float total = 0.f;  // the lights' unshadowed light here (luminance)
@@ -1806,7 +1807,7 @@ void ReuseTexel(uint2 id) {
   }
 #else
   float3 arriving = ((path_flags & PATH_SKY_APART) != 0u && (reuse_tests & REUSE_TEST_NO_SKY) == 0u) ? bounce[id].rgb : 0.f;
-  if (combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
+  if (combined.weight > 0.f && hit_distance > 1e-3f && !SURFACE_OCCLUDED(origin, to_hit / hit_distance, hit_distance * 0.99f)) {
     arriving += combined.light * (max(dot(normal, to_hit / hit_distance), 0.f) / 3.14159265f) * combined.weight;
   }
 #endif
@@ -2065,7 +2066,7 @@ void ReflectPixel(uint2 id) {
         nearest = min(nearest, first_distance);
         ++met;
       }
-    } else if (occlusion && !Occluded(origin, direction, reflection_range, NO_GRASS_SMOKE)) {
+    } else if (occlusion && !SURFACE_OCCLUDED(origin, direction, reflection_range)) {
       open += weight;
     }
   }
@@ -2091,7 +2092,7 @@ void ReflectPixel(uint2 id) {
     const float total = own_weight + bounce_weight;
     if (total > 0.f) {
       const bool bounce_chosen = Random(uint4(id, frame, DIM_REFLECT_CHOICE)) * total < bounce_weight
-                                 && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE);
+                                 && !SURFACE_OCCLUDED(origin, to_hit / hit_distance, hit_distance * 0.99f);
       const float3 chosen = bounce_chosen ? bounce_light : own;
       gathered = chosen / max(Luminance(chosen), 1e-6f) * (0.5f * total);
       weights = 1.f;
@@ -2185,7 +2186,7 @@ void ReflectPixel(uint2 id) {
     }
     const float3 to_hit = combined.hit - origin;
     const float hit_distance = length(to_hit);
-    if (combined.weight > 0.f && hit_distance > 1e-3f && !Occluded(origin, to_hit / hit_distance, hit_distance * 0.99f, NO_GRASS_SMOKE)) {
+    if (combined.weight > 0.f && hit_distance > 1e-3f && !SURFACE_OCCLUDED(origin, to_hit / hit_distance, hit_distance * 0.99f)) {
       const float3 reused = ThroughFog(combined.light / max(Luminance(combined.light), 1e-6f) * (weight_sum / counted), origin, combined.hit);
       const float own_count = (weights > 0.f) ? (float)met : 0.f;
       gathered = (((weights > 0.f) ? gathered / weights : 0.f) * own_count + reused * counted) / (own_count + counted);
