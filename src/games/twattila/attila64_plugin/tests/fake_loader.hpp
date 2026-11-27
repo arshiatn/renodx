@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdarg>
 #include <cstdint>
@@ -159,6 +160,70 @@ static int ApplyStackRule(uint8_t* begin, const uint8_t* end) {
     ++rewritten;
   }
   return rewritten;
+}
+
+// A test that needs the game's file and did not run (build.ps1 reports it as SKIPPED, not as a pass).
+inline constexpr int EXIT_SKIPPED = 77;
+
+// The game ELF's load segments as mapped into the reserved range (ReserveGame).
+struct GameImage {
+  uintptr_t end = 0;
+  uintptr_t writable_lo = 0;  // the load segment the game writes: its data
+  uintptr_t writable_hi = 0;
+};
+
+// The game ELF at `path` copied to its load addresses, with the loader's stack-check rewrite. EXIT_SKIPPED when the file
+// cannot be opened, 1 when it cannot be read or a segment lies outside the range, else 0.
+static int MapGameElf(const wchar_t* path, GameImage* image) {
+  HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+  LARGE_INTEGER size = {};
+  if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &size)) {
+    std::printf("SKIPPED: the game ELF could not be opened (error %lu)\n", GetLastError());
+    return EXIT_SKIPPED;
+  }
+  std::vector<uint8_t> elf(static_cast<size_t>(size.QuadPart));
+  DWORD got = 0;
+  for (size_t offset = 0; offset < elf.size(); offset += got) {
+    const auto chunk = static_cast<DWORD>(std::min<size_t>(elf.size() - offset, 1 << 24));
+    if (!ReadFile(file, elf.data() + offset, chunk, &got, nullptr) || got == 0) {
+      std::printf("FAIL: reading the game ELF (error %lu)\n", GetLastError());
+      CloseHandle(file);
+      return 1;
+    }
+  }
+  CloseHandle(file);
+
+  // ELF64 program headers: e_phoff at 0x20, e_phentsize 0x36, e_phnum 0x38; p_type, p_flags 4, p_offset 8, p_vaddr 16,
+  // p_filesz 32, p_memsz 40.
+  const auto field = [&]<typename T>(size_t offset) {
+    T value = {};
+    if (offset + sizeof(T) <= elf.size()) {
+      std::memcpy(&value, elf.data() + offset, sizeof(T));
+    }
+    return value;
+  };
+  const auto program_headers = field.operator()<uint64_t>(0x20);
+  for (uint16_t index = 0; index < field.operator()<uint16_t>(0x38); ++index) {
+    const size_t header = program_headers + (index * size_t{field.operator()<uint16_t>(0x36)});
+    if (field.operator()<uint32_t>(header) != 1) continue;  // PT_LOAD
+    const auto offset = field.operator()<uint64_t>(header + 8);
+    const auto address = field.operator()<uint64_t>(header + 16);
+    const auto file_bytes = field.operator()<uint64_t>(header + 32);
+    const auto memory_bytes = field.operator()<uint64_t>(header + 40);
+    if (address < GAME_LO || address + memory_bytes > GAME_RESERVE_END || offset + file_bytes > elf.size()) {
+      std::printf("FAIL: load segment %#llx + %#llx outside the game range or the file\n", address, memory_bytes);
+      return 1;
+    }
+    std::memcpy(reinterpret_cast<void*>(address), elf.data() + offset, file_bytes);
+    image->end = std::max<uintptr_t>(image->end, address + memory_bytes);
+    if ((field.operator()<uint32_t>(header + 4) & 2) != 0) {  // PF_W
+      image->writable_lo = address;
+      image->writable_hi = address + memory_bytes;
+    }
+  }
+  const int rewritten = ApplyStackRule(reinterpret_cast<uint8_t*>(GAME_LO), reinterpret_cast<const uint8_t*>(image->end));
+  std::printf("  mapped %#llx..%#llx, %d stack-check reads rewritten\n", uint64_t{GAME_LO}, uint64_t{image->end}, rewritten);
+  return 0;
 }
 
 // Every tweak object of tweaks.h in the reserved game range, as the game builds it: its type's table pointer, its
