@@ -800,20 +800,25 @@ class RtScene12 {
     }
     // The first-hit probe (rt_probe.cs_6_5.hlsl; RENODX_TW_PROBE=<prefix>, a test path for the harness's dump): <prefix>.rays
     // holds a ray a line (label, origin xyz, direction xyz, TMax, instance mask); each request's answers go to <prefix>.hits
-    // once its slot comes round. A list that fails to load leaves the probe off.
-    if (std::array<char, MAX_PATH> prefix = {}; GetEnvironmentVariableA("RENODX_TW_PROBE", prefix.data(), static_cast<DWORD>(prefix.size())) != 0) {
-      probe_prefix_ = prefix.data();
+    // once its slot comes round. A list that fails to load leaves the probe off; a value as long as the buffer or longer
+    // (GetEnvironmentVariableA then returns the size it needs) too. Its log line follows the ready line (below).
+    std::string probe_note;
+    std::array<char, MAX_PATH> probe_variable = {};
+    if (const DWORD length = GetEnvironmentVariableA("RENODX_TW_PROBE", probe_variable.data(), static_cast<DWORD>(probe_variable.size()));
+        length != 0 && length < probe_variable.size()) {
+      probe_prefix_ = probe_variable.data();
       std::ifstream lines(probe_prefix_ + ".rays");
       std::vector<std::array<float, 8>> rays;
       std::string label;
       std::array<float, 8> ray = {};
+      static_assert(sizeof(ray) == PROBE_RAY_BYTES);
       uint32_t mask = 0;
       while (rays.size() < PROBE_RAYS && lines >> label >> ray[0] >> ray[1] >> ray[2] >> ray[4] >> ray[5] >> ray[6] >> ray[3] >> mask) {
         ray[7] = std::bit_cast<float>(mask);
         rays.push_back(ray);
         probe_labels_.push_back(label);
       }
-      const uint64_t ray_bytes = rays.size() * sizeof(ray);
+      const uint64_t ray_bytes = rays.size() * PROBE_RAY_BYTES;
       if (!rays.empty()) {
         probe_rays_ = Buffer(ray_bytes, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ);
         probe_hits_ = Buffer(ray_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -829,9 +834,11 @@ class RtScene12 {
         slot.probe_readback = Buffer(ray_bytes, D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_DEST);
         made = slot.probe_readback != nullptr;
       }
-      if (!made) probe_pipeline_.Reset();
-      slow_report_ += std::format("{}[TW ray tracing] First-hit probe: {} rays from {}.rays{}.", (slow_report_.empty() ? "" : "\n"), rays.size(),
-                                  probe_prefix_, made ? "" : " (off: no list or no memory)");
+      if (!made) {
+        probe_pipeline_.Reset();
+      }
+      probe_note = std::format("\n[TW ray tracing] First-hit probe: {} rays from {}.rays{}.", rays.size(), probe_prefix_,
+                               made ? "" : " (off: no list or no memory)");
     }
     // Torch and Fire Light in the Light Bounce's builds (TORCHES_IN_BOUNCE; none: its rows do nothing).
     if (!(dxr12_ ? pipeline(RT_REUSE_LIGHTS_OMM, sizeof(RT_REUSE_LIGHTS_OMM), &reuse_lights_pipeline_)
@@ -1161,6 +1168,7 @@ class RtScene12 {
                    + (info_queue_                ? std::string(" (D3D12 debug layer on).")
                       : (debug_result_ != S_FALSE) ? std::format(" (no D3D12 debug layer: 0x{:08X}).", static_cast<uint32_t>(debug_result_))
                                                    : std::string("."));
+    slow_report_ += probe_note;
     sdk_ = sdk;
 #if defined(RENODX_REFERENCE)
     slow_report_ += reference_.note;
@@ -6782,19 +6790,27 @@ class RtScene12 {
     for (const Root root : {ROOT_MICROMAP_DATA, ROOT_MICROMAP_INDICES, ROOT_MICROMAP_DESCS}) {
       list->SetComputeRootUnorderedAccessView(root, tlas_scratch_->GetGPUVirtualAddress());
     }
-    // The first-hit probe's answers from this slot's last trace: <prefix>.hits holds the newest request's, a line a ray.
+    // The first-hit probe's answers from this slot's last trace: <prefix>.hits holds the newest request's, a line a ray,
+    // written whole to <prefix>.hits.tmp and renamed over it (a reader never sees half a file; while one holds it open
+    // the rename fails and the next request's answers try again).
     if (slot->probe_frame != UINT32_MAX) {
-      const D3D12_RANGE read = {.Begin = 0, .End = probe_labels_.size() * 32};
+      const D3D12_RANGE read = {.Begin = 0, .End = probe_labels_.size() * PROBE_RAY_BYTES};
       void* mapped = nullptr;
       if (SUCCEEDED(slot->probe_readback->Map(0, &read, &mapped))) {
         const auto* answers = static_cast<const std::array<uint32_t, 8>*>(mapped);
-        std::ofstream hits(probe_prefix_ + ".hits", std::ios::trunc);
-        for (size_t index = 0; index < probe_labels_.size(); ++index) {
-          const std::array<uint32_t, 8>& answer = answers[index];
-          hits << std::format("frame {} {} {} {} id {} index {} place {} t {:.4f} geometry {} primitive {} front {}\n", slot->probe_frame,
-                              (ptlas_ != nullptr) ? "PTLAS" : "TLAS", probe_labels_[index], (answer[0] == 1) ? "hit" : "miss", answer[1], answer[2],
-                              answer[3], std::bit_cast<float>(answer[4]), answer[5], answer[6], answer[7]);
+        static_assert(sizeof(*answers) == PROBE_RAY_BYTES);
+        const std::string written_hits = probe_prefix_ + ".hits.tmp";
+        {
+          std::ofstream hits(written_hits, std::ios::trunc);
+          for (size_t index = 0; index < probe_labels_.size(); ++index) {
+            const std::array<uint32_t, 8>& answer = answers[index];
+            hits << std::format("frame {} {} {} {} id {} index {} place {} t {:.4f} geometry {} primitive {} front {}\n", slot->probe_frame,
+                                (ptlas_ != nullptr) ? "PTLAS" : "TLAS", probe_labels_[index], (answer[0] == 1) ? "hit" : "miss", answer[1],
+                                answer[2], answer[3], std::bit_cast<float>(answer[4]), answer[5], answer[6], answer[7]);
+          }
         }
+        std::error_code renamed;
+        std::filesystem::rename(written_hits, probe_prefix_ + ".hits", renamed);
         const D3D12_RANGE written = {};
         slot->probe_readback->Unmap(0, &written);
       }
@@ -9061,13 +9077,15 @@ class RtScene12 {
     }
     list->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
     Stamp(list, slot_index * STAMPS + 3);
-    // The first-hit probe against this trace's scene, copied for the CPU (read when the slot comes round). The bakes
-    // after it set their root signature again, so its bindings need no restore.
+    // The first-hit probe against this trace's scene, copied for the CPU (read when the slot comes round). Its bindings
+    // need no restore: the bakes after it bind every slot they read, and the next request sets the root signature again.
+    // With the probe on its dispatch and copy count in the GPU bakes' span (stamps 3 to 9): not a timing run.
     if (probe_pipeline_) {
       Mark(list, L"first-hit probe");
       const auto probe_count = static_cast<uint32_t>(probe_labels_.size());
+      ID3D12Resource* const traced_scene = (ptlas_ != nullptr ? ptlas_ : tlas_.Get());
       list->SetPipelineState(probe_pipeline_.Get());
-      list->SetComputeRootShaderResourceView(ROOT_SCENE, (ptlas_ != nullptr ? ptlas_ : tlas_.Get())->GetGPUVirtualAddress());
+      list->SetComputeRootShaderResourceView(ROOT_SCENE, traced_scene->GetGPUVirtualAddress());
       list->SetComputeRootShaderResourceView(ROOT_CAPTURE_TABLE, probe_rays_->GetGPUVirtualAddress());
       list->SetComputeRootUnorderedAccessView(ROOT_SCRATCH, probe_hits_->GetGPUVirtualAddress());
       list->SetComputeRoot32BitConstants(ROOT_DISPATCH, 1, &probe_count, 0);
@@ -11069,6 +11087,7 @@ class RtScene12 {
   // The first-hit probe (RENODX_TW_PROBE): its file prefix, its rays' labels, their rays (32 bytes each, rt_probe.cs_6_5.hlsl)
   // and the dispatch's answers (32 bytes each) before a slot's copy.
   static constexpr size_t PROBE_RAYS = 256;
+  static constexpr uint64_t PROBE_RAY_BYTES = 32;  // a ray's two float4 and an answer's two uint4 (rt_probe.cs_6_5.hlsl)
   std::string probe_prefix_;
   std::vector<std::string> probe_labels_;
   ComPtr<ID3D12Resource> probe_rays_;

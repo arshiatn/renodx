@@ -2,6 +2,7 @@
 // the harness's list traced against the scene the request's trace used (the TLAS or the partitioned TLAS), every
 // triangle taken as a hit (no alpha test, no micromaps): which instance a ray meets first and how far, not what it sees.
 RaytracingAccelerationStructure scene : register(t0);
+// A ray and an answer are 32 bytes each (rt_d3d12.hpp PROBE_RAY_BYTES).
 StructuredBuffer<float4> rays : register(t8);  // a ray: origin and TMax, then direction and instance mask (asfloat)
 // A ray's answer: status (1: a triangle), InstanceID, InstanceIndex, InstanceContributionToHitGroupIndex; then asuint(T),
 // GeometryIndex, PrimitiveIndex, front face.
