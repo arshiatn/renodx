@@ -46,6 +46,7 @@ enum SiteLabel : uint8_t {
   LABEL_GRASS_DRAW_ENTRY,
   LABEL_GRASS_CELL_ENTRY,
   LABEL_CAMPAIGN_TREE_ENTRY,
+  LABEL_SPRITE_DISTANCE,
   LABEL_COUNT
 };
 inline constexpr std::array<const char*, LABEL_COUNT> LABEL_WORDS = {
@@ -53,11 +54,14 @@ inline constexpr std::array<const char*, LABEL_COUNT> LABEL_WORDS = {
     "MODEL_LOD_ENTRY", "SHADOW_SIZE_HIGH", "SHADOW_COUNT_HIGH", "SHADOW_EXTRA_HIGH",
     "SHADOW_SIZE_MAX", "SHADOW_COUNT_MAX", "SHADOW_EXTRA_MAX", "SHADOW_SIZE_MEDIUM",
     "GRASS_UPDATE_ENTRY", "GRASS_DRAW_ENTRY", "GRASS_CELL_ENTRY", "CAMPAIGN_TREE_ENTRY",
+    "SPRITE_DISTANCE",
 };
 
 // HOOK: a function's first whole instructions, replaced by the loader's entry hook. PATCH: one instruction's
 // immediate: checked like a hook's bytes, and rewritten in place only when its row has other bytes for it.
-enum SiteKind : uint8_t { SITE_HOOK, SITE_PATCH };
+// MID: whole instructions inside a function, replaced by a jump to the plugin's own stub (trampoline.hpp), whose
+// trampoline runs them.
+enum SiteKind : uint8_t { SITE_HOOK, SITE_PATCH, SITE_MID };
 
 // One replaced range. window = memory [address - SITE_MARGIN, address + length + SITE_MARGIN), the rest zero.
 struct Site {
@@ -69,7 +73,7 @@ struct Site {
   std::array<uint8_t, (2 * SITE_MARGIN) + SITE_MAX_LENGTH> window = {};
 };
 
-inline constexpr std::array<Site, 16> SITES = {{
+inline constexpr std::array<Site, 17> SITES = {{
     {
         .address = 0x3416d50,
         .length = 5,
@@ -260,6 +264,18 @@ inline constexpr std::array<Site, 16> SITES = {{
             0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f, 0x5d, 0xc3, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x55, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x83, 0xec, 0x68, 0x45, 0x89,
             0xcc, 0x4c, 0x89, 0x44, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
+    {
+        .address = 0xa5049c,
+        .length = 8,
+        .row = ROW_SPRITES,
+        .label = LABEL_SPRITE_DISTANCE,
+        .kind = SITE_MID,
+        .window = {
+            0x00, 0x00, 0x48, 0x05, 0x8c, 0x03, 0x00, 0x00, 0xf3, 0x0f, 0x58, 0x05, 0xa8, 0x33, 0xd7, 0x02,
+            0xf3, 0x0f, 0x59, 0x00, 0xf3, 0x0f, 0x58, 0x01, 0xf3, 0x0f, 0x11, 0x84, 0x24, 0xb0, 0x00, 0x00,
+            0x00, 0x48, 0x8b, 0x03, 0x48, 0x8d, 0xb4, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         },
     },
 }};

@@ -5,10 +5,11 @@
 
 // renodx_attila64.dll: a plugin of the 64-bit Attila loader (it runs the game's Linux build on Windows) that hooks game
 // functions: two for the Attila add-on (plugin_block.h), the battle step's task, to keep a CPU core free for it and
-// one for the render thread (battle_core.hpp; that row works without the add-on), and the scale rows' (hooks.hpp). It
-// also checks the game's engine values for the add-on, writes the restart-only ones, sets the loader's frame cap
-// (tweaks.hpp), and writes the shadow map sizes the add-on's key asks for into the game's shadow setup. The loader loads
-// it from its plugins folder, after its own patches and before any game code runs; the add-on finds its block once
+// one for the render thread (battle_core.hpp; that row works without the add-on), and the scale rows' (hooks.hpp; one
+// of them inside a function, through the plugin's own trampoline: trampoline.hpp). It also checks the game's engine
+// values for the add-on, writes the restart-only ones, sets the loader's frame cap (tweaks.hpp), and writes the shadow
+// map sizes the add-on's key asks for into the game's shadow setup. The loader loads it from its plugins folder, after
+// its own patches and before any game code runs; the add-on finds its block once
 // ReShade loads it. Built by build.ps1.
 
 #include <windows.h>
@@ -29,6 +30,7 @@
 #include "patcher.hpp"
 #include "plugin_block.h"
 #include "sites.h"
+#include "trampoline.hpp"
 #include "tweaks.h"
 #include "tweaks.hpp"
 
@@ -243,6 +245,9 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     const bool size_rewritten = (shadow_sizes_written && IsShadowSizeSite(site));
     if (check.refusal == REFUSAL_NONE && site.kind == SITE_HOOK) {
       check.refusal = ApplySite(*api, site, REPLACEMENTS[site.label], &applied_sites[index]);
+    } else if (check.refusal == REFUSAL_NONE && site.kind == SITE_MID) {
+      check.refusal = ApplyMidSite(*api, site, reinterpret_cast<trampoline::MidHandler>(REPLACEMENTS[site.label]),
+                                   &block.scales_active, MID_SITE_SCALES[site.label], &applied_sites[index]);
     } else if (check.refusal == REFUSAL_NONE) {
       std::array<float, 2> size = {};
       if (size_rewritten) {
@@ -271,9 +276,10 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   }
   // A row is on only when all of its sites are. A patch site that went in before a later site of its row failed comes
   // out again; when the loader cannot put its bytes back, the row stays refused and its log line names the site.
-  // A hook cannot come out: a refused row's hook stays in and the game keeps calling it, with the row's bit clear in
-  // rows_applied. So the add-on sets a row's scales_active bits only while the row is in rows_applied, and the one row
-  // with two hooks (the grass row) tests its bit in rows_applied itself (hooks.hpp GrassRowRuns), final from here on.
+  // A hook cannot come out (a mid-function site is left in like one; no row has one beside another site): a refused
+  // row's hook stays in and the game keeps calling it, with the row's bit clear in rows_applied. So the add-on sets a
+  // row's scales_active bits only while the row is in rows_applied, and the one row with two hooks (the grass row)
+  // tests its bit in rows_applied itself (hooks.hpp GrassRowRuns), final from here on.
   block.rows_applied &= ~block.rows_refused;
   for (size_t index = 0; index < SITES.size(); ++index) {
     const Site& site = SITES[index];

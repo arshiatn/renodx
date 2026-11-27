@@ -4,10 +4,11 @@
  */
 
 // The plugin's sites against the game file itself: maps the Linux build's load segments at their addresses (read and
-// write, never executed), applies the loader's stack-check rewrite, and checks the build id and every site's window,
-// the hook or the patch through the fake loader, controls that must be refused, the shadow row's instructions, the
-// rest pack's call, the grass rows' layout facts and camera getters, each engine value's static constructor call
-// (tweaks.h: the object, its name and its default), and the built DLL's init.
+// write; executed only around the sprite site, last), applies the loader's stack-check rewrite, and checks the build
+// id and every site's window, the hook, the patch or the mid-function stub through the fake loader, controls that
+// must be refused, the shadow row's instructions, the rest pack's call, the grass and sprite rows' layout facts and
+// camera getters, each engine value's static constructor call (tweaks.h: the object, its name and its default), and
+// the built DLL's init.
 // elf_sites_test.exe <renodx_attila64.dll> <game ELF>; SKIPPED (exit 77, reported by build.ps1 as not run)
 // without the ELF or when the game's range is taken.
 
@@ -15,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -106,6 +108,11 @@ int wmain(int argc, wchar_t** argv) {
   Expect(CheckIdentity(api) == STATUS_WRONG_GAME, "control: a wrong build id");
   *at(BUILD_ID_NOTE_ADDRESS + 16) ^= 1;
 
+  const auto word_at = [&](uintptr_t address) {
+    uint32_t word = 0;
+    std::memcpy(&word, at(address), sizeof(word));
+    return word;
+  };
   for (const Site& site : SITES) {
     std::printf("  site %s %#x\n", LABEL_WORDS[site.label], site.address);
     Expect(CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the site's window is the game's");
@@ -132,19 +139,29 @@ int wmain(int argc, wchar_t** argv) {
       Expect(RevertPatch(api, site, &applied) && CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the patch site put back");
       continue;
     }
-    Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE, "the fake loader hooks the site");
-    Expect(*at(site.address) == 0xe9 && SiteUnchanged(site, applied), "the site jumps to the hook, snapshot matches");
+    if (site.kind == SITE_MID) {
+      Expect(ApplyMidSite(api, site, reinterpret_cast<trampoline::MidHandler>(REPLACEMENTS[site.label]), &block.scales_active,
+                          MID_SITE_SCALES[site.label], &applied)
+                 == REFUSAL_NONE,
+             "the site's stub is built near the game and the fake loader writes the jump");
+      // The stub's trampoline: the site's own bytes, then a jump back to the instruction after them.
+      const auto* copied = static_cast<const uint8_t*>(applied.original);
+      Expect(std::memcmp(copied, site.window.data() + SITE_MARGIN, site.length) == 0 && copied[site.length] == 0xe9
+                 && reinterpret_cast<uintptr_t>(copied) + site.length + 5 + static_cast<int32_t>(word_at(reinterpret_cast<uintptr_t>(copied) + site.length + 1))
+                        == site.address + site.length,
+             "the stub runs the site's own bytes and jumps back behind them");
+      Expect(std::all_of(at(site.address + 5), at(site.address + site.length), [](uint8_t byte) { return byte == 0xcc; }),
+             "the site's bytes after the jump are int3");
+    } else {
+      Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE, "the fake loader hooks the site");
+    }
+    Expect(*at(site.address) == 0xe9 && SiteUnchanged(site, applied), "the site jumps to ours, snapshot matches");
     std::memcpy(at(site.address), site.window.data() + SITE_MARGIN, site.length);
     Expect(CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the site restored");
   }
 
   // The shadow row in the game's own code: each size is the immediate of a mov rax, imm64 that holds one float twice
   // (width and height: 2048, or Medium's 1024), each cascade number the immediate of a mov dword [r13 + disp32], imm32.
-  const auto word_at = [&](uintptr_t address) {
-    uint32_t word = 0;
-    std::memcpy(&word, at(address), sizeof(word));
-    return word;
-  };
   for (const Site& site : SITES) {
     if (site.row != ROW_SHADOW_MAP) continue;
     if (IsShadowSizeSite(site)) {
@@ -199,9 +216,21 @@ int wmain(int argc, wchar_t** argv) {
            {0x33f4442, {0x49, 0x8b, 0x4d, 0x48}, "campaign tree: the model's LODs at +0x48"},
            {0x33f4454, {0xf3, 0x0f, 0x10, 0x45, 0x50}, "campaign tree: a LOD's distance at +0x50"},
            {0x33f445e, {0x80, 0x7d, 0x5c, 0x00}, "campaign tree: a LOD's enabled byte at +0x5c"},
+           {0xa50411, {0x49, 0x8b, 0x85, 0xc8, 0x00, 0x00, 0x00}, "sprite: the soldier's display tables at +0xc8, in rax"},
+           {0xa5045a, {0x48, 0x8d, 0x88, 0x70, 0x03, 0x00, 0x00, 0x48, 0x05, 0x80, 0x03, 0x00, 0x00, 0xeb, 0x2b},
+            "sprite: the first size's distance at +0x370 in rcx, its fade width 0x10 on in rax"},
+           {0xa50487, {0x48, 0x8d, 0x88, 0x7c, 0x03, 0x00, 0x00, 0x48, 0x05, 0x8c, 0x03, 0x00, 0x00, 0xf3, 0x0f, 0x58, 0x05},
+            "sprite: the fourth size's two floats, then the constant added to the random value"},
+           {0xa504a4, {0xf3, 0x0f, 0x11, 0x84, 0x24, 0xb0, 0x00, 0x00, 0x00}, "sprite: the game stores xmm0 right after the site"},
+           {0xa50541, {0x41, 0x8a, 0x85, 0x1c, 0x01, 0x00, 0x00}, "sprite: the soldier's flags byte at +0x11c"},
+           {0xa56725, {0x48, 0x89, 0xd3}, "sprite: the reader of the alive bit keeps the soldier's record (rdx) in rbx"},
+           {0xa56786, {0xf6, 0x83, 0x1c, 0x01, 0x00, 0x00, 0x01, 0x75, 0x3a, 0xf3, 0x0f, 0x10, 0x8b, 0x18, 0x01, 0x00, 0x00},
+            "sprite: only with bit 0 of the flags byte clear it reads the record's float at +0x118"},
        }) {
     Expect(std::equal(fact.bytes.begin(), fact.bytes.end(), at(fact.address)), fact.what);
   }
+  // addss xmm0, [rip + disp32] at 0xa50494: the random value comes to the site less 0.5.
+  Expect(word_at(0xa5049c + static_cast<int32_t>(word_at(0xa50498))) == 0xbf000000, "sprite: the constant before the site is -0.5");
   Expect(std::memcmp(at(GET_SCENE_CAMERA), GET_SCENE_CAMERA_CODE.data(), GET_SCENE_CAMERA_CODE.size()) == 0
              && std::memcmp(at(GET_CAMERA_POSITION), GET_CAMERA_POSITION_CODE.data(), GET_CAMERA_POSITION_CODE.size()) == 0,
          "grass draw: the two camera getters hold the code the hook expects");
@@ -266,8 +295,113 @@ int wmain(int argc, wchar_t** argv) {
   Expect(tweaks_in_code == TWEAKS.size() - 2, "tweaks: every object's constructor call passes its name and default");
 
   WriteTweakObjects();
-  ExpectPluginDll(api, argv[1]);
+  const Plugin plugin = ExpectPluginDll(api, argv[1]);
   Expect(!Logged("grass draw: "), "grass draw: init finds the code that was read, the early return is on");
+
+  // The sprite site in the game's own code, with the DLL's stub and handler: a bed enters where the game loads the
+  // soldier's display tables (0xa50411), the game's code picks the size's two floats through its own jump table, makes
+  // the random value - 0.5, runs into the site and stores the result; the instruction after the store is replaced by
+  // a jump back to the bed. The soldier's record is r13; with a linked record at +0xd8 the size and the random value
+  // come from that record's +0x20, the tables still from the soldier's.
+  constexpr uintptr_t SPRITE_ENTER = 0xa50411;
+  constexpr uintptr_t SPRITE_LEAVE = 0xa504ad;
+  constexpr size_t RECORD_SIZE = 0xc;
+  constexpr size_t RECORD_RANDOM = 0xe0;
+  constexpr size_t SOLDIER_LINK = 0xd8;
+  constexpr size_t LINK_RECORD = 0x20;
+  auto* bed_code = static_cast<uint8_t*>(api.code_near_game(MID_BED_CAPACITY + SPRITE_BED_TAIL.size()));
+  DWORD protection = 0;
+  Expect(plugin.block != nullptr && bed_code != nullptr
+             && VirtualProtect(at(SPRITE_ENTER), SPRITE_LEAVE + 5 - SPRITE_ENTER, PAGE_EXECUTE_READWRITE, &protection) != FALSE,
+         "sprite run: the bed's memory, the game's code executable");
+  if (plugin.block != nullptr && bed_code != nullptr && protection != 0) {
+    uintptr_t capture = 0;
+    WriteMidBed(bed_code, {}, SPRITE_ENTER, 0x100, 0, SPRITE_BED_TAIL, &capture);
+    const auto back = static_cast<uint32_t>(capture - (SPRITE_LEAVE + 5));
+    *at(SPRITE_LEAVE) = 0xe9;
+    std::memcpy(at(SPRITE_LEAVE + 1), &back, sizeof(back));
+    FlushInstructionCache(GetCurrentProcess(), at(SPRITE_ENTER), SPRITE_LEAVE + 5 - SPRITE_ENTER);
+
+    const std::array<float, 4> distances = {90.f, 110.f, 200.f, 1000.f};
+    const std::array<float, 4> fade_widths = {22.5f, 27.5f, 50.f, 250.f};
+    std::array<uint8_t, 0x400> display = {};
+    std::array<uint8_t, 0x120> soldier = {};
+    std::array<uint8_t, 0x120> linked = {};
+    std::array<uint8_t, 0x28> link = {};
+    std::memcpy(display.data() + DISPLAY_SPRITE_DISTANCES, distances.data(), sizeof(distances));
+    std::memcpy(display.data() + DISPLAY_SPRITE_DISTANCES + 0x10, fade_widths.data(), sizeof(fade_widths));
+    const auto put_pointer = [](uint8_t* to, const uint8_t* pointer) { std::memcpy(to, &pointer, sizeof(pointer)); };
+    put_pointer(soldier.data() + SOLDIER_DISPLAY, display.data());
+    put_pointer(link.data() + LINK_RECORD, linked.data());
+    Block* shared = plugin.block;
+    // One soldier through the game's code: true when the game stored `expected` bit for bit (and holds it in xmm0),
+    // rax and rcx point at the size's two floats, and every other register and the red zone are as they went in.
+    const auto sprite_once = [&](bool through_link, uint32_t size, float random, bool alive, float expected) {
+      // The record the game must not read holds another size and random value.
+      const uint32_t other_size = (size + 1) % 4;
+      const float other_random = random + 0.125f;
+      std::memcpy((through_link ? linked : soldier).data() + RECORD_SIZE, &size, sizeof(size));
+      std::memcpy((through_link ? linked : soldier).data() + RECORD_RANDOM, &random, sizeof(random));
+      std::memcpy((through_link ? soldier : linked).data() + RECORD_SIZE, &other_size, sizeof(other_size));
+      std::memcpy((through_link ? soldier : linked).data() + RECORD_RANDOM, &other_random, sizeof(other_random));
+      put_pointer(soldier.data() + SOLDIER_LINK, (through_link ? link.data() : nullptr));
+      soldier[SOLDIER_FLAGS] = static_cast<uint8_t>(0x52 | (alive ? SOLDIER_ALIVE : 0));
+      Registers in;
+      for (size_t number = 0; number < in.gpr.size(); ++number) {
+        in.gpr[number] = 0x0101010101010101 * (number + 1);
+      }
+      in.gpr[13] = reinterpret_cast<uintptr_t>(soldier.data());
+      in.flags = 0x202;
+      for (size_t number = 0; number < in.xmm.size(); ++number) {
+        in.xmm[number].fill(static_cast<uint8_t>(0x30 + number));
+      }
+      Registers out;
+      reinterpret_cast<MidBed>(bed_code)(&in, &out);
+      Registers kept = in;
+      const size_t table_entry = DISPLAY_SPRITE_DISTANCES + (((size < 4) ? size : 0) * sizeof(float));
+      kept.gpr[0] = reinterpret_cast<uintptr_t>(display.data() + table_entry + 0x10);
+      kept.gpr[1] = reinterpret_cast<uintptr_t>(display.data() + table_entry);
+      kept.gpr[4] = out.gpr[4];  // rsp: the bed's own
+      kept.flags = out.flags;    // the game's size compare
+      kept.slot = std::bit_cast<uint32_t>(expected);
+      kept.red_zone.fill(in.gpr[7]);
+      kept.xmm[0] = {};  // the game's movss load clears the rest of xmm0
+      std::memcpy(kept.xmm[0].data(), &expected, sizeof(expected));
+      return out == kept;
+    };
+    bool neutral = sprite_once(false, 1, 0.75f, true, ((0.75f + -0.5f) * fade_widths[1]) + distances[1])
+                   && !Logged("SPRITE_DISTANCE: first call");
+    bool capped = true;
+    bool dead_scaled = true;
+    for (const bool through_link : {false, true}) {
+      for (const uint32_t size : {0u, 1u, 2u, 3u, 7u}) {
+        const size_t entry = (size < 4) ? size : 0;
+        const float spread = (0.75f + -0.5f) * fade_widths[entry];
+        const float game = spread + distances[entry];
+        const float cap = std::min(game, (SOLDIER_HEIGHTS[entry] * 20.f) + spread);
+        neutral = neutral && sprite_once(through_link, size, 0.75f, true, game) && sprite_once(through_link, size, 0.75f, false, game);
+        shared->scales[SCALE_SPRITE_DISTANCE].store(20.f);
+        shared->scales_active.fetch_or(1u << SCALE_SPRITE_DISTANCE);
+        capped = capped && cap < game && sprite_once(through_link, size, 0.75f, true, cap)
+                 && sprite_once(through_link, size, 0.75f, false, cap);
+        shared->scales[SCALE_DEAD_UNITS].store(0.5f);
+        shared->scales_active.fetch_or(1u << SCALE_DEAD_UNITS);
+        dead_scaled = dead_scaled && sprite_once(through_link, size, 0.75f, false, cap * 0.5f)
+                      && sprite_once(through_link, size, 0.75f, true, cap);
+        shared->scales_active.fetch_and(~(1u << SCALE_SPRITE_DISTANCE));
+        dead_scaled = dead_scaled && sprite_once(through_link, size, 0.75f, false, game * 0.5f)
+                      && sprite_once(through_link, size, 0.75f, true, game);
+        shared->scales_active.store(0);
+        shared->scales[SCALE_SPRITE_DISTANCE].store(NEUTRAL_SCALES[SCALE_SPRITE_DISTANCE]);
+        shared->scales[SCALE_DEAD_UNITS].store(NEUTRAL_SCALES[SCALE_DEAD_UNITS]);
+      }
+    }
+    Expect(neutral, "sprite run: neutral, the game's code makes the game's distance for sizes 0-3 and a size past 3, "
+                    "from the soldier's record and from its linked one");
+    Expect(capped && Logged("SPRITE_DISTANCE: first call"),
+           "sprite run: the cap by the size's height, the size found from the game's own rcx; the first-call line");
+    Expect(dead_scaled, "sprite run: a dead soldier's distance x its scale, with the cap and alone; a living one's not");
+  }
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
   return failures;
