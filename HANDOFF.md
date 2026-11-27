@@ -609,7 +609,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 64-bit port list (after the A/B): 64-bit twattila add-on + ReShade next to attil ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - L2B NEXT: W0 (block v2 agreed with C8 wave 2, 6 points in the design; plugin_des ... | c8b0_ (B0, 11-27) -> L2B W2 writer
-- ATN 10:2x: ONE 'CPU' PAGE for 64-bit Attila (ours live / restart per row; PerfFi ... | ?
+- ATN 10:2x: ONE 'CPU' PAGE for 64-bit Attila (ours live / restart per row; PerfFi ... | coord (start it when addon
 - D: FULL 10:17 (0 bytes; C: 12.6 GB): pds2_'s HARNESS_DUMP verify dumps in its wo ... | ?
 - REFLECTION REUSE 'FROM ReSTIR GI' FIX (rt_path.hlsli ReflectPixel, PATH_REFLECT_ ... | next helper fixer after steps 3 + 5 merge (ReflectPixel is i
 - ATN NUMBERS (morning): Torch Light in PT GI (Experimental, off) = B12C2: +0.06 d ... | ATN
@@ -15926,6 +15926,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         fixed list we update. Owner after his answer: C8 wave 2 (addon.cpp one writer). ATN 10:5x: he asked Sol AND JSa25
         himself; after their answers -> semi or fully automatic (he tells coord). Page also gets Sol's interface_size
         (Auto = like 1080p at 4K = zoom 2.0; 100 % = the game's own size; restart only).
+        ATN 11-27 23:3x: 'For the cpu page: do the semi automatic. Before release we could always delete or change
+        it. I still need the response from those 2 authors.' -> SEMI-AUTOMATIC (c8_wave2_plan.md section 8: keys in
+        the file + a known 7.5 list + ask JSa25 to append missing keys on update); final form after Sol's + JSa25's
+        answers, before release. Code = an addon.cpp writer (Opus High): after the spf_ merge and pxp_'s add-on round,
+        before RT S5a (the CPU plan before RT at its tail). Owner: coord (start it when addon.cpp is free)
         - [ ] D: FULL 10:17 (0 bytes; C: 12.6 GB): pds2_'s HARNESS_DUMP verify dumps in its worktree
         build\pds2play ~309 GB (1.22 GB per buffer): rbase1 / rbase2 / rnew / rsn 204 GB = step 2 verify (merged,
         recorded), ra39a / b / c + rs4 105 GB = the S4 verify (cut at 10:17). No links inside. pds2_ + ucf_ PAUSED.
@@ -18361,6 +18366,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         measured '14 (logical 0-13)'. So the running CPU Set Setter (elevated, started 11-26 23:40) did NOT read the
         new rule from the file; it needs a restart of the app (exit + start as admin). Coord cannot (elevated, not
         mine). NEEDS ATN: restart CPU Set Setter (or his brother), else the sprite CPU gate waits until he is home.
+        ATN 23:3x: 'You are allowed to close cpu set setter and start it again!' -> coord: config backup
+        (..._prerestart), schtasks /End CPUSetSetter (task '\CPUSetSetter', HighestAvailable, ATN's own logon task), the
+        rule still in the file, schtasks /Run -> CPUSetSetter.exe running again (pid 35228). Check = a fresh -C2 smoke
+        (c2_smoke_gate2.log; want 'CPU sets 14 (logical 0-13)') STARTED 23:35. rrts2_ (Opus xHigh, 9 min;
+        scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
+        byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
+        row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
+        reads tw_frame_trace.txt (answers frts2_ S2). Fix round rts2_ (resumed, Opus High, est 25) STARTED 23:35.
         rts2_ S2b DONE (18 of 30 min; 1d7ced4f9 on rts2_1127, not merged): ' stencil func F/B pass F/B fail F/B
         depthfail F/B' (stencil on only), ' dsv ro <d><s>', new ' | views' (rtv<n> / dsv / t<n> view formats) before
         ' | instanced'; 19 gated builds, tests x2, scale_audit byte-equal, census controls. Reviews rrts2_ (Opus
