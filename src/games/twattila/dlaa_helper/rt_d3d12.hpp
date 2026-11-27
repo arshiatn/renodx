@@ -4823,7 +4823,8 @@ class RtScene12 {
   static constexpr uint32_t PTLAS_INSTANCES = MAX_INSTANCES + CLUSTER_BLASES;
   static constexpr uint32_t PTLAS_PARTITION_SIZE = 256;
   static constexpr uint32_t PLACED_BASE = MAX_INSTANCES + PTLAS_PARTITION_SIZE;
-  static_assert(PTLAS_INSTANCES <= PLACED_BASE && PLACED_BASE % PTLAS_PARTITION_SIZE == 0);
+  // Strictly below: PLACED_BASE - 1 is rt_ptlas's spare place, never the CPU's.
+  static_assert(PTLAS_INSTANCES < PLACED_BASE && PLACED_BASE % PTLAS_PARTITION_SIZE == 0);
   static constexpr uint32_t PTLAS_PLACED_LIMIT = 1u << 23;
   static constexpr uint64_t PTLAS_COUNT_OFFSET = 0;
   static constexpr uint64_t PTLAS_OPS_OFFSET = 16;
@@ -8681,7 +8682,8 @@ class RtScene12 {
       // The operation and its count (one array, the CPU's writes first: each type once a build, nvapi.h:21352). As in
       // NVIDIA's vk_partitioned_tlas sample (Apache-2.0, src/partitioned_tlas.cpp onRender): the CPU writes the
       // operation's type, argument address and stride, and the GPU (rt_ptlas's scan) its argument count and the count
-      // (NVIDIA: always 1; ours 0 without writes).
+      // (NVIDIA: always 1; ours too wherever the scan runs, by a spare inactive write at PLACED_BASE - 1; 0 only on a
+      // fresh build, no source, with nothing to write).
       const uint64_t operations = ptlas_ops_->GetGPUVirtualAddress();
       const Operation operation = {.type = NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_WRITE_INSTANCE, .count = write_count,
                                    .data = {.StartAddress = operations + PTLAS_WRITES_OFFSET, .StrideInBytes = sizeof(WriteInstance)}};

@@ -14,7 +14,7 @@
 // shaders/animation_update_instances.comp.glsl): the CPU writes the one WRITE_INSTANCE operation (type, argument address
 // and stride) and the GPU its argument count and the arguments, from a test per instance on the GPU; that sample takes
 // each argument's place from an atomicAdd on the count (an order the hardware picks), ours from a prefix sum (the fixed
-// order above), and its operation count is always 1 (ours 0 without writes: the build then has no operation).
+// order above); its operation count is always 1, ours too (a spare inactive write when nothing changed: scan).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_ptlas.h -Vn RT_PTLAS.
 
 ByteAddressBuffer instances_before : register(t0);  // the last dispatch's descs (D3D12_RAYTRACING_INSTANCE_DESC, 64 bytes each)
@@ -63,6 +63,18 @@ static const uint FRAME_MASK = 0xFFFFFFu;
 static const uint INSTANCE_CULL_DISABLE = 1u;
 static const uint INSTANCE_FORCE_OPAQUE = 4u;
 static const uint BLAS_BUILT_NOW = 64u;  // in a record's table word (rt_d3d12.hpp, M5a)
+
+// An inactive argument, as the CPU writes one: identity rows, InstanceID, mask and flags 0, no BLAS ("When NULL the
+// instance is inactive but still included in the build", nvapi.h:21324).
+void StoreInactive(uint at, uint place, uint partition) {
+  operations.Store4(at, asuint(float4(1.f, 0.f, 0.f, 0.f)));
+  operations.Store4(at + 16u, asuint(float4(0.f, 1.f, 0.f, 0.f)));
+  operations.Store4(at + 32u, asuint(float4(0.f, 0.f, 1.f, 0.f)));
+  operations.Store4(at + 48u, uint4(0u, 0u, 0u, 0u));
+  operations.Store2(at + 64u, uint2(0u, 0u));
+  operations.Store4(at + ARGUMENT_ID, uint4(0u, 0u, 0u, 0u));
+  operations.Store4(at + ARGUMENT_INDEX, uint4(place, partition, 0u, 0u));
+}
 
 groupshared uint shared_mask[2];
 groupshared uint shared_values[64];
@@ -139,9 +151,18 @@ void main(uint3 id : SV_DispatchThreadID) {
     if (lane == 0u) {
       // Inert: a slot writes once and cpu_writes < placed_base, so the sum never passes the room; a count past it would
       // have the driver read past the buffer (a TDR).
-      const uint writes = min(cpu_writes + shared_total, argument_room);
+      uint writes = min(cpu_writes + shared_total, argument_room);
+      if (writes == 0u) {
+        // No build without an operation: an update (src set) with operation count 0 is a case NVAPI does not describe,
+        // so one inactive write to a spare place, as NVIDIA's vk_partitioned_tlas (Apache-2.0, src/partitioned_tlas.cpp
+        // onRender) always sends one operation. placed_base - 1: inside every room (instanceCount = placed_base +
+        // capacity), past the CPU's places (MAX_INSTANCES + CLUSTER_BLASES, rt_d3d12.hpp's static_assert) and below the
+        // placed ones, so never written by anyone else: it stays inactive and the PTLAS's contents do not change.
+        StoreInactive(ARGUMENTS, placed_base - 1u, (placed_base - 1u) / partition_size);
+        writes = 1u;
+      }
       operations.Store(OPERATION_ARGUMENT_COUNT, writes);
-      operations.Store(OPERATION_COUNT, (writes != 0u) ? 1u : 0u);
+      operations.Store(OPERATION_COUNT, 1u);
       // The write mode reads only active_now: the next request's last count is safe to store now.
       diff.Store3(DIFF_ACTIVE, uint3(active_now, shared_total, first_instance));
     }
@@ -174,14 +195,6 @@ void main(uint3 id : SV_DispatchThreadID) {
     operations.Store4(at + ARGUMENT_ID, uint4(tail.x & FRAME_MASK, tail.x >> 24, 0u, INSTANCE_CULL_DISABLE | ((tail.y >> 24) & INSTANCE_FORCE_OPAQUE)));
     operations.Store4(at + ARGUMENT_INDEX, uint4(place, partition, tail.z, tail.w));
   } else {
-    // Inactive, as the CPU writes one: identity rows, InstanceID, mask and flags 0, no BLAS ("When NULL the instance is
-    // inactive but still included in the build", nvapi.h:21324).
-    operations.Store4(at, asuint(float4(1.f, 0.f, 0.f, 0.f)));
-    operations.Store4(at + 16u, asuint(float4(0.f, 1.f, 0.f, 0.f)));
-    operations.Store4(at + 32u, asuint(float4(0.f, 0.f, 1.f, 0.f)));
-    operations.Store4(at + 48u, uint4(0u, 0u, 0u, 0u));
-    operations.Store2(at + 64u, uint2(0u, 0u));
-    operations.Store4(at + ARGUMENT_ID, uint4(0u, 0u, 0u, 0u));
-    operations.Store4(at + ARGUMENT_INDEX, uint4(place, partition, 0u, 0u));
+    StoreInactive(at, place, partition);  // gone since the last request
   }
 }
