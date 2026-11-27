@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdarg>
 #include <cstdint>
@@ -45,6 +46,8 @@ static HookMode hook_mode = HOOK_NORMAL;
 static uint32_t failing_patch_calls = 0;
 // The same for FakeHook: a refused call finds no memory near the game.
 static uint32_t failing_hook_calls = 0;
+// The same for FakeCodeNearGame's calls for more than no bytes.
+static uint32_t failing_code_calls = 0;
 
 static void Expect(bool ok, const char* what) {
   ++checks;
@@ -83,7 +86,13 @@ static void* FakeCodeNearGame(size_t n) noexcept {
     pages = static_cast<uint8_t*>(VirtualAlloc(reinterpret_cast<void*>(at), 32 * LOADER_NEAR_CODE_BYTES,
                                                MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
   }
-  if (pages == nullptr || hook_mode == HOOK_NO_MEMORY || near_code_used + n > 32 * LOADER_NEAR_CODE_BYTES) return nullptr;
+  const bool refused = (n != 0 && (failing_code_calls & 1u) != 0);
+  if (n != 0) {
+    failing_code_calls >>= 1;
+  }
+  if (refused || pages == nullptr || hook_mode == HOOK_NO_MEMORY || near_code_used + n > 32 * LOADER_NEAR_CODE_BYTES) {
+    return nullptr;
+  }
   near_code_used += n;
   return pages + near_code_used - n;
 }
@@ -159,6 +168,70 @@ static int ApplyStackRule(uint8_t* begin, const uint8_t* end) {
     ++rewritten;
   }
   return rewritten;
+}
+
+// A test that needs the game's file and did not run (build.ps1 reports it as SKIPPED, not as a pass).
+inline constexpr int EXIT_SKIPPED = 77;
+
+// The game ELF's load segments as mapped into the reserved range (ReserveGame).
+struct GameImage {
+  uintptr_t end = 0;
+  uintptr_t writable_lo = 0;  // the load segment the game writes: its data
+  uintptr_t writable_hi = 0;
+};
+
+// The game ELF at `path` copied to its load addresses, with the loader's stack-check rewrite. EXIT_SKIPPED when the file
+// cannot be opened, 1 when it cannot be read or a segment lies outside the range, else 0.
+static int MapGameElf(const wchar_t* path, GameImage* image) {
+  HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+  LARGE_INTEGER size = {};
+  if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &size)) {
+    std::printf("SKIPPED: the game ELF could not be opened (error %lu)\n", GetLastError());
+    return EXIT_SKIPPED;
+  }
+  std::vector<uint8_t> elf(static_cast<size_t>(size.QuadPart));
+  DWORD got = 0;
+  for (size_t offset = 0; offset < elf.size(); offset += got) {
+    const auto chunk = static_cast<DWORD>(std::min<size_t>(elf.size() - offset, 1 << 24));
+    if (!ReadFile(file, elf.data() + offset, chunk, &got, nullptr) || got == 0) {
+      std::printf("FAIL: reading the game ELF (error %lu)\n", GetLastError());
+      CloseHandle(file);
+      return 1;
+    }
+  }
+  CloseHandle(file);
+
+  // ELF64 program headers: e_phoff at 0x20, e_phentsize 0x36, e_phnum 0x38; p_type, p_flags 4, p_offset 8, p_vaddr 16,
+  // p_filesz 32, p_memsz 40.
+  const auto field = [&]<typename T>(size_t offset) {
+    T value = {};
+    if (offset + sizeof(T) <= elf.size()) {
+      std::memcpy(&value, elf.data() + offset, sizeof(T));
+    }
+    return value;
+  };
+  const auto program_headers = field.operator()<uint64_t>(0x20);
+  for (uint16_t index = 0; index < field.operator()<uint16_t>(0x38); ++index) {
+    const size_t header = program_headers + (index * size_t{field.operator()<uint16_t>(0x36)});
+    if (field.operator()<uint32_t>(header) != 1) continue;  // PT_LOAD
+    const auto offset = field.operator()<uint64_t>(header + 8);
+    const auto address = field.operator()<uint64_t>(header + 16);
+    const auto file_bytes = field.operator()<uint64_t>(header + 32);
+    const auto memory_bytes = field.operator()<uint64_t>(header + 40);
+    if (address < GAME_LO || address + memory_bytes > GAME_RESERVE_END || offset + file_bytes > elf.size()) {
+      std::printf("FAIL: load segment %#llx + %#llx outside the game range or the file\n", address, memory_bytes);
+      return 1;
+    }
+    std::memcpy(reinterpret_cast<void*>(address), elf.data() + offset, file_bytes);
+    image->end = std::max<uintptr_t>(image->end, address + memory_bytes);
+    if ((field.operator()<uint32_t>(header + 4) & 2) != 0) {  // PF_W
+      image->writable_lo = address;
+      image->writable_hi = address + memory_bytes;
+    }
+  }
+  const int rewritten = ApplyStackRule(reinterpret_cast<uint8_t*>(GAME_LO), reinterpret_cast<const uint8_t*>(image->end));
+  std::printf("  mapped %#llx..%#llx, %d stack-check reads rewritten\n", uint64_t{GAME_LO}, uint64_t{image->end}, rewritten);
+  return 0;
 }
 
 // Every tweak object of tweaks.h in the reserved game range, as the game builds it: its type's table pointer, its
@@ -310,9 +383,11 @@ static Plugin LoadPlugin(const wchar_t* dll_path) {
 }
 
 // The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window and
-// every tweak object (WriteTweakObjects), with no ReShade.ini keys and no route note beside the test: every row with a
-// site goes in, and no patch site has other bytes to write.
-static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
+// every tweak object (WriteTweakObjects), with no route note beside the test and no ReShade.ini keys but, with
+// `game_code_key_off`, the game code row's install key 0 (an image without the game code that row stands on): every
+// other row with a site goes in, and no patch site has other bytes to write. A hand-made stub's site is in with our
+// jump, or only checked (its stub not built).
+static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, bool game_code_key_off) {
   const Plugin plugin = LoadPlugin(dll_path);
   if (plugin.init == nullptr) return plugin;
 
@@ -324,11 +399,12 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const Block* shared = plugin.block;
   Expect(shared->version == VERSION && shared->bytes == BlockBytes(VERSION), "the block's version and size");
   Expect(shared->status.load(std::memory_order_acquire) == STATUS_READY, "the block is READY after init");
+  const uint32_t rows_off = (game_code_key_off ? RowBit(ROW_GAME_CODE) : 0);
   uint32_t rows = 0;
   for (const Site& site : SITES) {
-    rows |= RowBit(static_cast<Row>(site.row));
+    rows |= RowBit(static_cast<Row>(site.row)) & ~rows_off;
   }
-  Expect(shared->rows_applied == rows && shared->rows_refused == 0, "every row with a site applied");
+  Expect(shared->rows_applied == rows && shared->rows_refused == rows_off, "every row with a site applied");
   // v2's initial values: the rows tried, the core default (no RenderCore key here), the battle core waiting, the render
   // core without its thread yet, the engine values waiting for the game's start, the other status words not built, the
   // scales neutral.
@@ -348,16 +424,31 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
              && Logged("Changes drawing, sound memory and CPU core use only; battles, replays and multiplayer stay the same.")
              && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
              && Logged("STEP_ENTRY 0xbb4e00: applied") && Logged("renodx_attila64: shadow map: game's size")
+             && Logged(game_code_key_off ? "grass on, grass cells on, campaign trees on, sprites on, game code off"
+                                         : "grass on, grass cells on, campaign trees on, sprites on, game code on")
              && Logged("rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
-                       "grass on, grass cells on, campaign trees on, sprites on"),
+                       "grass on, grass cells on, campaign trees on, sprites on, game code o"),
          "the init lines");
+  size_t sites_in = 0;
   for (const Site& site : SITES) {
     char applied_line[96];
     std::snprintf(applied_line, sizeof(applied_line), "renodx_attila64: site %s %#x: applied%s", LABEL_WORDS[site.label],
                   site.address, ((site.kind == SITE_PATCH) ? " (game's bytes kept)" : ""));
-    Expect(Logged(applied_line), "each site has its applied line");
+    char unwritten_line[96];
+    std::snprintf(unwritten_line, sizeof(unwritten_line), "renodx_attila64: site %s %#x: %s", LABEL_WORDS[site.label],
+                  site.address, (game_code_key_off ? "skipped (OFF)" : "checked (check only)"));
+    if (site.kind == SITE_RAW_STUB && !Logged(applied_line)) {
+      Expect(Logged(unwritten_line)
+                 && std::memcmp(reinterpret_cast<const void*>(uintptr_t{site.address}), site.window.data() + SITE_MARGIN,
+                                site.length)
+                        == 0,
+             "a hand-made stub's site that is not in keeps the game's bytes and says why");
+      continue;
+    }
+    ++sites_in;
+    Expect(Logged(applied_line) && !Logged(unwritten_line), "each site has its applied line");
     if (site.kind != SITE_PATCH) {
-      Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each hook and mid-function site jumps to ours");
+      Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each hook and stub site jumps to ours");
     } else {
       Expect(std::memcmp(reinterpret_cast<const void*>(uintptr_t{site.address}), site.window.data() + SITE_MARGIN, site.length) == 0,
              "each patch site keeps the game's bytes without a key");
@@ -366,7 +457,7 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   plugin.game_started(&api);
   // The count follows the sites table (a later site needs no edit here).
   char started[64];
-  std::snprintf(started, sizeof(started), "game started: %zu sites unchanged", SITES.size());
+  std::snprintf(started, sizeof(started), "game started: %zu sites unchanged", sites_in);
   Expect(shared->rows_changed.load() == 0 && Logged(started), "game start finds every site unchanged");
   // Every engine value checked once and published; nothing restart-only without its key.
   char tweaks_line[96];
