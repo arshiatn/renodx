@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -123,9 +124,16 @@ inline void CheckTweak(const TweakEntry& entry, TweakSlot* slot) noexcept {
     slot->verdict = VERDICT_CHANGED;
     return;
   }
-  slot->value_address = uint64_t{entry.object} + kind.value_offset;
+  // The loader's flag is published without its address: the plugin's own hook is its one writer, so an option of the
+  // add-on that named it could only hide, never write.
+  slot->value_address = (entry.loader_writes ? 0 : (uint64_t{entry.object} + kind.value_offset));
   slot->verdict = VERDICT_OK;
 }
+
+// The one entry the loader writes: the game's parallel effect flag (main.cpp ties it to sites.h's EFFECT_FLAG).
+inline constexpr size_t LOADER_FLAG_TWEAK =
+    static_cast<size_t>(std::ranges::find(TWEAKS, true, &TweakEntry::loader_writes) - TWEAKS.begin());
+static_assert(std::ranges::count(TWEAKS, true, &TweakEntry::loader_writes) == 1);
 
 // A restart-only value's key on an OK slot: stored when the bits are in the entry's range and the game draws with
 // DirectX 11. Floats compare as floats, so a NaN is out of range.

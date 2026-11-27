@@ -21,6 +21,7 @@
 #include "../plugin_block.h"
 #include "../sites.h"
 #include "../tweaks.h"
+#include "../tweaks.hpp"
 
 // The tests' stand-in for the 64-bit Attila loader: its plugin interface v1 written from its documented behaviour (an
 // entry hook copies the first bytes to code near the game, jumps back after them, and enters through
@@ -281,8 +282,8 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   Expect(shared->tweaks_status.load(std::memory_order_acquire) == TWEAKS_READY && shared->tweak_count == TWEAKS.size()
              && shared->tweaks != nullptr && Logged(tweaks_line) && !Logged(": refused ("),
          "game start checks and publishes the engine values");
-  const TweakSlot& effect_flag = shared->tweaks[TWEAKS.size() - 1];
-  Expect(TWEAKS.back().loader_writes && effect_flag.verdict == VERDICT_OK && effect_flag.value_address == EFFECT_FLAG
+  const TweakSlot& effect_flag = shared->tweaks[tweaks::LOADER_FLAG_TWEAK];
+  Expect(effect_flag.verdict == VERDICT_OK && effect_flag.value_address == 0
              && Logged("renodx_attila64: parallel effects: offered (loader guards in place)") && !Logged("not offered"),
          "game start offers the parallel effect flag behind the loader's guards");
   // The thread that runs the game's start is the render thread: captured once, with its own line.

@@ -98,7 +98,9 @@ int wmain(int argc, wchar_t** argv) {
       absent += (slot.verdict == VERDICT_ABSENT && slot.value_address == 0) ? 1 : 0;
       restart_only += slot.restart_only;
       if (slot.verdict != VERDICT_OK) continue;
-      addresses = addresses && slot.value_address == entry.object + ((entry.type == TWEAK_BOOL) ? 0x62u : 0x64u)
+      addresses = addresses
+                  && slot.value_address
+                         == (entry.loader_writes ? 0 : (entry.object + ((entry.type == TWEAK_BOOL) ? 0x62u : 0x64u)))
                   && slot.default_bits == entry.default_bits && slot.written_bits == entry.default_bits
                   && slot.type == entry.type && slot.restart_state == RESTART_NONE
                   && std::string_view(slot.name) == entry.name;
@@ -107,13 +109,13 @@ int wmain(int argc, wchar_t** argv) {
   }
   // The flag the loader stores before the game's start: 0 and 1 are both as found, anything else is not the game's.
   {
-    const TweakEntry& entry = TWEAKS.back();
+    const TweakEntry& entry = TWEAKS[LOADER_FLAG_TWEAK];
     TweakSlot slot;
     *at(entry.object + TWEAK_KINDS[TWEAK_BOOL].value_offset) = 1;
     CheckTweak(entry, &slot);
     Expect(entry.loader_writes && !entry.game_writes && slot.verdict == VERDICT_OK && slot.default_bits == 1
-               && slot.value_address == entry.object + TWEAK_KINDS[TWEAK_BOOL].value_offset,
-           "check: a flag the loader stores is taken as found when it holds 1");
+               && slot.value_address == 0,
+           "check: a flag the loader stores is taken as found when it holds 1, and published without its address");
     *at(entry.object + TWEAK_KINDS[TWEAK_BOOL].value_offset) = 2;
     CheckTweak(entry, &slot);
     Expect(slot.verdict == VERDICT_CHANGED && slot.value_address == 0, "check: a flag the loader stores holds 0 or 1");
@@ -411,7 +413,7 @@ int wmain(int argc, wchar_t** argv) {
     plugin.game_started(&api);
     Expect(plugin.block->tweaks_status.load(std::memory_order_acquire) == TWEAKS_READY && plugin.block->tweak_count == TWEAKS.size()
                && Logged("renodx_attila64: tweaks: 81 checked, 81 ok, 3 absent, restart-only: 2 applied")
-               && Logged("renodx_attila64: parallel effects: not offered (0x34e0130 not the loader's)"),
+               && Logged("renodx_attila64: parallel effects: not offered (its row is off)"),
            "dll: the tweaks line");
     Expect(value_of(sound) == 0xbb48 && slot_of(plugin, sound.name).restart_state == RESTART_APPLIED
                && slot_of(plugin, sound.name).written_bits == 0xbb48 && slot_of(plugin, sound.name).default_bits == sound.default_bits
@@ -468,7 +470,8 @@ int wmain(int argc, wchar_t** argv) {
   if (const Plugin plugin = start_copy(L"values_off"); plugin.block != nullptr) {
     plugin.game_started(&api);
     Expect(plugin.block->tweaks_status.load() == TWEAKS_NONE && plugin.block->tweak_count == 0 && plugin.block->tweaks == nullptr
-               && !Logged("renodx_attila64: tweak") && value_of(sound) == sound.default_bits && Logged(CAP_OFF_LINE),
+               && !Logged("renodx_attila64: tweak") && value_of(sound) == sound.default_bits && Logged(CAP_OFF_LINE)
+               && Logged("renodx_attila64: parallel effects: not offered (Tweaks=0)"),
            "dll: Tweaks=0 checks, writes and publishes nothing");
   }
 

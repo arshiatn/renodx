@@ -225,10 +225,14 @@ struct CallbackScope {
   const Callbacks* callbacks = nullptr;
 };
 
-// ROW_PARALLEL_EFFECTS, the walk hook's state. Main only: every caller of the walk runs on the thread of the game's
-// main loop (read from the game's code: the walk's one caller sits in one virtual slot, and that slot's one call
-// chain starts in the game's main), so plain values without a lock. The game's start writes loader_value and stored
-// on the loader's thread before it sets effects_offered (release); the hook reads them only after its acquire load.
+// ROW_PARALLEL_EFFECTS, the walk hook's state. Main only, read from the game's code: the walk has two ways in. One is
+// its direct caller, which sits in one virtual slot (+0x70) of the node, and that slot's one call chain starts in the
+// game's main. The other is a two-byte jump to the walk at 0x32fbf50, 16 bytes before it, which sits in the node's
+// slot +0x140: no call through that slot on an effect node was found (every call and load-then-call of a slot +0x140
+// was read; none is in effect or scene code), so it counts as not reached, by search and not by proof. So plain values
+// without a lock, and the hook's own thread check below for the second way. The game's start writes loader_value and
+// stored on the loader's thread before it sets effects_offered (release); the hook reads them only after its acquire
+// load.
 //
 // The mode is two bits of core_wanted (plugin_block.h): Off = no CORE_EFFECTS, Automatic = both, On = CORE_EFFECTS
 // alone. Each walk sets the game's flag for the update the walk then runs: Off = the loader's value, On = 1,
@@ -253,6 +257,9 @@ inline constexpr std::array<const char*, 3> EFFECTS_MODE_WORDS = {"Off", "Automa
 // in EFFECT_NODE_LIMIT entries (one walk per node and frame and one place that builds effect nodes, so a battle has
 // few); a node beyond them leaves the flag as it is. An entry no walk used for EFFECT_NODE_STALE_WALKS walks is taken
 // again (ours: a node dies with its battle, and without it the fifth node of a session would end Automatic for good).
+// The walks counted are Automatic's own, so a stretch in Off or On ages no entry. A dead node's pointer is only
+// compared, never read; a new node at a dead one's address finds its entry and starts with its state (the threshold
+// it meets first is then AUTO_OFF, once).
 inline constexpr uint32_t TABLE_SLOT_LIMIT = 4096;
 inline constexpr uint32_t AUTO_FLOOR = 256;
 inline constexpr uint32_t AUTO_ON = 20000;
@@ -261,7 +268,7 @@ inline constexpr size_t EFFECT_NODE_LIMIT = 4;
 inline constexpr uint64_t EFFECT_NODE_STALE_WALKS = 1024;
 struct EffectNode {
   const uint8_t* node = nullptr;  // null: free
-  uint64_t walked = 0;            // EffectWalk::walks at its last walk in Automatic
+  uint64_t walked = 0;            // EffectWalk::walks at its last walk
   bool parallel = false;
 };
 struct EffectWalk {
@@ -271,10 +278,16 @@ struct EffectWalk {
   bool change_logged = false;      // the first state change's line carries the table's capacity and the sum's time
   bool node_limit_logged = false;
   bool slot_limit_logged = false;
-  uint64_t walks = 0;
+  uint64_t walks = 0;  // in Automatic
   std::array<EffectNode, EFFECT_NODE_LIMIT> nodes = {};
 };
 static EffectWalk effect_walk;
+// The thread of the first offered walk. Ours, not the game's or the loader's: the state above is main-only by what
+// was read from the game's code, and the walk's second way in is unreached only by search. A walk on another thread
+// would race that state, so it gets the game's walk alone (the flag as it is) and one line. On the read path it is
+// one thread id compare per walk and changes nothing: every walk is on this thread.
+static std::atomic<DWORD> effect_walk_thread = 0;
+static std::atomic_bool effect_thread_logged = false;
 // The loader's five guards hold their entries and the game's read of the flag is the code that was read: checked once
 // at the game's start (main.cpp). Without it the hook only calls the game's walk.
 static std::atomic_bool effects_offered = false;
@@ -649,15 +662,27 @@ static void ApplyEffectsModeKey(Block* shared, int key) noexcept {
 // parallel flag for this walk (EffectWalk's note), then the game's walk with its own frame.
 static ATTILA64_GAME_CALL void EffectWalkEntry(uint8_t* node, float first_float, float second_float) {
   LogFirstCall(LABEL_EFFECT_WALK_ENTRY);
+  bool on_walk_thread = false;
   if (effects_offered.load(std::memory_order_acquire)) {
+    const DWORD thread = GetCurrentThreadId();
+    DWORD first_thread = effect_walk_thread.load(std::memory_order_relaxed);
+    on_walk_thread = (first_thread == thread
+                      || (first_thread == 0 && effect_walk_thread.compare_exchange_strong(first_thread, thread)));
+    if (!on_walk_thread && !effect_thread_logged.exchange(true)) {
+      loader->log("renodx_attila64: parallel effects: a walk on thread %lu, not the walks' thread %lu: the game's walk "
+                  "alone there",
+                  thread, first_thread);
+    }
+  }
+  if (on_walk_thread) {
     EffectWalk* walk = &effect_walk;
     const EffectsMode mode = EffectsModeOf(block.core_wanted.load(std::memory_order_relaxed));
-    ++walk->walks;
     uint8_t target = ((mode == EFFECTS_ON) ? 1 : walk->loader_value);
     // A walk that cannot decide (a node beyond the entries, a table above the limit) leaves the flag and the last mode
     // as they are, so the first store of a new mode waits for a walk that can.
     bool decided = true;
     if (mode == EFFECTS_AUTOMATIC) {
+      ++walk->walks;
       auto state = std::ranges::find(walk->nodes, node, &EffectNode::node);
       if (state == walk->nodes.end()) {
         state = std::ranges::min_element(walk->nodes, {}, &EffectNode::walked);
@@ -703,8 +728,8 @@ static ATTILA64_GAME_CALL void EffectWalkEntry(uint8_t* node, float first_float,
           char first_change[64] = "";
           if (!walk->change_logged) {
             walk->change_logged = true;
-            LARGE_INTEGER sum_end;
-            LARGE_INTEGER frequency;
+            LARGE_INTEGER sum_end = {};
+            LARGE_INTEGER frequency = {};
             QueryPerformanceCounter(&sum_end);
             QueryPerformanceFrequency(&frequency);
             std::snprintf(first_change, sizeof(first_change), ", table capacity %u, sum %lld us", capacity,

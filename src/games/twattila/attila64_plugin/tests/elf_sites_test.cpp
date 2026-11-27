@@ -220,6 +220,8 @@ int wmain(int argc, wchar_t** argv) {
            {0x32fc37b, {0xe8}, "effect walk: the second key compare is a direct call"},
            {0x34ad19e, {0x49, 0x89, 0xfe}, "effect type update: r14 is the type"},
            {0x34ad1c6, {0x41, 0x8b, 0x5e}, "effect type update: mov ebx, [r14 + the instance count]"},
+           // The walk's second way in: a two-byte jump to it, 16 bytes before (the hook comment's note).
+           {0x32fbf50, {0xeb, 0x0e}, "effect walk: the jump to the walk before it"},
            // The key compare: lengths (a uint32_t at 0) first, then the bytes at +8; it only reads and returns in al.
            {0x50def0, {0x44, 0x8b, 0x07, 0x44, 0x3b, 0x06, 0x75, 0x2a, 0x45, 0x85, 0xc0, 0xb0, 0x01, 0x74, 0x22, 0x48, 0x8b,
                        0x57, 0x08, 0x48, 0x8b, 0x76, 0x08},
@@ -293,7 +295,7 @@ int wmain(int argc, wchar_t** argv) {
   // The parallel effects row's numbers in the game's own code (sites.h's effect block).
   Expect(std::memcmp(at(EFFECT_FLAG_READ_ADDRESS), EFFECT_FLAG_READ.data(), EFFECT_FLAG_READ.size()) == 0
              && EFFECT_FLAG_READ_ADDRESS + EFFECT_FLAG_READ.size() + word_at(EFFECT_FLAG_READ_ADDRESS + 2) == EFFECT_FLAG
-             && EFFECT_FLAG == TWEAKS.back().object + TWEAK_KINDS[TWEAK_BOOL].value_offset && TWEAKS.back().loader_writes,
+             && EFFECT_FLAG == TWEAKS[tweaks::LOADER_FLAG_TWEAK].object + TWEAK_KINDS[TWEAK_BOOL].value_offset,
          "effects: the game's read of the flag is the code that was read, and the flag is the last tweak's value");
   Expect(word_at(0x32fc384 + 4) == EFFECT_TABLE_SLOTS && word_at(0x32fc38c + 4) == EFFECT_TABLE_CAPACITY
              && word_at(0x32fc2f6 + 4) == EFFECT_EMPTY_KEY && word_at(0x32fc303 + 4) == EFFECT_DELETED_KEY

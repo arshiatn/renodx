@@ -20,6 +20,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 
 #include "../hooks.hpp"
 #include "../patcher.hpp"
@@ -185,6 +186,8 @@ int wmain() {
   // A fresh start of the game: the loader left `loader_value`, the flag holds UNTOUCHED (so that a store shows).
   const auto start = [&](uint32_t wanted, uint8_t loader_value) {
     effect_walk = {.loader_value = loader_value, .stored = loader_value};
+    effect_walk_thread.store(0);
+    effect_thread_logged.store(false);
     effects_offered.store(true);
     block.core_wanted.store(wanted);
     log_lines.clear();
@@ -238,6 +241,45 @@ int wmain() {
     Expect(walk(0) && *flag == UNTOUCHED && log_lines.empty() && block.core_wanted.load() == OTHER_BITS,
            "walk: Off after On stores at most once");
   }
+
+  // A walk on another thread than the first offered walk's: the game's walk alone, the flag and the state as they
+  // are, one line. The first thread's walks go on as before.
+  for (const uint32_t wanted : {OTHER_BITS | CORE_EFFECTS, OTHER_BITS | AUTOMATIC_BITS}) {
+    start(wanted, 0);
+    Expect(walk_with(0, 30000) && walk_record.flag == 1 && effect_walk_thread.load() == GetCurrentThreadId(),
+           "thread: the first offered walk's thread is the walks' thread");
+    block.core_wanted.fetch_and(~CORE_EFFECTS);
+    const EffectWalk before = effect_walk;
+    *flag = UNTOUCHED;
+    bool other_walks = false;
+    std::thread([&] { other_walks = walk(0) && walk(1) && walk_record.flag == UNTOUCHED; }).join();
+    Expect(other_walks && *flag == UNTOUCHED && effect_walk.walks == before.walks && effect_walk.mode == before.mode
+               && effect_walk.stored == 1 && LoggedCount("renodx_attila64: parallel effects: a walk on thread ") == 1
+               && LoggedCount(": the game's walk alone there") == 1,
+           "thread: a walk on another thread is the game's alone, with one line");
+    Expect(walk(0) && walk_record.flag == 0, "thread: the walks' thread goes on (Off after On here)");
+  }
+  // Not offered, no thread is taken.
+  start(OTHER_BITS | CORE_EFFECTS, 0);
+  effects_offered.store(false);
+  std::thread([&] { walk(0); }).join();
+  effects_offered.store(true);
+  Expect(effect_walk_thread.load() == 0 && walk(0) && walk_record.flag == 1 && effect_walk_thread.load() == GetCurrentThreadId(),
+         "thread: only an offered walk sets the walks' thread");
+
+  // Entries age by Automatic's walks only: after a long stretch in On, a new node does not take a live node's entry.
+  start(OTHER_BITS | AUTOMATIC_BITS, 0);
+  Expect(walk(0) && walk(1) && walk(2) && walk(3), "ageing: four nodes in Automatic");
+  block.core_wanted.fetch_and(~CORE_EFFECTS_AUTO);
+  bool on_walks = true;
+  for (uint64_t count = 0; count < 2 * EFFECT_NODE_STALE_WALKS; ++count) {
+    on_walks = on_walks && walk(0);
+  }
+  block.core_wanted.fetch_or(CORE_EFFECTS_AUTO);
+  *flag = UNTOUCHED;
+  Expect(on_walks && walk(4) && *flag == UNTOUCHED && effect_walk.nodes[0].node == nodes[0].node.data()
+             && Logged("more than 4 nodes"),
+         "ageing: walks in On age no entry");
 
   // Automatic, the sum on the fake table: the two types' instances, without a read of the empty and the deleted
   // slot's values (they would fault) or of the null one's.

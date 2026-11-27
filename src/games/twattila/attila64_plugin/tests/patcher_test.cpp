@@ -1526,8 +1526,8 @@ int wmain(int argc, wchar_t** argv) {
     std::snprintf(absent_line, sizeof(absent_line), "renodx_attila64: tweaks: %zu checked, %zu ok, 3 absent", TWEAKS.size() - 3,
                   TWEAKS.size() - 3);
     Expect(result == 0 && (plugin.block->rows_applied & RowBit(ROW_PARALLEL_EFFECTS)) != 0
-               && plugin.block->tweaks[TWEAKS.size() - 1].verdict == VERDICT_ABSENT
-               && plugin.block->tweaks[TWEAKS.size() - 1].value_address == 0 && Logged(absent_line)
+               && plugin.block->tweaks[tweaks::LOADER_FLAG_TWEAK].verdict == VERDICT_ABSENT
+               && plugin.block->tweaks[tweaks::LOADER_FLAG_TWEAK].value_address == 0 && Logged(absent_line)
                && Logged(guard_case ? "renodx_attila64: parallel effects: not offered (0x34e0170 not the loader's)"
                                     : "renodx_attila64: parallel effects: not offered (flag read differs)")
                && !Logged("parallel effects: offered"),
@@ -1568,6 +1568,10 @@ int wmain(int argc, wchar_t** argv) {
                && plugin.block->render_core_status.load() == (built ? (uint32_t{CORE_NO_THREAD} << CORE_STATE_SHIFT) : 0),
            "dll: the core status words are built only with the CPU row applied");
     plugin.game_started(&api);
+    Expect(Logged("renodx_attila64: parallel effects: not offered (its row is off)") == (row == ROW_PARALLEL_EFFECTS)
+               && Logged("parallel effects: offered") == (row != ROW_PARALLEL_EFFECTS)
+               && (plugin.block->tweaks[tweaks::LOADER_FLAG_TWEAK].verdict == VERDICT_ABSENT) == (row == ROW_PARALLEL_EFFECTS),
+           "dll: without the parallel effects row the game's flag is not offered");
     Expect(Logged("renodx_attila64: render thread ") == built
                && plugin.block->render_core_status.load() == (built ? (uint32_t{CORE_WAITING} << CORE_STATE_SHIFT) : 0),
            "dll: the render thread is captured only with the CPU row applied");
