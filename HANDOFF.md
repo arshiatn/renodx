@@ -726,6 +726,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
+- RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the ... | coord
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
 - HANDOFF AUDIT APPLIED 18:0x: hfm_ (Opus xHigh) merged the 8 parts (testbin\scrat ... | coord (section 11 items follow the CPU-first rule)
@@ -18093,7 +18094,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         + FINAL (it reads steps 5-7); the smoke does not need it. Smoke later: '-Smoke -ReShade -EnginePlugin' (+ the
         batch stack's -Package / -Exe64Sha variant), after the Stage B + step 6 build is staged in build\attila64_plugin
         (today Stage A's 78b70936); pass lines in the hand-back (21 sites unchanged, rows offered 0x3fff, no code-differs
-        line). Its exe paths have no CPU Set Setter rule (affinity 0xFFFF): fine for a pass / fail smoke.
+        line). Its exe paths have no CPU Set Setter rule (affinity 0xFFFF): fine for a pass / fail smoke. p8b6_ DONE 19:52 (18 of 25
+        min; scratch\p8b6_\handback.md): p8b_1127 3d3e6f10d merge of atn-mods f4714b2df (no conflicts), 0bbfd0506 the row
+        'Multithreaded Collisions (Experimental)' (default Off, design 14's tooltip; hidden while
+        CONTACT_SPLIT_ROW_MEASURED = false; while hidden link::Update writes NO CORE_SPLIT (new optional argument, default
+        nullopt); shown: write_core_bit only while ROW_CONTACT_SPLIT is offered; one shared builder for both engine rows),
+        587a40a48 F7 cases. deviation for step 8: lane B has one PARTLY value and no reason field, so every partly reads
+        'partly (normal speed)' (not design 14's three reason texts). Gated amd64 + x86 exit 0 (61 warnings);
+        tw_unit_shadows amd64 + x86 PASS (+ hidden / shown / not-offered cases); dumps x86 SAME, a64 only the new rows +
+        section; 4 mutations caught. FOUND: tw_render_mt_defaults already FAILED on atn-mods (W-A3's extra argument broke
+        one stale check; the W-A3 merge checks did not run it) -> fixed on p8b_1127 + 3 checks, 'all match'. Coord F7 on
+        the GPU 19:5x: 5 / 5 PASS (2 hidden-row cases + 3 battle step regressions; scratch\coord_\p8b6_f7_gpu.log).
+        Step 8 review rp8b57_ (Opus xHigh, read only, own detached worktree for its plugin test) STARTED 19:5x.
+        Smoke staging (coord 19:54): main tree build\attila64_plugin = the p8b_1127 587a40a48 plugin fa744059 (backup
+        of the old one in scratch\coord_\main_plugin_before_p8b_smoke.dll), a3_smoke\renodx-twattila.addon64 = the
+        worktree's step 6 add-on (old one kept as .bak_p8b_smoke). Smoke = the batch stack (-Package pkg_fixes
+        -Exe64Sha 580efafe -PerfFix) dry run exit 0; the start STARTED 19:54 (scratch\coord_\p8b_smoke.log).
+        - [ ] RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the p8b_1127 add-on until
+        Stage B merges (then rebuild from atn-mods and stage that); build\attila64_plugin is p8b_1127's plugin until then.
+        Owner: coord
         - [ ] PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured like W-A3's; while hidden
         the add-on writes NO CORE_SPLIT bit (P1a's rule), so the batch's ContactSplit=1 arms keep their bit. After the
         batch + ATN's call (design 14: default Off, ATN decides): flip the row's MEASURED constant. Owner: coord Note: HANDOFF clock stamps 19:xx above were an
