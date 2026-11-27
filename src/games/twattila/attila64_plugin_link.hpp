@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
@@ -609,9 +610,12 @@ inline void PublishScales(const std::array<float, internal::plugin::SCALE_COUNT>
   }
   uint32_t active = 0;
   for (uint32_t index = 0; index < plugin::SCALE_COUNT; ++index) {
-    // Small Soldiers as Sprites: a distance scale not above 0 (a typed negative Sprite Size, a NaN) is off, its neutral
-    // 0, as the 32-bit hook's `> 0` (the plugin's stub takes any set scale as a distance).
-    const float scale = ((index == plugin::SCALE_SPRITE_DISTANCE && !(scales[index] > 0.f)) ? 0.f : scales[index]);
+    // Small Soldiers as Sprites: a distance scale that is not finite and above 0 cannot move a soldier (the plugin's
+    // handler and the 32-bit hook act only above 0; +inf keeps the game's distance), so it is sent as its neutral 0
+    // with its bit clear: no handler call per soldier.
+    const bool sprite_off = (index == plugin::SCALE_SPRITE_DISTANCE
+                             && !(scales[index] > 0.f && scales[index] <= std::numeric_limits<float>::max()));
+    const float scale = (sprite_off ? 0.f : scales[index]);
     if (block->scales[index].load(std::memory_order_relaxed) != scale) {
       block->scales[index].store(scale, std::memory_order_relaxed);
     }
