@@ -14,9 +14,18 @@ trap { break }
 # The old exe goes first: a failed build (a shader's or the helper's) leaves none and fails the script.
 Remove-Item "$out\renodx-tw-dlaa64.exe" -ErrorAction SilentlyContinue
 if (Test-Path "$out\renodx-tw-dlaa64.exe") { throw "$out\renodx-tw-dlaa64.exe could not be deleted (still running?)" }
+# RENODX_TW_CONTROL_DEFINES set (names, space-separated: the fidelity fixes' CONTROL_*, rt_path.hlsli and rt_d3d12.hpp
+# BakeCutoff): every shader and the helper built with them, an A / B helper of its own (tests only, never a player's).
+$control_defines = @($env:RENODX_TW_CONTROL_DEFINES -split ' ' | Where-Object { $_ } | ForEach-Object { '-D', $_ })
+# Said loudly, and marked in the output folder (CONTROL_BUILD.txt; a release / pack step refuses a folder that has it).
+Remove-Item "$out\CONTROL_BUILD.txt" -ErrorAction SilentlyContinue
+if ($control_defines) {
+  Write-Warning "CONTROL BUILD (tests only, never a player's): $env:RENODX_TW_CONTROL_DEFINES"
+  Set-Content -Path "$out\CONTROL_BUILD.txt" -Value "CONTROL BUILD (tests only): $env:RENODX_TW_CONTROL_DEFINES"
+}
 # A shader that fails to compile fails the build (no helper with an older shader header).
 function Dxc {
-  & "$root\bin\dxc.exe" @args
+  & "$root\bin\dxc.exe" @args @control_defines
   if ($LASTEXITCODE -ne 0) { throw "dxc failed (exit $LASTEXITCODE): $($args -join ' ')" }
 }
 # NVIDIA's RTXDI-Library 3.2 (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/RTXDI-Library: commit
@@ -87,9 +96,15 @@ if ($env:RENODX_TW_PATH_PROBE_BUILD) {
 # RENODX_TW_REFERENCE_BUILD set: the reference build's passes too (rt_reference.hlsli, tests only; a player's helper has none).
 $reference_passes = @('accumulate', 'census', 'digest', 'group', 'paths', 'reflect', 'state')
 foreach ($pass in $reference_passes) { Remove-Item "$out\rt_reference_$pass.h" -ErrorAction SilentlyContinue }
+# The passes that trace (paths, reflect) with their DXR 1.2 twins too: they meet the micromapped TLAS (X18).
+$reference_traced = @('paths', 'reflect')
+foreach ($pass in $reference_traced) { Remove-Item "$out\rt_reference_$($pass)_omm.h" -ErrorAction SilentlyContinue }
 if ($env:RENODX_TW_REFERENCE_BUILD) {
   foreach ($pass in $reference_passes) {
     Dxc -nologo -T cs_6_5 -E main -O3 @regir -D "REF_$($pass.ToUpper())" -Fh "$out\rt_reference_$pass.h" -Vn "RT_REFERENCE_$($pass.ToUpper())" "$PSScriptRoot\rt_reference.cs_6_5.hlsl"
+  }
+  foreach ($pass in $reference_traced) {
+    Dxc -nologo -T cs_6_9 -E main -O3 @regir -D "REF_$($pass.ToUpper())" -D OPACITY_MICROMAPS -Fh "$out\rt_reference_$($pass)_omm.h" -Vn "RT_REFERENCE_$($pass.ToUpper())_OMM" "$PSScriptRoot\rt_reference.cs_6_5.hlsl"
   }
 }
 # RENODX_TW_RECORDER_BUILD set: the bridge recorder and its player too (rt_d3d12.hpp RENODX_RECORDER, tests only; a released helper has none).
@@ -197,6 +212,12 @@ foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA
 foreach ($shader in @(@('rt_cache_fill', 'RT_CACHE_FILL'), @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'))) {
   Dxc -nologo -T cs_6_5 -E main -O3 @regir -Fh "$out\$($shader[0]).h" -Vn $shader[1] "$PSScriptRoot\$($shader[0]).cs_6_5.hlsl"
 }
+# rt_cache_fill's ray queries (SeenDiffuseLight's rays) meet the micromapped TLAS: its DXR 1.2 twin (without
+# RAYQUERY_FLAG_ALLOW_OPACITY_MICROMAPS a query that meets an OMM is undefined, D3D12 Raytracing spec "Opacity micromaps and
+# TraceRayInline"). rt_cache_resolve and rt_reflect_filter trace nothing (no ray query in their DXIL): no twin.
+Dxc -nologo -T cs_6_9 -E main -O3 @regir -D OPACITY_MICROMAPS -Fh "$out\rt_cache_fill_omm.h" -Vn RT_CACHE_FILL_OMM "$PSScriptRoot\rt_cache_fill.cs_6_5.hlsl"
+# So does the first-hit probe (RENODX_TW_PROBE, tests).
+Dxc -nologo -T cs_6_9 -E main -O3 -D OPACITY_MICROMAPS -Fh "$out\rt_probe_omm.h" -Vn RT_PROBE_OMM "$PSScriptRoot\rt_probe.cs_6_5.hlsl"
 # NVIDIA's NVAPI (MIT, github.com/NVIDIA/nvapi) for RTX Mega Geometry when it sits in build\downloads\nvapi (else the
 # helper builds without it).
 $nvapi = Join-Path $root "build\downloads\nvapi\extracted\nvapi-main"
@@ -258,7 +279,7 @@ if (Test-Path "$nrd\_Bin\NRD.lib") {
 # Graphics, nothing without it.
 & "C:\Program Files\LLVM\bin\clang-cl.exe" /nologo -std:c++20 /O2 /MT /EHsc /DWIN32 /D_WINDOWS -DNOMINMAX `
   -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\include" "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `
-  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include @nrd_include @recorder_include "/I$out" `
+  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include @nrd_include @recorder_include @control_defines "/I$out" `
   "$PSScriptRoot\main.cpp" @regir_cpp /Ferenodx-tw-dlaa64.exe /link /SUBSYSTEM:WINDOWS `
   "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library @nrd_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib dbghelp.lib `
   delayimp.lib /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:d3d12.dll

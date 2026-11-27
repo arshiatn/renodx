@@ -32,7 +32,8 @@ float2 UnpackUv(uint packed) {
   return f16tof32(uint2(packed, packed >> 16));
 }
 
-// Whether an alpha-tested candidate is solid where the ray meets it (always for opaque records).
+// Whether an alpha-tested candidate is solid where the ray meets it (always for opaque records): alpha >= the record's
+// threshold, the rule 0x7A1E0D1A bakes the micromaps with (an alpha at the threshold opaque in both).
 bool AlphaPasses(uint instance, uint primitive, float2 barycentrics) {
   const uint4 record = records[instance];
   if (((record.z >> 16) & RECORD_MASKED) == 0u) return true;

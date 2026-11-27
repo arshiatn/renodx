@@ -717,11 +717,16 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAMP 1 MM RULE (pdr_ S5, 11-27): rt_path.hlsli:1787 (Torch and Fire Light / Shad ... | next rt_path writer
 - S6 ONE-FRAME TRACE (pdr_ S4, 11-27): rt_di_shade.hlsl:26 names a one-frame trace ... | next DI agent
 - P1p UNTESTED BRANCHES (fp1p_ S1 / S2, 11-27): battle_core.hpp:649-658 (refused d ... | next battle_core
+- P1p WATCHDOG READ FAILURE UNTESTED (rp1pt_ S2, 11-27): battle_core.hpp:493-499, ... | next battle_core
 - AO DURING THE PT AMBIENT WARM-UP (rllf_ M1, 11-27, bug fix -> always on): Attila ... | ATN (the warm-up look in the batch)
 - W3 HORIZON METRIC (p6rv2_ S3, 11-27): P6a2's camera proof for w3 / w3t is a byte ... | the next a64_ab writer after PK9 P1-P5 (C8 T0 or its own ste
 - ALL PLANS LIST (ATN 11-27 16:2x: 'Some stuffs are missing ... gather those forgo ... | coord
-- UNIFIED PT COMPLETENESS CRITIC (ATN 11-27 18:5x 'Yes, start it'): unified_pt.md ... | coord
-- CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | coord
+- UNIFIED PT COMPLETENESS CRITIC (ATN 11-27 18:5x 'Yes, start it'): unified_pt.md ... | ?
+- PT DI PORT S8 READER (upt28_, 11-27): the 64-bit add-on's reader of the helper's ... | the S8 writer (RT-on-64) Owner: coord
+- SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
+- PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
+- CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
+- PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
 - HANDOFF AUDIT APPLIED 18:0x: hfm_ (Opus xHigh) merged the 8 parts (testbin\scrat ... | coord (section 11 items follow the CPU-first rule)
 - CPU FIRST (ATN 11-27 17:3x): 'Unified PT should come after the fixes BUT ... don ... | coord
@@ -6812,7 +6817,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c3i_ (R1), bd3o_ (R-S5a), t4i_ (round 10) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part 2b
         (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, x0i_ X2 notes, B1.6 (+ N5
         real-routine tests), X1, R-S5.
-        t4i_ ROUND 10 DONE 20:3x (reports/t4i_round10_handback.md; backups scratchpad	4i_bak10): x87c_summary to the
+        t4i_ ROUND 10 DONE 20:3x (reports/t4i_round10_handback.md; backups scratchpad	4i_bak\r10): x87c_summary to the
         6593a8f text, N == M == 89 else ROWFAIL with both counts; old 4062cff summary -> x87c_other; corpus 6593a8f text +
         stamp 69CE1786 + 24 '::' srcs fixed; 2 new test_check cases; gates line numbers; b1_refused_hooked :710; Nit 2
         x87c lines out of the INFO count. run_all 789 / 789.
@@ -7266,8 +7271,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         3 FoldExits runs 8 of 14 direct reasons, add visibility view first; 4 control 11 comment; 5 detach from another
         thread during a fold window (engine_code.hpp:2951-2958): write the assumption down or wait ~100 ms + keep FOLD_SITES
         pinned. All suites + gated plain / DRAW_RECORDING / amd64 exit 0. Waiting for bd1r_'s instance_fill side.
-        t4i_ RESUMED 01:0x: ebr_'s 4 T3c nits (bench; backups t4i_bak14).
-        t4i_ T3d DONE 01:1x (bench only; backups t4i_bak14): plan PAUSE-W3 lists OFF 755 / OFF 765 control / C 775 /
+        t4i_ RESUMED 01:0x: ebr_'s 4 T3c nits (bench; backups t4i_bak\r14).
+        t4i_ T3d DONE 01:1x (bench only; backups t4i_bak\r14): plan PAUSE-W3 lists OFF 755 / OFF 765 control / C 775 /
         ALL 805 / OFF 820 drift; nit 2 TAKEN: a not-comparable drift control -> NOTE '§4.2 drift not covered', pairs still
         checked vs window 3 (a differing drift control still blocks all pairs); v1-only DIFFERS hint (trace at 774 s);
         show() hex. run_all green (analyze 106). ebr_ RESUMED 01:1x: short check of nit 2 -> '## T3d check'.
@@ -7308,7 +7313,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         deletable / editable ...). 11 install decisions for ATN -> into INSTALL_FOR_ATN.md as a checklist. gtp_ RESUMED
         01:2x: fixes -> gtw_ re-check.
         t4i_ T3e DONE 01:2x: PROBLEM lines end with '(drift not covered: window 6 not comparable)' when the drift control
-        is skipped; test_analyze 107 / 107, run_all green; backups t4i_bak15. T3 / map compare track CLOSED.
+        is skipped; test_analyze 107 / 107, run_all green; backups t4i_bak\r15. T3 / map compare track CLOSED.
         ATN 01:2x ANSWERS (phone): Q12 hooks = shadow mode first (recommended); Q8 (a) ns_busy counts map_replay = YES
         (-> gti_ row ON), (b) lock wait inside atn_harness_runs.ps1 = YES [ ] after gti_'s fixes + gtv_'s re-check (render_mt
         file, same command lines, no new switch); Q14 = as recommended (tools_tw on, reshade off, cxx on all src, spec gate
@@ -17905,8 +17910,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         tag. Owner: next DI agent
         - [ ] P1p UNTESTED BRANCHES (fp1p_ S1 / S2, 11-27): battle_core.hpp:649-658 (refused drop write) and :399-405 (failed
         GetThreadSelectedCpuSets) have no test; the N1 'render thread %lu keeps the CPU sets it has' line can print after the
-        render thread has ended (should be NO_THREAD); test yield_line prefix NIT. Owner: next battle_core.hpp writer (after C8
-        W4p)
+        render thread has ended (should be NO_THREAD); test yield_line prefix NIT. Owner: next battle_core.hpp writer (after C8 W4p). 11-27: covered by p1pt_1127
+        (review rp1pt_ GO WITH CHANGES, fix round p1ptf_); tick at its merge.
+        - [ ] P1p WATCHDOG READ FAILURE UNTESTED (rp1pt_ S2, 11-27): battle_core.hpp:493-499, the watchdog's own failed
+        GetThreadSelectedCpuSets (drop FAILED / NO_THREAD) has no test. Owner: next battle_core.hpp writer
         - [x] SUPERSEDED (audit 11-27: x19_: 'X19 CLOSED as B23' (18308), probe merged f171c14c0; B23 parked (18378)): PTLAS X19 (ptf_ 11-27, new, also today): under PTLAS 2 of 3 CPU-instanced mesh instances are missing (z -0.50 /
         0.75; 2.00 passes); not the per-request rewrite, not the partitions (two reverted experiments); ptrs_'s hint: a static
         BLAS reused at one address keeps old bounds, check BLAS build order vs PTLAS write order. With B23 it still separates
@@ -17972,8 +17979,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         implement it after' -> upt28_ (Fable 5.2 xHigh, design only) STARTED 18:29 (unified_pt.md v2.8 in place, backup
         .before_v28); implementation AFTER the CPU plan (ATN 18:3x: 'we implement it after the cpu plan. Just not now'). ATN's answers: Q3 / Q4 / Q6 / Q8-Q11 = the picks; Q7
         froxel volume = a harness arm on 4K numbers, a tie decided on ATN's burning-city replay; Q1 (ReSTIR off under RR),
-        Q2 (3-of-4 sub-sampling), Q5 (pbrt-v4) = ATN open (his follow-up questions answered in chat 18:29). Owner:
+        Q2 (3-of-4 sub-sampling), Q5 (pbrt-v4): ATN 18:42: Q1 = the pick (both arms at equal time on 4K RR), Q2 = an
+        optional harness arm judged by his eye, Q5 = pbrt-v4 on the known-answer scenes only; sent to upt28_. upt28_ DONE 19:09
+        (41 of 90 min; scratch\upt28_\handback.md): unified_pt.md v2.8 (2949 lines; Part A A0-A16 new, Part B = v2.7 with
+        75 marked 'v2.8:' edits, 0 deletions; .before_v28 = byte copy): all 46 critic items have a line (A0), 99 finding
+        ids mapped (A16); Q1-Q11 decided; ATN's later list O1-O11 (A1.2, each with numbers at its step; O6 = the RR DLL
+        310.9.16 vs 310.7.0 + preset, before U0's RR baselines; O11 = DXR 1.2 on AMD / Intel, before U7); new steps U0p,
+        U0r, U9-0 (RTXDI PT bridge), U10c, U6f (froxel arm), U12e; prerequisites P1-P13; E about 473 agent-hours + 70-100
+        GPU-hours serial. Found: v2.7's new key RayTracedSmokeShadows collides with an existing key (renamed
+        RayTracedSmokeTorchShadows); NRD torch-pair cost ~2.5-4 ms at 4K (not 0.3-0.6); unverified (marked U): PA23, PA24,
+        Remix 'one volume lights particles'. Implementation AFTER the CPU plan; an Opus xHigh review of v2.8 comes first
+        when the GPU lane reopens.
+        - [ ] PT DI PORT S8 READER (upt28_, 11-27): the 64-bit add-on's reader of the helper's PT DI word must test
+        (rt_di_ok & 1u) != 0u (unified_pt.md v2.8 A2). Owner: the S8 writer (RT-on-64) Owner:
         coord
+        - [ ] SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stacked step; from now on
+        steps on the same files run one after the other, different files side by side, Fable jobs first. Owner: coord
+        - [ ] PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, the release changes
+        CORE_WANTED_DEFAULT (plugin_block.h) AND clears saved FasterBattleStep values with ClearSavedRows(2, ...,
+        'Attila64SettingsRevision'); flip BATTLE_STEP_ROW_MEASURED after S-C; F7's saved_off case becomes the Off-clears
+        case (one line in run.ps1). Owner: coord at the release step
         - [ ] CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules
         cpq_\cpu_common_1127.md): PK9 P9-3 MERGED 6563e2199 (re-check rp93m_ GO, 0 MUST; SHOULD done = the folded
         generators installed by coord from p93m_\gen\install.sh, .bak_p93m kept; main tree build.ps1 -Test -Elf
@@ -18012,14 +18037,69 @@ heading text are in HANDOFF_ARCHIVE.md)
         main tree: plugin test exit 0 (0 failures, 14216 checks, the 3 game-file tests ran), gated amd64 twattila exit 0. Next: Stage B step 5 (Fable Medium) on p8b_1127. wa3_ (Opus Medium
         trial) STARTED 18:15: PK8 W-A3 'Faster Battle Step' add-on row (link.hpp + addon.cpp, P9-4's pattern incl.
         rp94_ MUST-1) on wa3_1127 = p8a_1127 + atn-mods, plus the F7 cases for P9-4 + W-A3 (built only); coord runs F7
-        after it as one GPU-lock job (ATN 18:15: GPU OK for CPU work). Note: HANDOFF clock stamps 19:xx above were an
+        after it as one GPU-lock job (ATN 18:15: GPU OK for CPU work). wa3_ DONE 18:36 (21 of 40 min;
+        scratch\wa3_\handback.md): wa3_1127 = f39f7e1d1 + atn-mods e2073705c (284dc6d0c), d88940ac5 (row + link: the
+        add-on owns CORE_STEP from its first present, Off included; 11.1's tooltip + 6 statuses; 'Faster Battle Step
+        on|off' line) + 4fd0fe4bb (F7: fake_plugin fields 10-11, 6 cases); deviation: before S-C P1a's 'hidden until
+        measured' form, the add-on writes the plugin's default On, BATTLE_STEP_ROW_MEASURED flips at the release step;
+        CORE_STEP written even when the row is not offered (only the line gated); gated amd64 + x86 exit 0, x86 page
+        389 -> 389, 3 mutations caught. F7 run by coord 18:37 (GPU lock, f7_gpu.sh): 9 passed of 9 (3 P9-4 + 3 W-A3 +
+        3 render core regression; scratch\coord_f7_wa3.log). Review rwa3_ (Opus xHigh) DONE (scratch\rwa3_\review.md): GO WITH CHANGES, 0 MUST; the deviation UPHELD (design
+        F1 :228-229: CORE_STEP in CORE_WANTED_DEFAULT for the S-C build, the release keeps it only after S-C + Q1);
+        SHOULD-1 addon.cpp:3677-3680 row On + lane OFF reads 'off' until the next step -> 'not used yet'; SHOULD-2 release
+        note (box below); 3 NITs; F7's 9 cases prove the table. Fix round wa3_ (resumed, Opus Medium) DONE 18:55: c11d5a79b (addon.cpp only: row On + lane OFF reads 'not used
+        yet', dump lane_4_row_1 'off' -> 'not used yet'; BATTLE_STEP_TEXTS table by EngineState; F1 :228-229 cited);
+        gated amd64 + x86 exit 0, x86 page unchanged; F7 needs no re-run (no case reads the status text, link.hpp
+        unchanged); slip: its mutation script reverted the uncommitted fix once, redone on the committed tree. Sonnet
+        High final fwa3_ DONE: GO, nothing open. Coord merged it locally, gated amd64 + x86 exit 0, BUT
+        tw_unit_shadows amd64 FAILED (tests.cpp:649 exact core_wanted: its 3-argument Update calls now write CORE_STEP,
+        the hidden default On; NIT-3 grown) -> merge taken back, not pushed; fix round 2 wa3_ (test only, amd64 + x86,
+        one mutation) DONE 19:00: abbdcd6a9 (tests.cpp only: the post-detach checks expect step_default_bit, a
+        5-argument check writes the other value; the mutation fails line 654). W-A3 MERGED 71043eaf2 (19:04): main
+        tree gated amd64 + x86 twattila exit 0, tw_unit_shadows amd64 + x86 PASS. Next on link.hpp / addon.cpp: Stage B
+        step 6 (Opus) after step 5. Lesson: W-A3-type add-on rows run tw_unit_shadows
+        in their own checks.
+        Stage B step 5 p8b5_ (Fable Medium) STARTED 18:37 on p8b_1127 (merge
+        atn-mods, fold step 2's CONTACT_ENTRY onto the installed generator in its own copy + install.sh, ONE wiring
+        commit, 3 serial test runs); DONE 19:32 (55 of 50 min, 30 of it the 3 serial runs; scratch\p8b5_\handback.md):
+        origin/p8b_1127 616576097 (merge d2cd866c3 of atn-mods fe8ff5078, one conflict hunk in battle_step_test.cpp,
+        both sides kept; then ONE wiring commit, 9 files): ROW_CONTACT_SPLIT = 13 (ROW_COUNT 14), key ContactSplit, no
+        CORE_SPLIT in the default; 22 sites (CONTACT_ENTRY 0x5df300), M0 0x3fff, rows line ends ', contact split on',
+        '21 sites unchanged' on the game file, engine_status 0x0401 after a default-ini start; ours: one ENGINE_ROWS table
+        for both rows in main.cpp (replaces Stage A's two blocks); Fnv1a<Hash> template; fallback edits in
+        fake_loader.hpp / patcher_test.cpp / elf_sites_test.cpp (pinned lanes + rows line); lock / unlock / wake not in
+        sites.h (3.6 wants none). build.ps1 -Test -Elf x3 serial exit 0, 0 warnings, battle_step_test 14547, DLL
+        7d26d999 x3; generator check + G1 gate 0x5df300 PASS, sites.h = the folded write output; gen_contact_ranges .inc
+        unchanged (6ede3f21). Mutations 30: 28 killed, 1 equivalent, m15 SURVIVES (dropping code_read->store(false) at
+        game start, Stage A's line; seen only by a tick through the DLL's hook onto the real game function) -> for the
+        step 8 reviewer. Coord ran SCR\p8b5_\gen\install.sh 19:33 (both files installed, .bak_p8b5 kept).
+        Step 6 p8b6_ (Opus 5.5 Medium, trial; same worktree + branch, merge atn-mods first; link.hpp + addon.cpp
+        + their tests) and step 7 check p8b7_ (Fable 5.2 Medium; a64_ab copy + patch + dry runs only, no smoke) STARTED
+        19:33 side by side (different files); the smoke after step 6, then step 8 review.
+        - [ ] PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured like W-A3's; while hidden
+        the add-on writes NO CORE_SPLIT bit (P1a's rule), so the batch's ContactSplit=1 arms keep their bit. After the
+        batch + ATN's call (design 14: default Off, ATN decides): flip the row's MEASURED constant. Owner: coord Note: HANDOFF clock stamps 19:xx above were an
         hour ahead; real times from 18:15 on. p1pt_ (Fable Medium) DONE 19:1x (31 of 20
         min; scratch\p1pt_\handback.md; p1pt_1127 4b69a2f19 from b4f7442fa): ClearRenderThread shared by Release +
         the refused-write path, an ended render thread = CORE_NO_THREAD; tests 356 -> 362 (refused default write via a
         test-only import-slot swap, release with a refused read / an ended thread, full yield_line); only the ended-
         thread check fails on today's header, the others by 5 mutations; DLL d1653f38 x4. FLAKE: run 2 of 3 SIDE BY
         SIDE exited 1 on the old 'busy thread keeps the core' check (serial run 4 + 5x battle_core_test clean).
-        Review rp1pt_ (Opus xHigh) STARTED 19:2x incl. the flake's root cause (serial x2 + one loaded run). p91_
+        Review rp1pt_ (Opus xHigh) DONE (scratch\rp1pt_\review.md): GO WITH CHANGES; plugin code correct (ClearRenderThread
+        2 callers, the refused write publishes an ended thread as CORE_NO_THREAD, Release unchanged); controls enough
+        (base fails only check 6, mutations catch the rest); serial x2 + side by side x3 exit 0, DLL d1653f38. FLAKE
+        ROOT CAUSE (reproduced): copies of the test pick the same render core and split it 100 / 54 / 46 %, one copy in
+        three fails, base the same -> MUST M1 battle_core_test.cpp:1003-1010 named mutex + the spinner's priority
+        (busy_fix.diff, 18 / 18 under load); SHOULD S1 :930-957 disarm the refused-write hook after each armed step;
+        SHOULD S2 a HANDOFF line for the untested watchdog read failure (box below); 4 NITs. Fix round p1ptf_ (Fable Medium) DONE 18:58 (18 min; scratch\p1ptf_\handback.md): origin/p1pt_1127 1472ec887,
+        test file only: 34eb7337d M1 (busy_fix.diff), 67f4dbe8f S1 (refused_step, refusal in the 3 Expects), 1472ec887
+        N1 / N2 / N4; controls: old exe fails 1 of 3 copies a round, fixed 9 / 9; S1 old = terminate without a FAIL
+        line, new = 3 FAILs; gate serial exit 0, then 3 copies x 3 rounds exit 0; DLL d1653f38 unchanged. Sonnet High
+        final fp1pt_ (incl. one plugin test on the merged result) DONE 19:1x (11 min): GO, no MUST / SHOULD / NIT (M1 = the
+        busy_fix.diff as written, S1's 3 Expects hold, controls match, merge-tree clean, its plugin test 0 failures).
+        MERGED 7c8ee51a2 (19:22, --no-ff, pushed): main-tree plugin build.ps1 -Test -Elf exit 0, 0 failures
+        (battle_core 362 / 0; elf_sites_test, game_code_test, battle_step_test ran; testbin\scratch\coord_\p1p_merge.log);
+        no gated add-on build (battle_core.hpp is only in the plugin). The watchdog read failure box stays open. p91_
         (Opus Medium) DONE 18:03 (29 of 60 min; scratch\p91_\handback.md): two sha-gated a64_ab patches, NOT applied:
         (1) a64_ab_pk9p1_patch.py 02cf94e1 -> ebcc5c91 (PK9 P1-P5 + P5-6 replay; HALF_ENTRY needs no edit), (2)
         a64_ab_c8t0_patch.py ebcc5c91 -> 62fef322 (T0 + hzc_'s 4 horizon pieces); h91 21 / 21, A13 unchanged forms
@@ -18029,8 +18109,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         fast kinds 0.81 ms = pk9:128, not 0.55; 2 NITs); T0 GO WITH CHANGES (MUST: the SOLCAP menu stretch skips c8:872's
         2 % / n/a rule, the 11-25 data ran uncapped ~225 fps and passed as '(cap on)'; SHOULD: the -PerfFix B64P start
         lacks 0:GraphicsSmallSoldiersAsSprites=1 + 125:memory=1 and 2.6's pass lines; 4 NITs); re-runs h91 21 / 21,
-        h_t0 11 / 11, test_lines 17 / 17. Fix round p91f_ (Opus Medium) STARTED 18:33; then a Sonnet High final; coord
-        applies. m2d_ (Fable xHigh) DONE
+        h_t0 11 / 11, test_lines 17 / 17. Fix round p91f_ (Opus Medium) DONE 18:4x (21 of 25 min; scratch\p91f_\handback.md): SOLCAP uses the 2 % / n/a
+        rule across both -C2 starts (the real 11-25 menu case fails the old copy), P5 fast-kind noise 0.81 ms (pk9:128),
+        B64P start + sprites entry + 125:memory=1 + 2.6's pass lines, all NITs; chain 02cf94e1 -> aa861112 -> 1910c724;
+        h91 21 / 21, horizon 17 / 17, A13 exit codes unchanged. Sonnet High final sp91_ DONE: GO, nothing open (its own copies: chain + second-apply refusals, the 11-25 menu
+        reads n/a on both SOLCAP lines, P5 +0.70 ms 'within the noise' of 0.81, B64P string
+        '0:AntiAliasing=0;0:GraphicsSmallSoldiersAsSprites=1;125:memory=1;140:Time Each Pass (One Frame)=1' + 2.6's two
+        pass lines, h91 21 / 21, h_t0 21 / 21, test_lines 17 / 17, dry runs: only T0 / B64P lines differ, no exit code
+        changed). APPLIED by coord 19:00: tools\tw\attila64\ab\a64_ab.ps1 02cf94e1 -> aa861112 -> 1910c724 (backups
+        ab\a64_ab.pre_pk9p1_1127.ps1 = 02cf94e1, ab\a64_ab.pre_c8t0_1127.ps1 = aa861112). Next a64_ab writer: Stage B step 7
+        (check first), then RT-on-64 S1. Was: then coord
+        applies (python -I -B SCR\p91_\a64_ab_pk9p1_patch.py, then a64_ab_c8t0_patch.py). m2d_ (Fable xHigh) DONE
         17:58 (27 of 40 min; designs\pk5_m2_memcpy.md, scratch\m2d_\handback.md): ONE caller 0x339b4a4 (97.88 %,
         ~1.67 of 1.71 ms a frame), size 0xe0 x count, destination the loader's Map pointer of a dynamic VB; class (c),
         lever (d) only, no build target; PK5 10.1 / 10.3 corrected (addendum); section 10 copied into backup_32bit.md;
@@ -18044,7 +18133,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         CPUs without V-cache: coord added --small-l3 to the bench (exe 9ada01ee, old f16a93a5 kept as m2b_f16a93a5.exe,
         m2b.cpp.bak_coord_l3) and ran map x2 on CCD 1 (32 MB L3, core 18): deciding cells (others) still no arm ahead
         in both runs; cold source: U / R +5..10 % over Z in every run (more than on CCD 0). So only if a plain Zen 4's
-        rows fall out of its smaller L3; at most ~0.1-0.15 ms a frame; Intel not measured. Side line for ATN: with a
+        rows fall out of its smaller L3; at most ~0.1-0.15 ms a frame; Intel not measured. Coord's second read of all 6
+        runs: in the deciding cells U is also SLOWER beyond noise in 3 cells (-5..-8 % at 0xe0000) and rep movsb falls
+        to ~17-19 GB/s in 4 of 12 cells at 0x380000 -> no change request to the loader's author; at most an FYI ('the
+        copy is fine, nothing to change') in the PK9 note, on ATN's word. ATN 18:48 'Sure': the FYI paragraph is in sol_note_pk9.txt (.bak_m2 kept);
+        ATN sends Sol everything after the CPU plan is done. Side line for ATN: with a
         cold source, ucrtbase memcpy / rep movsb are +4..5 % in every run (at most ~0.07 ms a frame; the game's source
         is 'others'); a note to the loader's author only if ATN asks. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
         backup_32bit.md Rev 3 (2.8 rows L1-L13 + G9-G11, 2.9 audit rows H1-H11; no 32-bit class moved); FROZEN 32-BIT
@@ -18077,8 +18170,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         byte-identical with atn-mods, 112 with all five controls; check.py + scan.py PASS; gated amd64 + x86 exit 0.
         Split branch fx4b_a_1127 (X18 + X14 only, from e2073705c, pushed 18:23): scan.py PASS, X14 test PASS, gated
         amd64 + x86 exit 0. Open: the pack step should refuse a folder with CONTROL_BUILD.txt (pack owner); J2 / J3
-        (Leaves-off arms + both visibility controls) before X10 / X09 merge (PARKED). Sonnet High final sfx4b_ (the
-        one GPU-lane agent, read only) STARTED 18:29; then merge fx4b_a_1127. Look list -> ATN. Owner: coord
+        (Leaves-off arms + both visibility controls) before X10 / X09 merge (PARKED). Sonnet High final sfx4b_ DONE: GO, 1 NIT (scratch\sfx4b_\review.md: the 4 cherry-picks = the fixed commits'
+        patch-ids, 0e517ce29 = build.ps1's control switch only, nothing of X10 / X09; its own helper build 112 headers
+        identical + 4 twins, scan.py PASS (FAIL 4 on the base), X14 all 255 opaque; J1 is a later proof, not a merge
+        gate (rt_d3d12.hpp:783-798 drops DXR 1.2 on a failed pipeline, no crash); NIT rt_path.hlsli:148 comment, fixed
+        on fx4b_1127). fx4b_a_1127 (X18 + X14) MERGED fe8ff5078 (18:37); main tree: gated amd64 + x86 twattila and amd64 talesofarise exit 0.
+        X10 / X09 stay on fx4b_1127, PARKED behind J2 / J3 (their review points closed). Look list -> ATN. Owner: coord
         - [ ] OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable 5.2 medium is really
         good ... Tell me later after which one is worth it'): Opus implementers Medium for well-specified steps (add-on
         rows, tooling, cite waves, ports, small fix rounds), High for shader math / big merge-ups / no line-level
@@ -18475,7 +18572,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         rt_lights_di_torch_omm, D2 + smoke + twin jobs, full D1, rec_compare lifted control + rec_scan, all_modes_check
         -> testbin\scratch\pdi4c_\chain_r2.ps1 = GPU order item 4 (resume pdi4c_ with it). OPEN: 4b dlaa_bridge.hpp
         Publish / PublishEmptySet must write rt_light_surface + rt_di_light[0..1] every set (else keep() closes stale
-        handles twice); pdi4c_ patched the SHARED harness source tools	wt_harness (tw_rt_harness.cpp + di_mode.hpp,
+        handles twice); pdi4c_ patched the SHARED harness source tools\tw\rt_harness (tw_rt_harness.cpp + di_mode.hpp,
         backup .before_pdi4c; exe not rebuilt; inert without HARNESS_DI). 4d needs: lowdef-never-reaches-DI harness
         check, the 4b fix, the R1 E6 / R3 composite. NOTE: pdi4c_ counted waiting as deadline time -> brief rule
         wording: 'waiting does not count' must be in every brief.
