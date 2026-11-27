@@ -720,6 +720,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AO DURING THE PT AMBIENT WARM-UP (rllf_ M1, 11-27, bug fix -> always on): Attila ... | ATN (the warm-up look in the batch)
 - W3 HORIZON METRIC (p6rv2_ S3, 11-27): P6a2's camera proof for w3 / w3t is a byte ... | the next a64_ab writer after PK9 P1-P5 (C8 T0 or its own ste
 - ALL PLANS LIST (ATN 11-27 16:2x: 'Some stuffs are missing ... gather those forgo ... | coord
+- UNIFIED PT COMPLETENESS CRITIC (ATN 11-27 18:5x 'Yes, start it'): unified_pt.md ... | coord
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
 - HANDOFF AUDIT APPLIED 18:0x: hfm_ (Opus xHigh) merged the 8 parts (testbin\scrat ... | coord (section 11 items follow the CPU-first rule)
@@ -17955,6 +17956,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         Thrones / WH3 fog_shadows_defaulted_on; the batch GPU-stall trace; alt-tab F1a / F1b / F7 / F8; NOTE: the
         snapshot has 5 stray CRs, so part line numbers differ by up to 4 between splitlines and grep -n: ticks match
         by box text, not line). Left: hfa_8. Owner: coord
+        - [ ] UNIFIED PT COMPLETENESS CRITIC (ATN 11-27 18:5x 'Yes, start it'): unified_pt.md v2.7 (11-22, Opus
+        reviews upr_) never had a Fable review; since then PT DI built, OMM 1.12, W4b visibility kind, fidelity critic
+        X01-X51, smoke spheres / PTLAS results. ufc_ (Fable 5.2 xHigh, read only, design work: no GPU runs, so it fits
+        CPU first) STARTED 18:5x: stale / missing / prior art (RTXPT, RTXDI, ReSTIR PT / GRIS, ReSTIR PG, Volumetric
+        ReSTIR, RR guides) / order / cite compliance -> plan_1117\designs\unified_pt_critic_1127.md + a v2.8 change
+        list; fx4b_'s reference-vs-bake question goes in. The v2.8 refresh waits for the GPU lane to reopen. Owner:
+        coord
         - [ ] CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules
         cpq_\cpu_common_1127.md): PK9 P9-3 MERGED 6563e2199 (re-check rp93m_ GO, 0 MUST; SHOULD done = the folded
         generators installed by coord from p93m_\gen\install.sh, .bak_p93m kept; main tree build.ps1 -Test -Elf
