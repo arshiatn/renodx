@@ -418,6 +418,18 @@ class RtScene12 {
         length != 0 && length < restart_frame.size()) {
       ptlas_restart_frame_ = static_cast<uint32_t>(_wtoi(restart_frame.data()));
     }
+    // T1's layout tests (b23i_, ours: what the build's cost follows). RENODX_TW_TEST_PTLAS_FAST_BUILD: the PTLAS built
+    // for fast builds (nvapi.h: FAST_BUILD "for fast update/build performance"). RENODX_TW_TEST_PTLAS_PARTITION=<n>:
+    // n instances a partition, a power of two from 256 to 65536 (fewer, larger partitions, as the uniform grid of
+    // NVIDIA's vk_partitioned_tlas sample); anything else is refused.
+    ptlas_fast_build_ = ptlas_asked && GetEnvironmentVariableW(L"RENODX_TW_TEST_PTLAS_FAST_BUILD", nullptr, 0) != 0;
+    std::array<wchar_t, 16> partition_size = {};
+    if (const DWORD length = ptlas_asked ? GetEnvironmentVariableW(L"RENODX_TW_TEST_PTLAS_PARTITION", partition_size.data(), static_cast<DWORD>(partition_size.size())) : 0;
+        length != 0 && length < partition_size.size()) {
+      if (const auto size = static_cast<uint32_t>(_wtoi(partition_size.data())); std::has_single_bit(size) && size >= PTLAS_PARTITION_SIZE && size <= 65536) {
+        ptlas_partition_size_ = size;
+      }
+    }
 #else
     const bool ptlas_asked = false;
 #endif
@@ -5592,13 +5604,14 @@ class RtScene12 {
 
 #if defined(RENODX_NVAPI_CLUSTERS)
   // The partitioned TLAS of a room of `capacity` placed slots: the CPU's places, then the placed ones from PLACED_BASE
-  // (M1), PTLAS_PARTITION_SIZE a partition, no global partition (B15); built for fast traces.
-  static NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_INPUTS PtlasInputs(uint32_t capacity) {
+  // (M1), PTLAS_PARTITION_SIZE a partition, no global partition (B15); built for fast traces (both by default: the
+  // test switches above change them).
+  NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_INPUTS PtlasInputs(uint32_t capacity) const {
     return {
-        .flags = NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_FLAG_FAST_TRACE,
+        .flags = ptlas_fast_build_ ? NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_FLAG_FAST_BUILD : NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_FLAG_FAST_TRACE,
         .instanceCount = PLACED_BASE + capacity,
-        .maxInstancePerPartitionCount = PTLAS_PARTITION_SIZE,
-        .partitionCount = (PLACED_BASE + capacity) / PTLAS_PARTITION_SIZE,
+        .maxInstancePerPartitionCount = ptlas_partition_size_,
+        .partitionCount = (PLACED_BASE + capacity + ptlas_partition_size_ - 1) / ptlas_partition_size_,
         .maxInstanceInGlobalPartitionCount = 0,
     };
   }
@@ -5704,8 +5717,10 @@ class RtScene12 {
       ptlas_restart_ = true;
       ptlas_written_.assign(PTLAS_INSTANCES, {});
       ptlas_wanted_.resize(PTLAS_INSTANCES);
-      slow_report_ += std::format("{}[TW ray tracing] Partitioned TLAS: {} instances ({} for placed ones), {} MB x 2 + {} MB scratch, operations {} MB.",
-                                  (slow_report_.empty() ? "" : "\n"), PLACED_BASE + placed_capacity_, placed_capacity_, made->ptlas_sizes.result >> 20,
+      slow_report_ += std::format("{}[TW ray tracing] Partitioned TLAS: {} instances ({} for placed ones) in {} partitions of {} (fast {}), {} MB x 2 + {} "
+                                  "MB scratch, operations {} MB.",
+                                  (slow_report_.empty() ? "" : "\n"), PLACED_BASE + placed_capacity_, placed_capacity_,
+                                  (PLACED_BASE + placed_capacity_ + ptlas_partition_size_ - 1) / ptlas_partition_size_, ptlas_partition_size_, (ptlas_fast_build_ ? "build" : "trace"), made->ptlas_sizes.result >> 20,
                                   made->ptlas_sizes.scratch >> 20, ptlas_ops_->GetDesc().Width >> 20);
     }
   }
@@ -8660,7 +8675,7 @@ class RtScene12 {
           written = {.blas = 0, .id = 0, .flags = 0};
         }
         write.instanceIndex = at;
-        write.partitionIndex = at / PTLAS_PARTITION_SIZE;
+        write.partitionIndex = at / ptlas_partition_size_;
       };
       for (const uint32_t at : places) write_place(at);
       for (const uint32_t at : ptlas_places_) {
@@ -8711,7 +8726,7 @@ class RtScene12 {
           const uint32_t groups = (bound + 63) / 64;
           for (const uint32_t mode : {0u, 1u, 2u}) {
             const std::array<uint32_t, 8> diff_dispatch = {mode | (ptlas_restart_ ? 16u : 0u), write_count, instance_count, tlas_instances, bound,
-                                                           PLACED_BASE, PTLAS_PARTITION_SIZE, PLACED_BASE + placed_capacity_};
+                                                           PLACED_BASE, ptlas_partition_size_, PLACED_BASE + placed_capacity_};
             list->SetComputeRoot32BitConstants(ROOT_DISPATCH, static_cast<UINT>(diff_dispatch.size()), diff_dispatch.data(), 0);
             if (mode == 1) {
               list->Dispatch(1, 1, 1);
@@ -11284,6 +11299,10 @@ class RtScene12 {
   uint32_t ptlas_placed_span_ = 0;
   uint32_t ptlas_restart_frame_ = UINT32_MAX;
   bool ptlas_restart_ = false;
+  // T1's layout tests (RENODX_TW_TEST_PTLAS_FAST_BUILD, RENODX_TW_TEST_PTLAS_PARTITION): the build's flag and the
+  // instances a partition (the PTLAS's prebuild and builds both take them, nvapi.h:21362).
+  bool ptlas_fast_build_ = false;
+  uint32_t ptlas_partition_size_ = PTLAS_PARTITION_SIZE;
   struct PtlasPlacedRead {
     uint32_t frame = UINT32_MAX;
     uint32_t cpu_writes = 0;
