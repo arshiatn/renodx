@@ -18207,7 +18207,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         18 PerfFix values = the run's lines, mask list byte-equal to 10f837d7c, threads fail-safe, x87fix CPU-independent;
         S1 = fpxp_ S2 (a mutant at battle_step.hpp:2881 survives: refused window + entry miss untested); N1-N5.
         Plugin fix round pxp_ (resumed, Fable 5.2 Medium, est 15: the test row + N1-N4 + fpxp_ N1 / N4 / N5) STARTED
-        23:32; the add-on round (fpxp_ S1 / S4, rpxp_ N5) after the sprite merge.
+        23:32; the add-on round (fpxp_ S1 / S4, rpxp_ N5) after the sprite merge. pxp_ plugin fix round DONE 23:46 (14 min;
+        bef426e36): the refused-window + entry-miss row (kills the :2881 mutant), N3's optional row, rpxp_ N1-N4,
+        fpxp_ N1 / N4 / N5; mutants 6 / 6, plugin test 0 failures, gated amd64; DLL 3725e9f6 (out4 time 23:32:56 looks
+        early). Sonnet re-check cpxp_ (rebuilds from bef426e36, compares the sha) STARTED 23:46; then a -PerfFix smoke
+        on the checked DLL, merge of the plugin part.
         - [ ] PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also run on the PerfFix stack
         once (same result as without PerfFix). Owner: coord (batch prep)
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
