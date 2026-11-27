@@ -129,7 +129,8 @@ void main(uint3 id : SV_DispatchThreadID) {
     const uint run = (group_count + 63u) / 64u;
     const uint run_end = min((lane + 1u) * run, group_count);
     uint run_total = 0u;
-    [unroll(8)]
+    // A plain loop, as rt_place's: an unroll count caps a loop of unknown length at that many trips (DXC: 8 loads, no
+    // back edge), so past 512 groups the count fell short and the build dropped the last arguments (G-B23 run 2, A7).
     for (uint at = lane * run; at < run_end; ++at) run_total += diff.Load(DIFF_GROUPS + at * 16u + 8u);
     shared_values[lane] = run_total;
     GroupMemoryBarrierWithGroupSync();
