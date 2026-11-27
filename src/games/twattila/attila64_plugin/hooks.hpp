@@ -754,11 +754,17 @@ static ATTILA64_GAME_CALL void EffectWalkEntry(uint8_t* node, float first_float,
   if (effects_offered.load(std::memory_order_acquire)) {
     const DWORD thread = GetCurrentThreadId();
     DWORD first_thread = effect_walk_thread.load(std::memory_order_relaxed);
-    on_walk_thread = (first_thread == thread
-                      || (first_thread == 0 && effect_walk_thread.compare_exchange_strong(first_thread, thread)));
+    if (first_thread == 0) {
+      // The first offered walk's thread becomes the walks' thread. Lost to another thread's walk, first_thread is
+      // that thread's.
+      if (effect_walk_thread.compare_exchange_strong(first_thread, thread)) {
+        first_thread = thread;
+      }
+    }
+    on_walk_thread = (first_thread == thread);
     if (!on_walk_thread && !effect_thread_logged.exchange(true)) {
-      loader->log("renodx_attila64: parallel effects: a walk on thread %lu, not the walks' thread %lu: the game's walk "
-                  "alone there",
+      loader->log("renodx_attila64: parallel effects: the effect update ran on thread %lu, not on its usual thread %lu: "
+                  "left to the game there",
                   thread, first_thread);
     }
   }

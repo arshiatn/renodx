@@ -273,7 +273,8 @@ int wmain(int argc, wchar_t** argv) {
   Expect(std::memcmp(at(EFFECT_FLAG_READ_ADDRESS), EFFECT_FLAG_READ.data(), EFFECT_FLAG_READ.size()) == 0
              && EFFECT_FLAG_READ_ADDRESS + EFFECT_FLAG_READ.size() + word_at(EFFECT_FLAG_READ_ADDRESS + 2) == EFFECT_FLAG
              && EFFECT_FLAG == TWEAKS[tweaks::LOADER_FLAG_TWEAK].object + TWEAK_KINDS[TWEAK_BOOL].value_offset,
-         "effects: the game's read of the flag is the code that was read, and the flag is the last tweak's value");
+         "effects: the game's read of the flag is the code that was read, and the flag is the value of the tweak the loader "
+         "writes");
   Expect(word_at(0x32fc384 + 4) == EFFECT_TABLE_SLOTS && word_at(0x32fc38c + 4) == EFFECT_TABLE_CAPACITY
              && word_at(0x32fc2f6 + 4) == EFFECT_EMPTY_KEY && word_at(0x32fc303 + 4) == EFFECT_DELETED_KEY
              && *at(0x32fc32c + 3) == EFFECT_SLOT_VALUE && *at(0x32fc354 + 3) == EFFECT_SLOT_BYTES && EFFECT_SLOT_BYTES == 24

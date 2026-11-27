@@ -181,7 +181,9 @@ enum RestartState : uint8_t { RESTART_NONE, RESTART_APPLIED, RESTART_OUT_OF_RANG
 // One engine value as the plugin checked it.
 struct TweakSlot {
   const char* name = nullptr;  // the game's tweak name
-  uint64_t value_address = 0;  // bool: the object + 0x62, the others: + 0x64; 0 when ABSENT
+  // bool: the object + 0x62, the others: + 0x64; 0 when ABSENT, and for a value the loader writes (tweaks.h
+  // loader_writes): that one is read by its verdict only.
+  uint64_t value_address = 0;
   uint32_t default_bits = 0;   // what the check found
   uint32_t written_bits = 0;   // restart-only: the bits written at the game's start; else default_bits
   uint8_t type = TWEAK_BOOL;
