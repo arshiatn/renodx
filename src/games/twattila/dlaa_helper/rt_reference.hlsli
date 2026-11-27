@@ -240,14 +240,16 @@ float3 RefOffset(float3 position, float3 normal) {
 }
 
 // Whether an opaque or alpha-passing surface among `instances` lies along a ray within `range`: every candidate
-// alpha-tested, no cap but REF_MAX_CANDIDATES (past it blocked and counted in `overflow`).
+// alpha-tested, no cap but REF_MAX_CANDIDATES (past it blocked and counted in `overflow`). Its queries and the ones below
+// are SCENE_QUERY's: in the DXR 1.2 build (rt_reference_*_omm) on the micromapped TLAS the micromaps' known states answer
+// before any alpha test, as for the helper's rays (without the flag such a query is undefined, X18).
 bool RefBlocked(float3 origin, float3 direction, float range, uint instances, inout uint overflow) {
   RayDesc ray;
   ray.Origin = origin;
   ray.Direction = direction;
   ray.TMin = 0.f;
   ray.TMax = range;
-  RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
+  SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
   query.TraceRayInline(scene, RAY_FLAG_NONE, instances, ray);
   uint candidates = 0u;
   while (query.Proceed()) {
@@ -271,7 +273,7 @@ float RefSunTransmittance(float3 origin, float3 direction, float range, inout ui
   ray.Direction = direction;
   ray.TMin = 0.f;
   ray.TMax = range;
-  RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
   query.TraceRayInline(scene, RAY_FLAG_NONE, ALL_INSTANCES & ~SMOKE, ray);
   float transmittance = 1.f;
   uint candidates = 0u;
@@ -295,7 +297,7 @@ float RefSunTransmittance(float3 origin, float3 direction, float range, inout ui
   }
   if (query.CommittedStatus() == COMMITTED_TRIANGLE_HIT) return 0.f;
   if ((flags & SMOKE_MET) == 0u) return transmittance;
-  RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> cards;
+  SCENE_QUERY(RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) cards;
   cards.TraceRayInline(smoke_scene, RAY_FLAG_NONE, SMOKE, ray);
   while (cards.Proceed()) {
     const uint record_index = cards.CandidateInstanceID() + cards.CandidateGeometryIndex();
@@ -320,7 +322,7 @@ bool RefNearest(float3 origin, float3 direction, float range, uint instances, ou
   ray.Direction = direction;
   ray.TMin = 0.f;
   ray.TMax = range;
-  RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;
   query.TraceRayInline(scene, RAY_FLAG_NONE, instances, ray);
   uint candidates = 0u;
   while (query.Proceed()) {

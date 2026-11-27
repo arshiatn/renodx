@@ -66,6 +66,7 @@
 #include "rt_bounce.h"            // dxc -Fh (build.ps1)
 #include "rt_bounce_omm.h"        // dxc -Fh (build.ps1)
 #include "rt_cache_fill.h"        // dxc -Fh (build.ps1)
+#include "rt_cache_fill_omm.h"    // dxc -Fh (build.ps1)
 #include "rt_cache_resolve.h"     // dxc -Fh (build.ps1)
 #include "rt_compact.h"           // dxc -Fh (build.ps1)
 #include "rt_fog.h"               // dxc -Fh (build.ps1)
@@ -114,6 +115,7 @@
 #include "rt_reflect_reservoir.h"      // dxc -Fh (build.ps1)
 #include "rt_reflect_reservoir_omm.h"  // dxc -Fh (build.ps1)
 #include "rt_probe.h"             // dxc -Fh (build.ps1)
+#include "rt_probe_omm.h"         // dxc -Fh (build.ps1)
 #include "rt_scene_data.h"        // dxc -Fh (build.ps1)
 #include "rt_soft.h"              // dxc -Fh (build.ps1)
 #include "rt_sway.h"              // dxc -Fh (build.ps1)
@@ -197,7 +199,9 @@
 #include "rt_reference_digest.h"
 #include "rt_reference_group.h"
 #include "rt_reference_paths.h"
+#include "rt_reference_paths_omm.h"
 #include "rt_reference_reflect.h"
+#include "rt_reference_reflect_omm.h"
 #include "rt_reference_state.h"
 #define RENODX_REFERENCE 1
 #endif
@@ -268,6 +272,13 @@ using Microsoft::WRL::ComPtr;
 
 class RtScene12 {
  public:
+  // X18's control (CONTROL_DXR11_QUERIES_ON_OMM, tests only): rt_cache_fill, rt_probe and the reference's traced passes
+  // as their DXR 1.1 builds under DXR 1.2 too, as before (their queries undefined on a micromapped TLAS).
+#if defined(CONTROL_DXR11_QUERIES_ON_OMM)
+  static constexpr bool QUERY_TWINS = false;
+#else
+  static constexpr bool QUERY_TWINS = true;
+#endif
   // The device on the game's GPU, with DXR 1.1 (1.2 through the Agility SDK in `folder`\D3D12 when the driver has shader
   // model 6.9); false: unavailable (the status says why).
   // `details` (the addon's Log Details at the device's start): DRED, below. `any_gpu`: another vendor's GPU too (FSR or XeSS
@@ -772,7 +783,8 @@ class RtScene12 {
              && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_) && pipeline(RT_PATH_OMM, sizeof(RT_PATH_OMM), &path_pipeline_)
              && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_) && pipeline(RT_REUSE_OMM, sizeof(RT_REUSE_OMM), &reuse_pipeline_)
              && pipeline(RT_REFLECT_RESERVOIR_OMM, sizeof(RT_REFLECT_RESERVOIR_OMM), &reflect_reservoir_pipeline_)
-             && pipeline(RT_FOG_OMM, sizeof(RT_FOG_OMM), &fog_pipeline_) && pipeline(RT_LIGHTS_OMM, sizeof(RT_LIGHTS_OMM), &lights_pipeline_);
+             && pipeline(RT_FOG_OMM, sizeof(RT_FOG_OMM), &fog_pipeline_) && pipeline(RT_LIGHTS_OMM, sizeof(RT_LIGHTS_OMM), &lights_pipeline_)
+             && (!QUERY_TWINS || pipeline(RT_CACHE_FILL_OMM, sizeof(RT_CACHE_FILL_OMM), &cache_fill_pipeline_));
     if (!dxr12_) {
       trace_pipeline_.Reset();
       bounce_pipeline_.Reset();
@@ -782,6 +794,7 @@ class RtScene12 {
       reflect_reservoir_pipeline_.Reset();
       fog_pipeline_.Reset();
       lights_pipeline_.Reset();
+      cache_fill_pipeline_.Reset();
     }
     if ((!trace_pipeline_ && !pipeline(RT_TRACE, sizeof(RT_TRACE), &trace_pipeline_))
         || (!bounce_pipeline_ && !pipeline(RT_BOUNCE, sizeof(RT_BOUNCE), &bounce_pipeline_)) || !pipeline(RT_SOFT, sizeof(RT_SOFT), &soft_pipeline_)
@@ -792,7 +805,7 @@ class RtScene12 {
         || (!reflect_reservoir_pipeline_ && !pipeline(RT_REFLECT_RESERVOIR, sizeof(RT_REFLECT_RESERVOIR), &reflect_reservoir_pipeline_))
         || (!fog_pipeline_ && !pipeline(RT_FOG, sizeof(RT_FOG), &fog_pipeline_))
         || (!lights_pipeline_ && !pipeline(RT_LIGHTS, sizeof(RT_LIGHTS), &lights_pipeline_))
-        || !pipeline(RT_CACHE_FILL, sizeof(RT_CACHE_FILL), &cache_fill_pipeline_)
+        || (!cache_fill_pipeline_ && !pipeline(RT_CACHE_FILL, sizeof(RT_CACHE_FILL), &cache_fill_pipeline_))
         || !pipeline(RT_CACHE_RESOLVE, sizeof(RT_CACHE_RESOLVE), &cache_resolve_pipeline_)
         || !pipeline(RT_REFLECT_FILTER, sizeof(RT_REFLECT_FILTER), &reflect_filter_pipeline_)
         || FAILED(device_->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(descriptors_.GetAddressOf())))) {
@@ -824,7 +837,11 @@ class RtScene12 {
         probe_hits_ = Buffer(ray_bytes, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
       }
       void* mapped = nullptr;
-      bool made = probe_rays_ && probe_hits_ && SUCCEEDED(probe_rays_->Map(0, nullptr, &mapped)) && pipeline(RT_PROBE, sizeof(RT_PROBE), &probe_pipeline_);
+      // Its DXR 1.2 build on the micromapped TLAS (X18).
+      const std::span<const uint8_t> probe_code = ((dxr12_ && QUERY_TWINS) ? std::span<const uint8_t>(RT_PROBE_OMM)
+                                                                            : std::span<const uint8_t>(RT_PROBE));
+      bool made = probe_rays_ && probe_hits_ && SUCCEEDED(probe_rays_->Map(0, nullptr, &mapped))
+                  && pipeline(probe_code.data(), probe_code.size(), &probe_pipeline_);
       if (mapped != nullptr) {
         std::memcpy(mapped, rays.data(), ray_bytes);
         probe_rays_->Unmap(0, nullptr);
@@ -1080,14 +1097,18 @@ class RtScene12 {
       reference_.folder = (GetEnvironmentVariableW(L"RENODX_TW_REF_DUMP", dump.data(), static_cast<DWORD>(dump.size())) != 0)
                               ? std::filesystem::path(dump.data())
                               : (folder / L"tw_reference");
+      // The traced passes' DXR 1.2 builds on the micromapped TLAS (X18).
+      const bool traced_twins = dxr12_ && QUERY_TWINS;
       const std::array<std::pair<std::span<const uint8_t>, ComPtr<ID3D12PipelineState>*>, 7> passes = {{
           {RT_REFERENCE_ACCUMULATE, &reference_.accumulate},
           {RT_REFERENCE_CENSUS, &reference_.census},
           {RT_REFERENCE_DIGEST, &reference_.digest},
           {RT_REFERENCE_STATE, &reference_.state},
           {RT_REFERENCE_GROUP, &reference_.group},
-          {RT_REFERENCE_PATHS, &reference_.paths},
-          {RT_REFERENCE_REFLECT, &reference_.reflect},
+          {(traced_twins ? std::span<const uint8_t>(RT_REFERENCE_PATHS_OMM) : std::span<const uint8_t>(RT_REFERENCE_PATHS)),
+           &reference_.paths},
+          {(traced_twins ? std::span<const uint8_t>(RT_REFERENCE_REFLECT_OMM) : std::span<const uint8_t>(RT_REFERENCE_REFLECT)),
+           &reference_.reflect},
       }};
       const bool made = std::ranges::all_of(passes, [&](const auto& pass) { return pipeline(pass.first.data(), pass.first.size(), pass.second); });
       reference_.phase = made ? ReferencePhase::SETTLE : ReferencePhase::OFF;
@@ -3260,11 +3281,12 @@ class RtScene12 {
   [[nodiscard]] uint32_t BurnRuns() const { return burn_runs_; }
 
   // A stem's pipeline from `code` (a compute shader's DXIL, checked by rt_serve.h; empty: the base build's again), made with
-  // the scene's root signature: rt_trace, rt_bounce, rt_path, rt_reflect, rt_reuse, rt_reflect_reservoir, rt_fog, rt_lights
-  // (their DXR 1.2 builds where Dxr12()), rt_soft, rt_scene_data, rt_place, rt_cache_fill, rt_cache_resolve. False: `why`.
-  // SwapStem's stems and their pipelines (the first eight: DXR 1.2 builds where Dxr12(), their headers' _omm).
+  // the scene's root signature: rt_trace, rt_bounce, rt_path, rt_reflect, rt_reuse, rt_reflect_reservoir, rt_fog, rt_lights,
+  // rt_cache_fill (their DXR 1.2 builds where Dxr12()), rt_soft, rt_scene_data, rt_place, rt_cache_resolve. False: `why`.
+  // SwapStem's stems and their pipelines (the first nine: DXR 1.2 builds where Dxr12(), their headers' _omm; under X18's
+  // control the first eight: rt_cache_fill's DXR 1.1 build runs, UseStem names it so).
   using StemPipeline = std::pair<std::string_view, ComPtr<ID3D12PipelineState> RtScene12::*>;
-  static constexpr size_t OMM_STEMS = 8;
+  static constexpr size_t OMM_STEMS = (QUERY_TWINS ? 9 : 8);
   static constexpr std::array<StemPipeline, 13> SwapStems() {
     return {{
         {"rt_trace", &RtScene12::trace_pipeline_},
@@ -3275,10 +3297,10 @@ class RtScene12 {
         {"rt_reflect_reservoir", &RtScene12::reflect_reservoir_pipeline_},
         {"rt_fog", &RtScene12::fog_pipeline_},
         {"rt_lights", &RtScene12::lights_pipeline_},
+        {"rt_cache_fill", &RtScene12::cache_fill_pipeline_},
         {"rt_soft", &RtScene12::soft_pipeline_},
         {"rt_scene_data", &RtScene12::scene_data_pipeline_},
         {"rt_place", &RtScene12::place_pipeline_},
-        {"rt_cache_fill", &RtScene12::cache_fill_pipeline_},
         {"rt_cache_resolve", &RtScene12::cache_resolve_pipeline_},
     }};
   }
@@ -9558,6 +9580,19 @@ class RtScene12 {
     return true;
   }
 
+  // The OMM SDK's alpha cutoff for a bake at `cutoff` (both bakers'). src: omm.h:406 and :1026 (OMM SDK 1.12.0): "Texel
+  // Opacity = texture > alphaCutoff ? Opaque : Transparent"; the ray queries' AlphaPasses (rt_scene.hlsli) pass alpha >=
+  // cutoff. The next float toward 0 makes the bake's '>' that '>=' for every cutoff > 0 (ours are 0.5 or the draw's own,
+  // > 0): an alpha exactly at the cutoff baked transparent is never a candidate again, no alpha test can pass it (D3D12
+  // Raytracing spec, "Opacity micromaps and TraceRayInline"). X14; CONTROL_BAKE_CUTOFF_RAW: the cutoff as it was.
+  static float BakeCutoff(float cutoff) {
+#if defined(CONTROL_BAKE_CUTOFF_RAW)
+    return cutoff;
+#else
+    return std::nextafter(cutoff, 0.f);
+#endif
+  }
+
   // GPU Micromap Baking at the end of a request: `bakes` (leaves' and grass sets' waiting: their UVs and masks copied when
   // read) baked by the OMM SDK's GPU baker (ComputeOnly, 4-state as the ray queries test them, the CPU bakes'
   // settings): the UVs copied with garbage coordinates zeroed (rt_omm_uvs), then the bakes' dispatch chains stage by stage (all bakes' step k, then a UAV barrier; every resource
@@ -9610,7 +9645,7 @@ class RtScene12 {
       config.texCoordOffsetInBytes = static_cast<uint32_t>(totals[0]);
       config.indexFormat = ommIndexFormat_UINT_32;
       config.indexCount = bake->triangles * 3;
-      config.alphaCutoff = bake->cutoff;
+      config.alphaCutoff = BakeCutoff(bake->cutoff);
       config.maxSubdivisionLevel = static_cast<uint8_t>(bake->grass ? grass_micromap_level_ : leaf_micromap_level_);
       config.maxOutOmmArraySize = MICROMAP_MESH_BYTES;
       config.maxScratchMemorySize = ommGpuScratchMemoryBudget_MB_64;
@@ -10007,6 +10042,7 @@ class RtScene12 {
   // grass_micromap_level_), the same ones shared, wholly opaque or clear triangles the special indices (all of them so: no
   // micromaps, no array); none (no indices) when the SDK fails.
   void BakeMicromaps(MicromapBake* bake, ommBaker baker) const {
+    const float sdk_cutoff = BakeCutoff(bake->cutoff);  // the texture's and the bake's: omm.h:369 asks the same value
     ommCpuTextureMipDesc mip = ommCpuTextureMipDescDefault();
     mip.width = dlaa_bridge::RT_ATLAS_SIZE;
     mip.height = dlaa_bridge::RT_ATLAS_SIZE;
@@ -10016,7 +10052,7 @@ class RtScene12 {
     texture_desc.format = ommCpuTextureFormat_UNORM8;
     texture_desc.mips = &mip;
     texture_desc.mipCount = 1;
-    texture_desc.alphaCutoff = bake->cutoff;
+    texture_desc.alphaCutoff = sdk_cutoff;
     ommCpuTexture texture = nullptr;
     if (omm_.create_texture(baker, &texture_desc, &texture) != ommResult_SUCCESS) return;
     std::vector<uint32_t> corners(uint64_t{bake->triangles} * 3);
@@ -10031,7 +10067,7 @@ class RtScene12 {
     input.indexFormat = ommIndexFormat_UINT_32;
     input.indexBuffer = corners.data();
     input.indexCount = static_cast<uint32_t>(corners.size());
-    input.alphaCutoff = bake->cutoff;
+    input.alphaCutoff = sdk_cutoff;
     input.maxSubdivisionLevel = bake->grass ? grass_micromap_level_ : leaf_micromap_level_;
     input.maxArrayDataSize = MICROMAP_MESH_BYTES;
     input.maxWorkloadSize = MICROMAP_WORKLOAD;

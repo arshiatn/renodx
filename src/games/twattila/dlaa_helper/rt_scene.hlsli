@@ -169,8 +169,9 @@ void SceneRayFlags() {
 #endif
 }
 
-// Whether a candidate (a leaf) is solid where the ray meets it; smoke never is (its UVs are no atlas's: SmokeTransmittance
-// reads them; smoke before other dynamic captures stays in the units' BLAS, rt_d3d12.hpp).
+// Whether a candidate (a leaf) is solid where the ray meets it (alpha >= the record's cutoff: the micromaps' bake takes the
+// same rule, rt_d3d12.hpp BakeCutoff); smoke never is (its UVs are no atlas's: SmokeTransmittance reads them; smoke before
+// other dynamic captures stays in the units' BLAS, rt_d3d12.hpp).
 bool AlphaPasses(uint record_index, uint primitive, float2 barycentrics) {
   const uint4 record = records[record_index];
   if (((record.z >> 16) & RECORD_SMOKE) != 0u) return false;
