@@ -9,6 +9,9 @@
 // 3. Paths gone from frame 600 (the helper lost, the game's MSAA): off within AMBIENT_REPLACED_FRAMES + 1 frames, back on
 //    150 frames after they return at 800.
 // 4. Path Tracing off: no run, off at once.
+// 5. The helper made a new scene (RayTracingDevice changed: a lost scene, an idle release): rt_scene::Update starts the run
+//    again and turns Path-Traced Ambient off, so the new scene learns its light. An unchanged device keeps both.
+//    CONTROL: the rule before kept the run, and the new scene never learned (grey far bounce, no sky).
 #include <cstdint>
 #include <cstdio>
 #include <functional>
@@ -80,6 +83,20 @@ int main() {
   // 4.
   const Run off = Simulate(400, false, always, now);
   CHECK(off.first_on == 0);
-  std::printf("4 Path Tracing off: never on\nPASS\n");
+  std::printf("4 Path Tracing off: never on\n");
+
+  // 5.
+  static twattila::dlaa_bridge::Shared shared = {};
+  twattila::dlaa_bridge::bridge.shared = &shared;
+  twattila::rt_scene::Update({});
+  core::runtime.path_frames = 2 * core::PATH_AMBIENT_FRAMES;
+  core::runtime.path_ambient_on = true;
+  twattila::rt_scene::Update({});
+  CHECK(core::runtime.path_frames == 2 * core::PATH_AMBIENT_FRAMES && core::runtime.path_ambient_on);
+  ++shared.rt_device;
+  twattila::rt_scene::Update({});
+  CHECK(core::runtime.path_frames == 0 && !core::runtime.path_ambient_on);
+  twattila::dlaa_bridge::bridge.shared = nullptr;
+  std::printf("5 a new helper scene: the run starts again, Path-Traced Ambient off\nPASS\n");
   return 0;
 }

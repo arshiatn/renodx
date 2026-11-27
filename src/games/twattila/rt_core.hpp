@@ -4504,6 +4504,10 @@ inline void Update(const Settings& settings) {
   // scene after 10 s without a trace (the rays off, a menu): every mesh captured again. Only the first is a warning.
   if (const uint32_t device = dlaa_bridge::RayTracingDevice(); device != runtime.helper_device) {
     runtime.helper_device = device;
+    // The new scene's learned light (shade, sky scale, base colour) starts empty and is learned only while the paths run
+    // with the game's ambient: Path-Traced Ambient's warm-up again, else its far bounce stays grey and its sky dark.
+    runtime.path_frames = 0;
+    runtime.path_ambient_on = false;
     runtime.known.clear();
     runtime.short_keys.clear();
     for (auto& [set_key, mesh] : runtime.cluster_meshes) mesh.sent = false;
