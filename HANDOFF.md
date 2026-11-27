@@ -1033,7 +1033,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8bf_ / p6f_ -> coord (map edits, then implementers)
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8br_ / p6f_ -> coord (map edits, then implementers)
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
@@ -18159,8 +18159,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         two 1.3.28 -C2 rule lines; the -PerfFix Smoke pair only for the optional start; the CPU Set Setter rule for
         run_rs_pkg_580efafeb5765d81\attila64.exe (w3 too); w3t only if asked; the CPU page answer gates CP. p6f_ (PK6-64, Opus
         xHigh, the LAST fix round: owns every new a64_ab kind / check, collects ALL rule lines de-duplicated) STARTED 08:4x from
-        coord's p6f_inputs.md; Stage B's final lines sent when p8bf_ lands. Owner: p8bf_ / p6f_ -> coord (map edits, then
-        implementers)
+        coord's p6f_inputs.md; Stage B's final lines sent when p8bf_ lands. p8bf_ DONE 11-27 (Fable 5.2 xHigh, pk8_stage_b_design.md Rev 2, 850 -> 1304 lines, 26 min measured): all 7 MUSTs (B-M2
+        picks FENCE_NO_MANAGER 0xffffffff + census row W4e; B-M3 W4a-e; B-M4 allow-list, class H PLAIN_FENCED, class N whole
+        tick original; B-M5 W6b-d; B-M6 section 13 chain table; B-M7 11.1 E-lines per arm, step 5's smoke moved to step 7 after
+        ATN applies the a64_ab patch); A-M2 one more pin: fake_loader expects engine_status == 0; -Package path fixed. NEW
+        beyond the review: N1 fixed slots (helper k = slot k, owner slot 15, no counter: a re-queued helper could pass 16), N2
+        the 55 classes' owner words compared at init + game start (census W8), N3 unknown words stop the tick; the step thread
+        is an engine task thread (W6e). B-S4: KEPT_OUT_THREADS = 2 (step thread + one free), E +0.15-0.25 ms a step at 16 task
+        threads (+0.5-0.7 at 8, +1.6-2.4 at 4), fps claim 0..-1.5 % with up to 2-4 ms on touched frames; gain -5..-14 ms (centre
+        ~-10). Steps: 1 census Opus High 240 + xHigh read 60; 2 Opus High; 3 / 4 / 5 Fable 5.2 Medium (200 / 130 / 75); 6 / 7
+        Opus High; 8 review Opus xHigh + Sonnet High; 9 batch 3 starts; 10 release on ATN's word; all after Stage A + S-C. Batch
+        '-AB -Arms ep8,ep8b,ep8btt8 ...' + conditional ep8tt8 (entry now, run only if ep8btt8's golden differs while ep8b's is
+        the same). Stage B lines sent to p6f_. Re-check p8br_ (Opus xHigh, N1-N3 + kept-out thread vs L2B's core / PK9) STARTED
+        08:5x. Owner: p8br_ / p6f_ -> coord (map edits, then implementers)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
