@@ -975,7 +975,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
 - STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | PK8 Stage B designer
 - CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | coord / ATN (2048 vs 2304 slots)
-- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | rrdr_ (review) -> RR implementer (slot after c8b0_ on addon
+- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | rri_
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
@@ -983,7 +983,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | coord (briefs)
 - A/B LOOKS WAIT (ATN 11-27): every look / A/B check (AA feed, O2 thin shadows at ... | ATN (end of plans)
 - GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds a ... | coord
-- sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the de ... | omv_ -> ATN (merge)
+- sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the de ... | ATN (merge yes / no
 - 11-27 06:01 WAVE (coord; no agent cap; Fable only for PK8 Stage B). GPU plan: om ... | coord
 - NOTHING-DROPPED AUDIT 11-27 (ndc_, testbin\scratch\ndc_\handback.md): 22 report ... | next audit agent
 - O2 AT THE DEFAULT FOLIAGE 0.5 (o2_ handback:47-48): the 1/3 row stays at 0.507x, ... | ATN (accept the number) -> next SSS designer
@@ -995,7 +995,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FLIP PNGs: no bin-to-PNG step for reference\flip_tool.py from the trimmed OMM du ... | tools agent
 - OPTIONAL (a): a fresh CPU-baked grass recording (one 32-bit Attila start; its ru ... | ATN (yes / no) -> game batch
 - sdku__handback.md:102 calls the CPU baker the default (the GPU baker is; omr_ ha ... | coord (correct the note, low)
-- OMM G1 COVERAGE: the other ~190 all_modes.sh entries (non-PT / test-only) were n ... | omv_ (11-27)
 - pdi4c_ NOT DONE (a): no per-pass Nsight split of the DI passes (pdi4c_handback.m ... | pdf_ if inside its budget, else the next DI agent
 - pdi4c_ NOT DONE (b): E6 bias modes 0 vs 3 not separated (pdi4c_handback.md:407). ... | pdf_ / next DI agent
 - pdi4c_ NOT DONE (c): S1 BASIC vs RAY_TRACED only on the fused pass, not the spli ... | pdf_ / next DI agent
@@ -1010,7 +1009,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - tw_pass_timing case 0 still checks the flags, not the registrations (d11i_handba ... | next d11 writer (low)
 - X37's one-function home in texture_lod_bias.hpp (fx5a__handback.md:175). Owner: ... | next texture_lod_bias writer (low)
 - PARITY ROME REMASTERED 12 OPEN: 8 Grass.hlsl + 4 Terrain.hlsl VSMain level-B cas ... | next Rome Remastered round
-- ns_index.py DIGEST CACHE keyed by the Nsight module hash alone (omx_ 11-27): rt_ ... | nsx_ (11-27)
 - PT RUN-TO-RUN STATES (omx_ 11-27): two GPU states fixed per run in both builds ( ... | GPU plan (Opus xHigh design, later)
 - PT GATE METHOD (omx_ 11-27): sort runs by state first, or judge on the whole-run ... | ATN (yes / no) -> tools agent
 - GPU ITEM 7 PLAN (i7s_ 11-27, tools\tw\round_notes\designs\gpu_item7_plan.md): sm ... | lss0_ / lsp3_ / sms_ -> coord
@@ -1019,6 +1017,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | coord (after lss0_)
 - PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | coord (after pdf_)
 - OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; th ... | ATN (keep / remove)
+- HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + ... | next harness writer after rri_ (m1 implementer) with a befor
+- M1 / 2.9a DESIGN DONE (m1d_ 11-27, round_notes\designs\m1_29a_redesign.md): harn ... | m1 implementer (Opus High) after rri_ frees tw_rt_harness
+- M1 D1 ROWS (m1d_): two proposed all_modes.sh rows (the file belongs to the h4k_ ... | coord (with the m1 implementer)
+- LIGHT BOUNCE FAILURE PATH (m1d_): a bounce that fails after a dark trace (helper ... | m1 implementer (R4 number) -> ATN (fix or accept)
+- LIGHT BOUNCE RESOLVE ACROSS A CARRY SWITCH (m1d_): light_bounce.hpp:709-717 (var ... | ATN (eye, after the plans)
+- M1 NOT READ (m1d_): a settings change between the trace and the Light Bounce pas ... | m1 implementer (read + note)
+- CPU C8 B0 + B0a DONE (c8b0_ 11-27, testbin\scratch\c8b0_\handback.md; origin/c8b ... | coord -> L2B W2 (on c8b0_1127)
+- a64_ab.ps1 E4 / E6 FOR B0 (c8b0_): E4 (:1932) is anchored on the old two-row lin ... | L2B W4 / T0 (a64_ab's next writer
+- omv_ DUMPS: testbin\scratch\omv_\dumps = 7.8 GB of 4K raw textures (results are ... | ATN (trim yes / no)
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17684,7 +17691,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         Risks: R2 bloom halos from the noisy scene (as at 100 %), R5 half-res particles after RR's read (as at 100 %). NEXT:
         rrdr_ review (Opus xHigh), then the implementer once addon.cpp has a free slot in the CPU writer chain (its addon.cpp
         part is small: tooltip + one Settings line). Open after the implementer: O1 viewport trace, R5, G2 (ATN), G3s (game batch); rrbi_'s own G3; rrb_'s R2
-        closes once G1s passes. Owner: rrdr_ (review) -> RR implementer (slot after c8b0_ on addon.cpp)
+        closes once G1s passes. REVIEW (rrdr_ 11-27, designs\rr_before_tonemap_below100_review.md): GO WITH CHANGES; add-on part D1-D6 correct; MUSTs in
+        the harness / gate: jitter sign i + 0.5 - j, nearest sampling, + 33 %, the 100 % control in the same hold (old vs new
+        harness); G1s 48 runs + G1b 6, ~52 min GPU, est 140-165 min. rri_ STARTED 06:5x (branch rrb100_1127; addon.cpp step
+        last, after c8b0_). Owner: rri_
         - [x] gts_ SWITCH B DONE (11-26, scratch\gts_\switch_b_changed.txt, backups .bak_gts / .bak_gts2): DI_FRAMES digest,
         DI_E option 2 (Y runs get X's class maps; 48 real E files: digest sha256 = .bin, 54 energy lines identical in 3 forms,
         controls fail), worker-thread hashing, ProbeMean from digests; E file 199 MB -> ~57 KB (+2 s a job). Harness
@@ -17772,7 +17782,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         new 7 / 16, p ~0.45) and reuse L1->L2 6.5 vs 7.55 GB (+0.13 ms); whole-run helper timestamps pooled over 36 runs +0.16 %
         (p 0.31). sky_apart's label shift = an ns_index.py digest-cache bug (box below). LEFT before the merge: omv_ (DXC listing
         diff for the switch-only helper variants + the add-ons' SM6 shaders; omm-lib 1.10 vs 1.12 dll swap on the 12 micromap
-        modes, pictures + 2 timed). Owner: omv_ -> ATN (merge)
+        modes, pictures + 2 timed). LAST CHECKS PASS (omv_ 11-27, testbin\scratch\omv_\handback.md): DXC: 99 helper headers
+        (81 + the 18 switch-only: reference / path probe / recorder) and 293 add-on SM6 shaders (21 folders, Release flags):
+        0 differ; omm-lib 1.10 vs 1.12 on the 12 micromap modes (56 runs at 4K, same exe + helper, only the dll swapped):
+        pictures 0 bytes apart in 11 modes, leaf_stress reflection = run-to-run noise (same size within one dll),
+        visibility bit-identical everywhere; trace 2.312 vs 2.291 / 2.303 vs 2.304 ms; GPU bake +0.57 % (29.21 -> 29.37
+        ms). Verdict: merge (= copy the two git-ignored binaries into main's bin\ and build\downloads\omm). Owner: ATN
+        (merge yes / no; G1's pre-set rule failed on noise, so it is his call)
         - [ ] 11-27 06:01 WAVE (coord; no agent cap; Fable only for PK8 Stage B). GPU plan: omx_ (OMM 1.12 PT slowdown cause,
         Opus xHigh, no GPU first), rrd_ (Denoise Before Tone Mapping below 100 % design -> round_notes\designs\
         rr_before_tonemap_below100.md), aaf3_ (FSR / XeSS feed at 4K), pdf_ (pdi4c_ follow-up boxes, branch pdf_1127), sssf_
@@ -17801,9 +17817,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         (yes / no) -> game batch
         - [ ] sdku__handback.md:102 calls the CPU baker the default (the GPU baker is; omr_ handback:83-84). Owner: coord (correct
         the note, low)
-        - [ ] OMM G1 COVERAGE: the other ~190 all_modes.sh entries (non-PT / test-only) were not run (sdk4_ handback:15): does the
+        - [x] OMM G1 COVERAGE: the other ~190 all_modes.sh entries (non-PT / test-only) were not run (sdk4_ handback:15): does the
         merge need them? omx_: no harness mode for DXC (code-identical blobs); yes the 12 micromap modes for omm-lib 1.12;
-        the switch-only helper variants + add-on SM6 shaders need a listing diff. Owner: omv_ (11-27)
+        the switch-only helper variants + add-on SM6 shaders need a listing diff. DONE by omv_ (above). Owner: done
         - [ ] pdi4c_ NOT DONE (a): no per-pass Nsight split of the DI passes (pdi4c_handback.md:406). Owner: pdf_ if inside its
         budget, else the next DI agent
         - [ ] pdi4c_ NOT DONE (b): E6 bias modes 0 vs 3 not separated (pdi4c_handback.md:407). Owner: pdf_ / next DI agent
@@ -17841,9 +17857,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         HAVE through 7DD754DA. Lines ready: testbin\scratch\pcx_\romeremastered_proposed_lines.tsv (on a tools copy: exit
         0). Round: back up tools\tw\parity\romeremastered.tsv, add the 3 lines, optional FrameTraceReads check that
         FCA7E684 reads 7DD754DA's vertex buffers, rerun all 10 games. Owner: next Rome Remastered round
-        - [ ] ns_index.py DIGEST CACHE keyed by the Nsight module hash alone (omx_ 11-27): rt_cache_fill's debug container cached
+        - [x] ns_index.py DIGEST CACHE keyed by the Nsight module hash alone (omx_ 11-27): rt_cache_fill's debug container cached
         under 0x26c69d760f90065c gave all 18 sdk4_ old traces + sdk3_old_2 the wrong digest. Fix the key + re-derive those index
-        files (old ones kept as .bak). Owner: nsx_ (11-27)
+        files (old ones kept as .bak). FIXED (nsx_ 11-27, testbin\scratch\nsx_\handback.md): keyed by the trace's SHA-256 +
+        (device, shader index) from its own calls table (the module hash names the DXIL program, not the container); audit:
+        63 of 6,036 cached uses wrong (debug vs plain containers); 20 traces + 8 swap debug indexes re-derived (.bak_nsx1127
+        kept); sky_apart_old_1 now 'radiance cache' 0.490; a correct run re-exported byte-identical. Owner: done
         - [ ] PT RUN-TO-RUN STATES (omx_ 11-27): two GPU states fixed per run in both builds (PT rays 78.14 vs 79.73 M; reuse L1->L2
         6.5 vs 7.55 GB; leads only: CacheClaim's slot race over the 2^20 table, the sun[uint2(3,0)].w check). Making them
         deterministic gains no speed but removes ~0.1-0.2 ms of spread from every PT gate. Owner: GPU plan (Opus xHigh design, later)
@@ -17853,7 +17872,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         shaders, tw_aa_frame_gamma PASS x86 / amd64 / Thrones / WH3), 14 builds exit 0; merged aeaa1a5c5. Owner: done
         - [ ] GPU ITEM 7 PLAN (i7s_ 11-27, tools\tw\round_notes\designs\gpu_item7_plan.md): smoke spheres S0 recording scan
         (lss0_), S1 probe round (lsp3_: parts A fog / sun-only cards / sphere flag + C PTLAS smoke arms P0-P3 run; part B old MG
-        arms ready, not run), S2 design (sms_) STARTED 06:4x. Owner: lss0_ / lsp3_ / sms_ -> coord
+        arms ready, not run), S2 design (sms_) STARTED 06:4x. Owner: lss0_ / lsp3_ / sms_ -> coord. S0 DONE (lss0_, lsp_\lsp3_\scan.md): no heavy frame in the 14 recordings (max 8,004 live
+        particles, 0.77 candidates a ray; densest night1_battle 1178 / night1_wide 2652) -> S4 needed; sgr_ writes its runner
         - [ ] OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s part B traces only sun + fog rays, so
         its numbers don't depend on unified PT. Owner: ATN (yes / wait)
         - [ ] SMOKE SPHERES S3 review (Opus xHigh) of designs\smoke_spheres.md, then S5 smoke caps retirement (ATN yes for 32 /
@@ -17870,6 +17890,38 @@ heading text are in HANDOFF_ARCHIVE.md)
         10-29 harness with every ray kind meeting the smoke (instance mask alone 81.5 -> 7.9 ms); 14->138 / 6->143 ms (:217-218)
         = smoke as candidates of the main sun + fog rays, fixed in helper63 321434abd. Dead MG code stays in rt_d3d12.hpp
         (:6835, :7813, :7823-7824, :8020-8023, :8267 / :8270, :10889), listed for ATN, not dropped. Owner: ATN (keep / remove)
+        - [ ] HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + 0.5 + j)/s - 0.5
+        (tw_rt_harness.cpp:3981-3982); the game and the upscaler test use i + 0.5 - j (anti_aliasing.hpp:444-447 / 1131-1134;
+        tw_rt_harness.cpp:232-234 / 326): the picture shakes 2j against what RR is told. A fix changes that path's old baselines
+        (rrbi_ rows). Owner: next harness writer after rri_ (m1 implementer) with a before / after note
+        - [ ] M1 / 2.9a DESIGN DONE (m1d_ 11-27, round_notes\designs\m1_29a_redesign.md): harness-only (the add-on's two-frame
+        handshake, rt_core.hpp:3600-3603 / :3770, never asks under alternating bounce-free frames; the D1 row's env
+        RENODX_TW_LIGHTS_IN_BOUNCE=1 asks every frame = the root cause). Option C, 0 helper / add-on bytes:
+        HARNESS_LIGHTS_IN_BOUNCE, HARNESS_GI_SWITCH_LAST_OFF, <prefix>_lights.txt, m1_check.py cadence; gates G1-G3 + A/A; ~95
+        min + 13 4K jobs. Owner: m1 implementer (Opus High) after rri_ frees tw_rt_harness.cpp
+        - [ ] M1 D1 ROWS (m1d_): two proposed all_modes.sh rows (the file belongs to the h4k_ baseline; not edited). Owner: coord
+        (with the m1 implementer)
+        - [ ] LIGHT BOUNCE FAILURE PATH (m1d_): a bounce that fails after a dark trace (helper lost / timed out, reuse memory
+        unavailable) misses the first 32 lights for one frame (before 2.9a too); R4 measures it; a fix = the add-on re-lights
+        those torches that frame. Owner: m1 implementer (R4 number) -> ATN (fix or accept)
+        - [ ] LIGHT BOUNCE RESOLVE ACROSS A CARRY SWITCH (m1d_): light_bounce.hpp:709-717 (variance-clipped,
+        light_bounce_resolve.hlsli:99-104) blends light over frames at any carry switch; not in the harness, not measured; the
+        picture half of pdf_'s mask transient. Owner: ATN (eye, after the plans)
+        - [ ] M1 NOT READ (m1d_): a settings change between the trace and the Light Bounce pass in one frame; a traced frame whose
+        Light Bounce pass never runs (both one-frame failure cases). Owner: m1 implementer (read + note)
+        - [ ] CPU C8 B0 + B0a DONE (c8b0_ 11-27, testbin\scratch\c8b0_\handback.md; origin/c8b0_1127 1ec2e6d88 B0 + 14f8c88ce B0a,
+        not merged): plugin_block.h v2 (216 B, v1's 40 B unchanged, 10 rows, ROW_CPU_PLACEMENT = 2), hooks / main by SiteLabel,
+        build.ps1 writes the dll's .sha256; link: PLUGINS_OFF / NOT_LOADED, BlockV2(), RowsNotOffered(); addon.cpp 9 note rows;
+        F7 5 new cases. Tests: patcher 117 / 0, elf_sites 29 / 0, F7 14 / 14, tw_unit_shadows PASS, builds amd64 + x86 61
+        warnings. For the batch: no new arm / exe path / CPU Set Setter rule; after the merge rebuild the plugin in the main
+        checkout (build\attila64_plugin\renodx_attila64.dll.sha256 for a64_ab.ps1:703). Owner: coord -> L2B W2 (on c8b0_1127)
+        - [ ] a64_ab.ps1 E4 / E6 FOR B0 (c8b0_): E4 (:1932) is anchored on the old two-row line and fails on the new rows line;
+        new form '^renodx_attila64: rows: bone flush on, pass draw on, battle core (on|-), unit lod -, model detail -, shadow
+        map -, grass -, grass cells -, campaign trees -, sprites -$'; E5 stays '2 sites' for B0 (W2 makes it 3); E6 (:1941)
+        misses the new 'not loaded' texts in its 'no other outcome' list. Owner: L2B W4 / T0 (a64_ab's next writer; backup + dry
+        run)
+        - [ ] omv_ DUMPS: testbin\scratch\omv_\dumps = 7.8 GB of 4K raw textures (results are in its tables). Owner: ATN (trim yes
+        / no)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
