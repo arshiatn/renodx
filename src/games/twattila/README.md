@@ -2026,7 +2026,7 @@ From ATN's first profile (Ctesiphon, 4K, every ray-traced effect on, grass maxed
   to the neighbours). SMAA T2x: SMAA with the frame's sub-sample indices, then the same resolve at 0.5. Cameras uploaded
   after the tone mapper (the UI's) stay unjittered; no jitter after a frame without a main view (menus). Settings: TAA
   Strength (0.5-0.97, 0.9), Sharpening (0.25). Needs the in-game AA off (one sample). ReShade.log: "the main view's
-  camera found for TAA", "the scene's depth ... copied for TAA".
+  camera found" (also under Off, SMAA and CMAA2 with Small Soldiers as Sprites on), "the scene's depth ... copied for TAA".
 - WARP (tools\tw\warp_tests\aa\taa_test.cpp, the module itself on a ray-traced moving scene vs 4 x 4 supersampling,
   RMS x 1000): no AA 83; TAA 61 moving / 46 still / 51 with a moving box; SMAA T2x 60; SMAA 1x 63; TAA without the
   camera's motion 97 (the reprojection works). Jitter shift and inverses exact to 1e-6.

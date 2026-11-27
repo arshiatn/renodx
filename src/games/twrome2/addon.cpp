@@ -2082,6 +2082,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
+  aa_settings.main_focal = small_soldiers_as_sprites != 0.f;
   // DLAA's and CMAA2's passes in the frame's own curve (the swap chain proxy's decode: 2.2 with Gamma Correction on).
   aa_settings.frame_gamma = TW_FRAME_GAMMA;
   if (game_msaa) {
@@ -2407,7 +2408,7 @@ void ConfigureAddon() {
           .label = "Small Soldiers as Sprites (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "Soldiers turn into flat sprites once they are smaller on screen than Sprite Size, even within\n"
-                     "Unit Detail's distance. Lighter for the CPU in big battles. Needs TAA, SMAA T2x, DLSS, FSR or XeSS.",
+                     "Unit Detail's distance. Lighter for the CPU in big battles.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{
