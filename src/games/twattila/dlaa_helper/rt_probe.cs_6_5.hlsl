@@ -1,6 +1,9 @@
 // The first-hit probe (RENODX_TW_PROBE, a test path for the harness's first-hit dump; rt_d3d12.hpp probe_*): each ray of
 // the harness's list traced against the scene the request's trace used (the TLAS or the partitioned TLAS), every
-// triangle taken as a hit (no alpha test, no micromaps): which instance a ray meets first and how far, not what it sees.
+// triangle taken as a hit (no alpha test): which instance a ray meets first and how far, not what it sees. Its DXR 1.2
+// build (OPACITY_MICROMAPS: rt_probe_omm) on the micromapped TLAS: a query without RAYQUERY_FLAG_ALLOW_OPACITY_MICROMAPS
+// that meets a micromap is undefined (D3D12 Raytracing spec, "Opacity micromaps and TraceRayInline"); with it a
+// micro-triangle known transparent is no hit, the rest of the triangle still is (X18).
 RaytracingAccelerationStructure scene : register(t0);
 // A ray and an answer are 32 bytes each (rt_d3d12.hpp PROBE_RAY_BYTES).
 StructuredBuffer<float4> rays : register(t8);  // a ray: origin and TMax, then direction and instance mask (asfloat)
@@ -21,7 +24,11 @@ void main(uint3 id : SV_DispatchThreadID) {
   ray.TMin = 0.f;
   ray.Direction = direction.xyz;
   ray.TMax = origin.w;
+#if defined(OPACITY_MICROMAPS)
+  RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES, RAYQUERY_FLAG_ALLOW_OPACITY_MICROMAPS> query;
+#else
   RayQuery<RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
+#endif
   query.TraceRayInline(scene, RAY_FLAG_NONE, asuint(direction.w) & 0xFFu, ray);
   while (query.Proceed()) {
     if (query.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE) query.CommitNonOpaqueTriangleHit();
