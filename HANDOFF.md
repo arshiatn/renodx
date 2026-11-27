@@ -723,7 +723,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ALL PLANS LIST (ATN 11-27 16:2x: 'Some stuffs are missing ... gather those forgo ... | coord
 - UNIFIED PT COMPLETENESS CRITIC (ATN 11-27 18:5x 'Yes, start it'): unified_pt.md ... | coord
 - SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
-- CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | coord
+- CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
+- PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
 - HANDOFF AUDIT APPLIED 18:0x: hfm_ (Opus xHigh) merged the 8 parts (testbin\scrat ... | coord (section 11 items follow the CPU-first rule)
 - CPU FIRST (ATN 11-27 17:3x): 'Unified PT should come after the fixes BUT ... don ... | coord
@@ -18026,8 +18027,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         measured' form, the add-on writes the plugin's default On, BATTLE_STEP_ROW_MEASURED flips at the release step;
         CORE_STEP written even when the row is not offered (only the line gated); gated amd64 + x86 exit 0, x86 page
         389 -> 389, 3 mutations caught. F7 run by coord 18:37 (GPU lock, f7_gpu.sh): 9 passed of 9 (3 P9-4 + 3 W-A3 +
-        3 render core regression; scratch\coord_f7_wa3.log). Review rwa3_ (Opus xHigh) STARTED 18:37, deviation first;
-        then Sonnet High final; then merge. Stage B step 5 p8b5_ (Fable Medium) STARTED 18:37 on p8b_1127 (merge
+        3 render core regression; scratch\coord_f7_wa3.log). Review rwa3_ (Opus xHigh) DONE (scratchwa3_eview.md): GO WITH CHANGES, 0 MUST; the deviation UPHELD (design
+        F1 :228-229: CORE_STEP in CORE_WANTED_DEFAULT for the S-C build, the release keeps it only after S-C + Q1);
+        SHOULD-1 addon.cpp:3677-3680 row On + lane OFF reads 'off' until the next step -> 'not used yet'; SHOULD-2 release
+        note (box below); 3 NITs; F7's 9 cases prove the table. Fix round wa3_ (resumed, Opus Medium) STARTED 18:44;
+        then Sonnet High final; then merge.
+        - [ ] PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, the release changes
+        CORE_WANTED_DEFAULT (plugin_block.h) AND clears saved FasterBattleStep values with ClearSavedRows(2, ...,
+        'Attila64SettingsRevision'); flip BATTLE_STEP_ROW_MEASURED after S-C; F7's saved_off case becomes the Off-clears
+        case (one line in run.ps1). Owner: coord at the release step Stage B step 5 p8b5_ (Fable Medium) STARTED 18:37 on p8b_1127 (merge
         atn-mods, fold step 2's CONTACT_ENTRY onto the installed generator in its own copy + install.sh, ONE wiring
         commit, 3 serial test runs); then step 6 (Opus) after W-A3 merges. Note: HANDOFF clock stamps 19:xx above were an
         hour ahead; real times from 18:15 on. p1pt_ (Fable Medium) DONE 19:1x (31 of 20
