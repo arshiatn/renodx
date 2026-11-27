@@ -5,14 +5,16 @@
 
 // The plugin's sites against the game file itself: maps the Linux build's load segments at their addresses (read and
 // write, never executed), applies the loader's stack-check rewrite, and checks the build id and every site's window,
-// the hook through the fake loader, controls that must be refused, each engine value's static constructor call
-// (tweaks.h: the object, its name and its default), and the built DLL's init.
+// the hook or the patch through the fake loader, controls that must be refused, the shadow row's instructions and the
+// rest pack's call, each engine value's static constructor call (tweaks.h: the object, its name and its default), and
+// the built DLL's init.
 // elf_sites_test.exe <renodx_attila64.dll> <game ELF>; SKIPPED (exit 77, reported by build.ps1 as not run)
 // without the ELF or when the game's range is taken.
 
 #include <windows.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -117,19 +119,51 @@ int wmain(int argc, wchar_t** argv) {
     Expect(CheckSite(moved, FOREIGN).refusal != REFUSAL_NONE, "control: the site moved by one");
 
     AppliedSite applied;
+    if (site.kind == SITE_PATCH) {
+      // Any other bytes do for the write and its way back.
+      std::array<uint8_t, SITE_MAX_LENGTH> other = {};
+      for (size_t index = 0; index < site.length; ++index) {
+        other[index] = static_cast<uint8_t>(~site.window[SITE_MARGIN + index]);
+      }
+      Expect(ApplyPatch(api, site, other.data(), &applied) == REFUSAL_NONE && SiteUnchanged(site, applied)
+                 && std::memcmp(at(site.address), other.data(), site.length) == 0,
+             "the fake loader writes the patch site, snapshot matches");
+      Expect(RevertPatch(api, site, &applied) && CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the patch site put back");
+      continue;
+    }
     Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE, "the fake loader hooks the site");
     Expect(*at(site.address) == 0xe9 && SiteUnchanged(site, applied), "the site jumps to the hook, snapshot matches");
     std::memcpy(at(site.address), site.window.data() + SITE_MARGIN, site.length);
     Expect(CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the site restored");
   }
 
-  // Each engine value in the game's own code: its static constructor call passes the object, the name and a plain
-  // default stored just before (mov byte / dword [rsp + n], imm). The objects are only built when the game runs.
+  // The shadow row in the game's own code: each size is the immediate of a mov rax, imm64 that holds one float twice
+  // (width and height: 2048, or Medium's 1024), each cascade number the immediate of a mov dword [r13 + disp32], imm32.
   const auto word_at = [&](uintptr_t address) {
     uint32_t word = 0;
     std::memcpy(&word, at(address), sizeof(word));
     return word;
   };
+  for (const Site& site : SITES) {
+    if (site.row != ROW_SHADOW_MAP) continue;
+    if (site.length == 2 * sizeof(float)) {
+      std::array<float, 2> size = {};
+      std::memcpy(size.data(), at(site.address), sizeof(size));
+      const float game_size = ((site.label == LABEL_SHADOW_SIZE_MEDIUM) ? 1024.f : 2048.f);
+      Expect(*at(site.address - 2) == 0x48 && *at(site.address - 1) == 0xb8 && size[0] == game_size && size[1] == game_size,
+             "shadow: a size site is a mov rax, imm64 of the game's size twice");
+    } else {
+      Expect(site.length == sizeof(uint32_t) && *at(site.address - 7) == 0x41 && *at(site.address - 6) == 0xc7
+                 && *at(site.address - 5) == 0x85 && word_at(site.address) <= 4,
+             "shadow: a cascade site is the immediate of a mov dword [r13 + disp32], imm32");
+    }
+  }
+  // The rest pack's return address follows a call of the pack function.
+  Expect(*at(REST_PACK_RETURN - 5) == 0xe8 && REST_PACK_RETURN + word_at(REST_PACK_RETURN - 4) == SITES[LABEL_PACK_ENTRY].address,
+         "rest pack: its return address is right after a call of the pack site");
+
+  // Each engine value in the game's own code: its static constructor call passes the object, the name and a plain
+  // default stored just before (mov byte / dword [rsp + n], imm). The objects are only built when the game runs.
   for (const TweakKind& kind : TWEAK_KINDS) {
     // mov qword [register], imm32: REX.W (with or without B), c7, a register-indirect operand, the table.
     bool stores_table = false;

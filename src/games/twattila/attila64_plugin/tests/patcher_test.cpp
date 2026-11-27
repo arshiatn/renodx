@@ -5,10 +5,11 @@
 
 // The plugin's unit test on a fake game image at the game's addresses (no game file needed): identity, the site checks
 // and their refusals, the loader's hook and the re-check, the stack-check rule, the hook bodies on synthetic game
-// functions at the real sites (this file's copy of hooks.hpp and the built DLL's own) with the add-on's callbacks and
-// one live battle-core reserve on this process's own CPU sets, the callback drain, and the built DLL's init with each
-// refusal and with the RenderCore key (copies of the DLL under dll_cases\, a ReShade.ini next to this exe for the ini
-// keys), and the text a batch tool looks for in the DLL file.
+// functions at the real sites (this file's copy of hooks.hpp and the built DLL's own) with the add-on's callbacks,
+// the scale rows at neutral and active, and one live battle-core reserve on this process's own CPU sets, the callback
+// drain, the patch kind and its way back, and the built DLL's init with each refusal, with the RenderCore key and with
+// the ShadowMapSize key (copies of the DLL under dll_cases\, a ReShade.ini next to this exe for the ini keys), and the
+// text a batch tool looks for in the DLL file.
 // patcher_test.exe <renodx_attila64.dll>; exit code = failures.
 
 #include <windows.h>
@@ -16,12 +17,16 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cfloat>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <span>
 #include <string>
 #include <string_view>
@@ -30,6 +35,7 @@
 
 #include "../hooks.hpp"
 #include "../patcher.hpp"
+#include "../tweaks.hpp"
 #include "fake_loader.hpp"
 
 namespace {
@@ -42,6 +48,14 @@ inline constexpr uintptr_t DRAW_RECORD = 0x630000;  // the synthetic draw stores
 inline constexpr uintptr_t RULE_SITE = 0x640000;
 inline constexpr uintptr_t STEP_RECORD = 0x650000;  // the synthetic step stores what its task holds here and counts
 inline constexpr uint64_t STEP_RESULT = 0x5eed0000c0de;
+inline constexpr uintptr_t UNIT_LOD_RECORD = 0x660000;   // the synthetic unit LOD function's record and its 18 floats
+inline constexpr uintptr_t MODEL_LOD_RECORD = 0x670000;  // the synthetic model LOD pick's record
+inline constexpr uintptr_t CALLER_THUNKS = 0x680000;     // callers with known return addresses (WriteCaller)
+inline constexpr uintptr_t CALLER_SAVED = 0x690000;      // the six callee-saved registers after a caller's call
+// What a caller loads into rbx, rbp, r12, r13, r14 and r15 before its call.
+inline constexpr std::array<uint64_t, 6> CALLER_SENTINELS = {0xb0b0b0b0b0b0b0b0, 0xb5b5b5b5b5b5b5b5, 0xc0c0c0c0c0c0c0c0,
+                                                             0xd0d0d0d0d0d0d0d0, 0xe0e0e0e0e0e0e0e0, 0xf0f0f0f0f0f0f0f0};
+inline constexpr size_t CALLER_CALL_OFFSET = 74;  // a caller's call instruction, from its entry
 
 struct PackRecord {
   std::array<uint64_t, 8> arguments;
@@ -55,6 +69,24 @@ struct StepRecord {
   uint64_t task_field;
   uint32_t calls;
 };
+struct UnitLodRecord {
+  std::array<uint64_t, 6> arguments;  // rdi (through rbx), rsi, rdx, rcx, r8, r9 as the function got them
+  uint32_t calls;
+  uint32_t unused;
+  uint64_t return_address;            // what the function would return to
+  std::array<float, 18> distances;    // copied into the caller's table
+};
+static_assert(offsetof(UnitLodRecord, calls) == 0x30 && offsetof(UnitLodRecord, return_address) == 0x38
+              && offsetof(UnitLodRecord, distances) == 0x40);
+struct ModelLodRecord {
+  uint64_t entry;
+  uint64_t next_lod;
+  float distance_squared;
+  uint32_t calls;
+  uint64_t return_address;
+};
+static_assert(offsetof(ModelLodRecord, distance_squared) == 0x10 && offsetof(ModelLodRecord, calls) == 0x14
+              && offsetof(ModelLodRecord, return_address) == 0x18);
 
 // The synthetic game functions are the real sites' bytes (each window's site and its 16 bytes after) followed by these
 // tails, Linux calling convention. The pack window ends inside mov [rsp+disp8], r9: its tail starts with the disp8.
@@ -104,6 +136,81 @@ inline constexpr std::array<uint8_t, 34> STEP_TAIL = {
 };
 inline constexpr uint8_t RET = 0xc3;
 
+// Unit LOD: push rbp / r14 / rbx, sub rsp 0x50 (the site), then mov r14d, ecx, mov ebp, edx, mov rbx, rdi,
+// test r9b, r9b, je +0x2a and the first three bytes of movaps xmm7, [rip + disp32] (the window). The test puts that
+// disp32 (to UNIT_LOD_RECORD, 16-aligned) right after the window, then UNIT_LOD_SKIP, and this body where the je lands.
+inline constexpr std::array<uint8_t, 2> UNIT_LOD_SKIP = {0xeb, 0x21};  // jmp to the body, as the je does
+inline constexpr size_t UNIT_LOD_BODY_OFFSET = 0x3f;                   // the je's target, from the function's entry
+inline constexpr std::array<uint8_t, 99> UNIT_LOD_BODY = {
+    0x48, 0xb8, 0x00, 0x00, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rax, UNIT_LOD_RECORD
+    0x48, 0x89, 0x18,                                      // mov [rax], rbx (rdi)
+    0x48, 0x89, 0x70, 0x08,                                // mov [rax+8], rsi
+    0x48, 0x89, 0x50, 0x10,                                // mov [rax+16], rdx
+    0x48, 0x89, 0x48, 0x18,                                // mov [rax+24], rcx
+    0x4c, 0x89, 0x40, 0x20,                                // mov [rax+32], r8
+    0x4c, 0x89, 0x48, 0x28,                                // mov [rax+40], r9
+    0x48, 0x8b, 0x4c, 0x24, 0x68,                          // mov rcx, [rsp+0x68]: the return address
+    0x48, 0x89, 0x48, 0x38,                                // mov [rax+0x38], rcx
+    0xff, 0x40, 0x30,                                      // inc dword [rax+0x30]
+    0x0f, 0x10, 0x40, 0x40, 0x0f, 0x11, 0x03,              // movups xmm0, [rax+0x40]; movups [rbx], xmm0
+    0x0f, 0x10, 0x40, 0x50, 0x0f, 0x11, 0x43, 0x10,        // the next 16 bytes
+    0x0f, 0x10, 0x40, 0x60, 0x0f, 0x11, 0x43, 0x20,
+    0x0f, 0x10, 0x40, 0x70, 0x0f, 0x11, 0x43, 0x30,
+    0x48, 0x8b, 0x88, 0x80, 0x00, 0x00, 0x00,              // mov rcx, [rax+0x80]: entries 16 and 17
+    0x48, 0x89, 0x4b, 0x40,                                // mov [rbx+0x40], rcx
+    0x48, 0x89, 0xd8,                                      // mov rax, rbx: the table is the result
+    0x48, 0x83, 0xc4, 0x50,                                // add rsp, 0x50
+    0x5b, 0x41, 0x5e, 0x5d,                                // pop rbx / r14 / rbp
+    0xc3,                                                  // ret
+};
+// Model LOD: push r14 / rbx / rax, mov r14, rsi (the site), then mov rbx, rdi, mov qword [r14], 0,
+// mov ecx, [rbx + 0x44], xor eax, eax and the first byte of test ecx, ecx (the window). The tail returns the entry.
+inline constexpr std::array<uint8_t, 46> MODEL_LOD_TAIL = {
+    0xc9,                                                  // the window's 85: test ecx, ecx
+    0x48, 0xb8, 0x00, 0x00, 0x67, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rax, MODEL_LOD_RECORD
+    0x48, 0x89, 0x18,                                      // mov [rax], rbx (rdi)
+    0x4c, 0x89, 0x70, 0x08,                                // mov [rax+8], r14 (rsi)
+    0xf3, 0x0f, 0x11, 0x40, 0x10,                          // movss [rax+16], xmm0
+    0xff, 0x40, 0x14,                                      // inc dword [rax+20]
+    0x48, 0x8b, 0x4c, 0x24, 0x18,                          // mov rcx, [rsp+0x18]: the return address
+    0x48, 0x89, 0x48, 0x18,                                // mov [rax+24], rcx
+    0x48, 0x89, 0xd8,                                      // mov rax, rbx
+    0x48, 0x83, 0xc4, 0x08,                                // add rsp, 8
+    0x5b, 0x41, 0x5e,                                      // pop rbx / r14
+    0xc3,                                                  // ret
+};
+
+// A caller in the fake game whose call instruction sits at `call_at` (so the callee sees call_at + 5 as its return
+// address): it loads CALLER_SENTINELS into the callee-saved registers, calls `target` with the arguments it got itself
+// (16-aligned stack, as the game's calls are), and stores those registers at CALLER_SAVED before it returns the
+// callee's result. Returns its entry.
+uintptr_t WriteCaller(uintptr_t call_at, uintptr_t target) {
+  auto* code = reinterpret_cast<uint8_t*>(call_at - CALLER_CALL_OFFSET);
+  const auto emit = [&](std::initializer_list<uint8_t> bytes) { code = std::copy(bytes.begin(), bytes.end(), code); };
+  const auto emit_value = [&](uint64_t value, size_t size) {
+    std::memcpy(code, &value, size);
+    code += size;
+  };
+  emit({0x53, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57});  // push rbx / rbp / r12 / r13 / r14 / r15
+  emit({0x48, 0x83, 0xec, 0x08});                                      // sub rsp, 8
+  const std::array<std::array<uint8_t, 2>, 6> load_register = {{{0x48, 0xbb}, {0x48, 0xbd}, {0x49, 0xbc}, {0x49, 0xbd},
+                                                                {0x49, 0xbe}, {0x49, 0xbf}}};  // mov reg, imm64
+  for (size_t index = 0; index < load_register.size(); ++index) {
+    emit({load_register[index][0], load_register[index][1]});
+    emit_value(CALLER_SENTINELS[index], 8);
+  }
+  emit({0xe8});  // call target
+  emit_value(static_cast<uint32_t>(target - (call_at + 5)), 4);
+  emit({0x49, 0xbb});  // mov r11, CALLER_SAVED
+  emit_value(CALLER_SAVED, 8);
+  emit({0x49, 0x89, 0x1b, 0x49, 0x89, 0x6b, 0x08, 0x4d, 0x89, 0x63, 0x10});  // mov [r11], rbx; [r11+8], rbp; [r11+16], r12
+  emit({0x4d, 0x89, 0x6b, 0x18, 0x4d, 0x89, 0x73, 0x20, 0x4d, 0x89, 0x7b, 0x28});  // [r11+24], r13; +32, r14; +40, r15
+  emit({0x48, 0x83, 0xc4, 0x08});                                      // add rsp, 8
+  emit({0x41, 0x5f, 0x41, 0x5e, 0x41, 0x5d, 0x41, 0x5c, 0x5d, 0x5b});  // pop r15 / r14 / r13 / r12 / rbp / rbx
+  emit({RET});
+  return call_at - CALLER_CALL_OFFSET;
+}
+
 // The fake view: its vtable's pass-kind slot returns `kind`.
 struct FakeView {
   void* const* vtable;
@@ -147,7 +254,15 @@ void PassEnd(uint32_t pass_kind, const PassMeasure& measure) noexcept {
 const Callbacks CALLBACKS = {.before_pack = &BeforePack, .pass_begin = &PassBegin, .pass_end = &PassEnd};
 const Callbacks OTHER_CALLBACKS = CALLBACKS;
 
-inline constexpr uint32_t ALL_ROWS = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT);
+inline constexpr uint32_t ALL_ROWS = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT)
+                                     | RowBit(ROW_UNIT_LOD) | RowBit(ROW_MODEL_DETAIL) | RowBit(ROW_SHADOW_MAP);
+inline constexpr uint32_t HOOK_SITE_COUNT = [] {
+  uint32_t count = 0;
+  for (const Site& site : SITES) {
+    count += (site.kind == SITE_HOOK) ? 1 : 0;
+  }
+  return count;
+}();
 
 }  // namespace
 
@@ -170,6 +285,9 @@ int wmain(int argc, wchar_t** argv) {
   loader = &api;
 
   const auto at = [](uintptr_t address) { return reinterpret_cast<uint8_t*>(address); };
+  // Where the fake game's callers of the two LOD functions call them.
+  constexpr uintptr_t UNIT_LOD_CALL = CALLER_THUNKS + CALLER_CALL_OFFSET;
+  constexpr uintptr_t MODEL_LOD_CALL = CALLER_THUNKS + 0x100 + CALLER_CALL_OFFSET;
   const auto write_game = [&] {
     std::memcpy(at(GAME_LO), ELF_MAGIC.data(), ELF_MAGIC.size());
     std::memcpy(at(BUILD_ID_NOTE_ADDRESS), BUILD_ID_NOTE.data(), BUILD_ID_NOTE.size());
@@ -183,6 +301,18 @@ int wmain(int argc, wchar_t** argv) {
     std::memcpy(at(draw_end), DRAW_TAIL.data(), DRAW_TAIL.size());
     std::memcpy(at(step_end), STEP_TAIL.data(), STEP_TAIL.size());
     *at(step_end + STEP_TAIL.size()) = RET;
+    const Site& unit_lod_site = SITES[LABEL_UNIT_LOD_ENTRY];
+    const uintptr_t unit_lod_end = unit_lod_site.address + unit_lod_site.length + SITE_MARGIN;
+    const auto record_from_load = static_cast<int32_t>(UNIT_LOD_RECORD - (unit_lod_end + sizeof(int32_t)));
+    std::memcpy(at(unit_lod_end), &record_from_load, sizeof(record_from_load));
+    std::memcpy(at(unit_lod_end + sizeof(int32_t)), UNIT_LOD_SKIP.data(), UNIT_LOD_SKIP.size());
+    std::memcpy(at(unit_lod_site.address + UNIT_LOD_BODY_OFFSET), UNIT_LOD_BODY.data(), UNIT_LOD_BODY.size());
+    const Site& model_lod_site = SITES[LABEL_MODEL_LOD_ENTRY];
+    std::memcpy(at(model_lod_site.address + model_lod_site.length + SITE_MARGIN), MODEL_LOD_TAIL.data(),
+                MODEL_LOD_TAIL.size());
+    WriteCaller(REST_PACK_RETURN - 5, SITES[LABEL_PACK_ENTRY].address);
+    WriteCaller(UNIT_LOD_CALL, unit_lod_site.address);
+    WriteCaller(MODEL_LOD_CALL, model_lod_site.address);
     // The window's call rel32 ends one byte before the window does.
     int32_t step_call = 0;
     std::memcpy(&step_call, at(step_end - 5), sizeof(step_call));
@@ -227,19 +357,30 @@ int wmain(int argc, wchar_t** argv) {
   {
     uint32_t labels_seen = 0;
     bool labels_ok = true;
-    for (const Site& site : SITES) {
-      labels_ok = labels_ok && site.label < LABEL_COUNT && (labels_seen & (1u << site.label)) == 0
-                  && REPLACEMENTS[site.label] != nullptr;
+    for (size_t index = 0; index < SITES.size(); ++index) {
+      const Site& site = SITES[index];
+      labels_ok = labels_ok && site.label == index && (labels_seen & (1u << site.label)) == 0
+                  && (REPLACEMENTS[site.label] != nullptr) == (site.kind == SITE_HOOK);
       labels_seen |= 1u << site.label;
     }
-    Expect(labels_ok && labels_seen == (1u << LABEL_COUNT) - 1u, "labels: one per site, each with its hook");
+    Expect(labels_ok && labels_seen == (1u << LABEL_COUNT) - 1u && SITES.size() == LABEL_COUNT,
+           "labels: one per site in label order, a hook for each hook site and none for a patch site");
     Expect(REPLACEMENTS[LABEL_PACK_ENTRY] == reinterpret_cast<void*>(&PackEntry)
                && REPLACEMENTS[LABEL_VIEW_DRAW_ENTRY] == reinterpret_cast<void*>(&ViewDrawEntry)
-               && REPLACEMENTS[LABEL_STEP_ENTRY] == reinterpret_cast<void*>(&StepTaskEntry),
+               && REPLACEMENTS[LABEL_STEP_ENTRY] == reinterpret_cast<void*>(&StepTaskEntry)
+               && REPLACEMENTS[LABEL_UNIT_LOD_ENTRY] == reinterpret_cast<void*>(&UnitLodEntry)
+               && REPLACEMENTS[LABEL_MODEL_LOD_ENTRY] == reinterpret_cast<void*>(&ModelLodEntry),
            "labels: each holds its own hook");
-    Expect(LABEL_STEP_ENTRY == 2 && SITES[LABEL_STEP_ENTRY].row == ROW_CPU_PLACEMENT && SITES[LABEL_STEP_ENTRY].label == LABEL_STEP_ENTRY
-               && SITES[ROW_BONE_FLUSH].label == LABEL_PACK_ENTRY && SITES[ROW_PASS_DRAW].label == LABEL_VIEW_DRAW_ENTRY,
-           "labels: the sites are in row order");
+    Expect(LABEL_STEP_ENTRY == 2 && SITES[LABEL_STEP_ENTRY].row == ROW_CPU_PLACEMENT
+               && SITES[ROW_BONE_FLUSH].label == LABEL_PACK_ENTRY && SITES[ROW_PASS_DRAW].label == LABEL_VIEW_DRAW_ENTRY
+               && SITES[LABEL_UNIT_LOD_ENTRY].row == ROW_UNIT_LOD && SITES[LABEL_MODEL_LOD_ENTRY].row == ROW_MODEL_DETAIL,
+           "labels: the first sites are in row order");
+    uint32_t shadow_sites = 0;
+    for (const Site& site : SITES) {
+      Expect((site.kind == SITE_PATCH) == (site.row == ROW_SHADOW_MAP), "kinds: the shadow row's sites are the patches");
+      shadow_sites += (site.row == ROW_SHADOW_MAP) ? 1 : 0;
+    }
+    Expect(shadow_sites == 7 && HOOK_SITE_COUNT == 5, "kinds: 5 hook sites and the shadow row's 7 immediates");
   }
 
   // Site checks on the real sites' windows.
@@ -287,6 +428,40 @@ int wmain(int argc, wchar_t** argv) {
     Expect(CheckSite(site, {}).refusal == REFUSAL_DIFFERS, "apply: a second check sees our bytes");
     *at(site.address + 4) ^= 1;
     Expect(!SiteUnchanged(site, applied), "apply: a later change is seen");
+  }
+
+  // The patch kind: nothing to write, a write, the loader's refusal, and the way back.
+  {
+    write_game();
+    const Site& site = SITES[LABEL_SHADOW_SIZE_MAX];
+    const uint8_t* expect = site.window.data() + SITE_MARGIN;
+    const std::array<float, 2> doubled = {4096.f, 4096.f};
+    const auto* doubled_bytes = reinterpret_cast<const uint8_t*>(doubled.data());
+    AppliedSite applied;
+    Expect(ApplyPatch(api, site, nullptr, &applied) == REFUSAL_NONE && applied.applied && applied.original == nullptr
+               && site_untouched(site) && SiteUnchanged(site, applied),
+           "patch: nothing to write, the site is in with the game's bytes");
+    Expect(RevertPatch(api, site, &applied) && !applied.applied && site_untouched(site), "patch: out again, nothing to put back");
+    failing_patch_call = 1;
+    applied = {};
+    Expect(ApplyPatch(api, site, doubled_bytes, &applied) == REFUSAL_WRITE_FAILED && !applied.applied && site_untouched(site),
+           "patch: the loader's refusal leaves the game's bytes");
+    Expect(ApplyPatch(api, site, doubled_bytes, &applied) == REFUSAL_NONE && applied.applied
+               && std::memcmp(at(site.address), doubled_bytes, site.length) == 0 && SiteUnchanged(site, applied),
+           "patch: written, snapshot of the new bytes");
+    Expect(CheckSite(site, {}).refusal == REFUSAL_DIFFERS, "patch: a second check sees our bytes");
+    Expect(CheckSite(SITES[LABEL_SHADOW_EXTRA_HIGH], {}).refusal == REFUSAL_NEIGHBOUR,
+           "patch: a written size lies in the next cascade site's window (why every site is checked first)");
+    *at(site.address + 3) ^= 1;
+    Expect(!SiteUnchanged(site, applied), "patch: a later change is seen");
+    *at(site.address + 3) ^= 1;
+    Expect(RevertPatch(api, site, &applied) && !applied.applied && site_untouched(site)
+               && std::memcmp(at(site.address), expect, site.length) == 0,
+           "patch: the way back puts the game's bytes in again");
+    Expect(ApplyPatch(api, site, doubled_bytes, &applied) == REFUSAL_NONE, "patch: written again");
+    failing_patch_call = 1;
+    Expect(!RevertPatch(api, site, &applied) && !applied.applied && !site_untouched(site),
+           "patch: a refused way back is reported, the site counts as out");
   }
 
   // The stack-check rule: the windows hold its result.
@@ -342,6 +517,56 @@ int wmain(int argc, wchar_t** argv) {
   std::array<void*, VIEW_KIND_SLOT + 1> slots = {};
   slots[VIEW_KIND_SLOT] = reinterpret_cast<void*>(&FakeViewKind);
   FakeView view = {.vtable = slots.data(), .kind = 7};
+  auto* unit_lod_record = reinterpret_cast<UnitLodRecord*>(UNIT_LOD_RECORD);
+  auto* model_lod_record = reinterpret_cast<ModelLodRecord*>(MODEL_LOD_RECORD);
+  const auto rest_pack = reinterpret_cast<PackFn>(REST_PACK_RETURN - 5 - CALLER_CALL_OFFSET);
+  const auto unit_lod = reinterpret_cast<UnitLodFn>(CALLER_THUNKS);
+  const auto model_lod = reinterpret_cast<ModelLodFn>(CALLER_THUNKS + 0x100);
+  const auto forget_callee_saved = [&] { std::memset(at(CALLER_SAVED), 0, sizeof(CALLER_SENTINELS)); };
+  const auto callee_saved_kept = [&] {
+    return std::memcmp(at(CALLER_SAVED), CALLER_SENTINELS.data(), sizeof(CALLER_SENTINELS)) == 0;
+  };
+  const auto same_bits = [](float left, float right) { return std::memcmp(&left, &right, sizeof(left)) == 0; };
+  // The game's 18 distances: plain values, a NaN, a huge one and an infinity.
+  const std::array<float, 18> game_distances = {
+      120.f, 240.f, 360.f, 480.f, 5.f, 6.f, std::numeric_limits<float>::quiet_NaN(), 8.f, 900.f,
+      1000.f, 1100.f, 1200.f, 13.f, 14.f, 15.f, 3.0e38f, 10000.f, std::numeric_limits<float>::infinity()};
+  // Whole registers: the high halves must reach the game too. `fourth`'s low byte picks the game's first branch.
+  const std::array<uint64_t, 4> lod_settings = {0x1111000000000003, 0x2222000000000004, 0x3333000000000005, 0x4444000000000000};
+  std::array<float, 18> lod_table = {};
+  // One call through the fake game's caller; true when the function got its arguments and the caller its result.
+  const auto unit_lod_once = [&](uint64_t fourth_low_byte) {
+    forget_callee_saved();
+    unit_lod_record->distances = game_distances;
+    unit_lod_record->return_address = 0;
+    lod_table = {};
+    const float* result = unit_lod(lod_table.data(), reinterpret_cast<void*>(0x7777), lod_settings[0], lod_settings[1],
+                                   lod_settings[2], lod_settings[3] | fourth_low_byte);
+    return result == lod_table.data() && callee_saved_kept()
+           && unit_lod_record->arguments
+                  == std::array<uint64_t, 6>{reinterpret_cast<uint64_t>(lod_table.data()), 0x7777, lod_settings[0],
+                                             lod_settings[1], lod_settings[2], lod_settings[3] | fourth_low_byte};
+  };
+  std::array<uint8_t, 0x60> lod_entry = {};
+  uint64_t next_lod = 0;
+  const auto model_lod_once = [&](float distance_squared) {
+    forget_callee_saved();
+    next_lod = 0x5a5a;
+    model_lod_record->return_address = 0;
+    const void* result = model_lod(lod_entry.data(), &next_lod, distance_squared);
+    // The game's own first instructions ran (they clear the next-LOD slot) and it got both pointers.
+    return result == lod_entry.data() && callee_saved_kept() && next_lod == 0
+           && model_lod_record->entry == reinterpret_cast<uint64_t>(lod_entry.data())
+           && model_lod_record->next_lod == reinterpret_cast<uint64_t>(&next_lod);
+  };
+  const auto set_scale = [](Block* shared, uint32_t scale, float value) {
+    shared->scales[scale].store(value);
+    if (value == NEUTRAL_SCALES[scale]) {
+      shared->scales_active.fetch_and(~(1u << scale));
+    } else {
+      shared->scales_active.fetch_or(1u << scale);
+    }
+  };
   std::array<uint8_t, 0x40> node = {};
   const auto draw_once = [&] {
     draw(node.data(), reinterpret_cast<void*>(0x2222), &view);
@@ -397,6 +622,87 @@ int wmain(int argc, wchar_t** argv) {
     shared->hooks_wanted.store(0);
     shared->callbacks.store(nullptr);
 
+    // The rest pack: the same hook, called from the game's second pack call, leaves its sticky notice.
+    {
+      uint32_t cursor = 0;
+      const uint32_t packs_before = pack_record->calls;
+      forget_callee_saved();
+      Expect(shared->notices.load() == 0, "rest pack: no notice from the first pack's calls");
+      Expect(rest_pack(reinterpret_cast<void*>(0x1111), reinterpret_cast<void*>(0x2222), true, reinterpret_cast<void*>(0x4444),
+                       0x5555, &cursor, 0, nullptr)
+                 && pack_record->calls == packs_before + 1 && pack_record->arguments[0] == 0x1111 && callee_saved_kept()
+                 && shared->notices.load() == NOTICE_REST_PACK,
+             "rest pack: the notice bit, and the game's pack still runs");
+      Expect(pack_once() && shared->notices.load() == NOTICE_REST_PACK, "rest pack: the bit stays");
+    }
+
+    // The unit LOD table. Neutral: the game's call as it came (its return address is the caller's, so no frame of ours),
+    // its 18 floats bit for bit. Active: only the entries whose own bit is set change.
+    *unit_lod_record = {};
+    Expect(!Logged("UNIT_LOD_ENTRY: first call") && unit_lod_once(1) && unit_lod_record->calls == 1
+               && Logged("UNIT_LOD_ENTRY: first call"),
+           "unit lod: neutral, the game's function with its whole registers, its result back, its own first-call line");
+    Expect(unit_lod_record->return_address == UNIT_LOD_CALL + 5
+               && std::memcmp(lod_table.data(), game_distances.data(), sizeof(lod_table)) == 0,
+           "unit lod: neutral is a tail call and the game's bits");
+    Expect(unit_lod_once(0) && unit_lod_record->return_address == UNIT_LOD_CALL + 5
+               && std::memcmp(lod_table.data(), game_distances.data(), sizeof(lod_table)) == 0,
+           "unit lod: neutral on the game's other branch");
+    // A scale without its bit is not applied; a bit of another row leaves this one neutral.
+    shared->scales[3].store(2.f);
+    set_scale(shared, SCALE_MODEL_DETAIL, 0.25f);
+    Expect(unit_lod_once(1) && unit_lod_record->return_address == UNIT_LOD_CALL + 5
+               && std::memcmp(lod_table.data(), game_distances.data(), sizeof(lod_table)) == 0,
+           "unit lod: another row's bit and a scale without its bit change nothing");
+    shared->scales[3].store(1.f);
+    set_scale(shared, SCALE_MODEL_DETAIL, 1.f);
+    set_scale(shared, 0, 8.f);
+    set_scale(shared, 6, 2.f);
+    set_scale(shared, 12, 0.5f);
+    set_scale(shared, 15, 8.f);
+    set_scale(shared, 16, 0.f);
+    {
+      const bool called = unit_lod_once(1);
+      bool entries_ok = true;
+      for (size_t index = 0; index < lod_table.size(); ++index) {
+        float expected = game_distances[index];
+        if (index == 0) expected = game_distances[index] * 8.f;
+        if (index == 12) expected = game_distances[index] * 0.5f;
+        if (index == 15) expected = FLT_MAX;
+        if (index == 16) expected = 0.f;
+        // Entry 6 is the game's NaN x 2: still its NaN.
+        entries_ok = entries_ok && same_bits(lod_table[index], expected);
+      }
+      Expect(called && entries_ok && unit_lod_record->calls == 4 && unit_lod_record->return_address != UNIT_LOD_CALL + 5,
+             "unit lod: active, min(distance x scale, FLT_MAX) on the entries with a bit, the others the game's bits");
+    }
+    for (const uint32_t scale : {0u, 6u, 12u, 15u, 16u}) {
+      set_scale(shared, scale, 1.f);
+    }
+    Expect(shared->scales_active.load() == 0 && unit_lod_once(1) && unit_lod_record->return_address == UNIT_LOD_CALL + 5
+               && std::memcmp(lod_table.data(), game_distances.data(), sizeof(lod_table)) == 0,
+           "unit lod: back at 1x, the game's bits again");
+
+    // The model LOD pick: only the distance changes, and only with its bit; always a tail call.
+    *model_lod_record = {};
+    Expect(!Logged("MODEL_LOD_ENTRY: first call") && model_lod_once(1234.5f) && model_lod_record->calls == 1
+               && same_bits(model_lod_record->distance_squared, 1234.5f) && model_lod_record->return_address == MODEL_LOD_CALL + 5
+               && Logged("MODEL_LOD_ENTRY: first call"),
+           "model lod: neutral, the game's pick as it came, its own first-call line");
+    shared->scales[SCALE_MODEL_DETAIL].store(0.25f);
+    set_scale(shared, 0, 8.f);
+    Expect(model_lod_once(1234.5f) && same_bits(model_lod_record->distance_squared, 1234.5f)
+               && model_lod_record->return_address == MODEL_LOD_CALL + 5,
+           "model lod: another row's bit and a scale without its bit change nothing");
+    set_scale(shared, 0, 1.f);
+    set_scale(shared, SCALE_MODEL_DETAIL, 0.25f);
+    Expect(model_lod_once(1234.5f) && same_bits(model_lod_record->distance_squared, 1234.5f * 0.25f)
+               && model_lod_record->return_address == MODEL_LOD_CALL + 5 && model_lod_record->calls == 3,
+           "model lod: active, the distance x the scale, still a tail call");
+    set_scale(shared, SCALE_MODEL_DETAIL, 1.f);
+    Expect(model_lod_once(1234.5f) && same_bits(model_lod_record->distance_squared, 1234.5f) && shared->scales_active.load() == 0,
+           "model lod: back at 1x");
+
     // The step: its bit clear, the placement does nothing and the game's step runs with its task; its bit set, one
     // step reserves a core on this process (or finds why not, on a small machine), and the bit cleared releases it.
     const auto default_before = default_cpu_sets();
@@ -426,6 +732,7 @@ int wmain(int argc, wchar_t** argv) {
   std::printf("  hooks: the test's copy\n");
   write_game();
   for (const Site& site : SITES) {
+    if (site.kind != SITE_HOOK) continue;
     AppliedSite applied;
     Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE, "hooks: site hooked");
     originals[site.label] = applied.original;
@@ -517,6 +824,10 @@ int wmain(int argc, wchar_t** argv) {
            "dll: the file holds the render core's reserve text as a whole string");
     Expect(dll_bytes.find("\0renodx_attila64: render thread %lu\0"sv) != std::string::npos,
            "dll: the file holds the render thread's line as a whole string");
+    Expect(dll_bytes.find("\0renodx_attila64: site %s %#x: applied\0"sv) != std::string::npos
+               && dll_bytes.find("\0renodx_attila64: shadow map %u: patched\0"sv) != std::string::npos
+               && dll_bytes.find("\0renodx_attila64: shadow map: game's size\0"sv) != std::string::npos,
+           "dll: the file holds the applied line and the shadow row's two lines as whole strings");
   }
 
   const auto render_state_of = [](const Block* shared) {
@@ -595,8 +906,10 @@ int wmain(int argc, wchar_t** argv) {
     Expect(plugin.block != main_plugin.block, "dll: each copy has its own block");
     *at(SITES[ROW_PASS_DRAW].address + 1) ^= 1;
     plugin.game_started(&api);
+    char others_unchanged[64];
+    std::snprintf(others_unchanged, sizeof(others_unchanged), "game started: %zu sites unchanged", SITES.size() - 1);
     Expect(plugin.block->rows_changed.load() == RowBit(ROW_PASS_DRAW) && Logged("VIEW_DRAW_ENTRY changed after we patched it")
-               && Logged("game started: 2 sites unchanged"),
+               && Logged(others_unchanged),
            "dll: game start finds a site changed after init");
   } else {
     Expect(false, "dll: init for the changed-later case");
@@ -610,14 +923,16 @@ int wmain(int argc, wchar_t** argv) {
                && !Logged("loader frame cap"),
            "dll: Enabled=0 refuses and writes nothing");
   }
-  for (const Row row : {ROW_BONE_FLUSH, ROW_PASS_DRAW, ROW_CPU_PLACEMENT}) {
+  for (const Row row : {ROW_BONE_FLUSH, ROW_PASS_DRAW, ROW_CPU_PLACEMENT, ROW_UNIT_LOD, ROW_MODEL_DETAIL, ROW_SHADOW_MAP}) {
     set_ini_key_off(ROW_INI_KEYS[row]);
     write_game();
     const auto [plugin, result] = init_copy(ROW_INI_KEYS[row], MODULE_NAME, api);
     const uint32_t others = ALL_ROWS & ~RowBit(row);
+    // A patch site keeps the game's bytes without a key, in or out.
     bool only_its_site_untouched = true;
     for (const Site& site : SITES) {
-      only_its_site_untouched = only_its_site_untouched && site_untouched(site) == (site.row == row);
+      only_its_site_untouched = only_its_site_untouched
+                                && site_untouched(site) == (site.row == row || site.kind == SITE_PATCH);
     }
     Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == others
                && plugin.block->rows_refused == RowBit(row) && plugin.block->rows_tried == others
@@ -661,12 +976,115 @@ int wmain(int argc, wchar_t** argv) {
   hook_mode = HOOK_NO_MEMORY;
   {
     const auto [plugin, result] = init_copy(L"no_memory", MODULE_NAME, api);
-    Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == 0
-               && plugin.block->rows_refused == ALL_ROWS && plugin.block->core_status.load() == 0
+    Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == RowBit(ROW_SHADOW_MAP)
+               && plugin.block->rows_refused == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP)) && plugin.block->core_status.load() == 0
                && Logged("skipped (NO_MEMORY)"),
-           "dll: no memory near the game leaves every row out");
+           "dll: no memory near the game leaves every hook row out (the patch row needs none)");
   }
   hook_mode = HOOK_NORMAL;
+
+  // Shadow Map Size: the ShadowMapSize key of [Attila64Plugin.Values] on the DirectX 11 route (the loader's test
+  // switch here). The three size sites get the game's floats x 2^key; the four cascade sites are never written.
+  const auto shadow_sizes = [&](float max_and_high, float medium) {
+    const auto holds = [&](SiteLabel label, float size) {
+      const std::array<float, 2> pair = {size, size};
+      return std::memcmp(at(SITES[label].address), pair.data(), sizeof(pair)) == 0;
+    };
+    bool cascades_untouched = true;
+    for (const SiteLabel label : {LABEL_SHADOW_COUNT_HIGH, LABEL_SHADOW_EXTRA_HIGH, LABEL_SHADOW_COUNT_MAX, LABEL_SHADOW_EXTRA_MAX}) {
+      cascades_untouched = cascades_untouched && site_untouched(SITES[label]);
+    }
+    return holds(LABEL_SHADOW_SIZE_HIGH, max_and_high) && holds(LABEL_SHADOW_SIZE_MAX, max_and_high)
+           && holds(LABEL_SHADOW_SIZE_MEDIUM, medium) && cascades_untouched;
+  };
+  const auto shadow_case = [&](const wchar_t* folder, const wchar_t* key_text, bool dx11) {
+    SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, (dx11 ? "1" : nullptr));
+    set_ini_key_off(nullptr);
+    WritePrivateProfileStringW(INI_VALUES_SECTION, INI_SHADOW_MAP_SIZE, key_text, ini_path.c_str());
+    write_game();
+    return init_copy(folder, MODULE_NAME, api);
+  };
+  char every_site_unchanged[64];
+  std::snprintf(every_site_unchanged, sizeof(every_site_unchanged), "game started: %zu sites unchanged", SITES.size());
+  Expect(shadow_sizes(2048.f, 1024.f), "shadow: the fake game holds the game's sizes");
+  {
+    const auto [plugin, result] = shadow_case(L"shadow_1", L"1", true);
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && plugin.block->rows_refused == 0
+               && shadow_sizes(4096.f, 2048.f) && Logged("renodx_attila64: shadow map 4096: patched")
+               && Logged("renodx_attila64: site SHADOW_SIZE_MAX 0x30e46eb: applied")
+               && Logged("renodx_attila64: site SHADOW_EXTRA_MAX 0x30e4717: applied") && !Logged("game's size"),
+           "shadow: ShadowMapSize=1 doubles the three sizes, the cascade sites are only checked");
+    plugin.game_started(&api);
+    Expect(plugin.block->rows_changed.load() == 0 && Logged(every_site_unchanged),
+           "shadow: game start finds the written sizes unchanged");
+    *at(SITES[LABEL_SHADOW_SIZE_MEDIUM].address + 3) ^= 1;
+    plugin.game_started(&api);
+    Expect(plugin.block->rows_changed.load() == RowBit(ROW_SHADOW_MAP) && Logged("SHADOW_SIZE_MEDIUM changed after we patched it"),
+           "shadow: a later change of a written size is seen");
+  }
+  {
+    const auto [plugin, result] = shadow_case(L"shadow_2", L"2", true);
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && shadow_sizes(8192.f, 4096.f)
+               && Logged("renodx_attila64: shadow map 8192: patched"),
+           "shadow: ShadowMapSize=2 makes them four times the game's");
+  }
+  {
+    const auto [plugin, result] = shadow_case(L"shadow_0", L"0", true);
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && shadow_sizes(2048.f, 1024.f)
+               && Logged("renodx_attila64: shadow map: game's size") && !Logged("game's size ("),
+           "shadow: ShadowMapSize=0 writes nothing, the row is in");
+  }
+  {
+    const auto [plugin, result] = shadow_case(L"shadow_not_dx11", L"1", false);
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && shadow_sizes(2048.f, 1024.f)
+               && Logged("renodx_attila64: shadow map: game's size (ShadowMapSize=1 not written: not DX11)"),
+           "shadow: nothing is written off the DirectX 11 route");
+  }
+  for (const auto& [folder, key_text] : {std::pair{L"shadow_3", L"3"}, std::pair{L"shadow_minus_1", L"-1"}}) {
+    const auto [plugin, result] = shadow_case(folder, key_text, true);
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && shadow_sizes(2048.f, 1024.f)
+               && Logged("renodx_attila64: shadow map: game's size (ShadowMapSize=") && Logged(" out of range)"),
+           "shadow: a key outside 0..2 writes nothing");
+  }
+  // The fifth of the seven is not the game's: nothing of the row is written, the other rows go in.
+  SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, "1");
+  set_ini_key_off(nullptr);
+  WritePrivateProfileStringW(INI_VALUES_SECTION, INI_SHADOW_MAP_SIZE, L"1", ini_path.c_str());
+  write_game();
+  *at(SITES[LABEL_SHADOW_COUNT_MAX].address) ^= 1;
+  {
+    const auto [plugin, result] = init_copy(L"shadow_differs", MODULE_NAME, api);
+    *at(SITES[LABEL_SHADOW_COUNT_MAX].address) ^= 1;
+    Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
+               && plugin.block->rows_refused == RowBit(ROW_SHADOW_MAP) && plugin.block->rows_tried == ALL_ROWS
+               && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
+           "shadow: one site that differs leaves the whole row out, nothing written");
+    Expect(Logged("site SHADOW_COUNT_MAX 0x30e470c: skipped (DIFFERS)") && Logged("site SHADOW_EXTRA_MAX 0x30e4717: skipped (NEIGHBOUR)")
+               && Logged("site SHADOW_SIZE_HIGH 0x30e46b7: skipped (ROW)") && Logged("site SHADOW_SIZE_MEDIUM 0x30e4737: skipped (ROW)")
+               && !Logged("withdrawn"),
+           "shadow: the site's own refusal, and the row's for its other sites");
+    plugin.game_started(&api);
+    char hooks_unchanged[64];
+    std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", HOOK_SITE_COUNT);
+    Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged), "shadow: a refused row's sites are not re-checked");
+  }
+  // The loader refuses the third write: the two sizes already written go back.
+  write_game();
+  failing_patch_call = 3;
+  {
+    const auto [plugin, result] = init_copy(L"shadow_write_fails", MODULE_NAME, api);
+    Expect(result == 0 && failing_patch_call == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
+               && plugin.block->rows_refused == RowBit(ROW_SHADOW_MAP) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
+           "shadow: a refused write rolls the row back to the game's bytes");
+    Expect(Logged("site SHADOW_SIZE_MEDIUM 0x30e4737: skipped (WRITE_FAILED)")
+               && Logged("site SHADOW_SIZE_HIGH 0x30e46b7: withdrawn (a later site of its row failed)")
+               && Logged("site SHADOW_SIZE_MAX 0x30e46eb: withdrawn (a later site of its row failed)")
+               && Logged("site SHADOW_EXTRA_MAX 0x30e4717: withdrawn (a later site of its row failed)")
+               && !Logged("could not be put back"),
+           "shadow: each site that was in has its withdrawn line");
+  }
+  SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, nullptr);
+  set_ini_key_off(nullptr);
 
   write_game();
   *at(BUILD_ID_NOTE_ADDRESS + 20) ^= 1;

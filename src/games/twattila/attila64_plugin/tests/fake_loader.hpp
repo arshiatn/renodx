@@ -38,6 +38,8 @@ static int failures = 0;
 static std::shared_mutex log_mutex;
 static std::vector<std::string> log_lines;
 static HookMode hook_mode = HOOK_NORMAL;
+// FakePatch refuses this call of the ones still to come (1 = the next); 0 = none.
+static int failing_patch_call = 0;
 
 static void Expect(bool ok, const char* what) {
   ++checks;
@@ -79,6 +81,7 @@ static void* FakeCodeNearGame(size_t n) noexcept {
 }
 
 static int FakePatch(uintptr_t at, const uint8_t* expect, const uint8_t* bytes, size_t len) noexcept {
+  if (failing_patch_call != 0 && --failing_patch_call == 0) return 0;
   if (std::memcmp(reinterpret_cast<void*>(at), expect, len) != 0) return 0;
   std::memcpy(reinterpret_cast<void*>(at), bytes, len);
   return 1;
@@ -194,7 +197,8 @@ static Plugin LoadPlugin(const wchar_t* dll_path) {
 }
 
 // The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window and
-// every tweak object (WriteTweakObjects), with no ReShade.ini keys and no route note beside the test.
+// every tweak object (WriteTweakObjects), with no ReShade.ini keys and no route note beside the test: every row with a
+// site goes in, and no patch site has other bytes to write.
 static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const Plugin plugin = LoadPlugin(dll_path);
   if (plugin.init == nullptr) return plugin;
@@ -207,8 +211,11 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const Block* shared = plugin.block;
   Expect(shared->version == VERSION && shared->bytes == BlockBytes(VERSION), "the block's version and size");
   Expect(shared->status.load(std::memory_order_acquire) == STATUS_READY, "the block is READY after init");
-  const uint32_t rows = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT);
-  Expect(shared->rows_applied == rows && shared->rows_refused == 0, "the three rows applied");
+  uint32_t rows = 0;
+  for (const Site& site : SITES) {
+    rows |= RowBit(static_cast<Row>(site.row));
+  }
+  Expect(shared->rows_applied == rows && shared->rows_refused == 0, "every row with a site applied");
   // v2's initial values: the rows tried, the core default (no RenderCore key here), the battle core waiting, the render
   // core without its thread yet, the engine values waiting for the game's start, the other status words not built, the
   // scales neutral.
@@ -227,12 +234,21 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   Expect(Logged("renodx_attila64 2: game build ok") && Logged(", graphics ") && Logged("renodx_attila64: loader frame cap: ")
              && Logged("Changes drawing, sound memory and CPU core use only; battles, replays and multiplayer stay the same.")
              && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
-             && Logged("STEP_ENTRY 0xbb4e00: applied")
-             && Logged("rows: bone flush on, pass draw on, battle core on, unit lod -, model detail -, shadow map -, grass -, "
-                       "grass cells -, campaign trees -, sprites -"),
+             && Logged("STEP_ENTRY 0xbb4e00: applied") && Logged("renodx_attila64: shadow map: game's size")
+             && Logged("rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
+                       "grass -, grass cells -, campaign trees -, sprites -"),
          "the init lines");
   for (const Site& site : SITES) {
-    Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each site jumps to the hook");
+    char applied_line[96];
+    std::snprintf(applied_line, sizeof(applied_line), "renodx_attila64: site %s %#x: applied", LABEL_WORDS[site.label],
+                  site.address);
+    Expect(Logged(applied_line), "each site has its applied line");
+    if (site.kind == SITE_HOOK) {
+      Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each hook site jumps to the hook");
+    } else {
+      Expect(std::memcmp(reinterpret_cast<const void*>(uintptr_t{site.address}), site.window.data() + SITE_MARGIN, site.length) == 0,
+             "each patch site keeps the game's bytes without a key");
+    }
   }
   plugin.game_started(&api);
   // The count follows the sites table (a later site needs no edit here).

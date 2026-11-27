@@ -73,8 +73,8 @@ enum Row : uint32_t {
   ROW_UNIT_LOD,        // the unit LOD distances: Unit Detail and the animation, variety and footstep rows (scales 0-16)
   ROW_MODEL_DETAIL,    // Model Detail Distance (scale 17)
   ROW_SHADOW_MAP,      // Shadow Map Size: a code patch at init, restart-only
-  ROW_GRASS,           // Grass Detail Distance and Grass Density (scales 19 and 21)
-  ROW_GRASS_CELLS,     // the grass cell radius (scale 20)
+  ROW_GRASS,           // Grass Detail Distance and Grass Density (scales 19-21)
+  ROW_GRASS_CELLS,     // the grass cell radius (scales 19 and 20)
   ROW_CAMPAIGN_TREES,  // Campaign Tree Detail Distance (scale 18)
   ROW_SPRITES,         // Small Soldiers as Sprites, Sprite Size and Dead Unit Detail (scales 22 and 23)
   ROW_COUNT
@@ -261,6 +261,13 @@ inline constexpr wchar_t INI_VALUES_SECTION[] = L"Attila64Plugin.Values";
 // The loader's frame cap for the next start, read as a decimal integer: exactly 1 keeps it, anything else (0, absent)
 // turns it off. The add-on writes 0 or 1. (An engine value's key is its tweak name, its text 8 hex digits.)
 inline constexpr wchar_t INI_SOL_FRAME_CAP[] = L"SolFrameCap";
+// Shadow Map Size for the next start, read as a decimal integer: 0 (or absent) keeps the game's sizes, n = 1 or 2
+// makes them x 2^n (Max and High 2048, Medium 1024). The add-on writes 0, 1 or 2. Written only on the DirectX 11 route.
+inline constexpr wchar_t INI_SHADOW_MAP_SIZE[] = L"ShadowMapSize";
+inline constexpr int SHADOW_MAP_SIZE_STEPS = 2;  // the largest ShadowMapSize
+// Two Shadow Cascades for the next start (0 or 1). Reserved: no plugin reads it yet and the add-on does not write it;
+// ROW_SHADOW_MAP only checks the cascade sites.
+inline constexpr wchar_t INI_SHADOW_CASCADES[] = L"ShadowCascades";
 
 static_assert(std::ranges::find(ROW_INI_KEYS, nullptr) == std::end(ROW_INI_KEYS), "an install key for every row");
 static_assert(std::is_standard_layout_v<PassMeasure> && sizeof(PassMeasure) == 16);
