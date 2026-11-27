@@ -20,10 +20,12 @@
 #include "../loader_api.h"
 #include "../plugin_block.h"
 #include "../sites.h"
+#include "../tweaks.h"
 
 // The tests' stand-in for the 64-bit Attila loader: its plugin interface v1 written from its documented behaviour (an
 // entry hook copies the first bytes to code near the game, jumps back after them, and enters through
-// mov rax, imm64; jmp rax), its stack-check rewrite, the game's address range, and the plugin DLL's whole init.
+// mov rax, imm64; jmp rax), its stack-check rewrite, the game's address range, the engine value objects as the game's
+// static constructors leave them, and the plugin DLL's whole init.
 namespace twattila::attila64_plugin::test {
 
 inline constexpr uintptr_t GAME_RESERVE_END = 0x527d000;  // the last load segment's end, page-rounded
@@ -144,6 +146,28 @@ static int ApplyStackRule(uint8_t* begin, const uint8_t* end) {
   return rewritten;
 }
 
+// Every tweak object of tweaks.h in the reserved game range, as the game builds it: its type's table pointer, its
+// name as a counted UTF-16 string, its default.
+static void WriteTweakObjects() {
+  static std::vector<std::u16string> names;  // the objects point into these
+  names.clear();
+  names.reserve(TWEAKS.size());
+  for (const TweakEntry& entry : TWEAKS) {
+    if (entry.object == 0) continue;
+    const TweakKind& kind = TWEAK_KINDS[entry.type];
+    auto* object = reinterpret_cast<uint8_t*>(uintptr_t{entry.object});
+    const std::string_view narrow = entry.name;
+    const std::u16string& name = names.emplace_back(narrow.begin(), narrow.end());
+    const uint64_t table = kind.table;
+    const auto length = static_cast<uint32_t>(name.size());
+    const char16_t* units = name.data();
+    std::memcpy(object, &table, sizeof(table));
+    std::memcpy(object + TWEAK_NAME_LENGTH_OFFSET, &length, sizeof(length));
+    std::memcpy(object + TWEAK_NAME_UNITS_OFFSET, &units, sizeof(units));
+    std::memcpy(object + kind.value_offset, &entry.default_bits, kind.value_bytes);
+  }
+}
+
 // One loaded copy of the plugin DLL (a copy at another path is another module with its own globals).
 struct Plugin {
   int (*init)(const LoaderApi*) = nullptr;
@@ -169,7 +193,8 @@ static Plugin LoadPlugin(const wchar_t* dll_path) {
   return plugin;
 }
 
-// The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window.
+// The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window and
+// every tweak object (WriteTweakObjects), with no ReShade.ini keys and no route note beside the test.
 static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const Plugin plugin = LoadPlugin(dll_path);
   if (plugin.init == nullptr) return plugin;
@@ -185,7 +210,8 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const uint32_t rows = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT);
   Expect(shared->rows_applied == rows && shared->rows_refused == 0, "the three rows applied");
   // v2's initial values: the rows tried, the core default (no RenderCore key here), the battle core waiting, the render
-  // core without its thread yet, the other status words not built, the scales neutral.
+  // core without its thread yet, the engine values waiting for the game's start, the other status words not built, the
+  // scales neutral.
   bool scales_neutral = true;
   for (size_t scale = 0; scale < SCALE_COUNT; ++scale) {
     scales_neutral = scales_neutral && shared->scales[scale].load() == NEUTRAL_SCALES[scale];
@@ -194,11 +220,11 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
              && shared->core_status.load() == (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT)
              && shared->render_core_status.load() == (uint32_t{CORE_NO_THREAD} << CORE_STATE_SHIFT)
              && shared->engine_status.load() == 0
-             && shared->tweaks_status.load() == TWEAKS_NONE && shared->tweak_count == 0 && shared->tweaks == nullptr
+             && shared->tweaks_status.load() == TWEAKS_PENDING && shared->tweak_count == 0 && shared->tweaks == nullptr
              && shared->notices.load() == 0 && shared->scales_active.load() == 0 && scales_neutral
              && NEUTRAL_SCALES[SCALE_SPRITE_DISTANCE] == 0.0f && NEUTRAL_SCALES[SCALE_DEAD_UNITS] == 1.0f,
          "v2's initial values");
-  Expect(Logged("game build ok")
+  Expect(Logged("renodx_attila64 2: game build ok") && Logged(", graphics ") && Logged("renodx_attila64: loader frame cap: ")
              && Logged("Changes drawing, sound memory and CPU core use only; battles, replays and multiplayer stay the same.")
              && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
              && Logged("STEP_ENTRY 0xbb4e00: applied")
@@ -213,6 +239,13 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   char started[64];
   std::snprintf(started, sizeof(started), "game started: %zu sites unchanged", SITES.size());
   Expect(shared->rows_changed.load() == 0 && Logged(started), "game start finds every site unchanged");
+  // Every engine value checked once and published; nothing restart-only without its key.
+  char tweaks_line[96];
+  std::snprintf(tweaks_line, sizeof(tweaks_line), "renodx_attila64: tweaks: %zu checked, %zu ok, 2 absent, restart-only: 0 applied",
+                TWEAKS.size() - 2, TWEAKS.size() - 2);
+  Expect(shared->tweaks_status.load(std::memory_order_acquire) == TWEAKS_READY && shared->tweak_count == TWEAKS.size()
+             && shared->tweaks != nullptr && Logged(tweaks_line) && !Logged(": refused ("),
+         "game start checks and publishes the engine values");
   // The thread that runs the game's start is the render thread: captured once, with its own line.
   char render_thread[64];
   std::snprintf(render_thread, sizeof(render_thread), "renodx_attila64: render thread %lu", GetCurrentThreadId());
@@ -228,7 +261,7 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   }();
   Expect(shared->render_core_status.load() == (uint32_t{CORE_WAITING} << CORE_STATE_SHIFT) && Logged(render_thread)
              && !Logged("render core:") && sites_line_last && line_count() == lines_before + 1,
-         "game start captures the render thread once: a second start logs only its sites line");
+         "game start captures the render thread once: a second start logs only its sites line (the engine values too)");
   return plugin;
 }
 

@@ -250,6 +250,7 @@ inline constexpr wchar_t INI_ENABLED[] = L"Enabled";
 inline constexpr wchar_t INI_RENDER_CORE[] = L"RenderCore";
 inline constexpr wchar_t INI_TWEAKS[] = L"Tweaks";  // check and publish the engine values at all
 inline constexpr int ENABLED_DEFAULT = 1;
+inline constexpr int TWEAKS_DEFAULT = 1;
 // Install the row's sites at all.
 inline constexpr const wchar_t* ROW_INI_KEYS[ROW_COUNT] = {L"BoneFlush", L"PassDraw",   L"CpuPlacement", L"UnitLod",
                                                            L"ModelDetail", L"ShadowMap", L"Grass",       L"GrassCells",
@@ -257,6 +258,9 @@ inline constexpr const wchar_t* ROW_INI_KEYS[ROW_COUNT] = {L"BoneFlush", L"PassD
 inline constexpr int ROW_INSTALL_DEFAULT = 1;
 // The restart-only values the add-on writes and the plugin reads at init.
 inline constexpr wchar_t INI_VALUES_SECTION[] = L"Attila64Plugin.Values";
+// The loader's frame cap for the next start, read as a decimal integer: exactly 1 keeps it, anything else (0, absent)
+// turns it off. The add-on writes 0 or 1. (An engine value's key is its tweak name, its text 8 hex digits.)
+inline constexpr wchar_t INI_SOL_FRAME_CAP[] = L"SolFrameCap";
 
 static_assert(std::ranges::find(ROW_INI_KEYS, nullptr) == std::end(ROW_INI_KEYS), "an install key for every row");
 static_assert(std::is_standard_layout_v<PassMeasure> && sizeof(PassMeasure) == 16);

@@ -5,9 +5,10 @@
 
 // renodx_attila64.dll: a plugin of the 64-bit Attila loader (it runs the game's Linux build on Windows) that hooks game
 // functions: two for the Attila add-on (plugin_block.h) and the battle step's task, to keep a CPU core free for it and
-// one for the render thread (battle_core.hpp; that row works without the add-on). The loader loads it from its plugins
-// folder, after its own patches and before any game code runs; the add-on finds its block once ReShade loads it. Built
-// by build.ps1.
+// one for the render thread (battle_core.hpp; that row works without the add-on). It also checks the game's engine
+// values for the add-on, writes the restart-only ones, and sets the loader's frame cap (tweaks.hpp). The loader loads
+// it from its plugins folder, after its own patches and before any game code runs; the add-on finds its block once
+// ReShade loads it. Built by build.ps1.
 
 #include <windows.h>
 
@@ -26,12 +27,14 @@
 #include "patcher.hpp"
 #include "plugin_block.h"
 #include "sites.h"
+#include "tweaks.h"
+#include "tweaks.hpp"
 
 namespace {
 
 using namespace twattila::attila64_plugin;
 
-inline constexpr char PLUGIN_VERSION[] = "1";
+inline constexpr char PLUGIN_VERSION[] = "2";
 inline constexpr std::array<const char*, ROW_COUNT> ROW_WORDS = {
     "bone flush", "pass draw", "battle core", "unit lod",       "model detail",
     "shadow map", "grass",     "grass cells", "campaign trees", "sprites"};
@@ -64,6 +67,16 @@ inline constexpr auto MODULE_NAME_NARROW = [] {
 }();
 
 std::array<AppliedSite, SITES.size()> applied_sites = {};
+
+// A restart-only value's key in [Attila64Plugin.Values], read at init for the game's start.
+struct RestartKey {
+  bool present = false;
+  bool eight_hex_digits = false;
+  uint32_t bits = 0;
+};
+std::array<RestartKey, TWEAKS.size()> restart_keys = {};
+std::array<TweakSlot, TWEAKS.size()> tweak_slots = {};
+bool dx11_route = false;
 
 }  // namespace
 
@@ -103,17 +116,21 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     return refuse(STATUS_WRONG_LOADER, "the file was renamed (the loader's plugin order needs the shipped name)");
   }
 
-  // <exe dir>\ReShade.ini; without a path every key keeps its default.
-  wchar_t ini[PATH_CAPACITY];
-  bool has_ini = false;
-  if (const DWORD exe_length = GetModuleFileNameW(nullptr, ini, PATH_CAPACITY);
-      exe_length != 0 && exe_length != PATH_CAPACITY) {
-    if (wchar_t* exe_name = std::wcsrchr(ini, L'\\');
-        exe_name != nullptr && static_cast<size_t>(exe_name + 1 - ini) + std::size(INI_FILE) <= PATH_CAPACITY) {
-      std::wmemcpy(exe_name + 1, INI_FILE, std::size(INI_FILE));
-      has_ini = true;
+  // <exe dir>\<file>; false when the path does not fit.
+  const auto beside_exe = [](std::wstring_view file, wchar_t* file_path) {
+    const DWORD exe_length = GetModuleFileNameW(nullptr, file_path, PATH_CAPACITY);
+    if (exe_length == 0 || exe_length == PATH_CAPACITY) return false;
+    wchar_t* exe_name = std::wcsrchr(file_path, L'\\');
+    if (exe_name == nullptr || static_cast<size_t>(exe_name + 1 - file_path) + file.size() + 1 > PATH_CAPACITY) {
+      return false;
     }
-  }
+    std::wmemcpy(exe_name + 1, file.data(), file.size());
+    exe_name[1 + file.size()] = L'\0';
+    return true;
+  };
+  // Without a path every key keeps its default.
+  wchar_t ini[PATH_CAPACITY];
+  const bool has_ini = beside_exe(INI_FILE, ini);
   const auto ini_int = [&](const wchar_t* key, int default_value) {
     if (!has_ini) return default_value;
     return static_cast<int>(GetPrivateProfileIntW(INI_SECTION, key, default_value, ini));
@@ -136,6 +153,12 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     }
   }
 
+  // Without a path for the loader's note the route counts as not DirectX 11: nothing restart-only is written.
+  wchar_t route_note[PATH_CAPACITY];
+  const tweaks::Route route =
+      (beside_exe(tweaks::ROUTE_NOTE_FILE, route_note) ? tweaks::FindRoute(route_note) : tweaks::ROUTE_NO_NOTE);
+  dx11_route = (route == tweaks::ROUTE_DX11_SWITCH || route == tweaks::ROUTE_DX11_NOTE);
+
   char other_plugins[512] = "none";
   size_t other_length = 0;
   char pattern[PATH_CAPACITY];
@@ -153,11 +176,33 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   }
 
   loader->log(
-      "renodx_attila64 %s: game build ok, loader api %u (%s) / exe %u.%u.%u.%u, game end %p, perffix64 %s, "
-      "other plugins: %s. Changes drawing, sound memory and CPU core use only; battles, replays and multiplayer stay "
-      "the same.",
+      "renodx_attila64 %s: game build ok, loader api %u (%s) / exe %u.%u.%u.%u, game end %p, graphics %s, "
+      "perffix64 %s, other plugins: %s. Changes drawing, sound memory and CPU core use only; battles, replays and "
+      "multiplayer stay the same.",
       PLUGIN_VERSION, api->api_version, api->engine_version, exe_version[0], exe_version[1], exe_version[2],
-      exe_version[3], reinterpret_cast<void*>(api->game_hi), (perffix ? "loaded" : "off"), other_plugins);
+      exe_version[3], reinterpret_cast<void*>(api->game_hi), tweaks::ROUTE_WORDS[route], (perffix ? "loaded" : "off"),
+      other_plugins);
+
+  // The restart-only keys the add-on wrote for this start. The loader reads its frame cap on the first frame, after
+  // this init.
+  const int sol_frame_cap =
+      (has_ini ? static_cast<int>(GetPrivateProfileIntW(INI_VALUES_SECTION, INI_SOL_FRAME_CAP, 0, ini)) : 0);
+  const HMODULE loader_c_library = tweaks::ImportedFrom(GetModuleHandleW(nullptr), "getenv");
+  tweaks::SetLoaderFrameCap(sol_frame_cap == 1, loader_c_library, *api);
+  if (ini_int(INI_TWEAKS, TWEAKS_DEFAULT) != 0) {
+    for (size_t index = 0; index < TWEAKS.size(); ++index) {
+      if (!has_ini || !TWEAKS[index].restart_only) continue;
+      wchar_t key[TWEAK_NAME_CAPACITY] = {};
+      std::ranges::copy(std::string_view(TWEAKS[index].name), key);
+      wchar_t text[16];
+      if (GetPrivateProfileStringW(INI_VALUES_SECTION, key, L"", text, static_cast<DWORD>(std::size(text)), ini) == 0) {
+        continue;
+      }
+      restart_keys[index].present = true;
+      restart_keys[index].eight_hex_digits = tweaks::ParseKeyBits(text, &restart_keys[index].bits);
+    }
+    block.tweaks_status.store(TWEAKS_PENDING, std::memory_order_relaxed);
+  }
 
   for (size_t index = 0; index < SITES.size(); ++index) {
     const Site& site = SITES[index];
@@ -219,6 +264,43 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
     }
   }
   loader->log("renodx_attila64: game started: %u sites unchanged", unchanged);
+  // The engine values, once: the game's static constructors have built them, and its sound start (the reader of the
+  // restart-only ones) comes later in its main.
+  if (block.tweaks_status.load(std::memory_order_relaxed) == TWEAKS_PENDING) {
+    uint32_t checked = 0;
+    uint32_t ok = 0;
+    uint32_t restart_applied = 0;
+    for (size_t index = 0; index < TWEAKS.size(); ++index) {
+      const TweakEntry& entry = TWEAKS[index];
+      TweakSlot* slot = &tweak_slots[index];
+      tweaks::CheckTweak(entry, slot);
+      if (slot->verdict == VERDICT_ABSENT) continue;
+      ++checked;
+      if (slot->verdict != VERDICT_OK) {
+        loader->log("renodx_attila64: tweak %s: refused (%s, value 0x%x)", entry.name,
+                    tweaks::VERDICT_WORDS[slot->verdict], slot->default_bits);
+        continue;
+      }
+      ++ok;
+      const RestartKey& key = restart_keys[index];
+      if (!key.present) continue;
+      if (!key.eight_hex_digits) {
+        slot->restart_state = RESTART_OUT_OF_RANGE;
+        loader->log("renodx_attila64: tweak %s: key not 8 hex digits, the game's value kept", entry.name);
+        continue;
+      }
+      const RestartState state = tweaks::WriteRestartValue(entry, key.bits, dx11_route, slot);
+      if (state == RESTART_APPLIED) {
+        ++restart_applied;
+      }
+      loader->log("renodx_attila64: tweak %s: 0x%08x %s", entry.name, key.bits, tweaks::RESTART_WORDS[state]);
+    }
+    block.tweak_count = static_cast<uint32_t>(tweak_slots.size());
+    block.tweaks = tweak_slots.data();
+    loader->log("renodx_attila64: tweaks: %u checked, %u ok, %zu absent, restart-only: %u applied", checked, ok,
+                TWEAKS.size() - checked, restart_applied);
+    block.tweaks_status.store(TWEAKS_READY, std::memory_order_release);
+  }
   // This thread goes on to run the game's main: the render thread.
   if ((block.rows_applied & RowBit(ROW_CPU_PLACEMENT)) != 0) {
     battle_core::SetRenderThread(&block, *loader);
