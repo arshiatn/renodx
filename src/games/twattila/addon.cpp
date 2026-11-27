@@ -1190,6 +1190,7 @@ enum class PluginRow : uint8_t {
   CAMPAIGN_TREES = twattila::attila64_plugin::ROW_CAMPAIGN_TREES,
   SPRITES = twattila::attila64_plugin::ROW_SPRITES,
   GAME_CODE = twattila::attila64_plugin::ROW_GAME_CODE,
+  PARALLEL_EFFECTS = twattila::attila64_plugin::ROW_PARALLEL_EFFECTS,
   TWEAKS = 0xFE,
   NONE = 0xFF,
 };
@@ -1672,6 +1673,9 @@ constexpr bool RENDER_CORE_ROW_MEASURED = false;
 // (attila64_plugin_link::Update).
 constexpr float KEEP_BATTLE_CORE_DEFAULT = (twattila::attila64_plugin_link::BATTLE_CORE_DEFAULT ? 1.f : 0.f);
 float keep_battle_core_row = KEEP_BATTLE_CORE_DEFAULT;
+// Effects on All Cores (the port only, Experimental, Off until the soak: PK9 10): 0 Off, 1 Automatic, 2 On, the 64-bit
+// engine plugin's two effect core_wanted bits (attila64_plugin_link::Update).
+float effects_on_all_cores_row = 0.f;
 // Loader Frame Cap (the port only, off: ATN 11-26): the 64-bit loader's 240 fps cap at the next start, through the
 // engine plugin (attila64_plugin_link::MirrorRestartValues).
 float loader_frame_cap_row = 0.f;
@@ -2357,7 +2361,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           | (pass_draw ? plugin::RowBit(plugin::ROW_PASS_DRAW) : 0u),
           keep_battle_core_row != 0.f,
           // Hidden until measured: the plugin's own bit stays (a saved On, from a copied 32-bit ini say, waits too).
-          (RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT));
+          (RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT),
+          static_cast<uint32_t>(effects_on_all_cores_row));
     }
     // Everything below writes the 32-bit game's code or values.
     return;
@@ -3586,6 +3591,23 @@ void ConfigureAddon() {
                 .is_visible = render_core_shown,
             },
         });
+    // Effects on All Cores (PK9 7.3 / 10; the 32-bit Parallel Effect Update / Spawns stay hidden here: GAME_CODE_ROWS),
+    // live: shown while the plugin offers its walk hook and its loader slot's verdict is OK.
+    cpu_rows.push_back(new renodx::utils::settings::Setting{
+        .key = "EffectsOnAllCores",
+        .binding = &effects_on_all_cores_row,
+        .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+        .default_value = 0.f,
+        .label = "Effects on All Cores (Experimental)",
+        .section = CPU_SECTION,
+        .tooltip = "Runs battle effects on all CPU cores. Faster in big battles; small effect details can change.\n"
+                   "Automatic: only in big battles.",
+        .labels = {"Off", "Automatic", "On"},
+        .is_visible = [] {
+          return GameCodeRowShown(PluginRow::PARALLEL_EFFECTS)
+                 && (PLUGIN_READY_FORCED || twattila::attila64_plugin_link::EffectsSlotOk());
+        },
+    });
     // The renderer's CPU row (its 32-bit place: Graphics 2 of 2). Fewer Driver Waits stays there, hidden (GAME_CODE_ROWS).
     const auto moved = std::ranges::find(settings, "FewerConstantUploads", &renodx::utils::settings::Setting::key);
     (*moved)->section = CPU_SECTION;
