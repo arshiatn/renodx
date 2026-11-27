@@ -42,7 +42,7 @@ $rows = @(
   @('FasterEmitterPrefetch', '0.f', 'emitter_prefetch_row', '0.f', $true),
   @('FasterParticlePrefetch', '0.f', 'particle_prefetch_row', '0.f', $true),
   @('FasterSweepPrefetch', '0.f', 'sweep_prefetch_row', '0.f', $true),
-  @('FewerConstantUploads', '0.f', 'fewer_constant_uploads_row', '0.f', $true),
+  @('FewerConstantUploads', '(ATTILA64 ? 1.f : 0.f)', 'fewer_constant_uploads_row', '(ATTILA64 ? 1.f : 0.f)', $true),
   @('FewerDriverWaits', '0.f', 'fewer_driver_waits_row', '0.f', $true)
 )
 $hidden = '.is_visible = [] { return false; },'
@@ -99,6 +99,21 @@ Check ($text.Contains('instance_fill_on = (pool_room && instance_fill_row != 0.f
 Check ($text.Contains('fill_fold_on = (pool_room && fill_fold_row != 0.f);')) 'fill fold gated by pool_room'
 Check ($text.Contains('((animation_rows_row == 0.f || !pool_room)')) 'animation rows gated by pool_room'
 Check ($text -match '\.env_generation = env_generation,\s+\.game_cpus = game_cpus\}\);') 'the pool gets .game_cpus = game_cpus, last'
+# PK1-64 (the 64-bit port only): Fewer Driver Waits hidden and forced off there; Fewer Constant Uploads on there, alone
+# moved to the CPU page's section CPU, its saved Off cleared once under the port's own revision key, and its once-line.
+Check ($text.Contains('{.match = "FewerDriverWaits"},')) 'FewerDriverWaits in GAME_CODE_ROWS (hidden on the port)'
+Check ($text.Contains('twattila::buffer_pool::Update(context, !ATTILA64 && fewer_driver_waits_row != 0.f, traced);')) 'FewerDriverWaits forced off on the port'
+Check ($text.Contains('const auto moved = std::ranges::find(settings, "FewerConstantUploads", &renodx::utils::settings::Setting::key);') `
+       -and -not $text.Contains('{"FewerConstantUploads", "FewerDriverWaits"}') `
+       -and -not ($text -match '"FewerDriverWaits"[^\n]*&renodx::utils::settings::Setting::key')) 'FewerConstantUploads alone moved to section CPU on the port (no find of FewerDriverWaits)'
+$fcu = Block '.key = "FewerConstantUploads",' "`n      },"
+Check ($fcu.Contains('.label = (ATTILA64 ? "Fewer Constant Uploads (Experimental, restart)" : "Fewer Constant Uploads (Experimental)"),')) 'FewerConstantUploads label: (Experimental, restart) on the port, (Experimental) on 32-bit'
+Check ($fcu.Contains('.section = "Graphics (Experimental)",')) 'FewerConstantUploads 32-bit section Graphics (Experimental) unchanged'
+Check ($text -match 'if constexpr \(ATTILA64\) \{\s*twattila::graphics_page::ClearSavedRows\(1, \{"FewerConstantUploads"\}, "Attila64SettingsRevision"\);\s*\}') 'FewerConstantUploads cleared once on the port (Attila64SettingsRevision 1)'
+$port_clear = $text.IndexOf('ClearSavedRows(1, {"FewerConstantUploads"}, "Attila64SettingsRevision");', [StringComparison]::Ordinal)
+Check ($port_clear -ge 0 -and $port_clear -lt $text.IndexOf('renodx::utils::settings::Use(DLL_PROCESS_ATTACH', [StringComparison]::Ordinal)) 'the port clear before settings::Use'
+Check ($text.Contains('renodx::utils::log::i("[Total War] Fewer Constant Uploads: on.");')) 'Fewer Constant Uploads once-line'
+Check ($text.Contains("`n    fewer_constant_uploads_logged = false;`n")) 'Fewer Constant Uploads once-flag reset at detach'
 Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t MIN_GAME_CPUS = 8;') 'MIN_GAME_CPUS 8'
 # Automatic L1 (inside its row, which stays Off above): parallel from 20000 effect instances, serial below 16000, never below
 # 256; the bench env RENODX_TW_L1_UNITS read again at the pool's env generation.

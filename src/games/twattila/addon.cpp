@@ -1168,6 +1168,8 @@ std::atomic_bool picture_warned = false;
 // The loader's overlay converted: one line for each target (buffer 0, the picture).
 std::atomic_bool buffer_overlay_logged = false;
 std::atomic_bool picture_overlay_logged = false;
+// Fewer Constant Uploads' on line (once).
+std::atomic_bool fewer_constant_uploads_logged = false;
 // The page dump's READY-forced variant (TWATTILA_PAGE_DUMP_PLUGIN_READY): every game-code row shown, as if the plugin
 // offered each (its driver publishes a READY block, so the notes and RowsOffered read a real one).
 #if defined(TWATTILA_PAGE_DUMP_PLUGIN_READY)
@@ -1192,14 +1194,14 @@ enum class PluginRow : uint8_t {
 };
 
 // A row whose reader is the 32-bit game's code (engine tweaks, graphics_hooks, engine_code, the worker pool's users,
-// shadow_pass, the shadow map hooks, cpu_sets' thread moves): by key, or by group for a group of buttons. The keyless
-// ones are taken by their pointers in ConfigureAddon.
+// shadow_pass, the shadow map hooks, cpu_sets' thread moves, buffer_pool's ring): by key, or by group for a group of
+// buttons. The keyless ones are taken by their pointers in ConfigureAddon.
 struct GameCodeRow {
   const char* match = "";
   PluginRow plugin_row = PluginRow::NONE;
 };
 
-constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
+constexpr std::array<GameCodeRow, 42> GAME_CODE_ROWS = {{
     {.match = "GraphicsUnitDetailSmall", .plugin_row = PluginRow::UNIT_LOD},
     {.match = "GraphicsUnitDetailMedium", .plugin_row = PluginRow::UNIT_LOD},
     {.match = "GraphicsUnitDetailLarge", .plugin_row = PluginRow::UNIT_LOD},
@@ -1242,6 +1244,8 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
     {.match = "DrawRecordingFamilies"},
     {.match = "ParallelInstanceFill"},
     {.match = "FillWithDrawRecording"},
+    // Fewer Driver Waits: its ring needs the 32-bit game's single-threaded device; never comes back on the port.
+    {.match = "FewerDriverWaits"},
     // The preset buttons, with the Unit Detail rows: on the port they write only the rows shown (ConfigureAddon's
     // port_row_of).
     {.match = "graphics-presets", .plugin_row = PluginRow::UNIT_LOD},
@@ -1647,9 +1651,9 @@ float rr_before_tone_map_row = 0.f;
 float render_lists_row = 1.f;
 // Faster Job Wake-Ups (Experimental, off; graphics_page-style row below): engine_code.hpp's job system sites.
 float job_wakeups_row = 0.f;
-// Fewer Constant Uploads (Experimental, off): mods::shader::use_native_d3d11_injection (once used, the game's device keeps
-// it: Off after a restart).
-float fewer_constant_uploads_row = 0.f;
+// Fewer Constant Uploads (Experimental; on on the 64-bit port, off on 32-bit): mods::shader::use_native_d3d11_injection
+// (once used, the game's device keeps it: Off after a restart).
+float fewer_constant_uploads_row = (ATTILA64 ? 1.f : 0.f);
 // Fewer Driver Waits (Experimental, off): buffer_pool.hpp, the game's constant buffers through one ring (Off after a
 // restart).
 float fewer_driver_waits_row = 0.f;
@@ -2108,13 +2112,19 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   // (Keep Render Core Free and the count's reads) runs every present either way: never move it into a branch that may skip it.
   // The port: Keep Render Core Free off (it moves the 32-bit game's threads); the count's reads stay.
   const uint32_t game_cpus = game_cpus_env.value_or(twattila::cpu_sets::Update(!ATTILA64 && keep_render_core_row != 0.f, GAME_THREAD_MODULES));
-  renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads_row != 0.f, std::memory_order_relaxed);
+  const bool fewer_constant_uploads = fewer_constant_uploads_row != 0.f;
+  renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads, std::memory_order_relaxed);
+  if constexpr (ATTILA64) {
+    if (fewer_constant_uploads && !fewer_constant_uploads_logged.exchange(true)) {
+      renodx::utils::log::i("[Total War] Fewer Constant Uploads: on.");
+    }
+  }
   // A traced frame's full-ring line waits (its own work fills the ring).
   if (queue->get_device()->get_api() == reshade::api::device_api::d3d11) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
     const bool traced = twattila::frame_trace::Tracing()
                         || twattila::frame_trace::internal::map_trace.tracing.load(std::memory_order_relaxed);
-    twattila::buffer_pool::Update(context, fewer_driver_waits_row != 0.f, traced);
+    twattila::buffer_pool::Update(context, !ATTILA64 && fewer_driver_waits_row != 0.f, traced);
   }
   talesofarise::pixel_trace::OnPresent(queue);
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
@@ -2866,8 +2876,8 @@ void ConfigureAddon() {
           .key = "FewerConstantUploads",
           .binding = &fewer_constant_uploads_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Fewer Constant Uploads (Experimental)",
+          .default_value = (ATTILA64 ? 1.f : 0.f),
+          .label = (ATTILA64 ? "Fewer Constant Uploads (Experimental, restart)" : "Fewer Constant Uploads (Experimental)"),
           .section = "Graphics (Experimental)",
           .tooltip = "The mod's shader settings go to the GPU once a frame instead of before every draw:\n"
                      "less waiting on the graphics driver on the render thread. Same results.\n"
@@ -3446,8 +3456,9 @@ void ConfigureAddon() {
                 [] { return waving_flags_on.load(std::memory_order_relaxed); }),
         });
     // The CPU page (Settings Mode 3), its section "CPU": every CPU row of this mod on the port, new CPU rows too (live
-    // rows plain, a restart-only one with "(restart)" in its label and its restart note after it). The engine
-    // performance fix's and the start window's sections wait for ATN's answer on where their keys come from.
+    // rows plain, a restart-only one with "(restart)" in its label and its restart note after it, a row live one way and
+    // restart-only the other with "(restart)" in its label and its tooltip saying which: Fewer Constant Uploads). The
+    // engine performance fix's and the start window's sections wait for ATN's answer on where their keys come from.
     constexpr const char* CPU_SECTION = "CPU";
     std::vector<renodx::utils::settings::Setting*> cpu_rows;
     // Keep Battle Core Free and its status line, while the plugin offers the CPU row and built its battle part (state 0:
@@ -3499,13 +3510,11 @@ void ConfigureAddon() {
                 .is_visible = battle_core_shown,
             },
         });
-    // The renderer's CPU rows (their 32-bit place: Graphics 2 of 2).
-    for (const char* key : {"FewerConstantUploads", "FewerDriverWaits"}) {
-      const auto moved = std::ranges::find(settings, key, &renodx::utils::settings::Setting::key);
-      (*moved)->section = CPU_SECTION;
-      cpu_rows.push_back(*moved);
-      settings.erase(moved);
-    }
+    // The renderer's CPU row (its 32-bit place: Graphics 2 of 2). Fewer Driver Waits stays there, hidden (GAME_CODE_ROWS).
+    const auto moved = std::ranges::find(settings, "FewerConstantUploads", &renodx::utils::settings::Setting::key);
+    (*moved)->section = CPU_SECTION;
+    cpu_rows.push_back(*moved);
+    settings.erase(moved);
     settings.insert(std::ranges::find(settings, "About", &renodx::utils::settings::Setting::section), cpu_rows.begin(),
                     cpu_rows.end());
     renodx::utils::settings::section_tints.emplace_back(CPU_SECTION, 0xF0E68Cu);
@@ -3604,11 +3613,16 @@ bool AttachAddon() {
 
   // Rows saved at an old default (a preset saves every row, hidden ones too), each cleared once. 1 (before v149): NRD when
   // Ray Reconstruction is off, the banners' light and colour on. 2 (the render_mt defaults): the rows whose default changed
-  // and the rows hidden now (a value saved earlier would stay on unseen).
+  // and the rows hidden now (a value saved earlier would stay on unseen). The 64-bit port has its own key,
+  // Attila64SettingsRevision (32-bit never reads it): 1, the 64-bit port's first revision, Fewer Constant Uploads, on there
+  // by default. A later port default change takes the next number.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
   twattila::graphics_page::ClearSavedRows(2, {"DrawRecordingStage", "DrawRecordingDepthA", "DrawRecordingColourA", "DrawRecordingDepthB",
                                               "DrawRecordingColourB", "DrawRecordingFamilies", "AnimationRowsWorkers", "ParallelInstanceFill",
                                               "FillWithDrawRecording", "ParallelEffectSpawns", "CachedParticleCount"});
+  if constexpr (ATTILA64) {
+    twattila::graphics_page::ClearSavedRows(1, {"FewerConstantUploads"}, "Attila64SettingsRevision");
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -3815,6 +3829,7 @@ void DetachAddon() {
     picture_warned = false;
     buffer_overlay_logged = false;
     picture_overlay_logged = false;
+    fewer_constant_uploads_logged = false;
     tone_mapper_target_warned = false;
   }
 
