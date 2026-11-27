@@ -98,6 +98,17 @@ $table['plugin_scales'] = @{
             '[Total War] 64-bit Attila: engine plugin notices 0x1 (rest pack: yes, model table full: no)') + $upgraded
   forbid = @('engine plugin not installed', 'callbacks registered')
 }
+# The grass and campaign tree rows (a v2 block offering the grass, grass cell and campaign tree rows, rows 0x1c3, no
+# engine values): Grass Detail Distance 2x and Grass Density 1.5x set the grass scales' bits 19-21 (one line); Campaign
+# Tree Detail 2x sets no bit while its engine value is not found (its row hidden).
+$table['plugin_grass'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = '1 451 0 2 451'
+  ini = @('GraphicsGrassDistance=2', 'GraphicsGrassDensity=1.5', 'GraphicsCampaignDetail=2')
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x1c3',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x1c3',
+            '[Total War] 64-bit Attila: engine scales active 0x380000') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active 0x3c0000', 'engine plugin notices')
+}
 # Registration end to end: rows forced wanted (RENODX_TW_PLUGIN_WANT), the callbacks registered at a present, the fake
 # hooks' thread calling into them, then unregistered and drained inside ReShade's unload before the add-on is freed.
 $table['plugin_calls'] = @{
