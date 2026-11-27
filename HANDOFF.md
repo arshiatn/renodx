@@ -18285,7 +18285,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         thrones README.md:262 'with TAA or DLSS'). REAL START (a3_smoke = spf_ add-on 86cc227e, old c1a467a7 in
         scratch\coord_\a3_addon_c1a467a7; spf_smoke_pf.log) with -PerfFix, AA Off: 'Anti-aliasing: the main view's
         camera found.', 'engine scales active 0x400000', 'SPRITE_DISTANCE: first call', scriptable PASS = yes (the first
-        full PASS on the PerfFix stack), clean exit, no WER.
+        full PASS on the PerfFix stack), clean exit, no WER. ATN 22:3x YES to the new a64_ab starts ('You can [do] the extras
+        stuffs that you said above'): the sprite CPU gate (AA Off, row Off vs On at Sprite Size 4) + one start with the
+        game's MSAA (gfx_aa 3). Coord: run them NOW, before the sprite fix merges (design 3.3 gates the merge), not in
+        the big batch; the arms go into spf_'s a64_ab patch in its fix round (after rspf_).
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
