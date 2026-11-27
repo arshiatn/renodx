@@ -729,7 +729,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | coord ATN 20:3x: 'You are allowed to look at his code to see
 - X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN Step 8 review rp8b57_ (Opus xHigh) DO
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
-- RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the ... | coord
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
 - HANDOFF AUDIT APPLIED 18:0x: hfm_ (Opus xHigh) merged the 8 parts (testbin\scrat ... | coord (section 11 items follow the CPU-first rule)
@@ -18170,7 +18169,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         kills m15: both new checks fail with it, PASS 339 without; mutants 29 killed + m17 equivalent) + N4 (stale
         ReShade.ini deleted first) + N3's deviation mark in its message; build.ps1 -Test -Elf exit 0, 0 warnings, DLL
         ed1e21a1. p8b6_ fix round DONE 20:29: b7b7d6de6 N2 (EngineRow default member initializers); gated amd64 + x86
-        exit 0, tw_unit_shadows x2 PASS. Sonnet High FINAL fp8b_ (own plugin test at b7b7d6de6 + merge-tree) STARTED 20:28.
+        exit 0, tw_unit_shadows x2 PASS. Sonnet High FINAL fp8b_ (own plugin test at b7b7d6de6 + merge-tree) STARTED 20:28. fp8b_
+        DONE 20:39 (11 min) GO, no MUST. a64_ab patch APPLIED (live 1910c724 -> c0e29cdb; backup
+        a64_ab.pre_p8b7_1127.ps1). MERGED 20:39 66aa64b90 (--no-ff, pushed). Main-tree checks: gated amd64 twattila +
+        x86 twattila / twrome2 / twthronesofbritannia exit 0; tw_unit_shadows x86 + amd64 PASS; tw_render_mt_defaults
+        all match; plugin build.ps1 -Test -Elf 0 failures (DLL fd4d700b). a3_smoke add-on restaged from atn-mods
+        (b37ef56c), build\attila64_plugin = merged fd4d700b. F7 not re-run at the merge (p8b6_ ran 5 / 5 on the GPU;
+        nothing in the merge changes the add-on since): it runs in the batch.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
@@ -18183,9 +18188,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         AFTER the Stage B merge (addon.cpp + tests.cpp are Stage B's until then). Bug fix = on by default. Also the next
         a64_ab writer: E64-sr2 must require 'engine scales active 0xc00000' (Dead Unit Detail alone hides the bug).
         Owner: coord (implementer Opus after the Stage B merge)
-        - [ ] RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the p8b_1127 add-on until
+        - [x] RESTORE AFTER THE STAGE B MERGE (coord): a3_smoke\renodx-twattila.addon64 is the p8b_1127 add-on until
         Stage B merges (then rebuild from atn-mods and stage that); build\attila64_plugin is p8b_1127's plugin until then.
-        Owner: coord
+        Owner: coord DONE 20:4x: a3_smoke add-on b37ef56c (atn-mods 66aa64b90), build\attila64_plugin
+        fd4d700b.
         - [ ] PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured like W-A3's; while hidden
         the add-on writes NO CORE_SPLIT bit (P1a's rule), so the batch's ContactSplit=1 arms keep their bit. After the
         batch + ATN's call (design 14: default Off, ATN decides): flip the row's MEASURED constant. Owner: coord Note: HANDOFF clock stamps 19:xx above were an
