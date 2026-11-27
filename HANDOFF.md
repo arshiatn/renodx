@@ -18051,7 +18051,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         CORE_WAITING; tests 0 failures (patcher 154, battle_core 104, elf_sites 38), 0 plugin warnings, twattila amd64 exit 0
         (61 warnings as B0); fake_loader site count derived from SITES.size(), rows line still pinned (ROW_WORDS is in
         main.cpp's anonymous namespace -> PK8 W-A2). 8 deviations from section 4 listed in the hand-back (e.g. a whole core =
-        exactly 2 logical CPUs; biggest-L3-first pick). Code review l2r2_ (Opus xHigh) STARTED 08:0x. S2 needs first: c8b0_ +
+        exactly 2 logical CPUs; biggest-L3-first pick). Code review l2r2_ DONE 11-27 (testbin\scratch\l2r2_\review.md): GO, no MUST; all 9 deviations accepted; its own rebuild
+        0 failures (154 / 104 / 38). SHOULDs: S-1 (ATN decides) the cache rank counts parked cores -> a parked V-cache CCD at
+        the first step gives NO_SMT for the session (e.g. an X3D in 'prefer frequency') -> rank by unparked cores or don't make
+        it sticky; a 6+6 X3D with no rule reserves with 5 free V-cache cores (unmeasured); S-2 / S-3 cheap tests (probe 0xbb4e2a
+        patched beside STEP, hard affinity before a reserve, an ended step thread, deviation 6 on the step path, off / on after
+        YIELDED); S-4 all step threads with their own rules -> the core stays reserved and empty (known); NITs (IdOf / waiting
+        single-use, clear-and-close twice BC:282-286 / :465-469, lines > 120 columns). MERGE: c8b0 first, then l2bw2
+        (conflict-free), gated twattila amd64 + x86, the plugin rebuilt in main for its .sha256; the battle core is ON by
+        default inside the plugin and the add-on can't turn it off until W3 -> NO install / release may carry
+        renodx_attila64.dll before S2 passes (an arm that must not place sets CpuPlacement=0); W4's E-lines before the next
+        -EnginePlugin start. W3 / W4 notes in the review. Sonnet High final l2f_ STARTED 08:3x, merge after it. S2 needs first: c8b0_ +
         l2bw2_ merged + the plugin rebuilt in main (DLL + .sha256), W3 + R1, W4 in a64_ab (kind ep1, -EnginePlugin with -AB
         -Probe full, PROBE_LINES, E2b 'site STEP_ENTRY 0xbb4e00: applied', E4 'battle core on', E5 '3 sites unchanged'), ATN's
         yes for the ep1 arm + 2 rule lines, the INVALID flag, the CPU Set Setter rule on run_pkg_580efafeb5765d81\attila64.exe
