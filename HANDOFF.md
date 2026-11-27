@@ -18198,6 +18198,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         of 2756, 'another mod changed' lines 0, 'game code differs' 0, CONTACT_ENTRY applied + first call (thread
         24236), 21 sites unchanged, rows offered = tried 0x3fff, sprite first call + 0x400000, scriptable PASS =
         yes, clean exit, no WER. (fpxp_ took 2 min, not 8.)
+        rpxp_ (Opus xHigh, 14 min; scratch\rpxp_\review.md) GO, 0 MUST: own ELF read + FNV = all 18 game values, all
+        18 PerfFix values = the run's lines, mask list byte-equal to 10f837d7c, threads fail-safe, x87fix CPU-independent;
+        S1 = fpxp_ S2 (a mutant at battle_step.hpp:2881 survives: refused window + entry miss untested); N1-N5.
+        Plugin fix round pxp_ (resumed, Fable 5.2 Medium, est 15: the test row + N1-N4 + fpxp_ N1 / N4 / N5) STARTED
+        23:32; the add-on round (fpxp_ S1 / S4, rpxp_ N5) after the sprite merge.
         - [ ] PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also run on the PerfFix stack
         once (same result as without PerfFix). Owner: coord (batch prep)
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
@@ -18348,6 +18353,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         affinity left alone'. The app runs elevated since 11-26 23:40; whether it applies the new rule without a
         restart = the -C2 smoke's measured CPU sets at battle s 30. -C2 smoke (plugin ac52ed31, add-on 81c42b53;
         c2_smoke_gate.log) STARTED 23:22; then the 6-start sprite gate + the MSAA start.
+        -C2 smoke DONE (ab_runs\20261127_232229_Smoke): E64-sr2 PASS; E64-mv clean exit, no WER, but check 6 NO:
+        0xC2AA8FDA (4 bones + dismember) not drawn with close units (696 draws). drawn32_same_replay.tsv: C2AA8FDA and
+        DAC80ECC are seen in 0 of 21 32-bit frames of this replay -> a too-strict check, not a port bug -> fix 'item
+        X6' added to rts1_'s S1 patch (one a64_ab writer): demand only the hashes the 32-bit reference draws. CPU SETS:
+        measured 'CPU sets 30 (logical 0-13,16-31)' in both arms; today's 20:03-21:06 AB runs under a live rule
+        measured '14 (logical 0-13)'. So the running CPU Set Setter (elevated, started 11-26 23:40) did NOT read the
+        new rule from the file; it needs a restart of the app (exit + start as admin). Coord cannot (elevated, not
+        mine). NEEDS ATN: restart CPU Set Setter (or his brother), else the sprite CPU gate waits until he is home.
         rts2_ S2b DONE (18 of 30 min; 1d7ced4f9 on rts2_1127, not merged): ' stencil func F/B pass F/B fail F/B
         depthfail F/B' (stencil on only), ' dsv ro <d><s>', new ' | views' (rtv<n> / dsv / t<n> view formats) before
         ' | instanced'; 19 gated builds, tests x2, scale_audit byte-equal, census controls. Reviews rrts2_ (Opus
