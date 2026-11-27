@@ -14,7 +14,8 @@
 // frame saw it.
 // The sums are integers: a wave adds its lanes' together, one lane each (the same sums as an add a lane, without a cell's
 // lanes, most of a wave's, or the whole screen's for the learned lighting queuing on the same addresses).
-// Build (build.ps1): dxc -T cs_6_5 -Fh rt_cache_fill.h -Vn RT_CACHE_FILL.
+// Build (build.ps1): dxc -T cs_6_5 -Fh rt_cache_fill.h -Vn RT_CACHE_FILL; its DXR 1.2 build dxc -T cs_6_9 -D OPACITY_MICROMAPS
+// -Fh rt_cache_fill_omm.h -Vn RT_CACHE_FILL_OMM (the micromapped TLAS: X18).
 #include "./rt_path.hlsli"
 
 // A cell's owner, ~texel (0: none; rt_cache_resolve writes its base colour and clears it). Every texel that added to a
