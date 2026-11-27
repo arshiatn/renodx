@@ -975,7 +975,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
 - STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | PK8 Stage B designer
 - CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | coord / ATN (2048 vs 2304 slots)
-- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | rrr_ (final review) -> coord (merge, then L2B W3)
+- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | coord (W3 start
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
@@ -1030,13 +1030,15 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8bf_ -> coord (ATN's census answer)
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | coord (ATN's census answer)
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
-- PK6-64 WAVE 1 (Opus High, pk6_tooling_64.md R11) STARTED 08:1x: p6a1_ = a64_ab.p ... | p6a1_ / p6c_ -> coord (Rv1)
+- PK6-64 WAVE 1 (Opus High, pk6_tooling_64.md R11) STARTED 08:1x: p6a1_ = a64_ab.p ... | p6a1_ -> coord (Rv1)
 - 11-27 08:3x HAND-BACKS (coord). P1p DONE (p1p_, Fable 5.2 Medium, ~20 of 60 min; ... | coord (reviews -> merges
-- HARNESS SCENE DROP + LEARNED LIGHT (pdf_ 11-27, new): di_mode.hpp Observe builds ... | next harness writer after m1i_ (di_mode
+- HARNESS SCENE DROP + LEARNED LIGHT (pdf_ 11-27, new): di_mode.hpp Observe builds ... | llf_ (fix) / next harness writer after m1i_ (slot_light befo
+- LAMP 1 MM RULE (pdr_ S5, 11-27): rt_path.hlsli:1787 (Torch and Fire Light / Shad ... | next rt_path writer
+- S6 ONE-FRAME TRACE (pdr_ S4, 11-27): rt_di_shade.hlsl:26 names a one-frame trace ... | next DI agent
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17705,7 +17707,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         closes once G1s passes. REVIEW (rrdr_ 11-27, designs\rr_before_tonemap_below100_review.md): GO WITH CHANGES; add-on part D1-D6 correct; MUSTs in
         the harness / gate: jitter sign i + 0.5 - j, nearest sampling, + 33 %, the 100 % control in the same hold (old vs new
         harness); G1s 48 runs + G1b 6, ~52 min GPU, est 140-165 min. rri_ STARTED 06:5x (branch rrb100_1127; addon.cpp step
-        last, after c8b0_). rri_ DONE 08:17 (box '11-27 08:3x HAND-BACKS'). rrf_ (Sonnet High) GO, no MUST (S1 README:20-21 old 'At 100% only' line -> fix at merge; S2 G1b in HANDOFF; NIT: keep S3 / R5 open). Owner: rrr_ (final review) -> coord (merge, then L2B W3)
+        last, after c8b0_). rri_ DONE 08:17 (box '11-27 08:3x HAND-BACKS'). rrf_ (Sonnet High) GO, no MUST (S1 README:20-21 old 'At 100% only' line -> fix at merge; S2 G1b in HANDOFF; NIT: keep S3 / R5 open). rrr_ (Opus xHigh) GO, no MUST (testbin\scratch\rrr_\review.md; S1 table_g1s.py marks M4 FAIL once raw files are deleted + the M1 line; S2 gpu_job_g1s.ps1:44-47 logs blank exit codes, add $null = $process.Handle, template too; S3 the 100 % rows aren't like for like vs 50 %, the 1.5x bloom flicker = the 8 x 8 cap (~sqrt 2, ~2.1x at 33 %); G2: 33 % is the scale to watch; G3s is not a merge gate: the row is off by default). MERGED 1df65fee1 (--no-ff) + README fix a308505d7 (rrf_ S1); twattila amd64 + x86 gated builds on the merge exit 0 (61 warnings, as before). L2B W3 next. Owner: coord (W3 start; S1 / S2 tooling to the next harness writer)
         - [x] gts_ SWITCH B DONE (11-26, scratch\gts_\switch_b_changed.txt, backups .bak_gts / .bak_gts2): DI_FRAMES digest,
         DI_E option 2 (Y runs get X's class maps; 48 real E files: digest sha256 = .bin, 54 energy lines identical in 3 forms,
         controls fail), worker-thread hashing, ProbeMean from digests; E file 199 MB -> ~57 KB (+2 s a job). Harness
@@ -18208,7 +18210,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Setter: run_pkg_580efafeb5765d81 has CacheAFFINITY, run_rs_pkg_580efafeb5765d81 MISSING (pairs 17-26). W4 is absorbed
         into P6a1 (R9: ep1, P1, S1) since ATN's ep1 answer is still open; ATN's apply of the patch = his yes. Waves: P6a1
         (a64_ab copy + patch, 65) / P6b (p0\analyze_d0.py + tests + golden json, 35) / P6c (wpr\*, 45) parallel, Rv1 Opus xHigh
-        20, ATN applies, P6a2 35, Rv2 Opus xHigh + Sonnet High 30. Map 3.3 'ep8vfx' -> ep1cvfx fixed. ALL FIX ROUNDS DONE 08:3x (Stage B Rev 3 last; its verify p8bv_ STARTED 08:4x). p8bv_ DONE 08:33 (11 min; testbin\scratch\p8bv_\verify.md): Rev 3 GO WITH TEXT FIXES, no design error; F1 BEFORE 1a = W4a's second half by a FAST-roots-only closure run or an edge check (light_census.py's 7 roots hide an edge from FAST code to 0x95c090 / 0xc516d0 / 0xb409e0); F2-F11 wording / numbers / cites (F4 T-B2 bound, F5 worst frame, F6 CPU count, F7 :32, F10 14-way). 1b could start now, 1a after F1; both still wait on ATN's census go. Rev 3a by p8bf_ (resumed) STARTED 08:3x. Owner: p8bf_ -> coord (ATN's census answer)
+        20, ATN applies, P6a2 35, Rv2 Opus xHigh + Sonnet High 30. Map 3.3 'ep8vfx' -> ep1cvfx fixed. ALL FIX ROUNDS DONE 08:3x (Stage B Rev 3 last; its verify p8bv_ STARTED 08:4x). p8bv_ DONE 08:33 (11 min; testbin\scratch\p8bv_\verify.md): Rev 3 GO WITH TEXT FIXES, no design error; F1 BEFORE 1a = W4a's second half by a FAST-roots-only closure run or an edge check (light_census.py's 7 roots hide an edge from FAST code to 0x95c090 / 0xc516d0 / 0xb409e0); F2-F11 wording / numbers / cites (F4 T-B2 bound, F5 worst frame, F6 CPU count, F7 :32, F10 14-way). 1b could start now, 1a after F1; both still wait on ATN's census go. Rev 3a by p8bf_ (resumed) STARTED 08:3x. Rev 3a DONE 08:4x (p8bf_, ~2 min measured; 1528 -> 1563 lines, backup testbin\scratch\p8bf_\pk8_stage_b_design.rev3.bak.md): F1-F11 in (F1: W4a's second half by a FAST-roots-only closure run or an edge check; a fourth :30 fixed; 3.4's '5-CPU PC' note follows F6; 1a's light_census.py re-run writes its own output path). 1a and 1b may both start on ATN's go. Owner: coord (ATN's census answer)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
@@ -18240,7 +18242,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         194927_AB, sha-pinned; same / X pair other loader / n/a / REFUSED), B4 det-level dumps, B5 per-kind pair rules (PK8 /
         PK2P / PK9 / PK5 gc0); self-test 31 PASS, 0 failed; 4 batches of 11-26 re-read: verdicts unchanged + 'golden: same'. Not
         live: B5 (no plugin start yet). For P6a2: start.json elf_sha / replay_sha (today the batch pins); optional plugin_ini
-        dict, else analyze_d0's KIND_INI must follow P6a1's kinds (Rv1 checks). p6b_ resumed for B5's PK2P lines = P1p's exact literals: DONE 08:26 (1.5 min; reserve / capture / 7 outcome forms + scopes, controls may carry OFF_INI; 48 PASS; analyze_d0.py 3531fb29, test c25b3aee). Owner: p6a1_ / p6c_ -> coord (Rv1)
+        dict, else analyze_d0's KIND_INI must follow P6a1's kinds (Rv1 checks). p6b_ resumed for B5's PK2P lines = P1p's exact literals: DONE 08:26 (1.5 min; reserve / capture / 7 outcome forms + scopes, controls may carry OFF_INI; 48 PASS; analyze_d0.py 3531fb29, test c25b3aee). p6c_ DONE 08:37 (25 min; wpr\ writable, changed in place; backups + SHA256SUMS in testbin\scratch\p6c_\backup\): reduce_kern.py e9abdefe -> cb0f1b4b, analyze_w3.py 897bd7c4 -> a60ded52, new exe_split.py 003661a0 (modes run / c4 / delta / dry); C1 Image rows; C2-C7; R7 PDB by exe_sha; 1.3.28 + fixes thread-start offsets 0x39720 / 0x33150 from the PDB; C3 (a) wake side line; every tool exits 3 while quiet_run.lock / gpu_job.lock exists (seen live: m1i_'s lock). Evidence: W3E offline run reproduces 1.4 / 1.5 except one top-list sum (PK2R 6.11 % = 1.0 ms a frame, not 5.6 % / 0.9 ms; verdict stays parked); analyze_w3 byte-identical to w3_out.txt; dry 1.3.28 symbols agree with the PDB; C7 A/A zero. New: SampledProfile runs ~25 s past the last CSwitch (default now the CSwitch window); main's wake side ~0.68-0.88 ms a frame (E, mostly kernel, 242 wakes a frame); the C3 reopen line is not met. Not done: PK2R 'instance writes' / C01 item 13 have no site list; GPU idle not in a kernel trace; C5 share 4.7 % at depth 8; a new ETL needs its trace start QPC (--q0). For P6a2: call reduce_kern.py, then exe_split.py run (+ c4 on W3-64). w3e_* outputs hold private names: local only; kern.pkl 0.54 GB + w3e_c4_dump.txt 0.29 GB deletable on ATN's word. Owner: p6a1_ -> coord (Rv1)
         - [ ] 11-27 08:3x HAND-BACKS (coord). P1p DONE (p1p_, Fable 5.2 Medium, ~20 of 60 min; branch p1p_1127 54f767537 from
         8773b421f, pushed, not merged; testbin\scratch\p1p_\handback.md): PickCores -> Picks {battle, render, keep},
         RENDER_POOL_CORES = 4, PublishRender the only render-word writer, ApplyRenderCoreKey / SetRenderThread, only CORE_RENDER
@@ -18248,7 +18250,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (d7fb2df8...); A15 literal (whole, NUL-bounded, sent to p6a1_) 'render core: logical %u + %u (render thread %lu),
         scheduling class %u'; 15 deviations in the hand-back; not live-tested: the failed GetThreadSelectedCpuSets branch, a
         refused drop write, the timer failure; for C8 W1p: ExpectPluginDll calls game_started twice (a new per-start line moves
-        that expectation). R1-P1p r1p1p_ (Opus xHigh) STARTED 08:3x; then F-P1p (Sonnet High), merge, C8 W1p (Fable Medium),
+        that expectation). R1-P1p r1p1p_ (Opus xHigh) DONE 08:37 (testbin\scratch\r1p1p_\review.md): GO WITH CHANGES, no plugin-code problem; MUST M1 battle_core_test.cpp:694-702 can still flake on 15.6 ms timer rounding (watchdog_ms 50, Sleep(225) = +-25 ms) -> accept either order; NITs N1 log the refused clear (:649-654), comments :85 / :91, OFF_INI '(render thread 0, error 0)', YIELDED double bracket, fake_loader log_lines lock; notes: P1a must not write the saved setting at attach (overrides RenderCore=1), hide the toggle with RenderCore=0; on ATN's 7950X3D the render core (12 + 13) gets scheduling class 0 and the battle core (14 + 15) class 1 (S-C reading). p1p_ fix round (resumed, Fable Medium) STARTED 08:4x; then F-P1p (Sonnet High), merge, C8 W1p (Fable Medium),
         P1a. rri_ DONE 08:17 (91 of 165 min incl. 56 GPU; branch rrb100_1127: 61a1df37d addon.cpp + db6721a4c below-100 % path,
         pushed, not merged; testbin\scratch\rri_\handback.md): 18 / 18 gated builds exit 0, baselines held, 56 csos
         byte-identical; G1s 67 / 67 PASS at 67 / 58 / 50 / 33 % (closest: fire time noise at 33 % +4.9 % vs 5 %); M4 100 %
@@ -18264,8 +18266,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         / E5 (DI / E_ref 1.00016, bits 1.00180), M2 remainder, S4 (keep 4), M1-trans 0 frames, R11G11B10 census (o0 rounds
         toward zero again each prepared_light level, ~-0.56 % a level, theory); partial: S7 (recordings only), E3 (harness only;
         in-game 4b open); pdi4c_ (b) / (c) / (d) ticked; (a) Nsight split + cost lead, (e) picture check (ATN's eye), (f) F2,
-        (g) NV1 (game start) open -> next DI agent; pdf_\gpu raw dumps ~15 GB kept (ATN decides). Final review pdr_ (Opus xHigh)
-        + pds_ (Sonnet High) STARTED 08:3x; merge on GO. PK8 Stage B Rev 3 DONE (p8bf_, 16 min measured; pk8_stage_b_design.md
+        (g) NV1 (game start) open -> next DI agent; pdf_\gpu raw dumps ~15 GB kept (ATN decides). Final reviews DONE: pds_ (Sonnet High) GO WITH CHANGES (2 SHOULDs: part 7 can't fail with or without the fix; the d = 0 comments say NaN where DiLight is 0); pdr_ (Opus xHigh, testbin\scratch\pdr_\review.md) GO WITH CHANGES: fix right (keep the floor absolute), cites real, M1 the same comment fix, S1 W4 part 8 that hits the fix (light 0 at one pixel's DI ray origin, control 6c81d89c5 = 0), S2 one named 1 mm constant beside LIGHT_CLEARANCE, S3 retag rt_di_surface.hlsli:97-99, S4 + S5 = boxes below; 'S6 closed' = on the harness recordings only. pdf_ fix round (resumed: M1, S1-S3, NITs) STARTED 08:5x; merge after it. PK8 Stage B Rev 3 DONE (p8bf_, 16 min measured; pk8_stage_b_design.md
         1304 -> 1528 lines): M1 vtable-pointer class table (55: 53 FAST, H, N) + one FNV over every called vtable entry (census
         W9), M2 ELF debug-info source for W8 + the owner field's static type, M3 W4a reachability half, M4 one stop_bits word +
         skip latch (skip_period = tick / 100) so 'normal speed' holds; S1-S7 taken; deviation: STOP_NAVAL latches too; count
@@ -18279,7 +18280,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         0.251, texture mean x0.12); the M1-trans bounce drop was this. Not root-caused: harness start order, or the
         learned-light path with ambient on from a scene's first frame (also a game start / RT back after 10 s off). Next:
         slot_light before frame 0 or in parallel, then a never-DI test with a forced 11 s gap after frame 5; pdr_ reads the
-        helper side. Owner: next harness writer after m1i_ (di_mode.hpp + a 4K test)
+        helper side. pdr_ (11-27): REAL IN GAME. A re-made helper scene starts with zeroed learned light (rt_d3d12.hpp:6285-6302) and never learns while PT Ambient runs on the game's sun (rt_cache_fill:86, rt_cache_resolve:22-25 / :45) -> grey far bounce (rt_path.hlsli:349-350), KeptShade 0 (:366-369), no sky (:537-543); the add-on's 150-frame warm-up (rt_core.hpp:808, :3834-3835) restarts only after 30 frames without a Light Bounce, not on a helper device change (:4505-4527). Hits after a lost scene (GPU fault / hang / failed request; medium) for the rest of the battle until a PT toggle (the rt_path.hlsli:365 'ATN: too dark until toggled' may be this), and after an idle release with <= 30 presents in >= 10 s (low); game start / loading / RT off-on are fine at >= 3 fps. Fix (bug fix, always on): llf_ (Opus High, branch llf_1127, rt_core.hpp only: reset the warm-up on a device change / re-made scene; ~2.5 s of the game's ambient after a restart) STARTED 08:5x, its GPU proof job (>= 11 s forced gap after frame 5) waits for a GPU waiter slot; later option: the helper carries the 5 light_kept_ values (rt_d3d12.hpp after ptf_). Owner: llf_ (fix) / next harness writer after m1i_ (slot_light before frame 0, di_mode.hpp)
+        - [ ] LAMP 1 MM RULE (pdr_ S5, 11-27): rt_path.hlsli:1787 (Torch and Fire Light / Shadows from the Light Bounce) reads a
+        lamp within 1 mm as UNLIT with 1e-3f, the opposite of rt_lights.cs_6_5.hlsl:85 and (after pdf_1127) DiVisible. Pick one
+        rule (likely lit, as the bits) + one named constant; DXIL / 4K harness check. Owner: next rt_path writer
+        - [ ] S6 ONE-FRAME TRACE (pdr_ S4, 11-27): rt_di_shade.hlsl:26 names a one-frame trace of S6's net count that does not
+        exist; 'S6 closed' holds for the harness recordings only. Commit the census as a one-frame test build, or reword the
+        tag. Owner: next DI agent
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
