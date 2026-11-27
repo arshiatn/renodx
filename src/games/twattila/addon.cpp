@@ -1186,6 +1186,7 @@ enum class PluginRow : uint8_t {
   SHADOW_MAP = twattila::attila64_plugin::ROW_SHADOW_MAP,
   GRASS = twattila::attila64_plugin::ROW_GRASS,
   CAMPAIGN_TREES = twattila::attila64_plugin::ROW_CAMPAIGN_TREES,
+  SPRITES = twattila::attila64_plugin::ROW_SPRITES,
   TWEAKS = 0xFE,
   NONE = 0xFF,
 };
@@ -1203,7 +1204,7 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
     {.match = "GraphicsUnitDetailMedium", .plugin_row = PluginRow::UNIT_LOD},
     {.match = "GraphicsUnitDetailLarge", .plugin_row = PluginRow::UNIT_LOD},
     {.match = "GraphicsUnitDetailHuge", .plugin_row = PluginRow::UNIT_LOD},
-    {.match = "GraphicsDeadUnits"},
+    {.match = "GraphicsDeadUnits", .plugin_row = PluginRow::SPRITES},
     {.match = "GraphicsUnitAnimation", .plugin_row = PluginRow::UNIT_LOD},
     {.match = "GraphicsFacialAnimation", .plugin_row = PluginRow::UNIT_LOD},
     {.match = "GraphicsHandAnimation", .plugin_row = PluginRow::UNIT_LOD},
@@ -1221,8 +1222,8 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
     // Hidden on the port until ray-traced shadows: the plugin only checks the cascade sites.
     {.match = "RayTracedShadowCascades"},
     {.match = "GraphicsBigBattleFix"},
-    {.match = "GraphicsSmallSoldiersAsSprites"},
-    {.match = "GraphicsSpriteSize"},
+    {.match = "GraphicsSmallSoldiersAsSprites", .plugin_row = PluginRow::SPRITES},
+    {.match = "GraphicsSpriteSize", .plugin_row = PluginRow::SPRITES},
     {.match = "RayTracedSkipShadowPass", .plugin_row = PluginRow::PASS_DRAW},
     {.match = "FasterGameCpuCode"},
     {.match = "FasterRenderLists"},
@@ -1241,8 +1242,9 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
     {.match = "DrawRecordingFamilies"},
     {.match = "ParallelInstanceFill"},
     {.match = "FillWithDrawRecording"},
-    // The preset buttons: they write the hidden rows above.
-    {.match = "graphics-presets"},
+    // The preset buttons, with the Unit Detail rows: on the port they write only the rows shown (ConfigureAddon's
+    // port_row_of).
+    {.match = "graphics-presets", .plugin_row = PluginRow::UNIT_LOD},
 }};
 
 // A game-code row on the port: shown once the 64-bit engine plugin is ready and offers its row (TWEAKS: no row of its
@@ -1265,6 +1267,17 @@ inline bool OptionValuesFound(const tw::engine_tweaks::Option& option) {
          && std::ranges::all_of(option.tweaks,
                                 [](const tw::engine_tweaks::Tweak& tweak) { return tweak.value != nullptr; });
 }
+
+// A game-code row on the port with the engine value option it is bound to (null: no values of its own): shown once the
+// plugin offers its row and every value of the option was found.
+struct PortRow {
+  PluginRow row = PluginRow::NONE;
+  const tw::engine_tweaks::Option* option = nullptr;
+
+  bool Shown() const {
+    return GameCodeRowShown(row) && (PLUGIN_READY_FORCED || option == nullptr || OptionValuesFound(*option));
+  }
+};
 
 // The note rows in graphics_status's place on the port, at most one shown: one per final lookup result, READY's two
 // split by the block. A v1 block (an older plugin) shows the update note; a v2 block shows the other one while the
@@ -2302,6 +2315,14 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       scales[plugin::SCALE_GRASS_RADIUS] = grass_distance.scale;
       scales[plugin::SCALE_GRASS_DENSITY] =
           std::max(grass_density.scale, twattila::graphics_hooks::GRASS_DENSITY_FLOOR);
+      // The sprite rows as graphics_hooks.hpp's Update takes them: the main view's focal length / Sprite Size while Small
+      // Soldiers as Sprites is on and Sprite Size above 0 (0: off, also with no main camera yet), the dead soldiers'
+      // distance x Dead Unit Detail.
+      scales[plugin::SCALE_SPRITE_DISTANCE] =
+          ((small_soldiers_as_sprites != 0.f && sprite_size > 0.f)
+               ? twattila::anti_aliasing::MainFocalPixels() / sprite_size
+               : 0.f);
+      scales[plugin::SCALE_DEAD_UNITS] = dead_units.scale;
       twattila::attila64_plugin_link::PublishScales(scales);
       // shadow_pass's Update runs every present (it ends the frame's counts), here its second site: the 32-bit one
       // below waits for the at-start tests; the port has none.
@@ -2555,12 +2576,35 @@ void ConfigureAddon() {
     // Its option's start: 1x, Game's (0), the game's value or the second choice (1).
     graphics_defaults.emplace_back(test.key, test.option.scale);
   }
-  // A preset button: `defaults` with `changes` (in order) written to the settings.
-  const auto preset = [](const std::vector<std::pair<std::string, float>>& defaults,
-                         const std::vector<std::pair<std::string, float>>& changes) {
-    return [values = defaults, changes]() mutable {
+  // A setting's row on the port: by GAME_CODE_ROWS' key or group, else TWEAKS by the value option it is bound to (the
+  // tests); none for a setting the game's code does not read (shown as on 32-bit).
+  const auto port_row_of = [](const renodx::utils::settings::Setting& setting) -> std::optional<PortRow> {
+    const auto entry = std::ranges::find_if(GAME_CODE_ROWS, [&setting](const GameCodeRow& row) {
+      return (!setting.key.empty() && setting.key == row.match) || (!setting.group.empty() && setting.group == row.match);
+    });
+    const auto bound = std::ranges::find_if(graphics_options, [&setting](const tw::engine_tweaks::Option* option) {
+      return setting.binding == &option->scale;
+    });
+    const tw::engine_tweaks::Option* option = (bound != graphics_options.end() ? *bound : nullptr);
+    if (entry != GAME_CODE_ROWS.end()) return PortRow{.row = entry->plugin_row, .option = option};
+    if (option != nullptr) return PortRow{.row = PluginRow::TWEAKS, .option = option};
+    return std::nullopt;
+  };
+  // A preset button: `defaults` with `changes` (in order) written to the settings. The port: only the rows shown (a
+  // hidden row keeps its saved value).
+  const auto preset = [port_row_of](const std::vector<std::pair<std::string, float>>& defaults,
+                                    const std::vector<std::pair<std::string, float>>& changes) {
+    return [defaults, changes, port_row_of] {
+      auto values = defaults;
       for (const auto& [key, value] : changes) {
         std::ranges::find(values, key, &std::pair<std::string, float>::first)->second = value;
+      }
+      if constexpr (ATTILA64) {
+        std::erase_if(values, [&port_row_of](const std::pair<std::string, float>& entry) {
+          const auto* setting = renodx::utils::settings::FindSetting(entry.first);
+          const std::optional<PortRow> port_row = (setting == nullptr ? std::nullopt : port_row_of(*setting));
+          return port_row.has_value() && !port_row->Shown();
+        });
       }
       renodx::utils::settings::UpdateSettings(values);
     };
@@ -2600,10 +2644,10 @@ void ConfigureAddon() {
                         {"GraphicsBuildingDetail", 4.f}});
   vanilla_units.insert(vanilla_units.end(), atn_settings.begin(), atn_settings.end());
   auto* note = tw::engine_tweaks::Note();
-  // The port: its first sentence alone while the preset buttons are hidden.
+  note->label += " Some apply only after loading a battle or a save.";
+  constexpr const char* PRESETS_TEXT = "The two presets below are the settings I would use myself.";
   if constexpr (!ATTILA64) {
-    note->label += " Some apply only after loading a battle or a save.\n"
-                   "The two presets below are the settings I would use myself.";
+    note->label = note->label + "\n" + PRESETS_TEXT;
   }
   const auto unit_distance = [](size_t index, const std::string& key, const std::string& label,
                                 const std::string& units) {
@@ -2674,6 +2718,18 @@ void ConfigureAddon() {
           .on_change = preset(graphics_defaults, {}),
       },
   });
+  // The port: the presets' sentence as its own row right after the note, shown with the buttons (they come with the
+  // Unit Detail rows, which another row of the section can show without).
+  if constexpr (ATTILA64) {
+    settings.insert(std::next(std::ranges::find(settings, note)),
+                    new renodx::utils::settings::Setting{
+                        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                        .label = PRESETS_TEXT,
+                        .section = note->section,
+                        .tint = note->tint,
+                        .is_visible = [] { return GameCodeRowShown(PluginRow::UNIT_LOD); },
+                    });
+  }
   {
     const auto reflections = twattila::feature_settings::SsrSettings(&shader_injection, &ssr_denoiser);
     settings.insert(settings.end(), reflections.begin(), reflections.end());
@@ -3256,25 +3312,13 @@ void ConfigureAddon() {
     const std::array<const renodx::utils::settings::Setting*, 4> keyless_rows = {ui_mod_row, graphics_status, grass_trace_row,
                                                                                  grass_dump_row};
     for (auto* setting : settings) {
-      const auto entry = std::ranges::find_if(GAME_CODE_ROWS, [setting](const GameCodeRow& row) {
-        return (!setting->key.empty() && setting->key == row.match) || (!setting->group.empty() && setting->group == row.match);
-      });
-      const auto bound = std::ranges::find_if(graphics_options, [setting](const tw::engine_tweaks::Option* option) {
-        return setting->binding == &option->scale;
-      });
-      PluginRow row = PluginRow::NONE;
-      if (entry != GAME_CODE_ROWS.end()) {
-        row = entry->plugin_row;
-      } else if (bound != graphics_options.end()) {
-        row = PluginRow::TWEAKS;
-      } else if (std::ranges::find(keyless_rows, setting) == keyless_rows.end()) {
-        continue;
+      std::optional<PortRow> port_row = port_row_of(*setting);
+      if (!port_row.has_value()) {
+        if (std::ranges::find(keyless_rows, setting) == keyless_rows.end()) continue;
+        port_row = PortRow{};
       }
-      const tw::engine_tweaks::Option* option = (bound != graphics_options.end() ? *bound : nullptr);
-      setting->is_visible = [row, option, own = setting->is_visible] {
-        return GameCodeRowShown(row)
-               && (PLUGIN_READY_FORCED || option == nullptr || OptionValuesFound(*option))
-               && (own == nullptr || own());
+      setting->is_visible = [port_row = *port_row, own = setting->is_visible] {
+        return port_row.Shown() && (own == nullptr || own());
       };
     }
     // The tests' empty lines and their note, and the Experimental note: only while a value or plugin row of their section

@@ -36,6 +36,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <string>
@@ -867,7 +868,8 @@ int main(int argc, char** argv) {
     }
     // 7f. The scale rows on the port (PublishScales, Shadow Map Size's mirror): a scale stored only when it changed, its
     //     scales_active bit while it is not neutral and its row is offered (a row not offered: no bit, the scale still
-    //     stored; the grass scales 19-21 by ROW_GRASS alone, 18 by ROW_CAMPAIGN_TREES), one line per change of the
+    //     stored; the grass scales 19-21 by ROW_GRASS alone, 18 by ROW_CAMPAIGN_TREES, the sprite scales 22-23 by
+    //     ROW_SPRITES, a sprite scale not finite and above 0 sent as 0), one line per change of the
     //     bits, nothing on a v1 block; the plugin's notices logged once per new bit; ShadowMapSize written clamped, one
     //     line per write, its own pending flag against the key this start read (out of range: the game's sizes), only while its row is
     //     offered; the scales kept at the detach.
@@ -963,6 +965,47 @@ int main(int argc, char** argv) {
               && logged.size() == 5);
         scale_block.rows_applied = scale_rows;
       }
+      // The sprite rows (scales 22 and 23, ROW_SPRITES): Small Soldiers as Sprites at 54 (a 1080-pixel focal length /
+      // Sprite Size 20) and Dead Unit Detail 0.5x. The row not applied (its rows hidden): stored, no bit, no line.
+      // Applied: 22 and 23; changed after the plugin: none. A sprite scale not finite and above 0 (negative, NaN, +inf):
+      // sent as 0, its neutral, Dead Unit Detail's bit alone; Small Soldiers as Sprites alone: 22; back to neutral:
+      // none.
+      {
+        const uint32_t scale_rows = scale_block.rows_applied;
+        const auto sprite_scale = [&] { return scale_block.scales[plugin::SCALE_SPRITE_DISTANCE].load(); };
+        logged.clear();
+        scales[plugin::SCALE_SPRITE_DISTANCE] = 54.f;
+        scales[plugin::SCALE_DEAD_UNITS] = 0.5f;
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 54.f && scale_block.scales[plugin::SCALE_DEAD_UNITS].load() == 0.5f
+              && scale_block.scales_active.load() == 0 && logged.empty());
+        scale_block.rows_applied |= plugin::RowBit(plugin::ROW_SPRITES);
+        link::PublishScales(scales);
+        CHECK(scale_block.scales_active.load() == 0xc00000 && lines("engine scales active 0xc00000") == 1);
+        scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_SPRITES));
+        link::PublishScales(scales);
+        CHECK(scale_block.scales_active.load() == 0 && lines("engine scales active 0x0") == 1);
+        scale_block.rows_changed.store(0);
+        scales[plugin::SCALE_SPRITE_DISTANCE] = -54.f;
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 0.f && scale_block.scales_active.load() == 0x800000
+              && lines("engine scales active 0x800000") == 1);
+        scales[plugin::SCALE_SPRITE_DISTANCE] = std::numeric_limits<float>::quiet_NaN();
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 0.f && scale_block.scales_active.load() == 0x800000 && logged.size() == 3);
+        scales[plugin::SCALE_SPRITE_DISTANCE] = std::numeric_limits<float>::infinity();
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 0.f && scale_block.scales_active.load() == 0x800000 && logged.size() == 3);
+        scales[plugin::SCALE_SPRITE_DISTANCE] = 54.f;
+        scales[plugin::SCALE_DEAD_UNITS] = 1.f;
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 54.f && scale_block.scales_active.load() == 0x400000
+              && lines("engine scales active 0x400000") == 1);
+        scales = plugin::NEUTRAL_SCALES;
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 0.f && scale_block.scales_active.load() == 0 && logged.size() == 5);
+        scale_block.rows_applied = scale_rows;
+      }
       // A v1 block: nothing stored.
       scale_block.bytes = static_cast<uint32_t>(plugin::BlockBytes(1));
       scales[0] = 3.f;
@@ -1043,7 +1086,8 @@ int main(int argc, char** argv) {
       link::Install();
       std::printf(
           "7f scale rows: a scale stored on a change, its bit while not neutral and its row offered (not offered: none; "
-          "grass 19-21 by the grass row alone, campaign trees 18), one line per change of the bits, nothing on a v1 "
+          "grass 19-21 by the grass row alone, campaign trees 18, sprites 22-23, a sprite scale not finite and above 0 sent as 0), "
+          "one line per change of the bits, nothing on a v1 "
           "block; notices once per new bit; "
           "ShadowMapSize clamped, one line per write, its own pending flag against this start's key (out of range: the "
           "game's sizes; a NOT_DX11 start: 0), left alone while its row is not offered; the scales kept at the detach\n");

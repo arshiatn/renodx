@@ -129,6 +129,28 @@ $table['plugin_tree_refused'] = @{
             '[Total War] 64-bit Attila: engine scales active 0x380000') + $upgraded
   forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active 0x3c0000', 'engine plugin notices')
 }
+# The sprite rows (a v2 block offering the sprites row, rows 0x203): Small Soldiers as Sprites on and Dead Unit Detail
+# 0.5x. F7 draws no main view, so the focal length is unknown and Small Soldiers as Sprites sends 0 (off, its bit 22
+# clear); Dead Unit Detail sets bit 23 (one line). The exe checks the kept scales 22-23 (0, 0.5).
+# plugin_sprites_refused: the sprites row changed after the plugin (rows 0x203, 0x200 changed): its rows hidden, no bit,
+# no line (the scales stored as the add-on folded them).
+$spriteIni = @('GraphicsSmallSoldiersAsSprites=1', 'GraphicsDeadUnits=0.5')
+$table['plugin_sprites'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin sprite_scales'; encoding = 0; plugin = '1 515 0 2 515'
+  ini = $spriteIni
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x203',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x203',
+            '[Total War] 64-bit Attila: engine scales active 0x800000') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active 0xc00000',
+             'engine scales active 0x400000', 'engine plugin notices')
+}
+$table['plugin_sprites_refused'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin sprite_scales'; encoding = 0; plugin = '1 515 512 2 515'
+  ini = $spriteIni
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x3',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x203') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active', 'engine plugin notices')
+}
 # Registration end to end: rows forced wanted (RENODX_TW_PLUGIN_WANT), the callbacks registered at a present, the fake
 # hooks' thread calling into them, then unregistered and drained inside ReShade's unload before the add-on is freed.
 $table['plugin_calls'] = @{

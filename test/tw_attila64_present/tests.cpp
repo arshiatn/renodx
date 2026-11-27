@@ -19,7 +19,7 @@
 // Then the captures (zz_capture) against the reference of the swap chain proxy.
 // Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8]
 //        [image_none|image_badmagic|image_table] [plugin [plugin_calls] [grass_scales|grass_scales_tree]
-//        [tree_value_written|tree_value_kept]] [perffix] [plain_empty] [gpu]
+//        [tree_value_written|tree_value_kept] [sprite_scales]] [perffix] [plain_empty] [gpu]
 //        attila64.exe d3d12 [gpu]   (C4: frames written; run.ps1 compares them with a run without the add-on)
 //        attila64.exe opengl        (C6: as C4, GPU only)
 
@@ -960,6 +960,16 @@ int main(int argc, char** argv) {
       if (scales != expected) {
         Fail(std::format("scales 18-21 {} {} {} {}, expected {} {} {} {}", scales[0], scales[1], scales[2], scales[3],
                          expected[0], expected[1], expected[2], expected[3]));
+      }
+    }
+    // The sprite scales, from the case's ReShade.ini: Small Soldiers as Sprites on with no main view drawn (the focal
+    // length unknown: 0, off) and Dead Unit Detail 0.5x.
+    if (block != nullptr && has("sprite_scales")) {
+      const float sprite_distance = block->scales[twattila::attila64_plugin::SCALE_SPRITE_DISTANCE].load();
+      const float dead_units = block->scales[twattila::attila64_plugin::SCALE_DEAD_UNITS].load();
+      std::cout << std::format("  plugin: scales 22-23 {} {}\n", sprite_distance, dead_units);
+      if (sprite_distance != 0.f || dead_units != 0.5f) {
+        Fail(std::format("scales 22-23 {} {}, expected 0 0.5", sprite_distance, dead_units));
       }
     }
     if (has("tree_value_written") || has("tree_value_kept")) {

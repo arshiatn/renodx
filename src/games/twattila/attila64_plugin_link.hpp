@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
@@ -98,7 +99,7 @@ inline constexpr auto SOL_FRAME_CAP_KEY = Narrow(plugin::INI_SOL_FRAME_CAP);
 inline constexpr auto SHADOW_MAP_SIZE_KEY = Narrow(plugin::INI_SHADOW_MAP_SIZE);
 // The scales_active bits of each scale row's hooks: set only while the row is offered (a refused row's hook may stay
 // in, the plugin's main.cpp).
-inline constexpr std::array<std::pair<plugin::Row, uint32_t>, 4> ROW_SCALES = {{
+inline constexpr std::array<std::pair<plugin::Row, uint32_t>, 5> ROW_SCALES = {{
     {plugin::ROW_UNIT_LOD, (1u << plugin::SCALE_MODEL_DETAIL) - (1u << plugin::SCALE_UNIT_LOD)},
     {plugin::ROW_MODEL_DETAIL, 1u << plugin::SCALE_MODEL_DETAIL},
     // ROW_GRASS_CELLS reads 19 and 20 as well, but cuts only what ROW_GRASS's hooks reached: no bits of its own (a
@@ -106,6 +107,7 @@ inline constexpr std::array<std::pair<plugin::Row, uint32_t>, 4> ROW_SCALES = {{
     {plugin::ROW_GRASS,
      (1u << plugin::SCALE_GRASS_LOD) | (1u << plugin::SCALE_GRASS_RADIUS) | (1u << plugin::SCALE_GRASS_DENSITY)},
     {plugin::ROW_CAMPAIGN_TREES, 1u << plugin::SCALE_CAMPAIGN_TREES},
+    {plugin::ROW_SPRITES, (1u << plugin::SCALE_SPRITE_DISTANCE) | (1u << plugin::SCALE_DEAD_UNITS)},
 }};
 
 // A restart-only engine value a row writes, by its slot's index: the row's Tweak points `value` at `bits`, where
@@ -608,11 +610,17 @@ inline void PublishScales(const std::array<float, internal::plugin::SCALE_COUNT>
   }
   uint32_t active = 0;
   for (uint32_t index = 0; index < plugin::SCALE_COUNT; ++index) {
-    if (block->scales[index].load(std::memory_order_relaxed) != scales[index]) {
-      block->scales[index].store(scales[index], std::memory_order_relaxed);
+    // Small Soldiers as Sprites: a distance scale that is not finite and above 0 cannot move a soldier (the plugin's
+    // handler and the 32-bit hook act only above 0; +inf keeps the game's distance), so it is sent as its neutral 0
+    // with its bit clear: no handler call per soldier.
+    const bool sprite_off = (index == plugin::SCALE_SPRITE_DISTANCE
+                             && !(scales[index] > 0.f && scales[index] <= std::numeric_limits<float>::max()));
+    const float scale = (sprite_off ? 0.f : scales[index]);
+    if (block->scales[index].load(std::memory_order_relaxed) != scale) {
+      block->scales[index].store(scale, std::memory_order_relaxed);
     }
     // Exact: the sliders' defaults give the neutral bits (1x, 1 / 1^2); a NaN counts as active.
-    if (scales[index] != plugin::NEUTRAL_SCALES[index]) {
+    if (scale != plugin::NEUTRAL_SCALES[index]) {
       active |= 1u << index;
     }
   }
