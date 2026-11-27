@@ -1184,6 +1184,8 @@ enum class PluginRow : uint8_t {
   UNIT_LOD = twattila::attila64_plugin::ROW_UNIT_LOD,
   MODEL_DETAIL = twattila::attila64_plugin::ROW_MODEL_DETAIL,
   SHADOW_MAP = twattila::attila64_plugin::ROW_SHADOW_MAP,
+  GRASS = twattila::attila64_plugin::ROW_GRASS,
+  CAMPAIGN_TREES = twattila::attila64_plugin::ROW_CAMPAIGN_TREES,
   TWEAKS = 0xFE,
   NONE = 0xFF,
 };
@@ -1209,11 +1211,12 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
     {.match = "GraphicsFootstepEffects", .plugin_row = PluginRow::UNIT_LOD},
     {.match = "GraphicsObjectDetail", .plugin_row = PluginRow::MODEL_DETAIL},
     {.match = "GraphicsBuildingDetail", .plugin_row = PluginRow::TWEAKS},
-    {.match = "GraphicsCampaignDetail"},
+    {.match = "GraphicsCampaignDetail", .plugin_row = PluginRow::CAMPAIGN_TREES},
     {.match = "GraphicsCampaignPlants", .plugin_row = PluginRow::TWEAKS},
     {.match = "GraphicsCampaignProps", .plugin_row = PluginRow::TWEAKS},
-    {.match = "GraphicsGrassDistance"},
-    {.match = "GraphicsGrassDensity"},
+    // The grass cell row (ROW_GRASS_CELLS) has no row here: it only cuts what the grass row's hooks reach.
+    {.match = "GraphicsGrassDistance", .plugin_row = PluginRow::GRASS},
+    {.match = "GraphicsGrassDensity", .plugin_row = PluginRow::GRASS},
     {.match = "GraphicsShadowMapSize", .plugin_row = PluginRow::SHADOW_MAP},
     // Hidden on the port until ray-traced shadows: the plugin only checks the cascade sites.
     {.match = "RayTracedShadowCascades"},
@@ -2272,6 +2275,16 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       scales[15] = footstep_effects.scale;
       scales[16] = (twattila::rt_scene::CastersSkipped() ? 0.f : 1.f);
       scales[plugin::SCALE_MODEL_DETAIL] = 1.f / (object_detail.scale * object_detail.scale);
+      // Campaign Tree Detail's hook (graphics_hooks.hpp Update: the distances squared) only while its engine value was
+      // found too: its row shows with both, so nothing applies while the player cannot see it.
+      if (std::ranges::all_of(campaign_trees.tweaks, [](const tw::engine_tweaks::Tweak& tweak) { return tweak.value != nullptr; })) {
+        scales[plugin::SCALE_CAMPAIGN_TREES] = campaign_trees.scale * campaign_trees.scale;
+      }
+      // The grass rows as graphics_hooks.hpp's scrub hooks take them: the models' LODs x Grass Detail squared, the
+      // cells' radius and bias x it, the bias / Grass Density (Update's floor against a hand-edited 0).
+      scales[plugin::SCALE_GRASS_LOD] = grass_distance.scale * grass_distance.scale;
+      scales[plugin::SCALE_GRASS_RADIUS] = grass_distance.scale;
+      scales[plugin::SCALE_GRASS_DENSITY] = std::max(grass_density.scale, 0.010001118f);
       twattila::attila64_plugin_link::PublishScales(scales);
       // shadow_pass's Update runs every present (it ends the frame's counts), here its second site: the 32-bit one
       // below waits for the at-start tests; the port has none.
@@ -2474,12 +2487,9 @@ void ConfigureAddon() {
     // The port's tooltip where the 32-bit one does not hold (the 64-bit game has the room).
     std::ranges::find(engine_tests, "AudioSoundFileMemory", &twattila::engine_tests::EngineTest::key)->tooltip =
         "Memory for the loaded sound files. Restart the game. Game: 86 MB.";
-    // Campaign Tree Detail waits for its hook: its value stays the game's until its row shows. Model Detail has no
-    // value (its scale goes to the plugin's hook); here for its row's visibility.
-    graphics_options = {&object_detail, &building_detail, &campaign_plants, &campaign_props};
-  } else {
-    graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   }
+  // The port: Model Detail has no value (its scale goes to the plugin's hook), here for its row's visibility.
+  graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   for (auto& test : engine_tests) {
     graphics_options.push_back(&test.option);
   }
