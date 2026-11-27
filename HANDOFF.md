@@ -989,7 +989,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - O2 AT THE DEFAULT FOLIAGE 0.5 (o2_ handback:47-48): the 1/3 row stays at 0.507x, ... | ATN (accept the number) -> next SSS designer
 - O2 NOT TIMED (o2_ handback:91): torch light mode, 960 / 1920 samples, the 1920-s ... | coord GPU plan (5090 parts)
 - O2d HOST CONTRACT (o2_ handback:83-86): O2d is exact only while no host marks de ... | next SSS writer
-- AA FEED: THRONES HDR t00 IS LINEAR was taken from aaf_ (aaf2_ handback:120), not ... | game batch (aaf3_'s line: 1 Thrones x86 start, RENODX_TW_PAS
 - AA FEED: CMAA2 ON THE GPU (aaf2_ handback:122): only its CPU model was checked. ... | aaf3_ if the harness runs CMAA2, else the next AA agent
 - tw_romer_dlaa NOT RUN (aaf2_ handback:87). Owner: coord (next Rome Remastered bu ... | coord (next Rome Remastered build gate, low)
 - FLIP PNGs: no bin-to-PNG step for reference\flip_tool.py from the trimmed OMM du ... | tools agent
@@ -17818,10 +17817,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         wave64 / Intel. Owner: coord GPU plan (5090 parts); ATN (AMD / Intel, no such GPU here)
         - [ ] O2d HOST CONTRACT (o2_ handback:83-86): O2d is exact only while no host marks depth negative with foliage 0; an
         assert, test or comment at the host contract. Owner: next SSS writer
-        - [ ] AA FEED: THRONES HDR t00 IS LINEAR was taken from aaf_ (aaf2_ handback:120), not checked: one Thrones pass dump.
+        - [x] AA FEED: THRONES HDR t00 IS LINEAR was taken from aaf_ (aaf2_ handback:120), not checked: one Thrones pass dump.
         Owner: game batch (aaf3_'s line: 1 Thrones x86 start, RENODX_TW_PASS_DUMP=<folder>, HDR, Gamma Correction default, a battle /
         replay, trigger 'renodx_pass_dump_now' = '1 thrones_t00'; pass = linear within 1 % on mid grey + the 2.0 control
-        rejected) unless thg0_'s CPU check from source (rrbi_'s g0_check.py on Thrones' tone mapper, 11-27) settles it
+        rejected) unless thg0_'s CPU check from source (rrbi_'s g0_check.py on Thrones' tone mapper, 11-27) settles it. SETTLED (thg0_ 11-27, testbin\scratch\thg0_\g0_out.txt): PASS, 0.18 in -> 0.18 out exact, the 2.0 control
+        (0.4243) rejected; twthronesofbritannia/tone_mapper.hlsli ToneMapperHdr = Attila's shape (no encode between t00's
+        input and its return); Thrones' aa_dlaa_prepare.cs_5_0.hlsl includes Attila's (coord). No game start needed. Owner: done
         - [ ] AA FEED: CMAA2 ON THE GPU (aaf2_ handback:122): only its CPU model was checked. aaf3_ 11-27: the rt_harness has no CMAA2 /
         SMAA path; the six CMAA2 compute passes run only on the game's D3D11 device; a GPU row needs a new D3D11 driver for
         the full chain. Owner: aaf3_ if the harness runs
