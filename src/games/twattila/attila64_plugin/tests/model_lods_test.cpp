@@ -6,7 +6,7 @@
 // The model LOD table (model_lods.hpp) without a game, on fake nodes and models: a model's first scaling and the
 // values back at 1x, a value the game set again, a changed LOD count, entries past the eighth, distances that must not
 // be scaled, two threads on the same models (one scale, then two scales at once: never a model scaled twice), and a
-// full stripe with its notice (its models then cost a shared lock only).
+// full stripe with its notice (its models then cost a shared lock once per thread, and no lock after).
 // model_lods_test.exe; exit code = failures.
 
 #include <array>
@@ -228,18 +228,47 @@ int main() {
       for (model_lods::Stripe& stripe : model_lods::table) {
         held.emplace_back(stripe.mutex);
       }
+      // Then, with every stripe held exclusive: the thread's last such model again, which its cache remembers, takes
+      // no lock at all.
+      size_t last_kept = MODELS - 1;
+      while (!fake.Holds(last_kept, 0, 100.f)) {
+        --last_kept;
+      }
       std::atomic<bool> done = false;
+      std::atomic<bool> all_exclusive = false;
+      std::atomic<bool> done_again = false;
       std::thread other([&] {
         for (size_t model = 0; model < MODELS; ++model) {
           model_lods::Scale(fake.node.data(), static_cast<uint32_t>(model), 4.f, &notices);
         }
+        model_lods::Scale(fake.node.data(), static_cast<uint32_t>(last_kept), 4.f, &notices);
         done = true;
+        while (!all_exclusive.load()) {
+          Sleep(1);
+        }
+        model_lods::Scale(fake.node.data(), static_cast<uint32_t>(last_kept), 4.f, &notices);
+        done_again = true;
       });
       for (int waited = 0; waited < 5000 && !done.load(); ++waited) {
         Sleep(1);
       }
       Expect(done.load(), "a full stripe: its models' later calls take no exclusive lock");
       held.clear();
+      while (!done.load()) {
+        Sleep(1);
+      }
+      for (model_lods::Stripe& stripe : model_lods::table) {
+        stripe.mutex.lock();
+      }
+      all_exclusive = true;
+      for (int waited = 0; waited < 5000 && !done_again.load(); ++waited) {
+        Sleep(1);
+      }
+      Expect(done_again.load() && fake.Holds(last_kept, 0, 100.f),
+             "a full stripe: a model the thread's cache remembers takes no lock");
+      for (model_lods::Stripe& stripe : model_lods::table) {
+        stripe.mutex.unlock();
+      }
       other.join();
     }
     size_t back = 0;

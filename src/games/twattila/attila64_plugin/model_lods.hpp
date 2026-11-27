@@ -67,6 +67,7 @@ struct CachedModel {
   float scale = 0.f;
   uint32_t count = 0;
   std::array<uint32_t, MAX_MODEL_LODS> written = {};
+  bool stripe_full = false;  // the model found its stripe full: it keeps the game's distances for good
 };
 inline constexpr uint32_t CACHED_MODEL_BITS = 9;
 static thread_local std::array<CachedModel, size_t{1} << CACHED_MODEL_BITS> cached_models;
@@ -81,21 +82,22 @@ static const uint8_t* Scale(const uint8_t* node, uint32_t index, float scale, st
   std::memcpy(&models, node + NODE_MODELS, sizeof(models));
   const uint8_t* model = models[index];
   if (model == nullptr) return nullptr;
+  const auto key = reinterpret_cast<uintptr_t>(model);
+  const uint32_t hash = static_cast<uint32_t>(key >> 4) * 0x9E3779B1u;
+  CachedModel& cached = cached_models[hash >> (32 - CACHED_MODEL_BITS)];
+  if (cached.model == model && cached.stripe_full) return model;
   uint32_t count = 0;
   std::memcpy(&count, model + MODEL_LOD_COUNT, sizeof(count));
   count = std::min(count, MAX_MODEL_LODS);
   uint8_t* const* lods = nullptr;
   std::memcpy(&lods, model + MODEL_LODS, sizeof(lods));
 
-  const auto key = reinterpret_cast<uintptr_t>(model);
-  const uint32_t hash = static_cast<uint32_t>(key >> 4) * 0x9E3779B1u;
   const auto holds = [&](const std::array<uint32_t, MAX_MODEL_LODS>& written) {
     for (uint32_t lod = 0; lod < count; ++lod) {
       if (std::memcmp(lods[lod] + LOD_DISTANCE_SQUARED, &written[lod], sizeof(uint32_t)) != 0) return false;
     }
     return true;
   };
-  CachedModel& cached = cached_models[hash >> (32 - CACHED_MODEL_BITS)];
   if (cached.model == model && cached.scale == scale && cached.count == count && holds(cached.written)) return model;
 
   // An infinite distance stays infinite and a NaN is kept; x 1 is the game's bits.
@@ -112,14 +114,16 @@ static const uint8_t* Scale(const uint8_t* node, uint32_t index, float scale, st
     }
     return nullptr;
   };
+  // A full stripe stays full (slots are never freed): the thread's cache remembers it, so the model's later calls on
+  // this thread end at the cache, without the lock and the probe run.
   const auto leave_notice = [&] {
     if ((notices->load(std::memory_order_relaxed) & NOTICE_MODEL_TABLE_FULL) == 0) {
       notices->fetch_or(NOTICE_MODEL_TABLE_FULL, std::memory_order_relaxed);
     }
+    cached = {.model = model, .stripe_full = true};
   };
   // Most misses find the model as another thread (or this one before its cache entry was replaced) left it: nothing
-  // to write, under the shared lock. A model that finds its stripe full here stays out for good (slots are never
-  // freed), so each of its later calls ends here too, without the exclusive lock.
+  // to write, under the shared lock. A model that finds its stripe full ends here too, without the exclusive lock.
   {
     const std::shared_lock lock(stripe.mutex);
     const Model* found = find_slot();

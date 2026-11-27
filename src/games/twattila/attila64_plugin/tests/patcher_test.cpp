@@ -1174,36 +1174,65 @@ int wmain(int argc, wchar_t** argv) {
       set_scale(shared, SCALE_GRASS_DENSITY, 1.f);
       Expect(both_hold(200, 50.f, 300, 80.f), "two scrubs: back at 1x, the game's values in both");
 
-      // This file's copy alone (its states are set by hand).
-      if (shared == &block) {
-        // Every state taken by another scrub the game still updates: a new scrub keeps the game's radius and bias, with
-        // one line; once a state is stale, the new scrub takes it.
-        for (size_t entry = 0; entry < MAX_SCRUBS; ++entry) {
-          if (scrub_states.scrubs[entry] == nullptr) {
-            scrub_states.scrubs[entry] = reinterpret_cast<const uint8_t*>(uintptr_t{0x1000} + entry);
-          }
-          scrub_states.states[entry].updated = scrub_states.updates;
-        }
-        std::array<uint8_t, 0x100> third_scrub = second_scrub;
-        set_scale(shared, SCALE_GRASS_LOD, 4.f);
-        set_scale(shared, SCALE_GRASS_RADIUS, 2.f);
-        const auto third_holds = [&](int32_t radius, float bias) {
-          grass_update(third_scrub.data());
-          grass_update(third_scrub.data());
-          return std::memcmp(third_scrub.data() + SCRUB_RADIUS, &radius, 4) == 0
-                 && std::memcmp(third_scrub.data() + SCRUB_BIAS, &bias, 4) == 0;
-        };
-        Expect(!Logged("grass: more than 64 grass areas") && third_holds(300, 80.f) && Logged("grass: more than 64 grass areas")
-                   && grass_cell_once(third_scrub.data(), {1, 1}, 40401.f, 40401.f),
-               "a scrub past the table: the game's radius and bias, no cell cut, one line");
-        scrub_states.updates += STALE_SCRUB_UPDATES + 1;
-        Expect(third_holds(201, 160.f), "a scrub past the table takes a state no scrub updated for long");
-        set_scale(shared, SCALE_GRASS_LOD, 1.f);
-        set_scale(shared, SCALE_GRASS_RADIUS, 1.f);
-        Expect(third_holds(300, 80.f), "that scrub: back at 1x, the game's values");
-        scrub_states.scrubs = {};
-        scrub_states.states = {};
+      // The cell hook with the grass row out: no search, no cut, whatever the states hold.
+      set_scale(shared, SCALE_GRASS_LOD, 4.f);
+      set_scale(shared, SCALE_GRASS_RADIUS, 2.f);
+      grass_update(scrub.data());
+      shared->rows_applied &= ~RowBit(ROW_GRASS);
+      Expect(grass_cell_once(scrub.data(), {1, 1}, 40401.f, 40401.f), "grass cell: the grass row out, no cell is cut");
+      shared->rows_applied |= RowBit(ROW_GRASS);
+      Expect(grass_cell_once(scrub.data(), {1, 1}, 40401.f, 3721.f), "grass cell: the grass row in again, the cut again");
+      set_scale(shared, SCALE_GRASS_LOD, 1.f);
+      set_scale(shared, SCALE_GRASS_RADIUS, 1.f);
+      Expect(both_hold(200, 50.f, 300, 80.f), "two scrubs: at 1x before the crowd");
+
+      // More scrubs than states, through the hooks alone. The two above were last written at 1x; a crowd of 64 more
+      // at 2x fills the other 62 states (one of the crowd lives in a page of its own, to be freed), the last two of
+      // the crowd find none and keep the game's values, with the one line.
+      set_scale(shared, SCALE_GRASS_LOD, 4.f);
+      set_scale(shared, SCALE_GRASS_RADIUS, 2.f);
+      std::vector<std::array<uint8_t, 0x100>> crowd(MAX_SCRUBS, scrub);
+      auto* paged = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+      std::memcpy(paged, scrub.data(), scrub.size());
+      constexpr size_t PAGED = 6;
+      const auto member = [&](size_t index) { return ((index == PAGED) ? paged : crowd[index].data()); };
+      const auto holds_after_update = [&](uint8_t* object, int32_t radius, float bias) {
+        grass_update(object);
+        grass_update(object);
+        return std::memcmp(object + SCRUB_RADIUS, &radius, 4) == 0 && std::memcmp(object + SCRUB_BIAS, &bias, 4) == 0;
+      };
+      bool crowd_ok = true;
+      for (size_t index = 0; index < MAX_SCRUBS; ++index) {
+        crowd_ok = crowd_ok && holds_after_update(member(index), ((index < MAX_SCRUBS - 2) ? 201 : 200),
+                                                  ((index < MAX_SCRUBS - 2) ? 100.f : 50.f));
       }
+      Expect(crowd_ok && Logged("grass: more than 64 grass areas at once, the rest keep the game's radius"),
+             "scrubs past the table: the game's radius and bias, the line");
+      // Every state but one without an update for long.
+      for (uint64_t update = 0; update <= STALE_SCRUB_UPDATES; ++update) {
+        grass_update(member(0));
+      }
+      Expect(holds_after_update(member(MAX_SCRUBS - 2), 201, 100.f) && holds_after_update(member(MAX_SCRUBS - 1), 201, 100.f),
+             "a stale state last written at 1x is taken (the two first scrubs')");
+      std::array<uint8_t, 0x100> third_scrub = second_scrub;
+      Expect(holds_after_update(third_scrub.data(), 300, 80.f) && grass_cell_once(third_scrub.data(), {1, 1}, 40401.f, 40401.f),
+             "a stale state whose scrub still holds the 2x values is not taken: the new scrub keeps the game's");
+      put(member(5), SCRUB_RADIUS, int32_t{999});
+      Expect(holds_after_update(third_scrub.data(), 300, 80.f), "a stale state whose scrub still holds one written value is not taken");
+      put(member(5), SCRUB_BIAS, 5.f);
+      Expect(holds_after_update(third_scrub.data(), 201, 160.f), "a stale state whose scrub holds other values is taken");
+      std::array<uint8_t, 0x100> fourth_scrub = second_scrub;
+      Expect(holds_after_update(fourth_scrub.data(), 300, 80.f), "no other stale state may be taken");
+      VirtualFree(paged, 0, MEM_RELEASE);
+      Expect(holds_after_update(fourth_scrub.data(), 201, 160.f), "a stale state whose scrub's memory is gone is taken");
+      // Back at 1x: a scrub that was idle all the time and kept its state comes back to the game's exact values, and
+      // so do the others.
+      set_scale(shared, SCALE_GRASS_LOD, 1.f);
+      set_scale(shared, SCALE_GRASS_RADIUS, 1.f);
+      Expect(holds_after_update(member(1), 200, 50.f) && holds_after_update(member(MAX_SCRUBS - 3), 200, 50.f)
+                 && holds_after_update(third_scrub.data(), 300, 80.f) && holds_after_update(fourth_scrub.data(), 300, 80.f)
+                 && holds_after_update(member(0), 200, 50.f) && holds_after_update(member(MAX_SCRUBS - 1), 200, 50.f),
+             "after a refused take: the idle scrub is exactly the game's at 1x, as every other");
     }
 
     set_scale(shared, SCALE_CAMPAIGN_TREES, 4.f);
@@ -1545,6 +1574,23 @@ int wmain(int argc, wchar_t** argv) {
            "grass draw: a patched byte at init, the model scaled and every draw reaches the game");
     set_scale(plugin.block, SCALE_GRASS_LOD, 1.f);
     Expect(grass_update_once() && lods_are(GAME_LODS), "grass draw: a patched byte at init, back at 1x");
+  }
+  // The same byte written after init (the loader's late writes): game start finds it.
+  write_game();
+  {
+    const auto [plugin, result] = init_copy(L"grass_draw_code_late", MODULE_NAME, api);
+    reset_scrub();
+    *grass_update_record = {};
+    *grass_draw_record = {};
+    set_scale(plugin.block, SCALE_GRASS_LOD, 4.f);
+    Expect(result == 0 && !Logged("grass draw: ") && grass_update_once() && grass_draw_once(1, 50.f, 0.f, false),
+           "grass draw: the code as read at init, a draw past the last LOD is left out");
+    *at(SITES[LABEL_GRASS_DRAW_ENTRY].address + GRASS_DRAW_NO_LOD_BYTES - 8) ^= 1;
+    plugin.game_started(&api);
+    Expect(Logged(GRASS_DRAW_CODE_LINE) && Logged("game started: 16 sites unchanged") && grass_draw_once(1, 50.f, 0.f, true),
+           "grass draw: a byte patched before game start leaves the line, every draw reaches the game");
+    set_scale(plugin.block, SCALE_GRASS_LOD, 1.f);
+    Expect(grass_update_once() && lods_are(GAME_LODS), "grass draw: a byte patched before game start, back at 1x");
   }
 
   // Shadow Map Size: the ShadowMapSize key of [Attila64Plugin.Values] on the DirectX 11 route (the loader's test
