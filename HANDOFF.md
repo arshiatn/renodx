@@ -17988,8 +17988,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         U0r, U9-0 (RTXDI PT bridge), U10c, U6f (froxel arm), U12e; prerequisites P1-P13; E about 473 agent-hours + 70-100
         GPU-hours serial. Found: v2.7's new key RayTracedSmokeShadows collides with an existing key (renamed
         RayTracedSmokeTorchShadows); NRD torch-pair cost ~2.5-4 ms at 4K (not 0.3-0.6); unverified (marked U): PA23, PA24,
-        Remix 'one volume lights particles'. Implementation AFTER the CPU plan; an Opus xHigh review of v2.8 comes first
-        when the GPU lane reopens.
+        Remix 'one volume lights particles'. Implementation AFTER the CPU plan; an Opus xHigh review of v2.8 comes first when the GPU lane reopens.
+        ATN 11-27 19:3x: O6 'newest, no? Shouldn't that be better and faster?' -> the pick is the newest RR DLL
+        (310.9.16), on one condition: RR 310.9 made our paths boil (all_plans 'RR 310.9' item), so the lab check of the
+        RR guide inputs runs first; if the boil stays on the newest DLL, clips + numbers go to ATN before U0's RR
+        baselines. RR's cost is set by the preset's model more than the DLL version: no speed claim without a gate
+        number. O11 'of course. I thought that DXR 1.0, 1.1 and 1.2 were working with those already' -> coord reads it
+        as option (b): the DXR 1.2 gate (OMM + SER) opens per vendor where the device reports Raytracing Tier 1.2 + SM
+        6.9, as Experimental, untested here (no AMD / Intel GPU); DXR 1.0 / 1.1 on AMD / Intel stay as planned; a device
+        that reports no 1.2 support runs the 1.1 path. ATN may correct the reading. Written into unified_pt.md's addendum.
         - [ ] PT DI PORT S8 READER (upt28_, 11-27): the 64-bit add-on's reader of the helper's PT DI word must test
         (rt_di_ok & 1u) != 0u (unified_pt.md v2.8 A2). Owner: the S8 writer (RT-on-64) Owner:
         coord
