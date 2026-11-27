@@ -18418,7 +18418,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         recordings only, every stop voids, RT stops on top of summary.txt + exit 4 (crash stays 3), 'rays ran',
         casts / @(), NoLight needs a read trace; old dry-run lines 0 diff, X6 + S1 controls as before, one new control
         per MUST. Re-check crts1_ (Sonnet High, dry runs on copies) STARTED 00:22; then apply live, a fresh -C2
-        smoke, the sprite gate. rrts2_ (Opus xHigh, 9 min;
+        smoke, the sprite gate. crts1_ (12 min; scratch\crts1_\review.md) GO WITH CHANGES, 0 MUST: patch
+        mechanics OK (check / apply = rts1_'s copy byte for byte / re-apply / wrong sha rc 2 / parse 0); all 4 MUST done
+        and re-run (D2c clamp control fails and stops, rtkill K1-K5 with K4 on F 260, extra dxgi.dll refused); Rt-Stage
+        only the 13 helper names, no -Force, removes only its own; old dry-run lines 0 diff incl. spr / sprmsaa; X6
+        unchanged. S1 $RT_POINT_LOWDEF (a64_ab.ps1:216) lists 4 of the 20 lowdef point-light hashes; S2 D2c compares a
+        single-pixel top with a 2 % margin while battle tops are only 6-10 % above paper white -> a good DLAA start
+        could stop R2; NITs (design :444 'B 115', empty elseif, path case). APPLIED LIVE 00:32 (b626750c ->
+        9eeb9f82, backups .bak_rts1_ + .bak_coord_rts1_, parse 0); fresh -C2 smoke STARTED 00:32 (all agents done).
+        [ ] RT S1 follow-up (owner: rts1_ resumed after the sprite gate, before any -R1 / -R2 start): crts1_ S1 (16
+        hashes + comment), S2 coord: the stop needs top <= 1.00 x paper white, 1.00-1.02 x = info 'ATN's look'; NITs.
+        For ATN: rays arms before S5a may fail the 'pass kind N' item = data, not a tool fault. rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
@@ -18461,7 +18471,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         item: WH3 campaign factor 10 (1 / campaign_metre; rough scale, trees ~6 m a unit); Attila / Rome II / Thrones
         campaign_metre 1 = unmeasured, others don't detect the campaign; fix = per-request write (~8 lines, no bump:
         helper main.cpp:471 const -> read at :1242 / :1334, dlaa_bridge.hpp beside fsr_sharpness / fg_far, WH3 1.f /
-        RangeScale() a frame, a test line).
+        RangeScale() a frame, a test line). rfxh2_ (14 min; scratch\rfxh2_\review.md) GO WITH CHANGES, code GO: MUST M1
+        P2's controls cannot run (the v33 harness vs the v32 helper 2aa6cc7ff is refused at main.cpp:394, all arms read
+        one unevaluated output and pass 'within A/A'; the X41 control sets a field missing at 9b1d9b9a7) -> the control
+        harness built at 9b1d9b9a7 (v32 block) without the unit line: X34 control helper 2aa6cc7ff vs test 9b1d9b9a7,
+        X41 control helper 02bc1fd94 (version gate -> 1, M001 == M1); a check 'evaluated == RUN_FRAMES' in every arm;
+        S1 main.cpp:1403 152 columns -> an auto_exposure local; S2 P1's 'red ~0.08' unreadable through bloom / tone map
+        / HDR -> a relative ROI line vs the control or a helper output dump; S3 X33 has no proof -> a
+        HARNESS_DLSS_EXPOSURE arm with a v32 control; checks hold (cites, X33 1x1 R16F + pre-exposure 1, ours, clamp,
+        v33 layout + gate, Start before CreateProcess, units, switch). Open item: WH3 campaign 10 = 1 /
+        host.campaign_metre (derive, no second literal); Attila (motion.hlsli:95-100 'about a twentieth'), Rome II,
+        Thrones use that scale but rt_core's campaign_metre stays 1 there; WH2 'a twentieth' but no campaign detect;
+        Troy / Pharaoh / Rome R / Shogun 2 no evidence.
+        [ ] W-H2 fix round (owner: fxh2o_ resumed, Opus High, after the sprite gate): rfxh2_ M1 + S1-S3, ffxh2_ S1 / S3,
+        NITs, WH3 campaign per-request unit (both request writers, helper reads per request, WH3 1.f / RangeScale() a
+        frame, a test line; bug fix = on). Then a re-check (Sonnet High); merge after proof job P in the GPU lane.
+        [ ] NEEDS ATN: Attila / Rome II / Thrones campaign maps are about 1/20 scale; coord suggests FSR's factor 20 there
+        (FSR players only, RT ranges untouched; rt_core's campaign_metre for rays = a separate look item).
         ATN: 'for game runs (Your AA test and the big batch) please make sure you don't waste tokens stopping
         subagents. Let them finish then run. Then we continue the order you suggested before' -> rule lines in
         all_plans section 0 + memory.
