@@ -18,7 +18,10 @@
 // DLL file.
 // The contact split row of the same file (ContactTick; its hook comes with the row's wiring) has its own part below:
 // its tables without the game file, and with it the checked code and table entries byte by byte, the code check's
-// lines, and the game's contact pass against the row on fake worlds.
+// lines, and the game's contact pass against the row on fake worlds. The row's helpers go through the engine's task
+// queue: the game's own fetch on a fake task manager, the test's lock, unlock and wake at the game's addresses, and
+// the test's task threads in the shape of the game's task-thread loop (leftover, skipped, nested and twice-run
+// helpers, the lock error, a region stress).
 // battle_step_test.exe <renodx_attila64.dll> [<game ELF>]; exit code = failures, or 77 with none when the game-file
 // part did not run.
 
@@ -1372,6 +1375,7 @@ bool leave_queued = false;  // a tick's helpers stay in the queue: no task threa
 uint32_t queue_faults = 0;  // a queue that was not empty and balanced after a drain
 
 std::mutex queue_mutex;
+std::atomic<std::thread::id> queue_holder;
 std::atomic<uint32_t> queue_locks = 0;
 std::atomic<uint32_t> queue_unlocks = 0;
 std::atomic<uint32_t> queue_wakes = 0;
@@ -1399,11 +1403,15 @@ ATTILA64_GAME_CALL int FakeQueueLock(void* /*lock*/) noexcept {
     if (queue_lock_result != 0) return queue_lock_result;
   }
   queue_mutex.lock();
+  queue_holder = std::this_thread::get_id();
   ++queue_locks;
   return 0;
 }
+// An unlock by a thread that does not hold the lock is counted and not done: the counts then differ for good.
 ATTILA64_GAME_CALL int FakeQueueUnlock(void* /*lock*/) noexcept {
   ++queue_unlocks;
+  if (queue_holder.load() != std::this_thread::get_id()) return 1;
+  queue_holder = std::thread::id();
   queue_mutex.unlock();
   return 0;
 }
@@ -1886,9 +1894,8 @@ bool QueueIs(const std::vector<HelperTask*>& tasks) {
   return right;
 }
 
-// T-B2: the row's enqueue and helpers against the game's own fetch, on the fake task manager.
-inline constexpr uint32_t STRESS_REGIONS = 100000;
-void RunTaskCases(const std::function<std::vector<void*>(uint32_t)>& base_scene) {
+// T-B2, before any tick: the row's enqueue and its helpers against the game's own fetch, on the fake task manager.
+void RunQueueCases() {
   const auto fetch = reinterpret_cast<FetchTaskFn>(FETCH_TASK);
   HelperTask* const helpers = contact_helpers.data();
   {
@@ -1912,17 +1919,12 @@ void RunTaskCases(const std::function<std::vector<void*>(uint32_t)>& base_scene)
     Expect(in_order, "apply: the swap's four stores in the source, each once: count, pointer, call, pointer, count");
   }
   {
-    // The enqueue and the fetch, by hand. A region ran before (T-B1), and it is closed.
-    base_scene(2100);
+    // The enqueue and the fetch, by hand, with no region open.
+    NewPlainScene(16);
     KeepContactWorld();
     FreshContact();
     void* const manager = scene.task_manager;
-    for (HelperTask& helper : contact_helpers) {
-      std::memset(static_cast<void*>(&helper), 0, offsetof(HelperTask, state));  // as at the game's start
-    }
-    queue_wakes = 0;
-    helpers_run = 0;
-    Expect(HelpersAre(0) && QueueIs({}) && contact.chunk_count != 0 && !contact.open, "tasks: nothing queued before the first case");
+    Expect(HelpersAre(0) && QueueIs({}) && !contact.open, "tasks: nothing queued before the first case");
     Expect(StartHelpers(manager, 3) && QueueIs({helpers, helpers + 1, helpers + 2}) && HelpersAre(0b111) && queue_wakes.load() == 1,
            "tasks: three helpers at the tail in index order, one wake from the empty queue");
     Expect(std::ranges::all_of(contact_helpers.begin(), contact_helpers.begin() + 3,
@@ -1939,7 +1941,10 @@ void RunTaskCases(const std::function<std::vector<void*>(uint32_t)>& base_scene)
     Expect(fetch(manager, 1) == &engine_task && fetch(manager, 1) == nullptr
                && QueueIs({helpers, helpers + 1, helpers + 2, helpers + 3, helpers + 4}),
            "tasks: a fetch for a thread that is no task thread takes the engine's task between the helpers, and no helper");
-    // A helper taken with no region open (late, or by the step thread's own join): it returns at once.
+    // A helper taken with no region open (late, or by the step thread's own join): it returns at once, also with a
+    // chunk of an earlier region's left (here one without objects).
+    contact.object_count = 0;
+    contact.chunk_count = 1;
     contact.next_chunk.store(0);
     contact.stop_bits.store(0);
     HelperTask* const first = fetch(manager, 0);
@@ -1966,10 +1971,19 @@ void RunTaskCases(const std::function<std::vector<void*>(uint32_t)>& base_scene)
     Expect(RunQueuedTasks(0) == 2 && joined_task == helpers && QueueIs({}) && HelpersAre(0) && helpers_run.load() == 8
                && engine_tasks_done.load() == 1 && Poisoned(helpers[0]) && Poisoned(helpers[1]),
            "tasks: a helper taken inside another task's join is run as in the loop");
-    Expect(StartHelpers(manager, HELPER_COUNT) && HelpersAre((1u << HELPER_COUNT) - 1) && queue_wakes.load() == 2
-               && RunQueuedTasks(0) == HELPER_COUNT && QueueIs({}) && HelpersAre(0),
-           "tasks: all fifteen helpers, a second wake from the queue empty again");
+    // All fifteen, the first two after a run (their engine part poisoned): every link is written anew.
+    std::vector<HelperTask*> all;
+    for (HelperTask& helper : contact_helpers) {
+      all.push_back(&helper);
+    }
+    Expect(StartHelpers(manager, HELPER_COUNT) && QueueIs(all) && HelpersAre((1u << HELPER_COUNT) - 1) && queue_wakes.load() == 2,
+           "tasks: all fifteen helpers, linked anew, a second wake from the queue empty again");
+    Expect(RunQueuedTasks(0) == HELPER_COUNT && QueueIs({}) && HelpersAre(0), "tasks: fifteen runs, the queue empty");
   }
+}
+// T-B2 with ticks: helpers left over from an earlier region, the lock error, the region under load.
+inline constexpr uint32_t STRESS_REGIONS = 100000;
+void RunRegionCases(const std::function<std::vector<void*>(uint32_t)>& base_scene) {
   {
     // Helpers left over from an earlier region. A tick whose helpers nobody takes leaves six queued; the next ticks
     // start from that world and that queue.
@@ -1986,7 +2000,9 @@ void RunTaskCases(const std::function<std::vector<void*>(uint32_t)>& base_scene)
     // closed with no chunk left, and the tick is the game's.
     QueueFields queue_at_lock = {};
     on_region = [&] {
-      RunFetchedTask(reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, 0));
+      if (HelperTask* leftover = reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, 0); leftover != nullptr) {
+        RunFetchedTask(leftover);
+      }
       queue_at_lock = ReadQueue();
     };
     queue_lock_result = 22;
@@ -2009,7 +2025,9 @@ void RunTaskCases(const std::function<std::vector<void*>(uint32_t)>& base_scene)
     HelperTask* taken = nullptr;
     on_region = [&] {
       taken = reinterpret_cast<FetchTaskFn>(FETCH_TASK)(scene.task_manager, 0);
-      RunFetchedTask(taken);
+      if (taken != nullptr) {
+        RunFetchedTask(taken);
+      }
       FakeQueueWake(nullptr);
     };
     const ContactOutcome twice = RunContact(true, 3, false);
@@ -2077,6 +2095,7 @@ void RunContactCases() {
   for (uint32_t index = 0; index < HELPER_COUNT; ++index) {
     pool.emplace_back(&TaskThread, index);
   }
+  RunQueueCases();
   const auto active_line = [](uint32_t objects, uint32_t plain) {
     char line[96];
     std::snprintf(line, sizeof(line), "renodx_attila64: contact split: active (objects %u, plain %u, listed ", objects, plain);
@@ -2518,7 +2537,7 @@ void RunContactCases() {
     base_scene(MIN_OBJECTS + 1);
     Expect(ExpectContactSame("a last chunk of one object").handled && contact.chunks == 17, "a last chunk of one object");
   }
-  RunTaskCases(base_scene);
+  RunRegionCases(base_scene);
   {
     const std::lock_guard lock(pool_mutex);
     pool_stop = true;
