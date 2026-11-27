@@ -230,7 +230,7 @@ bool WaitForLine(const char* text) {
 
 // This exe's import of SetProcessDefaultCpuSets is swapped for this (battle_core.hpp is compiled into the exe, so its
 // writes come here too): while `before_refused_write` is set, the next write runs it and is refused as Windows would.
-BOOL(WINAPI* real_set_process_default)(HANDLE, const ULONG*, ULONG) = nullptr;
+decltype(&SetProcessDefaultCpuSets) real_set_process_default = nullptr;
 std::function<void()> before_refused_write;
 BOOL WINAPI RefusableSetProcessDefault(HANDLE process, const ULONG* ids, ULONG count) {
   if (!before_refused_write) return real_set_process_default(process, ids, count);
@@ -684,7 +684,7 @@ int wmain() {
     const char* const yield_line =
         "render core: stopped: another program changed the render thread's CPU sets, left as they are";
     const char* const refused_line = "render core: stopped: Windows refused";
-    const char* const kept_line = "render core: the render thread";
+    const char* const kept_line = " keeps the CPU sets it has";
     const char* const ended_line = "render core: not used: the render thread has ended";
     const char* const refused_write_line = "battle core: stopped: Windows refused (the CPU set write, error 5)";
     const auto end_thread = [](RenderThread* ending) {
@@ -886,10 +886,10 @@ int wmain() {
     // The same when Windows refuses the read of the render thread's sets (a handle without that right).
     new_session(1);
     capture_and_step();
+    HANDLE without_query = nullptr;
+    DuplicateHandle(GetCurrentProcess(), render_handle, GetCurrentProcess(), &without_query,
+                    THREAD_SET_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, 0);
     {
-      HANDLE without_query = nullptr;
-      DuplicateHandle(GetCurrentProcess(), render_handle, GetCurrentProcess(), &without_query,
-                      THREAD_SET_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, 0);
       // The bits under the same lock: a watchdog tick between the two would end the render part for the refused read.
       const std::scoped_lock lock(battle_core::state.mutex);
       CloseHandle(battle_core::state.render_thread);
@@ -897,7 +897,9 @@ int wmain() {
       shared.core_wanted.fetch_and(~(CORE_BATTLE | CORE_RENDER));
     }
     step(0);
-    Expect(WaitForLine(kept_line) && StatusField(CORE_STATE_SHIFT) == CORE_WAITING && RenderField(CORE_STATE_SHIFT) == CORE_WAITING
+    // A failed duplicate would leave a null handle, which gets the same line from the wait that fails on it.
+    Expect(without_query != nullptr && WaitForLine(kept_line) && StatusField(CORE_STATE_SHIFT) == CORE_WAITING
+               && RenderField(CORE_STATE_SHIFT) == CORE_WAITING
                && Selected(render_handle) == render_core_ids && ProcessDefault() == every_id && LinesWith(kept_line) == 1
                && LinesWith("Windows refused") == 0,
            "release: a refused read of the render thread's sets is logged and is not a failure");
