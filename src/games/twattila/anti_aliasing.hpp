@@ -104,6 +104,9 @@ struct Settings {
   // Ray Reconstruction on the lit scene before the tone mapper (OnToneMapperDraw: linear, before exposure, bloom and
   // grade; NVIDIA's order), at 100% render scale only; else after it, on its output.
   bool rr_before_tone_map = false;
+  // A Debug View drawn into the tone mapper's output for DLSS to stretch (Attila's SSS one, screen_space_shadows.hpp
+  // OnTonemapDrawn): below 100% Ray Reconstruction stays after the tone mapper then.
+  bool stretched_debug_view = false;
   bool ray_tracing = false;               // DLAA / DLSS: the bridge's ray tracing textures (rt_scene.hpp)
   // DLAA / DLSS: the G-buffer guides for ray tracing's paths (path tracing, reflections) and the reflections' textures.
   bool ray_traced_guides = false;

@@ -2070,6 +2070,7 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   aa_settings.frame_gamma = TW_FRAME_GAMMA;
   aa_settings.linear_frame = IsHDRMode();  // t00 writes linear in the HDR modes (rrbi_ G0); SDR as before (aaf_ 11-26)
   aa_settings.rr_before_tone_map = ATTILA64 && rr_before_tone_map_row != 0.f;
+  aa_settings.stretched_debug_view = sss_settings.enabled && sss_settings.debug_view != 0;
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
   twattila::anti_aliasing::Update(swapchain, aa_settings);
   shader_injection.ssao_scale = twattila::ao_pass::ResolutionScale(shader_injection.ssao_resolution);
@@ -3086,7 +3087,7 @@ void ConfigureAddon() {
         .default_value = 0.f,
         .label = "Denoise Before Tone Mapping (Experimental)",
         .tooltip = "Ray Reconstruction cleans the scene's light before exposure, bloom and tone mapping (NVIDIA's order).\n"
-                   "At 100% render scale. Can change dark areas.",
+                   "Can change dark areas.",
         .labels = {"Off", "On"},
     });
   }
