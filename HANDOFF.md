@@ -18386,7 +18386,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         smoke_pass -> a fresh -C2 smoke after the apply. Open: no jitter 'applied' line yet (info); Streamline sl.*
         not in the set (R1.5 names none); own choices (ATTILA_SHADOW_EVERY=1 on RT arms but sr2, picture limits, a
         left-alone line of ours stops the batch); E64-rt2c after S5e. Reviews rrts1_ (Opus xHigh) + frts1_ (Sonnet
-        High) STARTED 23:44; apply after both. rrts2_ (Opus xHigh, 9 min;
+        High) STARTED 23:44; apply after both. frts1_ (Sonnet High, 10 min; scratch\frts1_\review.md) GO WITH
+        CHANGES: M1 E64-rtkill captures at F 260 but quits at B 115 (~F 227) -> K4 can never pass; M2 Rt-Stage copies
+        + later deletes every path in sha256.txt (an extra line could overwrite / delete dxgi.dll or an add-on) ->
+        refuse targets outside $RT_NEED (+ recorder twins), throw if a target exists; S1 `[double]$_.b` in argument
+        mode is no cast (prints the object), S2 a one-line log counts as a match (wrap in @()), S3 NoLight fires
+        without a trace, S4 RT stops exit 0; 5 NITs. -R1 lines could start as is; M1 / M2 before any -R2. Fix round
+        after rrts1_ (Opus xHigh). rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
@@ -18407,6 +18413,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         addon.cpp, tw_helper_lifetime tests.cpp); helper build log only, no hand-back. Its links (bin / external) may
         still be there: unlink alone before any cleanup. NEEDS ATN: finish it on Opus High from the saved diff, or
         park it until the GPU lane / Fable's reset.
+        ATN 23:5x: 'I am going to use my fable reset now ... But let's not use fable until I tell you again. If
+        possible continue the paused subagent with opus 5.5 high please.' -> fxh2o_ (Opus High, NEW agent: SendMessage
+        would resume fxh2_ on Fable) finishes W-H2 from the saved diff in the same worktree, est 45, STARTED 23:5x.
+        ATN: 'for game runs (Your AA test and the big batch) please make sure you don't waste tokens stopping
+        subagents. Let them finish then run. Then we continue the order you suggested before' -> rule lines in
+        all_plans section 0 + memory.
         rts2_ S2b DONE (18 of 30 min; 1d7ced4f9 on rts2_1127, not merged): ' stencil func F/B pass F/B fail F/B
         depthfail F/B' (stencil on only), ' dsv ro <d><s>', new ' | views' (rtv<n> / dsv / t<n> view formats) before
         ' | instanced'; 19 gated builds, tests x2, scale_audit byte-equal, census controls. Reviews rrts2_ (Opus
