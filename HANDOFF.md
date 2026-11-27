@@ -722,6 +722,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - W3 HORIZON METRIC (p6rv2_ S3, 11-27): P6a2's camera proof for w3 / w3t is a byte ... | the next a64_ab writer after PK9 P1-P5 (C8 T0 or its own ste
 - ALL PLANS LIST (ATN 11-27 16:2x: 'Some stuffs are missing ... gather those forgo ... | coord
 - UNIFIED PT COMPLETENESS CRITIC (ATN 11-27 18:5x 'Yes, start it'): unified_pt.md ... | coord
+- SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
 - HANDOFF AUDIT APPLIED 18:0x: hfm_ (Opus xHigh) merged the 8 parts (testbin\scrat ... | coord (section 11 items follow the CPU-first rule)
@@ -17978,6 +17979,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         Q2 (3-of-4 sub-sampling), Q5 (pbrt-v4): ATN 18:42: Q1 = the pick (both arms at equal time on 4K RR), Q2 = an
         optional harness arm judged by his eye, Q5 = pbrt-v4 on the known-answer scenes only; sent to upt28_. Owner:
         coord
+        - [ ] SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stacked step; from now on
+        steps on the same files run one after the other, different files side by side, Fable jobs first. Owner: coord
         - [ ] CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules
         cpq_\cpu_common_1127.md): PK9 P9-3 MERGED 6563e2199 (re-check rp93m_ GO, 0 MUST; SHOULD done = the folded
         generators installed by coord from p93m_\gen\install.sh, .bak_p93m kept; main tree build.ps1 -Test -Elf
