@@ -19,6 +19,12 @@
 // 5. Light colours with a negative channel (the addon sends the game's unclamped: fa1_ B2, fa9_ U3): every pixel's slm
 //    light finite and > 0, its green 0 (DiLight takes the colour at 0 and up, as LightArriving). CONTROL: a build before
 //    the fix (DiStore zeroed a pixel with any negative channel) fails every pixel.
+// 6. Light translation (review pdi4cr_ S9): a permuted light_previous with one light new and one of the last trace's
+//    gone; the history's picks (marked by their uv) follow their light to its new index (RAB_TranslateLightIndex, the
+//    temporal group's DiCurrentBuild) and the gone light's history is killed. CONTROL: light_previous each its own place
+//    (the lights not moved) must carry none to the new index and pick the gone light's history.
+// 7. A light at a pixel's point (d = 0, review pdi4cr_ S10): its target is NaN there, read 0; that pixel never picks it,
+//    every pixel's slm light finite and > 0.
 // tests.exe <repository> <folder of dxcompiler.dll and dxil.dll> <RTXDI Include folder>
 #include <windows.h>
 #include <d3d12.h>
@@ -655,9 +661,9 @@ int main(int argc, char** argv) {
   for (uint32_t light = 0; light < LIGHTS; ++light) {
     previous[light >> 2] = (previous[light >> 2] & ~(0xFFu << ((light & 3) * 8))) | (light << ((light & 3) * 8));
   }
-  const auto mean_slm = [&](uint32_t di_flags, double* mean) {
-    std::vector<RTXDI_PackedDIReservoir> history(size_t{layout.reservoirArrayPitch} * 2, RTXDI_PackedDIReservoir{});
-    for (RTXDI_PackedDIReservoir& reservoir : history) reservoir.mVisibility = 20u << 18;
+  // A last trace's reservoirs into both arrays (the temporal pass reads the shading's, DI_HISTORY_ARRAY), copied before
+  // the upload buffer goes.
+  const auto load_history = [&](const std::vector<RTXDI_PackedDIReservoir>& history) {
     ComPtr<ID3D12Resource> history_upload = upload(history.data(), history.size() * sizeof(RTXDI_PackedDIReservoir));
     std::array<D3D12_RESOURCE_BARRIER, 2> states = {};
     for (size_t at = 0; at < states.size(); ++at) {
@@ -669,6 +675,12 @@ int main(int argc, char** argv) {
     list->ResourceBarrier(1, &states[0]);
     list->CopyBufferRegion(reservoirs.Get(), 0, history_upload.Get(), 0, history.size() * sizeof(RTXDI_PackedDIReservoir));
     list->ResourceBarrier(1, &states[1]);
+    return execute();
+  };
+  const auto mean_slm = [&](uint32_t di_flags, double* mean) {
+    std::vector<RTXDI_PackedDIReservoir> history(size_t{layout.reservoirArrayPitch} * 2, RTXDI_PackedDIReservoir{});
+    for (RTXDI_PackedDIReservoir& reservoir : history) reservoir.mVisibility = 20u << 18;
+    if (!load_history(history)) return false;
     std::vector<RTXDI_PackedDIReservoir> initial;
     std::vector<RTXDI_PackedDIReservoir> shaded;
     std::vector<uint8_t> slm;
@@ -712,6 +724,106 @@ int main(int argc, char** argv) {
   const bool part5 = tinted_bad == 0;
   std::printf("%s 5 negative colour channel: %u pixels with the slm light not finite and > 0 or its green not 0\n", part5 ? "PASS" : "FAIL", tinted_bad);
   failures += part5 ? 0 : 1;
+
+  // 6. Light translation: this trace's light k was the last trace's (k + 5) % LIGHTS, light 1 new (255), so the last
+  // trace's light 6 is gone; every tile lists lights 0-32 but 5. The history (M 20, W 1000, uv (0, 1): its picks marked)
+  // holds the last trace's light 5 (this trace's 0) at x < SIDE / 2, the gone light 6 at the others.
+  for (auto& tile_list : tile_lists) {
+    tile_list.clear();
+    for (uint32_t light = 0; light <= 32; ++light) {
+      if (light != 5) tile_list.push_back(light);
+    }
+  }
+  for (auto& colour : colours) colour = {1.f, 1.f, 1.f, 1.f};
+  constexpr uint32_t HISTORY_UV = 0xFFFF0000u;
+  constexpr uint32_t LIGHT_VALID = 0x80000000u;
+  std::vector<RTXDI_PackedDIReservoir> translated(size_t{layout.reservoirArrayPitch} * 2, RTXDI_PackedDIReservoir{});
+  for (uint32_t y = 0; y < SIDE; ++y) {
+    for (uint32_t x = 0; x < SIDE; ++x) {
+      for (const uint32_t array : {0u, 1u}) {
+        translated[(size_t{array} * layout.reservoirArrayPitch) + place(x, y)] = {.lightData = LIGHT_VALID | ((x < SIDE / 2) ? 5u : 6u),
+                                                                                  .uvData = HISTORY_UV,
+                                                                                  .mVisibility = 20u << 18,
+                                                                                  .targetPdf = 1.f,
+                                                                                  .weight = 1000.f};
+      }
+    }
+  }
+  // The history's picks after the temporal pass (spatial off), by their light: 0 (the last trace's 5 carried), 6 (the gone
+  // light's history kept) or another. By light, not by half: the permutation takes a pixel's history from up to 3 pixels
+  // away (RTXDI_ApplyPermutationSampling), across the halves' border too.
+  const auto history_picks = [&](bool permuted, uint32_t* carried, uint32_t* wrong, uint32_t* gone) {
+    for (uint32_t light = 0; light < LIGHTS; ++light) {
+      const uint32_t last_place = (!permuted) ? light : ((light == 1) ? 255u : ((light + 5) % LIGHTS));
+      previous[light >> 2] = (previous[light >> 2] & ~(0xFFu << ((light & 3) * 8))) | (last_place << ((light & 3) * 8));
+    }
+    if (!load_history(translated)) return false;
+    std::vector<RTXDI_PackedDIReservoir> initial;
+    std::vector<RTXDI_PackedDIReservoir> shaded;
+    std::vector<uint8_t> slm;
+    std::vector<uint8_t> skin;
+    if (!run(false, FRAMES + 3, DI_HISTORY | DI_NO_SPATIAL, &initial, &shaded, &slm, &skin)) return false;
+    *carried = 0;
+    *wrong = 0;
+    *gone = 0;
+    for (uint32_t y = 0; y < SIDE; ++y) {
+      for (uint32_t x = 0; x < SIDE; ++x) {
+        const RTXDI_PackedDIReservoir& output = shaded[place(x, y)];
+        if (output.uvData != HISTORY_UV || (output.lightData & LIGHT_VALID) == 0) continue;
+        const uint32_t light = output.lightData & ~LIGHT_VALID;
+        if (light == 0) {
+          ++*carried;
+        } else if (light == 6) {
+          ++*gone;
+        } else {
+          ++*wrong;
+        }
+      }
+    }
+    return true;
+  };
+  uint32_t carried = 0;
+  uint32_t wrong = 0;
+  uint32_t gone = 0;
+  uint32_t carried_identity = 0;
+  uint32_t wrong_identity = 0;
+  uint32_t gone_identity = 0;
+  CHECK(history_picks(true, &carried, &wrong, &gone));
+  CHECK(history_picks(false, &carried_identity, &wrong_identity, &gone_identity));
+  constexpr uint32_t GROUP = SIDE / 2 * SIDE;
+  const bool part6 = carried >= GROUP * 9 / 10 && wrong == 0 && gone == 0 && carried_identity == 0 && gone_identity > 0;
+  std::printf("%s 6 light translation: the last trace's light 5 carried as light 0 at %u pixels (>= 90 %% of its %u), %u history picks as "
+              "another light, the gone light's history picked at %u (must be 0); CONTROL light_previous each its own place: carried %u (must be "
+              "0), the gone light picked %u (must be > 0)\n",
+              part6 ? "PASS" : "FAIL", carried, GROUP, wrong, gone, carried_identity, gone_identity);
+  failures += part6 ? 0 : 1;
+
+  // 7. A light at a pixel's point (d = 0, its target NaN: RAB_GetLightSampleTargetPdfForSurface reads it 0): light 0 at
+  // pixel (20, 20)'s position, the others 2 m up. That pixel never picks light 0 and its slm light is finite and > 0, as
+  // every pixel's (light 0 lies in the floor's plane, target 0 elsewhere).
+  lights[0] = {positions[(20 * SIDE) + 20][0], positions[(20 * SIDE) + 20][1], positions[(20 * SIDE) + 20][2], 20.f};
+  uint32_t at_light_bad = 0;
+  uint32_t touched_bad = 0;
+  {
+    std::vector<RTXDI_PackedDIReservoir> initial;
+    std::vector<RTXDI_PackedDIReservoir> shaded;
+    std::vector<uint8_t> slm;
+    std::vector<uint8_t> skin;
+    CHECK(run(false, FRAMES + 4, DI_NO_TEMPORAL, &initial, &shaded, &slm, &skin));
+    for (const auto* reservoirs : {&initial, &shaded}) {
+      const RTXDI_PackedDIReservoir& reservoir = (*reservoirs)[place(20, 20)];
+      if ((reservoir.lightData & LIGHT_VALID) == 0 || (reservoir.lightData & ~LIGHT_VALID) == 0 || !std::isfinite(reservoir.weight)) ++at_light_bad;
+    }
+    for (size_t pixel = 0; pixel < size_t{SIDE} * SIDE; ++pixel) {
+      const double light = half(slm, pixel * 4);
+      if (!(std::isfinite(light) && light > 0.0)) ++touched_bad;
+    }
+  }
+  const bool part7 = at_light_bad == 0 && touched_bad == 0;
+  std::printf("%s 7 a light at the pixel's point (d = 0): %u of its 2 reservoirs invalid, holding that light or a weight not finite; %u pixels "
+              "with the slm light not finite and > 0\n",
+              part7 ? "PASS" : "FAIL", at_light_bad, touched_bad);
+  failures += part7 ? 0 : 1;
   std::printf(failures == 0 ? "ALL PASSED\n" : "FAILED\n");
   return failures == 0 ? 0 : 1;
 }
