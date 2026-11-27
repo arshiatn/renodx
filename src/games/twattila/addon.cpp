@@ -41,6 +41,7 @@
 #include "../../mods/shader.hpp"
 #include "../../mods/swapchain.hpp"
 #include "../../utils/float16.hpp"
+#include "../../utils/path.hpp"
 #include "../../utils/platform.hpp"
 #include "../../utils/resource_upgrade.hpp"
 #include "../../utils/settings.hpp"
@@ -69,6 +70,7 @@
 #include "./rt_scene.hpp"
 #include "./screen_space_shadows.hpp"
 #include "./shadow_pass.hpp"
+#include "./start_files.hpp"
 // RENODX_TW_SET's key "memory": the constant buffer ring's own reservations beside the address space.
 #define RENODX_TEST_HOOKS_MEMORY twattila::buffer_pool::Reserved
 #include "./test_hooks.hpp"
@@ -1157,6 +1159,9 @@ int ui_mod_compatibility = 0;  // its slider: written to ReShade.ini, used from 
 std::atomic<uint32_t> stood_down_apis = 0;
 // The game's image read at the first present (once).
 std::atomic_bool identity_read = false;
+// Engine Performance Fix's FrameBridge upscaling and its waving flags as this start has them (read with the image).
+std::atomic_bool framebridge_on = false;
+std::atomic_bool waving_flags_on = false;
 // The loader's present picture (its resource handle) once its clone is on, and its no-upgrade warning (once).
 std::atomic<uint64_t> present_picture = 0;
 std::atomic_bool picture_warned = false;
@@ -2212,6 +2217,26 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         twattila::frame_trace::SetGameCode("game_code_64bit", 0, std::move(ranges));
       } else {
         renodx::utils::log::w("[Total War] 64-bit Attila: game code not readable at the first present");
+      }
+      // Engine Performance Fix (perffix64.dll, started by the loader before the game's code): its FrameBridge upscaling
+      // and its waving flags as their files are at this start (the loader writes them from the start window's ticks
+      // before the add-on loads; both are read only at the start). No exe path: neither is read.
+      if (const std::filesystem::path exe_dir = renodx::utils::path::GetExecutableBasePath();
+          GetModuleHandleW(L"perffix64.dll") != nullptr && !exe_dir.empty()) {
+        // <game>\FrameBridge\helper64.exe and its settings.txt not saying off (S28 picker.c:236-263).
+        const std::filesystem::path framebridge = exe_dir.parent_path() / L"FrameBridge";
+        std::error_code error;
+        framebridge_on = std::filesystem::exists(framebridge / L"helper64.exe", error)
+                         && !twattila::start_files::FrameBridgeOff(framebridge / L"settings.txt");
+        // PerfFix's own line for them on (its other flag wave lines say why not), and no flagwave_off.txt from the
+        // start window's tick (S28 plugins.inc:200-211).
+        bool flags_installed = false;
+        twattila::start_files::ForEachLine(exe_dir / L"perffix64.log", [&flags_installed](std::string_view line) {
+          flags_installed = flags_installed || line.find(" flag wave: on (") != std::string_view::npos;
+        });
+        waving_flags_on = flags_installed && !std::filesystem::exists(exe_dir / L"flagwave_off.txt", error);
+        renodx::utils::log::i(std::format("[Total War] 64-bit Attila: Engine Performance Fix loaded: FrameBridge upscaling {}, waving flags {}",
+                                          (framebridge_on ? "on" : "off"), (waving_flags_on ? "on" : "off")));
       }
     }
     // The plugin's lookup, final here when init_device did not find it READY. Present runs on the loader's drawing
@@ -3296,6 +3321,22 @@ void ConfigureAddon() {
                        },
                    }));
     }
+    // Engine Performance Fix's FrameBridge upscaling (beside this mod's helper) and its waving flags, as this start has
+    // them: warnings at the top of General.
+    settings.insert(
+        std::ranges::find(settings, "General", &renodx::utils::settings::Setting::section),
+        {
+            twattila::graphics_page::Note(
+                "FrameBridge upscaling is on: untick Upscaling in the start window. It clashes with this mod's DLSS and "
+                "frame generation.",
+                "General", twattila::graphics_page::WARNING_TINT,
+                [] { return framebridge_on.load(std::memory_order_relaxed) && twattila::dlaa_bridge::HelperInstalled(); }),
+            twattila::graphics_page::Note(
+                "Waving flags (Engine Performance Fix) is on: flags and props smear with DLSS, FSR, XeSS and TAA. Untick "
+                "Waving flags in the start window.",
+                "General", twattila::graphics_page::WARNING_TINT,
+                [] { return waving_flags_on.load(std::memory_order_relaxed); }),
+        });
     // The CPU page (Settings Mode 3), its section "CPU": every CPU row of this mod on the port, new CPU rows too (live
     // rows plain, a restart-only one with "(restart)" in its label and its restart note after it). The engine
     // performance fix's and the start window's sections wait for ATN's answer on where their keys come from.
@@ -3659,6 +3700,8 @@ void DetachAddon() {
   if constexpr (ATTILA64) {
     stood_down_apis = 0;
     identity_read = false;
+    framebridge_on = false;
+    waving_flags_on = false;
     twattila::frame_trace::SetGameCode("", 0, {});
     present_picture = 0;
     picture_warned = false;
