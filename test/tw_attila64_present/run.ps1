@@ -222,6 +222,16 @@ $effectsCases['plugin_battle_step_on'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 
 $effectsCases['plugin_battle_step_saved_off'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 1'; ini = @('FasterBattleStep=0'); bits = 5
                                                    line = "$battleStep on"; forbid = @("$battleStep off") }
 $effectsCases['plugin_battle_step_not_offered'] = @{ plugin = '1 3 0 2 3 0 0 1 0 0 1'; ini = @(); bits = 5; forbid = @($battleStep) }
+# Multithreaded Collisions (PK8 Stage B step 6): a v2 block offering ROW_CONTACT_SPLIT (rows 0x2003). While the row is
+# hidden (CONTACT_SPLIT_ROW_MEASURED false) the add-on writes no CORE_SPLIT 8, a saved row of the other value included,
+# so a batch arm's ContactSplit key holds. plugin_contact_split_hidden_on: core_wanted 13 (ContactSplit=1, lane B
+# NOT_USED_YET), MultithreadedCollisions=0 saved: 13, no line. plugin_contact_split_hidden_off: core_wanted 5 (the
+# default ini, lane B OFF), MultithreadedCollisions=1 saved: 5, no line.
+$collisions = '[Total War] 64-bit Attila: Multithreaded Collisions'
+$effectsCases['plugin_contact_split_hidden_on'] = @{ plugin = '1 8195 0 2 8195 0 0 13 0 0 257'
+                                                     ini = @('MultithreadedCollisions=0'); bits = 13; forbid = @($collisions) }
+$effectsCases['plugin_contact_split_hidden_off'] = @{ plugin = '1 8195 0 2 8195 0 0 5 0 0 1025'
+                                                      ini = @('MultithreadedCollisions=1'); bits = 5; forbid = @($collisions) }
 foreach ($name in $effectsCases.Keys) {
   $case = $effectsCases[$name]
   $rows = ($case.plugin -split ' ')[1]
