@@ -5,9 +5,9 @@
 
 // The plugin's sites against the game file itself: maps the Linux build's load segments at their addresses (read and
 // write, never executed), applies the loader's stack-check rewrite, and checks the build id and every site's window,
-// the hook or the patch through the fake loader, controls that must be refused, the shadow row's instructions and the
-// rest pack's call, each engine value's static constructor call (tweaks.h: the object, its name and its default), and
-// the built DLL's init.
+// the hook or the patch through the fake loader, controls that must be refused, the shadow row's instructions, the
+// rest pack's call, the grass rows' layout facts and camera getters, each engine value's static constructor call
+// (tweaks.h: the object, its name and its default), and the built DLL's init.
 // elf_sites_test.exe <renodx_attila64.dll> <game ELF>; SKIPPED (exit 77, reported by build.ps1 as not run)
 // without the ELF or when the game's range is taken.
 
@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <vector>
 
 #include "../hooks.hpp"
@@ -162,6 +163,59 @@ int wmain(int argc, wchar_t** argv) {
   Expect(*at(REST_PACK_RETURN - 5) == 0xe8 && REST_PACK_RETURN + static_cast<int32_t>(word_at(REST_PACK_RETURN - 4)) == SITES[LABEL_PACK_ENTRY].address,
          "rest pack: its return address is right after a call of the pack site");
 
+  // The grass and campaign tree rows in the game's own code: each instruction that holds a field offset the hooks and
+  // model_lods.hpp read, the two camera getters' whole code, and the draw's code from its entry to its no-LOD return
+  // (reads, the two getter calls and writes to its own frame only: what the hook's own early return stands on).
+  struct CodeFact {
+    uint32_t address;
+    std::initializer_list<uint8_t> bytes;
+    const char* what;
+  };
+  for (const CodeFact& fact : std::initializer_list<CodeFact>{
+           {0x33fb1c5, {0xf3, 0x0f, 0x2a, 0x83, 0xd0, 0x00, 0x00, 0x00}, "grass update: the radius is an int at +0xd0"},
+           {0x33fb27d, {0x8b, 0x83, 0xd0, 0x00, 0x00, 0x00, 0x0f, 0xaf, 0xc0}, "grass update: the cells get the radius squared"},
+           {0x33fd634, {0x45, 0x8b, 0x66, 0x24}, "grass cell: the record count at +0x24"},
+           {0x33fd660, {0x49, 0x8b, 0x56, 0x28}, "grass cell: the records at +0x28"},
+           {0x33fd6e4, {0xf3, 0x0f, 0x59, 0x95, 0xd4, 0x00, 0x00, 0x00}, "grass cell: the bias is a float at +0xd4"},
+           {0x33fd962, {0x48, 0x8b, 0xbd, 0xe8, 0x00, 0x00, 0x00}, "grass cell: the model node at +0xe8"},
+           {0x33fd969, {0x48, 0x8b, 0x85, 0xf8, 0x00, 0x00, 0x00}, "grass cell: the slots at +0xf8"},
+           {0x33fd97a, {0x42, 0x0f, 0xb6, 0x4c, 0x2a, 0xff, 0x8b, 0x04, 0x88}, "grass cell: a record's slot byte picks a uint32_t"},
+           {0x33fd9ac, {0x49, 0x83, 0xc5, 0x12}, "grass cell: a record is 18 bytes"},
+           {0x33fd9d0, {0x8b, 0x8f, 0xf4, 0x00, 0x00, 0x00}, "scrub: the slot count at +0xf4"},
+           {0x33fd9e8, {0x4c, 0x8b, 0x87, 0xf8, 0x00, 0x00, 0x00}, "scrub: the slots at +0xf8 again"},
+           {0x33f3e2f, {0x3b, 0x47, 0x34}, "grass draw: the node's model count at +0x34"},
+           {0x33f3e34, {0x48, 0x8b, 0x4f, 0x38, 0x4c, 0x8b, 0x3c, 0xc1}, "grass draw: the node's models at +0x38"},
+           {0x33f3e62, {0x48, 0x8b, 0x7d, 0x50, 0x48, 0x8b, 0x07, 0xff, 0x50, 0x58}, "grass draw: the scene at +0x50, its slot 0x58"},
+           {0x33f3e77, {0xff, 0x91, 0x80, 0x00, 0x00, 0x00}, "grass draw: the camera's slot 0x80"},
+           {0x33f3e80, {0x41, 0x8b, 0x47, 0x44}, "grass draw: the model's LOD count at +0x44"},
+           {0x33f3ec9, {0xf3, 0x41, 0x0f, 0x10, 0x46, 0x18}, "grass draw: the instance's bias at +0x18"},
+           {0x33f3ecf, {0xf3, 0x0f, 0x58, 0x87, 0x98, 0x0e, 0x00, 0x00}, "grass draw: the node's offset at +0xe98"},
+           {0x33f3edb, {0x49, 0x8b, 0x4f, 0x48}, "grass draw: the model's LODs at +0x48"},
+           {0x33f3ef4, {0xf3, 0x0f, 0x10, 0x4b, 0x50, 0x0f, 0x2e, 0xc8, 0x76, 0x06}, "grass draw: a LOD's distance at +0x50, above the key"},
+           {0x33f3efe, {0x80, 0x7b, 0x5c, 0x00}, "grass draw: a LOD's enabled byte at +0x5c"},
+           {0x33f42a2, {0x3b, 0x45, 0x34}, "campaign tree: the node's model count at +0x34"},
+           {0x33f42a7, {0x48, 0x8b, 0x4d, 0x38, 0x4c, 0x8b, 0x2c, 0xc1}, "campaign tree: the node's models at +0x38"},
+           {0x33f4436, {0x41, 0x8b, 0x45, 0x44}, "campaign tree: the model's LOD count at +0x44"},
+           {0x33f4442, {0x49, 0x8b, 0x4d, 0x48}, "campaign tree: the model's LODs at +0x48"},
+           {0x33f4454, {0xf3, 0x0f, 0x10, 0x45, 0x50}, "campaign tree: a LOD's distance at +0x50"},
+           {0x33f445e, {0x80, 0x7d, 0x5c, 0x00}, "campaign tree: a LOD's enabled byte at +0x5c"},
+       }) {
+    Expect(std::equal(fact.bytes.begin(), fact.bytes.end(), at(fact.address)), fact.what);
+  }
+  Expect(std::memcmp(at(GET_SCENE_CAMERA), GET_SCENE_CAMERA_CODE.data(), GET_SCENE_CAMERA_CODE.size()) == 0
+             && std::memcmp(at(GET_CAMERA_POSITION), GET_CAMERA_POSITION_CODE.data(), GET_CAMERA_POSITION_CODE.size()) == 0,
+         "grass draw: the two camera getters hold the code the hook expects");
+  {
+    // The hash init takes: over [entry, the instruction after the no-LOD jump), with the hook's site in it. One byte
+    // of it changed is another hash.
+    uint8_t* draw = at(SITES[LABEL_GRASS_DRAW_ENTRY].address);
+    Expect(Fnv1a(draw, GRASS_DRAW_NO_LOD_BYTES) == GRASS_DRAW_NO_LOD_HASH && draw[GRASS_DRAW_NO_LOD_BYTES - 5] == 0xe9,
+           "grass draw: its code up to the no-LOD return is the code that was read");
+    draw[0x80] ^= 1;
+    Expect(Fnv1a(draw, GRASS_DRAW_NO_LOD_BYTES) != GRASS_DRAW_NO_LOD_HASH, "grass draw: a patched byte is found");
+    draw[0x80] ^= 1;
+  }
+
   // Each engine value in the game's own code: its static constructor call passes the object, the name and a plain
   // default stored just before (mov byte / dword [rsp + n], imm). The objects are only built when the game runs.
   for (const TweakKind& kind : TWEAK_KINDS) {
@@ -213,6 +267,7 @@ int wmain(int argc, wchar_t** argv) {
 
   WriteTweakObjects();
   ExpectPluginDll(api, argv[1]);
+  Expect(!Logged("grass draw: "), "grass draw: init finds the code that was read, the early return is on");
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
   return failures;

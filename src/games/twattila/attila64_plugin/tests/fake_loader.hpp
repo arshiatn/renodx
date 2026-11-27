@@ -40,6 +40,8 @@ static std::vector<std::string> log_lines;
 static HookMode hook_mode = HOOK_NORMAL;
 // The calls FakePatch refuses of the ones still to come: bit 0 = the next, bit 1 = the one after; 0 = none.
 static uint32_t failing_patch_calls = 0;
+// The same for FakeHook: a refused call finds no memory near the game.
+static uint32_t failing_hook_calls = 0;
 
 static void Expect(bool ok, const char* what) {
   ++checks;
@@ -93,7 +95,9 @@ static int FakePatch(uintptr_t at, const uint8_t* expect, const uint8_t* bytes, 
 // a jmp rel32 to the way in. Lengths 12..15 would overlap the way in, so this stand-in refuses them.
 static void* FakeHook(uintptr_t at, const uint8_t* expect, int len, void* fn) noexcept {
   auto* site = reinterpret_cast<uint8_t*>(at);
-  if (hook_mode == HOOK_NO_MEMORY || len < 5 || len > 11 || std::memcmp(site, expect, len) != 0) return nullptr;
+  const bool refused = (failing_hook_calls & 1u) != 0;
+  failing_hook_calls >>= 1;
+  if (refused || hook_mode == HOOK_NO_MEMORY || len < 5 || len > 11 || std::memcmp(site, expect, len) != 0) return nullptr;
   if (hook_mode == HOOK_WRITE_FAILS) {
     site[0] ^= 0xff;  // someone else's write in between
     return nullptr;
@@ -238,7 +242,7 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
              && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
              && Logged("STEP_ENTRY 0xbb4e00: applied") && Logged("renodx_attila64: shadow map: game's size")
              && Logged("rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
-                       "grass -, grass cells -, campaign trees -, sprites -"),
+                       "grass on, grass cells on, campaign trees on, sprites -"),
          "the init lines");
   for (const Site& site : SITES) {
     char applied_line[96];

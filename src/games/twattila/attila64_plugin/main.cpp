@@ -208,6 +208,10 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     block.tweaks_status.store(TWEAKS_PENDING, std::memory_order_relaxed);
   }
 
+  grass_draw_code_read.store(Fnv1a(reinterpret_cast<const uint8_t*>(uintptr_t{SITES[LABEL_GRASS_DRAW_ENTRY].address}),
+                                   GRASS_DRAW_NO_LOD_BYTES)
+                                 == GRASS_DRAW_NO_LOD_HASH,
+                             std::memory_order_relaxed);
   // Every site is checked before any is written: a row goes in whole or not at all, and one site's bytes can lie in
   // another's window (the shadow sizes and cascade counts).
   std::array<SiteCheck, SITES.size()> site_checks = {};
@@ -268,8 +272,8 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   // A row is on only when all of its sites are. A patch site that went in before a later site of its row failed comes
   // out again; when the loader cannot put its bytes back, the row stays refused and its log line names the site.
   // A hook cannot come out: a refused row's hook stays in and the game keeps calling it, with the row's bit clear in
-  // rows_applied. So the add-on sets a row's scales_active bits only while the row is in rows_applied; a row with two
-  // hooks (the grass row) depends on that.
+  // rows_applied. So the add-on sets a row's scales_active bits only while the row is in rows_applied, and the one row
+  // with two hooks (the grass row) tests its bit in rows_applied itself (hooks.hpp GrassRowRuns), final from here on.
   block.rows_applied &= ~block.rows_refused;
   for (size_t index = 0; index < SITES.size(); ++index) {
     const Site& site = SITES[index];
@@ -297,6 +301,9 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     } else {
       loader->log("renodx_attila64: shadow map: game's size (ShadowMapSize=%d out of range)", shadow_map_size);
     }
+  }
+  if ((block.rows_applied & RowBit(ROW_GRASS)) != 0 && !grass_draw_code_read.load(std::memory_order_relaxed)) {
+    loader->log(GRASS_DRAW_CODE_LINE);
   }
   // The battle core's status is built (not 0) only with its hook in; battle_core.hpp writes it from the first step on.
   // The render core's the same, with its switch.
@@ -334,6 +341,18 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
     }
   }
   loader->log("renodx_attila64: game started: %u sites unchanged", unchanged);
+  // The grass draw's code once more, after the loader's late writes: our jump is in its first bytes now, so the
+  // site's own bytes stand in for them.
+  if ((block.rows_applied & RowBit(ROW_GRASS)) != 0 && grass_draw_code_read.load(std::memory_order_relaxed)) {
+    const Site& draw = SITES[LABEL_GRASS_DRAW_ENTRY];
+    std::array<uint8_t, GRASS_DRAW_NO_LOD_BYTES> code = {};
+    std::memcpy(code.data(), reinterpret_cast<const void*>(uintptr_t{draw.address}), code.size());
+    std::memcpy(code.data(), draw.window.data() + SITE_MARGIN, draw.length);
+    if (Fnv1a(code.data(), code.size()) != GRASS_DRAW_NO_LOD_HASH) {
+      grass_draw_code_read.store(false, std::memory_order_relaxed);
+      loader->log(GRASS_DRAW_CODE_LINE);
+    }
+  }
   // The engine values, once: the game's static constructors have built them, and its sound start (the reader of the
   // restart-only ones) comes later in its main.
   if (block.tweaks_status.load(std::memory_order_relaxed) == TWEAKS_PENDING) {
