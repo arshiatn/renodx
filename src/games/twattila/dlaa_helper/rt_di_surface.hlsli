@@ -94,8 +94,10 @@ float3 DiLight(uint4 texel, float3 position, uint light) {
 bool DiVisible(float3 origin, float3 light_point) {
   const float3 to_light = light_point - origin;
   const float light_distance = length(to_light);
-  // guard output: a light within 1 mm of the ray origin (or a NaN distance) reads shadowed, no ray; box S10.
-  if (!(light_distance > 1.0003098e-3f)) return false;
+  // guard output: a light point within 1 mm of the ray origin (or a NaN distance) reads visible, no ray, as rt_lights'
+  // reach test leaves such a light its bit (the game's unshadowed light; it read shadowed before, darker than the bits
+  // there); box S10 (pdf_1127: 0 such listed lights in the 4K census at 29 and 128 lights).
+  if (!(light_distance > 1.0003098e-3f)) return true;
 #if defined(DI_CONSERVATIVE)
   // Source: RTXDI RtxdiApplicationBridge.md, RAB_GetConservativeVisibility ("conservative visibility can skip
   // alpha-tested or translucent surfaces"; the initial samples' kept or discarded "computed in the same way").
