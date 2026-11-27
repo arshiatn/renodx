@@ -2653,15 +2653,23 @@ void RunContactTableChecks() {
          "class table: the lookup finds each class with its mode and holds nothing else");
 
   bool ranges_in_order = true;
+  size_t mask_index = 0;
   for (size_t index = 0; index < CONTACT_RANGES.size(); ++index) {
     const ContactRange& range = CONTACT_RANGES[index];
     ranges_in_order = ranges_in_order && range.size != 0
                       && (index == 0 || CONTACT_RANGES[index - 1].start + CONTACT_RANGES[index - 1].size <= range.start);
-    if (range.mask != CONTACT_NO_MASK) {
-      ranges_in_order = ranges_in_order && range.mask < CONTACT_MASKS.size() && CONTACT_MASKS[range.mask].start >= range.start
-                        && CONTACT_MASKS[range.mask].start + CONTACT_MASKS[range.mask].size <= range.start + range.size;
+    // The range's masks are the next ones of the list: each whole inside the range, behind the one before it.
+    uint32_t unmasked_from = range.start;
+    for (const size_t end = mask_index + range.mask_count; mask_index < end && ranges_in_order; ++mask_index) {
+      ranges_in_order = mask_index < CONTACT_MASKS.size() && CONTACT_MASKS[mask_index].size != 0
+                        && CONTACT_MASKS[mask_index].start >= unmasked_from
+                        && CONTACT_MASKS[mask_index].start + CONTACT_MASKS[mask_index].size <= range.start + range.size;
+      if (ranges_in_order) {
+        unmasked_from = CONTACT_MASKS[mask_index].start + CONTACT_MASKS[mask_index].size;
+      }
     }
   }
+  ranges_in_order = ranges_in_order && mask_index == CONTACT_MASKS.size();
   bool entries_in_order = true;
   for (size_t index = 1; index < CONTACT_ENTRIES.size(); ++index) {
     const battle_step::ContactEntry& before = CONTACT_ENTRIES[index - 1];
@@ -2670,7 +2678,7 @@ void RunContactTableChecks() {
   }
   Expect(ranges_in_order && CONTACT_RANGES.size() == 184 && CONTACT_RANGE_CHECKS.size() == 2441 && entries_in_order
              && CONTACT_ENTRIES.size() == 1415 && CONTACT_ENTRY_CHAIN == 0x43d70ccc80a103b8,
-         "code tables: 184 ranges in address order without overlap, each mask inside its range; 1415 entries in order");
+         "code tables: 184 ranges in address order without overlap, each range's masks inside it, in list order, none left over; 1415 entries in order");
   Expect((CORE_WANTED_DEFAULT & CORE_SPLIT) == 0, "the contact split's bit is not in the build's default");
   // The row's place in the block and in the site table: appended after the battle step's, its key as the batch tool
   // writes it, its one site the contact pass's first bytes, which the code check's range of the pass leaves out.
@@ -2706,8 +2714,10 @@ void RunContactTableChecks() {
 // done, the game's allocator still its own).
 void RunContactByteChecks() {
   const auto at = [](uintptr_t address) { return reinterpret_cast<uint8_t*>(address); };
+  // Ours: by address over the whole mask list, not by the ranges' counts, so a wrong count or running index in the
+  // check shows as a value that differs.
   const auto masked = [](const ContactRange& range, uint32_t offset) {
-    return range.mask != CONTACT_NO_MASK && range.start + offset - CONTACT_MASKS[range.mask].start < CONTACT_MASKS[range.mask].size;
+    return std::ranges::any_of(CONTACT_MASKS, [&](const ContactMask& mask) { return range.start + offset - mask.start < mask.size; });
   };
   // Each range's value and check words again, byte by byte: a word after every 16th byte and after the last.
   // The census's own value is the 176 whole functions' bytes, unmasked, as one chain: every range but the eight
@@ -2760,9 +2770,85 @@ void RunContactByteChecks() {
     named_hold = named_hold && range != nullptr && range->size == named.length && range->value == named.hash;
   }
   Expect(named_hold && Fnv1a<uint64_t>(at(0x3062d00), 0xb8) == 0x5ca2674289a8b5b7 && Fnv1a<uint64_t>(at(CONTACT_LOOP), 0x358) == 0x875d9d8f5e3c3893
-             && range_at(0x3062d00)->mask != CONTACT_NO_MASK && CONTACT_MASKS[range_at(0x3062d00)->mask].start == 0x3062d92
-             && CONTACT_MASKS[range_at(0x3062d00)->mask].size == 4 && CONTACT_MASKS.size() == 1,
-         "contact code: the named ranges with the design's values; one mask, on the task-thread loop's four bytes");
+             && range_at(0x3062d00)->mask_count == 1 && CONTACT_MASKS.back().start == 0x3062d92 && CONTACT_MASKS.back().size == 4,
+         "contact code: the named ranges with the design's values; the task-thread loop's one mask, the list's last, on its four bytes");
+
+  // ours: the other mod's windows (PerfFix 7.5, x87fix), 18 masks in six functions of the census. In the game file each window
+  // is, whole and nothing else, the compiler's block for one float -> int store under a changed x87 control word:
+  // nine instructions, every operand a stack slot (rsp with an 8- or 32-bit offset).
+  const auto is_control_word_block = [&](uint32_t start, uint32_t size) {
+    struct Step {
+      uint8_t prefix = 0;
+      uint8_t opcode = 0;
+      uint8_t reg_field = 0;
+    };
+    constexpr uint8_t NO_OPERAND = 0xff;
+    constexpr std::array<Step, 9> STEPS = {{
+        {.opcode = 0xd9, .reg_field = 0},                  // float load
+        {.opcode = 0x9b, .reg_field = NO_OPERAND},         // wait
+        {.opcode = 0xd9, .reg_field = 7},                  // control word store
+        {.prefix = 0x66, .opcode = 0x8b, .reg_field = 0},  // the stored word to ax
+        {.prefix = 0x66, .opcode = 0x0b, .reg_field = 0},  // or the rounding mode into ax
+        {.prefix = 0x66, .opcode = 0x89, .reg_field = 0},  // ax to a slot
+        {.opcode = 0xd9, .reg_field = 5},                  // control word load
+        {.opcode = 0xdb, .reg_field = 3},                  // int store
+        {.opcode = 0xd9, .reg_field = 5},                  // control word load, the stored one
+    }};
+    const uint8_t* code = at(start);
+    uint32_t offset = 0;
+    for (const Step& step : STEPS) {
+      if (step.prefix != 0) {
+        if (code[offset] != step.prefix) return false;
+        ++offset;
+      }
+      if (code[offset] != step.opcode) return false;
+      ++offset;
+      if (step.reg_field == NO_OPERAND) continue;
+      const uint8_t modrm = code[offset];
+      const uint8_t offset_kind = modrm >> 6;
+      if ((offset_kind != 1 && offset_kind != 2) || ((modrm >> 3) & 7) != step.reg_field || (modrm & 7) != 4 || code[offset + 1] != 0x24) return false;
+      offset += 2 + ((offset_kind == 1) ? 1 : 4);
+    }
+    return offset == size;
+  };
+  struct MaskedFunction {
+    uint32_t start = 0;
+    uint16_t mask_count = 0;
+    uint64_t unmasked = 0;  // the census's value of the whole function
+  };
+  constexpr std::array<MaskedFunction, 6> MASKED_FUNCTIONS = {{
+      {.start = 0x773b90, .mask_count = 2, .unmasked = 0x687356a9d31ed992}, {.start = 0x7769c0, .mask_count = 2, .unmasked = 0x53d1ab1e90a178dd},
+      {.start = 0x78c7c0, .mask_count = 4, .unmasked = 0x5920c6a869342780}, {.start = 0x7969f0, .mask_count = 4, .unmasked = 0xe0360af71e5f8e55},
+      {.start = 0x7dfe30, .mask_count = 4, .unmasked = 0x6022169d1659fe6a}, {.start = 0x7e0650, .mask_count = 2, .unmasked = 0x34825c85f26ca00c},
+  }};
+  bool functions_hold = true;
+  bool windows_decode = true;
+  bool shifted_decode = false;
+  size_t window = 0;
+  uint32_t window_bytes = 0;
+  for (const MaskedFunction& function : MASKED_FUNCTIONS) {
+    const ContactRange* range = range_at(function.start);
+    functions_hold = functions_hold && range != nullptr && range->mask_count == function.mask_count && range->value != function.unmasked
+                     && Fnv1a<uint64_t>(at(function.start), range->size) == function.unmasked
+                     && std::ranges::find(NOT_CENSUS_FUNCTIONS, function.start) == NOT_CENSUS_FUNCTIONS.end();
+    for (const size_t end = window + function.mask_count; functions_hold && window < end; ++window) {
+      const ContactMask& mask = CONTACT_MASKS[window];
+      if (mask.start < range->start || mask.start + mask.size > range->start + range->size || !is_control_word_block(mask.start, mask.size)) {
+        std::printf("  contact mask %#x+%u: not the control-word block, or outside %#x+%#x\n", mask.start, mask.size, range->start, range->size);
+        windows_decode = false;
+      }
+      // A wrong address or length is no such block.
+      shifted_decode = shifted_decode || is_control_word_block(mask.start - 1, mask.size) || is_control_word_block(mask.start + 1, mask.size)
+                       || is_control_word_block(mask.start, mask.size - 1) || is_control_word_block(mask.start, mask.size + 1);
+      window_bytes += mask.size;
+    }
+  }
+  Expect(functions_hold && window + 1 == CONTACT_MASKS.size(),
+         "contact code: the six functions with the other mod's windows hold 2, 2, 4, 4, 4, 2 masks; unmasked each is the census's value, the table's is the masked one");
+  Expect(windows_decode && window == 18 && window_bytes == 744,
+         "contact code: each of the 18 windows (744 bytes) is the game's nine-instruction control-word block, inside its function");
+  Expect(!shifted_decode && !is_control_word_block(CONTACT_MASKS.back().start, CONTACT_MASKS.back().size),
+         "contact code: a window one byte off, one byte shorter or longer, or the task-thread loop's mask is no such block");
 
   // The entries: the chain and each check word again; every word is the start of a function of the census's list
   // (a range, or one of the 15 math leaves that are not in the value).
@@ -2870,19 +2956,31 @@ void RunContactByteChecks() {
       }
     }
     Expect(named, "code check: a changed byte is found, the line names its range and block");
+    // Every mask: each of its bytes changed is no miss; the byte before it and the byte behind it are checked, and
+    // the line names that byte's block of the mask's range.
     bool masked_pass = true;
-    for (uint32_t byte = 0; byte < CONTACT_MASKS[0].size; ++byte) {
-      *at(CONTACT_MASKS[0].start + byte) ^= 0xff;
-      masked_pass = masked_pass && CheckCode().held;
-      *at(CONTACT_MASKS[0].start + byte) ^= 0xff;
+    bool beside_named = true;
+    for (const ContactMask& mask : CONTACT_MASKS) {
+      for (uint32_t byte = 0; byte < mask.size; ++byte) {
+        *at(mask.start + byte) ^= 0xff;
+        if (!CheckCode().held) {
+          std::printf("  contact mask %#x+%u: the byte at +%u is checked\n", mask.start, mask.size, byte);
+          masked_pass = false;
+        }
+        *at(mask.start + byte) ^= 0xff;
+      }
+      const auto range = std::ranges::find_if(CONTACT_RANGES, [&](const ContactRange& candidate) { return mask.start - candidate.start < candidate.size; });
+      for (const uint32_t beside : {mask.start - 1, mask.start + mask.size}) {
+        *at(beside) ^= 1;
+        if (range == CONTACT_RANGES.end() || !Names(CheckCode(), range->start, (beside - range->start) & ~15u)) {
+          std::printf("  contact mask %#x+%u: the byte at %#x beside it is not checked, or not named\n", mask.start, mask.size, beside);
+          beside_named = false;
+        }
+        *at(beside) ^= 1;
+      }
     }
-    *at(CONTACT_MASKS[0].start - 1) ^= 1;
-    const bool before_mask = Names(CheckCode(), 0x3062d00, 0x90);
-    *at(CONTACT_MASKS[0].start - 1) ^= 1;
-    *at(CONTACT_MASKS[0].start + CONTACT_MASKS[0].size) ^= 1;
-    Expect(masked_pass && before_mask && Names(CheckCode(), 0x3062d00, 0x90),
-           "code check: a changed byte under the mask is no miss; the bytes beside the mask are checked");
-    *at(CONTACT_MASKS[0].start + CONTACT_MASKS[0].size) ^= 1;
+    Expect(masked_pass, "code check: a changed byte under a mask is no miss, for every byte of the 19 masks");
+    Expect(beside_named, "code check: the byte before and the byte behind each mask are checked, the line names their block");
   }
   // A changed table word: the line names its table and slot.
   {
