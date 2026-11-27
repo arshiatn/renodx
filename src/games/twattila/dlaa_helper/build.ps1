@@ -17,6 +17,12 @@ if (Test-Path "$out\renodx-tw-dlaa64.exe") { throw "$out\renodx-tw-dlaa64.exe co
 # RENODX_TW_CONTROL_DEFINES set (names, space-separated: the fidelity fixes' CONTROL_*, rt_path.hlsli and rt_d3d12.hpp
 # BakeCutoff): every shader and the helper built with them, an A / B helper of its own (tests only, never a player's).
 $control_defines = @($env:RENODX_TW_CONTROL_DEFINES -split ' ' | Where-Object { $_ } | ForEach-Object { '-D', $_ })
+# Said loudly, and marked in the output folder (CONTROL_BUILD.txt; a release / pack step refuses a folder that has it).
+Remove-Item "$out\CONTROL_BUILD.txt" -ErrorAction SilentlyContinue
+if ($control_defines) {
+  Write-Warning "CONTROL BUILD (tests only, never a player's): $env:RENODX_TW_CONTROL_DEFINES"
+  Set-Content -Path "$out\CONTROL_BUILD.txt" -Value "CONTROL BUILD (tests only): $env:RENODX_TW_CONTROL_DEFINES"
+}
 # A shader that fails to compile fails the build (no helper with an older shader header).
 function Dxc {
   & "$root\bin\dxc.exe" @args @control_defines
