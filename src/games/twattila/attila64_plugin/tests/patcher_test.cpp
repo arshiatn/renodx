@@ -396,11 +396,6 @@ inline constexpr uint32_t JUMP_SITE_COUNT = [] {
 // The fake game after the sprite site's window, which ends inside lea rsi, [rsp + 0x3d0]: that instruction's last four
 // bytes, then a jump back to the bed.
 inline constexpr std::array<uint8_t, 5> SPRITE_SITE_TAIL = {0xd0, 0x03, 0x00, 0x00, 0xe9};
-// The bed's own tail: the float the game stored at [rsp + 0xb0] into the bed's record.
-// mov ecx, [rsp + 0xb0]; mov [rax + slot], rcx
-inline constexpr std::array<uint8_t, 14> SPRITE_BED_TAIL = {0x8b, 0x8c, 0x24, 0xb0, 0x00, 0x00, 0x00,
-                                                            0x48, 0x89, 0x88, 0x88, 0x00, 0x00, 0x00};
-static_assert(offsetof(Registers, slot) == 0x88);
 
 }  // namespace
 
@@ -590,7 +585,7 @@ int wmain(int argc, wchar_t** argv) {
                && REPLACEMENTS[LABEL_GRASS_DRAW_ENTRY] == reinterpret_cast<void*>(&GrassDrawEntry)
                && REPLACEMENTS[LABEL_GRASS_CELL_ENTRY] == reinterpret_cast<void*>(&GrassCellEntry)
                && REPLACEMENTS[LABEL_CAMPAIGN_TREE_ENTRY] == reinterpret_cast<void*>(&CampaignTreeEntry)
-               && REPLACEMENTS[LABEL_SPRITE_DISTANCE] == reinterpret_cast<void*>(&SpriteDistanceStub)
+               && REPLACEMENTS[LABEL_SPRITE_DISTANCE] == reinterpret_cast<void*>(&SpriteDistanceHandler)
                && MID_SITE_SCALES[LABEL_SPRITE_DISTANCE] == ((1u << SCALE_SPRITE_DISTANCE) | (1u << SCALE_DEAD_UNITS)),
            "labels: each holds its own hook");
     Expect(LABEL_STEP_ENTRY == 2 && SITES[LABEL_STEP_ENTRY].row == ROW_CPU_PLACEMENT
@@ -1406,6 +1401,10 @@ int wmain(int argc, wchar_t** argv) {
       shared->scales[SCALE_DEAD_UNITS].store(0.5f);
       Expect(sprite_once(0, 0.25f, false, 41.625f), "sprite: a dead soldier as a living one while its own scale's bit is clear");
       shared->scales[SCALE_DEAD_UNITS].store(1.f);
+      // A scale below 0 (not one the add-on sends) is no cap, as in the 32-bit add-on.
+      set_scale(shared, SCALE_SPRITE_DISTANCE, -20.f);
+      Expect(sprite_once(0, 0.25f, true, game_distance(0, 0.25f)) && sprite_once(2, 0.25f, false, game_distance(2, 0.25f)),
+             "sprite: a scale below 0 leaves the game's distance");
       set_scale(shared, SCALE_SPRITE_DISTANCE, 1000.f);
       Expect(sprite_once(0, 0.25f, true, game_distance(0, 0.25f)) && sprite_once(3, 0.25f, true, game_distance(3, 0.25f)),
              "sprite: a cap past the game's distance leaves the game's bits");
@@ -1418,6 +1417,9 @@ int wmain(int argc, wchar_t** argv) {
       Expect(sprite_once(2, 0.25f, false, 106.25f) && sprite_once(2, 0.25f, true, game_distance(2, 0.25f))
                  && sprite_once(1, -0.25f, true, game_distance(1, -0.25f)),
              "sprite: the dead scale alone, the game's distance x it; a living soldier keeps the game's bits");
+      shared->scales[SCALE_SPRITE_DISTANCE].store(20.f);
+      Expect(sprite_once(0, 0.25f, true, game_distance(0, 0.25f)), "sprite: no cap from a scale whose bit is clear");
+      shared->scales[SCALE_SPRITE_DISTANCE].store(0.f);
       set_scale(shared, SCALE_DEAD_UNITS, 1.f);
       Expect(shared->scales_active.load() == 0 && sprite_once(0, 0.25f, false, 95.625f), "sprite: back at neutral, the game's distance");
     }

@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <span>
 
 #include "loader_api.h"
@@ -37,16 +38,32 @@
 //   13 instructions that keep every register and flag, with no call. The site of the first user runs once per soldier
 //   and frame; SafetyHook's stub always saves everything.
 // - the bytes of the site after the jump are int3 (Detours' detour_gen_brk); nothing may run them.
+// A limit shared with SafetyHook's stub: the way on is a ret to a pushed address, which user-mode CET shadow stacks
+// refuse. The loader's exe is not built CET-compatible; a later one that is needs another way on.
 namespace twattila::attila64_plugin::trampoline {
 
 // The registers at the site, in memory order of the stub's frame. The handler may change any of them, and the game goes
 // on with what it left: at `resume`, first the trampoline (the site's own instructions, then the game's next one).
 // A handler that did the work of the site's instructions itself sets `resume` to the site's end.
 struct MidContext {
-  std::array<std::array<uint8_t, 16>, 16> xmm;
-  uint64_t r15, r14, r13, r12, r11, r10, r9, r8, rdi, rsi, rbp, rbx, rdx, rcx, rax;
-  uint64_t rflags;
-  uint64_t resume;
+  std::array<std::array<uint8_t, 16>, 16> xmm = {};
+  uint64_t r15 = 0;
+  uint64_t r14 = 0;
+  uint64_t r13 = 0;
+  uint64_t r12 = 0;
+  uint64_t r11 = 0;
+  uint64_t r10 = 0;
+  uint64_t r9 = 0;
+  uint64_t r8 = 0;
+  uint64_t rdi = 0;
+  uint64_t rsi = 0;
+  uint64_t rbp = 0;
+  uint64_t rbx = 0;
+  uint64_t rdx = 0;
+  uint64_t rcx = 0;
+  uint64_t rax = 0;
+  uint64_t rflags = 0;
+  uint64_t resume = 0;
 };
 static_assert(offsetof(MidContext, r15) == 0x100 && offsetof(MidContext, rax) == 0x170
               && offsetof(MidContext, rflags) == 0x178 && offsetof(MidContext, resume) == 0x180
@@ -75,8 +92,8 @@ inline constexpr size_t JUMP_BYTES = 5;  // jmp rel32
 // Returns the bytes used (MID_STUB_FIXED_BYTES + the site's). The site's end must be within jmp rel32 reach of the stub
 // (InJumpReach). MXCSR and the x87 state are not saved (as SafetyHook's stub): a handler is compiled code of ours that
 // leaves both alone.
-inline size_t BuildMidStub(uintptr_t code, uintptr_t site_address, std::span<const uint8_t> site_bytes, MidHandler handler,
-                           const std::atomic<uint32_t>* gate, uint32_t gate_mask,
+inline size_t BuildMidStub(uintptr_t code, uintptr_t site_address, std::span<const uint8_t> site_bytes,
+                           MidHandler handler, const std::atomic<uint32_t>* gate, uint32_t gate_mask,
                            std::array<uint8_t, MID_STUB_CAPACITY>* stub) {
   size_t size = 0;
   const auto emit = [&](std::initializer_list<uint8_t> bytes) {
@@ -123,10 +140,10 @@ inline size_t BuildMidStub(uintptr_t code, uintptr_t site_address, std::span<con
   // slow: the context, pushed from its end. Its `resume` first: the trampoline, from the pointer after the code.
   emit_flags_back();
   const size_t resume_operand = size + 2;
-  emit({0xff, 0x35, 0, 0, 0, 0});                                                                  // push [rip + resume]
-  emit({0x9c, 0x50, 0x51, 0x52, 0x53, 0x55, 0x56, 0x57});                                          // pushfq; push rax..rdi
+  emit({0xff, 0x35, 0, 0, 0, 0});  // push [rip + resume]
+  emit({0x9c, 0x50, 0x51, 0x52, 0x53, 0x55, 0x56, 0x57});  // pushfq; push rax..rdi
   emit({0x41, 0x50, 0x41, 0x51, 0x41, 0x52, 0x41, 0x53, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57});  // r8..r15
-  emit({0x48, 0x81, 0xec, 0x00, 0x01, 0x00, 0x00});                                                // sub rsp, 0x100
+  emit({0x48, 0x81, 0xec, 0x00, 0x01, 0x00, 0x00});  // sub rsp, 0x100
   emit_xmm_moves(0x11);
   // The handler's argument; its stack aligned as a call needs it, whatever the site's rsp is. rbx is in the context
   // already, and the handler keeps it (callee-saved).
@@ -135,9 +152,9 @@ inline size_t BuildMidStub(uintptr_t code, uintptr_t site_address, std::span<con
   emit({0xff, 0x15, 0, 0, 0, 0});  // call [rip + handler]
   emit({0x48, 0x89, 0xdc});        // mov rsp, rbx
   emit_xmm_moves(0x10);
-  emit({0x48, 0x81, 0xc4, 0x00, 0x01, 0x00, 0x00});                                                // add rsp, 0x100
-  emit({0x41, 0x5f, 0x41, 0x5e, 0x41, 0x5d, 0x41, 0x5c, 0x41, 0x5b, 0x41, 0x5a, 0x41, 0x59, 0x41, 0x58});  // pop r15..r8
-  emit({0x5f, 0x5e, 0x5d, 0x5b, 0x5a, 0x59, 0x58, 0x9d});                                          // pop rdi..rax; popfq
+  emit({0x48, 0x81, 0xc4, 0x00, 0x01, 0x00, 0x00});  // add rsp, 0x100
+  emit({0x41, 0x5f, 0x41, 0x5e, 0x41, 0x5d, 0x41, 0x5c, 0x41, 0x5b, 0x41, 0x5a, 0x41, 0x59, 0x41, 0x58});  // r15..r8
+  emit({0x5f, 0x5e, 0x5d, 0x5b, 0x5a, 0x59, 0x58, 0x9d});  // pop rdi..rax; popfq
   emit({0xc2, RED_ZONE, 0x00});  // ret RED_ZONE: to context.resume, the game's rsp again
 
   const auto patch_operand = [&](size_t operand) {

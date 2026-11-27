@@ -127,10 +127,10 @@ struct AppliedSite {
                                           const std::atomic<uint32_t>* gate, uint32_t gate_mask, AppliedSite* applied) {
   auto* code = static_cast<uint8_t*>(api.code_near_game(trampoline::MID_STUB_FIXED_BYTES + site.length));
   const auto code_address = reinterpret_cast<uintptr_t>(code);
-  const uintptr_t site_end = uintptr_t{site.address} + site.length;
   // The site's jump to the stub and the trampoline's jump back.
   if (code == nullptr || !trampoline::InJumpReach(site.address, code_address)
-      || !trampoline::InJumpReach(code_address + trampoline::MID_GATE_BYTES + site.length, site_end)) {
+      || !trampoline::InJumpReach(code_address + trampoline::MID_GATE_BYTES + site.length,
+                                  uintptr_t{site.address} + site.length)) {
     return REFUSAL_NO_MEMORY;
   }
   const uint8_t* expect = site.window.data() + SITE_MARGIN;
@@ -139,15 +139,18 @@ struct AppliedSite {
       trampoline::BuildMidStub(code_address, site.address, {expect, site.length}, handler, gate, gate_mask, &stub);
   MEMORY_BASIC_INFORMATION page = {};
   if (VirtualQuery(code, &page, sizeof(page)) == 0) return REFUSAL_WRITE_FAILED;
-  const bool writable = (page.Protect & (PAGE_EXECUTE_READWRITE | PAGE_READWRITE)) != 0;
+  // Writable as it is when the stub's last byte is in the same writable region as its first (it may cross a page).
+  const bool writable = (page.Protect & (PAGE_EXECUTE_READWRITE | PAGE_READWRITE)) != 0
+                        && reinterpret_cast<uintptr_t>(page.BaseAddress) + page.RegionSize >= code_address + stub_bytes;
   DWORD protection = 0;
   // Execute access stays on: the loader's own stubs share the page.
   if (!writable && VirtualProtect(code, stub_bytes, PAGE_EXECUTE_READWRITE, &protection) == FALSE) {
     return REFUSAL_WRITE_FAILED;
   }
   std::memcpy(code, stub.data(), stub_bytes);
-  if (!writable) {
-    VirtualProtect(code, stub_bytes, protection, &protection);
+  if (!writable && VirtualProtect(code, stub_bytes, protection, &protection) == FALSE) {
+    api.log("renodx_attila64: site %s %#x: its code near the game stays writable (error %lu)", LABEL_WORDS[site.label],
+            site.address, GetLastError());
   }
   FlushInstructionCache(GetCurrentProcess(), code, stub_bytes);
 

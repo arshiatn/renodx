@@ -279,6 +279,11 @@ static uintptr_t WriteMidBed(uint8_t* code, std::span<const uint8_t> site_bytes,
   return site;
 }
 
+// A bed's tail for the sprite site: the float the game's own next instruction stored at [rsp + 0xb0], into the bed's
+// record. mov ecx, [rsp + 0xb0]; mov [rax + slot], rcx
+inline constexpr std::array<uint8_t, 14> SPRITE_BED_TAIL = {0x8b, 0x8c, 0x24, 0xb0, 0x00, 0x00, 0x00,
+                                                            0x48, 0x89, 0x88, 0x88, 0x00, 0x00, 0x00};
+
 // One loaded copy of the plugin DLL (a copy at another path is another module with its own globals).
 struct Plugin {
   int (*init)(const LoaderApi*) = nullptr;

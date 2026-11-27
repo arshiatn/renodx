@@ -210,6 +210,10 @@ static uint32_t Fnv1a(const uint8_t* bytes, size_t count) noexcept {
 // distances by the soldier's size (0-3; a size past 3 takes 0's), their fade widths 0x10 after them.
 inline constexpr size_t SOLDIER_DISPLAY = 0xc8;
 inline constexpr size_t SOLDIER_FLAGS = 0x11c;  // a byte
+// Bit 0 clear = dead, from one reader in the game's code: the function at 0xa56720 takes this record (rdx, kept in
+// rbx) and, only with the bit clear (0xa56786), divides the record's float at +0x118 by a game constant (0x4e8861c)
+// (elf_sites_test holds both instructions). The 32-bit game's flags bit 0 is the same rule. The code that clears the
+// bit when a soldier dies was not found: not proven (E), still to be seen in the game.
 inline constexpr uint8_t SOLDIER_ALIVE = 1;
 inline constexpr size_t DISPLAY_SPRITE_DISTANCES = 0x370;
 // A soldier's height by its size, metres: the 32-bit add-on's estimates (graphics_hooks.hpp SOLDIER_HEIGHTS: a foot
@@ -615,18 +619,18 @@ static ATTILA64_GAME_CALL void* CampaignTreeEntry(const uint8_t* node, const uin
 // distance: xmm0 (the soldier's random value - 0.5) x its size's fade width ([rax]), + its size's sprite distance
 // ([rcx]); the game stores the sum and draws a sprite when the camera is farther away.
 // - Small Soldiers as Sprites: no farther than where a soldier of its size is the add-on's pixel limit tall (its height
-//   x the scale), with the game's spread around it.
+//   x the scale), with the game's spread around it; only for a scale above 0.
 // - Dead Unit Detail: x its scale for a dead soldier.
 // The 32-bit add-on's OnImposterDistance (graphics_hooks.hpp), in its order; there the spread comes from a second call
 // of the game's function, here it is the site's own product. Each part only with its own bit set.
 // Called by the site's stub (trampoline.hpp), and only while one of the two bits is set: with none the game's own two
 // instructions run, with every register and flag as the game left them. The row has this one site: refused, it is not
 // in at all.
-static ATTILA64_GAME_CALL void SpriteDistanceStub(trampoline::MidContext* context) noexcept {
-  LogFirstCall(LABEL_SPRITE_DISTANCE);
+static ATTILA64_GAME_CALL void SpriteDistanceHandler(trampoline::MidContext* context) noexcept {
   const uint32_t active = block.scales_active.load(std::memory_order_relaxed) & SPRITE_SCALES;
   // Both bits cleared since the stub read them: on to the game's own instructions.
   if (active == 0) return;
+  LogFirstCall(LABEL_SPRITE_DISTANCE);
   const auto* soldier = reinterpret_cast<const uint8_t*>(context->r13);
   float dither = 0.f;
   float fade_width = 0.f;
@@ -637,12 +641,13 @@ static ATTILA64_GAME_CALL void SpriteDistanceStub(trampoline::MidContext* contex
   // The game's mulss and addss, in its order.
   const float spread = dither * fade_width;
   distance = spread + distance;
-  if ((active & (1u << SCALE_SPRITE_DISTANCE)) != 0) {
+  if (const float sprite_scale = block.scales[SCALE_SPRITE_DISTANCE].load(std::memory_order_relaxed);
+      (active & (1u << SCALE_SPRITE_DISTANCE)) != 0 && sprite_scale > 0.f) {
     uintptr_t display = 0;
     std::memcpy(&display, soldier + SOLDIER_DISPLAY, sizeof(display));
     const size_t size = (context->rcx - display - DISPLAY_SPRITE_DISTANCES) / sizeof(float);
     const float height = SOLDIER_HEIGHTS[(size < SOLDIER_HEIGHTS.size()) ? size : 0];
-    distance = std::min(distance, (height * block.scales[SCALE_SPRITE_DISTANCE].load(std::memory_order_relaxed)) + spread);
+    distance = std::min(distance, (height * sprite_scale) + spread);
   }
   if ((active & (1u << SCALE_DEAD_UNITS)) != 0 && (soldier[SOLDIER_FLAGS] & SOLDIER_ALIVE) == 0) {
     distance *= block.scales[SCALE_DEAD_UNITS].load(std::memory_order_relaxed);
@@ -665,7 +670,7 @@ static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
   hooks[LABEL_GRASS_DRAW_ENTRY] = reinterpret_cast<void*>(&GrassDrawEntry);
   hooks[LABEL_GRASS_CELL_ENTRY] = reinterpret_cast<void*>(&GrassCellEntry);
   hooks[LABEL_CAMPAIGN_TREE_ENTRY] = reinterpret_cast<void*>(&CampaignTreeEntry);
-  hooks[LABEL_SPRITE_DISTANCE] = reinterpret_cast<void*>(&SpriteDistanceStub);
+  hooks[LABEL_SPRITE_DISTANCE] = reinterpret_cast<void*>(&SpriteDistanceHandler);
   return hooks;
 }();
 // Each mid-function site's scales: its handler is called only while a bit of them is set in scales_active.
