@@ -17986,7 +17986,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         bits (design 7.5 :852-855: the key holds only until the add-on's first present; the vfxauto kinds run without
         the add-on, a64_ab.ps1:111-114 / :327-328) -> drop the first-present skip, dump's first stop 0x0f; SHOULD-1
         dump_a64.cpp's new section breaks the driver on pre-P9-3 trees -> guard; 3 NITs; dump_a64.cpp edit = add-only,
-        needed. Fix round p94_ (resumed, Opus Medium) STARTED 18:4x; then Sonnet High final. m2d_ (Fable xHigh) DONE
+        needed. Fix round p94_ (resumed, Opus Medium) DONE 19:1x: 52837754c (the add-on owns bits 4-5 from its first
+        present, Off included; dump_a64.cpp section under DUMP_TWEAKS_TABLE, builds on a pre-PK9 tree; NIT-1 / NIT-2;
+        NIT-3 = tests.cpp not its file -> tw_unit_shadows' next owner); stop sequence 0->0xf ... 7->0x1f; both
+        mutations caught; gated amd64 + x86 exit 0 (addon64 4c322b36, addon32 1fd276f2). F7's case needs
+        fake_plugin.cpp + run.ps1 edits (test\tw_attila64_present) -> the batch prep. Sonnet High final fp94_
+        STARTED 19:1x; merge after it (addon.cpp order: P1a -> P9-4 -> W-A3 -> Stage B). m2d_ (Fable xHigh) DONE
         17:58 (27 of 40 min; designs\pk5_m2_memcpy.md, scratch\m2d_\handback.md): ONE caller 0x339b4a4 (97.88 %,
         ~1.67 of 1.71 ms a frame), size 0xe0 x count, destination the loader's Map pointer of a dynamic VB; class (c),
         lever (d) only, no build target; PK5 10.1 / 10.3 corrected (addendum); section 10 copied into backup_32bit.md;
