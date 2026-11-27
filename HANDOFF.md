@@ -730,6 +730,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PERFFIX PIN GATE (rpxm_ S1): the masks let any bytes pass in the 744 masked byte ... | ATN (pin), coord (re-check per PerfFix update)
 - PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also ... | coord (batch prep) ATN 20:3x: 'You are allowed to look at hi
 - X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN pfx_ DONE 21:05 (Fable 5
+- S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 d ... | the next attila64_plugin_link
+- S5E 1-CASCADE ARM (ATN's addendum): no game 1-cascade values exist (lowest Shado ... | ATN
+- E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | coord (R3's a64_ab writer) SPRITES NEED A CAMERA fix spf_ (O
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - RESTORE AFTER THE PXM MERGE (coord): build\attila64_plugin is pxm_1127's DLL 934 ... | coord
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
@@ -18234,7 +18237,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         MUST (own ELF decode: count sites +0xcc 0x30e46d8 High 3 / 0x30e470c Max 4, extra +0xb8; Medium's 22 bytes
         exact; lowest Shadows skips the setup; DLL fb0264cb again): S1 the comment + :74 enum comment, S2 'ours:' for
         writing 0 while not offered, S3 F7 = done (3 / 3); N1-N7. Fix round s5e_ (resumed, Fable 5.2 Medium, est 20)
-        STARTED 21:3x.
+        STARTED 21:3x. s5e_ fix round DONE 21:48 (14 min; 225b04d03; DLL 5eb5755f; gated x2, unit shadows x2, defaults,
+        x86 page SAME; new literal 'renodx_attila64: shadow cascades: Medium's own writes changed after we patched the
+        counts' (rows_changed bit); the add-on line ends '(this start: 0x..)'). F7 GPU re-run 3 / 3 PASS
+        (s5e_f7_gpu2.log). FINAL fs5e2_ (Sonnet High, 12 min) GO, 4 NITs -> box below. MERGED 69e743188 (--no-ff,
+        pushed), after pxm_1127 4a41599d1 (pushed). Main-tree checks (gated amd64 + x86 x3, unit shadows x2, defaults,
+        plugin test) STARTED 22:00; then restage + smokes with / without PerfFix on the merged plugin (pxm_'s fix
+        round changed the DLL sha with names only: 4c79ce03).
+        - [ ] S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 duplicated parse lines not
+        marked ours:; 'this start' wrong in the log when the route is not DX11; no test for '+1' text. Owner: the next
+        attila64_plugin_link.hpp / main.cpp writer
+        - [ ] S5E 1-CASCADE ARM (ATN's addendum): no game 1-cascade values exist (lowest Shadows skips the setup). ATN
+        picks: an invented (1, 0) test value, or a timing arm at the game's lowest Shadows. Owner: ATN
+        - [ ] E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade site lines ': applied',
+        'shadow cascades 2: patched'; control E64-rt 'shadow cascades: game's counts'). Owner: coord (R3's a64_ab
+        writer)
+        SPRITES NEED A CAMERA fix spf_ (Opus Medium trial; worktree spf_1127 from 69e743188; anti_aliasing.hpp + 3
+        addon.cpp + tw_unit_shadows 5b + the a64_ab patch for B64P / E64-sr2; est 45 / 90) STARTED 22:00.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
