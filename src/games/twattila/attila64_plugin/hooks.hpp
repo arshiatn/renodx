@@ -222,6 +222,19 @@ struct CallbackScope {
   const Callbacks* callbacks = nullptr;
 };
 
+// ROW_PARALLEL_EFFECTS, the walk hook's state. Main only: every caller of the walk runs on the thread of the game's
+// main loop (read from the game's code: the walk's one caller sits in one virtual slot, and that slot's one call
+// chain starts in the game's main), so plain values without a lock. The game's start writes loader_value and stored
+// on the loader's thread before it sets effects_offered (release); the hook reads them only after its acquire load.
+struct EffectWalk {
+  uint8_t loader_value = 0;  // the flag as the loader left it at the game's start
+  uint8_t stored = 0;        // the plugin's last store; loader_value before any
+};
+static EffectWalk effect_walk;
+// The loader's five guards hold their entries and the game's read of the flag is the code that was read: checked once
+// at the game's start (main.cpp). Without it the hook only calls the game's walk.
+static std::atomic_bool effects_offered = false;
+
 // The calling site's own line (a row with several sites shows which of them the game called).
 static void LogFirstCall(SiteLabel label) noexcept {
   if (first_call_logged[label].load(std::memory_order_relaxed) || first_call_logged[label].exchange(true)) return;

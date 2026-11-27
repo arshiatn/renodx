@@ -177,6 +177,17 @@ static void WriteTweakObjects() {
   }
 }
 
+// The loader's five guards of the game's parallel effect update, as its own entry hooks leave them (their targets in
+// this exe's image: the tests' loader), and the game's read of the flag. Once per game image: a second call would hook
+// the hooks.
+static void WriteLoaderGuards() {
+  for (const uintptr_t entry : EFFECT_GUARD_ENTRIES) {
+    Expect(FakeHook(entry, reinterpret_cast<const uint8_t*>(entry), 5, reinterpret_cast<void*>(&FakeLog)) != nullptr,
+           "the fake loader hooks an effect guard entry");
+  }
+  std::memcpy(reinterpret_cast<void*>(EFFECT_FLAG_READ_ADDRESS), EFFECT_FLAG_READ.data(), EFFECT_FLAG_READ.size());
+}
+
 // One loaded copy of the plugin DLL (a copy at another path is another module with its own globals).
 struct Plugin {
   int (*init)(const LoaderApi*) = nullptr;
@@ -202,9 +213,9 @@ static Plugin LoadPlugin(const wchar_t* dll_path) {
   return plugin;
 }
 
-// The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window and
-// every tweak object (WriteTweakObjects), with no ReShade.ini keys and no route note beside the test: every row with a
-// site goes in, and no patch site has other bytes to write.
+// The plugin DLL's init and game start as the loader runs them, on a game image that holds every site's window, every
+// tweak object (WriteTweakObjects) and the loader's effect guards (WriteLoaderGuards), with no ReShade.ini keys and no
+// route note beside the test: every row with a site goes in, and no patch site has other bytes to write.
 static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const Plugin plugin = LoadPlugin(dll_path);
   if (plugin.init == nullptr) return plugin;
@@ -269,6 +280,10 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   Expect(shared->tweaks_status.load(std::memory_order_acquire) == TWEAKS_READY && shared->tweak_count == TWEAKS.size()
              && shared->tweaks != nullptr && Logged(tweaks_line) && !Logged(": refused ("),
          "game start checks and publishes the engine values");
+  const TweakSlot& effect_flag = shared->tweaks[TWEAKS.size() - 1];
+  Expect(TWEAKS.back().loader_writes && effect_flag.verdict == VERDICT_OK && effect_flag.value_address == EFFECT_FLAG
+             && Logged("renodx_attila64: parallel effects: offered (loader guards in place)") && !Logged("not offered"),
+         "game start offers the parallel effect flag behind the loader's guards");
   // The thread that runs the game's start is the render thread: captured once, with its own line.
   char render_thread[64];
   std::snprintf(render_thread, sizeof(render_thread), "renodx_attila64: render thread %lu", GetCurrentThreadId());

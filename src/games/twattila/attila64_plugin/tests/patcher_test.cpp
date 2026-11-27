@@ -511,6 +511,7 @@ int wmain(int argc, wchar_t** argv) {
   const auto every_site_untouched = [&] { return std::ranges::all_of(SITES, site_untouched); };
   write_game();
   WriteTweakObjects();
+  WriteLoaderGuards();
 
   // Identity.
   Expect(CheckIdentity(api) == STATUS_READY, "identity: accepted");
@@ -1458,6 +1459,29 @@ int wmain(int argc, wchar_t** argv) {
            "dll: game start finds a site changed after init");
   } else {
     Expect(false, "dll: init for the changed-later case");
+  }
+
+  // The game's parallel effect flag is offered only behind the loader's guards: with one guard entry that is not the
+  // loader's hook, or with the game's read of the flag changed, its slot is ABSENT (the row's hook is in and inert).
+  for (const bool guard_case : {true, false}) {
+    uint8_t* changed = at(guard_case ? EFFECT_GUARD_ENTRIES[1] : (EFFECT_FLAG_READ_ADDRESS + 2));
+    write_game();
+    *changed ^= 1;
+    const auto [plugin, result] = init_copy((guard_case ? L"effect_guard" : L"effect_flag_read"), MODULE_NAME, api);
+    if (result == 0) {
+      plugin.game_started(&api);
+    }
+    *changed ^= 1;
+    char absent_line[96];
+    std::snprintf(absent_line, sizeof(absent_line), "renodx_attila64: tweaks: %zu checked, %zu ok, 3 absent", TWEAKS.size() - 3,
+                  TWEAKS.size() - 3);
+    Expect(result == 0 && (plugin.block->rows_applied & RowBit(ROW_PARALLEL_EFFECTS)) != 0
+               && plugin.block->tweaks[TWEAKS.size() - 1].verdict == VERDICT_ABSENT
+               && plugin.block->tweaks[TWEAKS.size() - 1].value_address == 0 && Logged(absent_line)
+               && Logged(guard_case ? "renodx_attila64: parallel effects: not offered (0x34e0170 not the loader's)"
+                                    : "renodx_attila64: parallel effects: not offered (flag read differs)")
+               && !Logged("parallel effects: offered"),
+           "dll: the parallel effect flag is not offered without the loader's guards or with another flag read");
   }
 
   set_ini_key_off(INI_ENABLED);

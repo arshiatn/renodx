@@ -199,6 +199,31 @@ int wmain(int argc, wchar_t** argv) {
            {0x33f4442, {0x49, 0x8b, 0x4d, 0x48}, "campaign tree: the model's LODs at +0x48"},
            {0x33f4454, {0xf3, 0x0f, 0x10, 0x45, 0x50}, "campaign tree: a LOD's distance at +0x50"},
            {0x33f445e, {0x80, 0x7d, 0x5c, 0x00}, "campaign tree: a LOD's enabled byte at +0x5c"},
+           // The parallel effects row: the bytes the loader checks before it hooks its five guards, and each
+           // instruction of the walk and of the per-type update whose number sites.h holds.
+           {0x34e0130, {0x8b, 0x47, 0x14, 0x85, 0xc0}, "effects: the pool take's first bytes"},
+           {0x34e0170, {0x8b, 0x46, 0x04, 0x85, 0xc0}, "effects: the pool's list take's first bytes"},
+           {0x34e01a0, {0x53, 0x48, 0x83, 0xec, 0x10}, "effects: the pool return's first bytes"},
+           {0x32ffa60, {0x48, 0x8b, 0xbf, 0x28, 0x02, 0x00, 0x00, 0x48, 0x8b, 0x07, 0x48, 0x8b, 0x40, 0x40, 0xff, 0xe0},
+            "effects: the spawn thunk"},
+           {0x35314b0, {0x41, 0x57, 0x41, 0x56, 0x53, 0x49, 0x89, 0xfe, 0x41, 0x8b, 0x5e, 0x30, 0x41, 0x3b, 0x5e, 0x34, 0x74, 0x3c},
+            "effects: the piece body's first bytes"},
+           {0x32fc384, {0x49, 0x8b, 0x84, 0x24}, "effect walk: mov rax, [r12 + the table's slots]"},
+           {0x32fc38c, {0x41, 0x8b, 0x8c, 0x24}, "effect walk: mov ecx, [r12 + the table's capacity]"},
+           {0x32fc394, {0x48, 0x8d, 0x0c, 0x49, 0x48, 0x8d, 0x0c, 0xc8}, "effect walk: the end is slots + capacity x 24"},
+           {0x32fc2f6, {0x49, 0x8d, 0x84, 0x24}, "effect walk: lea rax, [r12 + the empty key]"},
+           {0x32fc303, {0x49, 0x8d, 0x84, 0x24}, "effect walk: lea rax, [r12 + the deleted key]"},
+           {0x32fc32c, {0x48, 0x8b, 0x7e}, "effect walk: mov rdi, [rsi + the slot's value]"},
+           {0x32fc330, {0x48, 0x85, 0xff}, "effect walk: a null value is skipped"},
+           {0x32fc354, {0x48, 0x83, 0xc6}, "effect walk: add rsi, a slot's bytes"},
+           {0x32fc36a, {0xe8}, "effect walk: the first key compare is a direct call"},
+           {0x32fc37b, {0xe8}, "effect walk: the second key compare is a direct call"},
+           {0x34ad19e, {0x49, 0x89, 0xfe}, "effect type update: r14 is the type"},
+           {0x34ad1c6, {0x41, 0x8b, 0x5e}, "effect type update: mov ebx, [r14 + the instance count]"},
+           // The key compare: lengths (a uint32_t at 0) first, then the bytes at +8; it only reads and returns in al.
+           {0x50def0, {0x44, 0x8b, 0x07, 0x44, 0x3b, 0x06, 0x75, 0x2a, 0x45, 0x85, 0xc0, 0xb0, 0x01, 0x74, 0x22, 0x48, 0x8b,
+                       0x57, 0x08, 0x48, 0x8b, 0x76, 0x08},
+            "effect walk: the key compare reads two counted strings"},
        }) {
     Expect(std::equal(fact.bytes.begin(), fact.bytes.end(), at(fact.address)), fact.what);
   }
@@ -265,7 +290,21 @@ int wmain(int argc, wchar_t** argv) {
   std::printf("  tweaks: %zu constructor calls match\n", tweaks_in_code);
   Expect(tweaks_in_code == TWEAKS.size() - 2, "tweaks: every object's constructor call passes its name and default");
 
+  // The parallel effects row's numbers in the game's own code (sites.h's effect block).
+  Expect(std::memcmp(at(EFFECT_FLAG_READ_ADDRESS), EFFECT_FLAG_READ.data(), EFFECT_FLAG_READ.size()) == 0
+             && EFFECT_FLAG_READ_ADDRESS + EFFECT_FLAG_READ.size() + word_at(EFFECT_FLAG_READ_ADDRESS + 2) == EFFECT_FLAG
+             && EFFECT_FLAG == TWEAKS.back().object + TWEAK_KINDS[TWEAK_BOOL].value_offset && TWEAKS.back().loader_writes,
+         "effects: the game's read of the flag is the code that was read, and the flag is the last tweak's value");
+  Expect(word_at(0x32fc384 + 4) == EFFECT_TABLE_SLOTS && word_at(0x32fc38c + 4) == EFFECT_TABLE_CAPACITY
+             && word_at(0x32fc2f6 + 4) == EFFECT_EMPTY_KEY && word_at(0x32fc303 + 4) == EFFECT_DELETED_KEY
+             && *at(0x32fc32c + 3) == EFFECT_SLOT_VALUE && *at(0x32fc354 + 3) == EFFECT_SLOT_BYTES && EFFECT_SLOT_BYTES == 24
+             && *at(0x34ad1c6 + 3) == EFFECT_TYPE_COUNT,
+         "effect walk: each offset of sites.h is the operand of the walk's own instruction");
+  Expect(0x32fc36a + 5 + word_at(0x32fc36a + 1) == EFFECT_KEY_EQUAL && 0x32fc37b + 5 + word_at(0x32fc37b + 1) == EFFECT_KEY_EQUAL,
+         "effect walk: both key compares call the function sites.h names");
+
   WriteTweakObjects();
+  WriteLoaderGuards();
   ExpectPluginDll(api, argv[1]);
   Expect(!Logged("grass draw: "), "grass draw: init finds the code that was read, the early return is on");
 

@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
+#include <span>
 #include <string_view>
 
 #include "../module_version.hpp"
@@ -365,7 +366,39 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
       const TweakEntry& entry = TWEAKS[index];
       TweakSlot* slot = &tweak_slots[index];
       tweaks::CheckTweak(entry, slot);
-      if (slot->verdict == VERDICT_ABSENT) continue;
+      // The game's parallel effect flag is offered (OK) only while the loader's own hooks guard the code that flag
+      // turns on and the game's one read of it is the code that was read; else it is ABSENT, the add-on hides its row
+      // and the walk hook stays inert.
+      if (entry.loader_writes && slot->verdict == VERDICT_OK) {
+        const auto* image = reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr));
+        const auto image_lo = reinterpret_cast<uintptr_t>(image);
+        const uintptr_t image_hi =
+            image_lo
+            + reinterpret_cast<const IMAGE_NT_HEADERS*>(image + reinterpret_cast<const IMAGE_DOS_HEADER*>(image)->e_lfanew)
+                  ->OptionalHeader.SizeOfImage;
+        if (!LoaderHooked(EFFECT_GUARD_ENTRIES, image_lo, image_hi)) {
+          const auto not_the_loaders = std::ranges::find_if(EFFECT_GUARD_ENTRIES, [&](const uintptr_t& guard) {
+            return !LoaderHooked(std::span(&guard, 1), image_lo, image_hi);
+          });
+          loader->log("renodx_attila64: parallel effects: not offered (%#llx not the loader's)",
+                      static_cast<unsigned long long>(*not_the_loaders));
+          slot->verdict = VERDICT_ABSENT;
+        } else if (std::memcmp(reinterpret_cast<const void*>(EFFECT_FLAG_READ_ADDRESS), EFFECT_FLAG_READ.data(),
+                               EFFECT_FLAG_READ.size())
+                   != 0) {
+          loader->log("renodx_attila64: parallel effects: not offered (flag read differs)");
+          slot->verdict = VERDICT_ABSENT;
+        } else {
+          loader->log("renodx_attila64: parallel effects: offered (loader guards in place)");
+          effect_walk.loader_value = static_cast<uint8_t>(slot->default_bits);
+          effect_walk.stored = effect_walk.loader_value;
+          effects_offered.store(true, std::memory_order_release);
+        }
+      }
+      if (slot->verdict == VERDICT_ABSENT) {
+        slot->value_address = 0;
+        continue;
+      }
       ++checked;
       if (slot->verdict != VERDICT_OK) {
         loader->log("renodx_attila64: tweak %s: refused (%s, value 0x%x)", entry.name,

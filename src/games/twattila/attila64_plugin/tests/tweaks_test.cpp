@@ -103,7 +103,21 @@ int wmain(int argc, wchar_t** argv) {
                   && slot.type == entry.type && slot.restart_state == RESTART_NONE
                   && std::string_view(slot.name) == entry.name;
     }
-    Expect(ok == 81 && absent == 2 && restart_only == 7 && addresses, "check: 81 ok with their value addresses, 2 absent");
+    Expect(ok == 82 && absent == 2 && restart_only == 7 && addresses, "check: 82 ok with their value addresses, 2 absent");
+  }
+  // The flag the loader stores before the game's start: 0 and 1 are both as found, anything else is not the game's.
+  {
+    const TweakEntry& entry = TWEAKS.back();
+    TweakSlot slot;
+    *at(entry.object + TWEAK_KINDS[TWEAK_BOOL].value_offset) = 1;
+    CheckTweak(entry, &slot);
+    Expect(entry.loader_writes && !entry.game_writes && slot.verdict == VERDICT_OK && slot.default_bits == 1
+               && slot.value_address == entry.object + TWEAK_KINDS[TWEAK_BOOL].value_offset,
+           "check: a flag the loader stores is taken as found when it holds 1");
+    *at(entry.object + TWEAK_KINDS[TWEAK_BOOL].value_offset) = 2;
+    CheckTweak(entry, &slot);
+    Expect(slot.verdict == VERDICT_CHANGED && slot.value_address == 0, "check: a flag the loader stores holds 0 or 1");
+    WriteTweakObjects();
   }
 
   // Each refusal, on a float and on a flag.
@@ -396,7 +410,8 @@ int wmain(int argc, wchar_t** argv) {
            "dll: nothing is written before the game's start");
     plugin.game_started(&api);
     Expect(plugin.block->tweaks_status.load(std::memory_order_acquire) == TWEAKS_READY && plugin.block->tweak_count == TWEAKS.size()
-               && Logged("renodx_attila64: tweaks: 81 checked, 81 ok, 2 absent, restart-only: 2 applied"),
+               && Logged("renodx_attila64: tweaks: 81 checked, 81 ok, 3 absent, restart-only: 2 applied")
+               && Logged("renodx_attila64: parallel effects: not offered (0x34e0130 not the loader's)"),
            "dll: the tweaks line");
     Expect(value_of(sound) == 0xbb48 && slot_of(plugin, sound.name).restart_state == RESTART_APPLIED
                && slot_of(plugin, sound.name).written_bits == 0xbb48 && slot_of(plugin, sound.name).default_bits == sound.default_bits
@@ -436,7 +451,7 @@ int wmain(int argc, wchar_t** argv) {
     char refused[128];
     std::snprintf(refused, sizeof(refused), "renodx_attila64: tweak battle_entity_lod0_distance: refused (not the game's default, value 0x%x)",
                   other_value);
-    Expect(Logged("renodx_attila64: tweaks: 81 checked, 80 ok, 2 absent, restart-only: 0 applied") && Logged(refused)
+    Expect(Logged("renodx_attila64: tweaks: 81 checked, 80 ok, 3 absent, restart-only: 0 applied") && Logged(refused)
                && slot_of(plugin, changed.name).verdict == VERDICT_CHANGED && slot_of(plugin, changed.name).value_address == 0,
            "dll: an object not at its default is refused by name and counted");
     Expect(value_of(sound) == sound.default_bits && slot_of(plugin, sound.name).restart_state == RESTART_NOT_DX11
@@ -471,7 +486,7 @@ int wmain(int argc, wchar_t** argv) {
     plugin.game_started(&api);
     Expect(Logged("renodx_attila64: tweak SOUND_DEFAULT_BUFFER_SIZE_IN_KB: refused (another type, value 0x0)")
                && !Logged("renodx_attila64: tweak SOUND_DEFAULT_BUFFER_SIZE_IN_KB: 0x")
-               && Logged("renodx_attila64: tweaks: 81 checked, 80 ok, 2 absent, restart-only: 1 applied")
+               && Logged("renodx_attila64: tweaks: 81 checked, 80 ok, 3 absent, restart-only: 1 applied")
                && value_of(sound) == sound.default_bits && slot_of(plugin, sound.name).verdict == VERDICT_WRONG_TYPE
                && slot_of(plugin, sound.name).restart_state == RESTART_NONE && slot_of(plugin, sound.name).value_address == 0
                && value_of(sound_limit) == 0x3f7d70a4,

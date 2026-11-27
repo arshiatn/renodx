@@ -89,7 +89,7 @@ inline constexpr std::array<const char*, 4> RESTART_WORDS = {"", "written (resta
 }
 
 // One entry's object as the game's static constructors left it: its type's table, its name and (unless the game
-// stores the value itself) its default. Only an OK slot gets its value address.
+// stores the value itself) its default; a flag the loader stores holds 0 or 1. Only an OK slot gets its value address.
 inline void CheckTweak(const TweakEntry& entry, TweakSlot* slot) noexcept {
   *slot = {.name = entry.name, .type = entry.type, .restart_only = static_cast<uint8_t>(entry.restart_only)};
   if (entry.object == 0) return;
@@ -118,7 +118,8 @@ inline void CheckTweak(const TweakEntry& entry, TweakSlot* slot) noexcept {
   std::memcpy(&value, object + kind.value_offset, kind.value_bytes);
   slot->default_bits = value;
   slot->written_bits = value;
-  if (!entry.game_writes && value != entry.default_bits) {
+  const bool changed = (entry.loader_writes ? (value > 1) : (!entry.game_writes && value != entry.default_bits));
+  if (changed) {
     slot->verdict = VERDICT_CHANGED;
     return;
   }
