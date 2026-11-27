@@ -18317,6 +18317,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         new, dyn_census.py in tools\tw\attila64\census (old table byte-equal, --need-ib control exits 1). Coord:
         R1 needs the rest of R1.7 -> S2b (rts2_ resumed, Opus High, est 30: stencil func / ops, dsv ro, '| views')
         STARTED 23:07; reviews + merge after S2b.
+        cspf_ (Sonnet High, 5 of 15 min; scratch\cspf_\review.md) GO, 0 MUST, 0 SHOULD: S1-S4 + the SHOULD fixed,
+        skips fine, tested bytes = committed bytes, patch only adds (sprmsaa edits the test home copy only; old runs
+        fail the new keys only). NITs: 2 lines at 121 columns, README.md:2030 old TAA WARP numbers, taa_test.cpp once
+        after the merge (it includes D:/Dev/renodx/src), restage the add-on. Coord 23:13: a64_ab patch APPLIED live
+        (c0e29cdb -> b626750c, backups .bak_spf_ + .bak_coord_spf, 0 parse errors); a3_smoke add-on = 81c42b53 (old
+        86cc227e in scratch\coord_\a3_addon_86cc227e). Merge of spf_1127 still after the CPU gate (CPU Set Setter
+        rule = ATN). RT-on-64 S1 rts1_ (Opus High per the design, est 60; a64_ab copy + sha-gated patch b626750c ->
+        new, dry runs only) STARTED 23:13.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
