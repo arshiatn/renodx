@@ -17961,7 +17961,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         X01-X51, smoke spheres / PTLAS results. ufc_ (Fable 5.2 xHigh, read only, design work: no GPU runs, so it fits
         CPU first) STARTED 18:5x: stale / missing / prior art (RTXPT, RTXDI, ReSTIR PT / GRIS, ReSTIR PG, Volumetric
         ReSTIR, RR guides) / order / cite compliance -> plan_1117\designs\unified_pt_critic_1127.md + a v2.8 change
-        list; fx4b_'s reference-vs-bake question goes in. The v2.8 refresh waits for the GPU lane to reopen. Owner:
+        list; fx4b_'s reference-vs-bake question goes in. ufc_ DONE 18:17 (22 of 70 min; scratch\ufc_\handback.md;
+        checked on atn-mods 60e8c1d98 + fx4b_1127): STALE 29, MISSING 27, PRIOR ART 24, cite gaps 19; v2.8 list 18 MUST /
+        18 SHOULD / 10 NIT; 11 questions for ATN (critic section 6). Top: re-base (H0 merged, kinds 34-40 taken, V cites
+        moved); PT DI add-on half waits for the port (S8), RR-only contract blocks NRD / FRR torches; W4b = two
+        visibility kinds; no-OMM reference + bake diff; RTXPT turns ReSTIR off under RR -> no-reuse arm; RTXDI 3.2 PT
+        module as U9's NVIDIA arm; settings matrix (~95 keys); helper / add-on half per step; resets / device loss /
+        VRAM ladder section; 4K gates, fix waves first. Two prior-art items from memory (marked unverified). The v2.8
+        refresh (design only, no GPU) NEEDS ATN: the critic picks 'now', the CPU-first rule says wait. Owner:
         coord
         - [ ] CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules
         cpq_\cpu_common_1127.md): PK9 P9-3 MERGED 6563e2199 (re-check rp93m_ GO, 0 MUST; SHOULD done = the folded
