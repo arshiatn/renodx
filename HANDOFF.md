@@ -18432,7 +18432,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         reference copied to census\out, README remake compares (fc /b), never overwrites; 19 gated builds, tests
         x2, controls (remake byte-equal, BOM'd ref 47 / 48, edge ib 0 / 0). Left as S3 / S4 brief lines: rrts2_
         NIT 6 (Capture refuses SO / UAV index buffers), NIT 7 (R1.7 field order), NIT 8 (rerun the parsers on R1's
-        first real 64-bit trace). Sonnet re-check crts2_ STARTED 23:55; merge after it.
+        first real 64-bit trace). Sonnet re-check crts2_ STARTED 23:55; merge after it. crts2_ (1 min) GO, 0 MUST / 0 SHOULD
+        (nullptr valid per d3d11.h, format unchanged, 10 census controls re-run) -> MERGED 23:57 4e264c9cc (--no-ff;
+        main's src unchanged since 10f837d7c, so rts2_'s 19 builds hold). S3 / S4 brief lines -> rt_port_64.md addendum.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
