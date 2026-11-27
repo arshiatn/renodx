@@ -726,8 +726,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
-- PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | coord ATN 20:3x: 'You are allowed to look at his code to see
-- X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN Step 8 review rp8b57_ (Opus xHigh) DO
+- PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | coord DECIDED 21:0x (coord, design 3
+- X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN pfx_ DONE 21:05 (Fable 5
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
@@ -18140,6 +18140,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         if it is an in-place, register / stack-only rounding, mask those blocks (both PerfFix's and our speed); if not,
         our plugin restores the game's own bytes in those blocks only (ours used, PerfFix skipped there); (4) T-B3,
         smoke again, review. Owner: coord
+        DECIDED 21:0x (coord, design 3.6 'a coordinator's decision per spot'; pfx_ pick (a)): MASK the 18 windows
+        (both speed-ups run). Implementer pxm_ (Fable 5.2 Medium; gen_contact_ranges.py + battle_step.hpp + its test;
+        T-B3 + controls) STARTED 21:06, then reviews, the short Sonnet High late-mask read, smokes with and without
+        -PerfFix. The pin (c) = ATN's call.
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
         -> read-only conflict check pfx_ (Fable 5.2 xHigh; opens perffix_src read only, x87fix only; heapfix pkg stays
         unopened; findings in our words) STARTED 20:35: the pattern, the replacement, results, thread safety, the blocks
@@ -18150,6 +18154,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         fastest bit-identical form per CPU tier (SSE2 / SSE4.1 / AVX2 / AVX-512, uops.info + Agner Fog); a micro-bench
         plan. Then a decision with numbers: our own design, offered to Caesar by ATN (ATN sends it), or a row of ours
         for players without PerfFix (off when PerfFix is loaded). Owner: coord (pfx_), then ATN
+        pfx_ DONE 21:05 (Fable 5.2 xHigh, 30 of 75 min; testbin\scratch\pfx_\check.md): his replacement uses NO SSE:
+        x87 + the SSE3-era truncating store, one form for every CPU (one CPUID SSE3 test). 18 blocks in 6 of our 176
+        functions, bit-identical to the game's for all 2^32 float32 inputs (M), own stack slots only, thread-safe.
+        Fastest forms (ours, all M bit-identical): AVX-512 3 instructions, no free-register proof; SSE4.1 / AVX2
+        needs a free xmm per site (provable at 1878 of 2756 sites, 9 of our 18); SSE2-only keeps his. Gain over his
+        form on Zen 4: 0.2 - 0.4 ns a block (rough); in game not plausible (a million blocks a frame for 0.2 ms; none
+        of the 6 is in the contact segment's sample list). His big win is on old Intel (Nehalem control-word load
+        throughput 31 cycles). Bench plan written (section 9), not run. Coord: upgrade parked unless ATN wants the
+        bench for Caesar.
         Step 8 review rp8b57_ (Opus xHigh) DONE 20:11 (19 of 35 min; scratch\rp8b57_\review.md): GO WITH CHANGES; steps 5
         + 6 right as built (own plugin test at 587a40a48: 0 failures, battle_step 14547; four stores + table test in the
         smoke DLL as pinned); smoke: E64 matches every 11.1 line, lane B off with PerfFix acceptable for now (fail-safe,
