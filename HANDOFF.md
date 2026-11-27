@@ -723,8 +723,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ALL PLANS LIST (ATN 11-27 16:2x: 'Some stuffs are missing ... gather those forgo ... | coord
 - UNIFIED PT COMPLETENESS CRITIC (ATN 11-27 18:5x 'Yes, start it'): unified_pt.md ... | coord
 - SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stac ... | coord
-- CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
-- PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord
+- PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
+- CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
 - HANDOFF AUDIT APPLIED 18:0x: hfm_ (Opus xHigh) merged the 8 parts (testbin\scrat ... | coord (section 11 items follow the CPU-first rule)
 - CPU FIRST (ATN 11-27 17:3x): 'Unified PT should come after the fixes BUT ... don ... | coord
@@ -6815,7 +6815,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Agents: c3i_ (R1), bd3o_ (R-S5a), t4i_ (round 10) (3 of 3). QUEUE: b13r_ R1 re-check + merge, c33i_ part 2b
         (hook-up + S2 cases + N4 shared scanner / Overlaps + N9), bd1r_ R-S3 re-check, x0i_ X2 notes, B1.6 (+ N5
         real-routine tests), X1, R-S5.
-        t4i_ ROUND 10 DONE 20:3x (reports/t4i_round10_handback.md; backups scratchpad	4i_bak10): x87c_summary to the
+        t4i_ ROUND 10 DONE 20:3x (reports/t4i_round10_handback.md; backups scratchpad	4i_bak\r10): x87c_summary to the
         6593a8f text, N == M == 89 else ROWFAIL with both counts; old 4062cff summary -> x87c_other; corpus 6593a8f text +
         stamp 69CE1786 + 24 '::' srcs fixed; 2 new test_check cases; gates line numbers; b1_refused_hooked :710; Nit 2
         x87c lines out of the INFO count. run_all 789 / 789.
@@ -7269,8 +7269,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         3 FoldExits runs 8 of 14 direct reasons, add visibility view first; 4 control 11 comment; 5 detach from another
         thread during a fold window (engine_code.hpp:2951-2958): write the assumption down or wait ~100 ms + keep FOLD_SITES
         pinned. All suites + gated plain / DRAW_RECORDING / amd64 exit 0. Waiting for bd1r_'s instance_fill side.
-        t4i_ RESUMED 01:0x: ebr_'s 4 T3c nits (bench; backups t4i_bak14).
-        t4i_ T3d DONE 01:1x (bench only; backups t4i_bak14): plan PAUSE-W3 lists OFF 755 / OFF 765 control / C 775 /
+        t4i_ RESUMED 01:0x: ebr_'s 4 T3c nits (bench; backups t4i_bak\r14).
+        t4i_ T3d DONE 01:1x (bench only; backups t4i_bak\r14): plan PAUSE-W3 lists OFF 755 / OFF 765 control / C 775 /
         ALL 805 / OFF 820 drift; nit 2 TAKEN: a not-comparable drift control -> NOTE '§4.2 drift not covered', pairs still
         checked vs window 3 (a differing drift control still blocks all pairs); v1-only DIFFERS hint (trace at 774 s);
         show() hex. run_all green (analyze 106). ebr_ RESUMED 01:1x: short check of nit 2 -> '## T3d check'.
@@ -7311,7 +7311,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         deletable / editable ...). 11 install decisions for ATN -> into INSTALL_FOR_ATN.md as a checklist. gtp_ RESUMED
         01:2x: fixes -> gtw_ re-check.
         t4i_ T3e DONE 01:2x: PROBLEM lines end with '(drift not covered: window 6 not comparable)' when the drift control
-        is skipped; test_analyze 107 / 107, run_all green; backups t4i_bak15. T3 / map compare track CLOSED.
+        is skipped; test_analyze 107 / 107, run_all green; backups t4i_bak\r15. T3 / map compare track CLOSED.
         ATN 01:2x ANSWERS (phone): Q12 hooks = shadow mode first (recommended); Q8 (a) ns_busy counts map_replay = YES
         (-> gti_ row ON), (b) lock wait inside atn_harness_runs.ps1 = YES [ ] after gti_'s fixes + gtv_'s re-check (render_mt
         file, same command lines, no new switch); Q14 = as recommended (tools_tw on, reshade off, cxx on all src, spec gate
@@ -17982,6 +17982,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         coord
         - [ ] SAME-FILE CPU STEPS IN ORDER (ATN 11-27 18:42): merge-ups cost ~15-25 % per stacked step; from now on
         steps on the same files run one after the other, different files side by side, Fable jobs first. Owner: coord
+        - [ ] PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, the release changes
+        CORE_WANTED_DEFAULT (plugin_block.h) AND clears saved FasterBattleStep values with ClearSavedRows(2, ...,
+        'Attila64SettingsRevision'); flip BATTLE_STEP_ROW_MEASURED after S-C; F7's saved_off case becomes the Off-clears
+        case (one line in run.ps1). Owner: coord at the release step
         - [ ] CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules
         cpq_\cpu_common_1127.md): PK9 P9-3 MERGED 6563e2199 (re-check rp93m_ GO, 0 MUST; SHOULD done = the folded
         generators installed by coord from p93m_\gen\install.sh, .bak_p93m kept; main tree build.ps1 -Test -Elf
@@ -18027,15 +18031,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         measured' form, the add-on writes the plugin's default On, BATTLE_STEP_ROW_MEASURED flips at the release step;
         CORE_STEP written even when the row is not offered (only the line gated); gated amd64 + x86 exit 0, x86 page
         389 -> 389, 3 mutations caught. F7 run by coord 18:37 (GPU lock, f7_gpu.sh): 9 passed of 9 (3 P9-4 + 3 W-A3 +
-        3 render core regression; scratch\coord_f7_wa3.log). Review rwa3_ (Opus xHigh) DONE (scratchwa3_eview.md): GO WITH CHANGES, 0 MUST; the deviation UPHELD (design
+        3 render core regression; scratch\coord_f7_wa3.log). Review rwa3_ (Opus xHigh) DONE (scratch\rwa3_\review.md): GO WITH CHANGES, 0 MUST; the deviation UPHELD (design
         F1 :228-229: CORE_STEP in CORE_WANTED_DEFAULT for the S-C build, the release keeps it only after S-C + Q1);
         SHOULD-1 addon.cpp:3677-3680 row On + lane OFF reads 'off' until the next step -> 'not used yet'; SHOULD-2 release
         note (box below); 3 NITs; F7's 9 cases prove the table. Fix round wa3_ (resumed, Opus Medium) STARTED 18:44;
         then Sonnet High final; then merge.
-        - [ ] PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, the release changes
-        CORE_WANTED_DEFAULT (plugin_block.h) AND clears saved FasterBattleStep values with ClearSavedRows(2, ...,
-        'Attila64SettingsRevision'); flip BATTLE_STEP_ROW_MEASURED after S-C; F7's saved_off case becomes the Off-clears
-        case (one line in run.ps1). Owner: coord at the release step Stage B step 5 p8b5_ (Fable Medium) STARTED 18:37 on p8b_1127 (merge
+        Stage B step 5 p8b5_ (Fable Medium) STARTED 18:37 on p8b_1127 (merge
         atn-mods, fold step 2's CONTACT_ENTRY onto the installed generator in its own copy + install.sh, ONE wiring
         commit, 3 serial test runs); then step 6 (Opus) after W-A3 merges. Note: HANDOFF clock stamps 19:xx above were an
         hour ahead; real times from 18:15 on. p1pt_ (Fable Medium) DONE 19:1x (31 of 20
@@ -18065,7 +18066,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         rule across both -C2 starts (the real 11-25 menu case fails the old copy), P5 fast-kind noise 0.81 ms (pk9:128),
         B64P start + sprites entry + 125:memory=1 + 2.6's pass lines, all NITs; chain 02cf94e1 -> aa861112 -> 1910c724;
         h91 21 / 21, horizon 17 / 17, A13 exit codes unchanged. Sonnet High final sp91_ STARTED 18:44; then coord
-        applies (python -I -B SCR\p91_64_ab_pk9p1_patch.py, then a64_ab_c8t0_patch.py). m2d_ (Fable xHigh) DONE
+        applies (python -I -B SCR\p91_\a64_ab_pk9p1_patch.py, then a64_ab_c8t0_patch.py). m2d_ (Fable xHigh) DONE
         17:58 (27 of 40 min; designs\pk5_m2_memcpy.md, scratch\m2d_\handback.md): ONE caller 0x339b4a4 (97.88 %,
         ~1.67 of 1.71 ms a frame), size 0xe0 x count, destination the loader's Map pointer of a dynamic VB; class (c),
         lever (d) only, no build target; PK5 10.1 / 10.3 corrected (addendum); section 10 copied into backup_32bit.md;
@@ -18517,7 +18518,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         rt_lights_di_torch_omm, D2 + smoke + twin jobs, full D1, rec_compare lifted control + rec_scan, all_modes_check
         -> testbin\scratch\pdi4c_\chain_r2.ps1 = GPU order item 4 (resume pdi4c_ with it). OPEN: 4b dlaa_bridge.hpp
         Publish / PublishEmptySet must write rt_light_surface + rt_di_light[0..1] every set (else keep() closes stale
-        handles twice); pdi4c_ patched the SHARED harness source tools	wt_harness (tw_rt_harness.cpp + di_mode.hpp,
+        handles twice); pdi4c_ patched the SHARED harness source tools\tw\rt_harness (tw_rt_harness.cpp + di_mode.hpp,
         backup .before_pdi4c; exe not rebuilt; inert without HARNESS_DI). 4d needs: lowdef-never-reaches-DI harness
         check, the 4b fix, the R1 E6 / R3 composite. NOTE: pdi4c_ counted waiting as deadline time -> brief rule
         wording: 'waiting does not count' must be in every brief.
