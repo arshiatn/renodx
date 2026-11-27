@@ -114,6 +114,17 @@ $port_clear = $text.IndexOf('ClearSavedRows(1, {"FewerConstantUploads"}, "Attila
 Check ($port_clear -ge 0 -and $port_clear -lt $text.IndexOf('renodx::utils::settings::Use(DLL_PROCESS_ATTACH', [StringComparison]::Ordinal)) 'the port clear before settings::Use'
 Check ($text.Contains('renodx::utils::log::i("[Total War] Fewer Constant Uploads: on.");')) 'Fewer Constant Uploads once-line'
 Check ($text.Contains("`n    fewer_constant_uploads_logged = false;`n")) 'Fewer Constant Uploads once-flag reset at detach'
+# PK5-64 P5-5 (the 64-bit port only): Faster Game CPU Code is the engine plugin's game code row, moved to the CPU page's
+# section CPU with its port label, shown while the plugin offers the row, its restart note after it, and its value
+# mirrored for the next start; the 32-bit row as before.
+Check ($text.Contains('GAME_CODE = twattila::attila64_plugin::ROW_GAME_CODE,')) 'PluginRow::GAME_CODE = ROW_GAME_CODE'
+Check ($text.Contains('{.match = "FasterGameCpuCode", .plugin_row = PluginRow::GAME_CODE},')) 'FasterGameCpuCode in GAME_CODE_ROWS with PluginRow::GAME_CODE'
+$gc = Block 'const auto game_code = std::ranges::find(settings, "FasterGameCpuCode", &renodx::utils::settings::Setting::key);' "`n                    });"
+Check ($gc.Contains('game_code_row->label = "Faster Game CPU Code (restart)";') -and $gc.Contains('game_code_row->section = CPU_SECTION;') `
+       -and $gc.Contains('game_code_row->is_visible = [] { return GameCodeRowShown(PluginRow::GAME_CODE); };') `
+       -and $gc.Contains('.label = RESTART_NOW,') -and $gc.Contains('twattila::attila64_plugin_link::GameCodePending()')) 'FasterGameCpuCode on the CPU page: (restart) label, shown by its row, restart note'
+Check ($text -match 'MirrorRestartValues\(loader_frame_cap_row != 0\.f, static_cast<int>\(shadow_map_size\),\s+engine_code_row != 0\.f\);') 'FasterGameCpuCode mirrored for the next start'
+Check ((Read-Source 'graphics_page.hpp') -match '(?s)\.key = "FasterGameCpuCode",.{0,300}?\.label = "Faster Game CPU Code",') 'FasterGameCpuCode 32-bit label unchanged'
 Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t MIN_GAME_CPUS = 8;') 'MIN_GAME_CPUS 8'
 # Automatic L1 (inside its row, which stays Off above): parallel from 20000 effect instances, serial below 16000, never below
 # 256; the bench env RENODX_TW_L1_UNITS read again at the pool's env generation.

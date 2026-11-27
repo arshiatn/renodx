@@ -151,6 +151,30 @@ $table['plugin_sprites_refused'] = @{
             '[Total War] 64-bit Attila: engine plugin rows tried 0x203') + $upgraded
   forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active', 'engine plugin notices')
 }
+# The game code row (a v2 block offering it, rows 0x403): Faster Game CPU Code mirrored into [Attila64Plugin.Values] for
+# the next start. plugin_game_code: the row Off, the key absent (on): 0 written against this start's 1.
+# plugin_game_code_key_off: the key 0 and the row at its default On: 1 written against this start's 0.
+# plugin_game_code_default: the row On, the key absent: nothing written. plugin_game_code_refused: the row tried, not
+# offered (rows 0x3, tried 0x403): the row Off, nothing written.
+$gameCodeValue = '[Total War] 64-bit Attila: engine value FasterGameCpuCode'
+$gameCodeCases = [ordered]@{
+  plugin_game_code = @{ plugin = '1 1027 0 2 1027'; ini = @('FasterGameCpuCode=0'); offered = '0x403'; tried = '0x403'
+                        value = "${gameCodeValue}: 0x0 at the next start (this start: 0x1)" }
+  plugin_game_code_key_off = @{ plugin = '1 1027 0 2 1027'; ini = @('[Attila64Plugin.Values]', 'FasterGameCpuCode=0'); offered = '0x403'
+                                tried = '0x403'; value = "${gameCodeValue}: 0x1 at the next start (this start: 0x0)" }
+  plugin_game_code_default = @{ plugin = '1 1027 0 2 1027'; ini = @(); offered = '0x403'; tried = '0x403' }
+  plugin_game_code_refused = @{ plugin = '1 3 0 2 1027'; ini = @('FasterGameCpuCode=0'); offered = '0x3'; tried = '0x403' }
+}
+foreach ($name in $gameCodeCases.Keys) {
+  $gameCode = $gameCodeCases[$name]
+  $table[$name] = @{
+    addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = $gameCode.plugin; ini = $gameCode.ini
+    lines = @($identity, $mapped, "[Total War] 64-bit Attila: engine plugin ready, rows offered $($gameCode.offered)",
+              "[Total War] 64-bit Attila: engine plugin rows tried $($gameCode.tried)") + @($gameCode.value | Where-Object { $_ }) + $upgraded
+    forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active', 'engine plugin notices') +
+             @(if (-not $gameCode.value) { $gameCodeValue })
+  }
+}
 # Registration end to end: rows forced wanted (RENODX_TW_PLUGIN_WANT), the callbacks registered at a present, the fake
 # hooks' thread calling into them, then unregistered and drained inside ReShade's unload before the add-on is freed.
 $table['plugin_calls'] = @{
