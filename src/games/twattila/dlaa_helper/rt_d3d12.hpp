@@ -411,9 +411,11 @@ class RtScene12 {
                                                               sizeof(ptlas_caps)) == NVAPI_OK
                              && (ptlas_caps & NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_CAP_STANDARD) != 0;
     // RENODX_TW_TEST_PTLAS_RESTART=<frame> (a test path, B23 M8): that request builds a fresh PTLAS and writes every
-    // instance, as a new room does (unified_pt.md U12b's forced change).
+    // instance, as a new room does (unified_pt.md U12b's forced change). A value past the buffer (GetEnvironmentVariableW
+    // then returns the size it needs) is refused: no restart.
     std::array<wchar_t, 16> restart_frame = {};
-    if (ptlas_asked && GetEnvironmentVariableW(L"RENODX_TW_TEST_PTLAS_RESTART", restart_frame.data(), static_cast<DWORD>(restart_frame.size())) != 0) {
+    if (const DWORD length = ptlas_asked ? GetEnvironmentVariableW(L"RENODX_TW_TEST_PTLAS_RESTART", restart_frame.data(), static_cast<DWORD>(restart_frame.size())) : 0;
+        length != 0 && length < restart_frame.size()) {
       ptlas_restart_frame_ = static_cast<uint32_t>(_wtoi(restart_frame.data()));
     }
 #else
@@ -483,7 +485,9 @@ class RtScene12 {
       if (SUCCEEDED(made)) made = slot.instances->Map(0, nullptr, reinterpret_cast<void**>(&slot.instance_data));
       if (SUCCEEDED(made)) made = slot.table->Map(0, nullptr, reinterpret_cast<void**>(&slot.table_data));
       if (SUCCEEDED(made)) made = slot.jobs->Map(0, nullptr, reinterpret_cast<void**>(&slot.jobs_data));
-      if (SUCCEEDED(made) && slot.ptlas) made = slot.ptlas->Map(0, nullptr, reinterpret_cast<void**>(&slot.ptlas_data));
+      if (SUCCEEDED(made) && slot.ptlas) {
+        made = slot.ptlas->Map(0, nullptr, reinterpret_cast<void**>(&slot.ptlas_data));
+      }
       if (FAILED(made)) return Fail(std::format("Ray tracing: no D3D12 command lists (0x{:08X})", static_cast<uint32_t>(made)));
       slot.list->SetName(std::format(L"slot {}", &slot - slots_.data()).c_str());
     }
@@ -540,7 +544,7 @@ class RtScene12 {
     // and the session runs the TLAS (a test request: the contract of a missing cap). The PTLAS's placed instances then stop
     // at 2^23, the most power of two (rt_place's table) beside PLACED_BASE under NVAPI's 2^24 instances (nvapi.h:21225;
     // ATN's Q3); the TLAS keeps D3D12's most.
-    if (PlacedRoom room; ptlas_asked && MakePlacedRoom(MAX_INSTANCES, PtlasRoomSizes(MAX_INSTANCES), &room)) {
+    if (PlacedRoom room; ptlas_asked && MakePlacedRoom(MAX_INSTANCES, PtlasRoomSizes(MAX_INSTANCES, ptlas_asked), &room)) {
       UsePlacedRoom(&room);
       placed_limit_ = std::min(placed_limit_, PTLAS_PLACED_LIMIT);
     } else if (room = {}; MakePlacedRoom(MAX_INSTANCES, std::nullopt, &room)) {
@@ -1161,7 +1165,7 @@ class RtScene12 {
                                                   (cluster_bytes_ + TEMPLATE_POOL_BYTES) >> 20)
                                     : std::string());
     // The partitioned TLAS's room line (UsePlacedRoom) after the ready line.
-    const std::string ptlas_note = ptlas_asked ? std::exchange(slow_report_, {}) : std::string();
+    const std::string ptlas_note = (ptlas_asked ? std::exchange(slow_report_, {}) : std::string());
     slow_report_ = "[TW ray tracing] " + status_
                    + (info_queue_                ? std::string(" (D3D12 debug layer on).")
                       : (debug_result_ != S_FALSE) ? std::format(" (no D3D12 debug layer: 0x{:08X}).", static_cast<uint32_t>(debug_result_))
@@ -2027,11 +2031,7 @@ class RtScene12 {
       return false;
     }
     if (PlacedRoom room; recorded_capacity != placed_capacity_) {
-      std::optional<PtlasSizes> ptlas_sizes;
-      if (ptlas_ != nullptr) {
-        ptlas_sizes = PtlasRoomSizes(recorded_capacity);
-      }
-      if (!MakePlacedRoom(recorded_capacity, ptlas_sizes, &room)) {
+      if (!MakePlacedRoom(recorded_capacity, PtlasRoomSizes(recorded_capacity, ptlas_ != nullptr), &room)) {
         *why = "no memory for the placed instances' room";
         return false;
       }
@@ -5603,19 +5603,21 @@ class RtScene12 {
   }
 #endif
 
-  // Those inputs' sizes, on the render thread (NVAPI says nothing of its prebuild call's thread safety; ours: the worker
-  // only allocates). The build's inputs must be the prebuild's (nvapi.h:21362): UsePlacedRoom takes PtlasInputs too.
-  PtlasSizes PtlasRoomSizes([[maybe_unused]] uint32_t capacity) const {
+  // A room's PTLAS part: none without `partitioned`, else those inputs' sizes (result 0: no prebuild, MakePlacedRoom
+  // fails), on the render thread (NVAPI says nothing of its prebuild call's thread safety; ours: the worker only
+  // allocates). The build's inputs must be the prebuild's (nvapi.h:21362): UsePlacedRoom takes PtlasInputs too.
+  std::optional<PtlasSizes> PtlasRoomSizes([[maybe_unused]] uint32_t capacity, bool partitioned) const {
+    if (!partitioned) return std::nullopt;
 #if defined(RENODX_NVAPI_CLUSTERS)
     const NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_INPUTS inputs = PtlasInputs(capacity);
     NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO info = {};
     const NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS params = {
         .version = NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS_VER, .pInput = &inputs, .pInfo = &info};
     if (NvAPI_D3D12_GetRaytracingPartitionedTlasIndirectPrebuildInfo(device_.Get(), &params) == NVAPI_OK) {
-      return {.result = info.resultDataMaxSizeInBytes, .scratch = std::max<uint64_t>(info.scratchDataSizeInBytes, 256)};
+      return PtlasSizes{.result = info.resultDataMaxSizeInBytes, .scratch = std::max<uint64_t>(info.scratchDataSizeInBytes, 256)};
     }
 #endif
-    return {};
+    return PtlasSizes{};
   }
 
   // Its buffers (any thread), with the PTLAS part when `ptlas_sizes` is given. False: no memory for them, or no prebuild
@@ -6888,11 +6890,7 @@ class RtScene12 {
       const auto capacity = static_cast<uint32_t>(std::min<uint64_t>(
           std::max<uint64_t>(uint64_t{placed_capacity_} * 2, std::bit_ceil(uint64_t{placed_written_} * 2)), placed_limit_));
       // The PTLAS part's sizes here (PtlasRoomSizes: the render thread).
-      std::optional<PtlasSizes> ptlas_sizes;
-      if (ptlas_ != nullptr) {
-        ptlas_sizes = PtlasRoomSizes(capacity);
-      }
-      placed_growing_ = std::async(std::launch::async, [this, capacity, ptlas_sizes]() -> std::unique_ptr<PlacedRoom> {
+      placed_growing_ = std::async(std::launch::async, [this, capacity, ptlas_sizes = PtlasRoomSizes(capacity, ptlas_ != nullptr)]() -> std::unique_ptr<PlacedRoom> {
         auto made = std::make_unique<PlacedRoom>();
         if (!MakePlacedRoom(capacity, ptlas_sizes, made.get())) return nullptr;
         return made;
@@ -8682,12 +8680,13 @@ class RtScene12 {
       ptlas_placed_span_ = placed_span;
       // The operation and its count (one array, the CPU's writes first: each type once a build, nvapi.h:21352). As in
       // NVIDIA's vk_partitioned_tlas sample (Apache-2.0, src/partitioned_tlas.cpp onRender): the CPU writes the
-      // operation's type, argument address and stride, and the GPU (rt_ptlas's scan) its argument count and the count.
+      // operation's type, argument address and stride, and the GPU (rt_ptlas's scan) its argument count and the count
+      // (NVIDIA: always 1; ours 0 without writes).
       const uint64_t operations = ptlas_ops_->GetGPUVirtualAddress();
       const Operation operation = {.type = NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_WRITE_INSTANCE, .count = write_count,
                                    .data = {.StartAddress = operations + PTLAS_WRITES_OFFSET, .StrideInBytes = sizeof(WriteInstance)}};
       std::memcpy(slot->ptlas_data + PTLAS_OPS_OFFSET, &operation, sizeof(operation));
-      const uint32_t operation_count = (write_count != 0) ? 1u : 0u;
+      const uint32_t operation_count = ((write_count != 0) ? 1u : 0u);
       std::memcpy(slot->ptlas_data + PTLAS_COUNT_OFFSET, &operation_count, sizeof(operation_count));
       if (bound != 0 || write_count != 0 || !ptlas_built_) {
         // One device buffer for every slot: D3D12 finishes all GPU work at ExecuteCommandLists' end (D3D12EnhancedBarriers.md:177).
@@ -9351,9 +9350,10 @@ class RtScene12 {
                                                         compact_drawn, sets_.size())
                                           : (units_built ? (units_refitted ? "refitted" : "rebuilt") : "none"),
                           meshes_.size(), built, micromaps_built, bytes >> 20, instance_count, placed_drawn, placed_written_,
-                          ptlas_ != nullptr ? std::format(" (partitioned TLAS: {} CPU + {} placed written, frame {}'s)", ptlas_changes, ptlas_placed_read_.writes,
-                                                          ptlas_placed_read_.frame)
-                                            : std::string(),
+                          (ptlas_ == nullptr)                         ? std::string()
+                          : (ptlas_placed_read_.frame == UINT32_MAX)  ? std::format(" (partitioned TLAS: {} CPU written, placed not read back yet)", ptlas_changes)
+                                                                      : std::format(" (partitioned TLAS: {} CPU + {} placed written, frame {}'s)", ptlas_changes,
+                                                                                    ptlas_placed_read_.writes, ptlas_placed_read_.frame),
                           static_cast<double>(triangles) / 1.0e6);
     profile_counts_ = std::format(",{:.3f},{:.3f},{:.3f},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
                                   static_cast<double>((units_built || units_clustered) ? dynamic_triangles : 0u) / 1.0e6,

@@ -10,10 +10,11 @@
 // this one an inactive write. Three modes (`mode`): mark (each group of 64 slots: its changed slots' bits and their count),
 // scan (one group: the groups' places, the operation's count) and write (each changed slot's argument). Two runs of one
 // request write the same arguments in the same order (ours: rt_place's own rule, its lines 13-14; the A/A floor stays 0).
-// As in NVIDIA's vk_partitioned_tlas sample (Apache-2.0, shaders/animation_update_instances.comp.glsl): the CPU writes the
-// one WRITE_INSTANCE operation (type, argument address and stride) and the GPU its argument count and the arguments, from
-// a test per instance on the GPU; that sample takes each argument's place from an atomicAdd on the count (an order the
-// hardware picks), ours from a prefix sum (the fixed order above).
+// As in NVIDIA's vk_partitioned_tlas sample (Apache-2.0; src/partitioned_tlas.cpp onRender, its update shader
+// shaders/animation_update_instances.comp.glsl): the CPU writes the one WRITE_INSTANCE operation (type, argument address
+// and stride) and the GPU its argument count and the arguments, from a test per instance on the GPU; that sample takes
+// each argument's place from an atomicAdd on the count (an order the hardware picks), ours from a prefix sum (the fixed
+// order above), and its operation count is always 1 (ours 0 without writes: the build then has no operation).
 // Build (build.ps1): dxc -T cs_6_5 -Fh rt_ptlas.h -Vn RT_PTLAS.
 
 ByteAddressBuffer instances_before : register(t0);  // the last dispatch's descs (D3D12_RAYTRACING_INSTANCE_DESC, 64 bytes each)
@@ -56,17 +57,12 @@ static const uint ARGUMENTS = 64u;
 // NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE (nvapi.h:21313-21324; rt_d3d12.hpp's static_asserts).
 static const uint ARGUMENT_BYTES = 104u;
 static const uint ARGUMENT_ID = 72u;
-static const uint ARGUMENT_STRUCTURE = 96u;
+static const uint ARGUMENT_INDEX = 88u;  // instanceIndex, then partitionIndex and accelerationStructure (8 bytes)
 static const uint FRAME_MASK = 0xFFFFFFu;
 // NVAPI's instance flags are D3D12's bits (nvapi.h:21285-21288); rt_place sets TRIANGLE_CULL_DISABLE on every desc.
 static const uint INSTANCE_CULL_DISABLE = 1u;
 static const uint INSTANCE_FORCE_OPAQUE = 4u;
 static const uint BLAS_BUILT_NOW = 64u;  // in a record's table word (rt_d3d12.hpp, M5a)
-
-// This request's placed descs: dense from first_instance, those past place_end not written (rt_place.cs_6_5.hlsl :468, :478).
-uint ActiveNow() {
-  return (place_end > first_instance) ? min(place_state.Load(STATE_WRITTEN), place_end) - first_instance : 0u;
-}
 
 groupshared uint shared_mask[2];
 groupshared uint shared_values[64];
@@ -78,7 +74,8 @@ void main(uint3 id : SV_DispatchThreadID) {
   const uint lane = id.x & 63u;
   const uint group = slot / 64u;
   const uint group_count = (bound + 63u) / 64u;
-  const uint active_now = ActiveNow();
+  // This request's placed descs: dense from first_instance, those past place_end not written (rt_place.cs_6_5.hlsl :468, :478).
+  const uint active_now = (place_end > first_instance) ? min(place_state.Load(STATE_WRITTEN), place_end) - first_instance : 0u;
   if ((mode & MODE_MASK) == MODE_MARK) {
     // The rows end past the slots in whole groups (the group's syncs: none returns alone before them).
     if (group >= group_count) return;
@@ -175,7 +172,7 @@ void main(uint3 id : SV_DispatchThreadID) {
     operations.Store4(at + 48u, uint4(0u, 0u, 0u, 0u));
     operations.Store2(at + 64u, uint2(0u, 0u));
     operations.Store4(at + ARGUMENT_ID, uint4(tail.x & FRAME_MASK, tail.x >> 24, 0u, INSTANCE_CULL_DISABLE | ((tail.y >> 24) & INSTANCE_FORCE_OPAQUE)));
-    operations.Store4(at + ARGUMENT_STRUCTURE - 8u, uint4(place, partition, tail.z, tail.w));
+    operations.Store4(at + ARGUMENT_INDEX, uint4(place, partition, tail.z, tail.w));
   } else {
     // Inactive, as the CPU writes one: identity rows, InstanceID, mask and flags 0, no BLAS ("When NULL the instance is
     // inactive but still included in the build", nvapi.h:21324).
@@ -185,6 +182,6 @@ void main(uint3 id : SV_DispatchThreadID) {
     operations.Store4(at + 48u, uint4(0u, 0u, 0u, 0u));
     operations.Store2(at + 64u, uint2(0u, 0u));
     operations.Store4(at + ARGUMENT_ID, uint4(0u, 0u, 0u, 0u));
-    operations.Store4(at + ARGUMENT_STRUCTURE - 8u, uint4(place, partition, 0u, 0u));
+    operations.Store4(at + ARGUMENT_INDEX, uint4(place, partition, 0u, 0u));
   }
 }
