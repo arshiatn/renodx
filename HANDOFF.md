@@ -734,7 +734,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - S5E 1-CASCADE ARM (ATN's addendum): no game 1-cascade values exist (lowest Shado ... | ATN
 - E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | coord (R3's a64_ab writer) SPRITES NEED A CAMERA fix spf_ (O
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
-- RESTORE AFTER THE PXM MERGE (coord): build\attila64_plugin is pxm_1127's DLL 934 ... | coord
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
 - HANDOFF AUDIT APPLIED 18:0x: hfm_ (Opus xHigh) merged the 8 parts (testbin\scrat ... | coord (section 11 items follow the CPU-first rule)
@@ -18243,7 +18242,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         (s5e_f7_gpu2.log). FINAL fs5e2_ (Sonnet High, 12 min) GO, 4 NITs -> box below. MERGED 69e743188 (--no-ff,
         pushed), after pxm_1127 4a41599d1 (pushed). Main-tree checks (gated amd64 + x86 x3, unit shadows x2, defaults,
         plugin test) STARTED 22:00; then restage + smokes with / without PerfFix on the merged plugin (pxm_'s fix
-        round changed the DLL sha with names only: 4c79ce03).
+        round changed the DLL sha with names only: 4c79ce03). Main-tree checks DONE 22:0x: gated amd64 twattila + x86 twattila /
+        twrome2 / twthronesofbritannia exit 0, tw_unit_shadows x86 + amd64 PASS, defaults all match, plugin build.ps1
+        -Test -Elf 0 failures (battle_step_test 14551), merged DLL d2291524. Restaged: build\attila64_plugin = d2291524,
+        a3_smoke add-on = merged c1a467a7 (old b37ef56c in scratch\coord_\a3_addon_b37ef56c). Smokes on the merged
+        stack (scratch\coord_\merged_smoke_pf.log / merged_smoke_nopf.log): with -PerfFix x87fix 2756 of 2756, 'game
+        code differs' 0, CONTACT_ENTRY first call, battle step active, 'shadow cascades: game's counts', 21 sites
+        unchanged, rows 0x3fff, clean exit, no WER; NO only for the known sprite line. Without PerfFix PASS.
         - [ ] S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 duplicated parse lines not
         marked ours:; 'this start' wrong in the log when the route is not DX11; no test for '+1' text. Owner: the next
         attila64_plugin_link.hpp / main.cpp writer
@@ -18270,9 +18275,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Stage B merges (then rebuild from atn-mods and stage that); build\attila64_plugin is p8b_1127's plugin until then.
         Owner: coord DONE 20:4x: a3_smoke add-on b37ef56c (atn-mods 66aa64b90), build\attila64_plugin
         fd4d700b.
-        - [ ] RESTORE AFTER THE PXM MERGE (coord): build\attila64_plugin is pxm_1127's DLL 934fc1c2 (for its smokes) until
+        - [x] RESTORE AFTER THE PXM MERGE (coord): build\attila64_plugin is pxm_1127's DLL 934fc1c2 (for its smokes) until
         pxm_ + S5e merge; then rebuild from atn-mods and stage that (old fd4d700b in scratch\coord_\stage_fd4d700b).
-        Owner: coord
+        Owner: coord DONE 22:1x: merged d2291524 + add-on c1a467a7 (atn-mods 69e743188).
         - [ ] PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured like W-A3's; while hidden
         the add-on writes NO CORE_SPLIT bit (P1a's rule), so the batch's ContactSplit=1 arms keep their bit. After the
         batch + ATN's call (design 14: default Off, ATN decides): flip the row's MEASURED constant. Owner: coord Note: HANDOFF clock stamps 19:xx above were an
