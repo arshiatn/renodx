@@ -18399,7 +18399,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         refuse targets outside $RT_NEED (+ recorder twins), throw if a target exists; S1 `[double]$_.b` in argument
         mode is no cast (prints the object), S2 a one-line log counts as a match (wrap in @()), S3 NoLight fires
         without a trace, S4 RT stops exit 0; 5 NITs. -R1 lines could start as is; M1 / M2 before any -R2. Fix round
-        after rrts1_ (Opus xHigh). rrts2_ (Opus xHigh, 9 min;
+        after rrts1_ (Opus xHigh). rrts1_ (17 min; scratch\rrts1_\review.md) GO WITH CHANGES: M1 D2's
+        'top > 80 nits' never catches a clamp (paper white ~203 nits; C2 menu peaks 202.9, battle 216-289) -> compare
+        with the newest no-helper C2 frame x 1.02 (ours), else info; M2 every RT start would say 'PASS: NO' (check 2
+        'Shadow map work' = the rays arms' proof; E11 registration on mvtr / rays) -> per-arm expectations; S1 R1
+        fallback order, S2 lowdef point lights, S3 complete recordings only, S4 void on every stop, S5 stops on top
+        of summary.txt + non-zero exit, S6 a 'rays ran' check; old lines 7 / 7 equal, safety OK, X6 OK, own choices
+        OK but the 80 nits. Fix round rts1_ (resumed, Opus High, est 40: all 4 MUST + all SHOULD) STARTED 00:01. rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
