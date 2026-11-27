@@ -8427,8 +8427,11 @@ class RtScene12 {
         PtlasInstance& written = ptlas_written_[at];
         const PtlasInstance& want = ptlas_wanted_[at];
         const bool active = want.stamp == stamp;
+        // The units' BLAS and the cluster BLASes (places from MAX_INSTANCES) are rebuilt each request at the same address,
+        // and an instance keeps the bounds its last write saw: theirs are written every request (without it the harness's
+        // compact draws were missing from the PTLAS).
         const bool changed = active ? (written.blas != want.blas || written.flags != want.flags || written.id != want.id
-                                       || written.mask != want.mask || written.transform != want.transform)
+                                       || written.mask != want.mask || written.transform != want.transform || at >= MAX_INSTANCES)
                                     : (written.flags != UINT32_MAX && written.blas != 0);
         if (!changed) return;
         auto& write = writes[write_count++];
