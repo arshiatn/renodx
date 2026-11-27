@@ -70,6 +70,7 @@ using GrassCellFn = void(ATTILA64_GAME_CALL*)(const uint8_t* scrub, const uint8_
 using CampaignTreeFn = void*(ATTILA64_GAME_CALL*)(const uint8_t* node, const uint32_t* model, void* position,
                                                   uintptr_t fourth, uintptr_t fifth, uintptr_t sixth, float first_float,
                                                   float second_float) noexcept;
+using EffectWalkFn = void(ATTILA64_GAME_CALL*)(uint8_t* node, float first_float, float second_float) noexcept;
 
 inline constexpr size_t NODE_ENABLED_OFFSET = 0x28;             // a byte; the game returns at once when it is 0
 inline constexpr size_t VIEW_KIND_SLOT = 0x80 / sizeof(void*);  // the view's pass kind, a virtual
@@ -569,6 +570,14 @@ static ATTILA64_GAME_CALL void* CampaignTreeEntry(const uint8_t* node, const uin
       node, model, position, fourth, fifth, sixth, first_float, second_float);
 }
 
+// ROW_PARALLEL_EFFECTS: the walk over a scene node's effect types, once per node and frame on the game's main thread
+// (twice for a node the sky's environment bake draws again). Then the game's walk with its own frame.
+static ATTILA64_GAME_CALL void EffectWalkEntry(uint8_t* node, float first_float, float second_float) {
+  LogFirstCall(LABEL_EFFECT_WALK_ENTRY);
+  [[clang::musttail]] return reinterpret_cast<EffectWalkFn>(originals[LABEL_EFFECT_WALK_ENTRY])(node, first_float,
+                                                                                             second_float);
+}
+
 // Each hook site's hook, by SiteLabel; a patch site has none (patcher_test checks that each label holds its own).
 static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
   std::array<void*, LABEL_COUNT> hooks = {};
@@ -581,6 +590,7 @@ static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
   hooks[LABEL_GRASS_DRAW_ENTRY] = reinterpret_cast<void*>(&GrassDrawEntry);
   hooks[LABEL_GRASS_CELL_ENTRY] = reinterpret_cast<void*>(&GrassCellEntry);
   hooks[LABEL_CAMPAIGN_TREE_ENTRY] = reinterpret_cast<void*>(&CampaignTreeEntry);
+  hooks[LABEL_EFFECT_WALK_ENTRY] = reinterpret_cast<void*>(&EffectWalkEntry);
   return hooks;
 }();
 

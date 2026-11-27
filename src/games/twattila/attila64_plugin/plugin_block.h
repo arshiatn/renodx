@@ -77,6 +77,10 @@ enum Row : uint32_t {
   ROW_GRASS_CELLS,     // the grass cell radius (scales 19 and 20)
   ROW_CAMPAIGN_TREES,  // Campaign Tree Detail Distance (scale 18)
   ROW_SPRITES,         // Small Soldiers as Sprites, Sprite Size and Dead Unit Detail (scales 22 and 23)
+  // PLACEHOLDER, written beside the game code row's own change: this value is that row's (install key GameCode). No
+  // site, no hook and no row word of its own in this build; its change replaces this line and its two table entries.
+  ROW_GAME_CODE,
+  ROW_PARALLEL_EFFECTS,  // Effects on All Cores: the walk over a scene node's effect types (core_wanted CORE_EFFECTS)
   ROW_COUNT
 };
 
@@ -110,6 +114,11 @@ inline constexpr uint32_t CORE_BATTLE = 1u << 0;  // Keep Battle Core Free
 inline constexpr uint32_t CORE_RENDER = 1u << 1;  // Keep Render Core Free
 inline constexpr uint32_t CORE_STEP = 1u << 2;    // reserved: the battle step row
 inline constexpr uint32_t CORE_SPLIT = 1u << 3;   // reserved: the contact split row
+// Off = neither bit, Automatic = both, On = CORE_EFFECTS alone. CORE_EFFECTS_AUTO without CORE_EFFECTS reads as Off:
+// CORE_EFFECTS is the wanted bit, AUTO only qualifies it. Each change of stop is one fetch_or or fetch_and, so no
+// reader sees a stop that was not chosen.
+inline constexpr uint32_t CORE_EFFECTS = 1u << 4;       // Effects on All Cores
+inline constexpr uint32_t CORE_EFFECTS_AUTO = 1u << 5;  // ... only in big battles (Automatic)
 // Both parts by default is a release step (this constant), not a layout change.
 inline constexpr uint32_t CORE_WANTED_DEFAULT = CORE_BATTLE;
 
@@ -249,12 +258,16 @@ inline constexpr wchar_t INI_ENABLED[] = L"Enabled";
 // Absent: the build's default; 0: off; 1: CORE_RENDER set at init (an A/B without the add-on).
 inline constexpr wchar_t INI_RENDER_CORE[] = L"RenderCore";
 inline constexpr wchar_t INI_TWEAKS[] = L"Tweaks";  // check and publish the engine values at all
+// Absent: no change (Off); 0 Off, 1 Automatic, 2 On: sets CORE_EFFECTS / CORE_EFFECTS_AUTO at init (an A/B without the
+// add-on).
+inline constexpr wchar_t INI_EFFECTS_MODE[] = L"EffectsMode";
 inline constexpr int ENABLED_DEFAULT = 1;
 inline constexpr int TWEAKS_DEFAULT = 1;
 // Install the row's sites at all.
 inline constexpr const wchar_t* ROW_INI_KEYS[ROW_COUNT] = {L"BoneFlush", L"PassDraw",   L"CpuPlacement", L"UnitLod",
                                                            L"ModelDetail", L"ShadowMap", L"Grass",       L"GrassCells",
-                                                           L"CampaignTrees", L"Sprites"};
+                                                           L"CampaignTrees", L"Sprites", L"GameCode",  // placeholder
+                                                           L"ParallelEffects"};
 inline constexpr int ROW_INSTALL_DEFAULT = 1;
 // The restart-only values the add-on writes and the plugin reads at init.
 inline constexpr wchar_t INI_VALUES_SECTION[] = L"Attila64Plugin.Values";

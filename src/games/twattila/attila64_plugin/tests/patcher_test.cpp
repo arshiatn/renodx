@@ -375,7 +375,8 @@ const Callbacks OTHER_CALLBACKS = CALLBACKS;
 
 inline constexpr uint32_t ALL_ROWS = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT)
                                      | RowBit(ROW_UNIT_LOD) | RowBit(ROW_MODEL_DETAIL) | RowBit(ROW_SHADOW_MAP)
-                                     | RowBit(ROW_GRASS) | RowBit(ROW_GRASS_CELLS) | RowBit(ROW_CAMPAIGN_TREES);
+                                     | RowBit(ROW_GRASS) | RowBit(ROW_GRASS_CELLS) | RowBit(ROW_CAMPAIGN_TREES)
+                                     | RowBit(ROW_PARALLEL_EFFECTS);
 inline constexpr uint32_t HOOK_SITE_COUNT = [] {
   uint32_t count = 0;
   for (const Site& site : SITES) {
@@ -558,21 +559,23 @@ int wmain(int argc, wchar_t** argv) {
                && REPLACEMENTS[LABEL_GRASS_UPDATE_ENTRY] == reinterpret_cast<void*>(&GrassUpdateEntry)
                && REPLACEMENTS[LABEL_GRASS_DRAW_ENTRY] == reinterpret_cast<void*>(&GrassDrawEntry)
                && REPLACEMENTS[LABEL_GRASS_CELL_ENTRY] == reinterpret_cast<void*>(&GrassCellEntry)
-               && REPLACEMENTS[LABEL_CAMPAIGN_TREE_ENTRY] == reinterpret_cast<void*>(&CampaignTreeEntry),
+               && REPLACEMENTS[LABEL_CAMPAIGN_TREE_ENTRY] == reinterpret_cast<void*>(&CampaignTreeEntry)
+               && REPLACEMENTS[LABEL_EFFECT_WALK_ENTRY] == reinterpret_cast<void*>(&EffectWalkEntry),
            "labels: each holds its own hook");
     Expect(LABEL_STEP_ENTRY == 2 && SITES[LABEL_STEP_ENTRY].row == ROW_CPU_PLACEMENT
                && SITES[ROW_BONE_FLUSH].label == LABEL_PACK_ENTRY && SITES[ROW_PASS_DRAW].label == LABEL_VIEW_DRAW_ENTRY
                && SITES[LABEL_UNIT_LOD_ENTRY].row == ROW_UNIT_LOD && SITES[LABEL_MODEL_LOD_ENTRY].row == ROW_MODEL_DETAIL
                && SITES[LABEL_GRASS_UPDATE_ENTRY].row == ROW_GRASS && SITES[LABEL_GRASS_DRAW_ENTRY].row == ROW_GRASS
                && SITES[LABEL_GRASS_CELL_ENTRY].row == ROW_GRASS_CELLS
-               && SITES[LABEL_CAMPAIGN_TREE_ENTRY].row == ROW_CAMPAIGN_TREES,
+               && SITES[LABEL_CAMPAIGN_TREE_ENTRY].row == ROW_CAMPAIGN_TREES
+               && SITES[LABEL_EFFECT_WALK_ENTRY].row == ROW_PARALLEL_EFFECTS,
            "labels: the first sites are in row order");
     uint32_t shadow_sites = 0;
     for (const Site& site : SITES) {
       Expect((site.kind == SITE_PATCH) == (site.row == ROW_SHADOW_MAP), "kinds: the shadow row's sites are the patches");
       shadow_sites += (site.row == ROW_SHADOW_MAP) ? 1 : 0;
     }
-    Expect(shadow_sites == 7 && HOOK_SITE_COUNT == 9, "kinds: 9 hook sites and the shadow row's 7 immediates");
+    Expect(shadow_sites == 7 && HOOK_SITE_COUNT == 10, "kinds: 10 hook sites and the shadow row's 7 immediates");
   }
 
   // Site checks on the real sites' windows.
@@ -1466,7 +1469,7 @@ int wmain(int argc, wchar_t** argv) {
            "dll: Enabled=0 refuses and writes nothing");
   }
   for (const Row row : {ROW_BONE_FLUSH, ROW_PASS_DRAW, ROW_CPU_PLACEMENT, ROW_UNIT_LOD, ROW_MODEL_DETAIL, ROW_SHADOW_MAP,
-                        ROW_GRASS, ROW_GRASS_CELLS, ROW_CAMPAIGN_TREES}) {
+                        ROW_GRASS, ROW_GRASS_CELLS, ROW_CAMPAIGN_TREES, ROW_PARALLEL_EFFECTS}) {
     set_ini_key_off(ROW_INI_KEYS[row]);
     write_game();
     const auto [plugin, result] = init_copy(ROW_INI_KEYS[row], MODULE_NAME, api);
@@ -1587,7 +1590,7 @@ int wmain(int argc, wchar_t** argv) {
            "grass draw: the code as read at init, a draw past the last LOD is left out");
     *at(SITES[LABEL_GRASS_DRAW_ENTRY].address + GRASS_DRAW_NO_LOD_BYTES - 8) ^= 1;
     plugin.game_started(&api);
-    Expect(Logged(GRASS_DRAW_CODE_LINE) && Logged("game started: 16 sites unchanged") && grass_draw_once(1, 50.f, 0.f, true),
+    Expect(Logged(GRASS_DRAW_CODE_LINE) && Logged("game started: 17 sites unchanged") && grass_draw_once(1, 50.f, 0.f, true),
            "grass draw: a byte patched before game start leaves the line, every draw reaches the game");
     set_scale(plugin.block, SCALE_GRASS_LOD, 1.f);
     Expect(grass_update_once() && lods_are(GAME_LODS), "grass draw: a byte patched before game start, back at 1x");
@@ -1733,7 +1736,7 @@ int wmain(int argc, wchar_t** argv) {
     plugin.game_started(&api);
     char hooks_unchanged[64];
     std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", HOOK_SITE_COUNT);
-    Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged) && Logged("game started: 9 sites unchanged"),
+    Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged) && Logged("game started: 10 sites unchanged"),
            "shadow: a site that could not be put back counts as out at the game's start");
   }
   SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, nullptr);

@@ -9,6 +9,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include "plugin_block.h"
@@ -46,6 +47,7 @@ enum SiteLabel : uint8_t {
   LABEL_GRASS_DRAW_ENTRY,
   LABEL_GRASS_CELL_ENTRY,
   LABEL_CAMPAIGN_TREE_ENTRY,
+  LABEL_EFFECT_WALK_ENTRY,
   LABEL_COUNT
 };
 inline constexpr std::array<const char*, LABEL_COUNT> LABEL_WORDS = {
@@ -53,6 +55,7 @@ inline constexpr std::array<const char*, LABEL_COUNT> LABEL_WORDS = {
     "MODEL_LOD_ENTRY", "SHADOW_SIZE_HIGH", "SHADOW_COUNT_HIGH", "SHADOW_EXTRA_HIGH",
     "SHADOW_SIZE_MAX", "SHADOW_COUNT_MAX", "SHADOW_EXTRA_MAX", "SHADOW_SIZE_MEDIUM",
     "GRASS_UPDATE_ENTRY", "GRASS_DRAW_ENTRY", "GRASS_CELL_ENTRY", "CAMPAIGN_TREE_ENTRY",
+    "EFFECT_WALK_ENTRY",
 };
 
 // HOOK: a function's first whole instructions, replaced by the loader's entry hook. PATCH: one instruction's
@@ -69,7 +72,7 @@ struct Site {
   std::array<uint8_t, (2 * SITE_MARGIN) + SITE_MAX_LENGTH> window = {};
 };
 
-inline constexpr std::array<Site, 16> SITES = {{
+inline constexpr std::array<Site, 17> SITES = {{
     {
         .address = 0x3416d50,
         .length = 5,
@@ -262,6 +265,18 @@ inline constexpr std::array<Site, 16> SITES = {{
             0xcc, 0x4c, 0x89, 0x44, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         },
     },
+    {
+        .address = 0x32fbf60,
+        .length = 5,
+        .row = ROW_PARALLEL_EFFECTS,
+        .label = LABEL_EFFECT_WALK_ENTRY,
+        .kind = SITE_HOOK,
+        .window = {
+            0xeb, 0x0e, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x55, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x81, 0xec, 0x78, 0x01, 0x00,
+            0x00, 0xf3, 0x0f, 0x11, 0x4c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
 }};
 
 enum ForeignOwner : uint8_t { OWNER_LOADER, OWNER_OTHER, OWNER_COUNT };
@@ -277,7 +292,7 @@ struct Foreign {
 
 // Ranges no run-time window shows: the loader's checks and writes after our init (game start, test mode, exit),
 // its init write with a shorter check, the hooks no row may take, and any foreign range or target near a site.
-inline constexpr std::array<Foreign, 17> FOREIGN = {{
+inline constexpr std::array<Foreign, 18> FOREIGN = {{
     {.address = 0x573320, .length = 5, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x5cafa0, .length = 8, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x5cafa8, .length = 0, .owner = OWNER_LOADER, .kind = FOREIGN_TARGET},
@@ -291,10 +306,31 @@ inline constexpr std::array<Foreign, 17> FOREIGN = {{
     {.address = 0x33d54e1, .length = 6, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x33dc791, .length = 6, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x34ad1de, .length = 7, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
+    {.address = 0x3c5f770, .length = 8, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x4eff2ea, .length = 1, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x526961a, .length = 1, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x5269714, .length = 4, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x526f272, .length = 1, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
 }};
+
+// The game's parallel effect update (hooks.hpp EffectWalkEntry). The entries the loader guards it with (its particle
+// pool take, list take and return, its spawn thunk and its piece body): all or none. Each is one of the loader's own
+// entry hooks in its source; the generator refuses fewer.
+inline constexpr auto EFFECT_GUARD_ENTRIES = std::to_array<uintptr_t>({0x34e0130, 0x34e0170, 0x34e01a0, 0x32ffa60, 0x35314b0});
+static_assert(EFFECT_GUARD_ENTRIES.size() == 5);
+// The per-type update's one read of the flag, a byte of the game's data: cmp byte [rip + disp32], 0.
+inline constexpr uintptr_t EFFECT_FLAG_READ_ADDRESS = 0x34ad1de;
+inline constexpr std::array<uint8_t, 7> EFFECT_FLAG_READ = {0x80, 0x3d, 0x8d, 0x20, 0xdc, 0x01, 0x00};
+inline constexpr uintptr_t EFFECT_FLAG = 0x526f272;
+// The walk over a scene node's effect types (its hook's site is LABEL_EFFECT_WALK_ENTRY), each number from the
+// instruction of the walk that holds it. A key is a counted string: a uint32_t length, its bytes at +8.
+inline constexpr size_t EFFECT_TABLE_SLOTS = 0x120;  // the node's effect table: its slots (0x32fc384)
+inline constexpr size_t EFFECT_TABLE_CAPACITY = 0x128;  // a uint32_t, in slots (0x32fc38c)
+inline constexpr size_t EFFECT_EMPTY_KEY = 0x130;  // the table's key of a slot never used (0x32fc2f6)
+inline constexpr size_t EFFECT_DELETED_KEY = 0x140;  // the table's key of a slot given up (0x32fc303)
+inline constexpr size_t EFFECT_SLOT_BYTES = 0x18;  // a slot: its key, then its value (0x32fc354)
+inline constexpr size_t EFFECT_SLOT_VALUE = 0x10;  // the effect type, or null (0x32fc32c)
+inline constexpr size_t EFFECT_TYPE_COUNT = 0x2c;  // a uint32_t: the type's instances (0x34ad1c6)
+inline constexpr uintptr_t EFFECT_KEY_EQUAL = 0x50def0;  // the walk's key compare (0x32fc36a, 0x32fc37b)
 
 }  // namespace twattila::attila64_plugin

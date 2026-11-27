@@ -39,7 +39,9 @@ using namespace twattila::attila64_plugin;
 inline constexpr char PLUGIN_VERSION[] = "2";
 inline constexpr std::array<const char*, ROW_COUNT> ROW_WORDS = {
     "bone flush", "pass draw", "battle core", "unit lod",       "model detail",
-    "shadow map", "grass",     "grass cells", "campaign trees", "sprites"};
+    "shadow map", "grass",     "grass cells", "campaign trees", "sprites",
+    "reserved",  // placeholder: the game code row's word comes with its own change (plugin_block.h ROW_GAME_CODE)
+    "parallel effects"};
 static_assert(std::ranges::find(ROW_WORDS, nullptr) == ROW_WORDS.end(), "a word for every row");
 // The rows with a site in this build; the rows line shows the others as "-".
 inline constexpr uint32_t ROWS_WITH_SITES = [] {

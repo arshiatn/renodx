@@ -69,15 +69,15 @@ static bool Logged(const char* text) {
   return false;
 }
 
-// One 8 KB execute-read-write page in rel32 reach of the game, handed out front to back.
+// One 16 KB execute-read-write block in rel32 reach of the game, handed out front to back.
 static void* FakeCodeNearGame(size_t n) noexcept {
   static uint8_t* page = nullptr;
   static size_t used = 0;
   for (uintptr_t at = 0x5300000; page == nullptr && at < 0x60000000; at += 0x10000) {
     page = static_cast<uint8_t*>(
-        VirtualAlloc(reinterpret_cast<void*>(at), 0x2000, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
+        VirtualAlloc(reinterpret_cast<void*>(at), 0x4000, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
   }
-  if (page == nullptr || used + n > 0x2000) return nullptr;
+  if (page == nullptr || used + n > 0x4000) return nullptr;
   used += n;
   return page + used - n;
 }
@@ -242,7 +242,8 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
              && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
              && Logged("STEP_ENTRY 0xbb4e00: applied") && Logged("renodx_attila64: shadow map: game's size")
              && Logged("rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
-                       "grass on, grass cells on, campaign trees on, sprites -"),
+                       "grass on, grass cells on, campaign trees on, sprites -, reserved -, parallel effects on")
+             && Logged("EFFECT_WALK_ENTRY 0x32fbf60: applied"),
          "the init lines");
   for (const Site& site : SITES) {
     char applied_line[96];
