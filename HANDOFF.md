@@ -17927,7 +17927,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         PASS, gated amd64 twattila exit 0). Started 17:5x: Fable p8am_ Stage A merge-up (Medium; + rp93m_'s 2 NITs),
         p1pt_ P1p untested branches (Medium), m2d_ M2 memcpy design (xHigh), b32_ 32-bit backup refresh + audit 11.4
         lines (xHigh), k4p_ K4 pre-proof (xHigh); Opus Medium p94_ P9-4 add-on row, p91_ a64_ab PK9 P1-P5 then C8 T0,
-        hzc_ W3 horizon calibration. fx4b_ W4b DONE 18:0x (28 of 100 min; fx4b_1127: X18 5c3951ce1 rt_cache_fill_omm,
+        hzc_ W3 horizon calibration. k4p_ DONE 17:35 (4 of 15 min; testbin\scratch\k4p_\handback.md): both K4
+        re-proof checks PASS on 6563e2199, no design fix; rri_ left JitterCamera / OnUpdateBufferRegion / Update
+        byte-identical to 27ad6f414; re-anchor table for K4 in the hand-back; optional test line: 'non-camera uploads
+        return false' (PK1:649) holds only with scaling off (with it on, :404-422 returns true, only c29 changed) -> K4's
+        brief adds that case. fx4b_ W4b DONE 18:0x (28 of 100 min; fx4b_1127: X18 5c3951ce1 rt_cache_fill_omm,
         X14 28d186dbd BakeCutoff, X10 702792bc6, X09 c5f73e5cd; controls byte-identical; gated amd64 / x86 / Tales
         exit 0; handoff_plan\handbacks\fx4b__handback.md) -> resumed for X18's rt_reference / rt_probe twins, then
         Opus xHigh review + Sonnet High final; its 4K GPU jobs PARKED (CPU first). Owner: coord
