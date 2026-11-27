@@ -717,6 +717,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAMP 1 MM RULE (pdr_ S5, 11-27): rt_path.hlsli:1787 (Torch and Fire Light / Shad ... | next rt_path writer
 - S6 ONE-FRAME TRACE (pdr_ S4, 11-27): rt_di_shade.hlsl:26 names a one-frame trace ... | next DI agent
 - P1p UNTESTED BRANCHES (fp1p_ S1 / S2, 11-27): battle_core.hpp:649-658 (refused d ... | next battle_core
+- P1p WATCHDOG READ FAILURE UNTESTED (rp1pt_ S2, 11-27): battle_core.hpp:493-499, ... | next battle_core
 - AO DURING THE PT AMBIENT WARM-UP (rllf_ M1, 11-27, bug fix -> always on): Attila ... | ATN (the warm-up look in the batch)
 - W3 HORIZON METRIC (p6rv2_ S3, 11-27): P6a2's camera proof for w3 / w3t is a byte ... | the next a64_ab writer after PK9 P1-P5 (C8 T0 or its own ste
 - ALL PLANS LIST (ATN 11-27 16:2x: 'Some stuffs are missing ... gather those forgo ... | coord
@@ -17905,8 +17906,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         tag. Owner: next DI agent
         - [ ] P1p UNTESTED BRANCHES (fp1p_ S1 / S2, 11-27): battle_core.hpp:649-658 (refused drop write) and :399-405 (failed
         GetThreadSelectedCpuSets) have no test; the N1 'render thread %lu keeps the CPU sets it has' line can print after the
-        render thread has ended (should be NO_THREAD); test yield_line prefix NIT. Owner: next battle_core.hpp writer (after C8
-        W4p)
+        render thread has ended (should be NO_THREAD); test yield_line prefix NIT. Owner: next battle_core.hpp writer (after C8 W4p). 11-27: covered by p1pt_1127
+        (review rp1pt_ GO WITH CHANGES, fix round p1ptf_); tick at its merge.
+        - [ ] P1p WATCHDOG READ FAILURE UNTESTED (rp1pt_ S2, 11-27): battle_core.hpp:493-499, the watchdog's own failed
+        GetThreadSelectedCpuSets (drop FAILED / NO_THREAD) has no test. Owner: next battle_core.hpp writer
         - [x] SUPERSEDED (audit 11-27: x19_: 'X19 CLOSED as B23' (18308), probe merged f171c14c0; B23 parked (18378)): PTLAS X19 (ptf_ 11-27, new, also today): under PTLAS 2 of 3 CPU-instanced mesh instances are missing (z -0.50 /
         0.75; 2.00 passes); not the per-request rewrite, not the partitions (two reverted experiments); ptrs_'s hint: a static
         BLAS reused at one address keeps old bounds, check BLAS build order vs PTLAS write order. With B23 it still separates
@@ -18029,7 +18032,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         test-only import-slot swap, release with a refused read / an ended thread, full yield_line); only the ended-
         thread check fails on today's header, the others by 5 mutations; DLL d1653f38 x4. FLAKE: run 2 of 3 SIDE BY
         SIDE exited 1 on the old 'busy thread keeps the core' check (serial run 4 + 5x battle_core_test clean).
-        Review rp1pt_ (Opus xHigh) STARTED 19:2x incl. the flake's root cause (serial x2 + one loaded run). p91_
+        Review rp1pt_ (Opus xHigh) DONE (scratch\rp1pt_\review.md): GO WITH CHANGES; plugin code correct (ClearRenderThread
+        2 callers, the refused write publishes an ended thread as CORE_NO_THREAD, Release unchanged); controls enough
+        (base fails only check 6, mutations catch the rest); serial x2 + side by side x3 exit 0, DLL d1653f38. FLAKE
+        ROOT CAUSE (reproduced): copies of the test pick the same render core and split it 100 / 54 / 46 %, one copy in
+        three fails, base the same -> MUST M1 battle_core_test.cpp:1003-1010 named mutex + the spinner's priority
+        (busy_fix.diff, 18 / 18 under load); SHOULD S1 :930-957 disarm the refused-write hook after each armed step;
+        SHOULD S2 a HANDOFF line for the untested watchdog read failure (box below); 4 NITs. Fix round p1ptf_ (Fable
+        Medium) STARTED 18:40; then Sonnet High final; then merge (battle_core files only). p91_
         (Opus Medium) DONE 18:03 (29 of 60 min; scratch\p91_\handback.md): two sha-gated a64_ab patches, NOT applied:
         (1) a64_ab_pk9p1_patch.py 02cf94e1 -> ebcc5c91 (PK9 P1-P5 + P5-6 replay; HALF_ENTRY needs no edit), (2)
         a64_ab_c8t0_patch.py ebcc5c91 -> 62fef322 (T0 + hzc_'s 4 horizon pieces); h91 21 / 21, A13 unchanged forms
