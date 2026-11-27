@@ -1013,7 +1013,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU ITEM 7 PLAN (i7s_ 11-27, tools\tw\round_notes\designs\gpu_item7_plan.md): sm ... | lss0_ / lsp3_ / sms_ -> coord
 - OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s p ... | ATN (yes / wait)
 - SMOKE SPHERES S3 review (Opus xHigh, smr_ STARTED 07:0x) of designs\smoke_sphere ... | coord (after sms_)
-- SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | sgrr_ -> ATN (rule lines) -> game batch
+- SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | ATN (rule lines) -> game batch
 - PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | coord (after pdf_)
 - OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; th ... | ATN (keep / remove)
 - HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + ... | next harness writer after rri_ (m1 implementer) with a befor
@@ -17939,7 +17939,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         / temp + tdd.log.txt, attila_pass_timing.txt, tw_frame_trace.txt, dinput8.dll, the helper's .old.log / .dmp); M2 the
         finally restores only with no game / helper running (game closed through its window first); M3 game_pid.txt so -Restore
         closes exactly that game; M4 README: start + -Prepare via run_in_background, -Addon needs its own rule line. Fix round
-        sgf_ (Opus High, siege_rec.ps1 + README only, parser check, no run) STARTED 07:4x; final rule lines come from sgf_. Owner: sgrr_ -> ATN (rule
+        sgf_ (Opus High, siege_rec.ps1 + README only, parser check, no run) STARTED 07:4x; final rule lines come from sgf_. sgf_ DONE 11-27 (all 4 MUSTs + S1-S14, backups *.before_sgf_; coord re-ran the
+        parser: 0 errors, 638 lines, no kill calls): the 4 rule lines are final (start_1127.md 'Before ATN leaves'); first
+        -Prepare (~30 s) because head.txt has no sha line. Owner: ATN (rule
         lines) -> game batch
         - [ ] PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ~45 min after pdf_ frees
         rt_d3d12.hpp; gate = 4K harness first hits PTLAS on vs off + an active-instance assert. Then the O-PTLAS stall replay
