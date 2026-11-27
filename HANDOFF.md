@@ -18192,6 +18192,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         windows logs 'game code differs', not 'another mod' -> the lane-6 text should say 'game update or another
         mod' + point to the loader log (add-on part), so ATN still knows at once; N1-N5. Readers for the add-on part:
         addon.cpp:1345 / 1347-1355 / 1361-1369 / 3705 / 3712-3721. Fix round after rpxp_.
+        Coord -PerfFix SMOKE on ac52ed31 PASS (ab_runs\20261127_231730_Smoke\1_B64P; pxp2_smoke_pf.log): x87fix 2756
+        of 2756, 'another mod changed' lines 0, 'game code differs' 0, CONTACT_ENTRY applied + first call (thread
+        24236), 21 sites unchanged, rows offered = tried 0x3fff, sprite first call + 0x400000, scriptable PASS =
+        yes, clean exit, no WER. (fpxp_ took 2 min, not 8.)
         - [ ] PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also run on the PerfFix stack
         once (same result as without PerfFix). Owner: coord (batch prep)
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
