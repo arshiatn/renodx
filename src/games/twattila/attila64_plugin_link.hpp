@@ -45,6 +45,10 @@ enum class Found : uint8_t {
   NOT_LOADED,     // in <exe dir>\plugins\ but not loaded (the loader's log says why)
 };
 
+// Keep Battle Core Free's default: the plugin's initial core_wanted bit.
+inline constexpr bool BATTLE_CORE_DEFAULT =
+    (attila64_plugin::CORE_WANTED_DEFAULT & attila64_plugin::CORE_BATTLE) != 0;
+
 namespace internal {
 
 namespace plugin = twattila::attila64_plugin;
@@ -254,10 +258,9 @@ inline void Lookup(bool last) {
 }
 
 // Every present with Result() READY (the loader's drawing thread): the rows whose hooks are wanted now (bit:
-// attila64_plugin::Row), and whether Keep Battle Core Free is on (a caller without the row: the plugin's default). The
-// callbacks are registered while any is wanted and offered.
-inline void Update(uint32_t rows_wanted,
-                   bool battle_core = (internal::plugin::CORE_WANTED_DEFAULT & internal::plugin::CORE_BATTLE) != 0) {
+// attila64_plugin::Row), and whether Keep Battle Core Free is on. The callbacks are registered while any is wanted and
+// offered.
+inline void Update(uint32_t rows_wanted, bool battle_core) {
   using internal::block;
   namespace plugin = internal::plugin;
   const std::unique_lock lock(internal::mutex);
@@ -273,8 +276,10 @@ inline void Update(uint32_t rows_wanted,
       block->core_wanted.fetch_and(~plugin::CORE_BATTLE, std::memory_order_relaxed);
     }
     internal::battle_core_written = battle_core;
-    renodx::utils::log::i(
-        std::format("[Total War] 64-bit Attila: Keep Battle Core Free {}", (battle_core ? "on" : "off")));
+    if ((RowsOffered() & plugin::RowBit(plugin::ROW_CPU_PLACEMENT)) != 0) {
+      renodx::utils::log::i(
+          std::format("[Total War] 64-bit Attila: Keep Battle Core Free {}", (battle_core ? "on" : "off")));
+    }
   }
   if (internal::callback_failed.load(std::memory_order_relaxed) && !internal::callback_failure_logged) {
     internal::callback_failure_logged = true;
