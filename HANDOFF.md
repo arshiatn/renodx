@@ -17708,7 +17708,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         PASS (-0.45 / +0.33); strict misses (new <= old + 1 % in both pairs) inside their A/A spread: paths_ser +2.85 / -1.11
         (A/A new 4.6 %), paths_sky_apart +0.45 / +1.55 (A/A new 1.5 %), paths_kept_cube +1.46 / -1.07. RULE SET BEFORE MORE
         DATA (coord 01:0x): pairs 3 + 4 on those three; PASS if the mean delta over the 4 pairs <= +1 % and new is slower in
-        at most 2 of 4 pairs; else FAIL -> no merge, report to ATN. Owner: sdk4_ (pairs 3 + 4) -> coord merge
+        at most 2 of 4 pairs; else FAIL -> no merge, report to ATN. G1 RESULT (sdk4_ 11-27 01:xx, 4 pairs): paths_ser PASS (+2.85 / -1.11 / +2.64 / -3.78 %, mean +0.15 %), paths_sky_apart FAIL
+        (+0.45 / +1.55 / -0.59 / +1.33, mean +0.69 %, new slower 3 of 4), paths_kept_cube FAIL (+1.46 / -1.07 / +1.72 / +1.10, mean
+        +0.80 %, 3 of 4); sharc / nrd_bounce_paths / reflect_own PASS -> 4 of 6 + default; NOT MERGED (rule set before the data).
+        Per pass (coord, median of 4 runs): kept_cube 'path tracing' 3.126 -> 3.208 ms (+2.6 %, the whole loss); sky_apart's
+        labels shift ('radiance cache' 0.013 -> 0.493, 'reuse' +0.125, total only +0.07 ms) = a pass moved between labels in the
+        new build. NEXT (11-27 wave, analysis Opus xHigh, no GPU first): what in sdku_omm_dxc changes the path-tracing pass (DXC
+        DXIL old vs new for the PT shaders; omm-lib 1.12's OMM layout vs traversal) + why sky_apart's pass labels moved; then fix
+        or ATN's call (accept ~+0.7-0.8 % on these 2 PT modes for 1.12). G3 (grass recordings) stays PASS (same speed there). Owner: 11-27 analyst -> ATN
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
