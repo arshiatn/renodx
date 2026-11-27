@@ -289,16 +289,16 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
                   REFUSAL_WORDS[check.refusal], (foreign ? " " : ""), (foreign ? OWNER_WORDS[check.owner] : ""));
     }
   }
-  // The game code row (pk5_game_code_64.md 4.1), after every other row has its code memory: when the loader's page is
-  // full, only this row stays out. All of its built stubs go into one piece of code memory, whole before the first
-  // site points at it, then the sites one by one; a site that fails ends the row (the loop below takes its earlier
-  // sites out again). With the add-on's value key 0 nothing is written and the row is in: its checks passed, and the
-  // key is the player's own.
+  // The game code row, after every other row has its code memory: when the loader's page is full, only this row stays
+  // out. All of its stubs go into one piece of code memory, whole before the first site points at it, then the sites
+  // one by one; a site that fails ends the row (the loop below takes its earlier sites out again). With the add-on's
+  // value key 0 nothing is written and the row is in: its checks passed, and the key is the player's own.
   if ((block.rows_tried & RowBit(ROW_GAME_CODE)) != 0 && (block.rows_refused & RowBit(ROW_GAME_CODE)) == 0) {
     const bool stubs_wanted = values_int(INI_FASTER_GAME_CODE, FASTER_GAME_CODE_DEFAULT) != 0;
     Refusal row_refusal = REFUSAL_NONE;
     uintptr_t stubs_address = 0;
-    if (stubs_wanted) {
+    // With no stub to place (every site of the row check only) no code memory is taken.
+    if (stubs_wanted && game_code::LAYOUT.bytes != 0) {
       // First with the gap in front, then without it (ours: without the gap the results are the same, only the speed
       // rule of game_code.hpp's LEAD_GAP_BYTES is not kept).
       size_t lead = game_code::LEAD_GAP_BYTES;
@@ -310,22 +310,20 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
       }
       stubs_address = (reinterpret_cast<uintptr_t>(memory) + lead + (game_code::BLOCK_ALIGNMENT - 1))
                       & ~uintptr_t{game_code::BLOCK_ALIGNMENT - 1};
-      std::array<uint8_t, game_code::LAYOUT.bytes> code;
-      code.fill(0xcc);  // int3 between the blocks
+      std::array<uint8_t, game_code::LAYOUT.bytes> code = game_code::CODE;
       bool in_reach = true;
       for (const Site& site : SITES) {
         const game_code::Stub& stub = game_code::STUBS[site.label];
         if (stub.code.empty()) continue;
-        uint8_t* stub_code = code.data() + game_code::LAYOUT.offsets[site.label];
-        std::memcpy(stub_code, stub.code.data(), stub.code.size());
-        // The game's own code behind the stub, as the checks above just read it (its site still holds the game's bytes).
-        if (stub.held_copy_follows) {
-          const HeldRange& range = *std::ranges::find(HELD_RANGES, site.label, &HeldRange::label);
-          std::memcpy(stub_code + stub.code.size(), reinterpret_cast<const void*>(uintptr_t{range.lo}),
-                      range.hi - range.lo);
+        const size_t offset = game_code::LAYOUT.offsets[site.label];
+        in_reach = in_reach && trampoline::InJumpReach(site.address, stubs_address + offset);
+        // The stub's jumps back into the game, from where it will run.
+        for (const game_code::StubExit& exit : stub.exits) {
+          const uintptr_t jump = stubs_address + offset + exit.rel32_offset - 1;
+          in_reach = in_reach && trampoline::InJumpReach(jump, exit.target);
+          const auto displacement = static_cast<uint32_t>(exit.target - (jump + trampoline::JUMP_BYTES));
+          std::memcpy(code.data() + offset + exit.rel32_offset, &displacement, sizeof(displacement));
         }
-        in_reach = in_reach
-                   && trampoline::InJumpReach(site.address, stubs_address + game_code::LAYOUT.offsets[site.label]);
       }
       DWORD close_error = 0;
       if (memory == nullptr || !in_reach) {
@@ -344,10 +342,13 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
       const game_code::Stub& stub = game_code::STUBS[site.label];
       const uintptr_t stub_address = stubs_address + game_code::LAYOUT.offsets[site.label];
       const bool written = (stubs_wanted && !stub.code.empty() && row_refusal == REFUSAL_NONE);
-      const Refusal refusal = (written ? ApplyJump(*api, site, stub_address, &applied_sites[index]) : row_refusal);
+      Refusal refusal = row_refusal;
+      if (written) {
+        refusal = ApplyJump(*api, site, stub_address, &applied_sites[index]);
+      }
       if (refusal != REFUSAL_NONE) {
-        loader->log("renodx_attila64: site %s %#x: skipped (%s%s%s)", LABEL_WORDS[site.label], site.address,
-                    REFUSAL_WORDS[refusal], "", "");
+        loader->log("renodx_attila64: site %s %#x: skipped (%s)", LABEL_WORDS[site.label], site.address,
+                    REFUSAL_WORDS[refusal]);
         // The row's later sites are not tried.
         row_refusal = (written ? REFUSAL_ROW : row_refusal);
         block.rows_refused |= RowBit(ROW_GAME_CODE);
@@ -355,10 +356,10 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
         loader->log("renodx_attila64: site %s %#x: applied", LABEL_WORDS[site.label], site.address);
         const int words = std::snprintf(stub_words + stub_words_length, sizeof(stub_words) - stub_words_length,
                                         "%s%s %#x bytes at %#zx", ((stub_words_length == 0) ? "" : ", "), stub.word,
-                                        game_code::LAYOUT.sizes[site.label], stub_address);
+                                        static_cast<uint32_t>(stub.code.size()), stub_address);
         stub_words_length = std::min(stub_words_length + std::max(words, 0), sizeof(stub_words) - 1);
       } else if (stubs_wanted) {
-        // Its stub is not built: the site and its held code stay watched for the row's other stubs.
+        // No stub of its own is placed: the site and its held code stay watched for the row's other stubs.
         loader->log("renodx_attila64: site %s %#x: checked (check only)", LABEL_WORDS[site.label], site.address);
       } else {
         loader->log("renodx_attila64: site %s %#x: checked (value 0)", LABEL_WORDS[site.label], site.address);

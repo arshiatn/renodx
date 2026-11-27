@@ -243,7 +243,14 @@ int wmain(int argc, wchar_t** argv) {
   Expect(tweaks_in_code == TWEAKS.size() - 2, "tweaks: every object's constructor call passes its name and default");
 
   WriteTweakObjects();
+  // Every row in, the game code row's stubs with their gap too: one game run's code near the game fits what the
+  // loader's own code leaves of its page (LOADER_OWN_NEAR_CODE_BYTES: about 3 KiB of the 8, read from its source).
+  constexpr size_t LOADER_OWN_NEAR_CODE_BYTES = 0xc00;
+  const size_t near_code_before = near_code_used;
   const Plugin plugin = ExpectPluginDll(api, argv[1], false);
+  std::printf("  code near the game: %#zx bytes\n", near_code_used - near_code_before);
+  Expect(near_code_used - near_code_before <= LOADER_NEAR_CODE_BYTES - LOADER_OWN_NEAR_CODE_BYTES,
+         "dll: one game run's code near the game, the game code row's too, fits the loader's page");
   Expect(!Logged("grass draw: "), "grass draw: init finds the code that was read, the early return is on");
 
   // The sprite site in the game's own code, with the DLL's stub and handler: a bed enters where the game loads the

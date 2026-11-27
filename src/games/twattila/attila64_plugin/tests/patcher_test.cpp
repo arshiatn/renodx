@@ -1557,6 +1557,9 @@ int wmain(int argc, wchar_t** argv) {
            "dll: the file holds the render core's reserve text as a whole string");
     Expect(dll_bytes.find("\0renodx_attila64: render thread %lu\0"sv) != std::string::npos,
            "dll: the file holds the render thread's line as a whole string");
+    // The game code row's word, for the batch tool's game-code arm (tests\game_code_test.cpp has the row itself).
+    Expect(dll_bytes.find("\0game code\0"sv) != std::string::npos,
+           "dll: the file holds the row's word \"game code\" as a whole string");
     Expect(dll_bytes.find("\0renodx_attila64: site %s %#x: applied\0"sv) != std::string::npos
                && dll_bytes.find("\0renodx_attila64: site %s %#x: applied (game's bytes kept)\0"sv) != std::string::npos
                && dll_bytes.find("\0renodx_attila64: shadow map %u: patched\0"sv) != std::string::npos
@@ -1671,7 +1674,7 @@ int wmain(int argc, wchar_t** argv) {
                                        == (site.row == row || site.row == ROW_GAME_CODE || site.kind == SITE_PATCH);
     }
     Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == others
-               && (plugin.block->rows_refused & ALL_ROWS) == RowBit(row) && plugin.block->rows_tried == others
+               && plugin.block->rows_refused == (RowBit(row) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == others
                && Logged("skipped (OFF)") && only_its_site_untouched,
            "dll: a row's install key 0 leaves that row out, and out of the rows tried");
     // Both core status words are built only with the row in (without it the RenderCore key is not read either).
@@ -1691,7 +1694,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"differs", MODULE_NAME, api);
     Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_BONE_FLUSH))
-               && (plugin.block->rows_refused & ALL_ROWS) == RowBit(ROW_BONE_FLUSH) && plugin.block->rows_tried == ALL_ROWS
+               && plugin.block->rows_refused == (RowBit(ROW_BONE_FLUSH) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == ALL_ROWS
                && Logged("PACK_ENTRY 0x3416d50: skipped (DIFFERS)"),
            "dll: a site whose bytes differ is left out (still tried)");
   }
@@ -1701,7 +1704,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"step_neighbour", MODULE_NAME, api);
     Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_CPU_PLACEMENT))
-               && (plugin.block->rows_refused & ALL_ROWS) == RowBit(ROW_CPU_PLACEMENT) && plugin.block->rows_tried == ALL_ROWS
+               && plugin.block->rows_refused == (RowBit(ROW_CPU_PLACEMENT) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == ALL_ROWS
                && plugin.block->core_status.load() == 0 && plugin.block->render_core_status.load() == 0
                && site_untouched(SITES[ROW_CPU_PLACEMENT])
                && Logged("STEP_ENTRY 0xbb4e00: skipped (NEIGHBOUR)"),
@@ -1713,7 +1716,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"no_memory", MODULE_NAME, api);
     Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == RowBit(ROW_SHADOW_MAP)
-               && (plugin.block->rows_refused & ALL_ROWS) == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP)) && plugin.block->core_status.load() == 0
+               && plugin.block->rows_refused == ((ALL_ROWS & ~RowBit(ROW_SHADOW_MAP)) | RowBit(ROW_GAME_CODE)) && plugin.block->core_status.load() == 0
                && Logged("PACK_ENTRY 0x3416d50: skipped (NO_MEMORY)") && Logged("SPRITE_DISTANCE 0xa5049c: skipped (NO_MEMORY)")
                && site_untouched(SITES[LABEL_SPRITE_DISTANCE]),
            "dll: no memory near the game leaves every hook and stub row out (the patch row needs none)");
@@ -1727,7 +1730,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"sprite_write", MODULE_NAME, api);
     Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SPRITES))
-               && (plugin.block->rows_refused & ALL_ROWS) == RowBit(ROW_SPRITES) && plugin.block->rows_tried == ALL_ROWS
+               && plugin.block->rows_refused == (RowBit(ROW_SPRITES) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == ALL_ROWS
                && Logged("site SPRITE_DISTANCE 0xa5049c: skipped (WRITE_FAILED)") && Logged("campaign trees on, sprites off")
                && site_untouched(SITES[LABEL_SPRITE_DISTANCE]),
            "sprite: its jump refused leaves the game's bytes and the row out, the other rows in");
@@ -1745,7 +1748,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"grass_second_hook", MODULE_NAME, api);
     Expect(result == 0 && failing_hook_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_GRASS))
-               && (plugin.block->rows_refused & ALL_ROWS) == RowBit(ROW_GRASS) && plugin.block->rows_tried == ALL_ROWS
+               && plugin.block->rows_refused == (RowBit(ROW_GRASS) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == ALL_ROWS
                && Logged("site GRASS_UPDATE_ENTRY 0x33fb140: applied")
                && Logged("site GRASS_DRAW_ENTRY 0x33f3e00: skipped (NO_MEMORY)")
                && Logged("grass off, grass cells on, campaign trees on"),
@@ -1834,7 +1837,7 @@ int wmain(int argc, wchar_t** argv) {
     // Every site in: the hooks' stubs and the sprite site's own, with 1 KB left of the loader's page for the loader.
     Expect(near_code_used - near_code_before <= LOADER_NEAR_CODE_BYTES - 0x400,
            "dll: one game run's code near the game fits the loader's page");
-    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && (plugin.block->rows_refused & ALL_ROWS) == 0
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && plugin.block->rows_refused == RowBit(ROW_GAME_CODE)
                && shadow_sizes(4096.f, 2048.f) && Logged("renodx_attila64: shadow map 4096: patched")
                && Logged("renodx_attila64: site SHADOW_SIZE_MAX 0x30e46eb: applied")
                && !Logged("site SHADOW_SIZE_MAX 0x30e46eb: applied (")
@@ -1883,7 +1886,7 @@ int wmain(int argc, wchar_t** argv) {
     const auto [plugin, result] = init_copy(L"shadow_differs", MODULE_NAME, api);
     *at(SITES[LABEL_SHADOW_COUNT_MAX].address) ^= 1;
     Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
-               && (plugin.block->rows_refused & ALL_ROWS) == RowBit(ROW_SHADOW_MAP) && plugin.block->rows_tried == ALL_ROWS
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == ALL_ROWS
                && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
            "shadow: one site that differs leaves the whole row out, nothing written");
     Expect(Logged("site SHADOW_COUNT_MAX 0x30e470c: skipped (DIFFERS)") && Logged("site SHADOW_EXTRA_MAX 0x30e4717: skipped (NEIGHBOUR)")
@@ -1901,7 +1904,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"shadow_write_fails", MODULE_NAME, api);
     Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
-               && (plugin.block->rows_refused & ALL_ROWS) == RowBit(ROW_SHADOW_MAP) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
            "shadow: a refused write rolls the row back to the game's bytes");
     Expect(Logged("site SHADOW_SIZE_MEDIUM 0x30e4737: skipped (WRITE_FAILED)")
                && Logged("site SHADOW_SIZE_HIGH 0x30e46b7: withdrawn (a later site of its row failed)")
@@ -1917,7 +1920,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"shadow_second_write_fails", MODULE_NAME, api);
     Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
-               && (plugin.block->rows_refused & ALL_ROWS) == RowBit(ROW_SHADOW_MAP) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
            "shadow: a refused second write leaves the game's bytes everywhere");
     Expect(Logged("site SHADOW_SIZE_MAX 0x30e46eb: skipped (WRITE_FAILED)") && Logged("site SHADOW_COUNT_MAX 0x30e470c: skipped (ROW)")
                && Logged("site SHADOW_EXTRA_MAX 0x30e4717: skipped (ROW)") && Logged("site SHADOW_SIZE_MEDIUM 0x30e4737: skipped (ROW)")
@@ -1934,7 +1937,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"shadow_put_back_fails", MODULE_NAME, api);
     Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
-               && (plugin.block->rows_refused & ALL_ROWS) == RowBit(ROW_SHADOW_MAP) && !Logged("renodx_attila64: shadow map"),
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && !Logged("renodx_attila64: shadow map"),
            "shadow: a refused put-back leaves the row refused");
     const std::array<float, 2> doubled = {4096.f, 4096.f};
     Expect(std::memcmp(at(SITES[LABEL_SHADOW_SIZE_HIGH].address), doubled.data(), sizeof(doubled)) == 0

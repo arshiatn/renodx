@@ -12,17 +12,27 @@
 // (A/A), and each gives a known answer. A mapped image that is not the one the design read fails before any copied
 // byte runs.
 // The row, through copies of the built DLL (dll_cases\game_code_*, a ReShade.ini next to this exe for the keys): the
-// DLL's own init places the stubs and writes the sites, with each refusal, the value key, the install key, code memory
-// without write access and the re-check at game start; the half's stub against the reference for all 2^32 inputs; and
-// the row's word in the DLL file as a batch tool looks for it.
+// DLL's own init places the sprite rows' stub and writes its site, with each refusal, the value key, the install key,
+// code memory without write access and the re-check at game start.
+// The sprite rows' stub as that init placed it, entered through its site, against the reference region: each word at
+// its place, every class edge alone in every lane, random and edge frames under all 16 MXCSR modes with the whole
+// memory and the registers the game keeps, rows and objects that end at a page without access, every overlap of the
+// row, the frame and the objects, the game's whole loop of four rows, and (the long runs, skipped once a check above
+// has failed) every 2^32 value in all lanes at once and in each lane alone.
+// The half's stub, which the DLL does not write: placed here as the DLL would (its bytes, the game's function behind
+// them, the site's jump through the plugin's own ApplyJump), against the reference for all 2^32 inputs, then taken out.
+// And the row's word in the DLL file as a batch tool looks for it.
 // game_code_test.exe <renodx_attila64.dll> <game ELF> [-bench]; SKIPPED (exit 77, reported by build.ps1 as not run)
-// without the ELF or when the game's range is taken. -bench times instead of the full run (2^20 of the half's inputs
-// only, no gate): the reference row twice (A/A), and the half against its stub as a caller calls it.
+// without the ELF or when the game's range is taken. -bench times instead of the long runs (2^20 of their inputs
+// only, no gate): the half against its stub as a caller calls it, and the region against the sprite rows' stub a row.
 
 #include <windows.h>
 
+#include <emmintrin.h>
+
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -103,6 +113,78 @@ inline constexpr size_t ARENA_R13 = 0x400;    // [r13 + 0x1c, r13 + 0x44)
 inline constexpr size_t ARENA_R15 = 0x480;    // [r15 + 0x60, r15 + 0x68)
 inline constexpr size_t ARENA_INPUT = 0x500;  // the half's [rdi]
 
+// The row's 20 words in the row's order, [rbx + 0x10 + 2 x lane]: where each one's float comes from. A product is
+// [rsp + offset] x [rsp + second] in the game's operand order; both products share [rsp + 0x6c].
+enum LaneBase : uint8_t { BASE_RSP, BASE_R13, BASE_R15, BASE_PRODUCT, BASE_ZERO };
+struct Lane {
+  LaneBase base = BASE_RSP;
+  uint8_t offset = 0;
+  uint8_t second = 0;
+};
+inline constexpr size_t ROW_WORDS = 20;
+inline constexpr size_t ROW_WORDS_OFFSET = 0x10;
+inline constexpr uint8_t SHARED_FACTOR = 0x6c;
+inline constexpr std::array<Lane, ROW_WORDS> LANES = {{
+    {BASE_RSP, 0x38}, {BASE_RSP, 0x34}, {BASE_R13, 0x1c}, {BASE_RSP, 0x08},
+    {BASE_RSP, 0x68}, {BASE_RSP, 0x64}, {BASE_PRODUCT, 0x30, SHARED_FACTOR}, {BASE_R13, 0x40},
+    {BASE_PRODUCT, SHARED_FACTOR, 0x2c}, {BASE_RSP, 0x10}, {BASE_ZERO}, {BASE_RSP, 0x40},
+    {BASE_R13, 0x28}, {BASE_R13, 0x2c}, {BASE_R13, 0x30}, {BASE_R13, 0x34},
+    {BASE_R13, 0x38}, {BASE_R13, 0x3c}, {BASE_R15, 0x60}, {BASE_R15, 0x64},
+}};
+// One row for the bench's runner: the four registers the region reads through.
+struct RowPointers {
+  uint64_t rsp = 0;
+  uint64_t rbx = 0;
+  uint64_t r13 = 0;
+  uint64_t r15 = 0;
+};
+using RowsRunner = void(ATTILA64_GAME_CALL*)(const RowPointers* rows);
+// The sprite rows' site replaced one instruction; the game's next one, where the stub's second way out goes on.
+inline constexpr std::array<uint8_t, 9> ROWS_SCRATCH_STORE = {0xf3, 0x0f, 0x11, 0x84, 0x24, 0x94, 0x00, 0x00, 0x00};
+// The game's loop around the region: from its counter's reset to the function's epilogue.
+inline constexpr uintptr_t ROWS_LOOP = 0x32d9d3e;
+inline constexpr uintptr_t ROWS_LOOP_END = 0x32da020;
+inline constexpr size_t ZERO_LANE = std::ranges::find(LANES, BASE_ZERO, &Lane::base) - LANES.begin();
+// a = a float's bits without the sign: the game's function has a path of its own for [DENORMAL_HALF_FIRST,
+// NORMAL_HALF_FIRST), the halves below the smallest normal one.
+inline constexpr uint32_t DENORMAL_HALF_FIRST = 0x33800000;
+inline constexpr uint32_t NORMAL_HALF_FIRST = 0x38800000;
+// Both neighbours of every class's first and last value, of the rounding's ties, and of the float's own classes.
+inline constexpr std::array<uint32_t, 32> CLASS_EDGES = {
+    0x00000000, 0x00000001, 0x007fffff, 0x00800000, 0x33000400, 0x33000401, 0x337fffff, 0x33800000,
+    0x33800001, 0x387fffff, 0x38800000, 0x38800001, 0x38801000, 0x38801001, 0x3f800000, 0x3f800fff,
+    0x3f801000, 0x3f801001, 0x3f802fff, 0x3f803000, 0x3f803001, 0x477fefff, 0x477ff000, 0x477fffff,
+    0x47800000, 0x47800001, 0x7f7fffff, 0x7f800000, 0x7f800001, 0x7fbfffff, 0x7fc00000, 0x7fffffff,
+};
+// A row's memory of its own for the long runs and the bench: the frame, the row and the two objects, apart.
+struct LightRow {
+  alignas(64) std::array<uint8_t, 0x200> bytes = {};
+};
+inline constexpr size_t LIGHT_RSP = 0x40;   // [0x38, 0xd8)
+inline constexpr size_t LIGHT_ROW = 0x100;  // [0x110, 0x138)
+inline constexpr size_t LIGHT_R13 = 0x140;  // [0x15c, 0x184)
+inline constexpr size_t LIGHT_R15 = 0x190;  // [0x1f0, 0x1f8)
+
+// The page-edge runs: an access violation while one is expected goes on at the thunk's way back (rax = the run's out
+// state, rsp the host's from it). Code near the game has no unwind data and rsp is on a test stack, so a frame-based
+// handler would never be found.
+DWORD fault_out_slot = 0;
+uintptr_t fault_resume = 0;
+thread_local bool fault_expected = false;
+thread_local bool fault_seen = false;
+LONG CALLBACK ResumeAfterFault(EXCEPTION_POINTERS* info) {
+  if (!fault_expected || info->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION) {
+    return EXCEPTION_CONTINUE_SEARCH;
+  }
+  fault_expected = false;
+  fault_seen = true;
+  const auto* out = static_cast<const CpuState*>(TlsGetValue(fault_out_slot));
+  info->ContextRecord->Rax = reinterpret_cast<DWORD64>(out);
+  info->ContextRecord->Rsp = out->host_rsp;
+  info->ContextRecord->Rip = fault_resume;
+  return EXCEPTION_CONTINUE_EXECUTION;
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -142,23 +224,31 @@ int wmain(int argc, wchar_t** argv) {
     return 1;
   }
 
-  // The thunk, entered with rdi = in, rsi = out. Ours: the design asks for a register-exact runner of the game's own
-  // bytes (load a whole state, run, store a whole state), emitted here because the state includes rsp on a test stack
-  // and MXCSR. Deviation from the design's
-  // thunk: it saves only the System V callee-saved registers itself (rbx, rbp, r12-r15); rsi, rdi and xmm6-15, which
-  // the host's MS ABI keeps, are saved by the compiler around the call because Thunk is sysv_abi. Three TLS slots (the
-  // TEB's TlsSlots at gs:0x1480) carry what no register may: the out pointer, the code's address and rax while the
-  // capture stores the rest; so threads may run it at once.
+  // The thunk, entered with rdi = in, rsi = out. Ours: a register-exact runner of the game's own bytes (load a whole
+  // state, run, store a whole state), emitted here because the state includes rsp on a test stack and MXCSR. It saves
+  // only the System V callee-saved registers itself (rbx, rbp, r12-r15); rsi, rdi and xmm6-15, which the host's MS ABI
+  // keeps, are saved by the compiler around the call because Thunk is sysv_abi. TLS slots (the TEB's TlsSlots at
+  // gs:0x1480) carry what no register may, so threads may run it at once: the out pointer, the code's address, rax
+  // while the capture stores the rest, where code that ends in the image goes on (the capture, or the bench's runner),
+  // a mark the stub's second way out leaves, and the bench runner's own rsp and end of rows.
   const DWORD out_slot = TlsAlloc();
   const DWORD target_slot = TlsAlloc();
   const DWORD rax_slot = TlsAlloc();
-  if (out_slot >= 64 || target_slot >= 64 || rax_slot >= 64) {
+  const DWORD exit_slot = TlsAlloc();
+  const DWORD fallback_slot = TlsAlloc();
+  const DWORD runner_rsp_slot = TlsAlloc();
+  const DWORD runner_end_slot = TlsAlloc();
+  if (std::max({out_slot, target_slot, rax_slot, exit_slot, fallback_slot, runner_rsp_slot, runner_end_slot}) >= 64) {
     std::printf("FAIL: no TLS slot below 64 for the thunk\n");
     return 1;
   }
   const auto tls_offset = [](DWORD slot) { return static_cast<uint32_t>(0x1480 + (8 * slot)); };
-  auto* thunk_code = static_cast<uint8_t*>(api.code_near_game(0x300));
+  auto* thunk_code = static_cast<uint8_t*>(api.code_near_game(0x400));
   uintptr_t capture = 0;
+  uintptr_t exit_pad = 0;
+  uintptr_t fallback_pad = 0;
+  uintptr_t rows_runner = 0;
+  uintptr_t rows_runner_next = 0;
   {
     uint8_t* code = thunk_code;
     const auto emit = [&](std::initializer_list<uint8_t> bytes) { code = std::copy(bytes.begin(), bytes.end(), code); };
@@ -215,20 +305,62 @@ int wmain(int argc, wchar_t** argv) {
     }
     // Back on the host's stack (a mov leaves the flags), then the flags, the code's rax and the host's MXCSR.
     emit_access(true, {0x8b}, RSP, RAX, offsetof(CpuState, host_rsp));  // mov rsp, [rax + host_rsp]
+    fault_resume = reinterpret_cast<uintptr_t>(code);
     emit({0x9c});                                                       // pushfq; pop qword [rax + flags]
     emit_access(false, {0x8f}, 0, RAX, offsetof(CpuState, flags));
     emit_tls({0x8b}, 1, rax_slot);                                      // mov rcx, gs:[rax slot]; mov [rax], rcx
     emit_access(true, {0x89}, 1, RAX, 8 * RAX);
     emit_access(false, {0x0f, 0xae}, 2, RAX, offsetof(CpuState, host_mxcsr));  // ldmxcsr [rax + host_mxcsr]
     emit({0x41, 0x5f, 0x41, 0x5e, 0x41, 0x5d, 0x41, 0x5c, 0x5d, 0x5b, 0xc3});   // pop r15-r12, rbp, rbx; ret
-    Expect(code <= thunk_code + 0x300, "the thunk fits its code");
+
+    // Where code that ends in the image goes on: jmp qword gs:[exit].
+    exit_pad = reinterpret_cast<uintptr_t>(code);
+    emit({0x65, 0xff, 0x24, 0x25});
+    emit_value(tls_offset(exit_slot), 4);
+    // The stub's second way out, marked: mov byte gs:[mark], 1 (no register, no flag), the game's instruction that
+    // stood at SPRITE_ROWS_FALLBACK, and on to the one after it.
+    fallback_pad = reinterpret_cast<uintptr_t>(code);
+    emit({0x65, 0xc6, 0x04, 0x25});
+    emit_value(tls_offset(fallback_slot), 4);
+    emit({0x01});
+    code = std::copy(ROWS_SCRATCH_STORE.begin(), ROWS_SCRATCH_STORE.end(), code);
+    emit({0xe9});
+    emit_value(uint64_t{SPRITE_ROWS_FALLBACK} + ROWS_SCRATCH_STORE.size() - (reinterpret_cast<uintptr_t>(code) + 4), 4);
+    // The bench's runner, entered with rdi = rows: each row's four registers loaded, rbp = rsp + 0x94 as the game's
+    // loop has it, the code at gs:[target] entered; where that code ends (gs:[exit] = the next row's label here) the
+    // next row, up to gs:[end]. r12 is the cursor: the region and the stub keep it.
+    rows_runner = reinterpret_cast<uintptr_t>(code);
+    emit({0x53, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57});  // push rbx, rbp, r12-r15
+    emit_tls({0x89}, RSP, runner_rsp_slot);                              // mov gs:[runner rsp], rsp
+    emit({0x49, 0x89, 0xfc});                                            // mov r12, rdi
+    const uint8_t* next_row = code;
+    emit({0x49, 0x8b, 0x24, 0x24});                                      // mov rsp, [r12]
+    emit({0x49, 0x8b, 0x5c, 0x24, 0x08});                                // mov rbx, [r12 + 8]
+    emit({0x4d, 0x8b, 0x6c, 0x24, 0x10});                                // mov r13, [r12 + 16]
+    emit({0x4d, 0x8b, 0x7c, 0x24, 0x18});                                // mov r15, [r12 + 24]
+    emit({0x48, 0x8d, 0xac, 0x24, 0x94, 0x00, 0x00, 0x00});              // lea rbp, [rsp + 0x94]
+    emit({0x65, 0xff, 0x24, 0x25});                                      // jmp qword gs:[target]
+    emit_value(tls_offset(target_slot), 4);
+    rows_runner_next = reinterpret_cast<uintptr_t>(code);
+    emit({0x49, 0x83, 0xc4, 0x20});                                      // add r12, 32
+    emit({0x65, 0x4c, 0x3b, 0x24, 0x25});                                // cmp r12, gs:[end]
+    emit_value(tls_offset(runner_end_slot), 4);
+    emit({0x72, static_cast<uint8_t>(next_row - (code + 2))});           // jb next_row
+    emit_tls({0x8b}, RSP, runner_rsp_slot);                              // mov rsp, gs:[runner rsp]
+    emit({0x41, 0x5f, 0x41, 0x5e, 0x41, 0x5d, 0x41, 0x5c, 0x5d, 0x5b, 0xc3});  // pop r15-r12, rbp, rbx; ret
+    Expect(code <= thunk_code + 0x400, "the thunk fits its code");
     FlushInstructionCache(GetCurrentProcess(), thunk_code, static_cast<size_t>(code - thunk_code));
   }
-  // One run of the code at `target` from `in`; *out holds what the code left (rax..r15, flags, MXCSR, xmm).
+  fault_out_slot = out_slot;
+  // One run of the code at `target` from `in`; *out holds what the code left (rax..r15, flags, MXCSR, xmm). Code that
+  // ends in the image ends at the capture; the mark of the stub's second way out is taken off first.
   const auto run = [&](uintptr_t target, const CpuState& in, CpuState* out) {
     TlsSetValue(target_slot, reinterpret_cast<void*>(target));
+    TlsSetValue(exit_slot, reinterpret_cast<void*>(capture));
+    TlsSetValue(fallback_slot, nullptr);
     reinterpret_cast<Thunk>(thunk_code)(&in, out);
   };
+  const auto fallback_taken = [&] { return TlsGetValue(fallback_slot) != nullptr; };
   // The first field two states differ in, or nullptr. `flags_mask`: the flag bits that count.
   const auto difference = [](const CpuState& a, const CpuState& b, uint64_t flags_mask) -> const char* {
     if (a.gpr != b.gpr) return "a general register";
@@ -267,7 +399,7 @@ int wmain(int argc, wchar_t** argv) {
   }
   {
     uint8_t* jump = reference_rows + (ROWS_REGION_END - ROWS_REGION);
-    const auto back = static_cast<int32_t>(static_cast<intptr_t>(capture) - reinterpret_cast<intptr_t>(jump + 5));
+    const auto back = static_cast<int32_t>(static_cast<intptr_t>(exit_pad) - reinterpret_cast<intptr_t>(jump + 5));
     jump[0] = 0xe9;
     std::memcpy(jump + 1, &back, sizeof(back));
   }
@@ -506,20 +638,26 @@ int wmain(int argc, wchar_t** argv) {
   const auto stubs_at = [](uintptr_t memory, size_t lead) {
     return (memory + lead + (game_code::BLOCK_ALIGNMENT - 1)) & ~uintptr_t{game_code::BLOCK_ALIGNMENT - 1};
   };
-  // The half's site jumps to `stubs`, int3 after the jump; there the stub's bytes and the game's function behind them.
-  const auto half_is_in = [&](uintptr_t stubs) {
-    std::array<uint8_t, 7> jump = {0xe9, 0, 0, 0, 0, 0xcc, 0xcc};
-    const auto displacement = static_cast<uint32_t>(stubs - (HALF_SITE.address + 5));
+  // The sprite rows' site jumps to `stubs`, int3 after the jump; there the stub's bytes, its two jumps leading to the
+  // game's code after the region and after the site.
+  const auto rows_stub_is_in = [&](uintptr_t stubs) {
+    std::array<uint8_t, 6> jump = {0xe9, 0, 0, 0, 0, 0xcc};
+    const auto displacement = static_cast<uint32_t>(stubs - (ROWS_SITE.address + 5));
     std::memcpy(jump.data() + 1, &displacement, sizeof(displacement));
-    return std::memcmp(at(HALF_SITE.address), jump.data(), jump.size()) == 0
-           && std::memcmp(at(stubs), game_code::HALF.data(), game_code::HALF.size()) == 0
-           && std::memcmp(at(stubs + game_code::HALF.size()), reference_half, HALF_BYTES) == 0;
+    auto stub = game_code::SPRITE_ROWS;
+    for (const auto& [rel32_offset, target] : std::initializer_list<std::pair<size_t, uint32_t>>{
+             {0x4b9, SPRITE_ROWS_DONE}, {0x4c4, SPRITE_ROWS_FALLBACK}}) {
+      const auto back = static_cast<uint32_t>(target - (stubs + rel32_offset + 4));
+      std::memcpy(stub.data() + rel32_offset, &back, sizeof(back));
+    }
+    return std::memcmp(at(ROWS_SITE.address), jump.data(), jump.size()) == 0
+           && std::memcmp(at(stubs), stub.data(), stub.size()) == 0;
   };
   const size_t stubs_bytes = (game_code::BLOCK_ALIGNMENT - 1) + game_code::LAYOUT.bytes;
   const auto stubs_line = [](uintptr_t stubs) {
     char line[160];
-    std::snprintf(line, sizeof(line), "renodx_attila64: game code stubs %#zx..%#zx (half 0x145 bytes at %#zx)", stubs,
-                  stubs + game_code::LAYOUT.bytes, stubs);
+    std::snprintf(line, sizeof(line), "renodx_attila64: game code stubs %#zx..%#zx (sprite rows 0x51b bytes at %#zx)",
+                  stubs, stubs + game_code::LAYOUT.bytes, stubs);
     return std::string(line);
   };
 
@@ -530,22 +668,23 @@ int wmain(int argc, wchar_t** argv) {
     const uintptr_t stubs = stubs_at(memory, game_code::LEAD_GAP_BYTES);
     const size_t used_before = near_code_used;
     const auto [plugin, result] = init_case(L"game_code_default", 0);
-    Expect(result == 0 && rows_are(plugin, GAME_CODE, 0, GAME_CODE) && logged_line(site_line(HALF_SITE, "applied"))
-               && logged_line(site_line(ROWS_SITE, "checked (check only)")) && logged_line(stubs_line(stubs))
+    Expect(result == 0 && rows_are(plugin, GAME_CODE, 0, GAME_CODE)
+               && logged_line(site_line(HALF_SITE, "checked (check only)"))
+               && logged_line(site_line(ROWS_SITE, "applied")) && logged_line(stubs_line(stubs))
                && Logged("sprites off, game code on"),
-           "row: in, the half's site applied, the sprite rows' site checked, the stubs' line");
-    Expect(half_is_in(stubs) && holds_game_bytes(ROWS_SITE)
+           "row: in, the sprite rows' site applied, the half's site checked, the stubs' line");
+    Expect(rows_stub_is_in(stubs) && holds_game_bytes(HALF_SITE)
                && near_code_used - used_before == game_code::LEAD_GAP_BYTES + stubs_bytes,
-           "row: the half's stub and the game's function behind it on a cache line past the gap, its site's jump to "
-           "it, the sprite rows' site the game's");
+           "row: the sprite rows' stub on a cache line past the gap with its two jumps into the game, its site's jump "
+           "to it, the half's site the game's");
     if (plugin.game_started != nullptr) {
       plugin.game_started(&api);
       Expect(plugin.block->rows_changed.load() == 0 && Logged("game started: 1 sites unchanged")
                  && !Logged("changed after we patched it"),
              "game start: the written site and both held ranges are unchanged (our own jump is not a change)");
       // Each change after the init is seen at game start, in the range's site's words: a byte of the half's function
-      // behind our jump, a byte of the sprite rows' range, that range's own site (not written: the whole range counts),
-      // and our jump itself.
+      // (the stub's other way calls it), that function's own site (not written: its whole range counts), a byte of
+      // the sprite rows' range, and our jump itself.
       const auto changed_at_start = [&](uintptr_t address) {
         {
           const std::scoped_lock lock(log_mutex);
@@ -559,14 +698,14 @@ int wmain(int argc, wchar_t** argv) {
       Expect(changed_at_start(HALF_RANGE.hi - 1) && logged_line(changed_line(HALF_SITE))
                  && !logged_line(changed_line(ROWS_SITE)) && Logged("game started: 1 sites unchanged"),
              "game start: a changed byte of the half's function is seen");
+      Expect(changed_at_start(HALF_SITE.address) && logged_line(changed_line(HALF_SITE))
+                 && !logged_line(changed_line(ROWS_SITE)),
+             "game start: a changed byte of the site that was only checked is seen");
       Expect(changed_at_start(ROWS_RANGE.lo) && logged_line(changed_line(ROWS_SITE))
                  && !logged_line(changed_line(HALF_SITE)),
              "game start: a changed byte of the sprite rows' range is seen");
-      Expect(changed_at_start(ROWS_SITE.address) && logged_line(changed_line(ROWS_SITE))
-                 && !logged_line(changed_line(HALF_SITE)),
-             "game start: a changed byte of the site that was only checked is seen");
-      Expect(changed_at_start(HALF_SITE.address + 1) && logged_line(changed_line(HALF_SITE))
-                 && !logged_line(changed_line(ROWS_SITE)) && Logged("game started: 0 sites unchanged"),
+      Expect(changed_at_start(ROWS_SITE.address + 1) && logged_line(changed_line(ROWS_SITE))
+                 && !logged_line(changed_line(HALF_SITE)) && Logged("game started: 0 sites unchanged"),
              "game start: our changed jump is seen, once");
     }
   }
@@ -592,26 +731,30 @@ int wmain(int argc, wchar_t** argv) {
          "row: a changed byte of the half's function refuses the whole row, the sprite rows' site too");
   Expect(refused_case(L"game_code_rows_changed", ROWS_RANGE.lo, "skipped (HELD)", "skipped (HELD)"),
          "row: a changed byte of the sprite rows' range refuses the whole row");
-  Expect(refused_case(L"game_code_site_changed", HALF_SITE.address, "skipped (DIFFERS)", "skipped (HELD)"),
-         "row: a changed byte of the half's site refuses it as its own, and the row");
+  Expect(refused_case(L"game_code_site_changed", ROWS_SITE.address, "skipped (HELD)", "skipped (DIFFERS)"),
+         "row: a changed byte of the sprite rows' site refuses it as its own, and the row");
+  Expect(refused_case(L"game_code_half_site_changed", HALF_SITE.address, "skipped (DIFFERS)", "skipped (HELD)"),
+         "row: a changed byte of the half's site, which is only checked, refuses the row");
   {
     write_ini(true, true);
     failing_patch_calls = 1;
     const auto [plugin, result] = init_case(L"game_code_patch_refused", 0);
     Expect(result == 0 && failing_patch_calls == 0 && rows_are(plugin, 0, GAME_CODE, GAME_CODE)
-               && logged_line(site_line(HALF_SITE, "skipped (WRITE_FAILED)"))
-               && logged_line(site_line(ROWS_SITE, "skipped (ROW)")) && !Logged("game code stubs")
-               && holds_game_bytes(HALF_SITE) && holds_game_bytes(ROWS_SITE),
-           "row: the half's jump refused by the loader refuses the row, the later site is not tried");
+               && logged_line(site_line(ROWS_SITE, "skipped (WRITE_FAILED)")) && !Logged("game code stubs")
+               && !Logged("withdrawn") && Logged("sprites off, game code off") && holds_game_bytes(HALF_SITE)
+               && holds_game_bytes(ROWS_SITE),
+           "row: the sprite rows' jump refused by the loader refuses the row, both sites the game's");
   }
   {
+    // The stubs' code memory may be asked for (the fake loader counts nothing it refuses).
     write_ini(true, true);
     hook_mode = HOOK_NO_MEMORY;
     const auto [plugin, result] = init_case(L"game_code_no_memory", 0);
     hook_mode = HOOK_NORMAL;
     Expect(result == 0 && rows_are(plugin, 0, GAME_CODE, GAME_CODE)
                && logged_line(site_line(HALF_SITE, "skipped (NO_MEMORY)"))
-               && logged_line(site_line(ROWS_SITE, "skipped (NO_MEMORY)")) && holds_game_bytes(HALF_SITE),
+               && logged_line(site_line(ROWS_SITE, "skipped (NO_MEMORY)")) && !Logged("game code stubs")
+               && holds_game_bytes(HALF_SITE) && holds_game_bytes(ROWS_SITE),
            "row: no code memory, with the gap or without, refuses the row and writes nothing");
   }
   {
@@ -621,7 +764,7 @@ int wmain(int argc, wchar_t** argv) {
     failing_code_calls = 1;
     const auto [plugin, result] = init_case(L"game_code_no_gap", 0);
     Expect(result == 0 && failing_code_calls == 0 && rows_are(plugin, GAME_CODE, 0, GAME_CODE)
-               && half_is_in(stubs_at(memory, 0)) && logged_line(stubs_line(stubs_at(memory, 0)))
+               && rows_stub_is_in(stubs_at(memory, 0)) && logged_line(stubs_line(stubs_at(memory, 0)))
                && near_code_used - used_before == stubs_bytes,
            "row: no code memory for the gap puts the stubs in without it");
   }
@@ -636,9 +779,9 @@ int wmain(int argc, wchar_t** argv) {
                && holds_game_bytes(ROWS_SITE),
            "row: the value key 0 leaves the row in with nothing written or taken");
     if (plugin.game_started != nullptr) {
-      *at(HALF_RANGE.hi - 1) ^= 1;
+      *at(ROWS_RANGE.lo) ^= 1;
       plugin.game_started(&api);
-      *at(HALF_RANGE.hi - 1) ^= 1;
+      *at(ROWS_RANGE.lo) ^= 1;
       Expect(plugin.block->rows_changed.load() == 0 && Logged("game started: 0 sites unchanged")
                  && !Logged("changed after we patched it"),
              "game start: with nothing written the held ranges are not looked at again");
@@ -646,10 +789,11 @@ int wmain(int argc, wchar_t** argv) {
   }
   {
     write_ini(false, true);
+    const size_t used_before = near_code_used;
     const auto [plugin, result] = init_case(L"game_code_key_0", 0);
     Expect(result == 0 && rows_are(plugin, 0, GAME_CODE, 0) && logged_line(site_line(HALF_SITE, "skipped (OFF)"))
                && logged_line(site_line(ROWS_SITE, "skipped (OFF)")) && Logged("sprites off, game code off")
-               && holds_game_bytes(HALF_SITE),
+               && near_code_used == used_before && holds_game_bytes(HALF_SITE) && holds_game_bytes(ROWS_SITE),
            "row: the install key 0 leaves the row out, and out of the rows tried");
   }
   {
@@ -661,20 +805,431 @@ int wmain(int argc, wchar_t** argv) {
     VirtualProtect(at(memory), game_code::LEAD_GAP_BYTES + stubs_bytes, PAGE_EXECUTE_READ, &before);
     const auto [plugin, result] = init_case(L"game_code_read_only", 0);
     MEMORY_BASIC_INFORMATION page = {};
-    Expect(result == 0 && rows_are(plugin, GAME_CODE, 0, GAME_CODE) && half_is_in(stubs)
+    Expect(result == 0 && rows_are(plugin, GAME_CODE, 0, GAME_CODE) && rows_stub_is_in(stubs)
                && VirtualQuery(at(stubs), &page, sizeof(page)) != 0 && page.Protect == PAGE_EXECUTE_READ
                && !Logged("stays writable"),
            "row: code memory without write access: the stubs are in, the access as it was");
     VirtualProtect(at(memory), game_code::LEAD_GAP_BYTES + stubs_bytes, before, &before);
   }
 
-  // The half's stub, as the DLL's init placed it and reached through the game's own entry, against the reference.
+  // The sprite rows' stub for its runs: as one more init placed it, entered through the game's own bytes.
   write_ini(true, true);
-  const auto [half_plugin, half_result] = init_case(L"game_code_half", 0);
+  const auto [rows_plugin, rows_result] = init_case(L"game_code_rows", 0);
   DeleteFileW(ini_path.c_str());
-  const bool half_in = (half_result == 0 && rows_are(half_plugin, GAME_CODE, 0, GAME_CODE)
-                        && *at(HALF_SITE.address) == 0xe9);
-  Expect(half_in, "the half's stub is in for its runs");
+  std::array<uint8_t, 6> site_jump = {};
+  std::memcpy(site_jump.data(), at(ROWS_SITE.address), site_jump.size());
+  const bool rows_in = (rows_result == 0 && rows_are(rows_plugin, GAME_CODE, 0, GAME_CODE) && site_jump[0] == 0xe9
+                        && std::memcmp(at(SPRITE_ROWS_FALLBACK), ROWS_SCRATCH_STORE.data(), ROWS_SCRATCH_STORE.size()) == 0);
+  Expect(rows_in, "the sprite rows' stub is in for its runs, the game's next instruction as it was read");
+  if (!rows_in) {
+    std::printf("FAIL: %d checks, %d failure(s)\n", checks, failures);
+    return failures;
+  }
+  // From here on the image holds three jumps of the test's own (so no game start is asked of a copy again): the
+  // game's instruction after the site goes through the mark's pad, so that a run tells which way the stub took, and
+  // the code ends at a jump to the thunk's way on: after the region for one row, at the loop's end for the loop.
+  const auto write_jump = [&](uintptr_t address, uintptr_t target) {
+    *at(address) = 0xe9;
+    const auto displacement = static_cast<uint32_t>(target - (address + 5));
+    std::memcpy(at(address + 1), &displacement, sizeof(displacement));
+  };
+  std::array<uint8_t, 5> region_end_bytes = {};
+  std::array<uint8_t, 5> loop_end_bytes = {};
+  std::memcpy(region_end_bytes.data(), at(ROWS_REGION_END), region_end_bytes.size());
+  std::memcpy(loop_end_bytes.data(), at(ROWS_LOOP_END), loop_end_bytes.size());
+  write_jump(SPRITE_ROWS_FALLBACK, fallback_pad);
+  write_jump(ROWS_REGION_END, exit_pad);
+  // The site as the game has it (the reference of the whole-state runs: the game's own code where it is) or ours.
+  const auto put_site = [&](const uint8_t* bytes) { std::memcpy(at(ROWS_SITE.address), bytes, ROWS_SITE.length); };
+
+  // Where a lane's own float is (a product's: the factor it does not share).
+  const auto lane_source = [&](const Lane& lane, uintptr_t rsp, uintptr_t r13, uintptr_t r15) {
+    switch (lane.base) {
+      case BASE_R13:     return at(r13 + lane.offset);
+      case BASE_R15:     return at(r15 + lane.offset);
+      case BASE_PRODUCT: return at(rsp + ((lane.offset == SHARED_FACTOR) ? lane.second : lane.offset));
+      default:           return at(rsp + lane.offset);
+    }
+  };
+  // The 20 words of the row state `in` by the lane table and the reference half. A product's factors are multiplied
+  // here in the host's rounding, which is the game's only for a factor of 1.0f or a NaN beside a number.
+  const auto expected_words = [&](const CpuState& in) {
+    std::array<uint16_t, ROW_WORDS> words = {};
+    for (size_t index = 0; index < ROW_WORDS; ++index) {
+      const Lane& lane = LANES[index];
+      if (lane.base == BASE_ZERO) continue;
+      uint32_t x = 0;
+      if (lane.base == BASE_PRODUCT) {
+        x = static_cast<uint32_t>(_mm_cvtsi128_si32(_mm_castps_si128(
+            _mm_mul_ss(_mm_load_ss(reinterpret_cast<const float*>(at(in.gpr[RSP] + lane.offset))),
+                       _mm_load_ss(reinterpret_cast<const float*>(at(in.gpr[RSP] + lane.second)))))));
+      } else {
+        std::memcpy(&x, lane_source(lane, in.gpr[RSP], in.gpr[R13], in.gpr[R15]), sizeof(x));
+      }
+      words[index] = static_cast<uint16_t>(reinterpret_cast<HalfCall>(reference_half)(&x));
+    }
+    return words;
+  };
+  // The row state `in` through the game's entry: the row's 20 words (filled with another value first) are the expected.
+  const auto row_words_right = [&](const CpuState& in) {
+    std::memset(at(in.gpr[RBX] + ROW_WORDS_OFFSET), 0xa5, 2 * ROW_WORDS);
+    const std::array<uint16_t, ROW_WORDS> expected = expected_words(in);
+    CpuState out;
+    run(ROWS_REGION, in, &out);
+    return std::memcmp(at(in.gpr[RBX] + ROW_WORDS_OFFSET), expected.data(), sizeof(expected)) == 0;
+  };
+  // A row state with 1.0f in every float of the memory.
+  const auto ones_row_state = [&] {
+    const CpuState in = row_state();
+    for (size_t offset = 0; offset < arena.bytes.size(); offset += sizeof(FLOAT_ONE)) {
+      std::memcpy(arena.bytes.data() + offset, &FLOAT_ONE, sizeof(FLOAT_ONE));
+    }
+    return in;
+  };
+
+  std::printf("  the sprite rows: words, class edges\n");
+  {
+    // Each word at its place: a different float in every lane (2.0f, 3.0f, ..; a product's own factor, the shared one
+    // 1.0f). The lane table itself first, against the game's region; then the stub, on its own path.
+    const CpuState in = ones_row_state();
+    for (size_t index = 0; index < ROW_WORDS; ++index) {
+      const auto value = static_cast<float>(index + 2);
+      std::memcpy(lane_source(LANES[index], in.gpr[RSP], in.gpr[R13], in.gpr[R15]), &value, sizeof(value));
+    }
+    const std::array<uint16_t, ROW_WORDS> expected = expected_words(in);
+    CpuState out;
+    run(reinterpret_cast<uintptr_t>(reference_rows), in, &out);
+    bool distinct = true;
+    for (size_t index = 0; index < ROW_WORDS; ++index) {
+      distinct = distinct && std::ranges::count(expected, expected[index]) == 1;
+    }
+    Expect(distinct && std::memcmp(arena.bytes.data() + ARENA_ROW + ROW_WORDS_OFFSET, expected.data(), sizeof(expected)) == 0,
+           "the lane table: the game's region writes each lane's half at its word, 20 different ones");
+    Expect(row_words_right(in) && !fallback_taken(),
+           "the sprite rows' stub writes each lane's half at its word, on its own path");
+  }
+  {
+    // Every class edge, with either sign, alone in every lane (the others 1.0f): the words, and the way the stub
+    // took: the game's code exactly for a denormal half.
+    const CpuState in = ones_row_state();
+    bool words_right = true;
+    bool ways_right = true;
+    for (const Lane& lane : LANES) {
+      if (lane.base == BASE_ZERO) continue;
+      uint8_t* source = lane_source(lane, in.gpr[RSP], in.gpr[R13], in.gpr[R15]);
+      for (const uint32_t edge : CLASS_EDGES) {
+        for (const uint32_t sign : {0u, 0x80000000u}) {
+          const uint32_t x = edge | sign;
+          std::memcpy(source, &x, sizeof(x));
+          words_right = words_right && row_words_right(in);
+          ways_right = ways_right && fallback_taken() == (edge >= DENORMAL_HALF_FIRST && edge < NORMAL_HALF_FIRST);
+        }
+      }
+      std::memcpy(source, &FLOAT_ONE, sizeof(FLOAT_ONE));
+    }
+    Expect(words_right, "the sprite rows' stub: every class edge alone in every lane gives the game's words");
+    Expect(ways_right, "the sprite rows' stub: the game's code does the row exactly when a lane holds a denormal half");
+  }
+
+  // One row state through the game's own code where it is (the site the game's) and through the site's jump, both
+  // entered at `entry` from the same memory: what differs, or nullptr. Equal: the whole memory, the registers the
+  // game's loop keeps (rbx, rsp, rbp, r12-r15) and MXCSR. The slot below rsp holds the game's last return address
+  // after its code; the stub's own path writes none there, so it still holds the thunk's flags.
+  const auto row_differs = [&](const CpuState& in, uintptr_t entry, bool* fell_back) -> const char* {
+    const Arena before = arena;
+    put_site(ROWS_SITE.window.data() + SITE_MARGIN);
+    CpuState game;
+    run(entry, in, &game);
+    const Arena game_arena = arena;
+    arena = before;
+    put_site(site_jump.data());
+    CpuState ours;
+    run(entry, in, &ours);
+    *fell_back = fallback_taken();
+    const size_t slot = static_cast<size_t>(in.gpr[RSP] - 8 - arena_at(0));
+    if (!*fell_back) {
+      if (std::memcmp(arena.bytes.data() + slot, &in.flags, sizeof(in.flags)) != 0) return "the slot below rsp";
+      std::memcpy(arena.bytes.data() + slot, game_arena.bytes.data() + slot, sizeof(in.flags));
+    }
+    if (!(arena == game_arena)) return "the memory";
+    for (const uint8_t number : {RBX, RSP, RBP, uint8_t{12}, R13, uint8_t{14}, R15}) {
+      if (game.gpr[number] != ours.gpr[number]) return "a register the game keeps";
+    }
+    return ((game.mxcsr != ours.mxcsr) ? "MXCSR" : nullptr);
+  };
+
+  std::printf("  the sprite rows: whole states, overlaps, page ends, the loop\n");
+  {
+    // Random frames (any bits) and frames of class edges, under all 16 MXCSR modes (rounding x flush to zero x
+    // denormals are zero; every exception masked, the sticky flags any).
+    const char* differs = nullptr;
+    size_t own_path = 0;
+    size_t game_path = 0;
+    for (uint32_t mode = 0; mode < 16; ++mode) {
+      for (int iteration = 0; iteration < 4000 && differs == nullptr; ++iteration) {
+        CpuState in = row_state();
+        if ((iteration % 2) != 0) {
+          for (size_t offset = ARENA_RSP; offset < ARENA_R15 + 0x68; offset += sizeof(uint32_t)) {
+            const uint32_t x = CLASS_EDGES[random() % CLASS_EDGES.size()] | (static_cast<uint32_t>(random()) << 31);
+            std::memcpy(arena.bytes.data() + offset, &x, sizeof(x));
+          }
+        }
+        in.mxcsr = MXCSR_DEFAULT | ((mode & 3) << 13) | (((mode & 4) != 0) ? 0x8000 : 0) | (((mode & 8) != 0) ? 0x40 : 0)
+                   | (static_cast<uint32_t>(random()) & 0x3f);
+        bool fell_back = false;
+        differs = row_differs(in, ROWS_REGION, &fell_back);
+        ++(fell_back ? game_path : own_path);
+      }
+    }
+    if (differs != nullptr) {
+      std::printf("  whole states: %s differs\n", differs);
+    }
+    std::printf("  whole states: %zu rows on the stub's own path, %zu through the game's code\n", own_path, game_path);
+    Expect(differs == nullptr && own_path > 10000 && game_path > 10000,
+           "the sprite rows' stub: random and edge frames under 16 MXCSR modes leave the game's memory, kept "
+           "registers and MXCSR");
+  }
+  {
+    // Every overlap of the row, the frame and the two objects that the game's order of loads and stores can see, in
+    // steps of 2 bytes: `moved` at `anchor` + [first, last]. Inside, the game's code must do the row (1.0f everywhere:
+    // no other reason for it); at both ends the ranges only touch and the stub's own path runs. Any bits as well.
+    struct Overlap {
+      uint8_t moved = 0;
+      uint8_t anchor = 0;
+      int16_t first = 0;
+      int16_t last = 0;
+    };
+    const char* differs = nullptr;
+    bool inside_game = true;
+    bool ends_own = true;
+    for (const Overlap& overlap : {Overlap{RBX, RSP, -0x40, 0x88}, Overlap{RBX, R13, -0x1c, 0x34},
+                                   Overlap{RBX, R15, 0x28, 0x58}, Overlap{R13, RSP, -0x4c, 0x7c},
+                                   Overlap{R15, RSP, -0x70, 0x38}}) {
+      for (int distance = overlap.first; distance <= overlap.last && differs == nullptr; distance += 2) {
+        for (const bool ones : {true, false}) {
+          CpuState in = (ones ? ones_row_state() : row_state());
+          in.gpr[overlap.moved] = in.gpr[overlap.anchor] + static_cast<uint64_t>(int64_t{distance});
+          bool fell_back = false;
+          const char* run_differs = row_differs(in, ROWS_REGION, &fell_back);
+          differs = ((differs != nullptr) ? differs : run_differs);
+          if (!ones) continue;
+          const bool end = (distance == overlap.first || distance == overlap.last);
+          inside_game = inside_game && (end || fell_back);
+          ends_own = ends_own && (!end || !fell_back);
+        }
+      }
+    }
+    if (differs != nullptr) {
+      std::printf("  overlaps: %s differs\n", differs);
+    }
+    Expect(differs == nullptr, "the sprite rows' stub: every overlap of the row, the frame and the objects as the game");
+    Expect(inside_game, "the sprite rows' stub: the game's code does every row that overlaps a range it reads");
+    Expect(ends_own, "the sprite rows' stub: ranges that only touch stay on its own path");
+  }
+  {
+    // The row and the objects at the start and at the end of memory with no access before and after it: the stub
+    // reads and writes inside them. Four bytes past the end the game's region faults, and so does the stub. The frame
+    // of these runs is on a stack of its own: Windows writes the fault's record below rsp.
+    constexpr size_t FAULT_STACK = 0x10000;
+    constexpr size_t PAGE = 0x1000;
+    auto* pages =
+        static_cast<uint8_t*>(VirtualAlloc(nullptr, FAULT_STACK + (4 * PAGE), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+    const auto low = reinterpret_cast<uintptr_t>(pages) + FAULT_STACK + PAGE;
+    const uintptr_t high = low + (2 * PAGE);
+    for (size_t offset = 0; offset < FAULT_STACK + (4 * PAGE); offset += sizeof(FLOAT_ONE)) {
+      std::memcpy(pages + offset, &FLOAT_ONE, sizeof(FLOAT_ONE));
+    }
+    DWORD before = 0;
+    VirtualProtect(at(low - PAGE), PAGE, PAGE_NOACCESS, &before);
+    VirtualProtect(at(high), PAGE, PAGE_NOACCESS, &before);
+    void* handler = AddVectoredExceptionHandler(1, ResumeAfterFault);
+    // The frame on the fault stack, the row and the objects in the middle of the two pages, but `moved` at `value`.
+    const auto edge_state = [&](uint8_t moved, uintptr_t value) {
+      CpuState in = random_state();
+      in.gpr[RSP] = reinterpret_cast<uintptr_t>(pages) + FAULT_STACK - PAGE;
+      in.gpr[RBX] = low + 0x800;
+      in.gpr[R13] = low + 0x900;
+      in.gpr[R15] = low + 0xa00;
+      in.gpr[moved] = value;
+      in.gpr[RBP] = in.gpr[RSP] + 0x94;
+      return in;
+    };
+    struct Edge {
+      uint8_t moved = 0;
+      uint8_t first = 0;
+      uint8_t end = 0;
+    };
+    bool inside = true;
+    bool game_faults = true;
+    bool stub_faults = true;
+    for (const Edge& edge : {Edge{RBX, 0x10, 0x38}, Edge{R13, 0x1c, 0x44}, Edge{R15, 0x60, 0x68}, Edge{RSP, 0, 0xa0}}) {
+      // The frame's start has the thunk's own slot below it: only its end, which is 8 bytes past the game's frame
+      // (rsp is 16-aligned and the frame 0x98 bytes; the saved registers follow it).
+      for (const uintptr_t value : {low - edge.first, high - edge.end}) {
+        if (edge.moved == RSP && value == low) continue;
+        const CpuState in = edge_state(edge.moved, value);
+        fault_seen = false;
+        fault_expected = true;
+        inside = inside && row_words_right(in) && !fault_seen && !fallback_taken();
+        fault_expected = false;
+      }
+      if (edge.moved == RSP) continue;
+      const CpuState in = edge_state(edge.moved, high - edge.end + 4);
+      CpuState out;
+      for (const bool ours : {false, true}) {
+        fault_seen = false;
+        fault_expected = true;
+        run((ours ? ROWS_REGION : reinterpret_cast<uintptr_t>(reference_rows)), in, &out);
+        fault_expected = false;
+        (ours ? stub_faults : game_faults) = (ours ? stub_faults : game_faults) && fault_seen;
+      }
+    }
+    RemoveVectoredExceptionHandler(handler);
+    VirtualFree(pages, 0, MEM_RELEASE);
+    Expect(inside, "the sprite rows' stub: a row, an object or the frame that ends (or starts) at memory without "
+                   "access gives the game's words, without a fault");
+    Expect(game_faults, "page ends control: the game's region faults on a row or an object four bytes past the end");
+    Expect(stub_faults, "the sprite rows' stub faults where the game's region does");
+  }
+  std::uniform_real_distribution<float> position(-1000.f, 1000.f);
+  std::uniform_real_distribution<float> unit(0.f, 1.f);
+  // A float as a sprite's row holds them: a position, a value in 0..1, or zero.
+  const auto realistic_float = [&] {
+    const uint64_t kind = random() % 6;
+    return ((kind == 0) ? 0.f : ((kind < 3) ? unit(random) : position(random)));
+  };
+  {
+    // The game's whole loop of four rows, from its counter's reset to the function's epilogue: the game's code around
+    // the region sets r14, xmm4 and rbp itself and reads what the stub leaves. Any bits, and realistic floats.
+    std::memcpy(at(ROWS_REGION_END), region_end_bytes.data(), region_end_bytes.size());
+    write_jump(ROWS_LOOP_END, exit_pad);
+    const char* differs = nullptr;
+    size_t own_path = 0;
+    size_t game_path = 0;
+    for (int iteration = 0; iteration < 20000 && differs == nullptr; ++iteration) {
+      CpuState in = row_state();
+      if ((iteration % 2) != 0) {
+        for (size_t offset = 0; offset < arena.bytes.size(); offset += sizeof(float)) {
+          const float value = realistic_float();
+          std::memcpy(arena.bytes.data() + offset, &value, sizeof(value));
+        }
+      }
+      in.gpr[RBX] = arena_at(0x340);
+      in.gpr[R13] = arena_at(0x470);
+      in.gpr[R15] = arena_at(0x4c0);
+      bool fell_back = false;
+      differs = row_differs(in, ROWS_LOOP, &fell_back);
+      ++(fell_back ? game_path : own_path);
+    }
+    std::memcpy(at(ROWS_LOOP_END), loop_end_bytes.data(), loop_end_bytes.size());
+    write_jump(ROWS_REGION_END, exit_pad);
+    if (differs != nullptr) {
+      std::printf("  the loop: %s differs\n", differs);
+    }
+    std::printf("  the loop: %zu times every row on the stub's own path, %zu times a row through the game's code\n",
+                own_path, game_path);
+    Expect(differs == nullptr && own_path > 1000 && game_path > 1000,
+           "the game's loop of four rows with the stub leaves the game's memory, kept registers and MXCSR");
+  }
+
+  // The long runs: all 2^32 inputs on four threads, a quarter each. With -bench only the first 2^18 of each quarter,
+  // so that the timing below does not wait; such a run says so and is no gate. A job ends at the first input that
+  // differs, and the other threads' jobs soon after.
+  const bool bench = (argc > 3 && std::wcscmp(argv[3], L"-bench") == 0);
+  std::atomic<bool> input_differs = false;
+  const auto inputs_equal = [&](const char* what, const auto& job) {
+    constexpr uint64_t QUARTER = uint64_t{1} << 30;
+    constexpr size_t THREADS = 4;
+    const uint64_t inputs_each = (bench ? (QUARTER >> 12) : QUARTER);
+    std::array<uint64_t, THREADS> bad = {};
+    std::array<std::thread, THREADS> threads;
+    input_differs = false;
+    const auto start = std::chrono::steady_clock::now();
+    for (size_t index = 0; index < THREADS; ++index) {
+      threads[index] =
+          std::thread([&, index] { job(QUARTER * index, (QUARTER * index) + inputs_each, index, &bad[index]); });
+    }
+    bool all_equal = true;
+    for (size_t index = 0; index < THREADS; ++index) {
+      threads[index].join();
+      if (bad[index] != (QUARTER * index) + inputs_each) {
+        all_equal = false;
+        std::printf("  %s differs at input %#llx\n", what, bad[index]);
+      }
+    }
+    const std::chrono::duration<double> took = std::chrono::steady_clock::now() - start;
+    std::printf("  %s: %s inputs in %.0f s\n", what, (bench ? "2^20 (-bench: not the full run)" : "all 2^32"),
+                took.count());
+    return all_equal && !input_differs;
+  };
+  // Inputs [first, last) as the float of `lane` alone (ROW_WORDS: of every lane at once), the other lanes 1.0f:
+  // rows of their own memory through the game's entry, 64 a call of the bench's runner, their 20 words against the
+  // reference half's. *bad: the input that differs, or `last`.
+  const auto lanes_differ = [&](size_t lane, uint64_t first, uint64_t last, uint64_t* bad) {
+    constexpr size_t BATCH = 64;
+    const size_t lanes_first = ((lane == ROW_WORDS) ? 0 : lane);
+    const size_t lanes_end = ((lane == ROW_WORDS) ? ROW_WORDS : (lane + 1));
+    std::vector<LightRow> rows(BATCH);
+    std::array<RowPointers, BATCH> pointers;
+    std::array<std::array<uint8_t*, ROW_WORDS>, BATCH> sources = {};
+    for (size_t row = 0; row < BATCH; ++row) {
+      for (size_t offset = 0; offset < rows[row].bytes.size(); offset += sizeof(FLOAT_ONE)) {
+        std::memcpy(rows[row].bytes.data() + offset, &FLOAT_ONE, sizeof(FLOAT_ONE));
+      }
+      const auto memory = reinterpret_cast<uintptr_t>(rows[row].bytes.data());
+      pointers[row] = {.rsp = memory + LIGHT_RSP, .rbx = memory + LIGHT_ROW, .r13 = memory + LIGHT_R13,
+                       .r15 = memory + LIGHT_R15};
+      for (size_t index = 0; index < ROW_WORDS; ++index) {
+        sources[row][index] = lane_source(LANES[index], pointers[row].rsp, pointers[row].r13, pointers[row].r15);
+      }
+    }
+    std::array<uint16_t, ROW_WORDS> expected;
+    expected.fill(HALF_ONE);
+    expected[ZERO_LANE] = 0;
+    TlsSetValue(target_slot, reinterpret_cast<void*>(ROWS_REGION));
+    TlsSetValue(exit_slot, reinterpret_cast<void*>(rows_runner_next));
+    *bad = last;
+    for (uint64_t input = first; input < last && !input_differs.load(std::memory_order_relaxed); input += BATCH) {
+      const size_t count = static_cast<size_t>(std::min<uint64_t>(BATCH, last - input));
+      for (size_t row = 0; row < count; ++row) {
+        const auto x = static_cast<uint32_t>(input + row);
+        for (size_t index = lanes_first; index < lanes_end; ++index) {
+          if (LANES[index].base == BASE_ZERO) continue;
+          std::memcpy(sources[row][index], &x, sizeof(x));
+        }
+        std::memset(at(pointers[row].rbx + ROW_WORDS_OFFSET), 0xa5, 2 * ROW_WORDS);
+      }
+      TlsSetValue(runner_end_slot, pointers.data() + count);
+      reinterpret_cast<RowsRunner>(rows_runner)(pointers.data());
+      for (size_t row = 0; row < count; ++row) {
+        const auto x = static_cast<uint32_t>(input + row);
+        const auto half = static_cast<uint16_t>(reinterpret_cast<HalfCall>(reference_half)(&x));
+        for (size_t index = lanes_first; index < lanes_end; ++index) {
+          expected[index] = ((index == ZERO_LANE) ? uint16_t{0} : half);
+        }
+        if (std::memcmp(at(pointers[row].rbx + ROW_WORDS_OFFSET), expected.data(), sizeof(expected)) == 0) continue;
+        *bad = input + row;
+        input_differs = true;
+        return;
+      }
+    }
+  };
+  // The half's stub. The DLL does not write it (game_code.hpp), so it is placed here as the DLL would place it: its
+  // bytes on a cache line past the gap, the game's function behind them, and the site's jump through the plugin's own
+  // ApplyJump. Then it is reached through the game's own entry, against the reference.
+  std::printf("  the half's stub\n");
+  const uintptr_t half_stub =
+      stubs_at(reinterpret_cast<uintptr_t>(api.code_near_game(game_code::LEAD_GAP_BYTES + (game_code::BLOCK_ALIGNMENT - 1)
+                                                              + game_code::HALF.size() + HALF_BYTES)),
+               game_code::LEAD_GAP_BYTES);
+  std::memcpy(at(half_stub), game_code::HALF.data(), game_code::HALF.size());
+  std::memcpy(at(half_stub + game_code::HALF.size()), reference_half, HALF_BYTES);
+  FlushInstructionCache(GetCurrentProcess(), at(half_stub), game_code::HALF.size() + HALF_BYTES);
+  AppliedSite half_applied;
+  const bool half_in = (ApplyJump(api, HALF_SITE, half_stub, &half_applied) == REFUSAL_NONE && half_applied.applied
+                        && *at(HALF_SITE.address) == 0xe9 && HeldRangeUnchanged(HALF_RANGE, true)
+                        && !HeldRangeUnchanged(HALF_RANGE, false));
+  Expect(half_in, "the half's stub is in for its runs: the site's jump, the rest of its function the game's");
   if (!half_in) {
     std::printf("FAIL: %d checks, %d failure(s)\n", checks, failures);
     return failures;
@@ -682,16 +1237,17 @@ int wmain(int argc, wchar_t** argv) {
   // Inputs [first, last): each called (its return address on the test stack points at the capture) in the reference and
   // through the game's entry from one state, the other registers, the flags and the memory drawn anew every 4096
   // inputs. Equal: every general register (rsp past the return address), every flag, MXCSR, every xmm register; and
-  // the memory as it was, [rdi] included, but for the thunk's own flags slot below rsp. *first_bad: the lowest input
-  // that differs, or `last`.
-  const auto half_inputs_differ = [&](uint64_t first, uint64_t last, uint64_t seed, uint64_t* first_bad) {
-    std::mt19937_64 generator(seed);
+  // the memory as it was, [rdi] included, but for the thunk's own flags slot below rsp. *bad: the input that differs,
+  // or `last`.
+  const auto half_inputs_differ = [&](uint64_t first, uint64_t last, size_t thread, uint64_t* bad) {
+    std::mt19937_64 generator(0x7a1f + thread);
     Arena memory;
     Arena expected;
     CpuState in;
-    *first_bad = last;
+    *bad = last;
     for (uint64_t input = first; input < last; ++input) {
       if (input == first || (input & 0xfff) == 0) {
+        if (input_differs.load(std::memory_order_relaxed)) return;
         for (uint8_t& byte : memory.bytes) {
           byte = static_cast<uint8_t>(generator());
         }
@@ -714,7 +1270,9 @@ int wmain(int argc, wchar_t** argv) {
           && ours.gpr[RSP] == in.gpr[RSP] + 8) {
         continue;
       }
-      *first_bad = std::min(*first_bad, input);
+      *bad = input;
+      input_differs = true;
+      return;
     }
   };
   // Known answers first, one per class, so that a stub that is not reached cannot pass: 1.0f, infinity for a NaN, the
@@ -741,59 +1299,20 @@ int wmain(int argc, wchar_t** argv) {
     }
     Expect(known, "the half's stub and the reference: 1.0f, a NaN, the smallest half's edge and a denormal half");
   }
-  const bool bench = (argc > 3 && std::wcscmp(argv[3], L"-bench") == 0);
-  {
-    // All 2^32 inputs on four threads. With -bench only the first 2^18 of each thread's quarter, so that the timing
-    // below does not wait for the full run; that run says so and is no gate.
-    constexpr uint64_t QUARTER = uint64_t{1} << 30;
-    constexpr size_t THREADS = 4;
-    const uint64_t inputs_each = (bench ? (QUARTER >> 12) : QUARTER);
-    std::array<uint64_t, THREADS> first_bad = {};
-    std::array<std::thread, THREADS> threads;
-    const auto start = std::chrono::steady_clock::now();
-    for (size_t index = 0; index < THREADS; ++index) {
-      threads[index] = std::thread(half_inputs_differ, QUARTER * index, (QUARTER * index) + inputs_each, 0x7a1f + index,
-                                   &first_bad[index]);
-    }
-    bool all_equal = true;
-    for (size_t index = 0; index < THREADS; ++index) {
-      threads[index].join();
-      if (first_bad[index] != (QUARTER * index) + inputs_each) {
-        all_equal = false;
-        std::printf("  the half differs at input %#llx\n", first_bad[index]);
-      }
-    }
-    const std::chrono::duration<double> took = std::chrono::steady_clock::now() - start;
-    std::printf("  the half: %s inputs in %.0f s\n", (bench ? "2^20 (-bench: not the full run)" : "all 2^32"),
-                took.count());
-    Expect(all_equal, (bench ? "the half's stub equals the game's function for 2^20 inputs (-bench)"
-                             : "the half's stub equals the game's function for all 2^32 inputs: every register, the "
-                               "flags, MXCSR and the memory"));
+  if (failures == 0) {
+    Expect(inputs_equal("the half", half_inputs_differ),
+           (bench ? "the half's stub equals the game's function for 2^20 inputs (-bench)"
+                  : "the half's stub equals the game's function for all 2^32 inputs: every register, the flags, MXCSR "
+                    "and the memory"));
   }
 
   if (bench) {
-    // The reference row through the thunk, twice (A/A): what the next step's stub number stands next to.
-    const CpuState in = row_state();
-    const Arena before = arena;
-    for (const char* pass : {"A", "A'"}) {
-      constexpr int ROWS = 1000000;
-      CpuState out;
-      const auto start = std::chrono::steady_clock::now();
-      for (int row = 0; row < ROWS; ++row) {
-        arena = before;
-        run(reinterpret_cast<uintptr_t>(reference_rows), in, &out);
-      }
-      const std::chrono::duration<double, std::nano> took = std::chrono::steady_clock::now() - start;
-      std::printf("  bench %s: the reference row %.1f ns (thunk and arena copy included)\n", pass, took.count() / ROWS);
-    }
     // The half as its callers use it (a float stored to a slot, the slot's address passed, the low word of the result
     // stored): the game's function (the reference copy) against the game's entry with our jump and stub, on three
-    // input sets, each timed twice in turn (A/A). The number for the design's rule: the stub is written by default
-    // only when it is at least 10 % faster a call.
+    // input sets, each timed twice in turn (A/A). The number for the rule: the stub is written by default only when
+    // it is at least 10 % faster a call.
     constexpr size_t SET = 4096;
     constexpr int PASSES = 5000;
-    std::uniform_real_distribution<float> position(-1000.f, 1000.f);
-    std::uniform_real_distribution<float> unit(0.f, 1.f);
     for (const char* set : {"normal", "tiny", "mixed"}) {
       std::array<float, SET> values = {};
       for (size_t index = 0; index < SET; ++index) {
@@ -833,6 +1352,97 @@ int wmain(int argc, wchar_t** argv) {
         std::printf("  bench %s: the half, %s inputs: the game's %.3f ns a call, the stub %.3f ns, %+.1f %% faster "
                     "(%+.1f .. %+.1f)\n",
                     pass, set, game[TIMINGS / 2], ours[TIMINGS / 2], gain[TIMINGS / 2], gain.front(), gain.back());
+      }
+    }
+  }
+
+  // The half's site out again, as the row's step takes a site out when a later one fails: a put-back the loader
+  // refuses leaves our jump in and the site counted as out (RevertPatch's rule); the next one puts the game's bytes
+  // back.
+  failing_patch_calls = 1;
+  const bool put_back_refused = !RevertPatch(api, HALF_SITE, &half_applied) && !half_applied.applied
+                                && *at(HALF_SITE.address) == 0xe9;
+  Expect(put_back_refused && RevertPatch(api, HALF_SITE, &half_applied) && holds_game_bytes(HALF_SITE)
+             && HeldRangeUnchanged(HALF_RANGE, false),
+         "the half's site out again: a refused put-back leaves the jump, the next one the game's whole function");
+
+  if (failures != 0) {
+    std::printf("  the long runs are skipped: a check above failed\n");
+  } else {
+    Expect(inputs_equal("the sprite rows, every lane at once",
+                        [&](uint64_t first, uint64_t last, size_t /*thread*/, uint64_t* bad) {
+                          lanes_differ(ROW_WORDS, first, last, bad);
+                        }),
+           (bench ? "the sprite rows' stub gives the game's words for 2^20 values in every lane at once (-bench)"
+                  : "the sprite rows' stub gives the game's words for all 2^32 values in every lane at once"));
+    for (size_t lane = 0; lane < ROW_WORDS && failures == 0; ++lane) {
+      if (LANES[lane].base == BASE_ZERO) continue;
+      char what[64];
+      std::snprintf(what, sizeof(what), "the sprite rows, lane %zu alone", lane);
+      char check[128];
+      std::snprintf(check, sizeof(check), "the sprite rows' stub gives the game's words for %s values in lane %zu alone",
+                    (bench ? "2^20 (-bench)" : "all 2^32"), lane);
+      Expect(inputs_equal(what, [&](uint64_t first, uint64_t last, size_t /*thread*/, uint64_t* bad) {
+               lanes_differ(lane, first, last, bad);
+             }),
+             check);
+    }
+  }
+
+  if (bench) {
+    // The sprite rows, a row: the game's region (the reference copy, its calls to the copy of the half) against the
+    // game's entry with our jump and stub, over 256 rows of their own memory through the runner, each timed nine
+    // times in turn, twice (A/A). The number for the rule: the stub is written by default only when it is at least
+    // 2 times as fast a row on realistic rows. The second set has a denormal half in every row, so the game's code
+    // does each one after the stub's checks (and the test's mark).
+    constexpr size_t ROWS = 256;
+    constexpr int PASSES = 4000;
+    for (const char* set : {"realistic", "denormal"}) {
+      std::vector<LightRow> rows(ROWS);
+      std::array<RowPointers, ROWS> pointers;
+      size_t game_path = 0;
+      TlsSetValue(exit_slot, reinterpret_cast<void*>(rows_runner_next));
+      for (size_t row = 0; row < ROWS; ++row) {
+        for (size_t offset = 0; offset < rows[row].bytes.size(); offset += sizeof(float)) {
+          const float value = ((set[0] == 'd' && offset == LIGHT_RSP + 0x38) ? 1e-5f : realistic_float());
+          std::memcpy(rows[row].bytes.data() + offset, &value, sizeof(value));
+        }
+        const auto memory = reinterpret_cast<uintptr_t>(rows[row].bytes.data());
+        pointers[row] = {.rsp = memory + LIGHT_RSP, .rbx = memory + LIGHT_ROW, .r13 = memory + LIGHT_R13,
+                         .r15 = memory + LIGHT_R15};
+        TlsSetValue(target_slot, reinterpret_cast<void*>(ROWS_REGION));
+        TlsSetValue(runner_end_slot, &pointers[row] + 1);
+        TlsSetValue(fallback_slot, nullptr);
+        reinterpret_cast<RowsRunner>(rows_runner)(&pointers[row]);
+        game_path += (fallback_taken() ? 1 : 0);
+      }
+      TlsSetValue(runner_end_slot, pointers.data() + ROWS);
+      const auto time_rows = [&](uintptr_t target) {
+        TlsSetValue(target_slot, reinterpret_cast<void*>(target));
+        const auto start = std::chrono::steady_clock::now();
+        for (int pass = 0; pass < PASSES; ++pass) {
+          reinterpret_cast<RowsRunner>(rows_runner)(pointers.data());
+        }
+        const std::chrono::duration<double, std::nano> took = std::chrono::steady_clock::now() - start;
+        return took.count() / (double{PASSES} * ROWS);
+      };
+      for (const char* pass : {"A", "A'"}) {
+        constexpr size_t TIMINGS = 9;
+        std::array<double, TIMINGS> game = {};
+        std::array<double, TIMINGS> ours = {};
+        std::array<double, TIMINGS> times = {};
+        for (size_t timing = 0; timing < TIMINGS; ++timing) {
+          game[timing] = time_rows(reinterpret_cast<uintptr_t>(reference_rows));
+          ours[timing] = time_rows(ROWS_REGION);
+          times[timing] = game[timing] / ours[timing];
+        }
+        std::ranges::sort(game);
+        std::ranges::sort(ours);
+        std::ranges::sort(times);
+        std::printf("  bench %s: the sprite rows, %s rows (%zu of %zu through the game's code): the game's %.2f ns a "
+                    "row, the stub %.2f ns, %.2f times as fast (%.2f .. %.2f)\n",
+                    pass, set, game_path, ROWS, game[TIMINGS / 2], ours[TIMINGS / 2], times[TIMINGS / 2], times.front(),
+                    times.back());
       }
     }
   }

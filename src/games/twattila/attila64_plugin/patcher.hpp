@@ -48,13 +48,21 @@ struct SiteCheck {
 // The loader's entry hook copies the first bytes into 32 bytes near the game, the jump back right after them and its
 // way in at +16: lengths 12..15 would overlap that (a sites.h row of that length needs the plugin's own trampoline).
 // A patch is one instruction's immediate. A mid-function site holds the plugin's own jump, a hand-made stub's site too.
+// SITES is indexed by label (main.cpp's applied sites too).
+static_assert([] {
+  for (size_t index = 0; index < SITES.size(); ++index) {
+    if (SITES[index].label != index) return false;
+  }
+  return true;
+}());
+inline constexpr uint8_t PATCH_SITE_LONGEST = 8;
 inline constexpr uint8_t RAW_STUB_SITE_LONGEST = 8;
 static_assert([] {
   for (const Site& site : SITES) {
     const uint8_t shortest = ((site.kind == SITE_PATCH) ? 1 : trampoline::JUMP_BYTES);
     uint8_t longest = 11;
     switch (site.kind) {
-      case SITE_PATCH:    longest = 8; break;
+      case SITE_PATCH:    longest = PATCH_SITE_LONGEST; break;
       case SITE_MID:      longest = SITE_MAX_LENGTH; break;
       case SITE_RAW_STUB: longest = RAW_STUB_SITE_LONGEST; break;
       default:            break;
@@ -144,12 +152,17 @@ struct AppliedSite {
 
 // `bytes` into code memory of the loader's at `code`. Memory the loader maps without write access is opened for the
 // copy and closed again (the loader's own writes look after themselves); execute access stays on, since the loader's
-// own stubs share the page. False when it could not be opened: nothing is written. *close_error: the Win32 error when
-// it could not be closed again (the bytes are in and the memory stays writable), else 0.
+// own stubs share the page. False when it could not be opened, or when its first and last byte have different access
+// (one access could not be put back for both): nothing is written. *close_error: the Win32 error when it could not be
+// closed again (the bytes are in and the memory stays writable), else 0.
 [[nodiscard]] inline bool WriteNearCode(uint8_t* code, std::span<const uint8_t> bytes, DWORD* close_error) {
   *close_error = 0;
   MEMORY_BASIC_INFORMATION page = {};
-  if (VirtualQuery(code, &page, sizeof(page)) == 0) return false;
+  MEMORY_BASIC_INFORMATION last_page = {};
+  if (VirtualQuery(code, &page, sizeof(page)) == 0
+      || VirtualQuery(code + bytes.size() - 1, &last_page, sizeof(last_page)) == 0 || page.Protect != last_page.Protect) {
+    return false;
+  }
   // Writable as it is when the last byte is in the same writable region as the first (it may cross a page).
   const bool writable = (page.Protect & (PAGE_EXECUTE_READWRITE | PAGE_READWRITE)) != 0
                         && reinterpret_cast<uintptr_t>(page.BaseAddress) + page.RegionSize
