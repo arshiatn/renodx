@@ -56,11 +56,14 @@ enum class Found : uint8_t {
   NOT_LOADED,     // in <exe dir>\plugins\ but not loaded (the loader's log says why)
 };
 
-// Keep Battle Core Free's and Keep Render Core Free's defaults: the plugin's initial core_wanted bits.
+// Keep Battle Core Free's, Keep Render Core Free's and Faster Battle Step's defaults: the plugin's initial core_wanted
+// bits.
 inline constexpr bool BATTLE_CORE_DEFAULT =
     (attila64_plugin::CORE_WANTED_DEFAULT & attila64_plugin::CORE_BATTLE) != 0;
 inline constexpr bool RENDER_CORE_DEFAULT =
     (attila64_plugin::CORE_WANTED_DEFAULT & attila64_plugin::CORE_RENDER) != 0;
+inline constexpr bool BATTLE_STEP_DEFAULT =
+    (attila64_plugin::CORE_WANTED_DEFAULT & attila64_plugin::CORE_STEP) != 0;
 
 namespace internal {
 
@@ -90,6 +93,8 @@ static std::optional<bool> render_core_written;
 // Under the mutex: Effects on All Cores' stop (0 Off, 1 Automatic, 2 On) as this add-on last wrote the two effect bits
 // (none yet: nullopt).
 static std::optional<uint32_t> effects_written;
+// Under the mutex: Faster Battle Step's CORE_STEP bit as this add-on last wrote it (none yet: nullopt).
+static std::optional<bool> battle_step_written;
 // The loader's effect value (tweaks.h): the plugin checks its guards with it at the game's start (PK9 7.3). Its slot
 // is looked up by name for the verdict only; no Tweak is bound to it, so the plugin's walk hook stays its one writer.
 inline constexpr std::string_view EFFECTS_SLOT = "VFX_PARALLEL_UPDATER";
@@ -264,6 +269,15 @@ inline bool RenderCoreWanted() {
   return (internal::block->core_wanted.load(std::memory_order_relaxed) & internal::plugin::CORE_RENDER) != 0;
 }
 
+// With Result() READY: the battle step row's lane of engine_status (attila64_plugin::EngineState); 0 for a v1 block or
+// a plugin that did not build the row.
+inline uint32_t BattleStepState() {
+  namespace plugin = internal::plugin;
+  if (!BlockV2()) return 0;
+  return (internal::block->engine_status.load(std::memory_order_relaxed) >> plugin::ENGINE_STEP_SHIFT)
+         & plugin::ENGINE_LANE_MASK;
+}
+
 // With Result() READY and BlockV2(): an engine option the plugin could not turn on: a known row tried but not offered
 // (its site refused, or changed after it), or a value a row uses refused (known once FindTweaks has run). A value this
 // game build lacks (ABSENT) hides its row without this.
@@ -398,10 +412,11 @@ inline void Lookup(bool last) {
 }
 
 // Every present with Result() READY (the loader's drawing thread): the rows whose hooks are wanted now (bit:
-// attila64_plugin::Row), whether Keep Battle Core Free and Keep Render Core Free are on, and Effects on All Cores' stop
-// (0 Off, 1 Automatic, 2 On; Off by default for tw_unit_shadows' calls, which pass no stop). The callbacks
-// are registered while any row is wanted and offered.
-inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uint32_t effects_stop = 0) {
+// attila64_plugin::Row), whether Keep Battle Core Free and Keep Render Core Free are on, Effects on All Cores' stop
+// (0 Off, 1 Automatic, 2 On) and whether Faster Battle Step is on (tw_unit_shadows' calls pass neither: Off and the
+// plugin's default). The callbacks are registered while any row is wanted and offered.
+inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uint32_t effects_stop = 0,
+                   bool battle_step = BATTLE_STEP_DEFAULT) {
   using internal::block;
   namespace plugin = internal::plugin;
   const std::unique_lock lock(internal::mutex);
@@ -410,18 +425,19 @@ inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uin
   // Only the row's own bit changes (the plugin's other parts keep theirs): at the first present after READY and after
   // every change of the row, a preset slot's load included. The plugin applies it at its next battle step or watchdog
   // tick.
-  const auto write_core_bit = [&](uint32_t bit, bool on, const char* row) {
+  // The line is logged while the plugin offers the bit's row (`row`).
+  const auto write_core_bit = [&](uint32_t bit, bool on, plugin::Row row, const char* name) {
     if (on) {
       block->core_wanted.fetch_or(bit, std::memory_order_relaxed);
     } else {
       block->core_wanted.fetch_and(~bit, std::memory_order_relaxed);
     }
-    if ((RowsOffered() & plugin::RowBit(plugin::ROW_CPU_PLACEMENT)) != 0) {
-      renodx::utils::log::i(std::format("[Total War] 64-bit Attila: {} {}", row, (on ? "on" : "off")));
+    if ((RowsOffered() & plugin::RowBit(row)) != 0) {
+      renodx::utils::log::i(std::format("[Total War] 64-bit Attila: {} {}", name, (on ? "on" : "off")));
     }
   };
   if (BlockV2() && internal::battle_core_written != battle_core) {
-    write_core_bit(plugin::CORE_BATTLE, battle_core, "Keep Battle Core Free");
+    write_core_bit(plugin::CORE_BATTLE, battle_core, plugin::ROW_CPU_PLACEMENT, "Keep Battle Core Free");
     internal::battle_core_written = battle_core;
   }
   // The render row's first present writes only a row off its default: at its default the bit stays the plugin's (its
@@ -431,7 +447,7 @@ inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uin
     const bool off_in_ini =
         ((RenderCoreStatus() >> plugin::CORE_STATE_SHIFT) & plugin::CORE_FIELD_MASK) == plugin::CORE_OFF_INI;
     if (!off_in_ini && (internal::render_core_written.has_value() || render_core != RENDER_CORE_DEFAULT)) {
-      write_core_bit(plugin::CORE_RENDER, render_core, "Keep Render Core Free");
+      write_core_bit(plugin::CORE_RENDER, render_core, plugin::ROW_CPU_PLACEMENT, "Keep Render Core Free");
     }
     internal::render_core_written = render_core;
   }
@@ -458,6 +474,14 @@ inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uin
       renodx::utils::log::i(std::format("[Total War] 64-bit Attila: Effects on All Cores {}", STOP_NAMES[stop]));
     }
     internal::effects_written = stop;
+  }
+  // Faster Battle Step: from the first present on the add-on owns CORE_STEP, Off included, as Effects on All Cores owns
+  // its bits (src: PK9 7.5 via rp94_ MUST-1; ours for this bit, the PK8 design names no other rule: its BattleStep key
+  // 1 is the way in for a start without the add-on, and 0 leaves the site out for the process, lane OFF_INI). The
+  // plugin reads the bit at the hook's next call.
+  if (BlockV2() && internal::battle_step_written != battle_step) {
+    write_core_bit(plugin::CORE_STEP, battle_step, plugin::ROW_BATTLE_STEP, "Faster Battle Step");
+    internal::battle_step_written = battle_step;
   }
   if (internal::callback_failed.load(std::memory_order_relaxed) && !internal::callback_failure_logged) {
     internal::callback_failure_logged = true;
@@ -783,6 +807,7 @@ inline void Uninstall() {
   internal::battle_core_written.reset();
   internal::render_core_written.reset();
   internal::effects_written.reset();
+  internal::battle_step_written.reset();
   internal::callback_failed = false;
   internal::callback_failure_logged = false;
   // The next READY finds the values again (a kept image's Tweaks too) and reads the keys again; this start's frame cap,

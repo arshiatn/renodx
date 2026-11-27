@@ -1191,6 +1191,7 @@ enum class PluginRow : uint8_t {
   SPRITES = twattila::attila64_plugin::ROW_SPRITES,
   GAME_CODE = twattila::attila64_plugin::ROW_GAME_CODE,
   PARALLEL_EFFECTS = twattila::attila64_plugin::ROW_PARALLEL_EFFECTS,
+  BATTLE_STEP = twattila::attila64_plugin::ROW_BATTLE_STEP,
   TWEAKS = 0xFE,
   NONE = 0xFF,
 };
@@ -1676,6 +1677,13 @@ float keep_battle_core_row = KEEP_BATTLE_CORE_DEFAULT;
 // Effects on All Cores (the port only, Experimental, Off until the soak: PK9 10): 0 Off, 1 Automatic, 2 On, the 64-bit
 // engine plugin's two effect core_wanted bits (attila64_plugin_link::Update).
 float effects_on_all_cores_row = 0.f;
+// Faster Battle Step (the port only): the 64-bit engine plugin's battle step, its CORE_STEP core_wanted bit
+// (attila64_plugin_link::Update). Its default is the plugin's (PK8 11.1: On once S-C passes and ATN says so, Q1).
+constexpr float FASTER_BATTLE_STEP_DEFAULT = (twattila::attila64_plugin_link::BATTLE_STEP_DEFAULT ? 1.f : 0.f);
+float faster_battle_step_row = FASTER_BATTLE_STEP_DEFAULT;
+// deviation: from PK8 11.1, which gives no state before S-C, because PK2P P1a's form applies until then: the row and
+// its status line show only once S-C measured it (true: a release step), and the add-on writes the plugin's default.
+constexpr bool BATTLE_STEP_ROW_MEASURED = false;
 // Loader Frame Cap (the port only, off: ATN 11-26): the 64-bit loader's 240 fps cap at the next start, through the
 // engine plugin (attila64_plugin_link::MirrorRestartValues).
 float loader_frame_cap_row = 0.f;
@@ -2362,7 +2370,10 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
           keep_battle_core_row != 0.f,
           // Hidden until measured: the plugin's own bit stays (a saved On, from a copied 32-bit ini say, waits too).
           (RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT),
-          static_cast<uint32_t>(effects_on_all_cores_row));
+          static_cast<uint32_t>(effects_on_all_cores_row),
+          // Hidden until measured: the plugin's default bit is written (a hand-edited Off waits too).
+          (BATTLE_STEP_ROW_MEASURED ? faster_battle_step_row != 0.f
+                                    : twattila::attila64_plugin_link::BATTLE_STEP_DEFAULT));
     }
     // Everything below writes the 32-bit game's code or values.
     return;
@@ -3608,6 +3619,71 @@ void ConfigureAddon() {
                  && (PLUGIN_READY_FORCED || twattila::attila64_plugin_link::EffectsSlotOk());
         },
     });
+    // Faster Battle Step (PK8 11.1) and its status line, live, while the plugin built the row's lane (0: not built), once
+    // S-C measured it. The toggle hides while the row cannot run (BattleStep=0 in the ini, or the game's code differs);
+    // its line says why. The graphics preset buttons leave the row alone (not a look setting).
+    const auto battle_step_shown = [] {
+      return BATTLE_STEP_ROW_MEASURED
+             && twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY
+             && twattila::attila64_plugin_link::BattleStepState() != 0;
+    };
+    cpu_rows.insert(
+        cpu_rows.end(),
+        {
+            new renodx::utils::settings::Setting{
+                .key = "FasterBattleStep",
+                .binding = &faster_battle_step_row,
+                .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                .default_value = FASTER_BATTLE_STEP_DEFAULT,
+                .label = "Faster Battle Step",
+                .section = CPU_SECTION,
+                .tooltip = "Speeds up how units steer around each other in big battles. Same battle results.",
+                .labels = {"Off", "On"},
+                .is_visible = [battle_step_shown] {
+                  const uint32_t state = twattila::attila64_plugin_link::BattleStepState();
+                  return battle_step_shown() && GameCodeRowShown(PluginRow::BATTLE_STEP) && state != plugin::ENGINE_OFF_INI
+                         && state != plugin::ENGINE_CODE_DIFFERS;
+                },
+            },
+            new renodx::utils::settings::Setting{
+                .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+                .section = CPU_SECTION,
+                .on_draw = [] {
+                  const uint32_t state = twattila::attila64_plugin_link::BattleStepState();
+                  const char* text = nullptr;
+                  switch (state) {
+                    case plugin::ENGINE_NOT_USED_YET:
+                      text = "not used yet";
+                      break;
+                    case plugin::ENGINE_ACTIVE:
+                      text = "active";
+                      break;
+                    case plugin::ENGINE_PARTLY:
+                      text = "partly (some battle data is new to it: normal speed there)";
+                      break;
+                    case plugin::ENGINE_OFF:
+                      text = "off";
+                      break;
+                    case plugin::ENGINE_OFF_INI:
+                      text = "off (ini)";
+                      break;
+                    case plugin::ENGINE_CODE_DIFFERS:
+                      text = "off (game code differs)";
+                      break;
+                    // 0 (not built) or a state appended by a newer plugin: no line.
+                    default:
+                      return false;
+                  }
+                  // The plugin changes its lane at the hook's next call: the row's Off reads off at once.
+                  if (faster_battle_step_row == 0.f && state < plugin::ENGINE_OFF) {
+                    text = "off";
+                  }
+                  ImGui::TextWrapped("Battle step: %s", text);
+                  return false;
+                },
+                .is_visible = battle_step_shown,
+            },
+        });
     // The renderer's CPU row (its 32-bit place: Graphics 2 of 2). Fewer Driver Waits stays there, hidden (GAME_CODE_ROWS).
     const auto moved = std::ranges::find(settings, "FewerConstantUploads", &renodx::utils::settings::Setting::key);
     (*moved)->section = CPU_SECTION;
