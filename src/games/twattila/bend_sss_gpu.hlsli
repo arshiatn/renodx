@@ -407,7 +407,7 @@ struct DispatchParameters
 			const float before_step = (a > 0) ? (a_depth - (DepthData[max(a - 1, 0)] * (a_distance - direction) + inParameters.LightCoordinate.z)) : step;
 			const float remaining = abs(inParameters.FarDepthValue - a_depth);
 			const float window = inParameters.SurfaceThickness * remaining;
-			const bool one_surface = abs(stored) < 9.998519e8 && abs(b_stored) < 1e9 && abs(step) <= inParameters.BilinearThreshold * remaining
+			const bool one_surface = abs(stored) < 9.998519e8 && abs(b_stored) < 9.9992083e8 && abs(step) <= inParameters.BilinearThreshold * remaining
 			                         && ((abs(after_step - step) <= window && abs(step - before_step) <= window)
 			                             || (abs(step) <= window && step * after_step >= 0 && step * before_step >= 0));
 			// apd_ O2 (deviation, arithmetic): the sample's distance a_distance + f x direction, A''s the lane's
