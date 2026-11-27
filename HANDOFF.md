@@ -1026,6 +1026,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - CPU C8 B0 + B0a DONE (c8b0_ 11-27, testbin\scratch\c8b0_\handback.md; origin/c8b ... | coord -> L2B W2 (on c8b0_1127)
 - a64_ab.ps1 E4 / E6 FOR B0 (c8b0_): E4 (:1932) is anchored on the old two-row lin ... | L2B W4 / T0 (a64_ab's next writer
 - omv_ DUMPS: testbin\scratch\omv_\dumps = 7.8 GB of 4K raw textures (results are ... | ATN (trim yes / no)
+- PK8 STAGE B DESIGN DONE (pk8b_ Fable 5.2 xHigh 11-27, tools\tw\round_notes\attil ... | lr4_ (last review) -> ATN
+- LAST REVIEW OF THE 64-BIT DESIGNS (cpu_plan_64_map.md 6 items 7 / 12: after Stag ... | lr1_
+- LAST REVIEW OF THE 64-BIT DESIGNS (cpu_plan_64_map.md 6 items 7 / 12: after Stag ... | ?
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17922,6 +17925,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         run)
         - [ ] omv_ DUMPS: testbin\scratch\omv_\dumps = 7.8 GB of 4K raw textures (results are in its tables). Owner: ATN (trim yes
         / no)
+        - [ ] PK8 STAGE B DESIGN DONE (pk8b_ Fable 5.2 xHigh 11-27, tools\tw\round_notes\attila64\designs\pk8_stage_b_design.md;
+        hex-only summary in its section 0, private names only in its appendix): one entry hook at 0x5df300; a read-only parallel
+        detect writes a superset shortlist, a serial apply runs the game's own 0x803e70 in the original order (exact by
+        construction); one object class and ship ticks run the original (never-drop notes for ATN); up to 15 helper tasks in the
+        engine queue, no spin, no new threads; Experimental 'Multithreaded Collisions', key ContactSplit, default Off; expected
+        -8..-14 ms a step (central -11; with Stage A ~ the 180 s floor). Hard gates before code: W-B0 store census (first pass
+        done; 111 indirect sites open) + G1 upward catch. 10 steps for Fable 5.2 Medium implementers. 'Step Pieces First' stays
+        parked. Owner: lr4_ (last review) -> ATN
+        - [ ] LAST REVIEW OF THE 64-BIT DESIGNS (cpu_plan_64_map.md 6 items 7 / 12: after Stage B's design, before the
+        implementers; Opus xHigh per ATN 11-26 'Opus xhigh review/design'), STARTED 07:0x in 5 parts, read only, against B0's
+        real code on c8b0_1127: lr1_ L2B + PK2P (-> last_review_l2b_pk2p.md, + an L2B W2 checklist), lr2_ C8 wave 2 + PK6-64 +
+        PK1-64, lr3_ PK5-64 + PK9, lr4_ PK8 Stage A + B, lr5_ RT-on-64 + shader_hash_64 + menu_stutter_1s + PK4-64 +
+        backup_32bit cross-check (all in attila64\designs\last_review_*.md). Then L2B W2 (engine change -> Fable 5.2 Medium).
+        Owner: lr1_..lr5_ -> coord
+        - [ ] LAST REVIEW OF THE 64-BIT DESIGNS (cpu_plan_64_map.md 6 items 7 / 12: after Stage B's design, before the
+        implementers; Opus xHigh per ATN 11-26 'Opus xhigh review/design'), STARTED 07:0x in 5 parts, read only, against B0's
+        real code on c8b0_1127: lr1_ L2B + PK2P (-> last_review_l2b_pk2p.md, + an L2B W2 checklist), lr2_ C8 wave 2 + PK6-64 +
+        PK1-64, lr3_ PK5-64 + PK9, lr4_ PK8 Stage A + B, lr5_ RT-on-64 + shader_hash_64 + menu_stutter_1s + PK4-64 +
+        backup_32bit cross-check (all in attila64\designs\last_review_*.md). Then L2B W2 (engine change -> Fable 5.2 Medium).
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
