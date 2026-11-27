@@ -17935,8 +17935,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         rows (3 % of the height), 10 starts; deviation: middle 60 % of the width (full width locks onto a HUD edge);
         lines sent to p91_ for T0; PK6 addendum written. fx4b_ W4b DONE 18:0x (28 of 100 min; fx4b_1127: X18 5c3951ce1 rt_cache_fill_omm,
         X14 28d186dbd BakeCutoff, X10 702792bc6, X09 c5f73e5cd; controls byte-identical; gated amd64 / x86 / Tales
-        exit 0; handoff_plan\handbacks\fx4b__handback.md) -> resumed for X18's rt_reference / rt_probe twins, then
-        Opus xHigh review + Sonnet High final; its 4K GPU jobs PARKED (CPU first). Owner: coord
+        exit 0; handoff_plan\handbacks\fx4b__handback.md) -> resumed for X18's rt_reference / rt_probe twins: DONE 17:39 (10 of 20 min; cb5d5c68a: rt_reference.hlsli
+        4 sites on SCENE_QUERY, rt_probe micromap query under OPACITY_MICROMAPS, build.ps1 rt_probe_omm +
+        rt_reference_{paths,reflect}_omm, picked on DXR 1.2; control CONTROL_DXR11_QUERIES_ON_OMM; 112 headers
+        byte-identical with all 4 controls; scan.py exemption removed, atn-mods fails on 4 headers; gated amd64 + x86
+        exit 0). DESIGN Q (to the reviewer, then ATN): under DXR 1.2 the reference now lets the micromaps decide before
+        its own alpha test (shows the player's opacity), and the probe misses micro-triangles the bake marks
+        transparent; keeping the reference bake-independent needs OMMs off for its scene. Review rfx4b_ (Opus xHigh,
+        the one GPU-lane agent) STARTED 18:2x, then Sonnet High final; its 4K GPU jobs PARKED (CPU first). Owner: coord
         - [ ] OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable 5.2 medium is really
         good ... Tell me later after which one is worth it'): Opus implementers Medium for well-specified steps (add-on
         rows, tooling, cite waves, ports, small fix rounds), High for shader math / big merge-ups / no line-level
