@@ -9,8 +9,9 @@
 //    to float rounding (the gamma's own round trip), every texel within 1e-2 (coloured ones near black: the BT.709 /
 //    BT.2020 matrices' seven digits steepened by the encode, 2.0's too). The 2.0 round trip beside it. CONTROL: decoded
 //    at 2.2, encoded at 2.0: far off.
-// 3. g_aa_frame_gamma 1 (aa.hlsli AaFrameLinear, the Denoise Before Tone Mapping row): DLAA's prepare and finish linear,
-//    their matrices alone, and the round trip. CONTROL: at 2.0 far off.
+// 3. g_aa_frame_gamma 1 (aa.hlsli AaFrameLinear: the Denoise Before Tone Mapping row, and FSR / XeSS / DLSS K on
+//    HDR t00, anti_aliasing.hpp Settings::linear_frame): DLAA's prepare and finish linear, their matrices alone, and the
+//    round trip. CONTROL: at 2.0 far off.
 // 4. g_aa_frame_gamma 1 on Attila's / Thrones' HDR t00 (anti_aliasing.hpp Settings::linear_frame, aaf2_ 11-26): DLSS L / M
 //    get the frame's root (the prepare's square root), CMAA2's prepare and resolve the frame as it is, SMAA's edges the
 //    edges of the frame's root, bit for bit. CONTROL: at 2.0 the edges of the frame itself differ.
