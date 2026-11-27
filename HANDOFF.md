@@ -18175,7 +18175,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         x86 twattila / twrome2 / twthronesofbritannia exit 0; tw_unit_shadows x86 + amd64 PASS; tw_render_mt_defaults
         all match; plugin build.ps1 -Test -Elf 0 failures (DLL fd4d700b). a3_smoke add-on restaged from atn-mods
         (b37ef56c), build\attila64_plugin = merged fd4d700b. F7 not re-run at the merge (p8b6_ ran 5 / 5 on the GPU;
-        nothing in the merge changes the add-on since): it runs in the batch.
+        nothing in the merge changes the add-on since): it runs in the batch. S5e s5e_ (Fable 5.2 Medium, est 40 / 80; worktree s5e_1127 from
+        f81a17313; rt_port_64.md R2.4 + ATN's addendum: key 2 = Low's 1 cascade as a hidden test value if clean;
+        plugin main.cpp / hooks.hpp / sites.h + twattila addon.cpp; ELF expect test + controls, gated x2, unit
+        shadows x2, defaults, F7 cases built only) STARTED 20:53. The sprite fix waits behind it (addon.cpp).
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
