@@ -731,7 +731,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also ... | coord (batch prep) ATN 20:3x: 'You are allowed to look at hi
 - X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN pfx_ DONE 21:05 (Fable 5
 - S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 d ... | the next attila64_plugin_link
-- E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | coord (R3's a64_ab writer) SPRITES NEED A CAMERA fix spf_ (O
+- E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | the W-H2 fix round after reviews
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
@@ -18432,7 +18432,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         park it until the GPU lane / Fable's reset.
         ATN 23:5x: 'I am going to use my fable reset now ... But let's not use fable until I tell you again. If
         possible continue the paused subagent with opus 5.5 high please.' -> fxh2o_ (Opus High, NEW agent: SendMessage
-        would resume fxh2_ on Fable) finishes W-H2 from the saved diff in the same worktree, est 45, STARTED 23:5x.
+        would resume fxh2_ on Fable) finishes W-H2 from the saved diff in the same worktree, est 45, STARTED 23:5x. DONE 00:16
+        (23 of 45 min; scratch\fxh2_\handback.md; fxh2_1127 pushed, not merged): 61cddaf88 X33 DLSS takes
+        shared->dlss_exposure, AutoExposure only at 0; 9b1d9b9a7 X34 Request.sharpness = fsr_sharpness, enableSharpening
+        = s > 0 (ours: no pass at 0, the SDK sharpens at 0; helper-side clamp dropped, AaSettings clamps); 692da593e X41
+        bridge v33 metres_per_unit (+ 4 free bytes, append-only, asserts x86 + x64), upscaler + FSR FG factor, Tales /
+        Expeditions / R.U.S.E. 0.01, others 1; 02bc1fd94 test switch RENODX_TW_FSR_DEBUG_VIEW (off = same flags); helper
+        x3 (100 headers same), gated amd64 14 add-ons + x86 3, tw_helper_lifetime x2 + control; proof job P written
+        (Tales FSR depth panel; harness arms), runs in the GPU lane after the batch; worktree links removed.
+        [ ] Open item (fxh2o_): WH3 campaign map = 0.1 units a metre (campaign_metre) -> FSR factor 10 there, needs a
+        per-request unit write (~10 min); other TW campaign maps unmeasured. Owner: the W-H2 fix round after reviews.
+        Reviews rfxh2_ (Opus xHigh) + ffxh2_ (Sonnet High), read-only, no builds (quiet PC for the gate), STARTED 00:17.
         ATN: 'for game runs (Your AA test and the big batch) please make sure you don't waste tokens stopping
         subagents. Let them finish then run. Then we continue the order you suggested before' -> rule lines in
         all_plans section 0 + memory.
