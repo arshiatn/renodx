@@ -503,8 +503,9 @@ inline bool FindTweaks(std::span<tw::engine_tweaks::Option* const> options) {
 // start's restart-only values, Loader Frame Cap (`sol_frame_cap`), Shadow Map Size (`shadow_map_size`) and Faster Game
 // CPU Code (`faster_game_code`; these two while their row is offered: a hidden row's saved key stays) into ReShade.ini
 // [Attila64Plugin.Values], which the plugin reads at its init. A value is clamped to its slider's range first
-// (tweaks.h's, as the plugin checks: a hand-edited ReShade.ini may hold any slider value). Each key is read once, then written only when it differs, with one log line per write
-// (ReShade saves the file about 1 s later, at a present). Pending: a value whose next start differs from this start's
+// (tweaks.h's, as the plugin checks: a hand-edited ReShade.ini may hold any slider value). Each key is read once, then
+// written only when it differs, with one log line per write (ReShade saves the file about 1 s later, at a present).
+// Pending: a value whose next start differs from this start's
 // (the bits it applied, else the default; a key it refused or did not apply: always), and each of the three rows against
 // the key this start read.
 inline void MirrorRestartValues(bool sol_frame_cap, int shadow_map_size, bool faster_game_code) {
@@ -606,7 +607,8 @@ inline void MirrorRestartValues(bool sol_frame_cap, int shadow_map_size, bool fa
   if ((RowsOffered() & plugin::RowBit(plugin::ROW_GAME_CODE)) != 0) {
     if (!std::exchange(internal::game_code_read, true)) {
       // As the plugin reads it (GetPrivateProfileIntW): absent or empty, the default (on); else a leading decimal or
-      // 0x hex number, none (text): 0.
+      // 0x hex number, none (text): 0. Other hand edits (`+1`, a number past int, leading spaces) may read otherwise
+      // here; they are not plain decimal numbers, so they stay unmirrored and the row's 0 / 1 is written back.
       bool on_in_file = (plugin::FASTER_GAME_CODE_DEFAULT != 0);
       internal::game_code_mirrored = plugin::FASTER_GAME_CODE_DEFAULT;
       std::array<char, 16> text = {};

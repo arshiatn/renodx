@@ -1166,7 +1166,7 @@ int main(int argc, char** argv) {
           "written again, one line per write, its own pending flag in both directions, left alone while its row is not "
           "offered; the detach resets the mirror and keeps this start's key\n");
       std::printf(
-          "7f scale rows:a scale stored on a change, its bit while not neutral and its row offered (not offered: none; "
+          "7f scale rows: a scale stored on a change, its bit while not neutral and its row offered (not offered: none; "
           "grass 19-21 by the grass row alone, campaign trees 18, sprites 22-23, a sprite scale not finite and above 0 sent as 0), "
           "one line per change of the bits, nothing on a v1 "
           "block; notices once per new bit; "
