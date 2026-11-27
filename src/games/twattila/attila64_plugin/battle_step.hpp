@@ -2814,15 +2814,16 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
               && std::is_trivially_destructible_v<ContactSlot> && std::is_trivially_destructible_v<ContactCells>);
 
 // Whether the game's code and table entries the contact split's reasoning is about are the ones read: every range of
-// CONTACT_RANGES, then the entries' chain. The first that is not gets the row's one line: a range's start and
+// CONTACT_RANGES, then the entries' chain. The first that is not gets the row's game-code line: a range's start and
 // the offset of its first 16-byte block whose check word differs (the last block if none does), or an entry's table
 // and slot. The 64-bit values decide; the check words only name the place. Ours: a range's masked bytes are read as zero
 // whatever they hold: another patcher's known spots, each with its reason at CONTACT_MASKS.
 // Ours (the pin; ATN 11-27, so that the log alone says what changed): a pinned mask's own bytes must hash to one of its
 // allowed values, the two contents the row's reasoning was checked for. With anything else there the row is off as
-// for any other miss, and every such mask gets its own line where the rest of its range is the game's (in a range
-// that differs it is the game's code that is not the one read, not another mod's spot). The lines are written by the
-// first check that misses only.
+// for any other miss, and every such mask gets its own line where the rest of its range is the game's.
+// deviation: from one line per refused mask, because in a range that differs it is the game's code that is not the
+// one read, not another mod's spot (memory that is not the game's at all would name all 18). The lines are written
+// by the first check that misses only.
 [[nodiscard]] static bool CheckContactCode(const LoaderApi& loader) noexcept {
   const bool log_misses = !contact.code_line_logged;
   bool differs = false;
@@ -2894,7 +2895,9 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
     }
   }
   const bool code_read = !differs && !other_mod;
-  contact.code_line_logged = contact.code_line_logged || !code_read;
+  if (!code_read) {
+    contact.code_line_logged = true;
+  }
   contact.other_mod = other_mod && !differs;
   contact.code_read.store(code_read, std::memory_order_relaxed);
   return code_read;

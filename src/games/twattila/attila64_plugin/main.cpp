@@ -90,7 +90,8 @@ struct EngineRow {
   uint32_t lane_shift = 0;
   std::atomic<bool>* code_read = nullptr;
   bool (*check_code)(const LoaderApi& loader) noexcept = nullptr;
-  const bool* other_mod = nullptr;  // set by a check whose only misses were another mod's known spots
+  // Ours (ATN 11-27): set by a check whose only misses were another mod's known spots.
+  const bool* other_mod = nullptr;
 };
 inline constexpr std::array<EngineRow, 2> ENGINE_ROWS = {{
     {.row = ROW_BATTLE_STEP,
@@ -105,7 +106,7 @@ inline constexpr std::array<EngineRow, 2> ENGINE_ROWS = {{
      .check_code = &battle_step::CheckContactCode,
      .other_mod = &battle_step::contact.other_mod},
 }};
-// The lane of an engine row whose code check did not hold, at init or at the game's start.
+// Ours (ATN 11-27): the lane of an engine row whose code check did not hold, at init or at the game's start.
 EngineState RefusedLane(const EngineRow& engine) noexcept {
   if (engine.other_mod != nullptr && *engine.other_mod) return ENGINE_OTHER_MOD;
   return ENGINE_CODE_DIFFERS;

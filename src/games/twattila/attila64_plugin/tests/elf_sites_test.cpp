@@ -548,10 +548,9 @@ int wmain(int argc, wchar_t** argv) {
     if (before_init) {
       change_windows();
     }
-    const uint32_t split_at_init = (before_init ? ENGINE_OTHER_MOD : ENGINE_OFF);
     Expect(pinned.init != nullptr && pinned.init(&api) == 0
                && pinned.block->engine_status.load()
-                      == ((uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT) | (split_at_init << ENGINE_SPLIT_SHIFT)),
+                      == ((uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT) | (uint32_t{(before_init ? ENGINE_OTHER_MOD : ENGINE_OFF)} << ENGINE_SPLIT_SHIFT)),
            "pin: a copy's init, the contact split's lane 'another mod' with a window changed before it");
     if (pinned.init != nullptr) {
       if (!before_init) {

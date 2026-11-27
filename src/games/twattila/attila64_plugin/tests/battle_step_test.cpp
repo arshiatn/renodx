@@ -3101,18 +3101,41 @@ void RunContactByteChecks() {
            "pin: all 18 windows changed give 18 lines, one per window; a second check logs nothing");
     // The changed byte of the game's code lies behind every window: its line is the last.
     *at(CONTACT_RANGES.back().start) ^= 1;
+    // Whether the check's first or last line is the game-code line for that place; the line is taken out, so that
+    // names_windows can go over the rest.
+    const auto takes_game_code_line = [](CodeCheck* check, bool last, uint64_t address, uint32_t offset) {
+      char line[96];
+      std::snprintf(line, sizeof(line), CODE_DIFFERS_LINE, address, offset);
+      if (check->lines.empty() || (last ? check->lines.back() : check->lines.front()) != line) return false;
+      check->lines.erase(last ? check->lines.end() - 1 : check->lines.begin());
+      return true;
+    };
     CodeCheck both = CheckCode();
-    char line[96];
-    std::snprintf(line, sizeof(line), CODE_DIFFERS_LINE, uint64_t{CONTACT_RANGES.back().start}, 0u);
-    const bool differs_last = !both.lines.empty() && both.lines.back() == line;
-    if (differs_last) {
-      both.lines.pop_back();
-    }
-    Expect(differs_last && names_windows(both, windows) && !contact.other_mod,
+    Expect(takes_game_code_line(&both, true, CONTACT_RANGES.back().start, 0) && names_windows(both, windows) && !contact.other_mod,
            "pin: with a byte outside the windows changed too, the 18 lines and the game-code line; the row is off for the game's code");
     *at(CONTACT_RANGES.back().start) ^= 1;
+    // A changed table word instead (the ranges hold): the 18 lines, then that entry's game-code line, and the row is
+    // off for the game's code.
+    {
+      const battle_step::ContactEntry& entry = CONTACT_ENTRIES[CONTACT_ENTRIES.size() / 2];
+      *entry_word(entry) ^= 0x10;
+      CodeCheck with_entry = CheckCode();
+      Expect(takes_game_code_line(&with_entry, true, entry.vtable, entry.slot) && names_windows(with_entry, windows) && !contact.other_mod,
+             "pin: with a table word changed too, the 18 lines and that entry's game-code line; the row is off for the game's code");
+      *entry_word(entry) ^= 0x10;
+    }
     for (const ContactMask& mask : windows) {
       *at(mask.start + mask.size - 1) ^= 0x21;
+    }
+    // A byte of the first range and the last window: the range's line, then the window's, whose own range holds.
+    {
+      *at(CONTACT_RANGES[0].start) ^= 1;
+      *at(windows.back().start + 6) ^= 4;
+      CodeCheck early = CheckCode();
+      Expect(takes_game_code_line(&early, false, CONTACT_RANGES[0].start, 0) && names_windows(early, windows.last(1)) && !contact.other_mod,
+             "pin: a window in a range that holds gets its line also behind an earlier range that differs");
+      *at(windows.back().start + 6) ^= 4;
+      *at(CONTACT_RANGES[0].start) ^= 1;
     }
     // A window changed in a function whose other code is changed too: the game-code line alone, for that function.
     bool function_named = true;
