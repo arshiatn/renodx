@@ -17996,7 +17996,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         into Stage A b03587490, 11 fold points, ROW_BATTLE_STEP 12 / ROW_COUNT 13 (PK9's 11 kept), sites.h = the folded
         generator's output (21 sites; p8am_\gen\, install.sh not run yet), 4 test runs PASS, DLL 15947301, mutations
         59 / 60 caught + m55 equivalent. Re-check rp8am_ (Sonnet High) STARTED 18:13; then merge p8a_1127, coord runs
-        p8am_\gen\install.sh + the main-tree plugin test + gated build; then Stage B step 5 (Fable Medium). p1pt_ (Fable Medium) DONE 19:1x (31 of 20
+        p8am_\gen\install.sh + the main-tree plugin test + gated build; then Stage B step 5 (Fable Medium). wa3_ (Opus Medium
+        trial) STARTED 18:15: PK8 W-A3 'Faster Battle Step' add-on row (link.hpp + addon.cpp, P9-4's pattern incl.
+        rp94_ MUST-1) on wa3_1127 = p8a_1127 + atn-mods, plus the F7 cases for P9-4 + W-A3 (built only); coord runs F7
+        after it as one GPU-lock job (ATN 18:15: GPU OK for CPU work). Note: HANDOFF clock stamps 19:xx above were an
+        hour ahead; real times from 18:15 on. p1pt_ (Fable Medium) DONE 19:1x (31 of 20
         min; scratch\p1pt_\handback.md; p1pt_1127 4b69a2f19 from b4f7442fa): ClearRenderThread shared by Release +
         the refused-write path, an ended render thread = CORE_NO_THREAD; tests 356 -> 362 (refused default write via a
         test-only import-slot swap, release with a refused read / an ended thread, full yield_line); only the ended-
