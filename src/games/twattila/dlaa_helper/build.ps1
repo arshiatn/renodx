@@ -191,7 +191,7 @@ if ($rtxdi_found -and $env:RENODX_TW_REFERENCE_BUILD) {
   Dxc -nologo -T cs_6_9 -E main -O3 -D REUSE -D REUSE_TESTS -D REUSE_RTXDI -D OPACITY_MICROMAPS -I "$rtxdi\Include" -Fh "$out\rt_reuse_rtxdi_omm.h" -Vn RT_REUSE_RTXDI_OMM "$PSScriptRoot\rt_path.cs_6_5.hlsl"
 }
 foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA'), @('rt_compact', 'RT_COMPACT'), @('rt_place', 'RT_PLACE'),
-                      @('rt_omm_uvs', 'RT_OMM_UVS'), @('rt_sway', 'RT_SWAY'))) {
+                      @('rt_omm_uvs', 'RT_OMM_UVS'), @('rt_sway', 'RT_SWAY'), @('rt_probe', 'RT_PROBE'))) {
   Dxc -nologo -T cs_6_5 -E main -O3 -Fh "$out\$($shader[0]).h" -Vn $shader[1] "$PSScriptRoot\$($shader[0]).cs_6_5.hlsl"
 }
 foreach ($shader in @(@('rt_cache_fill', 'RT_CACHE_FILL'), @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'))) {
