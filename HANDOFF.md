@@ -1030,7 +1030,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8bv_ -> coord (implementers, see 08:3x HAND-BACKS)
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8bf_ -> coord (ATN's census answer)
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
@@ -18208,7 +18208,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Setter: run_pkg_580efafeb5765d81 has CacheAFFINITY, run_rs_pkg_580efafeb5765d81 MISSING (pairs 17-26). W4 is absorbed
         into P6a1 (R9: ep1, P1, S1) since ATN's ep1 answer is still open; ATN's apply of the patch = his yes. Waves: P6a1
         (a64_ab copy + patch, 65) / P6b (p0\analyze_d0.py + tests + golden json, 35) / P6c (wpr\*, 45) parallel, Rv1 Opus xHigh
-        20, ATN applies, P6a2 35, Rv2 Opus xHigh + Sonnet High 30. Map 3.3 'ep8vfx' -> ep1cvfx fixed. ALL FIX ROUNDS DONE 08:3x (Stage B Rev 3 last; its verify p8bv_ STARTED 08:4x). Owner: p8bv_ -> coord (implementers, see 08:3x HAND-BACKS)
+        20, ATN applies, P6a2 35, Rv2 Opus xHigh + Sonnet High 30. Map 3.3 'ep8vfx' -> ep1cvfx fixed. ALL FIX ROUNDS DONE 08:3x (Stage B Rev 3 last; its verify p8bv_ STARTED 08:4x). p8bv_ DONE 08:33 (11 min; testbin\scratch\p8bv_\verify.md): Rev 3 GO WITH TEXT FIXES, no design error; F1 BEFORE 1a = W4a's second half by a FAST-roots-only closure run or an edge check (light_census.py's 7 roots hide an edge from FAST code to 0x95c090 / 0xc516d0 / 0xb409e0); F2-F11 wording / numbers / cites (F4 T-B2 bound, F5 worst frame, F6 CPU count, F7 :32, F10 14-way). 1b could start now, 1a after F1; both still wait on ATN's census go. Rev 3a by p8bf_ (resumed) STARTED 08:3x. Owner: p8bf_ -> coord (ATN's census answer)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
