@@ -975,11 +975,11 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
 - STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | PK8 Stage B designer
 - CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | coord / ATN (2048 vs 2304 slots)
-- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | coord (W3 start
+- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | l2bw3_ / next harness writer (S1 / S2 tooling)
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
-- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | coord (FSR fix after rri_) / ATN (XeSS yes / no)
+- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | aff_ (FSR) / ATN (XeSS yes / no)
 - RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | coord (briefs)
 - A/B LOOKS WAIT (ATN 11-27): every look / A/B check (AA feed, O2 thin shadows at ... | ATN (end of plans)
 - GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds a ... | coord
@@ -17707,7 +17707,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         closes once G1s passes. REVIEW (rrdr_ 11-27, designs\rr_before_tonemap_below100_review.md): GO WITH CHANGES; add-on part D1-D6 correct; MUSTs in
         the harness / gate: jitter sign i + 0.5 - j, nearest sampling, + 33 %, the 100 % control in the same hold (old vs new
         harness); G1s 48 runs + G1b 6, ~52 min GPU, est 140-165 min. rri_ STARTED 06:5x (branch rrb100_1127; addon.cpp step
-        last, after c8b0_). rri_ DONE 08:17 (box '11-27 08:3x HAND-BACKS'). rrf_ (Sonnet High) GO, no MUST (S1 README:20-21 old 'At 100% only' line -> fix at merge; S2 G1b in HANDOFF; NIT: keep S3 / R5 open). rrr_ (Opus xHigh) GO, no MUST (testbin\scratch\rrr_\review.md; S1 table_g1s.py marks M4 FAIL once raw files are deleted + the M1 line; S2 gpu_job_g1s.ps1:44-47 logs blank exit codes, add $null = $process.Handle, template too; S3 the 100 % rows aren't like for like vs 50 %, the 1.5x bloom flicker = the 8 x 8 cap (~sqrt 2, ~2.1x at 33 %); G2: 33 % is the scale to watch; G3s is not a merge gate: the row is off by default). MERGED 1df65fee1 (--no-ff) + README fix a308505d7 (rrf_ S1); twattila amd64 + x86 gated builds on the merge exit 0 (61 warnings, as before). L2B W3 next. Owner: coord (W3 start; S1 / S2 tooling to the next harness writer)
+        last, after c8b0_). rri_ DONE 08:17 (box '11-27 08:3x HAND-BACKS'). rrf_ (Sonnet High) GO, no MUST (S1 README:20-21 old 'At 100% only' line -> fix at merge; S2 G1b in HANDOFF; NIT: keep S3 / R5 open). rrr_ (Opus xHigh) GO, no MUST (testbin\scratch\rrr_\review.md; S1 table_g1s.py marks M4 FAIL once raw files are deleted + the M1 line; S2 gpu_job_g1s.ps1:44-47 logs blank exit codes, add $null = $process.Handle, template too; S3 the 100 % rows aren't like for like vs 50 %, the 1.5x bloom flicker = the 8 x 8 cap (~sqrt 2, ~2.1x at 33 %); G2: 33 % is the scale to watch; G3s is not a merge gate: the row is off by default). MERGED 1df65fee1 (--no-ff) + README fix a308505d7 (rrf_ S1); twattila amd64 + x86 gated builds on the merge exit 0 (61 warnings, as before). L2B W3 l2bw3_ (Opus High, branch l2bw3_1127 from dd66a5300: link + addon.cpp row) STARTED 08:5x. Owner: l2bw3_ / next harness writer (S1 / S2 tooling)
         - [x] gts_ SWITCH B DONE (11-26, scratch\gts_\switch_b_changed.txt, backups .bak_gts / .bak_gts2): DI_FRAMES digest,
         DI_E option 2 (Y runs get X's class maps; 48 real E files: digest sha256 = .bin, 54 energy lines identical in 3 forms,
         controls fail), worker-thread hashing, ProbeMean from digests; E file 199 MB -> ~57 KB (+2 s a job). Harness
@@ -17757,7 +17757,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Upscaler test 100 / 67 %: FSR linear within 3 % (today 15-20 % too bright); XeSS linear 6-12 % darker on bars /
         texture. Recommendation: FSR linear = a bug fix (better on every row); XeSS linear with the u1 cost = ATN's call. The
         fix (not made): drop the !Upscales(method) exclusion in anti_aliasing.hpp Apply + re-run tw_aa_frame_gamma; it waits
-        for rri_ (anti_aliasing.hpp's writer now). Owner: coord (FSR fix after rri_) / ATN (XeSS yes / no)
+        for rri_ (anti_aliasing.hpp's writer now). FSR fix aff_ (Opus High, branch aff_1127 from dd66a5300, anti_aliasing.hpp; XeSS untouched; GPU test job prepared only while 2 agents wait) STARTED 08:5x. Owner: aff_ (FSR) / ATN (XeSS yes / no)
         - [x] rrbi_ RUNNER FIX (coord 11-26): gpu_job_g1.ps1 did not clear HARNESS_SR between runs (aaf2_'s first RR arms
         inherited preset M; set aside in results_invalid\, re-run alone); now in its clear list (backup .bak_coord1126).
         aaf_'s rows unaffected (every line set it). Owner: done
