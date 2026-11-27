@@ -383,6 +383,20 @@ static void CapChangeLine(State* state, std::span<char> line) noexcept {
   return DRIFT_NONE;
 }
 
+// A render thread that holds its core is cleared, by the step thread's rule, where its core is given up (a release,
+// and a reserve whose write Windows refused). ours: a clear that did not happen is no failure: a thread that ended is
+// published as CORE_NO_THREAD, any other gets one line per session. Either line goes into `render_line`.
+static void ClearRenderThread(State* state, std::span<char> render_line) noexcept {
+  if (state->render_state != CORE_ACTIVE || ClearIfOurs(state->render_thread, state->render_ids)) return;
+  if (WaitForSingleObject(state->render_thread, 0) == WAIT_OBJECT_0) {
+    RenderOutcome(state, CORE_NO_THREAD, ERROR_SUCCESS, render_line);
+  } else if (!state->render_clear_logged) {
+    state->render_clear_logged = true;
+    std::snprintf(render_line.data(), render_line.size(),
+                  "renodx_attila64: render core: the render thread %lu keeps the CPU sets it has", state->render_tid);
+  }
+}
+
 // Ends a reserve, under the lock: what was read is put back only while the default is still the one written, the
 // step's thread is cleared only while it still holds exactly the core, and `next` is published. A changed default or
 // affinity makes a release a yield; a refused restore makes it a failure (both end the feature for the session). The
@@ -395,15 +409,7 @@ static void Release(State* state, CoreState next, DWORD error, const char* reaso
   if (state->timer != nullptr) {
     SetThreadpoolTimer(state->timer, nullptr, 0, 0);
   }
-  if (state->render_state == CORE_ACTIVE && !ClearIfOurs(state->render_thread, state->render_ids)) {
-    if (WaitForSingleObject(state->render_thread, 0) == WAIT_OBJECT_0) {
-      RenderOutcome(state, CORE_NO_THREAD, ERROR_SUCCESS, render_line);
-    } else if (!state->render_clear_logged) {
-      state->render_clear_logged = true;
-      std::snprintf(render_line.data(), render_line.size(),
-                    "renodx_attila64: render core: the render thread %lu keeps the CPU sets it has", state->render_tid);
-    }
-  }
+  ClearRenderThread(state, render_line);
   const Drift drift = ReadDrift(*state);
   if (drift != DRIFT_DEFAULT
       && SetProcessDefaultCpuSets(GetCurrentProcess(),
@@ -648,14 +654,7 @@ static void OnStepStart(Block* shared, const LoaderApi& api) noexcept {
           }
           if (SetProcessDefaultCpuSets(GetCurrentProcess(), state.written.ids.data(), state.written.count) == FALSE) {
             const DWORD error = GetLastError();
-            // Release's rule for the render thread: a clear that did not happen is a line.
-            if (state.render_state == CORE_ACTIVE && !ClearIfOurs(state.render_thread, state.render_ids)
-                && !state.render_clear_logged) {
-              state.render_clear_logged = true;
-              std::snprintf(render_line, sizeof(render_line),
-                            "renodx_attila64: render core: the render thread %lu keeps the CPU sets it has",
-                            state.render_tid);
-            }
+            ClearRenderThread(&state, render_line);
             refuse(CORE_FAILED, error, "the CPU set write");
           } else {
             state.reserved = true;

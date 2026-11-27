@@ -9,7 +9,7 @@
 // the render part with a "render" thread of its own (both cores in one reserve, each way it ends alone, the RenderCore
 // key, the two bits switched live).
 // The live cases need a machine the pick accepts (8 cores with two logical CPUs each); elsewhere they are left out and
-// the last line says so.
+// the last line says so. A write of the default that Windows refuses is made through this exe's own import slot.
 // battle_core_test.exe; exit code = failures.
 
 #include <windows.h>
@@ -20,11 +20,14 @@
 #include <bit>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <functional>
 #include <mutex>
 #include <shared_mutex>
 #include <span>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "../battle_core.hpp"
@@ -223,6 +226,17 @@ bool WaitForLine(const char* text) {
     Sleep(10);
   }
   return LinesWith(text) != 0;
+}
+
+// This exe's import of SetProcessDefaultCpuSets is swapped for this (battle_core.hpp is compiled into the exe, so its
+// writes come here too): while `before_refused_write` is set, the next write runs it and is refused as Windows would.
+BOOL(WINAPI* real_set_process_default)(HANDLE, const ULONG*, ULONG) = nullptr;
+std::function<void()> before_refused_write;
+BOOL WINAPI RefusableSetProcessDefault(HANDLE process, const ULONG* ids, ULONG count) {
+  if (!before_refused_write) return real_set_process_default(process, ids, count);
+  std::exchange(before_refused_write, nullptr)();
+  SetLastError(ERROR_ACCESS_DENIED);
+  return FALSE;
 }
 
 bool Reserved() {
@@ -428,6 +442,32 @@ int wmain() {
     std::erase_if(ids, [&](ULONG id) { return std::ranges::find(removed, id) != removed.end(); });
     return ids;
   };
+
+  // The import slot is found by its name: the lookup table beside each DLL's slots holds the names.
+  auto* const image = reinterpret_cast<uint8_t*>(GetModuleHandleW(nullptr));
+  const IMAGE_DATA_DIRECTORY& imports =
+      reinterpret_cast<const IMAGE_NT_HEADERS*>(image + reinterpret_cast<const IMAGE_DOS_HEADER*>(image)->e_lfanew)
+          ->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+  for (const auto* dll = reinterpret_cast<const IMAGE_IMPORT_DESCRIPTOR*>(image + imports.VirtualAddress);
+       real_set_process_default == nullptr && dll->OriginalFirstThunk != 0; ++dll) {
+    const auto* name = reinterpret_cast<const IMAGE_THUNK_DATA*>(image + dll->OriginalFirstThunk);
+    for (auto* slot = reinterpret_cast<IMAGE_THUNK_DATA*>(image + dll->FirstThunk); name->u1.AddressOfData != 0; ++name, ++slot) {
+      if (IMAGE_SNAP_BY_ORDINAL(name->u1.Ordinal)
+          || std::strcmp(reinterpret_cast<const IMAGE_IMPORT_BY_NAME*>(image + name->u1.AddressOfData)->Name,
+                         "SetProcessDefaultCpuSets")
+                 != 0) {
+        continue;
+      }
+      real_set_process_default = reinterpret_cast<decltype(real_set_process_default)>(slot->u1.Function);
+      DWORD protection = 0;
+      VirtualProtect(slot, sizeof(*slot), PAGE_READWRITE, &protection);
+      slot->u1.Function = reinterpret_cast<ULONGLONG>(&RefusableSetProcessDefault);
+      VirtualProtect(slot, sizeof(*slot), protection, &protection);
+      break;
+    }
+  }
+  const bool write_swapped = real_set_process_default != nullptr;
+  Expect(write_swapped, "seam: this exe's import of SetProcessDefaultCpuSets is swapped");
 
   battle_core::watchdog_ms = 50;
   battle_core::release_after_ms = 600000;
@@ -641,9 +681,18 @@ int wmain() {
     const auto cpu_of = [&](ULONG id) {
       return std::ranges::find_if(cpus, [&](const SYSTEM_CPU_SET_INFORMATION& entry) { return entry.CpuSet.Id == id; })->CpuSet;
     };
-    const char* const yield_line = "render core: stopped: another program changed the render thread's CPU sets";
+    const char* const yield_line =
+        "render core: stopped: another program changed the render thread's CPU sets, left as they are";
     const char* const refused_line = "render core: stopped: Windows refused";
     const char* const kept_line = "render core: the render thread";
+    const char* const ended_line = "render core: not used: the render thread has ended";
+    const char* const refused_write_line = "battle core: stopped: Windows refused (the CPU set write, error 5)";
+    const auto end_thread = [](RenderThread* ending) {
+      ending->command = RENDER_NOTHING;
+      ending->quit = true;
+      ReleaseSemaphore(ending->go, 1, nullptr);
+      ending->thread.join();
+    };
 
     // The key 1 sets the bit; the thread is captured once; one reserve takes both cores.
     new_session(1);
@@ -834,6 +883,79 @@ int wmain() {
                && Selected(render_handle) == render_core_ids && ProcessDefault() == every_id && LinesWith(kept_line) == 1
                && LinesWith("Windows refused") == 0,
            "release: a refused clear of the render thread is logged and is not a failure");
+    // The same when Windows refuses the read of the render thread's sets (a handle without that right).
+    new_session(1);
+    capture_and_step();
+    {
+      HANDLE without_query = nullptr;
+      DuplicateHandle(GetCurrentProcess(), render_handle, GetCurrentProcess(), &without_query,
+                      THREAD_SET_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, 0);
+      // The bits under the same lock: a watchdog tick between the two would end the render part for the refused read.
+      const std::scoped_lock lock(battle_core::state.mutex);
+      CloseHandle(battle_core::state.render_thread);
+      battle_core::state.render_thread = without_query;
+      shared.core_wanted.fetch_and(~(CORE_BATTLE | CORE_RENDER));
+    }
+    step(0);
+    Expect(WaitForLine(kept_line) && StatusField(CORE_STATE_SHIFT) == CORE_WAITING && RenderField(CORE_STATE_SHIFT) == CORE_WAITING
+               && Selected(render_handle) == render_core_ids && ProcessDefault() == every_id && LinesWith(kept_line) == 1
+               && LinesWith("Windows refused") == 0,
+           "release: a refused read of the render thread's sets is logged and is not a failure");
+    // A render thread that ended while it held its core: the release says that, not that it keeps its sets.
+    new_session(1);
+    {
+      RenderThread ended;
+      ended.Run(RENDER_CAPTURE);
+      step(0);
+      const bool held = RenderField(CORE_STATE_SHIFT) == CORE_ACTIVE;
+      {
+        // Under the lock: the watchdog sees the ended thread only together with the bits.
+        const std::scoped_lock lock(battle_core::state.mutex);
+        end_thread(&ended);
+        shared.core_wanted.fetch_and(~(CORE_BATTLE | CORE_RENDER));
+      }
+      step(0);
+      Expect(held && WaitForLine(ended_line) && StatusField(CORE_STATE_SHIFT) == CORE_WAITING
+                 && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD && ProcessDefault() == every_id && LinesWith(ended_line) == 1
+                 && LinesWith(kept_line) == 0,
+             "release: a render thread that ended is recorded as ended, with no line about its sets");
+    }
+
+    if (write_swapped) {
+      // Windows refuses the reserve's write of the default: the battle part fails for the session with no second try,
+      // the default stays, and the render thread (selected before the write) is cleared again.
+      new_session(1);
+      render.Run(RENDER_CAPTURE);
+      bool selected_at_write = false;
+      before_refused_write = [&] { selected_at_write = Selected(render_handle) == render_core_ids; };
+      step(0);
+      step(0);
+      Expect(selected_at_write && StatusField(CORE_STATE_SHIFT) == CORE_FAILED
+                 && (shared.core_status.load() >> CORE_ERROR_SHIFT) == ERROR_ACCESS_DENIED
+                 && RenderField(CORE_STATE_SHIFT) == CORE_WITH_BATTLE && !Reserved() && Selected(render_handle).empty()
+                 && holders(core) == 0 && ProcessDefault() == every_id && LinesWith(refused_write_line) == 1
+                 && LinesWith("render core:") == 0,
+             "refused write: the battle part fails once, the default stays, the render thread is cleared");
+      // With another program's sets on the render thread by then: they stay, with the line.
+      new_session(1);
+      render.Run(RENDER_CAPTURE);
+      before_refused_write = [&] { SetThreadSelectedCpuSets(render_handle, own_rule.data(), 1); };
+      step(0);
+      Expect(StatusField(CORE_STATE_SHIFT) == CORE_FAILED && RenderField(CORE_STATE_SHIFT) == CORE_WITH_BATTLE
+                 && Selected(render_handle) == own_rule && ProcessDefault() == every_id && LinesWith(refused_write_line) == 1
+                 && LinesWith(kept_line) == 1,
+             "refused write: a render thread with another program's sets is left alone, with its line");
+      // With a render thread that ended by then: recorded as ended, not as a thread that keeps its sets.
+      new_session(1);
+      RenderThread ended;
+      ended.Run(RENDER_CAPTURE);
+      before_refused_write = [&] { end_thread(&ended); };
+      step(0);
+      Expect(StatusField(CORE_STATE_SHIFT) == CORE_FAILED && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD
+                 && ProcessDefault() == every_id && LinesWith(refused_write_line) == 1 && LinesWith(ended_line) == 1
+                 && LinesWith(kept_line) == 0,
+             "refused write: a render thread that ended is recorded as ended, with no line about its sets");
+    }
 
     // No render thread, and one that ended before the reserve: the battle core as without the render part.
     new_session(1);
@@ -941,10 +1063,7 @@ int wmain() {
 
     new_session(-1);
     battle_core::render_busy_after_ms = 1000;
-    render.command = RENDER_NOTHING;
-    render.quit = true;
-    ReleaseSemaphore(render.go, 1, nullptr);
-    render.thread.join();
+    end_thread(&render);
 
     Expect(last_error_kept, "every step left the thread's last error as it was");
   }
