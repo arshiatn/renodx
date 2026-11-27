@@ -975,7 +975,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
 - STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | PK8 Stage B designer
 - CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | coord / ATN (2048 vs 2304 slots)
-- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | rri_
+- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | rrr_ / rrf_ (final review) -> coord (merge, then L2B W3)
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
@@ -995,9 +995,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - OPTIONAL (a): a fresh CPU-baked grass recording (one 32-bit Attila start; its ru ... | ATN (yes / no) -> game batch
 - sdku__handback.md:102 calls the CPU baker the default (the GPU baker is; omr_ ha ... | coord (correct the note, low)
 - pdi4c_ NOT DONE (a): no per-pass Nsight split of the DI passes (pdi4c_handback.m ... | pdf_ if inside its budget, else the next DI agent
-- pdi4c_ NOT DONE (b): E6 bias modes 0 vs 3 not separated (pdi4c_handback.md:407). ... | pdf_ / next DI agent
-- pdi4c_ NOT DONE (c): S1 BASIC vs RAY_TRACED only on the fused pass, not the spli ... | pdf_ / next DI agent
-- pdi4c_ NOT DONE (d): no mode-3 DI run (pdi4c_handback.md:409-410). Owner: pdf_ / ... | pdf_ / next DI agent
 - pdi4c_ NOT DONE (e): the forced recording builds were not picture-checked (handb ... | pdf_ / next DI agent
 - pdi4c_ NOT DONE (f): F2, the fused spatial-only W4, not run (pdi4c_handback.md:3 ... | pdf_ / next DI agent
 - pdi4c_ NOT DONE (g): NV1 needs a foliage-heavy recording (pdi4c_handback.md:96 / ... | pdf_ / next DI agent
@@ -1014,10 +1011,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s p ... | ATN (yes / wait)
 - SMOKE SPHERES S3 review (Opus xHigh, smr_ STARTED 07:0x) of designs\smoke_sphere ... | coord (after sms_)
 - SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | ATN (rule lines) -> game batch
-- PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | coord (after pdf_)
+- PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | ptf_
 - OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; th ... | ATN (keep / remove)
-- HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + ... | next harness writer after rri_ (m1 implementer) with a befor
-- M1 / 2.9a DESIGN DONE (m1d_ 11-27, round_notes\designs\m1_29a_redesign.md): harn ... | m1 implementer (Opus High) after rri_ frees tw_rt_harness
+- HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + ... | m1i_ (STARTED 08:3x) with a before / after note
+- M1 / 2.9a DESIGN DONE (m1d_ 11-27, round_notes\designs\m1_29a_redesign.md): harn ... | m1i_
 - M1 D1 ROWS (m1d_): two proposed all_modes.sh rows (the file belongs to the h4k_ ... | coord (with the m1 implementer)
 - LIGHT BOUNCE FAILURE PATH (m1d_): a bounce that fails after a dark trace (helper ... | m1 implementer (R4 number) -> ATN (fix or accept)
 - LIGHT BOUNCE RESOLVE ACROSS A CARRY SWITCH (m1d_): light_bounce.hpp:709-717 (var ... | ATN (eye, after the plans)
@@ -1033,11 +1030,13 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8bf_ -> coord (map edits, then implementers)
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8bv_ -> coord (implementers, see 08:3x HAND-BACKS)
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
 - PK6-64 WAVE 1 (Opus High, pk6_tooling_64.md R11) STARTED 08:1x: p6a1_ = a64_ab.p ... | p6a1_ / p6b_ / p6c_ -> coord (Rv1)
+- 11-27 08:3x HAND-BACKS (coord). P1p DONE (p1p_, Fable 5.2 Medium, ~20 of 60 min; ... | coord (reviews -> merges
+- HARNESS SCENE DROP + LEARNED LIGHT (pdf_ 11-27, new): di_mode.hpp Observe builds ... | next harness writer after m1i_ (di_mode
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17706,7 +17705,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         closes once G1s passes. REVIEW (rrdr_ 11-27, designs\rr_before_tonemap_below100_review.md): GO WITH CHANGES; add-on part D1-D6 correct; MUSTs in
         the harness / gate: jitter sign i + 0.5 - j, nearest sampling, + 33 %, the 100 % control in the same hold (old vs new
         harness); G1s 48 runs + G1b 6, ~52 min GPU, est 140-165 min. rri_ STARTED 06:5x (branch rrb100_1127; addon.cpp step
-        last, after c8b0_). Owner: rri_
+        last, after c8b0_). rri_ DONE 08:17 (box '11-27 08:3x HAND-BACKS'). Owner: rrr_ / rrf_ (final review) -> coord (merge, then L2B W3)
         - [x] gts_ SWITCH B DONE (11-26, scratch\gts_\switch_b_changed.txt, backups .bak_gts / .bak_gts2): DI_FRAMES digest,
         DI_E option 2 (Y runs get X's class maps; 48 real E files: digest sha256 = .bin, 54 energy lines identical in 3 forms,
         controls fail), worker-thread hashing, ProbeMean from digests; E file 199 MB -> ~57 KB (+2 s a job). Harness
@@ -17848,10 +17847,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         the switch-only helper variants + add-on SM6 shaders need a listing diff. DONE by omv_ (above). Owner: done
         - [ ] pdi4c_ NOT DONE (a): no per-pass Nsight split of the DI passes (pdi4c_handback.md:406). Owner: pdf_ if inside its
         budget, else the next DI agent
-        - [ ] pdi4c_ NOT DONE (b): E6 bias modes 0 vs 3 not separated (pdi4c_handback.md:407). Owner: pdf_ / next DI agent
-        - [ ] pdi4c_ NOT DONE (c): S1 BASIC vs RAY_TRACED only on the fused pass, not the split one (pdi4c_handback.md:408).
-        Owner: pdf_ / next DI agent
-        - [ ] pdi4c_ NOT DONE (d): no mode-3 DI run (pdi4c_handback.md:409-410). Owner: pdf_ / next DI agent
+        - [x] pdi4c_ NOT DONE (b): E6 bias modes 0 vs 3 not separated (pdi4c_handback.md:407). DONE pdf_ 11-27: OFF 0.9695, RAY_TRACED 0.9986
+        - [x] pdi4c_ NOT DONE (c): S1 BASIC vs RAY_TRACED only on the fused pass, not the split one (pdi4c_handback.md:408).
+        DONE pdf_ 11-27: BASIC 0.9699 vs RAY_TRACED 0.9986; BASIC / OFF lose 0.67 % on lit pixels too (not DiStore's rounding)
+        - [x] pdi4c_ NOT DONE (d): no mode-3 DI run (pdi4c_handback.md:409-410). DONE pdf_ 11-27: rt_di_ok pass, m3_di vs mode-0 bits 0.9986
         - [ ] pdi4c_ NOT DONE (e): the forced recording builds were not picture-checked (handback_gpu1126.md:102). Owner: pdf_ /
         next DI agent
         - [ ] pdi4c_ NOT DONE (f): F2, the fused spatial-only W4, not run (pdi4c_handback.md:398). Owner: pdf_ / next DI agent
@@ -17970,7 +17969,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ~45 min after pdf_ frees
         rt_d3d12.hpp; gate = 4K harness first hits PTLAS on vs off + an active-instance assert. Then the O-PTLAS stall replay
         (RENODX_TW_PTLAS=1, headless Nsight + DRED); the C2 update-op stall test (can stall 4-5 s) only with ATN home. 'Retry at
-        ~1 ms TLAS' is not met (0.10-0.5 ms measured), U12b stays parked. Owner: coord (after pdf_)
+        ~1 ms TLAS' is not met (0.10-0.5 ms measured), U12b stays parked. ptf_ (Opus High, branch ptf_1127) STARTED 08:3x. Owner: ptf_
         - [ ] OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; the 80 ms (rt_scene.hlsli:189) was the
         10-29 harness with every ray kind meeting the smoke (instance mask alone 81.5 -> 7.9 ms); 14->138 / 6->143 ms (:217-218)
         = smoke as candidates of the main sun + fog rays, fixed in helper63 321434abd. Dead MG code stays in rt_d3d12.hpp
@@ -17978,12 +17977,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + 0.5 + j)/s - 0.5
         (tw_rt_harness.cpp:3981-3982); the game and the upscaler test use i + 0.5 - j (anti_aliasing.hpp:444-447 / 1131-1134;
         tw_rt_harness.cpp:232-234 / 326): the picture shakes 2j against what RR is told. A fix changes that path's old baselines
-        (rrbi_ rows). Owner: next harness writer after rri_ (m1 implementer) with a before / after note
+        (rrbi_ rows). Owner: m1i_ (STARTED 08:3x) with a before / after note
         - [ ] M1 / 2.9a DESIGN DONE (m1d_ 11-27, round_notes\designs\m1_29a_redesign.md): harness-only (the add-on's two-frame
         handshake, rt_core.hpp:3600-3603 / :3770, never asks under alternating bounce-free frames; the D1 row's env
         RENODX_TW_LIGHTS_IN_BOUNCE=1 asks every frame = the root cause). Option C, 0 helper / add-on bytes:
         HARNESS_LIGHTS_IN_BOUNCE, HARNESS_GI_SWITCH_LAST_OFF, <prefix>_lights.txt, m1_check.py cadence; gates G1-G3 + A/A; ~95
-        min + 13 4K jobs. Owner: m1 implementer (Opus High) after rri_ frees tw_rt_harness.cpp
+        min + 13 4K jobs. m1i_ (Opus High) STARTED 08:3x. Owner: m1i_
         - [ ] M1 D1 ROWS (m1d_): two proposed all_modes.sh rows (the file belongs to the h4k_ baseline; not edited). Owner: coord
         (with the m1 implementer)
         - [ ] LIGHT BOUNCE FAILURE PATH (m1d_): a bounce that fails after a dark trace (helper lost / timed out, reuse memory
@@ -18209,8 +18208,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Setter: run_pkg_580efafeb5765d81 has CacheAFFINITY, run_rs_pkg_580efafeb5765d81 MISSING (pairs 17-26). W4 is absorbed
         into P6a1 (R9: ep1, P1, S1) since ATN's ep1 answer is still open; ATN's apply of the patch = his yes. Waves: P6a1
         (a64_ab copy + patch, 65) / P6b (p0\analyze_d0.py + tests + golden json, 35) / P6c (wpr\*, 45) parallel, Rv1 Opus xHigh
-        20, ATN applies, P6a2 35, Rv2 Opus xHigh + Sonnet High 30. Map 3.3 'ep8vfx' -> ep1cvfx fixed. Owner: p8bf_ -> coord (map
-        edits, then implementers)
+        20, ATN applies, P6a2 35, Rv2 Opus xHigh + Sonnet High 30. Map 3.3 'ep8vfx' -> ep1cvfx fixed. ALL FIX ROUNDS DONE 08:3x (Stage B Rev 3 last; its verify p8bv_ STARTED 08:4x). Owner: p8bv_ -> coord (implementers, see 08:3x HAND-BACKS)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
@@ -18238,6 +18236,45 @@ heading text are in HANDOFF_ARCHIVE.md)
         tools\tw\attila64\p0\analyze_d0.py + test_analyze_d0.py + golden json; p6c_ = tools\tw\attila64\wpr\*. No runs, no GPU,
         no game starts. Then Rv1 (Opus xHigh), coord applies P6a1 (on ATN's yes), coord runs the real file's DryRuns, P6a2, Rv2. Owner: p6a1_ /
         p6b_ / p6c_ -> coord (Rv1)
+        - [ ] 11-27 08:3x HAND-BACKS (coord). P1p DONE (p1p_, Fable 5.2 Medium, ~20 of 60 min; branch p1p_1127 54f767537 from
+        8773b421f, pushed, not merged; testbin\scratch\p1p_\handback.md): PickCores -> Picks {battle, render, keep},
+        RENDER_POOL_CORES = 4, PublishRender the only render-word writer, ApplyRenderCoreKey / SetRenderThread, only CORE_RENDER
+        via fetch_or / fetch_and; tests 0 failures (patcher 174, battle_core 356, elf_sites 39), 0 warnings, sidecar sha = DLL
+        (d7fb2df8...); A15 literal (whole, NUL-bounded, sent to p6a1_) 'render core: logical %u + %u (render thread %lu),
+        scheduling class %u'; 15 deviations in the hand-back; not live-tested: the failed GetThreadSelectedCpuSets branch, a
+        refused drop write, the timer failure; for C8 W1p: ExpectPluginDll calls game_started twice (a new per-start line moves
+        that expectation). R1-P1p r1p1p_ (Opus xHigh) STARTED 08:3x; then F-P1p (Sonnet High), merge, C8 W1p (Fable Medium),
+        P1a. rri_ DONE 08:17 (91 of 165 min incl. 56 GPU; branch rrb100_1127: 61a1df37d addon.cpp + db6721a4c below-100 % path,
+        pushed, not merged; testbin\scratch\rri_\handback.md): 18 / 18 gated builds exit 0, baselines held, 56 csos
+        byte-identical; G1s 67 / 67 PASS at 67 / 58 / 50 / 33 % (closest: fire time noise at 33 % +4.9 % vs 5 %); M4 100 %
+        control SHA-identical; M2 pass; M1's edge-trail criterion fails (5.11 vs 4.90 px = the first column, a sub-pixel edge,
+        not ghosting; two static runs show +j right); G1b: with the row at 50 % RR no longer smooths bloom flicker (fire 0.0213
+        vs today 0.0149) -> ATN by eye in G2. Harness: HARNESS_RR_INPUT / _SIGN / _BILINEAR + HARNESS_RR_BLOOM (backup
+        .before_rrd). O1 frame-trace request rri_\o1_frame_trace_request.md -> game batch; S3 / R5 real (addon.cpp:3246 before
+        3316), t10 open; N6 row-toggle transient -> G2 list. Final review rrr_ (Opus xHigh) + rrf_ (Sonnet High) STARTED 08:3x;
+        merge on GO, then L2B W3 (Opus High, l2r2_ W3 notes) and the FSR linear fix after it; PK1 K4 after the merge. pdf_ DONE
+        (branch pdf_1127 f8c008d54 from 6c81d89c5, pushed, not merged, merge-tree clean vs 5b34d71fe; citation blocker 0
+        missing; testbin\scratch\pdf_\handback.md): fix 04d3be05f DiVisible reads a light within 1 mm / NaN distance visible
+        like the bits (dvis_m2 = m2_base byte-identical in 60 frames); closed S5G, S6 (inert: 0 fires in 68.65 M), S9, S10, S11
+        / E5 (DI / E_ref 1.00016, bits 1.00180), M2 remainder, S4 (keep 4), M1-trans 0 frames, R11G11B10 census (o0 rounds
+        toward zero again each prepared_light level, ~-0.56 % a level, theory); partial: S7 (recordings only), E3 (harness only;
+        in-game 4b open); pdi4c_ (b) / (c) / (d) ticked; (a) Nsight split + cost lead, (e) picture check (ATN's eye), (f) F2,
+        (g) NV1 (game start) open -> next DI agent; pdf_\gpu raw dumps ~15 GB kept (ATN decides). Final review pdr_ (Opus xHigh)
+        + pds_ (Sonnet High) STARTED 08:3x; merge on GO. PK8 Stage B Rev 3 DONE (p8bf_, 16 min measured; pk8_stage_b_design.md
+        1304 -> 1528 lines): M1 vtable-pointer class table (55: 53 FAST, H, N) + one FNV over every called vtable entry (census
+        W9), M2 ELF debug-info source for W8 + the owner field's static type, M3 W4a reachability half, M4 one stop_bits word +
+        skip latch (skip_period = tick / 100) so 'normal speed' holds; S1-S7 taken; deviation: STOP_NAVAL latches too; count
+        fix: the 14 register sites are inside the 111; census notes = designs\pk8_b_census_1a.md / _1b.md; steps 1a 210 + 45, 1b
+        180 + 40, 2 30, 3 220, 4 130, 5 75, 6 60, 7 45 + 1 start, 8 110. ATN: census before Stage A (recommended yes), steps 2-8
+        go, ep8tt8 now, no guest, census effort, scope notes, default Off. Owner: coord (reviews -> merges; ATN's answers)
+        - [ ] HARNESS SCENE DROP + LEARNED LIGHT (pdf_ 11-27, new): di_mode.hpp Observe builds slot_light on one thread (8.3 M
+        px x 32 lights) at the first E / bits frame, > 10 s with no request -> the helper's 10 s idle release drops the RT scene
+        and reopens it (every 60-frame E run at frame 2, pdi4c_'s m2c_* too; A/B ratios still like for like). After
+        HARNESS_PATH_AMBIENT=5 the reopen logs 'learned light ... base colour 0.000' and the far bounce turns grey (0.011 vs
+        0.251, texture mean x0.12); the M1-trans bounce drop was this. Not root-caused: harness start order, or the
+        learned-light path with ambient on from a scene's first frame (also a game start / RT back after 10 s off). Next:
+        slot_light before frame 0 or in parallel, then a never-DI test with a forced 11 s gap after frame 5; pdr_ reads the
+        helper side. Owner: next harness writer after m1i_ (di_mode.hpp + a 4K test)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
