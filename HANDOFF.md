@@ -17974,7 +17974,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         SAME, a64 page = the new row + index shift; 2 mutations caught; gated amd64 + x86 exit 0. Deviation to rule on:
         Off leaves the bits alone at the first present (as Keep Render Core Free). It also edited the shared
         tools\tw\page_dump\dump_a64.cpp (outside its file list; backup .bak_p94_). Hardware F7 -> the batch (run.ps1
-        has no WARP mode). Review rp94_ (Opus xHigh) STARTED 18:3x. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
+        has no WARP mode). Review rp94_ (Opus xHigh) DONE 18:4x (scratch\rp94_\review.md): GO WITH CHANGES: MUST-1 Off MUST write the
+        bits (design 7.5 :852-855: the key holds only until the add-on's first present; the vfxauto kinds run without
+        the add-on, a64_ab.ps1:111-114 / :327-328) -> drop the first-present skip, dump's first stop 0x0f; SHOULD-1
+        dump_a64.cpp's new section breaks the driver on pre-P9-3 trees -> guard; 3 NITs; dump_a64.cpp edit = add-only,
+        needed. Fix round p94_ (resumed, Opus Medium) STARTED 18:4x; then Sonnet High final. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
         backup_32bit.md Rev 3 (2.8 rows L1-L13 + G9-G11, 2.9 audit rows H1-H11; no 32-bit class moved); FROZEN 32-BIT
         box lines F13-F19 + refreshed F4 / F7 / F10 / F12 pasted; the short list tools\tw\attila64\backup_32bit.md
         got its lines (sdku_ now merged); finding: none of 31 hand-backs carried a 32-bit line (the COMMON rule asks
