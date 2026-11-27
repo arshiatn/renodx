@@ -17975,7 +17975,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         implement it after' -> upt28_ (Fable 5.2 xHigh, design only) STARTED 18:29 (unified_pt.md v2.8 in place, backup
         .before_v28); implementation AFTER the CPU plan (ATN 18:3x: 'we implement it after the cpu plan. Just not now'). ATN's answers: Q3 / Q4 / Q6 / Q8-Q11 = the picks; Q7
         froxel volume = a harness arm on 4K numbers, a tie decided on ATN's burning-city replay; Q1 (ReSTIR off under RR),
-        Q2 (3-of-4 sub-sampling), Q5 (pbrt-v4) = ATN open (his follow-up questions answered in chat 18:29). Owner:
+        Q2 (3-of-4 sub-sampling), Q5 (pbrt-v4): ATN 18:42: Q1 = the pick (both arms at equal time on 4K RR), Q2 = an
+        optional harness arm judged by his eye, Q5 = pbrt-v4 on the known-answer scenes only; sent to upt28_. Owner:
         coord
         - [ ] CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules
         cpq_\cpu_common_1127.md): PK9 P9-3 MERGED 6563e2199 (re-check rp93m_ GO, 0 MUST; SHOULD done = the folded
@@ -18064,7 +18065,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         CPUs without V-cache: coord added --small-l3 to the bench (exe 9ada01ee, old f16a93a5 kept as m2b_f16a93a5.exe,
         m2b.cpp.bak_coord_l3) and ran map x2 on CCD 1 (32 MB L3, core 18): deciding cells (others) still no arm ahead
         in both runs; cold source: U / R +5..10 % over Z in every run (more than on CCD 0). So only if a plain Zen 4's
-        rows fall out of its smaller L3; at most ~0.1-0.15 ms a frame; Intel not measured. Side line for ATN: with a
+        rows fall out of its smaller L3; at most ~0.1-0.15 ms a frame; Intel not measured. Coord's second read of all 6
+        runs: in the deciding cells U is also SLOWER beyond noise in 3 cells (-5..-8 % at 0xe0000) and rep movsb falls
+        to ~17-19 GB/s in 4 of 12 cells at 0x380000 -> no change request to the loader's author; at most an FYI ('the
+        copy is fine, nothing to change') in the PK9 note, on ATN's word. Side line for ATN: with a
         cold source, ucrtbase memcpy / rep movsb are +4..5 % in every run (at most ~0.07 ms a frame; the game's source
         is 'others'); a note to the loader's author only if ATN asks. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
         backup_32bit.md Rev 3 (2.8 rows L1-L13 + G9-G11, 2.9 audit rows H1-H11; no 32-bit class moved); FROZEN 32-BIT
