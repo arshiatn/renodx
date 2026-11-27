@@ -717,14 +717,27 @@ int wmain(int argc, wchar_t** argv) {
       *first_bad = std::min(*first_bad, input);
     }
   };
-  // Known answers through the stub first, one per class, so a stub that is not reached cannot pass: 1.0f, infinity
-  // for a NaN, the smallest half's two neighbours, and a denormal half (the game's own code behind the stub).
+  // Known answers first, one per class, so that a stub that is not reached cannot pass: 1.0f, infinity for a NaN, the
+  // smallest half's two neighbours, and a denormal half (the game's own code behind the stub). Each from a random
+  // state: code that did nothing would leave a random rax.
   {
+    const auto half_of = [&](uintptr_t target, uint32_t x) {
+      arena = {};
+      std::memcpy(arena.bytes.data() + ARENA_INPUT, &x, sizeof(x));
+      std::memcpy(arena.bytes.data() + ARENA_RSP, &capture, sizeof(capture));
+      CpuState in = random_state();
+      in.gpr[RSP] = arena_at(ARENA_RSP);
+      in.gpr[RDI] = arena_at(ARENA_INPUT);
+      CpuState out;
+      run(target, in, &out);
+      return static_cast<uint16_t>(out.gpr[RAX]);
+    };
     bool known = true;
     for (const auto& [x, half] : std::initializer_list<std::pair<uint32_t, uint16_t>>{
-             {FLOAT_ONE, HALF_ONE}, {0xffc00001, 0xfc00}, {0x33000400, 0x0000}, {0x33000401, 0x0001}, {0x38000000, 0x0200}}) {
-      known = known && static_cast<uint16_t>(reinterpret_cast<HalfCall>(HALF_ENTRY)(&x)) == half
-              && static_cast<uint16_t>(reinterpret_cast<HalfCall>(reference_half)(&x)) == half;
+             {FLOAT_ONE, HALF_ONE}, {0xffc00001, 0xfc00}, {0x33000400, 0x0000}, {0x33000401, 0x0001},
+             {0x38000000, 0x0200}}) {
+      known = known && half_of(reinterpret_cast<uintptr_t>(reference_half), x) == half
+              && half_of(HALF_ENTRY, x) == half;
     }
     Expect(known, "the half's stub and the reference: 1.0f, a NaN, the smallest half's edge and a denormal half");
   }
