@@ -11,7 +11,8 @@
 // 4. Path Tracing off: no run, off at once.
 // 5. The helper made a new scene (RayTracingDevice changed: a lost scene, an idle release, a stalled scene's resume):
 //    rt_scene::Update starts the run again and turns Path-Traced Ambient off, so the new scene learns its light, and the
-//    game's AO comes back with the game's ambient (the published AmbientReplaced). An unchanged device keeps all three.
+//    game's AO comes back with the game's ambient (the published AmbientReplaced). An unchanged device keeps all three;
+//    the row turned off brings the game's AO back at that present (path_ambient_on still the last bounce's).
 //    CONTROL: the rule before kept the run, and the new scene never learned (grey far bounce, no sky).
 #include <cstdint>
 #include <cstdio>
@@ -89,16 +90,23 @@ int main() {
   // 5.
   static twattila::dlaa_bridge::Shared shared = {};
   twattila::dlaa_bridge::bridge.shared = &shared;
-  twattila::rt_scene::Update({});
+  twattila::rt_scene::Update({.path_ambient = true});
   core::runtime.path_frames = 2 * core::PATH_AMBIENT_FRAMES;
   core::runtime.path_ambient_on = true;
   core::runtime.bounced_frame = core::runtime.frame;
-  twattila::rt_scene::Update({});
+  twattila::rt_scene::Update({.path_ambient = true});
   CHECK(core::runtime.path_frames == 2 * core::PATH_AMBIENT_FRAMES && core::runtime.path_ambient_on);
+  CHECK(core::ambient_replaced.load());
+  // The row off: path_ambient_on stays TraceLightBounce's until its next run, the game's AO back from this present.
+  core::runtime.bounced_frame = core::runtime.frame;
+  twattila::rt_scene::Update({});
+  CHECK(core::runtime.path_ambient_on && !core::ambient_replaced.load());
+  core::runtime.bounced_frame = core::runtime.frame;
+  twattila::rt_scene::Update({.path_ambient = true});
   CHECK(core::ambient_replaced.load());
   ++shared.rt_device;
   core::runtime.bounced_frame = core::runtime.frame;
-  twattila::rt_scene::Update({});
+  twattila::rt_scene::Update({.path_ambient = true});
   CHECK(core::runtime.path_frames == 0 && !core::runtime.path_ambient_on);
   CHECK(!core::ambient_replaced.load() && !core::AmbientReplacedNow());
   twattila::dlaa_bridge::bridge.shared = nullptr;

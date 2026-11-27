@@ -18,7 +18,9 @@
 //    Ambient alone is GameSsaoOut's: the game's AO through the warm-up (a fresh trace and bounce, path_ambient_on not yet,
 //    at frame 9 and 9 + 29), a path dropout and the rays without the Light Bounce; out once the paths take the game's
 //    ambient out. CONTROL (the rule before, the row and 30 frames of the rays' trace): out through every warm-up, the sun
-//    then had no AO at all for PATH_AMBIENT_FRAMES (rllf_ M1).
+//    then had no AO at all for PATH_AMBIENT_FRAMES. The row turned off with path_ambient_on still the last bounce's: the
+//    game's (CONTROL: path_ambient_on alone left it out that frame). Both terms: the rays' AO with the paths on, and with
+//    the paths' warm-up, out in both rules.
 // No GPU work. tests.exe
 #include <windows.h>
 
@@ -133,6 +135,16 @@ int main() {
     set(paths_case.state);
     CHECK(rt::AmbientReplaced() == paths_case.left_out && out() == paths_case.left_out && row_rule());
   }
+  const auto stale_rule = [&] {
+    const std::unique_lock lock(runtime.mutex);
+    return runtime.path_ambient_on && runtime.bounced_frame != UINT64_MAX && runtime.bounced_frame + 1 >= runtime.frame;
+  };
+  set({.path_ambient_on = true, .traced_frame = 9, .bounced_frame = 8, .frame = 9});
+  CHECK(!rt::AmbientReplaced() && !out() && stale_rule());
+  set({.ambient_occlusion = true, .path_ambient = true, .path_ambient_on = true, .traced_frame = 9, .bounced_frame = 9, .frame = 9});
+  CHECK(rt::AmbientReplaced() && out());
+  set({.ambient_occlusion = true, .path_ambient = true, .traced_frame = 9, .bounced_frame = 8, .frame = 9});
+  CHECK(rt::AmbientReplaced() && out());
   std::printf("5 AmbientReplaced under Path-Traced Ambient = GameSsaoOut: the game's AO through the warm-up, a path dropout, "
               "no Light Bounce; out with the paths' ambient; CONTROL the rule before: out in all of them: ok\n");
   std::printf("AO SKIP ALL PASSED\n");

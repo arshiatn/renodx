@@ -1174,15 +1174,18 @@ inline bool Enabled() {
   return RaysBesideSpecularOcclusion(runtime.settings) || runtime.settings.specular_occlusion;
 }
 
-// Path-Traced Ambient takes the game's ambient out (rt_scene OnPathAmbientDraw): after its warm-up (path_ambient_on),
-// the paths traced this frame or the last. Under the lock.
+// Path-Traced Ambient takes the game's ambient out (rt_scene OnPathAmbientDraw, ao_skip GameSsaoOut, Ryse's and Shogun 2's
+// hosts): the row on (path_ambient_on is TraceLightBounce's, after the frame's AO pass: the present that turns the row
+// off keeps the game's AO and ambient), after its warm-up (path_ambient_on), the paths traced this frame or the last.
+// Under the lock.
 inline bool PathsReplaceAmbientNow() {
-  return runtime.path_ambient_on && runtime.bounced_frame != UINT64_MAX && runtime.bounced_frame + 1 >= runtime.frame;
+  return runtime.settings.path_ambient && runtime.path_ambient_on && runtime.bounced_frame != UINT64_MAX
+         && runtime.bounced_frame + 1 >= runtime.frame;
 }
 
 // The row's ray-traced AO with the rays traced lately, or the paths taking the game's ambient out
-// (PathsReplaceAmbientNow): the row alone kept the game's ambient through each warm-up while the game's AO wrote white,
-// no AO at all for PATH_AMBIENT_FRAMES (rllf_ M1; test/tw_ao_skip part 5). Under the lock.
+// (PathsReplaceAmbientNow): the row alone would leave the game's AO out through each warm-up while the game's ambient
+// stays, no AO at all for PATH_AMBIENT_FRAMES (test/tw_ao_skip part 5). Under the lock.
 inline bool AmbientReplacedNow() {
   const bool rays = runtime.settings.ambient_occlusion && runtime.traced_frame != UINT64_MAX
                     && runtime.traced_frame + AMBIENT_REPLACED_FRAMES >= runtime.frame;
@@ -1190,8 +1193,8 @@ inline bool AmbientReplacedNow() {
 }
 
 // ambient_replaced from what AmbientReplacedNow reads, under the lock after each write of it: the settings and the frame
-// (Update), traced_frame (Trace), path_ambient_on and bounced_frame (TraceLightBounce, Update's new helper scene);
-// nothing else writes or resets them.
+// (Update), traced_frame (Trace), path_ambient_on (TraceLightBounce, Update's new helper scene), bounced_frame
+// (TraceLightBounce); nothing else writes or resets them.
 inline void PublishAmbientReplaced() {
   ambient_replaced.store(AmbientReplacedNow(), std::memory_order_release);
 }

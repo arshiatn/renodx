@@ -8,7 +8,8 @@
 // The game's SSAO chain left out while ours stands in for it, one rule for the hosts that skip it (GameSsaoOut: the
 // Warhammers, Troy, Pharaoh), every pass of the chain left out and its output cleared open in its place (ClearOpen).
 // Ours replaces the game's, never stacks. Attila's, Rome II's and Thrones' AO pass (rt_ambient_alone, its post multiply
-// in rt_scene's OnAmbientOcclusionDraw) keeps rt_scene::AmbientReplaced until that multiply takes the same window.
+// in rt_scene's OnAmbientOcclusionDraw) keeps rt_scene::AmbientReplaced: its paths term is this one, its rays term keeps
+// 30 frames of the trace (against this frame or the last) until that multiply takes the same window.
 // WARP: test/tw_ao_skip.
 
 #include <d3d11.h>
@@ -30,17 +31,16 @@ namespace twattila::ao_skip {
 // - Ray-Traced AO, traced this frame or the last, the bridge still up: the sun combine's own window (it multiplies this
 //   frame's trace, or the last one's, which bridge.rt_ambient keeps). Longer dropouts bring the game's AO back (a trace
 //   older than a frame, without reprojection, lands on moved geometry).
-// - Path-Traced Ambient taking the game's ambient out (path_ambient_on: after its warm-up of PATH_AMBIENT_FRAMES path
-//   frames), the paths traced this frame or the last: OnPathAmbientDraw's own window. The row alone (its warm-up, a path
-//   dropout, the rays tracing without the Light Bounce) keeps the game's.
+// - Path-Traced Ambient taking the game's ambient out (rt_scene::internal::PathsReplaceAmbientNow: the row on, after its
+//   warm-up of PATH_AMBIENT_FRAMES path frames, the paths traced this frame or the last): OnPathAmbientDraw's own window.
+//   The row alone (its warm-up, a path dropout, the rays tracing without the Light Bounce) keeps the game's.
 // Nothing before the first trace (UINT64_MAX: UINT64_MAX + 1 wraps to frame 0).
 inline bool GameSsaoOut() {
   auto& runtime = rt_scene::internal::runtime;
   const std::unique_lock lock(runtime.mutex);
   const bool rays = runtime.settings.ambient_occlusion && dlaa_bridge::bridge.ray_tracing
                     && runtime.traced_frame != UINT64_MAX && runtime.traced_frame + 1 >= runtime.frame;
-  const bool paths = runtime.path_ambient_on && runtime.bounced_frame != UINT64_MAX && runtime.bounced_frame + 1 >= runtime.frame;
-  return rays || paths;
+  return rays || rt_scene::internal::PathsReplaceAmbientNow();
 }
 
 // The pass's AO output cleared open (1): the compute pass's u0 (`compute`: the Warhammers' collect, the line sweep's
