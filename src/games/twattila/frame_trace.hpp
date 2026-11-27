@@ -270,7 +270,8 @@ std::string DescribeInputs(GetViews get_views) {
 }
 
 // What a draw reads and how it blends and tests, for the trace's next line: vertex buffers (slot, stride, whether the CPU
-// writes it), other stages' shaders, each target's write mask and blend, stencil, cull, then the index buffer and slot 15.
+// writes it), other stages' shaders, each target's write mask and blend, stencil, cull, the index buffer, slot 15, the stencil
+// ops, the DSV's read-only flags; then ' | views': the bound target, depth and PS shader resource views' formats.
 inline std::string DescribeDrawState(reshade::api::command_list* cmd_list, ID3D11DeviceContext* context) {
   std::string text = " | state";
   for (const auto [name, stage] : {std::pair{"gs", reshade::api::pipeline_stage::geometry_shader}, std::pair{"hs", reshade::api::pipeline_stage::hull_shader},
@@ -334,6 +335,47 @@ inline std::string DescribeDrawState(reshade::api::command_list* cmd_list, ID3D1
   UINT slot15_offset = 0;
   context->IAGetVertexBuffers(15, 1, slot15_buffer.GetAddressOf(), &slot15_stride, &slot15_offset);
   if (slot15_buffer) text += std::format(" vb15 stride {}", slot15_stride);
+  // ours (rt_port_64 R1.7), also after every earlier field: the stencil test's compares and ops, front/back
+  // (D3D11_COMPARISON_FUNC / D3D11_STENCIL_OP numbers); the bound DSV's read-only flags (d depth, s stencil); then the
+  // bound views' own formats as a segment of their own. The outputs and inputs before print the resources' formats,
+  // and a typeless target's view is what says how the draw reads or writes it.
+  if (depth_desc.StencilEnable != FALSE) {
+    const auto& front = depth_desc.FrontFace;
+    const auto& back = depth_desc.BackFace;
+    text += std::format(" stencil func {}/{} pass {}/{} fail {}/{} depthfail {}/{}", static_cast<int>(front.StencilFunc),
+                        static_cast<int>(back.StencilFunc), static_cast<int>(front.StencilPassOp), static_cast<int>(back.StencilPassOp),
+                        static_cast<int>(front.StencilFailOp), static_cast<int>(back.StencilFailOp),
+                        static_cast<int>(front.StencilDepthFailOp), static_cast<int>(back.StencilDepthFailOp));
+  }
+  std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> target_views = {};
+  ComPtr<ID3D11DepthStencilView> depth_view;
+  context->OMGetRenderTargets(static_cast<UINT>(target_views.size()), target_views.data(), depth_view.GetAddressOf());
+  std::string views;
+  for (uint32_t slot = 0; slot < target_views.size(); ++slot) {
+    if (target_views[slot] == nullptr) continue;
+    D3D11_RENDER_TARGET_VIEW_DESC view_desc = {};
+    target_views[slot]->GetDesc(&view_desc);
+    views += std::format(" rtv{} v{}", slot, static_cast<int>(view_desc.Format));
+    target_views[slot]->Release();
+  }
+  if (depth_view) {
+    D3D11_DEPTH_STENCIL_VIEW_DESC view_desc = {};
+    depth_view->GetDesc(&view_desc);
+    const bool depth_read_only = (view_desc.Flags & D3D11_DSV_READ_ONLY_DEPTH) != 0;
+    const bool stencil_read_only = (view_desc.Flags & D3D11_DSV_READ_ONLY_STENCIL) != 0;
+    if (depth_read_only || stencil_read_only) text += std::format(" dsv ro {}{}", (depth_read_only ? "d" : ""), (stencil_read_only ? "s" : ""));
+    views += std::format(" dsv v{}", static_cast<int>(view_desc.Format));
+  }
+  std::array<ID3D11ShaderResourceView*, 24> shader_views = {};
+  context->PSGetShaderResources(0, static_cast<UINT>(shader_views.size()), shader_views.data());
+  for (uint32_t slot = 0; slot < shader_views.size(); ++slot) {
+    if (shader_views[slot] == nullptr) continue;
+    D3D11_SHADER_RESOURCE_VIEW_DESC view_desc = {};
+    shader_views[slot]->GetDesc(&view_desc);
+    views += std::format(" t{} v{}", slot, static_cast<int>(view_desc.Format));
+    shader_views[slot]->Release();
+  }
+  if (!views.empty()) text += " | views" + views;
   return text;
 }
 
