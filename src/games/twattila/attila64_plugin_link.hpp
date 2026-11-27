@@ -117,6 +117,7 @@ constexpr std::array<char, N> Narrow(const wchar_t (&wide)[N]) {
 inline constexpr auto VALUES_SECTION = Narrow(plugin::INI_VALUES_SECTION);
 inline constexpr auto SOL_FRAME_CAP_KEY = Narrow(plugin::INI_SOL_FRAME_CAP);
 inline constexpr auto SHADOW_MAP_SIZE_KEY = Narrow(plugin::INI_SHADOW_MAP_SIZE);
+inline constexpr auto SHADOW_CASCADES_KEY = Narrow(plugin::INI_SHADOW_CASCADES);
 inline constexpr auto FASTER_GAME_CODE_KEY = Narrow(plugin::INI_FASTER_GAME_CODE);
 // The scales_active bits of each scale row's hooks: set only while the row is offered (a refused row's hook may stay
 // in, the plugin's main.cpp).
@@ -157,6 +158,8 @@ static std::atomic_bool sol_frame_cap_pending = false;
 static std::optional<int> shadow_map_size_at_start;
 static std::optional<int> shadow_map_size_mirrored;
 static std::atomic_bool shadow_map_size_pending = false;
+// Two Shadow Cascades Under Rays' key as last read or written.
+static std::optional<int> shadow_cascades_mirrored;
 // Faster Game CPU Code the same way: the key as this start read it (as the plugin's GetPrivateProfileIntW reads it), the
 // key read since the lookup, the key as last read (a plain decimal number; other text: none, so the row writes it again)
 // or written, and whether the row differs from this start's.
@@ -314,6 +317,29 @@ inline bool SolFrameCapPending() {
 }
 inline bool ShadowMapSizePending() {
   return internal::shadow_map_size_pending.load(std::memory_order_relaxed);
+}
+
+// Every present with Result() READY on a v2 block, beside MirrorRestartValues: Two Shadow Cascades Under Rays for the
+// next start into ReShade.ini [Attila64Plugin.Values] ShadowCascades, which the plugin reads at its init. 1 only while
+// the plugin offers the shadow map row and `two_cascades` (the row on and the rays' shadows on) holds; 0 at once when
+// that ends, so a start without the rays' shadows gets the game's cascades back. Read once, then written only when it
+// differs, with one log line per write.
+inline void MirrorShadowCascades(bool two_cascades) {
+  namespace plugin = internal::plugin;
+  const std::unique_lock lock(internal::mutex);
+  if (internal::found.load(std::memory_order_relaxed) != Found::READY || !BlockV2()) return;
+  if (!internal::shadow_cascades_mirrored.has_value()) {
+    int key = 0;  // absent: the game's cascades
+    reshade::get_config_value(nullptr, internal::VALUES_SECTION.data(), internal::SHADOW_CASCADES_KEY.data(), key);
+    internal::shadow_cascades_mirrored = key;
+  }
+  const int key = ((two_cascades && (RowsOffered() & plugin::RowBit(plugin::ROW_SHADOW_MAP)) != 0) ? 1 : 0);
+  if (internal::shadow_cascades_mirrored != key) {
+    reshade::set_config_value(nullptr, internal::VALUES_SECTION.data(), internal::SHADOW_CASCADES_KEY.data(), key);
+    internal::shadow_cascades_mirrored = key;
+    renodx::utils::log::i(std::format("[Total War] 64-bit Attila: engine value {}: {:#x} at the next start",
+                                      internal::SHADOW_CASCADES_KEY.data(), key));
+  }
 }
 inline bool GameCodePending() {
   return internal::game_code_pending.load(std::memory_order_relaxed);
@@ -831,6 +857,7 @@ inline void Uninstall() {
   internal::sol_frame_cap_pending = false;
   internal::shadow_map_size_mirrored.reset();
   internal::shadow_map_size_pending = false;
+  internal::shadow_cascades_mirrored.reset();
   internal::game_code_read = false;
   internal::game_code_mirrored.reset();
   internal::game_code_pending = false;
