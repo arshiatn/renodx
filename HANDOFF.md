@@ -1033,7 +1033,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8br_ / p6f_ -> coord (map edits, then implementers)
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | p8bf_ / p6f_ -> coord (map edits, then implementers)
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
@@ -18179,7 +18179,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         Opus High; 8 review Opus xHigh + Sonnet High; 9 batch 3 starts; 10 release on ATN's word; all after Stage A + S-C. Batch
         '-AB -Arms ep8,ep8b,ep8btt8 ...' + conditional ep8tt8 (entry now, run only if ep8btt8's golden differs while ep8b's is
         the same). Stage B lines sent to p6f_. Re-check p8br_ (Opus xHigh, N1-N3 + kept-out thread vs L2B's core / PK9) STARTED
-        08:5x. Owner: p8br_ / p6f_ -> coord (map edits, then implementers)
+        08:5x. p8br_ DONE 11-27 (testbin\scratch\p8br_\review.md): Stage B Rev 2 GO WITH CHANGES, 4 text MUSTs before step 1: M1
+        classify by vtable pointer + check EVERY vtable entry the walk calls through (111 indirect calls + 14 register calls +
+        class H's own; the two-entry allow-list can't see a patch there); M2 W8's second source = the ELF's debug info (finds a
+        new override); M3 W4a also covers 0x95c090 / 0xc516d0 / 0xb409e0 reachability; M4 'normal speed' is false for list pool
+        / unknown class (+2-4 ms a tick, sticky) -> helpers stop on a sticky flag, skip the region until the next re-sort tick.
+        N1 real but rare, fix exact (+ S1 memory orders); N2 real, fix partial (M1 / M2); N3 real, exact; sentinel safe.
+        Kept-out thread GO for v1 (ATN's PC has 15 task threads: 13 helpers + step thread; under L2B the next arm is a CPU-based
+        cap). Step 1 split 1a (~210 + 45) / 1b (~180 + 40), parallel, read only; it can start before Stage A on ATN's go. S7
+        privacy: ELF-derived names in the body -> neutral. Rev 3 by p8bf_ (Fable 5.2 xHigh, resumed) STARTED 09:1x. Owner: p8bf_
+        / p6f_ -> coord (map edits, then implementers)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
