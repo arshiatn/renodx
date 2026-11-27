@@ -34,11 +34,19 @@
 // - A watchdog timer releases the core when no step came for release_after_ms (pause, menus, the campaign).
 // Departure from cpu_sets.hpp: that file never changes the process default (its first version moved every thread and an
 // audio thread of the 32-bit game crashed); here the default is narrowed by two CPUs for the threads that follow it.
+//
+// Its render part, Keep Render Core Free: in the same reserve the next whole core of the same cache goes to the render
+// thread (the thread the loader starts the game on), with its second logical CPU idle too. It has its own state and
+// error (render_core_status): a refused select, a rule of another tool on that thread, a thread that ended or is mostly
+// idle end only the render part, and its two CPUs go back to the default. What ends the battle part ends both.
 namespace twattila::attila64_plugin::battle_core {
 
 inline constexpr size_t MAX_CPUS = 64;  // one processor group; more is CORE_UNSUPPORTED
 // Ours: the measured case is 8 cores for the game (16 logical CPUs); with fewer, the drawing would lose too much.
 inline constexpr uint32_t MIN_CORES = 8;
+// Ours: the render core keeps this many whole cores of its cache below it for the drawing's task threads, which also
+// keeps it off the cache's first cores (the graphics driver's interrupt work). Unmeasured on smaller caches: off there.
+inline constexpr uint32_t RENDER_POOL_CORES = 4;
 inline constexpr uint32_t CHANGE_LINES = 16;  // the reserve / release lines logged per session
 inline constexpr size_t LINE_CAPACITY = 256;
 inline constexpr DWORD STEP_THREAD_ACCESS = THREAD_QUERY_LIMITED_INFORMATION | THREAD_SET_LIMITED_INFORMATION | SYNCHRONIZE;
@@ -47,6 +55,10 @@ inline constexpr char FAILED_FORMAT[] = "renodx_attila64: battle core: stopped: 
 // The tests shorten these. 2 s is about ten times the 90th-percentile step interval of a big battle.
 static DWORD release_after_ms = 2000;
 static DWORD watchdog_ms = 250;
+// The render thread's handle rights (a test leaves one out), and how long after a reserve it must have been busy for
+// half of the time: the loader's interface does not say which thread starts the game.
+static DWORD render_handle_access = STEP_THREAD_ACCESS;
+static DWORD render_busy_after_ms = 1000;
 
 struct IdList {
   std::array<ULONG, MAX_CPUS> ids = {};
@@ -60,7 +72,7 @@ struct L3Cache {
 };
 
 struct Pick {
-  CoreState state = CORE_NO_SMT;        // CORE_ACTIVE: `ids` is the core
+  CoreState state = CORE_NO_SMT;        // CORE_ACTIVE: `ids` is the core; CORE_WAITING: not asked for
   std::array<ULONG, 2> ids = {};        // its CPU set ids
   std::array<uint8_t, 2> logical = {};  // its logical CPUs, the lower first
   uint8_t cores = 0;                    // the whole two-CPU cores of the picked class the game may use
@@ -68,13 +80,20 @@ struct Pick {
   uint32_t l3_mb = 0;
 };
 
+struct Picks {
+  Pick battle;  // or the reason neither part is used
+  Pick render;  // or CORE_NO_CORE; CORE_WAITING: not asked for; CORE_WITH_BATTLE with a reason in `battle`
+  IdList keep;  // the allowed CPUs without both cores
+};
+
 struct State {
   std::shared_mutex mutex;
-  Block* shared = nullptr;         // both set at the first reserve, for the watchdog
-  const LoaderApi* api = nullptr;
+  Block* shared = nullptr;         // set at the plugin's init and the game's start too (the render word's writers)
+  const LoaderApi* api = nullptr;  // set at the first reserve, for the watchdog
   PTP_TIMER timer = nullptr;       // made once, kept for the process (never closed, never waited for)
   CoreState core_state = CORE_WAITING;
-  uint32_t mask_at_reserve = 0;    // core_wanted & CORE_BATTLE as it was
+  bool reserved = false;           // the process default is the one written: the watchdog runs, a release puts it back
+  uint32_t mask_at_reserve = 0;    // the parts asked for at the reserve, without a render part that ended for the session
   std::array<ULONG, 2> battle_ids = {};
   IdList original;                 // the process default as read; count 0: there was none
   IdList written;                  // what the reserve wrote
@@ -84,6 +103,16 @@ struct State {
   uint64_t last_step_ms = 0;
   uint32_t changes_logged = 0;
   bool own_rule_logged = false;
+  // The render part. The thread is captured once and kept for the process.
+  HANDLE render_thread = nullptr;
+  DWORD render_tid = 0;
+  CoreState render_state = CORE_NO_THREAD;
+  std::array<ULONG, 2> render_ids = {};
+  uint64_t render_busy_cpu_100ns = 0;  // the thread's CPU time and the tick count at the reserve
+  uint64_t render_busy_start_ms = 0;
+  bool render_busy_checked = false;
+  std::array<bool, CORE_STATE_COUNT> render_logged = {};  // each outcome's line, once per session
+  bool render_clear_logged = false;
   // The reserve's tables, used only under the lock: the step runs on a game thread whose stack size is not ours.
   std::array<SYSTEM_CPU_SET_INFORMATION, MAX_CPUS> system = {};
   IdList allowed;
@@ -111,12 +140,14 @@ enum Drift : uint8_t { DRIFT_NONE, DRIFT_AFFINITY, DRIFT_DEFAULT };
 // - Core: in that cache, the highest core whose two logical CPUs are both allowed and not parked. The highest, because
 //   the graphics driver's interrupt work sits on the first cores (measured on the test PC).
 // A core counts only as two logical CPUs: the gain measured is the step's idle sibling.
-[[nodiscard]] inline Pick PickBattleCore(std::span<const SYSTEM_CPU_SET_INFORMATION> system,
-                                         std::span<const ULONG> allowed_ids, std::span<const L3Cache> l3) noexcept {
+// The render core (`wanted & CORE_RENDER`) is the next core by the same rule (the first without `wanted & CORE_BATTLE`),
+// used only with RENDER_POOL_CORES more of them below it; so it is in the battle core's cache and class.
+[[nodiscard]] inline Picks PickCores(std::span<const SYSTEM_CPU_SET_INFORMATION> system, std::span<const ULONG> allowed_ids,
+                                     std::span<const L3Cache> l3, uint32_t wanted) noexcept {
   if (system.size() > MAX_CPUS || std::ranges::any_of(system, [](const SYSTEM_CPU_SET_INFORMATION& entry) {
         return entry.Size != sizeof(entry) || entry.CpuSet.Group != 0;
       })) {
-    return {.state = CORE_UNSUPPORTED};
+    return {.battle = {.state = CORE_UNSUPPORTED}, .render = {.state = CORE_WITH_BATTLE}};
   }
   // Masks by LogicalProcessorIndex (below 64 in one group).
   uint64_t allowed = 0;
@@ -172,38 +203,96 @@ enum Drift : uint8_t { DRIFT_NONE, DRIFT_AFFINITY, DRIFT_DEFAULT };
     }
   }
 
-  const SYSTEM_CPU_SET_INFORMATION* best = nullptr;
-  uint64_t best_cpus = 0;
-  for (size_t index = 0; index < system.size(); ++index) {
-    const SYSTEM_CPU_SET_INFORMATION& entry = system[index];
-    if (entry.CpuSet.LastLevelCacheIndex != cache_index || (core_cpus[index] & ~whole) != 0
-        || (core_cpus[index] & parked) != 0) {
-      continue;
-    }
-    if (best == nullptr || entry.CpuSet.CoreIndex > best->CpuSet.CoreIndex) {
-      best = &entry;
-      best_cpus = core_cpus[index];
-    }
-  }
-  if (best == nullptr) return {.state = CORE_NO_SMT};
-  const auto cores = static_cast<uint8_t>(std::popcount(whole) / 2);
-  if (cores < MIN_CORES) return {.state = CORE_FEW_CORES, .cores = cores};
-
-  Pick pick = {
-      .state = CORE_ACTIVE,
-      .logical = {static_cast<uint8_t>(std::countr_zero(best_cpus)), static_cast<uint8_t>(std::bit_width(best_cpus) - 1)},
-      .cores = cores,
-      .scheduling_class = best->CpuSet.SchedulingClass,
-      .l3_mb = std::get<0>(cache_rank) >> 20,
+  // The picked cache's whole cores that are not parked (by entry index), and the highest of them outside `taken`.
+  const auto free_core = [&](size_t index) {
+    return system[index].CpuSet.LastLevelCacheIndex == cache_index && (core_cpus[index] & ~whole) == 0
+           && (core_cpus[index] & parked) == 0;
   };
-  for (const SYSTEM_CPU_SET_INFORMATION& entry : system) {
-    for (size_t slot = 0; slot < pick.ids.size(); ++slot) {
-      if (entry.CpuSet.LogicalProcessorIndex == pick.logical[slot]) {
-        pick.ids[slot] = entry.CpuSet.Id;
+  const auto highest_core = [&](uint64_t taken) {
+    int best = -1;
+    for (size_t index = 0; index < system.size(); ++index) {
+      if (!free_core(index) || (core_cpus[index] & taken) != 0) continue;
+      if (best < 0 || system[index].CpuSet.CoreIndex > system[best].CpuSet.CoreIndex) {
+        best = static_cast<int>(index);
+      }
+    }
+    return best;
+  };
+  const int first = highest_core(0);
+  if (first < 0) return {.battle = {.state = CORE_NO_SMT}, .render = {.state = CORE_WITH_BATTLE}};
+  const auto cores = static_cast<uint8_t>(std::popcount(whole) / 2);
+  if (cores < MIN_CORES) return {.battle = {.state = CORE_FEW_CORES, .cores = cores}, .render = {.state = CORE_WITH_BATTLE}};
+
+  const auto core_pick = [&](int index) {
+    Pick pick = {
+        .state = CORE_ACTIVE,
+        .logical = {static_cast<uint8_t>(std::countr_zero(core_cpus[index])),
+                    static_cast<uint8_t>(std::bit_width(core_cpus[index]) - 1)},
+        .cores = cores,
+        .scheduling_class = system[index].CpuSet.SchedulingClass,
+        .l3_mb = std::get<0>(cache_rank) >> 20,
+    };
+    for (const SYSTEM_CPU_SET_INFORMATION& entry : system) {
+      for (size_t slot = 0; slot < pick.ids.size(); ++slot) {
+        if (entry.CpuSet.LogicalProcessorIndex == pick.logical[slot]) {
+          pick.ids[slot] = entry.CpuSet.Id;
+        }
+      }
+    }
+    return pick;
+  };
+  Picks picks = {.battle = {.state = CORE_WAITING}, .render = {.state = CORE_WAITING}};
+  uint64_t taken = 0;
+  if ((wanted & CORE_BATTLE) != 0) {
+    picks.battle = core_pick(first);
+    taken = core_cpus[first];
+  }
+  if ((wanted & CORE_RENDER) != 0) {
+    picks.render.state = CORE_NO_CORE;
+    if (const int render = highest_core(taken); render >= 0) {
+      uint64_t below = 0;
+      for (size_t index = 0; index < system.size(); ++index) {
+        if (free_core(index) && system[index].CpuSet.CoreIndex < system[render].CpuSet.CoreIndex) {
+          below |= core_cpus[index];
+        }
+      }
+      if (std::popcount(below) / 2 >= static_cast<int>(RENDER_POOL_CORES)) {
+        picks.render = core_pick(render);
       }
     }
   }
-  return pick;
+  for (const ULONG id : allowed_ids) {
+    if (std::ranges::find(picks.battle.ids, id) == picks.battle.ids.end()
+        && std::ranges::find(picks.render.ids, id) == picks.render.ids.end()) {
+      picks.keep.ids[picks.keep.count++] = id;
+    }
+  }
+  return picks;
+}
+
+// The render states that stay for the session: the reserve then ignores the render part's bit. (CORE_NO_THREAD ends
+// only when the thread is captured, at the game's start.)
+[[nodiscard]] constexpr bool StaysForSession(CoreState render_state) noexcept {
+  return render_state == CORE_OFF_INI || render_state == CORE_NO_THREAD || render_state == CORE_YIELDED
+         || render_state == CORE_FAILED;
+}
+
+// The parts asked for now: the bits this build knows, without a render part that ended for the session.
+[[nodiscard]] static uint32_t WantedParts(const State& state, const Block& shared) noexcept {
+  const uint32_t wanted = shared.core_wanted.load(std::memory_order_relaxed) & (CORE_BATTLE | CORE_RENDER);
+  return StaysForSession(state.render_state) ? (wanted & ~CORE_RENDER) : wanted;
+}
+
+// A thread's CPU time so far (kernel + user) in 100 ns; false when Windows refused.
+[[nodiscard]] static bool ReadCpuTime(HANDLE thread, uint64_t* cpu_100ns) noexcept {
+  FILETIME created;
+  FILETIME exited;
+  FILETIME kernel;
+  FILETIME user;
+  if (GetThreadTimes(thread, &created, &exited, &kernel, &user) == FALSE) return false;
+  *cpu_100ns = ((uint64_t{kernel.dwHighDateTime} << 32) | kernel.dwLowDateTime)
+               + ((uint64_t{user.dwHighDateTime} << 32) | user.dwLowDateTime);
+  return true;
 }
 
 // Takes a thread's selected CPU sets away only while they are still exactly `ids` and it still runs: another tool's
@@ -227,6 +316,40 @@ static void Publish(State* state, CoreState next, uint32_t logical_a, uint32_t l
                                        | (uint64_t{cores & CORE_FIELD_MASK} << CORE_ALLOWED_SHIFT)
                                        | ((uint64_t{error} & CORE_ERROR_MASK) << CORE_ERROR_SHIFT),
                                    std::memory_order_relaxed);
+}
+
+// The one writer of the render part's status: this module's state and the block's render_core_status. A state that
+// stays for the session also leaves the mask the live-change check compares with, so entering it releases nothing.
+static void PublishRender(State* state, CoreState next, uint32_t logical_a, uint32_t logical_b, DWORD error) noexcept {
+  state->render_state = next;
+  if (StaysForSession(next)) {
+    state->mask_at_reserve &= ~CORE_RENDER;
+  }
+  state->shared->render_core_status.store((uint32_t{next} << CORE_STATE_SHIFT)
+                                              | ((logical_a & CORE_FIELD_MASK) << CORE_LOGICAL_A_SHIFT)
+                                              | ((logical_b & CORE_FIELD_MASK) << CORE_LOGICAL_B_SHIFT)
+                                              | (std::min<uint32_t>(error, RENDER_ERROR_LARGE) << RENDER_ERROR_SHIFT),
+                                          std::memory_order_relaxed);
+}
+
+// The render part is not used or stopped: published, and its line (once per session for each outcome) goes into `line`
+// for the caller to log after the unlock.
+static void RenderOutcome(State* state, CoreState outcome, DWORD error, std::span<char> line) noexcept {
+  PublishRender(state, outcome, 0, 0, error);
+  if (state->render_logged[outcome]) return;
+  state->render_logged[outcome] = true;
+  const char* text = nullptr;
+  switch (outcome) {
+    case CORE_NO_CORE:    text = "not used: no free core next to the battle core"; break;
+    case CORE_OWN_RULE:   text = "not used: the render thread has its own CPU rule"; break;
+    case CORE_OFF_INI:    text = "off in ReShade.ini, RenderCore=0"; break;
+    case CORE_NO_THREAD:  text = "not used: the render thread has ended"; break;
+    case CORE_NOT_RENDER: text = "not used: the render thread was mostly idle"; break;
+    case CORE_YIELDED:    text = "stopped: another program changed the render thread's CPU sets, left as they are"; break;
+    default:              text = "stopped: Windows refused"; break;
+  }
+  std::snprintf(line.data(), line.size(), "renodx_attila64: render core: %s (render thread %lu, error %lu)", text,
+                state->render_tid, error);
 }
 
 // A reserve or release line just formatted into `line`: kept for the first CHANGE_LINES, then one line says that the
@@ -263,11 +386,23 @@ static void CapChangeLine(State* state, std::span<char> line) noexcept {
 // Ends a reserve, under the lock: what was read is put back only while the default is still the one written, the
 // step's thread is cleared only while it still holds exactly the core, and `next` is published. A changed default or
 // affinity makes a release a yield; a refused restore makes it a failure (both end the feature for the session). The
-// line for the log goes into `line`: the caller logs it after the unlock.
-static void Release(State* state, CoreState next, DWORD error, const char* reason, std::span<char> line) noexcept {
+// line for the log goes into `line`: the caller logs it after the unlock. The render thread is cleared first, by the
+// step thread's rule; a clear that did not happen is no failure (its line goes into `render_line`). The render part
+// waits again after a release, and ends with the battle part after a yield or a failure.
+static void Release(State* state, CoreState next, DWORD error, const char* reason, std::span<char> line,
+                    std::span<char> render_line) noexcept {
   // Only stopped: the callback takes the lock, so waiting for it here would never end.
   if (state->timer != nullptr) {
     SetThreadpoolTimer(state->timer, nullptr, 0, 0);
+  }
+  if (state->render_state == CORE_ACTIVE && !ClearIfOurs(state->render_thread, state->render_ids)) {
+    if (WaitForSingleObject(state->render_thread, 0) == WAIT_OBJECT_0) {
+      RenderOutcome(state, CORE_NO_THREAD, ERROR_SUCCESS, render_line);
+    } else if (!state->render_clear_logged) {
+      state->render_clear_logged = true;
+      std::snprintf(render_line.data(), render_line.size(),
+                    "renodx_attila64: render core: the render thread %lu keeps the CPU sets it has", state->render_tid);
+    }
   }
   const Drift drift = ReadDrift(*state);
   if (drift != DRIFT_DEFAULT
@@ -288,7 +423,11 @@ static void Release(State* state, CoreState next, DWORD error, const char* reaso
   if (next == CORE_WAITING && drift != DRIFT_NONE) {
     next = CORE_YIELDED;
   }
+  state->reserved = false;
   Publish(state, next, 0, 0, 0, error);
+  if (!StaysForSession(state->render_state)) {
+    PublishRender(state, ((next == CORE_WAITING) ? CORE_WAITING : CORE_WITH_BATTLE), 0, 0, ERROR_SUCCESS);
+  }
   switch (next) {
     case CORE_WAITING:
       std::snprintf(line.data(), line.size(), "renodx_attila64: battle core: released (%s)", reason);
@@ -304,56 +443,103 @@ static void Release(State* state, CoreState next, DWORD error, const char* reaso
   }
 }
 
-// Every watchdog_ms while a core is reserved (context: the State): releases it when the steps stopped or the row was
-// turned off, and yields when another program changed the default or the affinity.
+// Every watchdog_ms while the default is the one written (context: the State): releases when the steps stopped or a
+// row was switched, and yields when another program changed the default or the affinity. Then the render part alone:
+// it ends when another program changed the render thread's CPU sets, or when that thread is not the busy one.
 static VOID CALLBACK Watchdog(PTP_CALLBACK_INSTANCE /*instance*/, PVOID context, PTP_TIMER /*timer*/) noexcept {
   auto* watched = static_cast<State*>(context);
   char line[LINE_CAPACITY] = "";
+  char render_line[LINE_CAPACITY] = "";
   const LoaderApi* api = nullptr;
   {
     const std::scoped_lock lock(watched->mutex);
-    if (watched->core_state != CORE_ACTIVE) return;
+    if (!watched->reserved) return;
     api = watched->api;
+    const uint64_t now_ms = GetTickCount64();
+    const uint32_t wanted = WantedParts(*watched, *watched->shared);
     const char* reason = nullptr;
-    if (GetTickCount64() - watched->last_step_ms >= release_after_ms) {
+    if (now_ms - watched->last_step_ms >= release_after_ms) {
       reason = "no battle step";
-    } else if ((watched->shared->core_wanted.load(std::memory_order_relaxed) & CORE_BATTLE) != watched->mask_at_reserve) {
-      reason = "turned off";
+    } else if (wanted != watched->mask_at_reserve) {
+      reason = (((watched->mask_at_reserve & ~wanted) != 0) ? "turned off" : "turned on");
     } else if (ReadDrift(*watched) != DRIFT_NONE) {
       reason = "the CPU sets changed back";  // a yield unless they did: Release reads again and words it
     }
     if (reason != nullptr) {
-      Release(watched, CORE_WAITING, ERROR_SUCCESS, reason, line);
+      Release(watched, CORE_WAITING, ERROR_SUCCESS, reason, line, render_line);
+    } else if (watched->render_state == CORE_ACTIVE) {
+      // Ends the render part alone: its two CPUs go back into the default, which is still the one written (read just
+      // above). A refused write ends both parts.
+      const auto drop = [&](CoreState outcome, DWORD error) {
+        RenderOutcome(watched, outcome, error, render_line);
+        IdList wider = watched->written;
+        for (const ULONG id : watched->render_ids) {
+          wider.ids[wider.count++] = id;
+        }
+        if (SetProcessDefaultCpuSets(GetCurrentProcess(), wider.ids.data(), wider.count) == FALSE) {
+          Release(watched, CORE_FAILED, GetLastError(), "the CPU set write", line, render_line);
+        } else {
+          watched->written = wider;
+        }
+      };
+      std::array<ULONG, MAX_CPUS> selected;
+      ULONG count = 0;
+      if (GetThreadSelectedCpuSets(watched->render_thread, selected.data(), MAX_CPUS, &count) == FALSE) {
+        const DWORD error = GetLastError();
+        if (WaitForSingleObject(watched->render_thread, 0) == WAIT_OBJECT_0) {
+          drop(CORE_NO_THREAD, ERROR_SUCCESS);
+        } else {
+          drop(CORE_FAILED, error);
+        }
+      } else if (!SameIds(std::span<const ULONG>(selected).first(count), watched->render_ids)) {
+        drop(CORE_YIELDED, ERROR_SUCCESS);
+      } else if (!watched->render_busy_checked && now_ms - watched->render_busy_start_ms >= render_busy_after_ms) {
+        // Once per reserve. The render thread is busy nearly all of a battle (99 % measured); another thread would
+        // hold a whole core for nothing. Below half: not it, until the next reserve looks again.
+        watched->render_busy_checked = true;
+        if (uint64_t cpu_100ns = 0;
+            ReadCpuTime(watched->render_thread, &cpu_100ns)
+            && (cpu_100ns - watched->render_busy_cpu_100ns) * 2 < (now_ms - watched->render_busy_start_ms) * 10000) {
+          ClearIfOurs(watched->render_thread, watched->render_ids);
+          drop(CORE_NOT_RENDER, ERROR_SUCCESS);
+        }
+      }
     }
   }
   if (line[0] != '\0') {
     api->log("%s", line);
   }
+  if (render_line[0] != '\0') {
+    api->log("%s", render_line);
+  }
 }
 
 // At the start of each battle step that runs beside the drawing, on the step's thread (from the hook, before the
-// game's function): reserves at the first step, follows the step's thread, releases when the row was turned off.
-// Changes nothing the game can see: the thread's last error is put back.
+// game's function): reserves at the first step, follows the step's thread, releases when a row was switched (the
+// next step then reserves what is asked for). Changes nothing the game can see: the thread's last error is put back.
 static void OnStepStart(Block* shared, const LoaderApi& api) noexcept {
   const DWORD last_error = GetLastError();
   // Formatted under the lock, logged after it: the loader's log may wait for its own lock.
   char change_line[LINE_CAPACITY] = "";
   char thread_line[LINE_CAPACITY] = "";
+  char render_line[LINE_CAPACITY] = "";
   {
     const std::scoped_lock lock(state.mutex);
     state.last_step_ms = GetTickCount64();
-    const uint32_t wanted = shared->core_wanted.load(std::memory_order_relaxed) & CORE_BATTLE;
-    if (state.core_state == CORE_ACTIVE && wanted != state.mask_at_reserve) {
-      Release(&state, CORE_WAITING, ERROR_SUCCESS, "turned off", change_line);
-    }
-
-    // The reserve. The tables are read again every time: rules and parking change. NO_SMT, FEW_CORES, UNSUPPORTED and
-    // FAILED stay for the session (no second pick).
-    if (state.core_state == CORE_WAITING && wanted != 0) {
+    const uint32_t wanted = WantedParts(state, *shared);
+    if (state.reserved && wanted != state.mask_at_reserve) {
+      Release(&state, CORE_WAITING, ERROR_SUCCESS, (((state.mask_at_reserve & ~wanted) != 0) ? "turned off" : "turned on"),
+              change_line, render_line);
+    } else if (!state.reserved && state.core_state == CORE_WAITING && wanted != 0) {
+      // The reserve. The tables are read again every time: rules and parking change. NO_SMT, FEW_CORES, UNSUPPORTED
+      // and FAILED stay for the session (no second pick) and end the render part with the battle part.
       state.shared = shared;
       state.api = &api;
       const auto refuse = [&](CoreState gate, DWORD error, const char* failed_call) {
         Publish(&state, gate, 0, 0, 0, error);
+        if (!StaysForSession(state.render_state)) {
+          PublishRender(&state, CORE_WITH_BATTLE, 0, 0, ERROR_SUCCESS);
+        }
         switch (gate) {
           case CORE_NO_SMT:
             std::snprintf(change_line, sizeof(change_line), "renodx_attila64: battle core: not used: no core with two logical CPUs");
@@ -420,39 +606,96 @@ static void OnStepStart(Block* shared, const LoaderApi& api) noexcept {
           }
         }
         const std::span allowed = std::span<const ULONG>(state.allowed.ids).first(state.allowed.count);
-        const Pick pick = PickBattleCore(system, allowed, std::span<const L3Cache>(state.l3).first(l3_count));
-        // What is written when there is a core: the allowed CPUs without it.
-        state.written.count = 0;
-        for (const ULONG id : allowed) {
-          if (id != pick.ids[0] && id != pick.ids[1]) {
-            state.written.ids[state.written.count++] = id;
-          }
-        }
-        if (pick.state != CORE_ACTIVE) {
-          refuse(pick.state, ERROR_SUCCESS, nullptr);
-        } else if (SetProcessDefaultCpuSets(GetCurrentProcess(), state.written.ids.data(), state.written.count) == FALSE) {
-          refuse(CORE_FAILED, GetLastError(), "the CPU set write");
+        const Picks picks = PickCores(system, allowed, std::span<const L3Cache>(state.l3).first(l3_count), wanted);
+        // Before the render part: an outcome that stays for the session takes its bit out again.
+        state.mask_at_reserve = wanted;
+        if (picks.battle.state != CORE_ACTIVE && picks.battle.state != CORE_WAITING) {
+          refuse(picks.battle.state, ERROR_SUCCESS, nullptr);
         } else {
-          state.original.count = default_count;
-          state.battle_ids = pick.ids;
-          state.affinity_at_reserve = process_affinity;
-          state.mask_at_reserve = wanted;
-          if (state.timer == nullptr) {
-            state.timer = CreateThreadpoolTimer(&Watchdog, &state, nullptr);
+          // The render thread first, so a refused select leaves its two CPUs in the default. Selected only when it
+          // still runs and has no rule of its own (no selected sets but ours, the process's affinity).
+          if (picks.render.state == CORE_NO_CORE) {
+            RenderOutcome(&state, CORE_NO_CORE, ERROR_SUCCESS, render_line);
+          } else if (picks.render.state == CORE_ACTIVE) {
+            std::array<ULONG, MAX_CPUS> selected;
+            ULONG selected_count = 0;
+            GROUP_AFFINITY thread_affinity = {};
+            if (WaitForSingleObject(state.render_thread, 0) != WAIT_TIMEOUT) {
+              RenderOutcome(&state, CORE_NO_THREAD, ERROR_SUCCESS, render_line);
+            } else if (GetThreadSelectedCpuSets(state.render_thread, selected.data(), MAX_CPUS, &selected_count) == FALSE
+                       || (selected_count != 0
+                           && !SameIds(std::span<const ULONG>(selected).first(selected_count), picks.render.ids))
+                       || GetThreadGroupAffinity(state.render_thread, &thread_affinity) == FALSE
+                       || thread_affinity.Mask != process_affinity) {
+              RenderOutcome(&state, CORE_OWN_RULE, ERROR_SUCCESS, render_line);
+            } else if (SetThreadSelectedCpuSets(state.render_thread, picks.render.ids.data(),
+                                                static_cast<ULONG>(picks.render.ids.size()))
+                       == FALSE) {
+              RenderOutcome(&state, CORE_FAILED, GetLastError(), render_line);
+            } else {
+              state.render_ids = picks.render.ids;
+              state.render_busy_start_ms = state.last_step_ms;
+              state.render_busy_checked = !ReadCpuTime(state.render_thread, &state.render_busy_cpu_100ns);
+              PublishRender(&state, CORE_ACTIVE, picks.render.logical[0], picks.render.logical[1], ERROR_SUCCESS);
+            }
           }
-          if (state.timer == nullptr) {
-            Release(&state, CORE_FAILED, GetLastError(), "the watchdog timer", change_line);
+          // What is written: the allowed CPUs without the cores now held.
+          state.written = picks.keep;
+          if (picks.render.state == CORE_ACTIVE && state.render_state != CORE_ACTIVE) {
+            for (const ULONG id : picks.render.ids) {
+              state.written.ids[state.written.count++] = id;
+            }
+          }
+          if (SetProcessDefaultCpuSets(GetCurrentProcess(), state.written.ids.data(), state.written.count) == FALSE) {
+            const DWORD error = GetLastError();
+            // Release's rule for the render thread: a clear that did not happen is a line.
+            if (state.render_state == CORE_ACTIVE && !ClearIfOurs(state.render_thread, state.render_ids)
+                && !state.render_clear_logged) {
+              state.render_clear_logged = true;
+              std::snprintf(render_line, sizeof(render_line),
+                            "renodx_attila64: render core: the render thread %lu keeps the CPU sets it has",
+                            state.render_tid);
+            }
+            refuse(CORE_FAILED, error, "the CPU set write");
           } else {
-            // Relative, in 100 ns.
-            const int64_t due_100ns = -int64_t{watchdog_ms} * 10000;
-            FILETIME due = {.dwLowDateTime = static_cast<DWORD>(due_100ns),
-                            .dwHighDateTime = static_cast<DWORD>(due_100ns >> 32)};
-            SetThreadpoolTimer(state.timer, &due, watchdog_ms, 0);
-            Publish(&state, CORE_ACTIVE, pick.logical[0], pick.logical[1], pick.cores, ERROR_SUCCESS);
-            std::snprintf(change_line, sizeof(change_line),
-                          "renodx_attila64: battle core: logical %u + %u, allowed cores %u, L3 %u MB, scheduling class %u",
-                          pick.logical[0], pick.logical[1], pick.cores, pick.l3_mb, pick.scheduling_class);
-            CapChangeLine(&state, change_line);
+            state.reserved = true;
+            state.original.count = default_count;
+            state.battle_ids = picks.battle.ids;
+            state.affinity_at_reserve = process_affinity;
+            if (state.timer == nullptr) {
+              state.timer = CreateThreadpoolTimer(&Watchdog, &state, nullptr);
+            }
+            if (state.timer == nullptr) {
+              Release(&state, CORE_FAILED, GetLastError(), "the watchdog timer", change_line, render_line);
+            } else {
+              // Relative, in 100 ns.
+              const int64_t due_100ns = -int64_t{watchdog_ms} * 10000;
+              FILETIME due = {.dwLowDateTime = static_cast<DWORD>(due_100ns),
+                              .dwHighDateTime = static_cast<DWORD>(due_100ns >> 32)};
+              SetThreadpoolTimer(state.timer, &due, watchdog_ms, 0);
+              // One line for the cores now held: the battle part's, then the render part's.
+              int length = 0;
+              if (picks.battle.state == CORE_ACTIVE) {
+                Publish(&state, CORE_ACTIVE, picks.battle.logical[0], picks.battle.logical[1], picks.battle.cores,
+                        ERROR_SUCCESS);
+                length = std::snprintf(
+                    change_line, sizeof(change_line),
+                    "renodx_attila64: battle core: logical %u + %u, allowed cores %u, L3 %u MB, scheduling class %u",
+                    picks.battle.logical[0], picks.battle.logical[1], picks.battle.cores, picks.battle.l3_mb,
+                    picks.battle.scheduling_class);
+              }
+              if (state.render_state == CORE_ACTIVE) {
+                length += std::snprintf(change_line + length, sizeof(change_line) - length, "%s",
+                                        ((length == 0) ? "renodx_attila64: " : ", "));
+                std::snprintf(change_line + length, sizeof(change_line) - length,
+                              "render core: logical %u + %u (render thread %lu), scheduling class %u",
+                              picks.render.logical[0], picks.render.logical[1], state.render_tid,
+                              picks.render.scheduling_class);
+              }
+              if (length != 0) {
+                CapChangeLine(&state, change_line);
+              }
+            }
           }
         }
       }
@@ -461,7 +704,9 @@ static void OnStepStart(Block* shared, const LoaderApi& api) noexcept {
     // The step's thread, at the reserve and whenever the step moved to another one: the previous thread is cleared
     // first, so two threads never hold the core. Selected only when it has no rule of its own (no selected sets, the
     // process's affinity); otherwise its steps run on the default and the core stays empty until the step moves on.
-    if (state.core_state == CORE_ACTIVE && GetCurrentThreadId() != state.step_tid) {
+    // The render thread is never the step's thread: a step it runs stays where that thread is.
+    if (state.core_state == CORE_ACTIVE && GetCurrentThreadId() != state.step_tid
+        && GetCurrentThreadId() != state.render_tid) {
       if (state.step_thread != nullptr) {
         ClearIfOurs(state.step_thread, state.battle_ids);
         CloseHandle(state.step_thread);
@@ -490,7 +735,7 @@ static void OnStepStart(Block* shared, const LoaderApi& api) noexcept {
                         == FALSE) {
         const DWORD error = GetLastError();
         state.step_thread = self;  // Release closes it
-        Release(&state, CORE_FAILED, error, "the step thread's CPU sets", thread_line);
+        Release(&state, CORE_FAILED, error, "the step thread's CPU sets", thread_line, render_line);
       } else {
         state.step_thread = self;
       }
@@ -502,7 +747,56 @@ static void OnStepStart(Block* shared, const LoaderApi& api) noexcept {
   if (thread_line[0] != '\0') {
     api.log("%s", thread_line);
   }
+  if (render_line[0] != '\0') {
+    api.log("%s", render_line);
+  }
   SetLastError(last_error);
+}
+
+// At the plugin's init, when the CPU row's hook is in: the [Attila64Plugin] RenderCore key. -1 (absent) leaves the
+// render part's bit as the build has it, 0 turns the part off for the process (the add-on's row cannot turn it on),
+// any other value sets the bit (a run without the add-on). The render word is built from here on.
+static void ApplyRenderCoreKey(Block* shared, int key) noexcept {
+  const std::scoped_lock lock(state.mutex);
+  state.shared = shared;
+  if (key == 0) {
+    shared->core_wanted.fetch_and(~CORE_RENDER, std::memory_order_relaxed);
+    PublishRender(&state, CORE_OFF_INI, 0, 0, ERROR_SUCCESS);
+    return;
+  }
+  if (key != -1) {
+    shared->core_wanted.fetch_or(CORE_RENDER, std::memory_order_relaxed);
+  }
+  PublishRender(&state, CORE_NO_THREAD, 0, 0, ERROR_SUCCESS);
+}
+
+// At the game's start, on the thread the loader then runs the game's main on: the render thread. Captured once and
+// kept for the process (that thread ends only at exit); nothing is captured with RenderCore=0.
+static void SetRenderThread(Block* shared, const LoaderApi& api) noexcept {
+  char line[LINE_CAPACITY] = "";
+  {
+    const std::scoped_lock lock(state.mutex);
+    state.shared = shared;
+    if (state.render_state == CORE_OFF_INI) {
+      RenderOutcome(&state, CORE_OFF_INI, ERROR_SUCCESS, line);
+    } else if (state.render_thread == nullptr) {
+      // A second call keeps the first thread.
+      HANDLE self = nullptr;
+      if (DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &self, render_handle_access, FALSE,
+                          0)
+          != FALSE) {
+        state.render_thread = self;
+        state.render_tid = GetCurrentThreadId();
+        PublishRender(&state, CORE_WAITING, 0, 0, ERROR_SUCCESS);
+        std::snprintf(line, sizeof(line), "renodx_attila64: render thread %lu", state.render_tid);
+      } else {
+        std::snprintf(line, sizeof(line), "renodx_attila64: render thread not captured (error %lu)", GetLastError());
+      }
+    }
+  }
+  if (line[0] != '\0') {
+    api.log("%s", line);
+  }
 }
 
 }  // namespace twattila::attila64_plugin::battle_core

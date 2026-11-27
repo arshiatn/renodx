@@ -11,7 +11,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
+#include <shared_mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "../loader_api.h"
@@ -29,6 +32,8 @@ enum HookMode : uint8_t { HOOK_NORMAL, HOOK_NO_MEMORY, HOOK_WRITE_FAILS };
 
 static int checks = 0;
 static int failures = 0;
+// The battle core's watchdog logs from a timer thread.
+static std::shared_mutex log_mutex;
 static std::vector<std::string> log_lines;
 static HookMode hook_mode = HOOK_NORMAL;
 
@@ -46,10 +51,12 @@ static void FakeLog(const char* format, ...) noexcept {
   std::vsnprintf(line, sizeof(line), format, arguments);
   va_end(arguments);
   std::printf("  log: %s\n", line);
+  const std::scoped_lock lock(log_mutex);
   log_lines.emplace_back(line);
 }
 
 static bool Logged(const char* text) {
+  const std::shared_lock lock(log_mutex);
   for (const std::string& line : log_lines) {
     if (line.find(text) != std::string::npos) return true;
   }
@@ -167,22 +174,26 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const Plugin plugin = LoadPlugin(dll_path);
   if (plugin.init == nullptr) return plugin;
 
-  log_lines.clear();
+  {
+    const std::scoped_lock lock(log_mutex);
+    log_lines.clear();
+  }
   Expect(plugin.init(&api) == 0, "the plugin's init accepts the game");
   const Block* shared = plugin.block;
   Expect(shared->version == VERSION && shared->bytes == BlockBytes(VERSION), "the block's version and size");
   Expect(shared->status.load(std::memory_order_acquire) == STATUS_READY, "the block is READY after init");
   const uint32_t rows = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT);
   Expect(shared->rows_applied == rows && shared->rows_refused == 0, "the three rows applied");
-  // v2's initial values: the rows tried, the core default, the battle core waiting, the other status words not built,
-  // the scales neutral.
+  // v2's initial values: the rows tried, the core default (no RenderCore key here), the battle core waiting, the render
+  // core without its thread yet, the other status words not built, the scales neutral.
   bool scales_neutral = true;
   for (size_t scale = 0; scale < SCALE_COUNT; ++scale) {
     scales_neutral = scales_neutral && shared->scales[scale].load() == NEUTRAL_SCALES[scale];
   }
   Expect(shared->rows_tried == rows && shared->core_wanted.load() == CORE_WANTED_DEFAULT
              && shared->core_status.load() == (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT)
-             && shared->render_core_status.load() == 0 && shared->engine_status.load() == 0
+             && shared->render_core_status.load() == (uint32_t{CORE_NO_THREAD} << CORE_STATE_SHIFT)
+             && shared->engine_status.load() == 0
              && shared->tweaks_status.load() == TWEAKS_NONE && shared->tweak_count == 0 && shared->tweaks == nullptr
              && shared->notices.load() == 0 && shared->scales_active.load() == 0 && scales_neutral
              && NEUTRAL_SCALES[SCALE_SPRITE_DISTANCE] == 0.0f && NEUTRAL_SCALES[SCALE_DEAD_UNITS] == 1.0f,
@@ -202,6 +213,22 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   char started[64];
   std::snprintf(started, sizeof(started), "game started: %zu sites unchanged", SITES.size());
   Expect(shared->rows_changed.load() == 0 && Logged(started), "game start finds every site unchanged");
+  // The thread that runs the game's start is the render thread: captured once, with its own line.
+  char render_thread[64];
+  std::snprintf(render_thread, sizeof(render_thread), "renodx_attila64: render thread %lu", GetCurrentThreadId());
+  const auto line_count = [] {
+    const std::shared_lock lock(log_mutex);
+    return log_lines.size();
+  };
+  const size_t lines_before = line_count();
+  plugin.game_started(&api);
+  const bool sites_line_last = [] {
+    const std::shared_lock lock(log_mutex);
+    return std::string_view(log_lines.back()).starts_with("renodx_attila64: game started: ");
+  }();
+  Expect(shared->render_core_status.load() == (uint32_t{CORE_WAITING} << CORE_STATE_SHIFT) && Logged(render_thread)
+             && !Logged("render core:") && sites_line_last && line_count() == lines_before + 1,
+         "game start captures the render thread once: a second start logs only its sites line");
   return plugin;
 }
 

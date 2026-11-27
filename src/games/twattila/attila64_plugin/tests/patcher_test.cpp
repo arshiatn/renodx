@@ -7,8 +7,8 @@
 // and their refusals, the loader's hook and the re-check, the stack-check rule, the hook bodies on synthetic game
 // functions at the real sites (this file's copy of hooks.hpp and the built DLL's own) with the add-on's callbacks and
 // one live battle-core reserve on this process's own CPU sets, the callback drain, and the built DLL's init with each
-// refusal (copies of the DLL under dll_cases\, a ReShade.ini next to
-// this exe for the ini keys).
+// refusal and with the RenderCore key (copies of the DLL under dll_cases\, a ReShade.ini next to this exe for the ini
+// keys), and the text a batch tool looks for in the DLL file.
 // patcher_test.exe <renodx_attila64.dll>; exit code = failures.
 
 #include <windows.h>
@@ -20,8 +20,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <span>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -503,12 +506,88 @@ int wmain(int argc, wchar_t** argv) {
   };
   set_ini_key_off(nullptr);
 
+  // The DLL file holds the render part's reserve text as one whole string of its own (a zero byte before and after):
+  // the batch tool looks for exactly that and refuses a render-core arm on a DLL without it.
+  {
+    using std::string_view_literals::operator""sv;
+    std::ifstream dll_file(argv[1], std::ios::binary);
+    const std::string dll_bytes{std::istreambuf_iterator<char>(dll_file), std::istreambuf_iterator<char>()};
+    Expect(dll_bytes.find("\0render core: logical %u + %u (render thread %lu), scheduling class %u\0"sv) != std::string::npos,
+           "dll: the file holds the render core's reserve text as a whole string");
+    Expect(dll_bytes.find("\0renodx_attila64: render thread %lu\0"sv) != std::string::npos,
+           "dll: the file holds the render thread's line as a whole string");
+  }
+
+  const auto render_state_of = [](const Block* shared) {
+    return (shared->render_core_status.load() >> CORE_STATE_SHIFT) & CORE_FIELD_MASK;
+  };
+  const auto selected_count = [] {
+    ULONG count = 0;
+    GetThreadSelectedCpuSets(GetCurrentThread(), nullptr, 0, &count);
+    return count;
+  };
+
   std::printf("  hooks: the DLL's own\n");
   write_game();
   const Plugin main_plugin = ExpectPluginDll(api, copy_plugin(L"main", MODULE_NAME).c_str());
   if (main_plugin.block != nullptr) {
+    // This thread ran the DLL's game start, so it is the DLL's render thread: its steps are never selected onto the
+    // battle core (the test's own copy above, with no render thread, selects this thread).
     expect_hook_bodies(main_plugin.block);
+    Expect(step_once() && (core_state_of(main_plugin.block) != CORE_ACTIVE || selected_count() == 0),
+           "step: the render thread is not selected onto the battle core");
+    main_plugin.block->core_wanted.fetch_and(~CORE_BATTLE);
+    Expect(step_once() && core_state_of(main_plugin.block) != CORE_ACTIVE, "step: released again");
+    main_plugin.block->core_wanted.store(CORE_WANTED_DEFAULT);
   }
+
+  // The RenderCore key. 1: the render part's bit is set at init, and one step reserves both cores (this thread is the
+  // render thread and holds the render core). 0: off for the process, whatever the bit says later.
+  WritePrivateProfileStringW(INI_SECTION, INI_RENDER_CORE, L"1", ini_path.c_str());
+  write_game();
+  if (const auto [plugin, result] = init_copy(L"render_on", MODULE_NAME, api); result == 0) {
+    Expect(plugin.block->core_wanted.load() == (CORE_WANTED_DEFAULT | CORE_RENDER) && render_state_of(plugin.block) == CORE_NO_THREAD,
+           "dll: RenderCore=1 sets the render part's bit at init");
+    plugin.game_started(&api);
+    Expect(render_state_of(plugin.block) == CORE_WAITING && Logged("renodx_attila64: render thread "),
+           "dll: RenderCore=1, the render thread is captured at the game's start");
+    const auto default_before = default_cpu_sets();
+    Expect(step_once() && core_state_of(plugin.block) != CORE_WAITING, "dll: RenderCore=1, a step places");
+    if (core_state_of(plugin.block) == CORE_ACTIVE && render_state_of(plugin.block) == CORE_ACTIVE) {
+      char render_piece[64];
+      std::snprintf(render_piece, sizeof(render_piece), " (render thread %lu), scheduling class ", GetCurrentThreadId());
+      Expect(selected_count() == 2 && default_cpu_sets() != default_before
+                 && Logged("renodx_attila64: battle core: logical ") && Logged(", render core: logical ") && Logged(render_piece),
+             "dll: RenderCore=1, both cores reserved in one line, this thread on the render core");
+      plugin.block->core_wanted.fetch_and(~(CORE_BATTLE | CORE_RENDER));
+      Expect(step_once() && core_state_of(plugin.block) == CORE_WAITING && render_state_of(plugin.block) == CORE_WAITING
+                 && selected_count() == 0 && default_cpu_sets() == default_before,
+             "dll: RenderCore=1, released: the render thread cleared, the CPU sets put back");
+    } else {
+      std::printf("  dll: no render core on this machine (states %u / %u)\n", core_state_of(plugin.block),
+                  render_state_of(plugin.block));
+      plugin.block->core_wanted.fetch_and(~(CORE_BATTLE | CORE_RENDER));
+      step_once();
+    }
+  } else {
+    Expect(false, "dll: init for the RenderCore=1 case");
+  }
+  set_ini_key_off(INI_RENDER_CORE);
+  write_game();
+  if (const auto [plugin, result] = init_copy(L"render_off", MODULE_NAME, api); result == 0) {
+    Expect(plugin.block->core_wanted.load() == (CORE_WANTED_DEFAULT & ~CORE_RENDER) && render_state_of(plugin.block) == CORE_OFF_INI,
+           "dll: RenderCore=0 is off at init");
+    plugin.game_started(&api);
+    plugin.block->core_wanted.fetch_or(CORE_RENDER);
+    Expect(step_once() && render_state_of(plugin.block) == CORE_OFF_INI && !Logged("renodx_attila64: render thread ")
+               && Logged("render core: off in ReShade.ini, RenderCore=0 (render thread 0, error 0)") && !Logged("render core: logical"),
+           "dll: RenderCore=0, nothing captured and no render core even with its bit set later");
+    plugin.block->core_wanted.fetch_and(~(CORE_BATTLE | CORE_RENDER));
+    Expect(step_once() && core_state_of(plugin.block) != CORE_ACTIVE, "dll: RenderCore=0, released again");
+  } else {
+    Expect(false, "dll: init for the RenderCore=0 case");
+  }
+  set_ini_key_off(nullptr);
 
   write_game();
   if (const auto [plugin, result] = init_copy(L"changed", MODULE_NAME, api); result == 0) {
@@ -542,11 +621,15 @@ int wmain(int argc, wchar_t** argv) {
                && plugin.block->rows_refused == RowBit(row) && plugin.block->rows_tried == others
                && Logged("skipped (OFF)") && only_its_site_untouched,
            "dll: a row's install key 0 leaves that row out, and out of the rows tried");
-    // The battle core's status is built only with its row in.
-    const uint64_t waiting = uint64_t{CORE_WAITING} << CORE_STATE_SHIFT;
-    Expect(plugin.block->core_status.load() == ((row == ROW_CPU_PLACEMENT) ? 0 : waiting)
-               && plugin.block->render_core_status.load() == 0,
-           "dll: the battle core's status is built only with its row applied");
+    // Both core status words are built only with the row in (without it the RenderCore key is not read either).
+    const bool built = (row != ROW_CPU_PLACEMENT);
+    Expect(plugin.block->core_status.load() == (built ? (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT) : 0)
+               && plugin.block->render_core_status.load() == (built ? (uint32_t{CORE_NO_THREAD} << CORE_STATE_SHIFT) : 0),
+           "dll: the core status words are built only with the CPU row applied");
+    plugin.game_started(&api);
+    Expect(Logged("renodx_attila64: render thread ") == built
+               && plugin.block->render_core_status.load() == (built ? (uint32_t{CORE_WAITING} << CORE_STATE_SHIFT) : 0),
+           "dll: the render thread is captured only with the CPU row applied");
   }
   set_ini_key_off(nullptr);
 
@@ -566,7 +649,8 @@ int wmain(int argc, wchar_t** argv) {
     const auto [plugin, result] = init_copy(L"step_neighbour", MODULE_NAME, api);
     Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_CPU_PLACEMENT))
                && plugin.block->rows_refused == RowBit(ROW_CPU_PLACEMENT) && plugin.block->rows_tried == ALL_ROWS
-               && plugin.block->core_status.load() == 0 && site_untouched(SITES[ROW_CPU_PLACEMENT])
+               && plugin.block->core_status.load() == 0 && plugin.block->render_core_status.load() == 0
+               && site_untouched(SITES[ROW_CPU_PLACEMENT])
                && Logged("STEP_ENTRY 0xbb4e00: skipped (NEIGHBOUR)"),
            "dll: a patch next to the step site leaves the battle core out (tried, status not built)");
   }

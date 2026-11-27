@@ -4,9 +4,10 @@
  */
 
 // renodx_attila64.dll: a plugin of the 64-bit Attila loader (it runs the game's Linux build on Windows) that hooks game
-// functions: two for the Attila add-on (plugin_block.h) and the battle step's task, to keep a CPU core free for it
-// (battle_core.hpp; that row works without the add-on). The loader loads it from its plugins folder, after its own
-// patches and before any game code runs; the add-on finds its block once ReShade loads it. Built by build.ps1.
+// functions: two for the Attila add-on (plugin_block.h) and the battle step's task, to keep a CPU core free for it and
+// one for the render thread (battle_core.hpp; that row works without the add-on). The loader loads it from its plugins
+// folder, after its own patches and before any game code runs; the add-on finds its block once ReShade loads it. Built
+// by build.ps1.
 
 #include <windows.h>
 
@@ -19,6 +20,7 @@
 #include <string_view>
 
 #include "../module_version.hpp"
+#include "battle_core.hpp"
 #include "hooks.hpp"
 #include "loader_api.h"
 #include "patcher.hpp"
@@ -182,8 +184,10 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   // A row is on only when all of its sites are.
   block.rows_applied &= ~block.rows_refused;
   // The battle core's status is built (not 0) only with its hook in; battle_core.hpp writes it from the first step on.
+  // The render core's the same, with its switch.
   if ((block.rows_applied & RowBit(ROW_CPU_PLACEMENT)) != 0) {
     block.core_status.store(uint64_t{CORE_WAITING} << CORE_STATE_SHIFT, std::memory_order_relaxed);
+    battle_core::ApplyRenderCoreKey(&block, ini_int(INI_RENDER_CORE, -1));
   }
   char rows[ROWS_LINE_CAPACITY] = {};
   size_t rows_length = 0;
@@ -215,6 +219,10 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
     }
   }
   loader->log("renodx_attila64: game started: %u sites unchanged", unchanged);
+  // This thread goes on to run the game's main: the render thread.
+  if ((block.rows_applied & RowBit(ROW_CPU_PLACEMENT)) != 0) {
+    battle_core::SetRenderThread(&block, *loader);
+  }
 }
 
 extern "C" __declspec(dllexport) Block* renodx_attila64_block() { return &block; }

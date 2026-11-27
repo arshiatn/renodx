@@ -5,7 +5,9 @@
 
 // The battle core (battle_core.hpp) without a game: the pick on synthetic CPU tables, and the live cases on this
 // process's own CPU sets with its own "step" threads (reserve, the step's thread moving, threads with a rule of their
-// own, the row's bit turned off and on, the watchdog's release, another program's change, the states that stay).
+// own, the row's bit turned off and on, the watchdog's release, another program's change, the states that stay), and
+// the render part with a "render" thread of its own (both cores in one reserve, each way it ends alone, the RenderCore
+// key, the two bits switched live).
 // The live cases need a machine the pick accepts (8 cores with two logical CPUs each); elsewhere they are left out and
 // the last line says so.
 // battle_core_test.exe; exit code = failures.
@@ -15,9 +17,11 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
+#include <shared_mutex>
 #include <span>
 #include <string>
 #include <thread>
@@ -75,6 +79,15 @@ Table Hybrid(uint8_t performance_threads, uint8_t performance_class) {
   AddCores(&table, static_cast<uint8_t>(8 * performance_threads), 16, 1, 0, 0);
   return table;
 }
+// `caches` caches of `cores` two-CPU cores each.
+Table Caches(uint8_t caches, uint8_t cores) {
+  Table table;
+  for (uint8_t cache = 0; cache < caches; ++cache) {
+    const auto first_logical = static_cast<uint8_t>(cache * cores * 2);
+    AddCores(&table, first_logical, cores, 2, first_logical, 0);
+  }
+  return table;
+}
 Table OneCache(uint8_t cores, uint8_t threads) {
   Table table;
   AddCores(&table, 0, cores, threads, 0, 0);
@@ -94,11 +107,15 @@ struct PickCase {
   Table table;
   uint64_t allowed_logical;  // the CPUs the game may use
   std::vector<battle_core::L3Cache> l3;
-  CoreState state;
+  CoreState state;  // the battle part's: its core, why neither part is used, or CORE_WAITING (not asked for)
   uint8_t logical_a = 0;
   uint8_t logical_b = 0;
   uint8_t cores = 0;
   uint32_t l3_mb = 0;
+  uint32_t wanted = CORE_BATTLE;
+  CoreState render = CORE_WAITING;  // where the battle part has no reason against both
+  uint8_t render_a = 0;
+  uint8_t render_b = 0;
 };
 
 // ---- live cases ----
@@ -128,6 +145,33 @@ struct StepThread {
   }
 };
 
+// A thread for the render part: it captures itself as the render thread or runs a step, and waits idle or busy.
+enum RenderCommand : uint8_t { RENDER_NOTHING, RENDER_CAPTURE, RENDER_STEP };
+struct RenderThread {
+  HANDLE go = CreateSemaphoreW(nullptr, 0, 64, nullptr);
+  HANDLE done = CreateSemaphoreW(nullptr, 0, 64, nullptr);
+  std::atomic<RenderCommand> command = RENDER_NOTHING;
+  std::atomic_bool busy = false;
+  std::atomic_bool quit = false;
+  std::thread thread{[this] {
+    while (!quit.load()) {
+      if (WaitForSingleObject(go, (busy.load() ? 0 : INFINITE)) != WAIT_OBJECT_0) continue;
+      switch (command.load()) {
+        case RENDER_CAPTURE: battle_core::SetRenderThread(&shared, api); break;
+        case RENDER_STEP:    battle_core::OnStepStart(&shared, api); break;
+        default:             break;
+      }
+      ReleaseSemaphore(done, 1, nullptr);
+    }
+  }};
+
+  void Run(RenderCommand next) {
+    command = next;
+    ReleaseSemaphore(go, 1, nullptr);
+    WaitForSingleObject(done, INFINITE);
+  }
+};
+
 std::vector<ULONG> Sorted(std::vector<ULONG> ids) {
   std::ranges::sort(ids);
   return ids;
@@ -152,6 +196,7 @@ std::vector<ULONG> Selected(HANDLE thread) {
 }
 
 uint32_t StatusField(uint32_t shift) { return static_cast<uint32_t>(shared.core_status.load() >> shift) & CORE_FIELD_MASK; }
+uint32_t RenderField(uint32_t shift) { return (shared.render_core_status.load() >> shift) & CORE_FIELD_MASK; }
 
 bool WaitForState(CoreState wanted) {
   for (int tries = 0; tries < 300 && StatusField(CORE_STATE_SHIFT) != wanted; ++tries) {
@@ -160,8 +205,29 @@ bool WaitForState(CoreState wanted) {
   return StatusField(CORE_STATE_SHIFT) == wanted;
 }
 
+bool WaitForRender(CoreState wanted) {
+  for (int tries = 0; tries < 300 && RenderField(CORE_STATE_SHIFT) != wanted; ++tries) {
+    Sleep(10);
+  }
+  return RenderField(CORE_STATE_SHIFT) == wanted;
+}
+
 int LinesWith(const char* text) {
+  const std::shared_lock lock(log_mutex);
   return static_cast<int>(std::ranges::count_if(log_lines, [&](const std::string& line) { return line.find(text) != std::string::npos; }));
+}
+
+// The watchdog logs after its work is done and its lock is gone: a line of its own says that all of it is visible.
+bool WaitForLine(const char* text) {
+  for (int tries = 0; tries < 300 && LinesWith(text) == 0; ++tries) {
+    Sleep(10);
+  }
+  return LinesWith(text) != 0;
+}
+
+bool Reserved() {
+  const std::scoped_lock lock(battle_core::state.mutex);
+  return battle_core::state.reserved;
 }
 
 // The test's reset of a state that stays for the session.
@@ -180,6 +246,7 @@ int wmain() {
   Table too_many = OneCache(64, 1);
   too_many.push_back(too_many.back());
   const std::vector<battle_core::L3Cache> one_96 = {{.logical_cpus = 0xffff, .bytes = 96 * MEGABYTE}};
+  const uint32_t both = CORE_BATTLE | CORE_RENDER;
   const std::vector<PickCase> cases = {
       {"two caches 96 + 32 MB, a rule for logical 0-15", TwoCaches(), 0xffff, TwoCacheSizes(96, 32), CORE_ACTIVE, 14, 15, 8, 96},
       {"two caches 96 + 32 MB, no rule", TwoCaches(), every, TwoCacheSizes(96, 32), CORE_ACTIVE, 14, 15, 16, 96},
@@ -209,6 +276,41 @@ int wmain() {
       {"nothing allowed", TwoCaches(), 0, TwoCacheSizes(96, 32), CORE_NO_SMT},
       {"a second processor group", With(two_groups, 0, 0xff00), every, {}, CORE_UNSUPPORTED},
       {"more than 64 logical CPUs", too_many, every, {}, CORE_UNSUPPORTED},
+      // The render core beside the battle core.
+      {"render: a rule for logical 0-15", TwoCaches(), 0xffff, TwoCacheSizes(96, 32), CORE_ACTIVE, 14, 15, 8, 96, both, CORE_ACTIVE, 12, 13},
+      {"render: one cache, 8 cores", OneCache(8, 2), every, one_96, CORE_ACTIVE, 14, 15, 8, 96, both, CORE_ACTIVE, 12, 13},
+      {"render: two caches 96 + 32 MB, no rule", TwoCaches(), every, TwoCacheSizes(96, 32), CORE_ACTIVE, 14, 15, 16, 96, both,
+       CORE_ACTIVE, 12, 13},
+      {"render: two equal caches, no rule", TwoCaches(), every, TwoCacheSizes(32, 32), CORE_ACTIVE, 14, 15, 16, 32, both,
+       CORE_ACTIVE, 12, 13},
+      {"render: two caches 32 + 96 MB: beside the battle core", TwoCaches(), every, TwoCacheSizes(32, 96), CORE_ACTIVE, 30, 31, 16,
+       96, both, CORE_ACTIVE, 28, 29},
+      {"render: two caches of 6 cores: exactly 4 below", Caches(2, 6), every, {}, CORE_ACTIVE, 10, 11, 12, 0, both, CORE_ACTIVE, 8, 9},
+      {"render: two caches of 4 cores: 2 below, none", Caches(2, 4), every, {}, CORE_ACTIVE, 6, 7, 8, 0, both, CORE_NO_CORE},
+      {"render: four caches of 3 cores: none", Caches(4, 3), every, {}, CORE_ACTIVE, 4, 5, 12, 0, both, CORE_NO_CORE},
+      {"render: four caches of 4 cores: none", Caches(4, 4), every, {}, CORE_ACTIVE, 6, 7, 16, 0, both, CORE_NO_CORE},
+      {"render: 8 performance cores (class 1) + 16 efficiency cores", Hybrid(2, 1), every, {}, CORE_ACTIVE, 14, 15, 8, 0, both,
+       CORE_ACTIVE, 12, 13},
+      {"render: 8 performance + 16 efficiency cores, one class reported", Hybrid(2, 0), every, {}, CORE_ACTIVE, 14, 15, 8, 0, both,
+       CORE_ACTIVE, 12, 13},
+      {"render: no rule without logical 12 and 13: the next whole core", TwoCaches(), 0xffffcfff, TwoCacheSizes(96, 32),
+       CORE_ACTIVE, 14, 15, 15, 96, both, CORE_ACTIVE, 10, 11},
+      {"render: the core below the battle core parked: the next (5 below)", With(TwoCaches(), 0x3000, 0), 0xffff,
+       TwoCacheSizes(96, 32), CORE_ACTIVE, 14, 15, 8, 96, both, CORE_ACTIVE, 10, 11},
+      {"render: parked cores below do not count: none", With(TwoCaches(), 0x03ff, 0), 0xffff, TwoCacheSizes(96, 32), CORE_ACTIVE,
+       14, 15, 8, 96, both, CORE_NO_CORE},
+      {"render: 2 cores of the big cache + 6 of the other: none", TwoCaches(), 0x0fff000f, TwoCacheSizes(96, 32), CORE_ACTIVE, 2, 3,
+       8, 96, both, CORE_NO_CORE},
+      {"render: 6 cores: neither part", OneCache(6, 2), every, {}, CORE_FEW_CORES, 0, 0, 0, 0, both},
+      {"render: the rule without logical 12 and 13: 7 cores, neither part", TwoCaches(), 0xcfff, TwoCacheSizes(96, 32),
+       CORE_FEW_CORES, 0, 0, 0, 0, both},
+      {"render: one logical CPU each: neither part", OneCache(8, 1), every, {}, CORE_NO_SMT, 0, 0, 0, 0, both},
+      {"render: more than 64 logical CPUs: neither part", too_many, every, {}, CORE_UNSUPPORTED, 0, 0, 0, 0, both},
+      // The render part alone takes the battle core's place.
+      {"render alone: the highest core", TwoCaches(), 0xffff, TwoCacheSizes(96, 32), CORE_WAITING, 0, 0, 0, 0, CORE_RENDER,
+       CORE_ACTIVE, 14, 15},
+      {"render alone, a cache of 4 cores: 3 below, none", Caches(2, 4), every, {}, CORE_WAITING, 0, 0, 0, 0, CORE_RENDER, CORE_NO_CORE},
+      {"render alone, 6 cores: neither part", OneCache(6, 2), every, {}, CORE_FEW_CORES, 0, 0, 0, 0, CORE_RENDER},
   };
   for (const PickCase& test : cases) {
     std::vector<ULONG> allowed_ids;
@@ -218,36 +320,76 @@ int wmain() {
       allowed_ids.push_back(entry.CpuSet.Id);
       top_class = std::max(top_class, entry.CpuSet.EfficiencyClass);
     }
-    const battle_core::Pick pick = battle_core::PickBattleCore(test.table, allowed_ids, test.l3);
+    const battle_core::Picks picks = battle_core::PickCores(test.table, allowed_ids, test.l3, test.wanted);
+    const battle_core::Pick& pick = picks.battle;
+    // A reason against the battle part is a reason against both.
+    const bool neither = pick.state != CORE_ACTIVE && pick.state != CORE_WAITING;
     const bool as_expected = pick.state == test.state && pick.logical[0] == test.logical_a && pick.logical[1] == test.logical_b
                              && (test.state != CORE_ACTIVE || pick.cores == test.cores)
-                             && pick.l3_mb == test.l3_mb;
+                             && pick.l3_mb == test.l3_mb
+                             && picks.render.state == (neither ? CORE_WITH_BATTLE : test.render)
+                             && picks.render.logical[0] == test.render_a && picks.render.logical[1] == test.render_b;
     Expect(as_expected, test.name);
     if (!as_expected) {
-      std::printf("  got state %u, logical %u + %u, cores %u, L3 %u MB\n", pick.state, pick.logical[0], pick.logical[1], pick.cores,
-                  pick.l3_mb);
+      std::printf("  got state %u, logical %u + %u, cores %u, L3 %u MB; render state %u, logical %u + %u\n", pick.state,
+                  pick.logical[0], pick.logical[1], pick.cores, pick.l3_mb, picks.render.state, picks.render.logical[0],
+                  picks.render.logical[1]);
     }
     // Over every table: a picked core is two allowed logical CPUs, both of one core that has no third, of the highest
     // class allowed (never an efficiency core beside performance cores), not parked; without a pick, no ids.
-    if (pick.state != CORE_ACTIVE) {
-      Expect(pick.ids[0] == 0 && pick.ids[1] == 0, "pick: no ids without a core");
-      continue;
-    }
     const auto entry_of = [&](ULONG id) {
-      return *std::ranges::find_if(test.table, [&](const SYSTEM_CPU_SET_INFORMATION& entry) { return entry.CpuSet.Id == id; });
+      return std::ranges::find_if(test.table, [&](const SYSTEM_CPU_SET_INFORMATION& entry) { return entry.CpuSet.Id == id; })->CpuSet;
     };
-    const auto first = entry_of(pick.ids[0]).CpuSet;
-    const auto second = entry_of(pick.ids[1]).CpuSet;
-    const auto core_cpus = std::ranges::count_if(
-        test.table, [&](const SYSTEM_CPU_SET_INFORMATION& entry) { return entry.CpuSet.CoreIndex == first.CoreIndex; });
-    Expect(pick.ids[0] != pick.ids[1] && std::ranges::find(allowed_ids, pick.ids[0]) != allowed_ids.end()
-               && std::ranges::find(allowed_ids, pick.ids[1]) != allowed_ids.end(),
-           "pick: both CPUs are allowed");
-    Expect(first.CoreIndex == second.CoreIndex && core_cpus == 2 && first.LogicalProcessorIndex == pick.logical[0]
-               && second.LogicalProcessorIndex == pick.logical[1] && pick.logical[0] < pick.logical[1],
-           "pick: one whole core with two logical CPUs");
-    Expect(first.EfficiencyClass == top_class && second.EfficiencyClass == top_class && first.Parked == 0 && second.Parked == 0,
-           "pick: the highest class allowed, not parked");
+    // The cores of a cache that could be picked, below a core index.
+    const auto free_cores_below = [&](uint8_t cache, uint8_t core_index) {
+      int cores = 0;
+      for (const SYSTEM_CPU_SET_INFORMATION& entry : test.table) {
+        const auto of_core = [&](const SYSTEM_CPU_SET_INFORMATION& other) { return other.CpuSet.CoreIndex == entry.CpuSet.CoreIndex; };
+        const bool usable = std::ranges::all_of(test.table, [&](const SYSTEM_CPU_SET_INFORMATION& other) {
+          return !of_core(other)
+                 || (other.CpuSet.Parked == 0 && std::ranges::find(allowed_ids, other.CpuSet.Id) != allowed_ids.end());
+        });
+        if (entry.CpuSet.LogicalProcessorIndex == entry.CpuSet.CoreIndex && entry.CpuSet.LastLevelCacheIndex == cache
+            && entry.CpuSet.CoreIndex < core_index && entry.CpuSet.EfficiencyClass == top_class
+            && std::ranges::count_if(test.table, of_core) == 2 && usable) {
+          ++cores;
+        }
+      }
+      return cores;
+    };
+    std::vector<ULONG> parts(picks.keep.ids.begin(), picks.keep.ids.begin() + picks.keep.count);
+    for (const battle_core::Pick* part : {&picks.battle, &picks.render}) {
+      if (part->state != CORE_ACTIVE) {
+        Expect(part->ids[0] == 0 && part->ids[1] == 0 && part->logical[0] == 0 && part->logical[1] == 0, "pick: no ids without a core");
+        continue;
+      }
+      parts.insert(parts.end(), part->ids.begin(), part->ids.end());
+      const auto first = entry_of(part->ids[0]);
+      const auto second = entry_of(part->ids[1]);
+      const auto core_cpus = std::ranges::count_if(
+          test.table, [&](const SYSTEM_CPU_SET_INFORMATION& entry) { return entry.CpuSet.CoreIndex == first.CoreIndex; });
+      Expect(part->ids[0] != part->ids[1] && std::ranges::find(allowed_ids, part->ids[0]) != allowed_ids.end()
+                 && std::ranges::find(allowed_ids, part->ids[1]) != allowed_ids.end(),
+             "pick: both CPUs are allowed");
+      Expect(first.CoreIndex == second.CoreIndex && core_cpus == 2 && first.LogicalProcessorIndex == part->logical[0]
+                 && second.LogicalProcessorIndex == part->logical[1] && part->logical[0] < part->logical[1],
+             "pick: one whole core with two logical CPUs");
+      Expect(first.EfficiencyClass == top_class && second.EfficiencyClass == top_class && first.Parked == 0 && second.Parked == 0,
+             "pick: the highest class allowed, not parked");
+    }
+    // What is kept and the cores are apart and together the allowed CPUs (never more); nothing is kept without a pick.
+    Expect(neither ? (picks.keep.count == 0) : (Sorted(parts) == Sorted(allowed_ids)),
+           "pick: the kept CPUs and the cores are the allowed CPUs, each once");
+    if (picks.render.state == CORE_ACTIVE) {
+      const auto render = entry_of(picks.render.ids[0]);
+      Expect(free_cores_below(render.LastLevelCacheIndex, render.CoreIndex) >= static_cast<int>(battle_core::RENDER_POOL_CORES),
+             "pick: 4 cores of its cache stay below the render core");
+      if (pick.state == CORE_ACTIVE) {
+        const auto battle = entry_of(pick.ids[0]);
+        Expect(render.LastLevelCacheIndex == battle.LastLevelCacheIndex && render.CoreIndex < battle.CoreIndex,
+               "pick: the render core is in the battle core's cache, below it");
+      }
+    }
   }
 
   // ---- the live cases ----
@@ -441,6 +583,368 @@ int wmain() {
                && LinesWith("another program changed the game's affinity") == 1,
            "yield: a changed affinity, the default put back");
     SetProcessAffinityMask(GetCurrentProcess(), found_affinity);
+
+    // ---- the render part ----
+    battle_core::render_busy_after_ms = 600000;
+    RenderThread render;
+    const HANDLE render_handle = render.thread.native_handle();
+    const DWORD render_tid = GetThreadId(render_handle);
+    const auto released = [] {
+      for (int tries = 0; tries < 300 && Reserved(); ++tries) {
+        Sleep(10);
+      }
+      return !Reserved();
+    };
+    // A session as after the plugin's init with this RenderCore key: nothing reserved, no render thread, an empty log.
+    const auto new_session = [&](int render_core_key) {
+      battle_core::release_after_ms = 0;
+      released();
+      battle_core::release_after_ms = 600000;
+      Sleep(2 * battle_core::watchdog_ms);  // the release's line
+      {
+        const std::scoped_lock lock(battle_core::state.mutex);
+        if (battle_core::state.render_thread != nullptr) {
+          CloseHandle(battle_core::state.render_thread);
+        }
+        battle_core::state.render_thread = nullptr;
+        battle_core::state.render_tid = 0;
+        battle_core::state.render_state = CORE_NO_THREAD;
+        battle_core::state.render_logged = {};
+        battle_core::state.render_clear_logged = false;
+        battle_core::state.core_state = CORE_WAITING;
+        battle_core::state.changes_logged = 0;
+        battle_core::state.own_rule_logged = false;
+      }
+      SetThreadSelectedCpuSets(render_handle, nullptr, 0);
+      SetProcessDefault(every_id);
+      shared.core_wanted.store(CORE_WANTED_DEFAULT);
+      shared.core_status.store(uint64_t{CORE_WAITING} << CORE_STATE_SHIFT);
+      shared.render_core_status.store(0);
+      {
+        const std::scoped_lock lock(log_mutex);
+        log_lines.clear();
+      }
+      battle_core::ApplyRenderCoreKey(&shared, render_core_key);
+    };
+    const auto step = [&](size_t thread) { last_error_kept = threads[thread].Step() && last_error_kept; };
+    const auto capture_and_step = [&] {
+      render.Run(RENDER_CAPTURE);
+      step(0);
+    };
+    // The battle part off and on again: a release, then a new reserve.
+    const auto reserve_again = [&] {
+      shared.core_wanted.fetch_and(~CORE_BATTLE);
+      step(0);
+      shared.core_wanted.fetch_or(CORE_BATTLE);
+      step(0);
+    };
+    const auto cpu_of = [&](ULONG id) {
+      return std::ranges::find_if(cpus, [&](const SYSTEM_CPU_SET_INFORMATION& entry) { return entry.CpuSet.Id == id; })->CpuSet;
+    };
+    const char* const yield_line = "render core: stopped: another program changed the render thread's CPU sets";
+    const char* const refused_line = "render core: stopped: Windows refused";
+    const char* const kept_line = "render core: the render thread";
+
+    // The key 1 sets the bit; the thread is captured once; one reserve takes both cores.
+    new_session(1);
+    Expect(shared.core_wanted.load() == (CORE_WANTED_DEFAULT | CORE_RENDER) && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD,
+           "key: 1 sets the render part's bit; no thread yet");
+    render.Run(RENDER_CAPTURE);
+    render.Run(RENDER_CAPTURE);
+    battle_core::SetRenderThread(&shared, api);
+    char render_thread_line[64];
+    std::snprintf(render_thread_line, sizeof(render_thread_line), "renodx_attila64: render thread %lu", render_tid);
+    Expect(RenderField(CORE_STATE_SHIFT) == CORE_WAITING && LinesWith("renodx_attila64: render thread ") == 1
+               && LinesWith(render_thread_line) == 1 && battle_core::state.render_tid == render_tid,
+           "capture: the first thread, once, with its line");
+    step(0);
+    const std::array<ULONG, 2> render_core = battle_core::state.render_ids;
+    const std::vector<ULONG> render_core_ids = Sorted({render_core.begin(), render_core.end()});
+    const std::vector<ULONG> kept_both = without(kept, render_core);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_ACTIVE
+               && RenderField(CORE_LOGICAL_A_SHIFT) == logical_of(render_core[0])
+               && RenderField(CORE_LOGICAL_B_SHIFT) == logical_of(render_core[1]) && RenderField(RENDER_ERROR_SHIFT) == 0,
+           "render: the status has the render core's logical CPUs");
+    Expect(Selected(render_handle) == render_core_ids && ProcessDefault() == kept_both && kept_both.size() + 4 == every_id.size()
+               && battle_core::state.battle_ids == core && holders(core) == 1,
+           "render: the render thread holds its core, the default is what it was minus both cores");
+    Expect(cpu_of(render_core[0]).CoreIndex == cpu_of(render_core[1]).CoreIndex
+               && cpu_of(render_core[0]).CoreIndex < cpu_of(core[0]).CoreIndex
+               && cpu_of(render_core[0]).LastLevelCacheIndex == cpu_of(core[0]).LastLevelCacheIndex
+               && cpu_of(render_core[0]).EfficiencyClass == cpu_of(core[0]).EfficiencyClass,
+           "render: one core of the battle core's cache and class, below it");
+    char render_piece[96];
+    std::snprintf(render_piece, sizeof(render_piece), ", render core: logical %u + %u (render thread %lu), scheduling class ",
+                  logical_of(render_core[0]), logical_of(render_core[1]), render_tid);
+    Expect(LinesWith("renodx_attila64: battle core: logical ") == 1 && LinesWith(render_piece) == 1 && LinesWith("render core:") == 1,
+           "render: one reserve line with both cores");
+
+    // The render thread runs a step: it is never the step's thread, and nothing is logged.
+    render.Run(RENDER_STEP);
+    Expect(Selected(render_handle) == render_core_ids && Selected(handle_of(0)) == Sorted(core_ids) && holders(core) == 1
+               && LinesWith("own CPU rule") == 0,
+           "render: the render thread's own step leaves both threads where they are");
+    // The bits live: an unknown one changes nothing; the render part's bit either way is a release, and the next step
+    // reserves what is asked for.
+    shared.core_wanted.fetch_xor(CORE_STEP);
+    step(0);
+    Sleep(4 * battle_core::watchdog_ms);
+    shared.core_wanted.fetch_xor(CORE_STEP);
+    step(0);
+    Sleep(4 * battle_core::watchdog_ms);
+    Expect(RenderField(CORE_STATE_SHIFT) == CORE_ACTIVE && ProcessDefault() == kept_both && LinesWith("released") == 0,
+           "bits: an unknown bit toggled releases neither core");
+    shared.core_wanted.fetch_and(~CORE_RENDER);
+    step(0);
+    // The watchdog may release first; then this step has already reserved the battle core alone.
+    Expect(WaitForLine("battle core: released (turned off)") && RenderField(CORE_STATE_SHIFT) == CORE_WAITING
+               && Selected(render_handle).empty()
+               && ((StatusField(CORE_STATE_SHIFT) == CORE_WAITING && ProcessDefault() == every_id && holders(core) == 0)
+                   || (StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && ProcessDefault() == kept && holders(core) == 1)),
+           "bits: the render part turned off, both released");
+    step(0);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_WAITING
+               && Selected(render_handle).empty() && ProcessDefault() == kept && holders(core) == 1,
+           "bits: the step after reserves the battle core alone");
+    shared.core_wanted.fetch_or(CORE_RENDER);
+    step(0);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_WAITING && ProcessDefault() == every_id
+               && LinesWith("battle core: released (turned on)") == 1,
+           "bits: the render part turned on, released");
+    step(0);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_ACTIVE
+               && Selected(render_handle) == render_core_ids && ProcessDefault() == kept_both,
+           "bits: the step after reserves both");
+    // Turned off while no step comes, and the steps stopping: the watchdog releases both.
+    shared.core_wanted.fetch_and(~CORE_RENDER);
+    Expect(WaitForRender(CORE_WAITING) && released() && Selected(render_handle).empty() && ProcessDefault() == every_id,
+           "bits: the render part turned off, released by the watchdog");
+    shared.core_wanted.fetch_or(CORE_RENDER);
+    step(0);
+    battle_core::release_after_ms = 100;
+    Expect(WaitForState(CORE_WAITING) && WaitForRender(CORE_WAITING) && Selected(render_handle).empty()
+               && ProcessDefault() == every_id && holders(core) == 0,
+           "threshold: no step, both released, the render thread cleared");
+    battle_core::release_after_ms = 600000;
+
+    // The render part alone (the key absent leaves the bits as they are): it takes the battle core's place, and no
+    // step thread is selected.
+    new_session(-1);
+    Expect(shared.core_wanted.load() == CORE_WANTED_DEFAULT && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD,
+           "key: absent leaves the bits");
+    shared.core_wanted.store(CORE_RENDER);
+    capture_and_step();
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_WAITING && RenderField(CORE_STATE_SHIFT) == CORE_ACTIVE
+               && battle_core::state.render_ids == core && Selected(render_handle) == Sorted(core_ids) && holders(core) == 0
+               && ProcessDefault() == kept && Reserved(),
+           "render alone: the highest core, no step thread selected");
+    Expect(LinesWith("renodx_attila64: render core: logical ") == 1 && LinesWith("battle core: logical") == 0,
+           "render alone: its own reserve line");
+    // Another program changes the render thread's CPU sets: its sets stay, the render part ends for the session, and
+    // the default is every allowed CPU again (still ours) until the release.
+    SetThreadSelectedCpuSets(render_handle, own_rule.data(), 1);
+    Expect(WaitForLine(yield_line) && RenderField(CORE_STATE_SHIFT) == CORE_YIELDED && Selected(render_handle) == own_rule
+               && ProcessDefault() == every_id && Reserved() && StatusField(CORE_STATE_SHIFT) == CORE_WAITING,
+           "render alone: yielded, its CPUs are back in the default");
+    step(0);
+    Sleep(4 * battle_core::watchdog_ms);
+    Expect(Reserved() && LinesWith("released") == 0, "render alone: a state that stays releases nothing by itself");
+    battle_core::release_after_ms = 100;
+    Expect(released() && ProcessDefault() == every_id && RenderField(CORE_STATE_SHIFT) == CORE_YIELDED
+               && Selected(render_handle) == own_rule,
+           "render alone: the release leaves the yielded state and the other program's sets");
+    battle_core::release_after_ms = 600000;
+    step(0);
+    Expect(!Reserved() && RenderField(CORE_STATE_SHIFT) == CORE_YIELDED && ProcessDefault() == every_id && LinesWith(yield_line) == 1,
+           "render alone: yielded stays, its bit reserves nothing");
+
+    // The same with both parts: only the render part ends, without a release; it stays ended over a new reserve.
+    new_session(1);
+    capture_and_step();
+    SetThreadSelectedCpuSets(render_handle, own_rule.data(), 1);
+    Expect(WaitForLine(yield_line) && RenderField(CORE_STATE_SHIFT) == CORE_YIELDED && Selected(render_handle) == own_rule
+               && ProcessDefault() == kept && StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && holders(core) == 1
+               && LinesWith("released") == 0,
+           "yield: the render part alone ends, the battle core stays");
+    reserve_again();
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_YIELDED
+               && Selected(render_handle) == own_rule && ProcessDefault() == kept && LinesWith(yield_line) == 1,
+           "yield: stays over a new reserve, the thread is not selected again");
+
+    // Windows refuses the select (a handle without the right): the render part fails alone with its own error, and
+    // is not tried again.
+    battle_core::render_handle_access = THREAD_QUERY_LIMITED_INFORMATION | SYNCHRONIZE;
+    new_session(1);
+    capture_and_step();
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_FAILED
+               && RenderField(RENDER_ERROR_SHIFT) == ERROR_ACCESS_DENIED && Selected(render_handle).empty()
+               && ProcessDefault() == kept && holders(core) == 1 && LinesWith(refused_line) == 1 && LinesWith(", error 5)") == 1,
+           "refused: the render part fails with its own error, the battle core is reserved");
+    reserve_again();
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_FAILED && ProcessDefault() == kept
+               && LinesWith(refused_line) == 1,
+           "refused: stays, no second select");
+    battle_core::render_handle_access = battle_core::STEP_THREAD_ACCESS;
+    {
+      const std::scoped_lock lock(battle_core::state.mutex);
+      char line[battle_core::LINE_CAPACITY];
+      battle_core::RenderOutcome(&battle_core::state, CORE_FAILED, ERROR_TIMEOUT, line);
+    }
+    Expect(RenderField(RENDER_ERROR_SHIFT) == RENDER_ERROR_LARGE && RenderField(CORE_STATE_SHIFT) == CORE_FAILED,
+           "refused: an error above 254 is stored as 255");
+
+    // Another program changes the default: both parts end, and the render thread is cleared. The reserve here is the
+    // render thread's own step: no step thread is selected.
+    new_session(1);
+    render.Run(RENDER_CAPTURE);
+    render.Run(RENDER_STEP);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_ACTIVE && holders(core) == 0
+               && Selected(render_handle) == render_core_ids && ProcessDefault() == kept_both,
+           "render: its own step reserves both cores and selects only the render thread");
+    SetProcessDefault(foreign_default);
+    Expect(WaitForState(CORE_YIELDED) && WaitForRender(CORE_WITH_BATTLE) && Selected(render_handle).empty()
+               && ProcessDefault() == foreign_default,
+           "yield: a changed default ends both, the render thread is cleared");
+    // The same while the render thread has another program's sets: left alone, with a line.
+    new_session(1);
+    capture_and_step();
+    {
+      const std::scoped_lock lock(battle_core::state.mutex);
+      SetThreadSelectedCpuSets(render_handle, own_rule.data(), 1);
+      SetProcessDefault(foreign_default);
+    }
+    Expect(WaitForLine(kept_line) && StatusField(CORE_STATE_SHIFT) == CORE_YIELDED && RenderField(CORE_STATE_SHIFT) == CORE_WITH_BATTLE
+               && Selected(render_handle) == own_rule && LinesWith(yield_line) == 0,
+           "yield: a render thread with another program's sets is left alone at the release");
+
+    // A clear that Windows refuses (the handle swapped for one without the right) is a line, not a failure.
+    new_session(1);
+    capture_and_step();
+    {
+      HANDLE without_set = nullptr;
+      DuplicateHandle(GetCurrentProcess(), render_handle, GetCurrentProcess(), &without_set,
+                      THREAD_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, 0);
+      const std::scoped_lock lock(battle_core::state.mutex);
+      CloseHandle(battle_core::state.render_thread);
+      battle_core::state.render_thread = without_set;
+    }
+    shared.core_wanted.fetch_and(~(CORE_BATTLE | CORE_RENDER));
+    step(0);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_WAITING && RenderField(CORE_STATE_SHIFT) == CORE_WAITING
+               && Selected(render_handle) == render_core_ids && ProcessDefault() == every_id && LinesWith(kept_line) == 1
+               && LinesWith("Windows refused") == 0,
+           "release: a refused clear of the render thread is logged and is not a failure");
+
+    // No render thread, and one that ended before the reserve: the battle core as without the render part.
+    new_session(1);
+    step(0);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD && ProcessDefault() == kept
+               && holders(core) == 1 && LinesWith("render") == 0,
+           "no thread: nothing captured, the battle core alone");
+    new_session(1);
+    std::thread([] { battle_core::SetRenderThread(&shared, api); }).join();
+    step(0);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD && ProcessDefault() == kept
+               && LinesWith("render core: not used: the render thread has ended") == 1,
+           "no thread: a render thread that ended, the battle core alone");
+
+    // A render thread with a rule of its own (selected sets, then an affinity): left alone, and looked at again at
+    // the next reserve.
+    new_session(1);
+    render.Run(RENDER_CAPTURE);
+    SetThreadSelectedCpuSets(render_handle, own_rule.data(), 1);
+    step(0);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && RenderField(CORE_STATE_SHIFT) == CORE_OWN_RULE
+               && Selected(render_handle) == own_rule && ProcessDefault() == kept
+               && LinesWith("render core: not used: the render thread has its own CPU rule") == 1,
+           "own rule: the render thread's sets stay, the default keeps the render core's CPUs");
+    SetThreadSelectedCpuSets(render_handle, nullptr, 0);
+    SetThreadAffinityMask(render_handle, found_affinity & (~found_affinity + 1));
+    reserve_again();
+    Expect(RenderField(CORE_STATE_SHIFT) == CORE_OWN_RULE && Selected(render_handle).empty() && ProcessDefault() == kept
+               && LinesWith("has its own CPU rule") == 1,
+           "own rule: an affinity of its own (logged once)");
+    SetThreadAffinityMask(render_handle, found_affinity);
+    reserve_again();
+    Expect(RenderField(CORE_STATE_SHIFT) == CORE_ACTIVE && Selected(render_handle) == render_core_ids && ProcessDefault() == kept_both,
+           "own rule: gone at the next reserve, the render core is used");
+
+    // The busy check: an idle "render" thread loses the core at the first tick after the threshold (its sets cleared,
+    // its CPUs back in the default); a busy one at the next reserve gets and keeps it.
+    battle_core::render_busy_after_ms = 200;
+    new_session(1);
+    capture_and_step();
+    Expect(WaitForLine("render core: not used: the render thread was mostly idle") && RenderField(CORE_STATE_SHIFT) == CORE_NOT_RENDER
+               && Selected(render_handle).empty() && ProcessDefault() == kept && StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE
+               && LinesWith("released") == 0,
+           "busy: an idle thread is not the render thread, the battle core stays");
+    render.busy = true;
+    render.Run(RENDER_NOTHING);
+    reserve_again();
+    Sleep(3 * battle_core::render_busy_after_ms);
+    Expect(RenderField(CORE_STATE_SHIFT) == CORE_ACTIVE && Selected(render_handle) == render_core_ids && ProcessDefault() == kept_both
+               && LinesWith("mostly idle") == 1,
+           "busy: looked at again at the next reserve, a busy thread keeps the core");
+    render.busy = false;
+    battle_core::render_busy_after_ms = 600000;
+
+    // RenderCore=0: off for the process. Nothing is captured, and the bit set later reserves no render core.
+    new_session(0);
+    Expect((shared.core_wanted.load() & CORE_RENDER) == 0 && RenderField(CORE_STATE_SHIFT) == CORE_OFF_INI, "key: 0 is off");
+    render.Run(RENDER_CAPTURE);
+    render.Run(RENDER_CAPTURE);
+    shared.core_wanted.fetch_or(CORE_RENDER);
+    step(0);
+    Expect(RenderField(CORE_STATE_SHIFT) == CORE_OFF_INI && battle_core::state.render_thread == nullptr
+               && LinesWith("renodx_attila64: render thread ") == 0
+               && LinesWith("render core: off in ReShade.ini, RenderCore=0 (render thread 0, error 0)") == 1 && StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE
+               && ProcessDefault() == kept && Selected(render_handle).empty(),
+           "key: 0 captures nothing and never places, even with the bit set later");
+
+    // A step thread that ended: the next one is selected, nothing fails.
+    new_session(-1);
+    {
+      StepThread ended;
+      last_error_kept = ended.Step() && last_error_kept;
+      ended.quit = true;
+      ReleaseSemaphore(ended.go, 1, nullptr);
+      ended.thread.join();
+    }
+    step(1);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && holders(core) == 1 && LinesWith("Windows refused") == 0,
+           "thread: the step's thread ended, the next one holds the core");
+    // Turned off at a step while another program's default is there: a yield, the default left as it is.
+    {
+      const std::scoped_lock lock(battle_core::state.mutex);
+      SetProcessDefault(foreign_default);
+      shared.core_wanted.fetch_and(~CORE_BATTLE);
+    }
+    step(1);
+    Expect(WaitForState(CORE_YIELDED) && ProcessDefault() == foreign_default && WaitForLine("CPU sets (left as they are)")
+               && LinesWith("released") == 0,
+           "off: with a changed default it is a yield, nothing is put back");
+    // No default and an affinity of the process's own before the reserve: the affinity's CPUs minus the core are
+    // written, and the release leaves no default again.
+    new_session(-1);
+    SetProcessDefault({});
+    SetProcessAffinityMask(GetCurrentProcess(), found_affinity & (found_affinity - 1));
+    step(0);
+    const ULONG first_cpu = *std::ranges::find_if(every_id, [&](ULONG id) {
+      return logical_of(id) == static_cast<uint32_t>(std::countr_zero(found_affinity));
+    });
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_ACTIVE && ProcessDefault() == without(kept, std::span(&first_cpu, 1)),
+           "affinity: with no default, the affinity's CPUs minus the core are written");
+    shared.core_wanted.fetch_and(~CORE_BATTLE);
+    step(0);
+    Expect(StatusField(CORE_STATE_SHIFT) == CORE_WAITING && ProcessDefault().empty(), "affinity: the release leaves no default again");
+    SetProcessAffinityMask(GetCurrentProcess(), found_affinity);
+
+    new_session(-1);
+    battle_core::render_busy_after_ms = 1000;
+    render.command = RENDER_NOTHING;
+    render.quit = true;
+    ReleaseSemaphore(render.go, 1, nullptr);
+    render.thread.join();
 
     Expect(last_error_kept, "every step left the thread's last error as it was");
   }
