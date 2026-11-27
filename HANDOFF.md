@@ -727,11 +727,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PK8 STAGE A RELEASE STEP (rwa3_ SHOULD-2, 11-27): if ATN's Q1 says default Off, ... | coord at the release step
 - CPU WAVE 11-27 17:5x (from cpq_'s list, testbin\scratch\cpq_\cpu_queue.md; rules ... | ?
 - PERFFIX VS MULTITHREADED COLLISIONS (ATN, 11-27): PerfFix rewrites game code ins ... | coord DECIDED 21:0x (coord, design 3
-- PERFFIX PIN GATE (rpxm_ S1): the masks let any bytes pass in the 744 masked byte ... | ATN (pin), coord (re-check per PerfFix update)
+- PERFFIX PIN GATE (rpxm_ S1): the masks let any bytes pass in the 744 masked byte ... | ATN (pin), coord (re-check per PerfFix update) ATN 22:3x: 'O
 - PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also ... | coord (batch prep) ATN 20:3x: 'You are allowed to look at hi
 - X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN pfx_ DONE 21:05 (Fable 5
 - S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 d ... | the next attila64_plugin_link
-- S5E 1-CASCADE ARM (ATN's addendum): no game 1-cascade values exist (lowest Shado ... | ATN ATN 22:2x: 'Cannot we just turn off the whole shadow map
 - E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | coord (R3's a64_ab writer) SPRITES NEED A CAMERA fix spf_ (O
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
@@ -18170,6 +18169,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         row is shown or turned On for players: ATN decides the pin (allowed values of each window: the game's + PerfFix
         7.5's, taken from a run), and every PerfFix update gets a re-check (pfx_'s equality test + one -PerfFix smoke).
         Owner: ATN (pin), coord (re-check per PerfFix update)
+        ATN 22:3x: 'Okay use the pin. Can we "log" so with reading reshade we immediately know that it was changed
+        instead of checking every perffix version in future?' -> pxp_ (Fable 5.2 Medium; worktree pxp_1127 from
+        b42aca794) STARTED 22:31: phase 1 = per-window allowed values (game's from the ELF; PerfFix 7.5's from a coord
+        -PerfFix run, never his files), new plugin line 'contact split: off (another mod changed the game code at
+        0x..: hash 0x.. is not the game's or PerfFix 7.5's)', a new EngineState if the lane allows; phase 2 = the 18
+        hashes from a run + the add-on text and one ReShade.log line (after the sprite fix's addon.cpp merge). With
+        it, a changed PerfFix shows in ReShade.log at once; no per-version check needed.
         - [ ] PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also run on the PerfFix stack
         once (same result as without PerfFix). Owner: coord (batch prep)
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
@@ -18253,12 +18259,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 duplicated parse lines not
         marked ours:; 'this start' wrong in the log when the route is not DX11; no test for '+1' text. Owner: the next
         attila64_plugin_link.hpp / main.cpp writer
-        - [ ] S5E 1-CASCADE ARM (ATN's addendum): no game 1-cascade values exist (lowest Shadows skips the setup). ATN
+        - [x] S5E 1-CASCADE ARM (ATN's addendum): no game 1-cascade values exist (lowest Shadows skips the setup). ATN
         picks: an invented (1, 0) test value, or a timing arm at the game's lowest Shadows. Owner: ATN
         ATN 22:2x: 'Cannot we just turn off the whole shadow map so it is 0ms?' -> coord: Skip the Game's Shadow Map
         Work (shadow_pass.hpp) already skips every caster draw under the rays' shadows, except one pass a frame in turn
         for the cut-out census (the rays learn alpha-tested shapes from it); a full off loses that census. Suggested:
-        no 1-cascade arm; the batch times Two Cascades with Skip on. ATN's answer pending.
+        no 1-cascade arm; the batch times Two Cascades with Skip on. ATN 22:3x: 'Drop the 1 cascade test then':
+        DROPPED.
         - [ ] E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade site lines ': applied',
         'shadow cascades 2: patched'; control E64-rt 'shadow cascades: game's counts'). Owner: coord (R3's a64_ab
         writer)
@@ -18272,7 +18279,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         (c0e29cdb -> 58cdeb99, backup .bak_spf_; dry runs same; re-analysed old runs fail the new lines as they should).
         Reviews rspf_ (Opus xHigh) + fspf_ (Sonnet High) + F7 GPU plugin_sprites / _refused STARTED 22:26; then a real
         B64P -PerfFix start with the spf_ add-on. NEEDS ATN: the CPU gate (3.3: AA Off, row Off vs On at Sprite Size 4)
-        and the gfx_aa 3 start need two new a64_ab starts (new arms = ATN's yes); Set strings in the hand-back.
+        and the gfx_aa 3 start need two new a64_ab starts (new arms = ATN's yes); Set strings in the hand-back. F7 GPU
+        plugin_sprites / _refused PASS (spf_f7_gpu.log). fspf_ (Sonnet High) GO: SHOULD anti_aliasing.hpp:711 / :715 / :727
+        local main_view hides internal::main_view -> is_main_view; NITs (TAA 4 samples row off test, lines > 120,
+        thrones README.md:262 'with TAA or DLSS'). REAL START (a3_smoke = spf_ add-on 86cc227e, old c1a467a7 in
+        scratch\coord_\a3_addon_c1a467a7; spf_smoke_pf.log) with -PerfFix, AA Off: 'Anti-aliasing: the main view's
+        camera found.', 'engine scales active 0x400000', 'SPRITE_DISTANCE: first call', scriptable PASS = yes (the first
+        full PASS on the PerfFix stack), clean exit, no WER.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
