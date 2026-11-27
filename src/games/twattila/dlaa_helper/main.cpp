@@ -246,6 +246,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // process-wide, as are the last two.
   std::set_terminate([] { StopOnCrtEnd("an uncaught C++ exception", twattila::dlaa_bridge::HELPER_EXIT_UNCAUGHT_EXCEPTION); });
   std::signal(SIGABRT, [](int) { StopOnCrtEnd("an abort (another thread's uncaught C++ exception, or the CRT's)", twattila::dlaa_bridge::HELPER_EXIT_ABORT); });
+  // A failed assert (no NDEBUG here) writes to stderr and aborts into the handler above: in a /SUBSYSTEM:WINDOWS exe the
+  // UCRT's default is a task-modal Abort / Retry / Ignore box, its thread blocked behind a fullscreen game until a click.
+  _set_error_mode(_OUT_TO_STDERR);
   _set_purecall_handler([] { StopOnCrtEnd("a pure virtual call", twattila::dlaa_bridge::HELPER_EXIT_PURE_CALL); });
   _set_invalid_parameter_handler([](const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, uintptr_t) {
     StopOnCrtEnd("an invalid CRT parameter", twattila::dlaa_bridge::HELPER_EXIT_INVALID_PARAMETER);
