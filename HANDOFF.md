@@ -17843,6 +17843,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         deterministic gains no speed but removes ~0.1-0.2 ms of spread from every PT gate. Owner: GPU plan (Opus xHigh design, later)
         - [ ] PT GATE METHOD (omx_ 11-27): sort runs by state first, or judge on the whole-run helper timestamps over >= 8 runs a
         side: resolves ~0.3 % instead of ~2 %. The gates are ATN's. Owner: ATN (yes / no) -> tools agent
+        - [x] TOLERANCE AND GUARD CONSTANTS (tune_1127a, 11-27): 2 shader files, picture unchanged (byte check of the affected
+        shaders, tw_aa_frame_gamma PASS x86 / amd64 / Thrones / WH3), 14 builds exit 0; merged aeaa1a5c5. Owner: done
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
