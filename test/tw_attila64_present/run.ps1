@@ -176,7 +176,8 @@ foreach ($name in $gameCodeCases.Keys) {
   }
 }
 # The core rows (a v2 block offering the CPU row, rows 0x7, the render part built: render_core_status 1, WAITING): each
-# writes only its own core_wanted bit (a bit no row writes, CORE_STEP 4, kept); the exe checks the bits left. While
+# writes only its own core_wanted bit (CORE_STEP 4: Faster Battle Step's, hidden, writes the plugin's default On, the
+# bit already set); the exe checks the bits left. While
 # Keep Render Core Free is hidden (RENDER_CORE_ROW_MEASURED false) it writes nothing, a saved On included.
 # plugin_render_core: Keep Render Core Free On saved, the plugin's bits 5 (battle + 4): 5 (shown: 7, "on").
 # plugin_render_core_battle_off: Keep Battle Core Free Off as well: 4 (shown: 6, "on"). plugin_render_core_kept: the
@@ -196,6 +197,41 @@ foreach ($name in $renderCoreCases.Keys) {
               '[Total War] 64-bit Attila: engine plugin rows tried 0x7', "[Total War] 64-bit Attila: Keep Battle Core Free $($core.battle)") +
             @(if ($core.render) { "$renderCore $($core.render)" }) + $upgraded
     forbid = @('engine plugin not installed', 'callbacks registered', 'engine plugin notices') + @(if (-not $core.render) { $renderCore })
+  }
+}
+# Effects on All Cores (PK9 P9-4, rp94_ MUST-1: the add-on owns bits 4-5 from its first present, Off included): a v2
+# block offering ROW_PARALLEL_EFFECTS (rows 0x803), core_wanted 0x35 (battle, step and both effect bits, as EffectsMode=1
+# leaves them), the loader's slot VFX_PARALLEL_UPDATER OK after the start check. plugin_effects_off: the row at its
+# default Off: bits 4-5 cleared (5), its line. plugin_effects_on: EffectsOnAllCores=2: CORE_EFFECTS_AUTO cleared (21),
+# its line. plugin_effects_slot_changed: the slot's verdict CHANGED: the bits still written (5), no line.
+$effects = '[Total War] 64-bit Attila: Effects on All Cores'
+$effectsCases = [ordered]@{
+  plugin_effects_off = @{ plugin = '1 2051 0 2 2051 0 0 53 0 1'; ini = @(); bits = 5; line = "$effects Off" }
+  plugin_effects_on = @{ plugin = '1 2051 0 2 2051 0 0 53 0 1'; ini = @('EffectsOnAllCores=2'); bits = 21; line = "$effects On" }
+  plugin_effects_slot_changed = @{ plugin = '1 2051 0 2 2051 0 0 53 0 2'; ini = @(); bits = 5 }
+}
+# Faster Battle Step (PK8 W-A3; the add-on owns CORE_STEP 4 from its first present): a v2 block offering
+# ROW_BATTLE_STEP (rows 0x1003, lane NOT_USED_YET) with core_wanted 1 (the bit clear, so the write shows). While the
+# row is hidden (BATTLE_STEP_ROW_MEASURED false) it writes the plugin's default On, a saved Off included.
+# plugin_battle_step_on: no key: 5, the line "on". plugin_battle_step_saved_off: FasterBattleStep=0 waits: 5, the line
+# "on", no "off" (at the measured flip: 1, the line "off"). plugin_battle_step_not_offered: rows 0x3 (BattleStep=0
+# leaves the site out): the bit written (5), no line.
+$battleStep = '[Total War] 64-bit Attila: Faster Battle Step'
+$effectsCases['plugin_battle_step_on'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 1'; ini = @(); bits = 5; line = "$battleStep on"
+                                            forbid = @("$battleStep off") }
+$effectsCases['plugin_battle_step_saved_off'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 1'; ini = @('FasterBattleStep=0'); bits = 5
+                                                   line = "$battleStep on"; forbid = @("$battleStep off") }
+$effectsCases['plugin_battle_step_not_offered'] = @{ plugin = '1 3 0 2 3 0 0 1 0 0 1'; ini = @(); bits = 5; forbid = @($battleStep) }
+foreach ($name in $effectsCases.Keys) {
+  $case = $effectsCases[$name]
+  $rows = ($case.plugin -split ' ')[1]
+  $offered = '0x{0:x}' -f [int]$rows
+  $table[$name] = @{
+    addon = 'current'; args = "d3d11 fixed upgraded plugin core_wanted_$($case.bits)"; encoding = 0; plugin = $case.plugin; ini = $case.ini
+    lines = @($identity, $mapped, "[Total War] 64-bit Attila: engine plugin ready, rows offered $offered",
+              "[Total War] 64-bit Attila: engine plugin rows tried $offered") + @($case.line | Where-Object { $_ }) + $upgraded
+    forbid = @('engine plugin not installed', 'callbacks registered', 'engine plugin notices') + @($case.forbid | Where-Object { $_ }) +
+             @(if ($name.StartsWith('plugin_effects') -and -not $case.line) { $effects })
   }
 }
 # Registration end to end: rows forced wanted (RENODX_TW_PLUGIN_WANT), the callbacks registered at a present, the fake
