@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <limits>
 #include <string>
@@ -107,6 +108,30 @@ class Upscaler12 {
           || !load(&xess_.optimal, "xessGetOptimalInputResolution") || !load(&xess_.version, "xessGetVersion")) {
         return Fail("XeSS-SR: libxess.dll is not the expected one");
       }
+      // A test path, off by default (xae_ 11-27): RENODX_TW_XESS_EXPOSURE, read here (auto exposure is an init flag: no live
+      // toggle). A number s > 0: no auto exposure, exposureScale s (Intel's SR guide :321-332: auto exposure is for colour
+      // not yet adjusted for the exposure; t00 is after the tone mapper). Anything else ("auto"): XESS_FLAGS as they are.
+      // Either way XeSS's GPU time is stamped beside its dispatch and its mean goes into the status.
+      if (std::array<char, 32> asked = {};
+          GetEnvironmentVariableA("RENODX_TW_XESS_EXPOSURE", asked.data(), static_cast<DWORD>(asked.size())) != 0) {
+        const float scale = std::strtof(asked.data(), nullptr);
+        if (scale > 0.f) {
+          xess_flags_ = XESS_FLAGS & ~static_cast<uint32_t>(XESS_INIT_FLAG_ENABLE_AUTOEXPOSURE);
+          xess_exposure_scale_ = scale;
+        }
+        const D3D12_QUERY_HEAP_DESC heap_desc = {.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP, .Count = static_cast<UINT>(SLOTS * 2)};
+        const D3D12_HEAP_PROPERTIES readback_heap = {.Type = D3D12_HEAP_TYPE_READBACK};
+        const D3D12_RESOURCE_DESC readback_desc = {.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER, .Width = SLOTS * 2 * sizeof(uint64_t),
+                                                   .Height = 1, .DepthOrArraySize = 1, .MipLevels = 1, .SampleDesc = {.Count = 1},
+                                                   .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR};
+        if (FAILED(device->CreateQueryHeap(&heap_desc, IID_PPV_ARGS(xess_timing_.stamps.GetAddressOf())))
+            || FAILED(device->CreateCommittedResource(&readback_heap, D3D12_HEAP_FLAG_NONE, &readback_desc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                                      nullptr, IID_PPV_ARGS(xess_timing_.readback.GetAddressOf())))
+            || FAILED(queue_->GetTimestampFrequency(&xess_timing_.ticks_per_second))) {
+          return Fail("XeSS-SR: no GPU timestamps for RENODX_TW_XESS_EXPOSURE");
+        }
+        xess_timing_.mode = ((scale > 0.f) ? std::format("fixed exposure {:.3f}", scale) : std::string("auto exposure"));
+      }
 #else
       return Fail("XeSS-SR is not in this helper's build");
 #endif
@@ -161,6 +186,28 @@ class Upscaler12 {
         return false;
       };
       if (!WaitForGpu(own_fence_.Get(), event_, slot.value, GPU_WAIT_TIMEOUT)) return unfinished();
+#if defined(RENODX_XESS_SDK)
+      // RENODX_TW_XESS_EXPOSURE: this slot's last XeSS dispatch is done (above), its two stamps are readable.
+      if (std::exchange(slot.timed, false)) {
+        const UINT stamp = static_cast<UINT>(&slot - slots_.data()) * 2;
+        const D3D12_RANGE read = {.Begin = stamp * sizeof(uint64_t), .End = (stamp + 2) * sizeof(uint64_t)};
+        if (void* mapped = nullptr; SUCCEEDED(xess_timing_.readback->Map(0, &read, &mapped))) {
+          const uint64_t* ticks = static_cast<const uint64_t*>(mapped) + stamp;
+          const double ms = 1000.0 * static_cast<double>(ticks[1] - ticks[0]) / static_cast<double>(xess_timing_.ticks_per_second);
+          const D3D12_RANGE written = {};
+          xess_timing_.readback->Unmap(0, &written);
+          // The first dispatches after an init (its kernels' first runs) are left out.
+          if (++xess_timing_.dispatches > XESS_TIMING_WARM_UP) {
+            const uint32_t counted = xess_timing_.dispatches - XESS_TIMING_WARM_UP;
+            xess_timing_.sum_ms += ms;
+            xess_timing_.least_ms = ((counted == 1) ? ms : std::min(xess_timing_.least_ms, ms));
+            xess_timing_.most_ms = ((counted == 1) ? ms : std::max(xess_timing_.most_ms, ms));
+            status_ = std::format("{} | XeSS GPU ms {:.4f} mean of {} (min {:.4f}, max {:.4f}), {}", xess_timing_.active_status,
+                                  xess_timing_.sum_ms / counted, counted, xess_timing_.least_ms, xess_timing_.most_ms, xess_timing_.mode);
+          }
+        }
+      }
+#endif
       if (maker_.joinable()) {
         if (making_.load()) return false;
         maker_.join();
@@ -195,7 +242,7 @@ class Upscaler12 {
           if (backend_ == dlaa_bridge::UPSCALER_XESS) {
             if (const xess_result_t made = xess_.create(device_.Get(), &xess_context_); made < XESS_RESULT_SUCCESS) {
               make_error_ = std::format("XeSS-SR could not start on this GPU or driver (code {})", static_cast<int>(made));
-            } else if (const xess_result_t built = xess_.build(xess_context_, nullptr, true, XESS_FLAGS); built < XESS_RESULT_SUCCESS) {
+            } else if (const xess_result_t built = xess_.build(xess_context_, nullptr, true, xess_flags_); built < XESS_RESULT_SUCCESS) {
               make_error_ = std::format("XeSS-SR could not build its pipelines (code {})", static_cast<int>(built));
             }
           }
@@ -251,7 +298,7 @@ class Upscaler12 {
             // Here, not beside the requests (no frame without it: the render scale would go back to 100%, where another
             // setting is needed, for good): the kernels are built, this takes milliseconds.
             if (!WaitForGpu(own_fence_.Get(), event_, own_value_, GPU_WAIT_TIMEOUT)) return unfinished();
-            const xess_d3d12_init_params_t init = {.outputResolution = output, .qualitySetting = quality, .initFlags = XESS_FLAGS};
+            const xess_d3d12_init_params_t init = {.outputResolution = output, .qualitySetting = quality, .initFlags = xess_flags_};
             if (const xess_result_t inited = xess_.init(xess_context_, &init); inited < XESS_RESULT_SUCCESS) {
               return Fail(std::format("XeSS-SR could not start at this size (code {})", static_cast<int>(inited)).c_str());
             }
@@ -263,6 +310,11 @@ class Upscaler12 {
             xess_.version(&version);
             status_ = std::format("XeSS-SR {}.{}.{} active (quality setting {}, started in {:.1f} s)", version.major, version.minor, version.patch,
                                   static_cast<int>(quality), make_seconds_);
+            if (xess_timing_.stamps) {
+              xess_timing_.active_status = status_;
+              xess_timing_.dispatches = 0;
+              xess_timing_.sum_ms = 0.0;
+            }
           }
         }
       }
@@ -294,12 +346,22 @@ class Upscaler12 {
             .pOutputTexture = inputs_[OUTPUT].Get(),
             .jitterOffsetX = request.jitter_x,
             .jitterOffsetY = request.jitter_y,
-            .exposureScale = 1.f,
+            .exposureScale = xess_exposure_scale_,
             .resetHistory = (reset ? 1u : 0u),
             .inputWidth = request.width,
             .inputHeight = request.height,
         };
+        const UINT stamp = static_cast<UINT>(&slot - slots_.data()) * 2;
+        if (xess_timing_.stamps) {
+          list->EndQuery(xess_timing_.stamps.Get(), D3D12_QUERY_TYPE_TIMESTAMP, stamp);
+        }
         const xess_result_t executed = xess_.execute(xess_context_, list, &execute);
+        if (xess_timing_.stamps) {
+          list->EndQuery(xess_timing_.stamps.Get(), D3D12_QUERY_TYPE_TIMESTAMP, stamp + 1);
+          list->ResolveQueryData(xess_timing_.stamps.Get(), D3D12_QUERY_TYPE_TIMESTAMP, stamp, 2, xess_timing_.readback.Get(),
+                                 stamp * sizeof(uint64_t));
+          slot.timed = true;
+        }
         evaluated = executed >= XESS_RESULT_SUCCESS;
         if (!evaluated) status_ = std::format("XeSS-SR: its evaluation failed at {} x {} (code {})", request.width, request.height, static_cast<int>(executed));
       }
@@ -380,6 +442,7 @@ class Upscaler12 {
     ComPtr<ID3D12CommandAllocator> allocator;
     ComPtr<ID3D12GraphicsCommandList> list;
     uint64_t value = 0;  // own_fence_'s value after its last use
+    bool timed = false;  // RENODX_TW_XESS_EXPOSURE: its last list stamped XeSS's dispatch
   };
 
   bool Fail(std::string status) {
@@ -430,6 +493,21 @@ class Upscaler12 {
   xess_quality_settings_t quality_ = XESS_QUALITY_SETTING_AA;
   uint32_t inited_width_ = 0;
   uint32_t inited_height_ = 0;
+  // RENODX_TW_XESS_EXPOSURE (Initialize; a test path): unset, these stay XESS_FLAGS and 1 and no stamps are made.
+  uint32_t xess_flags_ = XESS_FLAGS;
+  float xess_exposure_scale_ = 1.f;
+  static constexpr uint32_t XESS_TIMING_WARM_UP = 8;
+  struct {
+    ComPtr<ID3D12QueryHeap> stamps;  // two a slot: before and after XeSS's dispatch
+    ComPtr<ID3D12Resource> readback;
+    uint64_t ticks_per_second = 0;
+    std::string mode;           // "auto exposure" / "fixed exposure <s>"
+    std::string active_status;  // the status at its last init
+    uint32_t dispatches = 0;    // read since that init
+    double sum_ms = 0.0;
+    double least_ms = 0.0;
+    double most_ms = 0.0;
+  } xess_timing_;
 #endif
   // The context's maker: it writes the context, make_error_ and make_seconds_; read after the join.
   std::thread maker_;
