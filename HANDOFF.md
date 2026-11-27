@@ -1009,8 +1009,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - BRIEF RULE (fx1_, agent_times L70): briefs ask agents to stamp every step from ` ... | coord (briefs)
 - tw_pass_timing case 0 still checks the flags, not the registrations (d11i_handba ... | next d11 writer (low)
 - X37's one-function home in texture_lod_bias.hpp (fx5a__handback.md:175). Owner: ... | next texture_lod_bias writer (low)
-- PARITY ATTILA 54 OPEN (ndc_ 11-27, parity_check on the 11-25 d11i dumps): the ce ... | pcx_ (root cause, 11-27)
-- PARITY ROME REMASTERED 12 OPEN: 8 Grass.hlsl + 4 Terrain.hlsl VSMain level-B cas ... | pcx_ (verdicts) -> next Rome Remastered round
+- PARITY ROME REMASTERED 12 OPEN: 8 Grass.hlsl + 4 Terrain.hlsl VSMain level-B cas ... | next Rome Remastered round
 - ns_index.py DIGEST CACHE keyed by the Nsight module hash alone (omx_ 11-27): rt_ ... | nsx_ (11-27)
 - PT RUN-TO-RUN STATES (omx_ 11-27): two GPU states fixed per run in both builds ( ... | GPU plan (Opus xHigh design, later)
 - PT GATE METHOD (omx_ 11-27): sort runs by state first, or judge on the whole-run ... | ATN (yes / no) -> tools agent
@@ -17805,11 +17804,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] tw_pass_timing case 0 still checks the flags, not the registrations (d11i_handback.md:198-200). Owner: next d11
         writer (low)
         - [ ] X37's one-function home in texture_lod_bias.hpp (fx5a__handback.md:175). Owner: next texture_lod_bias writer (low)
-        - [ ] PARITY ATTILA 54 OPEN (ndc_ 11-27, parity_check on the 11-25 d11i dumps): the census reads 'held 0 of 66' for Attila
+        - [x] PARITY ATTILA 54 OPEN (ndc_ 11-27, parity_check on the 11-25 d11i dumps): the census reads 'held 0 of 66' for Attila
         and attila.tsv has no caster lines, while HANDOFF recorded 0 open in all 10 games -> census / ledger regression
-        suspected (the run rewrites tools\tw\parity\census_*.txt each time). Owner: pcx_ (root cause, 11-27)
+        suspected (the run rewrites tools\tw\parity\census_*.txt each time). FIXED (pcx_ 11-27,
+        testbin\scratch\pcx_\handback.md): caster_census.py only read 'SCENE_SHADERS = {{ ... }};', so def0f2609's
+        WithTwins<...>(std::array<...>{{ ... }}) gave 'held 0'; the smoke table renamed in 75c314031 gave 0 smoke shaders
+        (Attila + Thrones). Now both shapes + TDD_TWINS twins read, an unknown SCENE_SHADERS shape stops with an error.
+        Rerun on d11i: Attila 0 open (held 46), Thrones held 44 -> 46, 8 more games 0; Rome Remastered 12 (below). Merged
+        0475c4c38 (pcx_1127, tools only). Owner: done
         - [ ] PARITY ROME REMASTERED 12 OPEN: 8 Grass.hlsl + 4 Terrain.hlsl VSMain level-B casters (10 'scene_draw host leaves it
-        out; add'), no ledger line. Owner: pcx_ (verdicts) -> next Rome Remastered round
+        out; add' = a cut-off 'addon names it in LEFT_OUT_VERTEX_SHADERS'), no ledger line. pcx_ 11-27: ledger lines
+        missing since b30c08d12 (11-16), no new coverage gap. Grass 4924C5B3 / 52F0A4C0 (forward forms of 826801BF / 1839A2B1)
+        + 6 level-B lit forms -> NEEDS A TRACE with grass line #20; terrain overlays 125EEF55 / 7B3C7C53 -> WON'T GET
+        proposed (coplanar decal layer; second-look rule: the round decides); terrain forward forms FCA7E684 / 6B472F16 ->
+        HAVE through 7DD754DA. Lines ready: testbin\scratch\pcx_\romeremastered_proposed_lines.tsv (on a tools copy: exit
+        0). Round: back up tools\tw\parity\romeremastered.tsv, add the 3 lines, optional FrameTraceReads check that
+        FCA7E684 reads 7DD754DA's vertex buffers, rerun all 10 games. Owner: next Rome Remastered round
         - [ ] ns_index.py DIGEST CACHE keyed by the Nsight module hash alone (omx_ 11-27): rt_cache_fill's debug container cached
         under 0x26c69d760f90065c gave all 18 sdk4_ old traces + sdk3_old_2 the wrong digest. Fix the key + re-derive those index
         files (old ones kept as .bak). Owner: nsx_ (11-27)
