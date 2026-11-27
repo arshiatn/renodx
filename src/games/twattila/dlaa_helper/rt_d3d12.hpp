@@ -9561,6 +9561,19 @@ class RtScene12 {
     return true;
   }
 
+  // The OMM SDK's alpha cutoff for a bake at `cutoff` (both bakers'). src: omm.h:406 and :1026 (OMM SDK 1.12.0): "Texel
+  // Opacity = texture > alphaCutoff ? Opaque : Transparent"; the ray queries' AlphaPasses (rt_scene.hlsli) pass alpha >=
+  // cutoff. The next float toward 0 makes the bake's '>' that '>=' for every cutoff > 0 (ours are 0.5 or the draw's own,
+  // > 0): an alpha exactly at the cutoff baked transparent is never a candidate again, no alpha test can pass it (D3D12
+  // Raytracing spec, "Opacity micromaps and TraceRayInline"). X14; CONTROL_BAKE_CUTOFF_RAW: the cutoff as it was.
+  static float BakeCutoff(float cutoff) {
+#if defined(CONTROL_BAKE_CUTOFF_RAW)
+    return cutoff;
+#else
+    return std::nextafter(cutoff, 0.f);
+#endif
+  }
+
   // GPU Micromap Baking at the end of a request: `bakes` (leaves' and grass sets' waiting: their UVs and masks copied when
   // read) baked by the OMM SDK's GPU baker (ComputeOnly, 4-state as the ray queries test them, the CPU bakes'
   // settings): the UVs copied with garbage coordinates zeroed (rt_omm_uvs), then the bakes' dispatch chains stage by stage (all bakes' step k, then a UAV barrier; every resource
@@ -9613,7 +9626,7 @@ class RtScene12 {
       config.texCoordOffsetInBytes = static_cast<uint32_t>(totals[0]);
       config.indexFormat = ommIndexFormat_UINT_32;
       config.indexCount = bake->triangles * 3;
-      config.alphaCutoff = bake->cutoff;
+      config.alphaCutoff = BakeCutoff(bake->cutoff);
       config.maxSubdivisionLevel = static_cast<uint8_t>(bake->grass ? grass_micromap_level_ : leaf_micromap_level_);
       config.maxOutOmmArraySize = MICROMAP_MESH_BYTES;
       config.maxScratchMemorySize = ommGpuScratchMemoryBudget_MB_64;
@@ -10010,6 +10023,7 @@ class RtScene12 {
   // grass_micromap_level_), the same ones shared, wholly opaque or clear triangles the special indices (all of them so: no
   // micromaps, no array); none (no indices) when the SDK fails.
   void BakeMicromaps(MicromapBake* bake, ommBaker baker) const {
+    const float sdk_cutoff = BakeCutoff(bake->cutoff);  // the texture's and the bake's: omm.h:369 asks the same value
     ommCpuTextureMipDesc mip = ommCpuTextureMipDescDefault();
     mip.width = dlaa_bridge::RT_ATLAS_SIZE;
     mip.height = dlaa_bridge::RT_ATLAS_SIZE;
@@ -10019,7 +10033,7 @@ class RtScene12 {
     texture_desc.format = ommCpuTextureFormat_UNORM8;
     texture_desc.mips = &mip;
     texture_desc.mipCount = 1;
-    texture_desc.alphaCutoff = bake->cutoff;
+    texture_desc.alphaCutoff = sdk_cutoff;
     ommCpuTexture texture = nullptr;
     if (omm_.create_texture(baker, &texture_desc, &texture) != ommResult_SUCCESS) return;
     std::vector<uint32_t> corners(uint64_t{bake->triangles} * 3);
@@ -10034,7 +10048,7 @@ class RtScene12 {
     input.indexFormat = ommIndexFormat_UINT_32;
     input.indexBuffer = corners.data();
     input.indexCount = static_cast<uint32_t>(corners.size());
-    input.alphaCutoff = bake->cutoff;
+    input.alphaCutoff = sdk_cutoff;
     input.maxSubdivisionLevel = bake->grass ? grass_micromap_level_ : leaf_micromap_level_;
     input.maxArrayDataSize = MICROMAP_MESH_BYTES;
     input.maxWorkloadSize = MICROMAP_WORKLOAD;
