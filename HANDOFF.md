@@ -978,7 +978,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
-- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | aff_ (FSR + XeSS)
+- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | raff_ / raffs_ -> coord (merge)
 - RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | coord (briefs)
 - A/B LOOKS WAIT (ATN 11-27): every look / A/B check (AA feed, O2 thin shadows at ... | ATN (end of plans)
 - GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds a ... | coord
@@ -17758,7 +17758,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Upscaler test 100 / 67 %: FSR linear within 3 % (today 15-20 % too bright); XeSS linear 6-12 % darker on bars /
         texture. Recommendation: FSR linear = a bug fix (better on every row); XeSS linear with the u1 cost = ATN's call. The
         fix (not made): drop the !Upscales(method) exclusion in anti_aliasing.hpp Apply + re-run tw_aa_frame_gamma; it waits
-        for rri_ (anti_aliasing.hpp's writer now). FSR fix aff_ (Opus High, branch aff_1127 from dd66a5300, anti_aliasing.hpp; XeSS untouched; GPU test job prepared only while 2 agents wait) STARTED 08:5x. ATN 11-27: XeSS yes if there is no black raise and no purple -> aff_ adds it as its own commit (told 09:1x). Owner: aff_ (FSR + XeSS)
+        for rri_ (anti_aliasing.hpp's writer now). FSR fix aff_ (Opus High, branch aff_1127 from dd66a5300, anti_aliasing.hpp; XeSS untouched; GPU test job prepared only while 2 agents wait) STARTED 08:5x. ATN 11-27: XeSS yes if there is no black raise and no purple -> aff_ adds it as its own commit (told 09:1x). aff_ DONE 09:12 (33 min; origin/aff_1127: de5315593 FSR, 1d3b1dcec XeSS; anti_aliasing.hpp:1171 frame_gamma = linear_frame && (method != DLAA || !reconstruct): only RR keeps the gamma; gated amd64 / x86 twattila 61, twrome2 62, thrones 61; 14 AA shaders byte-identical; tw_aa_frame_gamma WARP PASS; 16 4K runs: FSR dark PQ 12.5 -> 9.5 (truth 5.6), noise 0.0194 -> 0.0022, u1 1.341 -> 0.960, upscaler test within 3 %; XeSS dark PQ 9.4 -> 6.3, noise 0.0140 -> 0.0016, darkest band 1.232 -> 1.000; no black raise, R/G = B/G = 1.0000 on every pattern (grey patterns: a tint on coloured content = ATN's eye); XeSS cost u1 1.040 -> 0.778, noise 0.024 -> 0.032, bars / texture 9-13 % darker). Left: stale comments aa.hlsli:42-45 + aa_dlaa_prepare / finish:17-20; fire / edge / step not re-run. Final reviews raff_ (Opus xHigh) + raffs_ (Sonnet High) STARTED 10:2x. Owner: raff_ / raffs_ -> coord (merge); ATN (XeSS look in the batch)
         - [x] rrbi_ RUNNER FIX (coord 11-26): gpu_job_g1.ps1 did not clear HARNESS_SR between runs (aaf2_'s first RR arms
         inherited preset M; set aside in results_invalid\, re-run alone); now in its clear list (backup .bak_coord1126).
         aaf_'s rows unaffected (every line set it). Owner: done
