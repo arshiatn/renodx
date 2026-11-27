@@ -975,7 +975,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
 - STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | PK8 Stage B designer
 - CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | coord / ATN (2048 vs 2304 slots)
-- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | rrr_ / rrf_ (final review) -> coord (merge, then L2B W3)
+- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | rrr_ (final review) -> coord (merge, then L2B W3)
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
@@ -1034,7 +1034,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
 - SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
-- PK6-64 WAVE 1 (Opus High, pk6_tooling_64.md R11) STARTED 08:1x: p6a1_ = a64_ab.p ... | p6a1_ / p6b_ / p6c_ -> coord (Rv1)
+- PK6-64 WAVE 1 (Opus High, pk6_tooling_64.md R11) STARTED 08:1x: p6a1_ = a64_ab.p ... | p6a1_ / p6c_ -> coord (Rv1)
 - 11-27 08:3x HAND-BACKS (coord). P1p DONE (p1p_, Fable 5.2 Medium, ~20 of 60 min; ... | coord (reviews -> merges
 - HARNESS SCENE DROP + LEARNED LIGHT (pdf_ 11-27, new): di_mode.hpp Observe builds ... | next harness writer after m1i_ (di_mode
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
@@ -17705,7 +17705,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         closes once G1s passes. REVIEW (rrdr_ 11-27, designs\rr_before_tonemap_below100_review.md): GO WITH CHANGES; add-on part D1-D6 correct; MUSTs in
         the harness / gate: jitter sign i + 0.5 - j, nearest sampling, + 33 %, the 100 % control in the same hold (old vs new
         harness); G1s 48 runs + G1b 6, ~52 min GPU, est 140-165 min. rri_ STARTED 06:5x (branch rrb100_1127; addon.cpp step
-        last, after c8b0_). rri_ DONE 08:17 (box '11-27 08:3x HAND-BACKS'). Owner: rrr_ / rrf_ (final review) -> coord (merge, then L2B W3)
+        last, after c8b0_). rri_ DONE 08:17 (box '11-27 08:3x HAND-BACKS'). rrf_ (Sonnet High) GO, no MUST (S1 README:20-21 old 'At 100% only' line -> fix at merge; S2 G1b in HANDOFF; NIT: keep S3 / R5 open). Owner: rrr_ (final review) -> coord (merge, then L2B W3)
         - [x] gts_ SWITCH B DONE (11-26, scratch\gts_\switch_b_changed.txt, backups .bak_gts / .bak_gts2): DI_FRAMES digest,
         DI_E option 2 (Y runs get X's class maps; 48 real E files: digest sha256 = .bin, 54 energy lines identical in 3 forms,
         controls fail), worker-thread hashing, ProbeMean from digests; E file 199 MB -> ~57 KB (+2 s a job). Harness
@@ -18234,8 +18234,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] PK6-64 WAVE 1 (Opus High, pk6_tooling_64.md R11) STARTED 08:1x: p6a1_ = a64_ab.ps1 as a patched copy + patch
         script in testbin\scratch\p6a1_\ (coord applies after Rv1 GO + ATN's yes to the new arms; the deny line went 11-26), incl. W4's ep1 / P1 / S1 (R9); p6b_ =
         tools\tw\attila64\p0\analyze_d0.py + test_analyze_d0.py + golden json; p6c_ = tools\tw\attila64\wpr\*. No runs, no GPU,
-        no game starts. Then Rv1 (Opus xHigh), coord applies P6a1 (on ATN's yes), coord runs the real file's DryRuns, P6a2, Rv2. Owner: p6a1_ /
-        p6b_ / p6c_ -> coord (Rv1)
+        no game starts. Then Rv1 (Opus xHigh), coord applies P6a1 (on ATN's yes), coord runs the real file's DryRuns, P6a2, Rv2. Owner: p6a1_ / p6b_ / p6c_. p6b_ DONE 11-27 (11 min measured, agent said ~43; est 35 / 70; p0\ writable, changed in
+        place; backups + shas in testbin\scratch\p6b_\): analyze_d0.py 31b14087 -> 83c6ee7a, test_analyze_d0.py 11e215f9 ->
+        b628d1af, new golden_stress_log2.json c910b044; B2 'fnv only' label, B3 golden list (1.3.20 084234_AB + 1.3.28
+        194927_AB, sha-pinned; same / X pair other loader / n/a / REFUSED), B4 det-level dumps, B5 per-kind pair rules (PK8 /
+        PK2P / PK9 / PK5 gc0); self-test 31 PASS, 0 failed; 4 batches of 11-26 re-read: verdicts unchanged + 'golden: same'. Not
+        live: B5 (no plugin start yet). For P6a2: start.json elf_sha / replay_sha (today the batch pins); optional plugin_ini
+        dict, else analyze_d0's KIND_INI must follow P6a1's kinds (Rv1 checks). p6b_ resumed for B5's PK2P lines = P1p's exact
+        literals. Owner: p6a1_ / p6c_ -> coord (Rv1)
         - [ ] 11-27 08:3x HAND-BACKS (coord). P1p DONE (p1p_, Fable 5.2 Medium, ~20 of 60 min; branch p1p_1127 54f767537 from
         8773b421f, pushed, not merged; testbin\scratch\p1p_\handback.md): PickCores -> Picks {battle, render, keep},
         RENDER_POOL_CORES = 4, PublishRender the only render-word writer, ApplyRenderCoreKey / SetRenderThread, only CORE_RENDER
