@@ -18034,8 +18034,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         3 render core regression; scratch\coord_f7_wa3.log). Review rwa3_ (Opus xHigh) DONE (scratch\rwa3_\review.md): GO WITH CHANGES, 0 MUST; the deviation UPHELD (design
         F1 :228-229: CORE_STEP in CORE_WANTED_DEFAULT for the S-C build, the release keeps it only after S-C + Q1);
         SHOULD-1 addon.cpp:3677-3680 row On + lane OFF reads 'off' until the next step -> 'not used yet'; SHOULD-2 release
-        note (box below); 3 NITs; F7's 9 cases prove the table. Fix round wa3_ (resumed, Opus Medium) STARTED 18:44;
-        then Sonnet High final; then merge.
+        note (box below); 3 NITs; F7's 9 cases prove the table. Fix round wa3_ (resumed, Opus Medium) DONE 18:55: c11d5a79b (addon.cpp only: row On + lane OFF reads 'not used
+        yet', dump lane_4_row_1 'off' -> 'not used yet'; BATTLE_STEP_TEXTS table by EngineState; F1 :228-229 cited);
+        gated amd64 + x86 exit 0, x86 page unchanged; F7 needs no re-run (no case reads the status text, link.hpp
+        unchanged); slip: its mutation script reverted the uncommitted fix once, redone on the committed tree. Sonnet
+        High final fwa3_ STARTED 18:53; then merge.
         Stage B step 5 p8b5_ (Fable Medium) STARTED 18:37 on p8b_1127 (merge
         atn-mods, fold step 2's CONTACT_ENTRY onto the installed generator in its own copy + install.sh, ONE wiring
         commit, 3 serial test runs); then step 6 (Opus) after W-A3 merges. Note: HANDOFF clock stamps 19:xx above were an
