@@ -12,12 +12,13 @@
 // 3b. A plugin's test device (made and released): the same asserts.
 // 3c. plugin: the loader's plugins, as F7's renodx_attila64.dll (fake_plugin.cpp: the engine plugin's block, a thread
 //     calling the callbacks while a row is wanted); at the end its callbacks must be gone (none registered, or
-//     unregistered and drained at the add-on's unload). plugin_calls: the callbacks must have been called.
+//     unregistered and drained at the add-on's unload). plugin_calls: the callbacks must have been called. perffix:
+//     perffix64.dll (run.ps1's copy of the fake plugin) as Engine Performance Fix, for the add-on's start notes.
 // 4. Window, device, flip swap chain (RGBA8, 2 buffers), the picture (RGBA8, SRV | RT) and its depth.
 // 5-7. Frames into the picture, the loader's copy into buffer 0 and its 8-bit overlay, a mode change, a new window.
 // Then the captures (zz_capture) against the reference of the swap chain proxy.
 // Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8]
-//        [image_none|image_badmagic|image_table] [plugin [plugin_calls]] [plain_empty] [gpu]
+//        [image_none|image_badmagic|image_table] [plugin [plugin_calls]] [perffix] [plain_empty] [gpu]
 //        attila64.exe d3d12 [gpu]   (C4: frames written; run.ps1 compares them with a run without the add-on)
 //        attila64.exe opengl        (C6: as C4, GPU only)
 
@@ -914,6 +915,7 @@ int main(int argc, char** argv) {
     plugin = LoadLibraryW((here / "renodx_attila64.dll").c_str());
     if (plugin == nullptr) Fail("renodx_attila64.dll not loaded");
   }
+  if (has("perffix") && LoadLibraryW((here / "perffix64.dll").c_str()) == nullptr) Fail("perffix64.dll not loaded");
 
   int result = 0;
   if (api == "d3d12") {

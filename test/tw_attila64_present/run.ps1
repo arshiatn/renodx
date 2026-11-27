@@ -49,7 +49,7 @@ $upgraded = @("the game's picture upgraded (1280x720)", "the game's picture upgr
 $notReadable = '[Total War] 64-bit Attila: game code not readable at the first present'
 $noPlugin = '[Total War] 64-bit Attila: engine plugin not installed, rows offered 0x0'
 $forbidden = @('has no upgrade', 'leaves it alone', 'not readable at the first present', 'was not unregistered',
-               'did not leave the add-on within 1 s', 'callback failed', 'another add-on holds')
+               'did not leave the add-on within 1 s', 'callback failed', 'another add-on holds', 'Engine Performance Fix loaded')
 # The color space every effect runtime reports, per output.
 $colorSpaces = @{ 0 = 'hdr10_st2084'; 1 = 'extended_srgb_linear'; 2 = 'srgb_nonlinear' }
 $encodings = @{ hdr10 = 0; scrgb = 1; sdr = 2 }
@@ -101,6 +101,25 @@ $table['plugin_no_plugins'] = @{ addon = 'current'; args = 'd3d11 fixed upgraded
                                  lines = @($identity, $mapped, $switchedOff) + $upgraded; forbid = @('engine plugin not installed', 'but not loaded') }
 $table['plugin_plain_empty'] = @{ addon = 'current'; args = 'd3d11 fixed upgraded plain_empty'; encoding = 0; plugins_dir = $true
                                   lines = @($identity, $mapped, $switchedOff) + $upgraded; forbid = @('engine plugin not installed', 'but not loaded') }
+# Engine Performance Fix's start notes: perffix64.dll (a copy of the fake plugin) loaded, and its files as the add-on reads
+# them at the first present: <exe dir>\..\FrameBridge (run\FrameBridge: made for the case, removed before every case)
+# with helper64.exe (`bridge`) and its settings.txt lines (`settings`; none: no file), perffix64.log's lines, and
+# flagwave_off.txt (`flags_off`). One line names both.
+$flagsOn = '01:37:48.419 flag wave: on (a pack carries flagwave\flag_wave.txt = 1; log: flagwave.log)'
+$perffixCases = [ordered]@{
+  perffix_on = @{ bridge = $true; settings = @('addon=on'); log = @($flagsOn); result = 'on, waving flags on' }
+  perffix_off = @{ bridge = $true; settings = @('frame_generation=on', 'ADDON=OFF'); log = @($flagsOn); flags_off = $true
+                   result = 'off, waving flags off' }
+  perffix_none = @{ bridge = $false; log = @('01:37:48.419 flag wave not installed: no loaded pack carries flagwave\flag_wave.txt (a flag pack does)')
+                    result = 'off, waving flags off' }
+  perffix_no_settings = @{ bridge = $true; log = @('01:37:48.419 flag wave: off in heapfix.ini'); result = 'on, waving flags off' }
+}
+foreach ($name in $perffixCases.Keys) {
+  $table[$name] = $perffixCases[$name] + @{
+    addon = 'current'; args = 'd3d11 fixed upgraded perffix'; encoding = 0; perffix = $true
+    lines = @($identity, $mapped, $noPlugin, "[Total War] 64-bit Attila: Engine Performance Fix loaded: FrameBridge upscaling $($perffixCases[$name].result)") + $upgraded
+    allow = @('Engine Performance Fix loaded') }
+}
 $table['C1_1320'] = @{ addon = 'none'; args = 'd3d11 1320 plain'; encoding = 0; lines = @() }
 $table['C1_fixed'] = @{ addon = 'none'; args = 'd3d11 fixed plain'; encoding = 0; lines = @() }
 $table['C2_hdr10_1320'] = @{ addon = 'c2'; args = 'd3d11 1320 broken'; encoding = 0; lines = @() }
@@ -143,6 +162,18 @@ foreach ($name in $Cases) {
   $addonPath = $addons[$case.addon]
   if ($addonPath -ne '') { Copy-Item -LiteralPath $addonPath -Destination (Join-Path $dir 'renodx-twattila.addon64') }
   if ($case.plugin) { Copy-Item -LiteralPath (Join-Path $binDir 'renodx_attila64.dll') -Destination $dir }
+  $bridgeDir = Join-Path $stage 'run\FrameBridge'
+  if (Test-Path -LiteralPath $bridgeDir) { Remove-Item -LiteralPath $bridgeDir -Recurse -Force }
+  if ($case.perffix) {
+    Copy-Item -LiteralPath (Join-Path $binDir 'renodx_attila64.dll') -Destination (Join-Path $dir 'perffix64.dll')
+    $case.log | Set-Content -LiteralPath (Join-Path $dir 'perffix64.log') -Encoding ascii
+    if ($case.flags_off) { 'Made by 64-bit Attila' | Set-Content -LiteralPath (Join-Path $dir 'flagwave_off.txt') -Encoding ascii }
+    if ($case.bridge) {
+      New-Item -ItemType Directory -Force -Path $bridgeDir | Out-Null
+      '' | Set-Content -LiteralPath (Join-Path $bridgeDir 'helper64.exe') -Encoding ascii
+      if ($case.settings) { $case.settings | Set-Content -LiteralPath (Join-Path $bridgeDir 'settings.txt') -Encoding ascii }
+    }
+  }
   if ($case.plugins_dir) {
     New-Item -ItemType Directory -Force -Path (Join-Path $dir 'plugins') | Out-Null
     Copy-Item -LiteralPath (Join-Path $binDir 'renodx_attila64.dll') -Destination (Join-Path $dir 'plugins')

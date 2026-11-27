@@ -441,9 +441,14 @@ inline bool FindTweaks(std::span<tw::engine_tweaks::Option* const> options) {
       tweak.value = &restart.bits;
     }
     // An option missing a value gets none (its row hides): nothing applied part-way while the player cannot see it. Its
-    // restart cells keep the default.
+    // restart cells go too, so the mirror neither writes their default over a saved key nor raises a note for them.
     if (std::ranges::any_of(option->tweaks, [](const tw::engine_tweaks::Tweak& tweak) { return tweak.value == nullptr; })) {
       for (tw::engine_tweaks::Tweak& tweak : option->tweaks) {
+        const auto cell = std::ranges::find(internal::restart_values, tweak.value,
+                                            [](internal::RestartValue& restart) -> void* { return &restart.bits; });
+        if (cell != internal::restart_values.end()) {
+          *cell = {};
+        }
         tweak.value = nullptr;
       }
     }

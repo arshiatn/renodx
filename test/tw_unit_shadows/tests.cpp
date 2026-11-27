@@ -21,7 +21,8 @@
 //    nothing else; off again and 1x: the game's bytes; CONTROL: Medium's writes not as known, on writes nothing.
 // 7. Shadow map work (Render's hook), Attila's and Rome II's, also with the 64-bit loader's Shadow refresh rest frames;
 //    7b the 64-bit route (the engine plugin's hook calling attila64_plugin_link.hpp's callbacks); 7c the callbacks'
-//    registration and drain on a block as the plugin publishes it.
+//    registration and drain on a block as the plugin publishes it; 7d the engine values on the port; 7e the start files'
+//    reader (start_files.hpp) over files in a temp folder.
 // 8. Rome II's Two Shadow Cascades Under Rays (twrome2/shadow_cascades.hpp) over its shipped empire.retail.dll.
 #include <windows.h>
 #include <d3d11.h>
@@ -45,6 +46,7 @@
 #include "src/games/twattila/graphics_hooks.hpp"
 #include "src/games/twattila/rt_scene.hpp"
 #include "src/games/twattila/shadow_pass.hpp"
+#include "src/games/twattila/start_files.hpp"
 #include "src/games/twrome2/shadow_cascades.hpp"
 #include "test/tw_particle_history/mock_reshade.hpp"
 
@@ -638,7 +640,7 @@ int main(int argc, char** argv) {
       };
       float live_value = 2.f;
       float wrong_kind_value = 1.f;
-      std::array<plugin::TweakSlot, 8> slots = {
+      std::array<plugin::TweakSlot, 10> slots = {
           plugin::TweakSlot{.name = "LIVE_FLOAT", .value_address = reinterpret_cast<uintptr_t>(&live_value),
                             .default_bits = std::bit_cast<uint32_t>(2.f), .written_bits = std::bit_cast<uint32_t>(2.f),
                             .type = plugin::TWEAK_FLOAT, .verdict = plugin::VERDICT_OK},
@@ -656,6 +658,11 @@ int main(int argc, char** argv) {
           // A restart-only value of another type than this add-on's range for it.
           plugin::TweakSlot{.name = "SOUND_LOWER_ENGINE_DEFAULT_BUFFER_SIZE_IN_KB", .type = plugin::TWEAK_INT,
                             .verdict = plugin::VERDICT_OK, .restart_only = 1, .restart_state = plugin::RESTART_APPLIED},
+          // A restart-only value this start applied from its saved key, in an option with a refused value.
+          plugin::TweakSlot{.name = "SOUND_WAVEFILE_BUFFER_SIZE_IN_KB", .default_bits = 0x15800, .written_bits = 0x20000,
+                            .type = plugin::TWEAK_UINT, .verdict = plugin::VERDICT_OK, .restart_only = 1,
+                            .restart_state = plugin::RESTART_APPLIED},
+          plugin::TweakSlot{.name = "CHANGED_THREE", .type = plugin::TWEAK_FLOAT, .verdict = plugin::VERDICT_CHANGED},
       };
       plugin::TweakSlot& memory_slot = slots[4];
       tw::engine_tweaks::Option live = {.scale = 1.5f, .tweaks = {{.name = "LIVE_FLOAT"}}};
@@ -668,7 +675,10 @@ int main(int argc, char** argv) {
       tw::engine_tweaks::Option half = {.scale = 2.f, .tweaks = {{.name = "LIVE_FLOAT"}, {.name = "CHANGED_TWO"}}};
       tw::engine_tweaks::Option lower = {
           .tweaks = {{.name = "SOUND_LOWER_ENGINE_DEFAULT_BUFFER_SIZE_IN_KB", .integer = true}}};
-      std::array<tw::engine_tweaks::Option*, 6> options = {&live, &others, &memory, &ratio, &half, &lower};
+      // A restart value and a refused one: neither, and its restart cell cleared (its saved key kept, no note).
+      tw::engine_tweaks::Option saved = {
+          .scale = 2.f, .tweaks = {{.name = "SOUND_WAVEFILE_BUFFER_SIZE_IN_KB", .integer = true}, {.name = "CHANGED_THREE"}}};
+      std::array<tw::engine_tweaks::Option*, 7> options = {&live, &others, &memory, &ratio, &half, &lower, &saved};
       bool values_found = true;  // the add-on's graphics_found after FindTweaks: Update only applies
       renodx::utils::settings::Setting values_status;
       const auto present = [&](bool loader_frame_cap) {
@@ -683,6 +693,7 @@ int main(int argc, char** argv) {
       link::internal::block = &values_block;
       link::internal::found.store(link::Found::READY);
       config.clear();
+      config["Attila64Plugin.Values|SOUND_WAVEFILE_BUFFER_SIZE_IN_KB"] = "00020000";
       logged.clear();
       // The plugin's check pending: not found yet.
       CHECK(!link::FindTweaks(options) && !link::TweaksFound());
@@ -691,10 +702,12 @@ int main(int argc, char** argv) {
       CHECK(live.tweaks[0].value == &live_value && memory.tweaks[0].value != nullptr
             && *static_cast<const uint32_t*>(memory.tweaks[0].value) == 0x5da4 && ratio.tweaks[0].value != nullptr
             && std::ranges::all_of(others.tweaks, [](const auto& tweak) { return tweak.value == nullptr; })
-            && half.tweaks[0].value == nullptr && half.tweaks[1].value == nullptr && lower.tweaks[0].value == nullptr);
+            && half.tweaks[0].value == nullptr && half.tweaks[1].value == nullptr && lower.tweaks[0].value == nullptr
+            && saved.tweaks[0].value == nullptr && saved.tweaks[1].value == nullptr
+            && link::internal::restart_values[8].slot == nullptr);
       CHECK(link::OptionsRefused() && logged.size() == 1
             && lines("engine options not turned on: rows 0x0, values CHANGED_ONE, WRONG_KIND, CHANGED_TWO, "
-                     "SOUND_LOWER_ENGINE_DEFAULT_BUFFER_SIZE_IN_KB")
+                     "SOUND_LOWER_ENGINE_DEFAULT_BUFFER_SIZE_IN_KB, CHANGED_THREE")
                    == 1);
       // The values: live scaled in the game's memory, the restart cell scaled; the mirror writes the changed key only,
       // one line, the frame cap key absent and off (no write).
@@ -703,13 +716,14 @@ int main(int argc, char** argv) {
       CHECK(live_value == 3.f && wrong_kind_value == 1.f
             && *static_cast<const uint32_t*>(memory.tweaks[0].value) == 0xbb48);
       CHECK(key("SOUND_DEFAULT_BUFFER_SIZE_IN_KB") == "0000bb48" && key("SOUND_DEFAULT_BUFFER_LOW_RATIO") == "absent"
-            && key("SolFrameCap") == "absent" && config.size() == 1 && logged.size() == 1
+            && key("SolFrameCap") == "absent" && key("SOUND_WAVEFILE_BUFFER_SIZE_IN_KB") == "00020000"
+            && config.size() == 2 && logged.size() == 1
             && lines("engine value SOUND_DEFAULT_BUFFER_SIZE_IN_KB: 0xbb48 at the next start (this start: 0x5da4)") == 1);
       CHECK(link::ValuesPending() && !link::SolFrameCapPending());
       // The next present: nothing written, no line.
       logged.clear();
       present(false);
-      CHECK(logged.empty() && config.size() == 1 && link::ValuesPending());
+      CHECK(logged.empty() && config.size() == 2 && link::ValuesPending());
       // The clamp: tweaks.h's range (a hand-edited slider): above the top, a float's NaN to the low end, above the top.
       memory.scale = 10.f;
       present(false);
@@ -788,6 +802,7 @@ int main(int argc, char** argv) {
       present(true);
       CHECK(config.size() == keys_before && key("SolFrameCap") == "0" && logged.empty());
       values_block.bytes = sizeof(plugin::Block);
+      CHECK(key("SOUND_WAVEFILE_BUFFER_SIZE_IN_KB") == "00020000");
       // Uninstall: found, refused and pending states reset; the next READY finds the values again.
       CHECK(link::FindTweaks(options) && link::TweaksFound());
       memory.scale = 2.f;
@@ -802,9 +817,49 @@ int main(int argc, char** argv) {
       std::printf(
           "7d engine values: pending check not found; live and restart values matched (absent / changed / wrong type "
           "/ unlisted / a range of another type none, the refused named once; an option with one refused: none of "
-          "its values, nothing applied);the mirror writes a changed key once with one line, clamped (top, "
+          "its values, nothing applied, its restart cell cleared: a saved key kept, no note); the mirror writes a changed key once with one line, clamped (top, "
           "NaN low, float top); plan 2.3's four pending cases; Loader Frame Cap pending / not pending; a bad key "
           "rewritten; Tweaks=0 and a v1 block without values; Uninstall resets\n");
+    }
+    // 7e. The start files' reader (Sol's settings_get, S28 picker.c:54-70): the last line of a name counts, the name in
+    //     either case and followed by '=', the value not trimmed and cut at CR / LF; no file or no line: none. The
+    //     add-on's FrameBridge test (the last addon= line starting with "off" in either case) and its lines walk.
+    {
+      namespace start_files = twattila::start_files;
+      const std::filesystem::path folder =
+          std::filesystem::temp_directory_path() / std::format("renodx_start_files_{}", GetCurrentProcessId());
+      std::filesystem::create_directories(folder);
+      const auto write = [&folder](const char* name, std::string_view text) {
+        std::ofstream(folder / name, std::ios::binary) << text;
+        return folder / name;
+      };
+      const std::filesystem::path settings = write(
+          "settings.txt",
+          "Task_Waits=fast\r\ninterface_size=150\ntask_waits=Fast\r\nshadow_refresh=2\rx\nupscalingx=1\nupscaling\n"
+          "perf_fix= 0 \nflag_wave=\n");
+      CHECK(start_files::Value(settings, "task_waits") == "Fast" && start_files::Value(settings, "TASK_WAITS") == "Fast");
+      CHECK(start_files::Value(settings, "interface_size") == "150" && start_files::Value(settings, "shadow_refresh") == "2");
+      CHECK(start_files::Value(settings, "perf_fix") == " 0 " && start_files::Value(settings, "flag_wave") == "");
+      CHECK(!start_files::Value(settings, "upscaling").has_value() && !start_files::Value(settings, "theme").has_value());
+      CHECK(!start_files::Value(folder / "none.txt", "addon").has_value());
+      CHECK(start_files::StartsWithNoCase("ADDON=OFF", "addon=off") && start_files::StartsWithNoCase("Off", "off")
+            && !start_files::StartsWithNoCase("of", "off") && !start_files::StartsWithNoCase("on", "off"));
+      // FrameBridge's settings.txt as the loader leaves it (one addon= line), hand-edited, and without one.
+      const auto framebridge_off = [](const std::filesystem::path& file) {
+        const std::optional<std::string> addon = start_files::Value(file, "addon");
+        return addon.has_value() && start_files::StartsWithNoCase(*addon, "off");
+      };
+      CHECK(framebridge_off(write("fb_off.txt", "addon=off\r\nsuper_resolution=dlss\r\n")));
+      CHECK(framebridge_off(write("fb_upper.txt", "frame_generation=on\nADDON=OFF\n")));
+      CHECK(!framebridge_off(write("fb_on.txt", "addon=on\r\n")) && !framebridge_off(write("fb_none.txt", "x=1\n")));
+      std::vector<std::string> lines_seen;
+      start_files::ForEachLine(write("perffix64.log", "01:37:48.419 flag wave: on (a pack)\r\nlast"),
+                               [&lines_seen](std::string_view line) { lines_seen.emplace_back(line); });
+      CHECK(lines_seen.size() == 2 && lines_seen[0] == "01:37:48.419 flag wave: on (a pack)" && lines_seen[1] == "last");
+      std::filesystem::remove_all(folder);
+      std::printf(
+          "7e start files: the last line of a name counts (either case, '=' next), the value as written (CR / LF cut, "
+          "not trimmed); no line / no file: none; FrameBridge's addon=off in either case; lines walked in order\n");
     }
     plugin_route = false;
     pass::active.store(false);
