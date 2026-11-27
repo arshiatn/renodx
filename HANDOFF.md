@@ -1013,7 +1013,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT GATE METHOD (omx_ 11-27): sort runs by state first, or judge on the whole-run ... | ATN (yes / no) -> tools agent
 - GPU ITEM 7 PLAN (i7s_ 11-27, tools\tw\round_notes\designs\gpu_item7_plan.md): sm ... | lss0_ / lsp3_ / sms_ -> coord
 - OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s p ... | ATN (yes / wait)
-- SMOKE SPHERES S3 review (Opus xHigh) of designs\smoke_spheres.md, then S5 smoke ... | coord (after sms_)
+- SMOKE SPHERES S3 review (Opus xHigh, smr_ STARTED 07:0x) of designs\smoke_sphere ... | coord (after sms_)
 - SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | coord (after lss0_)
 - PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | coord (after pdf_)
 - OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; th ... | ATN (keep / remove)
@@ -17879,7 +17879,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         particles, 0.77 candidates a ray; densest night1_battle 1178 / night1_wide 2652) -> S4 needed; sgr_ writes its runner
         - [ ] OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s part B traces only sun + fog rays, so
         its numbers don't depend on unified PT. Owner: ATN (yes / wait)
-        - [ ] SMOKE SPHERES S3 review (Opus xHigh) of designs\smoke_spheres.md, then S5 smoke caps retirement (ATN yes for 32 /
+        - [ ] SMOKE SPHERES S3 review (Opus xHigh, smr_ STARTED 07:0x) of designs\smoke_spheres.md (S2 DONE sms_ 11-27: GPU pass
+        rt_smoke_spheres.cs_6_5.hlsl makes spheres from the RT_SMOKE quads; default model Q = today's density on the
+        sphere (the plan's uniform ball = the 'Round' choice: a departure S3 checks); Experimental row 'Smoke Shadows as
+        Spheres' Off / Spheres / Spheres, Round, default Off; two-instance smoke TLAS; 2 new DXIL behind the sphere flag,
+        dispatched only when spheres were built; quads stay byte-identical as the fallback; Blackwell only; S1 slots A1-A4
+        + M1 decide S6's go; framing for ATN: after S5 the quads are exact at 32 / 64, so spheres add speed on heavy smoke
+        + round shapes for fog-light / soft-sun rays; on everyday dust lsp2_ measured 1.02-1.15x slower (<= ~0.07 ms)), then S5 smoke caps retirement (ATN yes for 32 /
         64; rt_scene.hlsli + rt_trace.cs_6_5.hlsl, before S6), then S6 implementer (after pdf_ frees rt_d3d12.hpp + an addon.cpp
         slot). Owner: coord (after sms_)
         - [ ] SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start in the game batch (recorder helper,
