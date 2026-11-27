@@ -87,12 +87,9 @@ static HMODULE module_reference = nullptr;
 // for the render row's first present at its default, left) them (none yet: nullopt).
 static std::optional<bool> battle_core_written;
 static std::optional<bool> render_core_written;
-// Under the mutex: Effects on All Cores' stop (0 Off, 1 Automatic, 2 On) as this add-on last wrote (or, for its first
-// present at Off, left) the two effect bits (none yet: nullopt).
+// Under the mutex: Effects on All Cores' stop (0 Off, 1 Automatic, 2 On) as this add-on last wrote the two effect bits
+// (none yet: nullopt).
 static std::optional<uint32_t> effects_written;
-// The effect bits of each stop (plugin_block.h: Off neither, Automatic both, On CORE_EFFECTS alone).
-inline constexpr std::array<uint32_t, 3> EFFECTS_STOP_BITS = {0u, plugin::CORE_EFFECTS | plugin::CORE_EFFECTS_AUTO,
-                                                              plugin::CORE_EFFECTS};
 // The loader's effect value (tweaks.h): the plugin checks its guards with it at the game's start (PK9 7.3). Its slot
 // is looked up by name for the verdict only; no Tweak is bound to it, so the plugin's walk hook stays its one writer.
 inline constexpr std::string_view EFFECTS_SLOT = "VFX_PARALLEL_UPDATER";
@@ -402,7 +399,7 @@ inline void Lookup(bool last) {
 
 // Every present with Result() READY (the loader's drawing thread): the rows whose hooks are wanted now (bit:
 // attila64_plugin::Row), whether Keep Battle Core Free and Keep Render Core Free are on, and Effects on All Cores' stop
-// (0 Off, 1 Automatic, 2 On; Off by default: tw_unit_shadows' calls, which leave the effect bits alone). The callbacks
+// (0 Off, 1 Automatic, 2 On; Off by default for tw_unit_shadows' calls, which pass no stop). The callbacks
 // are registered while any row is wanted and offered.
 inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uint32_t effects_stop = 0) {
   using internal::block;
@@ -440,24 +437,25 @@ inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uin
   }
   // Effects on All Cores: only bits 4-5 change, each stop change one fetch_and or fetch_or, so the walk hook never reads
   // a stop between the old and the new one (src: PK9 7.5's six transitions; the clear first for a pair the add-on never
-  // writes, CORE_EFFECTS_AUTO alone, which reads as Off). deviation: from 7.5's "after READY the add-on owns the bits",
-  // because the first present at Off leaves the plugin's own EffectsMode key in place until the row changes, as Keep
-  // Render Core Free's default does (the bench's vfxauto kinds set it with this add-on loaded).
+  // writes, CORE_EFFECTS_AUTO alone, which reads as Off). From the first present on the add-on owns the bits, Off
+  // included (7.5: the plugin's EffectsMode key holds only until then; it is the way in for an A/B without the add-on).
   if (const uint32_t stop = std::min(effects_stop, 2u); BlockV2() && internal::effects_written != stop) {
-    if (internal::effects_written.has_value() || stop != 0) {
-      const uint32_t target = internal::EFFECTS_STOP_BITS[stop];
-      const uint32_t bits_now =
-          block->core_wanted.load(std::memory_order_relaxed) & (plugin::CORE_EFFECTS | plugin::CORE_EFFECTS_AUTO);
-      if ((bits_now & ~target) != 0) {
-        block->core_wanted.fetch_and(~(bits_now & ~target), std::memory_order_relaxed);
-      }
-      if ((target & ~bits_now) != 0) {
-        block->core_wanted.fetch_or(target & ~bits_now, std::memory_order_relaxed);
-      }
-      if ((RowsOffered() & plugin::RowBit(plugin::ROW_PARALLEL_EFFECTS)) != 0) {
-        renodx::utils::log::i(std::format("[Total War] 64-bit Attila: Effects on All Cores {}",
-                                          std::array{"Off", "Automatic", "On"}[stop]));
-      }
+    // Per stop (plugin_block.h): Off neither bit, Automatic both, On CORE_EFFECTS alone.
+    constexpr std::array<uint32_t, 3> STOP_BITS = {0u, plugin::CORE_EFFECTS | plugin::CORE_EFFECTS_AUTO,
+                                                   plugin::CORE_EFFECTS};
+    constexpr std::array<const char*, 3> STOP_NAMES = {"Off", "Automatic", "On"};
+    const uint32_t target = STOP_BITS[stop];
+    const uint32_t bits_now =
+        block->core_wanted.load(std::memory_order_relaxed) & (plugin::CORE_EFFECTS | plugin::CORE_EFFECTS_AUTO);
+    if ((bits_now & ~target) != 0) {
+      block->core_wanted.fetch_and(~(bits_now & ~target), std::memory_order_relaxed);
+    }
+    if ((target & ~bits_now) != 0) {
+      block->core_wanted.fetch_or(target & ~bits_now, std::memory_order_relaxed);
+    }
+    // While the hook can act on the bits: its row offered and the loader's slot OK.
+    if ((RowsOffered() & plugin::RowBit(plugin::ROW_PARALLEL_EFFECTS)) != 0 && EffectsSlotOk()) {
+      renodx::utils::log::i(std::format("[Total War] 64-bit Attila: Effects on All Cores {}", STOP_NAMES[stop]));
     }
     internal::effects_written = stop;
   }
