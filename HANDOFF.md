@@ -1033,7 +1033,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | rtf_ / p2f_ / c8f_ / ssf_ -> coord (map edits, then implemen
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | rtf_ / c8f_ / p8af_ / p8bf_ / p59f_ -> coord (map edits, the
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
@@ -18094,8 +18094,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         9 + 3.3a texts in its hand-back for coord; the 13 rule lines in 1.3.28 form), p2f_ (PK2P per lr1_), c8f_ (C8 wave 2 +
         PK1-64 per lr2_), ssf_ (smoke_spheres.md per smr_ + lsp3_). PK6-64 / PK5-64 / PK9 / PK8 fix rounds wait for lr4_ (lr4_ DONE 07:5x: p8bf_ Fable 5.2 xHigh Stage B, p8af_
         Stage A, p59f_ PK5-64 + PK9 STARTED 07:5x; p6f_ PK6-64 last, after c8f_ / p59f_ / p8af_ / p8bf_) (shared
-        PK6 tables, the A15 literal vs PK8's log string, core_wanted bits; lr4_ told 07:2x). Owner: rtf_ / p2f_ / c8f_ / ssf_ ->
-        coord (map edits, then implementers)
+        PK6 tables, the A15 literal vs PK8's log string, core_wanted bits; lr4_ told 07:2x). ssf_ DONE (smoke box). p2f_ DONE 11-27 (pk2p_main_core_64.md Rev 2, 968 -> 1318 lines, backup
+        testbin\scratch\p2f_\*.bak_rev1): 1.3.28 premise section 1.0 (spin off -> sibling ~0.37 -> ~0.20 busy, expected fps
+        0..+5 %, centre ~+2.5 % (E); the old 0..+11 % = the upper bound); ATN's Q1 = (b) in S-C, way A only if PK8 slips; F2 on
+        run_pkg + one ini builder; the INVALID flag's cause = Probe-Check (AB:769-790) vs a 1.3.20 reference, line 1 differs
+        only by the loader version -> PK6-64 P6a masks that token (self-test on 194927_AB) or S-C waives it by name; section 16
+        = the P1p brief anchored on W2's shape as lr1_ described it (W2 landed later as e20f47575: P1p re-checks the anchors
+        first, key A4 'state == ACTIVE' -> a reserved flag); RENDER_CORE_ROW_MEASURED = false hides the port row until S-C (W5
+        flips it). Steps: P1p Fable 5.2 Medium 60 / 120, R1-P1p Opus xHigh, F-P1p Sonnet High, P1a Opus High 35 / 70, S-C 3
+        starts ~35 min. S-C = '-AB -Arms ep1c,ep8,ep8p2 -EnginePlugin -Probe full -Package <pkg_fixes> -Exe64Sha 580efafe...'.
+        ATN: ep8p2 kind yes + rule lines; row hidden until S-C; if S-C shows +0..+2 % keep the row off (p2f_'s pick) or on; a
+        2-start pair if PK8 fails S-C. PK6 inputs collected (coord scratch p6f_inputs.md). Owner: rtf_ / c8f_ / p8af_ / p8bf_ /
+        p59f_ -> coord (map edits, then implementers)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
