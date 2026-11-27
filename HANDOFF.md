@@ -18263,7 +18263,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         'shadow cascades 2: patched'; control E64-rt 'shadow cascades: game's counts'). Owner: coord (R3's a64_ab
         writer)
         SPRITES NEED A CAMERA fix spf_ (Opus Medium trial; worktree spf_1127 from 69e743188; anti_aliasing.hpp + 3
-        addon.cpp + tw_unit_shadows 5b + the a64_ab patch for B64P / E64-sr2; est 45 / 90) STARTED 22:00.
+        addon.cpp + tw_unit_shadows 5b + the a64_ab patch for B64P / E64-sr2; est 45 / 90) STARTED 22:00. spf_ DONE 22:25 (25 of
+        45 min; testbin\scratch\spf_\handback.md): spf_1127 975c96046 (anti_aliasing.hpp: Settings::main_focal,
+        Runtime::focal_projection, Temporal() also in Apply, camera_watched, OnSunDraw order, log '... camera found.';
+        tw_unit_shadows 5b: 15 failures on the old header, 0 after) + aed3abf51 (3 hosts, tooltips, README quote);
+        readers under Off: none minds the display size; unit shadows x2 PASS, defaults, gated twattila amd64 + x86,
+        twrome2 + thrones x86 exit 0; page dumps: tooltip + build date only. a64_ab patch scratch\spf_\a64_ab_spf_patch.py
+        (c0e29cdb -> 58cdeb99, backup .bak_spf_; dry runs same; re-analysed old runs fail the new lines as they should).
+        Reviews rspf_ (Opus xHigh) + fspf_ (Sonnet High) + F7 GPU plugin_sprites / _refused STARTED 22:26; then a real
+        B64P -PerfFix start with the spf_ add-on. NEEDS ATN: the CPU gate (3.3: AA Off, row Off vs On at Sprite Size 4)
+        and the gfx_aa 3 start need two new a64_ab starts (new arms = ATN's yes); Set strings in the hand-back.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
