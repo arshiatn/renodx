@@ -334,7 +334,9 @@ class Upscaler12 {
           .cameraFar = (made_infinite_far_ ? std::numeric_limits<float>::max()
                                            : projection[10] * near_plane / (projection[10] - 1.f)),
           .cameraFovAngleVertical = 2.f * std::atan(1.f / projection[5]),
-          .viewSpaceToMetersFactor = 1.f,
+          // src: ffx_upscale.h:110, "The scale factor to convert view space units to meters" (its depth thresholds are
+          // metres: ffx_fsr3upscaler_common.h:41-43, :319; ffx_fsr3upscaler_accumulate.h:50).
+          .viewSpaceToMetersFactor = request.metres_per_unit,
       };
       last_time_ = now;
       if (backend_ == dlaa_bridge::UPSCALER_FSR) {

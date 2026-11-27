@@ -413,6 +413,9 @@ struct Game {
 
 void StartReady(const Game& game, const char* what) {
   Check(bridge_api::internal::Start(game.device.Get()), what);
+  Check(bridge_api::bridge.shared->version == bridge_api::VERSION
+            && bridge_api::bridge.shared->metres_per_unit == bridge_api::bridge.metres_per_unit,
+        "the block starts at this bridge's version with the game's unit (v33)");
   Check(WaitForSingleObject(bridge_api::bridge.done, 5000) == WAIT_OBJECT_0 && bridge_api::bridge.shared->ready == 1, "fake helper ready");
 }
 
@@ -441,6 +444,8 @@ int main(int argc, char** argv) {
   Check(SUCCEEDED(game.device.As(&game.device5)) && SUCCEEDED(game.context.As(&game.context4)), "game shared fence support");
   Check(SUCCEEDED(game.device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&game.tail))), "tail fence");
   auto& bridge = bridge_api::bridge;
+  // An Unreal game's unit (centimetres, as Tales and Expeditions install it): each Start carries it into the block (v33).
+  bridge.metres_per_unit = 0.01f;
   // The context's Signal and Wait through the test's: the interface's calls must reach them, and still do their work.
   original_signal = reinterpret_cast<FenceCall>(PatchSlot(game.context4.Get(), SIGNAL_SLOT, reinterpret_cast<void*>(&TestSignal)));
   original_wait = reinterpret_cast<FenceCall>(PatchSlot(game.context4.Get(), WAIT_SLOT, reinterpret_cast<void*>(&TestWait)));

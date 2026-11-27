@@ -2107,6 +2107,8 @@ bool AttachAddon() {
   // Frame generation (the helper presents; the HUD-less image through the proxy's swap chain shader, the frame's
   // controls at b13) with the bridge; Reflex on the proxy's presents.
   if (ruse::bridge::state.enabled) {
+    // A world unit is a centimetre (ray_tracing.hpp HELPER_METRES): FSR's depth thresholds are metres.
+    twattila::dlaa_bridge::bridge.metres_per_unit = static_cast<float>(ruse::ray_tracing::HELPER_METRES);
     reshade::register_event<reshade::addon_event::draw>(OnBridgeDraw);
     twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &frame_injection,
                                         sizeof(frame_injection), __fg_hdr10);

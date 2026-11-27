@@ -220,6 +220,9 @@ struct Bridge {
   bool nrd_reflections = false;
   uint32_t upscaler = UPSCALER_DLSS;
   uint32_t fg_backend = FG_BACKEND_DLSS;
+  // The game's view-space unit in metres (Shared::metres_per_unit, written when the session starts): a game in
+  // centimetres sets 0.01 as it installs.
+  float metres_per_unit = 1.f;
   HANDLE mapping = nullptr;
   HANDLE request = nullptr;
   HANDLE done = nullptr;
@@ -474,6 +477,7 @@ inline bool Start(ID3D11Device* device) {
   bridge.shared = static_cast<Shared*>(MapViewOfFile(bridge.mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Shared)));
   if (bridge.shared == nullptr) return fail_start("DLAA: shared memory unavailable.");
   *bridge.shared = Shared{};
+  bridge.shared->metres_per_unit = bridge.metres_per_unit;
   // The cluster sets' (compact draws without it: none).
   bridge.cluster_mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, RT_CLUSTER_DATA_BYTES, (name + L"_clusters").c_str());
   if (bridge.cluster_mapping != nullptr && GetLastError() == ERROR_ALREADY_EXISTS) {
