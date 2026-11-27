@@ -1033,6 +1033,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2bw2_ -> L2B W3 / W4 writers
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | rtf_ / p2f_ / c8f_ / ssf_ -> coord (map edits, then implemen
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17932,7 +17933,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         testbin\scratch\sgr_\siege_rec.ps1 + README.md; not run, not even -DryRun): 1 start, 2 recordings x 2 frames
         (helper + 90 / + 120 s), -Prepare (RENODX_TW_RECORDER_BUILD=1 for the build child only) / -DryRun / run /
         -Restore; ~6-8 min (budget 12); backups + hash restore; the game closed through its window; heavy verdict from
-        lss0_'s reader on the new frames (cpl2's '262,144' may be slots). Review sgrr_ STARTED. Owner: sgrr_ -> ATN (rule
+        lss0_'s reader on the new frames (cpl2's '262,144' may be slots). Review sgrr_ DONE 11-27
+        (testbin\scratch\sgrr_\review.md): GO WITH CHANGES, 4 MUSTs: M1 backup scope (all AppData but crash_report / save_games
+        / temp + tdd.log.txt, attila_pass_timing.txt, tw_frame_trace.txt, dinput8.dll, the helper's .old.log / .dmp); M2 the
+        finally restores only with no game / helper running (game closed through its window first); M3 game_pid.txt so -Restore
+        closes exactly that game; M4 README: start + -Prepare via run_in_background, -Addon needs its own rule line. Fix round
+        sgf_ (Opus High, siege_rec.ps1 + README only, parser check, no run) STARTED 07:4x; final rule lines come from sgf_. Owner: sgrr_ -> ATN (rule
         lines) -> game batch
         - [ ] PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ~45 min after pdf_ frees
         rt_d3d12.hpp; gate = 4K harness first hits PTLAS on vs off + an active-instance assert. Then the O-PTLAS stall replay
@@ -18059,6 +18065,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         vs the 4K rule; map 3.3a writer rows outdated) + a line-drift table. Models: S5e Fable 5.2 Medium; S1 / S2 / S5a-c / S8
         Opus High; S4 Opus xHigh; runs Low. Owner: design fix rounds (after lr4_) -> coord; ATN (RM3 order, RM4 keep / drop, RM5
         batch scope, MS1 by eye)
+        - [ ] DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s / backup_32bit per lr5_; map 6 item
+        9 + 3.3a texts in its hand-back for coord; the 13 rule lines in 1.3.28 form), p2f_ (PK2P per lr1_), c8f_ (C8 wave 2 +
+        PK1-64 per lr2_), ssf_ (smoke_spheres.md per smr_ + lsp3_). PK6-64 / PK5-64 / PK9 / PK8 fix rounds wait for lr4_ (shared
+        PK6 tables, the A15 literal vs PK8's log string, core_wanted bits; lr4_ told 07:2x). Owner: rtf_ / p2f_ / c8f_ / ssf_ ->
+        coord (map edits, then implementers)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
