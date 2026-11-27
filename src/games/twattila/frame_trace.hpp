@@ -270,7 +270,7 @@ std::string DescribeInputs(GetViews get_views) {
 }
 
 // What a draw reads and how it blends and tests, for the trace's next line: vertex buffers (slot, stride, whether the CPU
-// writes it), other stages' shaders, each target's write mask and blend, stencil.
+// writes it), other stages' shaders, each target's write mask and blend, stencil, cull, then the index buffer and slot 15.
 inline std::string DescribeDrawState(reshade::api::command_list* cmd_list, ID3D11DeviceContext* context) {
   std::string text = " | state";
   for (const auto [name, stage] : {std::pair{"gs", reshade::api::pipeline_stage::geometry_shader}, std::pair{"hs", reshade::api::pipeline_stage::hull_shader},
@@ -317,6 +317,23 @@ inline std::string DescribeDrawState(reshade::api::command_list* cmd_list, ID3D1
     rasterizer->GetDesc(&rasterizer_desc);
     text += std::format(" cull {}{} bias {}", static_cast<int>(rasterizer_desc.CullMode), (rasterizer_desc.FrontCounterClockwise != FALSE ? " ccw" : ""), rasterizer_desc.DepthBias);
   }
+  // ours: last in the segment, so the tokens before keep their places for the trace's parsers (scale_audit.py,
+  // dyn_census.py). The index buffer: its index size in bytes and whether the CPU writes it (a dynamic one gets no
+  // cluster set in the rays). Slot 15: the 64-bit port binds a zero buffer there for its 4-bone draws.
+  ComPtr<ID3D11Buffer> index_buffer;
+  DXGI_FORMAT index_format = DXGI_FORMAT_UNKNOWN;
+  UINT index_offset = 0;
+  context->IAGetIndexBuffer(index_buffer.GetAddressOf(), &index_format, &index_offset);
+  if (index_buffer) {
+    D3D11_BUFFER_DESC desc = {};
+    index_buffer->GetDesc(&desc);
+    text += std::format(" ib {}{}", (index_format == DXGI_FORMAT_R32_UINT ? 4 : 2), (desc.Usage == D3D11_USAGE_DYNAMIC ? " dynamic" : ""));
+  }
+  ComPtr<ID3D11Buffer> slot15_buffer;
+  UINT slot15_stride = 0;
+  UINT slot15_offset = 0;
+  context->IAGetVertexBuffers(15, 1, slot15_buffer.GetAddressOf(), &slot15_stride, &slot15_offset);
+  if (slot15_buffer) text += std::format(" vb15 stride {}", slot15_stride);
   return text;
 }
 
