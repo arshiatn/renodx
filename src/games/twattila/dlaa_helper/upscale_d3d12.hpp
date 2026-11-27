@@ -320,7 +320,11 @@ class Upscaler12 {
           .motionVectorScale = {.x = 1.f, .y = 1.f},
           .renderSize = {.width = request.width, .height = request.height},
           .upscaleSize = {.width = request.output_width, .height = request.output_height},
-          .enableSharpening = false,
+          // src: ffx_upscale.h:102-103 (FSR SDK 2.4.0), "an additional sharpening pass", its sharpness "between 0 and 1,
+          // where 0 is no additional sharpness". ours: no pass at 0 (the picture as before the slider worked; a pass at 0
+          // still sharpens: ffx_fsr3upscaler.cpp:1109 maps the value to RCAS's stops, 0 the weakest of them).
+          .enableSharpening = request.sharpness > 0.f,
+          .sharpness = request.sharpness,
           .frameTimeDelta = (first_frame_ ? 16.698658f : std::chrono::duration<float, std::milli>(now - last_time_).count()),
           .preExposure = 1.f,
           .reset = reset,

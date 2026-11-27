@@ -94,6 +94,8 @@ struct Request {
   int create_flags = NVSDK_NGX_DLSS_Feature_Flags_IsHDR | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes
                      | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
   float pre_exposure = 1.f;
+  // FSR's: its RCAS pass's sharpness (0-1; 0: no pass).
+  float sharpness = 0.f;
 };
 
 class RayReconstruction12 {

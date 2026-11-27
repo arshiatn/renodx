@@ -1327,6 +1327,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
           .jitter_x = shared->jitter_x,
           .jitter_y = shared->jitter_y,
           .reset = (shared->reset != 0),
+          .sharpness = shared->fsr_sharpness,
       };
       std::copy_n(shared->view_to_clip, 16, upscale.view_to_clip.begin());
       evaluated = upscaler_open && upscaler->Evaluate(upscale);
