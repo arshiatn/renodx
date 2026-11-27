@@ -98,6 +98,29 @@ $table['plugin_scales'] = @{
             '[Total War] 64-bit Attila: engine plugin notices 0x1 (rest pack: yes, model table full: no)') + $upgraded
   forbid = @('engine plugin not installed', 'callbacks registered')
 }
+# Two Shadow Cascades Under Rays (S5e; a v2 block offering the shadow map row, rows 0x3b): its key in
+# [Attila64Plugin.Values] for the next start. plugin_cascades_on: the row on and the rays' shadows on (Ray-Traced Sun
+# Shadows with DLAA): 1 written. plugin_cascades_rays_off (control): the row on, the rays' shadows off and a key 1 left
+# by an earlier start: 0 written at once. plugin_cascades_not_offered: the shadow map row tried, not offered (rows
+# 0x1b), the row and the rays' shadows on, a key 1 left: 0 written.
+$cascadesValue = '[Total War] 64-bit Attila: engine value ShadowCascades'
+$raysShadowsOn = @('RayTracedShadowCascades=1', 'RayTracedSunShadows=1', 'AntiAliasing=5')
+$cascadesCases = [ordered]@{
+  plugin_cascades_on = @{ plugin = '1 59 0 2 59'; ini = $raysShadowsOn; offered = '0x3b'; value = "${cascadesValue}: 0x1 at the next start" }
+  plugin_cascades_rays_off = @{ plugin = '1 59 0 2 59'; ini = @('RayTracedShadowCascades=1', '[Attila64Plugin.Values]', 'ShadowCascades=1')
+                                offered = '0x3b'; value = "${cascadesValue}: 0x0 at the next start" }
+  plugin_cascades_not_offered = @{ plugin = '1 27 0 2 59'; ini = $raysShadowsOn + @('[Attila64Plugin.Values]', 'ShadowCascades=1')
+                                   offered = '0x1b'; value = "${cascadesValue}: 0x0 at the next start" }
+}
+foreach ($name in $cascadesCases.Keys) {
+  $cascades = $cascadesCases[$name]
+  $table[$name] = @{
+    addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = $cascades.plugin; ini = $cascades.ini
+    lines = @($identity, $mapped, "[Total War] 64-bit Attila: engine plugin ready, rows offered $($cascades.offered)",
+              '[Total War] 64-bit Attila: engine plugin rows tried 0x3b', $cascades.value) + $upgraded
+    forbid = @('engine plugin not installed', "${cascadesValue}: 0x$(if ($cascades.value -match '0x1 at') { '0' } else { '1' }) at")
+  }
+}
 # The grass and campaign tree rows (a v2 block offering the grass, grass cell and campaign tree rows, rows 0x1c3, no
 # engine values): Grass Detail Distance 2x and Grass Density 1.5x set the grass scales' bits 19-21 (one line); Campaign
 # Tree Detail 2x sets no bit while its engine value is not found (its row hidden). The exe checks the kept scales 18-21

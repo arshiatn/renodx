@@ -9,9 +9,9 @@
 // of them inside a function, through the plugin's own trampoline: trampoline.hpp), and the battle step's pair
 // resolver and contact pass (battle_step.hpp; they work without the add-on too). It also checks the game's engine
 // values for the add-on, writes the restart-only ones, sets the loader's frame cap (tweaks.hpp), writes the shadow map
-// sizes the add-on's key asks for into the game's shadow setup, and puts hand-made stubs in front of game code
-// (game_code.hpp: the same results, faster). The loader loads it from its plugins folder, after its own patches
-// and before any game code runs; the add-on finds its block once ReShade loads it. Built by build.ps1.
+// sizes and cascade counts the add-on's keys ask for into the game's shadow setup, and puts hand-made stubs in front
+// of game code (game_code.hpp: the same results, faster). The loader loads it from its plugins folder, after its own
+// patches and before any game code runs; the add-on finds its block once ReShade loads it. Built by build.ps1.
 
 #include <windows.h>
 
@@ -270,10 +270,25 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
       block.rows_refused |= RowBit(row);
     }
   }
+  // The shadow row stands on Medium's own cascade writes too, whatever the keys say: part of the row's check.
+  // deviation: the 32-bit add-on then only leaves the cascade counts alone (graphics_hooks.hpp shadow_map::Set), here
+  // the row stays out, because a row goes in whole or not at all (rt_port_64.md R2.4).
+  if ((block.rows_tried & RowBit(ROW_SHADOW_MAP)) != 0
+      && std::memcmp(reinterpret_cast<const void*>(MEDIUM_CASCADES_ADDRESS), MEDIUM_CASCADES.data(),
+                     MEDIUM_CASCADES.size())
+             != 0) {
+    block.rows_refused |= RowBit(ROW_SHADOW_MAP);
+    loader->log("renodx_attila64: shadow cascades: Medium's own writes at %#x are not the game's, "
+                "the shadow map row stays out",
+                static_cast<uint32_t>(MEDIUM_CASCADES_ADDRESS));
+  }
   // Shadow Map Size, restart-only like the engine values: the add-on's key, written only where the add-on runs.
   const int shadow_map_size = values_int(INI_SHADOW_MAP_SIZE, 0);
   const bool shadow_size_in_range = (shadow_map_size >= 1 && shadow_map_size <= SHADOW_MAP_SIZE_STEPS);
   const bool shadow_sizes_written = (shadow_size_in_range && dx11_route);
+  // Two Shadow Cascades Under Rays, the same way: the add-on's key is 1 while its row and the rays' shadows are on.
+  const int shadow_cascades = values_int(INI_SHADOW_CASCADES, 0);
+  const bool shadow_cascades_written = (shadow_cascades == 1 && dx11_route);
   for (size_t index = 0; index < SITES.size(); ++index) {
     const Site& site = SITES[index];
     const auto row = static_cast<Row>(site.row);
@@ -281,10 +296,21 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     if (check.refusal == REFUSAL_NONE && (block.rows_refused & RowBit(row)) != 0) {
       check.refusal = REFUSAL_ROW;
     }
-    // A size site's two floats become the game's x 2^ShadowMapSize, as the 32-bit add-on writes them
-    // (graphics_hooks.hpp shadow_map::Set). The cascade sites are only checked: the row is in once all of its sites
-    // are the game's, so a later key applies at the next start.
+    // A size site's two floats become the game's x 2^ShadowMapSize, a cascade site's number Medium's (2 cascades, 0),
+    // as the 32-bit add-on writes them (graphics_hooks.hpp shadow_map::Set). A site whose key asks for nothing is only
+    // checked: the row is in once all of its sites are the game's, so a later key applies at the next start.
     const bool size_rewritten = (shadow_sizes_written && IsShadowSizeSite(site));
+    // The four cascade sites by name: another patch site of the row would not get a cascade number.
+    const uint8_t* cascade_number = nullptr;
+    if (shadow_cascades_written) {
+      switch (site.label) {
+        case LABEL_SHADOW_COUNT_HIGH:
+        case LABEL_SHADOW_COUNT_MAX:  cascade_number = MEDIUM_CASCADES.data() + MEDIUM_COUNT_OFFSET; break;
+        case LABEL_SHADOW_EXTRA_HIGH:
+        case LABEL_SHADOW_EXTRA_MAX:  cascade_number = MEDIUM_CASCADES.data() + MEDIUM_EXTRA_OFFSET; break;
+        default:                      break;
+      }
+    }
     // A hand-made stub's site belongs to its row's step after this loop, which takes its code memory after every other
     // row's.
     if (check.refusal == REFUSAL_NONE && site.kind == SITE_RAW_STUB) continue;
@@ -294,20 +320,24 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
       check.refusal = ApplyMidSite(*api, site, reinterpret_cast<trampoline::MidHandler>(REPLACEMENTS[site.label]),
                                    &block.scales_active, MID_SITE_SCALES[site.label], &applied_sites[index]);
     } else if (check.refusal == REFUSAL_NONE) {
-      std::array<float, 2> size = {};
+      std::array<uint8_t, PATCH_SITE_LONGEST> written = {};
       if (size_rewritten) {
+        std::array<float, 2> size = {};
         std::memcpy(size.data(), site.window.data() + SITE_MARGIN, sizeof(size));
         size[0] *= static_cast<float>(1 << shadow_map_size);
         size[1] *= static_cast<float>(1 << shadow_map_size);
+        std::memcpy(written.data(), size.data(), sizeof(size));
+      } else if (cascade_number != nullptr) {
+        std::memcpy(written.data(), cascade_number, site.length);
       }
-      check.refusal = ApplyPatch(*api, site, (size_rewritten ? reinterpret_cast<const uint8_t*>(size.data()) : nullptr),
+      check.refusal = ApplyPatch(*api, site, ((size_rewritten || cascade_number != nullptr) ? written.data() : nullptr),
                                  &applied_sites[index]);
     }
     if (check.refusal == REFUSAL_NONE) {
       originals[site.label] = applied_sites[index].original;
       block.rows_applied |= RowBit(row);
       // A patch site that was only checked is in too (the game-start count is the sites in), with its own words.
-      if (site.kind == SITE_PATCH && !size_rewritten) {
+      if (site.kind == SITE_PATCH && !size_rewritten && cascade_number == nullptr) {
         loader->log("renodx_attila64: site %s %#x: applied (game's bytes kept)", LABEL_WORDS[site.label], site.address);
       } else {
         loader->log("renodx_attila64: site %s %#x: applied", LABEL_WORDS[site.label], site.address);
@@ -439,6 +469,15 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
     } else {
       loader->log("renodx_attila64: shadow map: game's size (ShadowMapSize=%d out of range)", shadow_map_size);
     }
+    if (shadow_cascades_written) {
+      loader->log("renodx_attila64: shadow cascades %u: patched", uint32_t{MEDIUM_CASCADES[MEDIUM_COUNT_OFFSET]});
+    } else if (shadow_cascades == 0) {
+      loader->log("renodx_attila64: shadow cascades: game's counts");
+    } else if (shadow_cascades == 1) {
+      loader->log("renodx_attila64: shadow cascades: game's counts (ShadowCascades=1 not written: not DX11)");
+    } else {
+      loader->log("renodx_attila64: shadow cascades: game's counts (ShadowCascades=%d out of range)", shadow_cascades);
+    }
   }
   if ((block.rows_applied & RowBit(ROW_GRASS)) != 0 && !grass_draw_code_read.load(std::memory_order_relaxed)) {
     loader->log(GRASS_DRAW_CODE_LINE);
@@ -514,6 +553,20 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
     if (!row_written || HeldRangeUnchanged(range, applied_sites[range.label].applied)) continue;
     block.rows_changed.fetch_or(RowBit(static_cast<Row>(range.row)));
     loader->log("renodx_attila64: site %s changed after we patched it", LABEL_WORDS[range.label]);
+  }
+  // Medium's own cascade writes once more where the counts were written (a count site in with other bytes than the
+  // game's): the written numbers stand on them, as a stub on its held range. src: the 32-bit add-on compares them at
+  // every Set (graphics_hooks.hpp shadow_map).
+  if (const AppliedSite& count = applied_sites[LABEL_SHADOW_COUNT_HIGH];
+      count.applied
+      && std::memcmp(count.bytes.data(), SITES[LABEL_SHADOW_COUNT_HIGH].window.data() + SITE_MARGIN,
+                     SITES[LABEL_SHADOW_COUNT_HIGH].length)
+             != 0
+      && std::memcmp(reinterpret_cast<const void*>(MEDIUM_CASCADES_ADDRESS), MEDIUM_CASCADES.data(),
+                     MEDIUM_CASCADES.size())
+             != 0) {
+    block.rows_changed.fetch_or(RowBit(ROW_SHADOW_MAP));
+    loader->log("renodx_attila64: shadow cascades: Medium's own writes changed after we patched the counts");
   }
   loader->log("renodx_attila64: game started: %u sites unchanged", unchanged);
   // The grass draw's code once more, after the loader's late writes: our jump is in its first bytes now, so the

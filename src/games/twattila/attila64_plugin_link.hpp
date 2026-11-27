@@ -117,6 +117,7 @@ constexpr std::array<char, N> Narrow(const wchar_t (&wide)[N]) {
 inline constexpr auto VALUES_SECTION = Narrow(plugin::INI_VALUES_SECTION);
 inline constexpr auto SOL_FRAME_CAP_KEY = Narrow(plugin::INI_SOL_FRAME_CAP);
 inline constexpr auto SHADOW_MAP_SIZE_KEY = Narrow(plugin::INI_SHADOW_MAP_SIZE);
+inline constexpr auto SHADOW_CASCADES_KEY = Narrow(plugin::INI_SHADOW_CASCADES);
 inline constexpr auto FASTER_GAME_CODE_KEY = Narrow(plugin::INI_FASTER_GAME_CODE);
 // The scales_active bits of each scale row's hooks: set only while the row is offered (a refused row's hook may stay
 // in, the plugin's main.cpp).
@@ -157,6 +158,10 @@ static std::atomic_bool sol_frame_cap_pending = false;
 static std::optional<int> shadow_map_size_at_start;
 static std::optional<int> shadow_map_size_mirrored;
 static std::atomic_bool shadow_map_size_pending = false;
+// Two Shadow Cascades Under Rays' key: as this start read it (as the plugin's GetPrivateProfileIntW reads it: exactly
+// 1 writes), and as last read or written (a plain decimal number; other text: none, so the mirror writes it again).
+static std::optional<bool> shadow_cascades_at_start;
+static std::optional<int> shadow_cascades_mirrored;
 // Faster Game CPU Code the same way: the key as this start read it (as the plugin's GetPrivateProfileIntW reads it), the
 // key read since the lookup, the key as last read (a plain decimal number; other text: none, so the row writes it again)
 // or written, and whether the row differs from this start's.
@@ -753,6 +758,51 @@ inline void MirrorRestartValues(bool sol_frame_cap, int shadow_map_size, bool fa
   internal::game_code_pending.store(code_pending, std::memory_order_relaxed);
 }
 
+// Every present with Result() READY on a v2 block, beside MirrorRestartValues: Two Shadow Cascades Under Rays for the
+// next start into ReShade.ini [Attila64Plugin.Values] ShadowCascades, which the plugin reads at its init. 1 only while
+// the plugin offers the shadow map row and `two_cascades` (the row on and the rays' shadows on) holds; 0 at once when
+// that ends, so a start without the rays' shadows gets the game's cascades back. Read once (as Faster Game CPU Code's
+// key above: text that is no plain decimal number stays unmirrored and is written back as 0 / 1), then written only
+// when it differs, with one log line per write.
+// ours: 0 also while the plugin does not offer the row (ShadowMapSize leaves its key alone then), because the key
+// depends on the rays, not only on the row: a stale 1 would give the next start that offers the row 2 cascades
+// without them.
+inline void MirrorShadowCascades(bool two_cascades) {
+  namespace plugin = internal::plugin;
+  const std::unique_lock lock(internal::mutex);
+  if (internal::found.load(std::memory_order_relaxed) != Found::READY || !BlockV2()) return;
+  if (!internal::shadow_cascades_mirrored.has_value()) {
+    bool written_at_start = false;  // absent or empty: the game's cascades
+    internal::shadow_cascades_mirrored = 0;
+    std::array<char, 16> text = {};
+    size_t size = text.size();
+    if (reshade::get_config_value(nullptr, internal::VALUES_SECTION.data(), internal::SHADOW_CASCADES_KEY.data(),
+                                  text.data(), &size)) {
+      const std::string_view value(text.data());
+      const bool hex = value.starts_with("0x") || value.starts_with("0X");
+      const std::string_view digits = value.substr(hex ? 2 : 0);
+      int number = 0;
+      const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), number, (hex ? 16 : 10));
+      written_at_start = (error == std::errc() && number == 1);
+      const bool plain_decimal = (!hex && error == std::errc() && end == digits.data() + digits.size());
+      if (!value.empty()) {
+        internal::shadow_cascades_mirrored = (plain_decimal ? std::optional<int>(number) : std::nullopt);
+      }
+    }
+    if (!internal::shadow_cascades_at_start.has_value()) {
+      internal::shadow_cascades_at_start = written_at_start;
+    }
+  }
+  const int key = ((two_cascades && (RowsOffered() & plugin::RowBit(plugin::ROW_SHADOW_MAP)) != 0) ? 1 : 0);
+  if (internal::shadow_cascades_mirrored != key) {
+    reshade::set_config_value(nullptr, internal::VALUES_SECTION.data(), internal::SHADOW_CASCADES_KEY.data(), key);
+    internal::shadow_cascades_mirrored = key;
+    renodx::utils::log::i(std::format("[Total War] 64-bit Attila: engine value {}: {:#x} at the next start (this start: {:#x})",
+                                      internal::SHADOW_CASCADES_KEY.data(), key,
+                                      (*internal::shadow_cascades_at_start ? 1 : 0)));
+  }
+}
+
 // Every present with Result() READY on a v2 block (the loader's drawing thread): the scale rows' multipliers for the
 // plugin's hooks (attila64_plugin::Scale), the changed ones stored, then scales_active: a scale's bit while it is not
 // neutral and its row is offered (a clear bit: the hook leaves the game's call as it is). One log line when the bits
@@ -831,6 +881,7 @@ inline void Uninstall() {
   internal::sol_frame_cap_pending = false;
   internal::shadow_map_size_mirrored.reset();
   internal::shadow_map_size_pending = false;
+  internal::shadow_cascades_mirrored.reset();
   internal::game_code_read = false;
   internal::game_code_mirrored.reset();
   internal::game_code_pending = false;

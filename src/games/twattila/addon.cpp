@@ -1225,8 +1225,8 @@ constexpr std::array<GameCodeRow, 42> GAME_CODE_ROWS = {{
     {.match = "GraphicsGrassDistance", .plugin_row = PluginRow::GRASS},
     {.match = "GraphicsGrassDensity", .plugin_row = PluginRow::GRASS},
     {.match = "GraphicsShadowMapSize", .plugin_row = PluginRow::SHADOW_MAP},
-    // Hidden on the port until ray-traced shadows: the plugin only checks the cascade sites.
-    {.match = "RayTracedShadowCascades"},
+    // The plugin writes the cascade sites of its shadow map row at the next start (ShadowCascades).
+    {.match = "RayTracedShadowCascades", .plugin_row = PluginRow::SHADOW_MAP},
     {.match = "GraphicsBigBattleFix"},
     {.match = "GraphicsSmallSoldiersAsSprites", .plugin_row = PluginRow::SPRITES},
     {.match = "GraphicsSpriteSize", .plugin_row = PluginRow::SPRITES},
@@ -2360,6 +2360,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       }
       twattila::attila64_plugin_link::MirrorRestartValues(loader_frame_cap_row != 0.f, static_cast<int>(shadow_map_size),
                                                           engine_code_row != 0.f);
+      // src: the 32-bit shadow_map::Set call below (the row on and the rays' shadows on).
+      twattila::attila64_plugin_link::MirrorShadowCascades(shadow_cascades_row != 0.f && rt_settings.shadows_only);
       // The scale rows' hooks, folded as the 32-bit hooks fold them (graphics_hooks.hpp OnUnitDistances, its battle
       // budget 1 until Big Battle Fix; engine_code.hpp's 1 / Model Detail squared); the other scales neutral.
       std::array<float, plugin::SCALE_COUNT> scales = plugin::NEUTRAL_SCALES;
@@ -2911,11 +2913,15 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Two Shadow Cascades Under Rays (Experimental)",
           .section = "Graphics (Experimental)",
-          .tooltip = "With ray-traced shadows: the game prepares 2 shadow cascades, as at Shadows Medium, instead of 4.\n"
-                     "The rays shadow instead; faster in forests. On, off and the rays' shadows off apply after a restart\n"
-                     "or a change of the game's Shadows option. Locked by UI 4K Mod Compatibility.",
+          // deviation: the port's text drops "or a change of the game's Shadows option" and the lock, because the
+          // plugin patches at its init only and checks the game's bytes itself (as Shadow Map Size above).
+          .tooltip = std::string("With ray-traced shadows: the game prepares 2 shadow cascades, as at Shadows Medium, instead of 4.\n"
+                                 "The rays shadow instead; faster in forests. ")
+                     + (ATTILA64 ? "Applies after a restart."
+                                 : "On, off and the rays' shadows off apply after a restart\n"
+                                   "or a change of the game's Shadows option. Locked by UI 4K Mod Compatibility."),
           .labels = {"Off", "On"},
-          .is_enabled = [] { return !shadow_size_locked; },
+          .is_enabled = [] { return ATTILA64 || !shadow_size_locked; },
       },
       new renodx::utils::settings::Setting{
           .key = "FasterRenderLists",

@@ -1127,6 +1127,38 @@ int main(int argc, char** argv) {
       link::MirrorRestartValues(false, 2, true);
       CHECK(shadow_key() == "1" && logged.size() == 2 && !link::ShadowMapSizePending());
       scale_block.rows_changed.store(0);
+      // Two Shadow Cascades Under Rays' key (S5e), the shadow map row offered: not wanted with the key absent: nothing
+      // written; wanted: 1, one line; again: nothing; ended: 0 at once. Its row not offered: 0 whatever is asked.
+      const auto cascades_key = [] {
+        const auto found = config.find("Attila64Plugin.Values|ShadowCascades");
+        return (found == config.end() ? std::string("absent") : found->second);
+      };
+      link::MirrorShadowCascades(false);
+      CHECK(cascades_key() == "absent" && logged.size() == 2);
+      link::MirrorShadowCascades(true);
+      CHECK(cascades_key() == "1" && logged.size() == 3
+            && lines("engine value ShadowCascades: 0x1 at the next start (this start: 0x0)") == 1);
+      link::MirrorShadowCascades(true);
+      CHECK(cascades_key() == "1" && logged.size() == 3);
+      link::MirrorShadowCascades(false);
+      CHECK(cascades_key() == "0" && logged.size() == 4 && lines("engine value ShadowCascades: 0x0 at the next start") == 1);
+      link::MirrorShadowCascades(true);
+      scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_SHADOW_MAP));
+      link::MirrorShadowCascades(true);
+      CHECK(cascades_key() == "0" && logged.size() == 6 && lines("engine value ShadowCascades: 0x0 at the next start") == 2);
+      scale_block.rows_changed.store(0);
+      // A hand-edited key the plugin reads as 1 (hex): this start wrote the cascades, and the text is written back
+      // as the row's 0. A plain 1 with the row wanted: nothing written.
+      for (const auto& [text, wanted, key_after, writes] :
+           {std::tuple{"0x1", false, "0", 1}, std::tuple{"1", true, "1", 0}, std::tuple{"1", false, "0", 1}}) {
+        config["Attila64Plugin.Values|ShadowCascades"] = text;
+        link::internal::shadow_cascades_mirrored.reset();
+        link::internal::shadow_cascades_at_start.reset();
+        logged.clear();
+        link::MirrorShadowCascades(wanted);
+        CHECK(cascades_key() == key_after && logged.size() == static_cast<size_t>(writes)
+              && lines("engine value ShadowCascades: 0x0 at the next start (this start: 0x1)") == writes);
+      }
       // The detach: the mirror's state reset, the scales kept (a hook reads them for the process).
       scales[0] = 2.f;
       link::PublishScales(scales);
@@ -1134,6 +1166,7 @@ int main(int argc, char** argv) {
       CHECK(link::ShadowMapSizePending());
       link::Uninstall();
       CHECK(!link::ShadowMapSizePending() && !link::internal::shadow_map_size_mirrored.has_value()
+            && !link::internal::shadow_cascades_mirrored.has_value()
             && link::internal::notices_logged == 0 && scale_block.scales[0].load() == 2.f
             && scale_block.scales_active.load() == 1);
       // A start that read a key out of range (the plugin kept the game's sizes): the row at 0 is this start's; at 1

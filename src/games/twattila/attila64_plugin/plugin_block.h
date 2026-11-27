@@ -71,7 +71,7 @@ enum Row : uint32_t {
   ROW_CPU_PLACEMENT,   // the battle step's task: Keep Battle Core Free, with Keep Render Core Free as its second part
   ROW_UNIT_LOD,        // the unit LOD distances: Unit Detail and the animation, variety and footstep rows (scales 0-16)
   ROW_MODEL_DETAIL,    // Model Detail Distance (scale 17)
-  ROW_SHADOW_MAP,      // Shadow Map Size: a code patch at init, restart-only
+  ROW_SHADOW_MAP,      // Shadow Map Size and Two Shadow Cascades Under Rays: code patches at init, restart-only
   ROW_GRASS,           // Grass Detail Distance and Grass Density (scales 19-21)
   ROW_GRASS_CELLS,     // the grass cell radius (scales 19 and 20)
   ROW_CAMPAIGN_TREES,  // Campaign Tree Detail Distance (scale 18)
@@ -285,8 +285,9 @@ inline constexpr int SHADOW_MAP_SIZE_STEPS = 2;  // the largest ShadowMapSize
 // key, writes them. The add-on writes 0 or 1.
 inline constexpr wchar_t INI_FASTER_GAME_CODE[] = L"FasterGameCpuCode";
 inline constexpr int FASTER_GAME_CODE_DEFAULT = 1;
-// Two Shadow Cascades for the next start (0 or 1). Reserved: no plugin reads it yet and the add-on does not write it;
-// ROW_SHADOW_MAP only checks the cascade sites.
+// Two Shadow Cascades Under Rays for the next start, read as a decimal integer: exactly 1 writes Medium's cascade
+// numbers (2, 0) over High's and Max's, anything else (0, absent) keeps the game's. The add-on writes 0 or 1 (1 only
+// with its row and the rays' shadows on). Written only on the DirectX 11 route.
 inline constexpr wchar_t INI_SHADOW_CASCADES[] = L"ShadowCascades";
 
 static_assert(std::ranges::find(ROW_INI_KEYS, nullptr) == std::end(ROW_INI_KEYS), "an install key for every row");
