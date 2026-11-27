@@ -321,8 +321,8 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
   // The battle step row: its lane of engine_status from here on (not 0: the add-on shows the row), and its switch.
   // BattleStep 0 left the site out above, 1 sets the row's bit for a start without the add-on, anything else keeps
   // the build's default (while that default holds the bit, the key 1 changes nothing, and no test can tell it from
-  // no key: one is due with the build whose default is without the bit). The row runs only with its site in and the game's code as read (checked again at the game's
-  // start); with the key 0 nothing is read.
+  // no key: one is due with the build whose default is without the bit). The row runs only with its site in and the
+  // game's code as read (checked again at the game's start); with the key 0 nothing is read.
   {
     const int battle_step_key = ini_int(ROW_INI_KEYS[ROW_BATTLE_STEP], -1);
     if (battle_step_key == 1) {

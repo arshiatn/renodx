@@ -449,6 +449,8 @@ static void SetLane(Block* block, EngineState lane) noexcept {
             // (every member's id was checked).
             std::array<uint32_t, CANDIDATE_LIMIT> candidates = {};
             uint32_t candidate_count = 0;
+            // Starting at `plain` only saves collecting candidates that the loop below would not call anyway (its
+            // own `!plain` test stops every read of the index): speed, not correctness.
             bool every_group = plain;
             for (const uint32_t id : {first_id, second_id}) {
               if (every_group || id >= ID_LIMIT || index.entries[id].generation != state.generation) continue;
