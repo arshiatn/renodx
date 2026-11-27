@@ -18346,6 +18346,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         affinity left alone'. The app runs elevated since 11-26 23:40; whether it applies the new rule without a
         restart = the -C2 smoke's measured CPU sets at battle s 30. -C2 smoke (plugin ac52ed31, add-on 81c42b53;
         c2_smoke_gate.log) STARTED 23:22; then the 6-start sprite gate + the MSAA start.
+        rts2_ S2b DONE (18 of 30 min; 1d7ced4f9 on rts2_1127, not merged): ' stencil func F/B pass F/B fail F/B
+        depthfail F/B' (stencil on only), ' dsv ro <d><s>', new ' | views' (rtv<n> / dsv / t<n> view formats) before
+        ' | instanced'; 19 gated builds, tests x2, scale_audit byte-equal, census controls. Reviews rrts2_ (Opus
+        xHigh) + frts2_ (Sonnet High) STARTED 23:25; merge after both (frame_trace.hpp has no other writer).
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
