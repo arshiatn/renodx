@@ -983,7 +983,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | coord (briefs)
 - A/B LOOKS WAIT (ATN 11-27): every look / A/B check (AA feed, O2 thin shadows at ... | ATN (end of plans)
 - GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds a ... | coord
-- sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the de ... | 11-27 analyst -> ATN
+- sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the de ... | omv_ -> ATN (merge)
 - 11-27 06:01 WAVE (coord; no agent cap; Fable only for PK8 Stage B). GPU plan: om ... | coord
 - NOTHING-DROPPED AUDIT 11-27 (ndc_, testbin\scratch\ndc_\handback.md): 22 report ... | next audit agent
 - O2 AT THE DEFAULT FOLIAGE 0.5 (o2_ handback:47-48): the 1/3 row stays at 0.507x, ... | ATN (accept the number) -> next SSS designer
@@ -995,7 +995,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - FLIP PNGs: no bin-to-PNG step for reference\flip_tool.py from the trimmed OMM du ... | tools agent
 - OPTIONAL (a): a fresh CPU-baked grass recording (one 32-bit Attila start; its ru ... | ATN (yes / no) -> game batch
 - sdku__handback.md:102 calls the CPU baker the default (the GPU baker is; omr_ ha ... | coord (correct the note, low)
-- OMM G1 COVERAGE: the other ~190 all_modes.sh entries (non-PT / test-only) were n ... | omx_ (recommendation) -> coord
+- OMM G1 COVERAGE: the other ~190 all_modes.sh entries (non-PT / test-only) were n ... | omv_ (11-27)
 - pdi4c_ NOT DONE (a): no per-pass Nsight split of the DI passes (pdi4c_handback.m ... | pdf_ if inside its budget, else the next DI agent
 - pdi4c_ NOT DONE (b): E6 bias modes 0 vs 3 not separated (pdi4c_handback.md:407). ... | pdf_ / next DI agent
 - pdi4c_ NOT DONE (c): S1 BASIC vs RAY_TRACED only on the fused pass, not the spli ... | pdf_ / next DI agent
@@ -1011,6 +1011,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - X37's one-function home in texture_lod_bias.hpp (fx5a__handback.md:175). Owner: ... | next texture_lod_bias writer (low)
 - PARITY ATTILA 54 OPEN (ndc_ 11-27, parity_check on the 11-25 d11i dumps): the ce ... | pcx_ (root cause, 11-27)
 - PARITY ROME REMASTERED 12 OPEN: 8 Grass.hlsl + 4 Terrain.hlsl VSMain level-B cas ... | pcx_ (verdicts) -> next Rome Remastered round
+- ns_index.py DIGEST CACHE keyed by the Nsight module hash alone (omx_ 11-27): rt_ ... | nsx_ (11-27)
+- PT RUN-TO-RUN STATES (omx_ 11-27): two GPU states fixed per run in both builds ( ... | GPU plan (Opus xHigh design, later)
+- PT GATE METHOD (omx_ 11-27): sort runs by state first, or judge on the whole-run ... | ATN (yes / no) -> tools agent
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17742,7 +17745,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         labels shift ('radiance cache' 0.013 -> 0.493, 'reuse' +0.125, total only +0.07 ms) = a pass moved between labels in the
         new build. NEXT (11-27 wave, analysis Opus xHigh, no GPU first): what in sdku_omm_dxc changes the path-tracing pass (DXC
         DXIL old vs new for the PT shaders; omm-lib 1.12's OMM layout vs traversal) + why sky_apart's pass labels moved; then fix
-        or ATN's call (accept ~+0.7-0.8 % on these 2 PT modes for 1.12). G3 (grass recordings) stays PASS (same speed there). Owner: 11-27 analyst -> ATN
+        or ATN's call (accept ~+0.7-0.8 % on these 2 PT modes for 1.12). G3 (grass recordings) stays PASS (same speed there).
+        CAUSE FOUND (omx_ 11-27, testbin\scratch\omx_\handback.md): NO SLOWDOWN. G1 tested DXC alone (both run folders had
+        omm-lib 1.12, md5 3385ee1a); all 81 rt_* + fg_ui DXIL listings identical but the hash / version lines; same registers /
+        occupancy. The FAILs = two per-run GPU states in BOTH builds: PT rays 78.140 vs 79.729 M (+0.08 ms; old 4 / 16 runs,
+        new 7 / 16, p ~0.45) and reuse L1->L2 6.5 vs 7.55 GB (+0.13 ms); whole-run helper timestamps pooled over 36 runs +0.16 %
+        (p 0.31). sky_apart's label shift = an ns_index.py digest-cache bug (box below). LEFT before the merge: omv_ (DXC listing
+        diff for the switch-only helper variants + the add-ons' SM6 shaders; omm-lib 1.10 vs 1.12 dll swap on the 12 micromap
+        modes, pictures + 2 timed). Owner: omv_ -> ATN (merge)
         - [ ] 11-27 06:01 WAVE (coord; no agent cap; Fable only for PK8 Stage B). GPU plan: omx_ (OMM 1.12 PT slowdown cause,
         Opus xHigh, no GPU first), rrd_ (Denoise Before Tone Mapping below 100 % design -> round_notes\designs\
         rr_before_tonemap_below100.md), aaf3_ (FSR / XeSS feed at 4K), pdf_ (pdi4c_ follow-up boxes, branch pdf_1127), sssf_
@@ -17772,7 +17782,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] sdku__handback.md:102 calls the CPU baker the default (the GPU baker is; omr_ handback:83-84). Owner: coord (correct
         the note, low)
         - [ ] OMM G1 COVERAGE: the other ~190 all_modes.sh entries (non-PT / test-only) were not run (sdk4_ handback:15): does the
-        merge need them? Owner: omx_ (recommendation) -> coord
+        merge need them? omx_: no harness mode for DXC (code-identical blobs); yes the 12 micromap modes for omm-lib 1.12;
+        the switch-only helper variants + add-on SM6 shaders need a listing diff. Owner: omv_ (11-27)
         - [ ] pdi4c_ NOT DONE (a): no per-pass Nsight split of the DI passes (pdi4c_handback.md:406). Owner: pdf_ if inside its
         budget, else the next DI agent
         - [ ] pdi4c_ NOT DONE (b): E6 bias modes 0 vs 3 not separated (pdi4c_handback.md:407). Owner: pdf_ / next DI agent
@@ -17799,6 +17810,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         suspected (the run rewrites tools\tw\parity\census_*.txt each time). Owner: pcx_ (root cause, 11-27)
         - [ ] PARITY ROME REMASTERED 12 OPEN: 8 Grass.hlsl + 4 Terrain.hlsl VSMain level-B casters (10 'scene_draw host leaves it
         out; add'), no ledger line. Owner: pcx_ (verdicts) -> next Rome Remastered round
+        - [ ] ns_index.py DIGEST CACHE keyed by the Nsight module hash alone (omx_ 11-27): rt_cache_fill's debug container cached
+        under 0x26c69d760f90065c gave all 18 sdk4_ old traces + sdk3_old_2 the wrong digest. Fix the key + re-derive those index
+        files (old ones kept as .bak). Owner: nsx_ (11-27)
+        - [ ] PT RUN-TO-RUN STATES (omx_ 11-27): two GPU states fixed per run in both builds (PT rays 78.14 vs 79.73 M; reuse L1->L2
+        6.5 vs 7.55 GB; leads only: CacheClaim's slot race over the 2^20 table, the sun[uint2(3,0)].w check). Making them
+        deterministic gains no speed but removes ~0.1-0.2 ms of spread from every PT gate. Owner: GPU plan (Opus xHigh design, later)
+        - [ ] PT GATE METHOD (omx_ 11-27): sort runs by state first, or judge on the whole-run helper timestamps over >= 8 runs a
+        side: resolves ~0.3 % instead of ~2 %. The gates are ATN's. Owner: ATN (yes / no) -> tools agent
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
