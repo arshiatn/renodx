@@ -1168,6 +1168,8 @@ std::atomic_bool picture_warned = false;
 // The loader's overlay converted: one line for each target (buffer 0, the picture).
 std::atomic_bool buffer_overlay_logged = false;
 std::atomic_bool picture_overlay_logged = false;
+// Fewer Constant Uploads' on line (once).
+std::atomic_bool fewer_constant_uploads_logged = false;
 // The page dump's READY-forced variant (TWATTILA_PAGE_DUMP_PLUGIN_READY): every game-code row shown, as if the plugin
 // offered each (its driver publishes a READY block, so the notes and RowsOffered read a real one).
 #if defined(TWATTILA_PAGE_DUMP_PLUGIN_READY)
@@ -1181,47 +1183,57 @@ constexpr bool PLUGIN_READY_FORCED = false;
 enum class PluginRow : uint8_t {
   PASS_DRAW = twattila::attila64_plugin::ROW_PASS_DRAW,
   CPU_PLACEMENT = twattila::attila64_plugin::ROW_CPU_PLACEMENT,
+  UNIT_LOD = twattila::attila64_plugin::ROW_UNIT_LOD,
+  MODEL_DETAIL = twattila::attila64_plugin::ROW_MODEL_DETAIL,
+  SHADOW_MAP = twattila::attila64_plugin::ROW_SHADOW_MAP,
+  GRASS = twattila::attila64_plugin::ROW_GRASS,
+  CAMPAIGN_TREES = twattila::attila64_plugin::ROW_CAMPAIGN_TREES,
+  SPRITES = twattila::attila64_plugin::ROW_SPRITES,
+  GAME_CODE = twattila::attila64_plugin::ROW_GAME_CODE,
   TWEAKS = 0xFE,
   NONE = 0xFF,
 };
 
 // A row whose reader is the 32-bit game's code (engine tweaks, graphics_hooks, engine_code, the worker pool's users,
-// shadow_pass, the shadow map hooks, cpu_sets' thread moves): by key, or by group for a group of buttons. The keyless
-// ones are taken by their pointers in ConfigureAddon.
+// shadow_pass, the shadow map hooks, cpu_sets' thread moves, buffer_pool's ring): by key, or by group for a group of
+// buttons. The keyless ones are taken by their pointers in ConfigureAddon.
 struct GameCodeRow {
   const char* match = "";
   PluginRow plugin_row = PluginRow::NONE;
 };
 
-constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
-    {.match = "GraphicsUnitDetailSmall"},
-    {.match = "GraphicsUnitDetailMedium"},
-    {.match = "GraphicsUnitDetailLarge"},
-    {.match = "GraphicsUnitDetailHuge"},
-    {.match = "GraphicsDeadUnits"},
-    {.match = "GraphicsUnitAnimation"},
-    {.match = "GraphicsFacialAnimation"},
-    {.match = "GraphicsHandAnimation"},
-    {.match = "GraphicsUnitVariety"},
-    {.match = "GraphicsFootstepEffects"},
-    {.match = "GraphicsObjectDetail"},
+constexpr std::array<GameCodeRow, 42> GAME_CODE_ROWS = {{
+    {.match = "GraphicsUnitDetailSmall", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsUnitDetailMedium", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsUnitDetailLarge", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsUnitDetailHuge", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsDeadUnits", .plugin_row = PluginRow::SPRITES},
+    {.match = "GraphicsUnitAnimation", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsFacialAnimation", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsHandAnimation", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsUnitVariety", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsFootstepEffects", .plugin_row = PluginRow::UNIT_LOD},
+    {.match = "GraphicsObjectDetail", .plugin_row = PluginRow::MODEL_DETAIL},
     {.match = "GraphicsBuildingDetail", .plugin_row = PluginRow::TWEAKS},
-    {.match = "GraphicsCampaignDetail"},
+    {.match = "GraphicsCampaignDetail", .plugin_row = PluginRow::CAMPAIGN_TREES},
     {.match = "GraphicsCampaignPlants", .plugin_row = PluginRow::TWEAKS},
     {.match = "GraphicsCampaignProps", .plugin_row = PluginRow::TWEAKS},
-    {.match = "GraphicsGrassDistance"},
-    {.match = "GraphicsGrassDensity"},
-    {.match = "GraphicsShadowMapSize"},
+    // The grass cell row (ROW_GRASS_CELLS) has no row here: it only cuts what the grass row's hooks reach.
+    {.match = "GraphicsGrassDistance", .plugin_row = PluginRow::GRASS},
+    {.match = "GraphicsGrassDensity", .plugin_row = PluginRow::GRASS},
+    {.match = "GraphicsShadowMapSize", .plugin_row = PluginRow::SHADOW_MAP},
+    // Hidden on the port until ray-traced shadows: the plugin only checks the cascade sites.
     {.match = "RayTracedShadowCascades"},
     {.match = "GraphicsBigBattleFix"},
-    {.match = "GraphicsSmallSoldiersAsSprites"},
-    {.match = "GraphicsSpriteSize"},
+    {.match = "GraphicsSmallSoldiersAsSprites", .plugin_row = PluginRow::SPRITES},
+    {.match = "GraphicsSpriteSize", .plugin_row = PluginRow::SPRITES},
     {.match = "RayTracedSkipShadowPass", .plugin_row = PluginRow::PASS_DRAW},
-    {.match = "FasterGameCpuCode"},
+    {.match = "FasterGameCpuCode", .plugin_row = PluginRow::GAME_CODE},
     {.match = "FasterRenderLists"},
     {.match = "FasterJobWakeUps"},
     {.match = "FasterEffectPrefetch"},
-    {.match = "KeepRenderCoreFree"},
+    // The port's Keep Render Core Free is the plugin's render core (the 32-bit one moves the game's threads itself).
+    {.match = "KeepRenderCoreFree", .plugin_row = PluginRow::CPU_PLACEMENT},
     {.match = "FasterEmitterPrefetch"},
     {.match = "FasterParticlePrefetch"},
     {.match = "FasterSweepPrefetch"},
@@ -1234,8 +1246,11 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
     {.match = "DrawRecordingFamilies"},
     {.match = "ParallelInstanceFill"},
     {.match = "FillWithDrawRecording"},
-    // The preset buttons: they write the hidden rows above.
-    {.match = "graphics-presets"},
+    // Fewer Driver Waits: its ring needs the 32-bit game's single-threaded device; never comes back on the port.
+    {.match = "FewerDriverWaits"},
+    // The preset buttons, with the Unit Detail rows: on the port they write only the rows shown (ConfigureAddon's
+    // port_row_of).
+    {.match = "graphics-presets", .plugin_row = PluginRow::UNIT_LOD},
 }};
 
 // A game-code row on the port: shown once the 64-bit engine plugin is ready and offers its row (TWEAKS: no row of its
@@ -1250,6 +1265,25 @@ inline bool GameCodeRowShown(PluginRow row) {
   return row == PluginRow::TWEAKS
          || (twattila::attila64_plugin_link::RowsOffered() & (1u << static_cast<uint32_t>(row))) != 0;
 }
+
+// An engine value option on the port: every value of it found by the plugin's lookup (acquire: FindTweaks' values are
+// final). A row bound to it shows, and a hook of the same row applies, only then.
+inline bool OptionValuesFound(const tw::engine_tweaks::Option& option) {
+  return twattila::attila64_plugin_link::TweaksFound()
+         && std::ranges::all_of(option.tweaks,
+                                [](const tw::engine_tweaks::Tweak& tweak) { return tweak.value != nullptr; });
+}
+
+// A game-code row on the port with the engine value option it is bound to (null: no values of its own): shown once the
+// plugin offers its row and every value of the option was found.
+struct PortRow {
+  PluginRow row = PluginRow::NONE;
+  const tw::engine_tweaks::Option* option = nullptr;
+
+  bool Shown() const {
+    return GameCodeRowShown(row) && (PLUGIN_READY_FORCED || option == nullptr || OptionValuesFound(*option));
+  }
+};
 
 // The note rows in graphics_status's place on the port, at most one shown: one per final lookup result, READY's two
 // split by the block. A v1 block (an older plugin) shows the update note; a v2 block shows the other one while the
@@ -1283,8 +1317,8 @@ constexpr std::array<PluginNote, 9> PLUGIN_NOTES = {{
 
 // The core rows' status lines on the port, after the row's prefix ("Battle core: "), by the word's CoreState. Format
 // arguments: {0} / {1} logical CPU A / B, {2} the Win32 error (FAILED only). State 0 (not built) hides the rows. The
-// battle word never holds the render part's states. The render row passes its own error byte (RENDER_ERROR_LARGE:
-// larger, see attila64_log.txt), so its FAILED text needs that case.
+// battle word never holds the render part's states (their texts close to the plugin's log). The render row passes its
+// own error byte (RENDER_ERROR_LARGE: larger, its FAILED line then points at attila64_log.txt).
 constexpr std::array<const char*, twattila::attila64_plugin::CORE_STATE_COUNT> CORE_STATE_TEXTS = {
     "",                                                                  // not built
     "on, waiting for a battle",                                          // CORE_WAITING
@@ -1294,11 +1328,11 @@ constexpr std::array<const char*, twattila::attila64_plugin::CORE_STATE_COUNT> C
     "not used: more than 64 CPU threads",                                // CORE_UNSUPPORTED
     "stopped: another program changed the game's CPU cores",             // CORE_YIELDED
     "stopped: Windows refused (error {2})",                              // CORE_FAILED
-    "not used: no free core beside the battle core",                     // CORE_NO_CORE
-    "not used: its thread has a CPU rule of its own",                    // CORE_OWN_RULE
+    "not used: no free core next to the battle core",                    // CORE_NO_CORE
+    "not used: the render thread has its own CPU rule",                  // CORE_OWN_RULE
     "off in ReShade.ini (RenderCore=0)",                                 // CORE_OFF_INI
-    "not used: its thread was not found, or it ended",                   // CORE_NO_THREAD
-    "not used: its thread was mostly idle",                              // CORE_NOT_RENDER
+    "not used: the render thread was not found, or it ended",            // CORE_NO_THREAD
+    "not used: the render thread was not busy enough to need it",        // CORE_NOT_RENDER
     "stopped with the battle core",                                      // CORE_WITH_BATTLE
 };
 static_assert(std::ranges::find(CORE_STATE_TEXTS, nullptr) == CORE_STATE_TEXTS.end(), "a text for every CoreState");
@@ -1610,7 +1644,8 @@ constexpr auto FLAG_PIXEL_SHADERS_MS = WithTwins<1>(std::array<uint32_t, 1>{0xCE
 // samplers biased too (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
 // Faster Game CPU Code (graphics_page.hpp, twattila/engine_code.hpp): on by default, every routine proven to give the game's
-// results (test/tw_engine_code).
+// results (test/tw_engine_code). The 64-bit port: the engine plugin's game code row at the next start, through
+// attila64_plugin_link::MirrorRestartValues.
 float engine_code_row = 1.f;
 // Denoise Before Tone Mapping (Experimental, 64-bit only; graphics_page.hpp's Ray Reconstruction rows): anti_aliasing.hpp
 // Settings::rr_before_tone_map.
@@ -1619,16 +1654,20 @@ float rr_before_tone_map_row = 0.f;
 float render_lists_row = 1.f;
 // Faster Job Wake-Ups (Experimental, off; graphics_page-style row below): engine_code.hpp's job system sites.
 float job_wakeups_row = 0.f;
-// Fewer Constant Uploads (Experimental, off): mods::shader::use_native_d3d11_injection (once used, the game's device keeps
-// it: Off after a restart).
-float fewer_constant_uploads_row = 0.f;
+// Fewer Constant Uploads (Experimental; on on the 64-bit port, off on 32-bit): mods::shader::use_native_d3d11_injection
+// (once used, the game's device keeps it: Off after a restart).
+float fewer_constant_uploads_row = (ATTILA64 ? 1.f : 0.f);
 // Fewer Driver Waits (Experimental, off): buffer_pool.hpp, the game's constant buffers through one ring (Off after a
 // restart).
 float fewer_driver_waits_row = 0.f;
 // Faster Effect Prefetch (Experimental, off): engine_code.hpp's effect tree child sum site and particle update loop site.
 float effect_prefetch_row = 0.f;
-// Keep Render Core Free (Experimental, off): cpu_sets.hpp.
-float keep_render_core_row = 0.f;
+// Keep Render Core Free (32-bit: Experimental, off, cpu_sets.hpp; the port: the 64-bit engine plugin's render core, its
+// core_wanted bit, attila64_plugin_link::Update).
+constexpr float KEEP_RENDER_CORE_DEFAULT = ((ATTILA64 && twattila::attila64_plugin_link::RENDER_CORE_DEFAULT) ? 1.f : 0.f);
+float keep_render_core_row = KEEP_RENDER_CORE_DEFAULT;
+// The port's Keep Render Core Free shows only once its A/B measured it (true: a release step).
+constexpr bool RENDER_CORE_ROW_MEASURED = false;
 // Keep Battle Core Free (the port only, on): the 64-bit engine plugin's battle core, its core_wanted bit
 // (attila64_plugin_link::Update).
 constexpr float KEEP_BATTLE_CORE_DEFAULT = (twattila::attila64_plugin_link::BATTLE_CORE_DEFAULT ? 1.f : 0.f);
@@ -2078,15 +2117,22 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   }
   // The bench's RENODX_TW_GAME_CPUS, else the count cpu_sets reads. value_or always evaluates its argument, so cpu_sets::Update
   // (Keep Render Core Free and the count's reads) runs every present either way: never move it into a branch that may skip it.
-  // The port: Keep Render Core Free off (it moves the 32-bit game's threads); the count's reads stay.
+  // The port: cpu_sets' Keep Render Core Free off (it moves the 32-bit game's threads; the port's row is the engine
+  // plugin's render core); the count's reads stay.
   const uint32_t game_cpus = game_cpus_env.value_or(twattila::cpu_sets::Update(!ATTILA64 && keep_render_core_row != 0.f, GAME_THREAD_MODULES));
-  renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads_row != 0.f, std::memory_order_relaxed);
+  const bool fewer_constant_uploads = fewer_constant_uploads_row != 0.f;
+  renodx::mods::shader::use_native_d3d11_injection.store(fewer_constant_uploads, std::memory_order_relaxed);
+  if constexpr (ATTILA64) {
+    if (fewer_constant_uploads && !fewer_constant_uploads_logged.exchange(true)) {
+      renodx::utils::log::i("[Total War] Fewer Constant Uploads: on.");
+    }
+  }
   // A traced frame's full-ring line waits (its own work fills the ring).
   if (queue->get_device()->get_api() == reshade::api::device_api::d3d11) {
     auto* context = reinterpret_cast<ID3D11DeviceContext*>(queue->get_immediate_command_list()->get_native());
     const bool traced = twattila::frame_trace::Tracing()
                         || twattila::frame_trace::internal::map_trace.tracing.load(std::memory_order_relaxed);
-    twattila::buffer_pool::Update(context, fewer_driver_waits_row != 0.f, traced);
+    twattila::buffer_pool::Update(context, !ATTILA64 && fewer_driver_waits_row != 0.f, traced);
   }
   talesofarise::pixel_trace::OnPresent(queue);
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
@@ -2250,11 +2296,53 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       // lookup, no status line), then the restart-only ones and Loader Frame Cap mirrored for the next start.
       if (!graphics_found) {
         graphics_found = twattila::attila64_plugin_link::FindTweaks(graphics_options);
+        // Campaign Tree Detail is one row of a value and a hook: without its hook (refused, switched off, or changed at
+        // the game's start) its value stays the game's too. The rows offered are final once the values are (the
+        // plugin's rows_changed is stored before its values' release).
+        if (graphics_found && !GameCodeRowShown(PluginRow::CAMPAIGN_TREES)) {
+          for (tw::engine_tweaks::Tweak& tweak : campaign_trees.tweaks) {
+            tweak.value = nullptr;
+          }
+        }
       }
       if (graphics_found) {
         tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, nullptr, &graphics_found, graphics_status);
       }
-      twattila::attila64_plugin_link::MirrorRestartValues(loader_frame_cap_row != 0.f);
+      twattila::attila64_plugin_link::MirrorRestartValues(loader_frame_cap_row != 0.f, static_cast<int>(shadow_map_size),
+                                                          engine_code_row != 0.f);
+      // The scale rows' hooks, folded as the 32-bit hooks fold them (graphics_hooks.hpp OnUnitDistances, its battle
+      // budget 1 until Big Battle Fix; engine_code.hpp's 1 / Model Detail squared); the other scales neutral.
+      std::array<float, plugin::SCALE_COUNT> scales = plugin::NEUTRAL_SCALES;
+      for (size_t size = 0; size < unit_detail.size(); ++size) {
+        scales[plugin::SCALE_UNIT_LOD + size] = unit_detail[size].scale;
+      }
+      std::fill_n(&scales[8], 4, unit_animation.scale);
+      scales[12] = unit_variety.scale;
+      scales[13] = facial_animation.scale;
+      scales[14] = hand_animation.scale;
+      scales[15] = footstep_effects.scale;
+      scales[16] = (twattila::rt_scene::CastersSkipped() ? 0.f : 1.f);
+      scales[plugin::SCALE_MODEL_DETAIL] = 1.f / (object_detail.scale * object_detail.scale);
+      // Campaign Tree Detail's hook (graphics_hooks.hpp Update: the distances squared) only while its engine value is
+      // found and kept too (above): its row shows with both, so nothing applies while the player cannot see it.
+      if (OptionValuesFound(campaign_trees)) {
+        scales[plugin::SCALE_CAMPAIGN_TREES] = campaign_trees.scale * campaign_trees.scale;
+      }
+      // The grass rows as graphics_hooks.hpp's scrub hooks take them: the models' LODs x Grass Detail squared, the
+      // cells' radius and bias x it, the bias / Grass Density (at least its floor).
+      scales[plugin::SCALE_GRASS_LOD] = grass_distance.scale * grass_distance.scale;
+      scales[plugin::SCALE_GRASS_RADIUS] = grass_distance.scale;
+      scales[plugin::SCALE_GRASS_DENSITY] =
+          std::max(grass_density.scale, twattila::graphics_hooks::GRASS_DENSITY_FLOOR);
+      // The sprite rows as graphics_hooks.hpp's Update takes them: the main view's focal length / Sprite Size while Small
+      // Soldiers as Sprites is on and Sprite Size above 0 (0: off, also with no main camera yet), the dead soldiers'
+      // distance x Dead Unit Detail.
+      scales[plugin::SCALE_SPRITE_DISTANCE] =
+          ((small_soldiers_as_sprites != 0.f && sprite_size > 0.f)
+               ? twattila::anti_aliasing::MainFocalPixels() / sprite_size
+               : 0.f);
+      scales[plugin::SCALE_DEAD_UNITS] = dead_units.scale;
+      twattila::attila64_plugin_link::PublishScales(scales);
       // shadow_pass's Update runs every present (it ends the frame's counts), here its second site: the 32-bit one
       // below waits for the at-start tests; the port has none.
       const bool pass_draw =
@@ -2267,7 +2355,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
                ? plugin::RowBit(plugin::ROW_BONE_FLUSH)
                : 0u)
           | (pass_draw ? plugin::RowBit(plugin::ROW_PASS_DRAW) : 0u),
-          keep_battle_core_row != 0.f);
+          keep_battle_core_row != 0.f,
+          // Hidden until measured: the plugin's own bit stays (a saved On, from a copied 32-bit ini say, waits too).
+          (RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT));
     }
     // Everything below writes the 32-bit game's code or values.
     return;
@@ -2456,11 +2546,10 @@ void ConfigureAddon() {
     // The port's tooltip where the 32-bit one does not hold (the 64-bit game has the room).
     std::ranges::find(engine_tests, "AudioSoundFileMemory", &twattila::engine_tests::EngineTest::key)->tooltip =
         "Memory for the loaded sound files. Restart the game. Game: 86 MB.";
-    // Model Detail and Campaign Tree Detail wait for their hooks: their values stay the game's until those rows show.
-    graphics_options = {&building_detail, &campaign_plants, &campaign_props};
-  } else {
-    graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   }
+  // Model Detail has no value on the port (its scale goes to the plugin's hook): it only adds the TweaksFound gate to its
+  // row.
+  graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   for (auto& test : engine_tests) {
     graphics_options.push_back(&test.option);
   }
@@ -2508,12 +2597,35 @@ void ConfigureAddon() {
     // Its option's start: 1x, Game's (0), the game's value or the second choice (1).
     graphics_defaults.emplace_back(test.key, test.option.scale);
   }
-  // A preset button: `defaults` with `changes` (in order) written to the settings.
-  const auto preset = [](const std::vector<std::pair<std::string, float>>& defaults,
-                         const std::vector<std::pair<std::string, float>>& changes) {
-    return [values = defaults, changes]() mutable {
+  // A setting's row on the port: by GAME_CODE_ROWS' key or group, else TWEAKS by the value option it is bound to (the
+  // tests); none for a setting the game's code does not read (shown as on 32-bit).
+  const auto port_row_of = [](const renodx::utils::settings::Setting& setting) -> std::optional<PortRow> {
+    const auto entry = std::ranges::find_if(GAME_CODE_ROWS, [&setting](const GameCodeRow& row) {
+      return (!setting.key.empty() && setting.key == row.match) || (!setting.group.empty() && setting.group == row.match);
+    });
+    const auto bound = std::ranges::find_if(graphics_options, [&setting](const tw::engine_tweaks::Option* option) {
+      return setting.binding == &option->scale;
+    });
+    const tw::engine_tweaks::Option* option = (bound != graphics_options.end() ? *bound : nullptr);
+    if (entry != GAME_CODE_ROWS.end()) return PortRow{.row = entry->plugin_row, .option = option};
+    if (option != nullptr) return PortRow{.row = PluginRow::TWEAKS, .option = option};
+    return std::nullopt;
+  };
+  // A preset button: `defaults` with `changes` (in order) written to the settings. The port: only the rows shown (a
+  // hidden row keeps its saved value).
+  const auto preset = [port_row_of](const std::vector<std::pair<std::string, float>>& defaults,
+                                    const std::vector<std::pair<std::string, float>>& changes) {
+    return [defaults, changes, port_row_of] {
+      auto values = defaults;
       for (const auto& [key, value] : changes) {
         std::ranges::find(values, key, &std::pair<std::string, float>::first)->second = value;
+      }
+      if constexpr (ATTILA64) {
+        std::erase_if(values, [&port_row_of](const std::pair<std::string, float>& entry) {
+          const auto* setting = renodx::utils::settings::FindSetting(entry.first);
+          const std::optional<PortRow> port_row = (setting == nullptr ? std::nullopt : port_row_of(*setting));
+          return port_row.has_value() && !port_row->Shown();
+        });
       }
       renodx::utils::settings::UpdateSettings(values);
     };
@@ -2553,10 +2665,10 @@ void ConfigureAddon() {
                         {"GraphicsBuildingDetail", 4.f}});
   vanilla_units.insert(vanilla_units.end(), atn_settings.begin(), atn_settings.end());
   auto* note = tw::engine_tweaks::Note();
-  // The port: its first sentence alone while the preset buttons are hidden.
+  note->label += " Some apply only after loading a battle or a save.";
+  constexpr const char* PRESETS_TEXT = "The two presets below are the settings I would use myself.";
   if constexpr (!ATTILA64) {
-    note->label += " Some apply only after loading a battle or a save.\n"
-                   "The two presets below are the settings I would use myself.";
+    note->label = note->label + "\n" + PRESETS_TEXT;
   }
   const auto unit_distance = [](size_t index, const std::string& key, const std::string& label,
                                 const std::string& units) {
@@ -2627,6 +2739,18 @@ void ConfigureAddon() {
           .on_change = preset(graphics_defaults, {}),
       },
   });
+  // The port: the presets' sentence as its own row right after the note, shown with the buttons (they come with the
+  // Unit Detail rows, which another row of the section can show without).
+  if constexpr (ATTILA64) {
+    settings.insert(std::next(std::ranges::find(settings, note)),
+                    new renodx::utils::settings::Setting{
+                        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                        .label = PRESETS_TEXT,
+                        .section = note->section,
+                        .tint = note->tint,
+                        .is_visible = [] { return GameCodeRowShown(PluginRow::UNIT_LOD); },
+                    });
+  }
   {
     const auto reflections = twattila::feature_settings::SsrSettings(&shader_injection, &ssr_denoiser);
     settings.insert(settings.end(), reflections.begin(), reflections.end());
@@ -2716,10 +2840,13 @@ void ConfigureAddon() {
           .default_value = 0.f,
           .label = "Shadow Map Size",
           .section = "Graphics (Experimental)",
-          .tooltip = "Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
-                     "with it). More video memory. Applies after a restart. Locked by UI 4K Mod Compatibility.",
+          // The port: no lock (the plugin checks the game's bytes before it writes, so another mod's change refuses
+          // the row).
+          .tooltip = std::string("Sharper sun shadows that flicker less, at Shadows Max (lower Shadows settings scale\n"
+                                 "with it). More video memory. Applies after a restart.")
+                     + (ATTILA64 ? "" : " Locked by UI 4K Mod Compatibility."),
           .labels = {"2048 (Game's)", "4096", "8192"},
-          .is_enabled = [] { return !shadow_size_locked; },
+          .is_enabled = [] { return ATTILA64 || !shadow_size_locked; },
       },
       new renodx::utils::settings::Setting{
           .key = "RayTracedShadowCascades",
@@ -2760,8 +2887,8 @@ void ConfigureAddon() {
           .key = "FewerConstantUploads",
           .binding = &fewer_constant_uploads_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
-          .label = "Fewer Constant Uploads (Experimental)",
+          .default_value = (ATTILA64 ? 1.f : 0.f),
+          .label = (ATTILA64 ? "Fewer Constant Uploads (Experimental, restart)" : "Fewer Constant Uploads (Experimental)"),
           .section = "Graphics (Experimental)",
           .tooltip = "The mod's shader settings go to the GPU once a frame instead of before every draw:\n"
                      "less waiting on the graphics driver on the render thread. Same results.\n"
@@ -2795,7 +2922,7 @@ void ConfigureAddon() {
           .key = "KeepRenderCoreFree",
           .binding = &keep_render_core_row,
           .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
-          .default_value = 0.f,
+          .default_value = KEEP_RENDER_CORE_DEFAULT,
           .label = "Keep Render Core Free (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "Keeps the second half of the render thread's CPU core free for it.\n"
@@ -3206,34 +3333,18 @@ void ConfigureAddon() {
     const std::array<const renodx::utils::settings::Setting*, 4> keyless_rows = {ui_mod_row, graphics_status, grass_trace_row,
                                                                                  grass_dump_row};
     for (auto* setting : settings) {
-      const auto entry = std::ranges::find_if(GAME_CODE_ROWS, [setting](const GameCodeRow& row) {
-        return (!setting->key.empty() && setting->key == row.match) || (!setting->group.empty() && setting->group == row.match);
-      });
-      const auto bound = std::ranges::find_if(graphics_options, [setting](const tw::engine_tweaks::Option* option) {
-        return setting->binding == &option->scale;
-      });
-      PluginRow row = PluginRow::NONE;
-      if (entry != GAME_CODE_ROWS.end()) {
-        row = entry->plugin_row;
-      } else if (bound != graphics_options.end()) {
-        row = PluginRow::TWEAKS;
-      } else if (std::ranges::find(keyless_rows, setting) == keyless_rows.end()) {
-        continue;
+      std::optional<PortRow> port_row = port_row_of(*setting);
+      if (!port_row.has_value()) {
+        if (std::ranges::find(keyless_rows, setting) == keyless_rows.end()) continue;
+        port_row = PortRow{};
       }
-      const tw::engine_tweaks::Option* option = (bound != graphics_options.end() ? *bound : nullptr);
-      setting->is_visible = [row, option, own = setting->is_visible] {
-        return GameCodeRowShown(row)
-               && (PLUGIN_READY_FORCED || option == nullptr
-                   || (twattila::attila64_plugin_link::TweaksFound()
-                       && std::ranges::all_of(option->tweaks, [](const tw::engine_tweaks::Tweak& tweak) {
-                            return tweak.value != nullptr;
-                          })))
-               && (own == nullptr || own());
+      setting->is_visible = [port_row = *port_row, own = setting->is_visible] {
+        return port_row.Shown() && (own == nullptr || own());
       };
     }
-    // The tests' empty lines and their note, and the Experimental note: only while a value row of their section shows
-    // (an all-hidden section draws no header; the grass section's own rows show without the plugin, its note as before
-    // not).
+    // The tests' empty lines and their note, and the Experimental note: only while a value or plugin row of their section
+    // shows (an all-hidden section draws no header; the grass section's Grass Height Distance shows without the plugin,
+    // its note only with a grass row the plugin offers).
     for (auto* setting : settings) {
       if (setting != note
           && (!setting->key.empty() || setting->value_type != renodx::utils::settings::SettingValueType::TEXT
@@ -3245,9 +3356,13 @@ void ConfigureAddon() {
       std::vector<const renodx::utils::settings::Setting*> section_rows;
       std::ranges::copy_if(settings, std::back_inserter(section_rows), [setting](const renodx::utils::settings::Setting* other) {
         return other->section == setting->section
-               && std::ranges::any_of(graphics_options, [other](const tw::engine_tweaks::Option* option) {
-                    return other->binding == &option->scale;
-                  });
+               && (std::ranges::any_of(graphics_options,
+                                       [other](const tw::engine_tweaks::Option* option) {
+                                         return other->binding == &option->scale;
+                                       })
+                   || std::ranges::any_of(GAME_CODE_ROWS, [other](const GameCodeRow& row) {
+                        return row.plugin_row != PluginRow::NONE && !other->key.empty() && other->key == row.match;
+                      }));
       });
       setting->is_visible = [section_rows = std::move(section_rows)] {
         return std::ranges::any_of(section_rows, [](const renodx::utils::settings::Setting* row) {
@@ -3267,6 +3382,20 @@ void ConfigureAddon() {
                         .section = twattila::engine_tests::AUDIO,
                         .tint = RESTART_TINT,
                         .is_visible = [] { return twattila::attila64_plugin_link::ValuesPending(); },
+                    });
+    // Shadow Map Size's restart note, right after its row and in its section (the plugin patches the sizes at the next
+    // start): while the row shows.
+    const auto shadow_map_row = std::ranges::find(settings, "GraphicsShadowMapSize", &renodx::utils::settings::Setting::key);
+    settings.insert(std::next(shadow_map_row),
+                    new renodx::utils::settings::Setting{
+                        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                        .label = RESTART_NOW,
+                        .section = (*shadow_map_row)->section,
+                        .tint = RESTART_TINT,
+                        .is_visible = [row = *shadow_map_row] {
+                          return (row->is_visible == nullptr || row->is_visible())
+                                 && twattila::attila64_plugin_link::ShadowMapSizePending();
+                        },
                     });
     // Loader Frame Cap beside Frame Rate Limit, with its restart note (a v2 plugin reads it at the next start).
     const auto loader_frame_cap_shown = [] {
@@ -3338,8 +3467,9 @@ void ConfigureAddon() {
                 [] { return waving_flags_on.load(std::memory_order_relaxed); }),
         });
     // The CPU page (Settings Mode 3), its section "CPU": every CPU row of this mod on the port, new CPU rows too (live
-    // rows plain, a restart-only one with "(restart)" in its label and its restart note after it). The engine
-    // performance fix's and the start window's sections wait for ATN's answer on where their keys come from.
+    // rows plain, a restart-only one with "(restart)" in its label and its restart note after it, a row live one way and
+    // restart-only the other with "(restart)" in its label and its tooltip saying which: Fewer Constant Uploads). The
+    // engine performance fix's and the start window's sections wait for ATN's answer on where their keys come from.
     constexpr const char* CPU_SECTION = "CPU";
     std::vector<renodx::utils::settings::Setting*> cpu_rows;
     // Keep Battle Core Free and its status line, while the plugin offers the CPU row and built its battle part (state 0:
@@ -3391,13 +3521,98 @@ void ConfigureAddon() {
                 .is_visible = battle_core_shown,
             },
         });
-    // The renderer's CPU rows (their 32-bit place: Graphics 2 of 2).
-    for (const char* key : {"FewerConstantUploads", "FewerDriverWaits"}) {
-      const auto moved = std::ranges::find(settings, key, &renodx::utils::settings::Setting::key);
-      (*moved)->section = CPU_SECTION;
-      cpu_rows.push_back(*moved);
-      settings.erase(moved);
-    }
+    // Keep Render Core Free (its 32-bit place: Graphics (Experimental)) and its status line the same way, for the render
+    // part (render_core_status), once its A/B measured it. The toggle hides with RenderCore=0 (the plugin's own off for
+    // the process: the row cannot turn it on); its line says so.
+    const auto render_core_state = [] {
+      return (twattila::attila64_plugin_link::RenderCoreStatus() >> plugin::CORE_STATE_SHIFT) & plugin::CORE_FIELD_MASK;
+    };
+    const auto render_core_shown = [render_core_state] {
+      return RENDER_CORE_ROW_MEASURED && GameCodeRowShown(PluginRow::CPU_PLACEMENT) && render_core_state() != 0;
+    };
+    const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree", &renodx::utils::settings::Setting::key);
+    renodx::utils::settings::Setting* render_core_row = *render_core;
+    settings.erase(render_core);
+    render_core_row->label = "Keep Render Core Free";
+    render_core_row->section = CPU_SECTION;
+    render_core_row->tooltip = "Can raise the frame rate in big battles: the render thread gets a CPU core to itself. Same picture.\n"
+                               "Changes take effect at once. If it says stopped, restart the game to try again.";
+    render_core_row->is_visible = [render_core_shown, render_core_state] {
+      return render_core_shown() && render_core_state() != plugin::CORE_OFF_INI;
+    };
+    cpu_rows.insert(
+        cpu_rows.end(),
+        {
+            render_core_row,
+            new renodx::utils::settings::Setting{
+                .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+                .section = CPU_SECTION,
+                .on_draw = [] {
+                  const uint32_t status = twattila::attila64_plugin_link::RenderCoreStatus();
+                  const auto field = [status](uint32_t shift) { return (status >> shift) & plugin::CORE_FIELD_MASK; };
+                  const uint32_t state = field(plugin::CORE_STATE_SHIFT);
+                  // A state appended by a newer plugin: no line.
+                  if (state >= plugin::CORE_STATE_COUNT) return false;
+                  const uint32_t logical_a = field(plugin::CORE_LOGICAL_A_SHIFT);
+                  const uint32_t logical_b = field(plugin::CORE_LOGICAL_B_SHIFT);
+                  const uint32_t error = field(plugin::RENDER_ERROR_SHIFT);
+                  const char* format = CORE_STATE_TEXTS[state];
+                  switch (state) {
+                    // WAITING, and WITH_BATTLE (a battle core gate or end), also hold while the bit is clear (the row
+                    // Off, or the plugin's default kept): off then.
+                    case plugin::CORE_WAITING:
+                    case plugin::CORE_WITH_BATTLE:
+                      if (!twattila::attila64_plugin_link::RenderCoreWanted()) {
+                        format = "off";
+                      }
+                      break;
+                    // The shared text says the core is kept free; this one is the render thread's.
+                    case plugin::CORE_ACTIVE:
+                      format = "on: logical CPUs {0} + {1} kept for the render thread";
+                      break;
+                    // One byte: RENDER_ERROR_LARGE stands for a larger error, which the plugin's log has.
+                    case plugin::CORE_FAILED:
+                      if (error == plugin::RENDER_ERROR_LARGE) {
+                        format = "stopped: Windows refused (see attila64_log.txt)";
+                      }
+                      break;
+                    default:
+                      break;
+                  }
+                  ImGui::TextWrapped("Render core: %s",
+                                     std::vformat(format, std::make_format_args(logical_a, logical_b, error)).c_str());
+                  return false;
+                },
+                .is_visible = render_core_shown,
+            },
+        });
+    // The renderer's CPU row (its 32-bit place: Graphics 2 of 2). Fewer Driver Waits stays there, hidden (GAME_CODE_ROWS).
+    const auto moved = std::ranges::find(settings, "FewerConstantUploads", &renodx::utils::settings::Setting::key);
+    (*moved)->section = CPU_SECTION;
+    cpu_rows.push_back(*moved);
+    settings.erase(moved);
+    // The game code row (its 32-bit place: Ray Tracing's More Options), restart-only: the plugin writes its code at its
+    // init. Shown while the plugin offers the row (a player's Off keeps it offered), its restart note after it.
+    const auto game_code = std::ranges::find(settings, "FasterGameCpuCode", &renodx::utils::settings::Setting::key);
+    renodx::utils::settings::Setting* game_code_row = *game_code;
+    settings.erase(game_code);
+    game_code_row->label = "Faster Game CPU Code (restart)";
+    game_code_row->section = CPU_SECTION;
+    game_code_row->tooltip = "Faster versions of some of the game's own CPU code (sprite soldiers), same results.";
+    game_code_row->is_visible = [] { return GameCodeRowShown(PluginRow::GAME_CODE); };
+    cpu_rows.insert(cpu_rows.end(),
+                    {
+                        game_code_row,
+                        new renodx::utils::settings::Setting{
+                            .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                            .label = RESTART_NOW,
+                            .section = CPU_SECTION,
+                            .tint = RESTART_TINT,
+                            .is_visible = [row = game_code_row] {
+                              return row->is_visible() && twattila::attila64_plugin_link::GameCodePending();
+                            },
+                        },
+                    });
     settings.insert(std::ranges::find(settings, "About", &renodx::utils::settings::Setting::section), cpu_rows.begin(),
                     cpu_rows.end());
     renodx::utils::settings::section_tints.emplace_back(CPU_SECTION, 0xF0E68Cu);
@@ -3496,11 +3711,16 @@ bool AttachAddon() {
 
   // Rows saved at an old default (a preset saves every row, hidden ones too), each cleared once. 1 (before v149): NRD when
   // Ray Reconstruction is off, the banners' light and colour on. 2 (the render_mt defaults): the rows whose default changed
-  // and the rows hidden now (a value saved earlier would stay on unseen).
+  // and the rows hidden now (a value saved earlier would stay on unseen). The 64-bit port has its own key,
+  // Attila64SettingsRevision (32-bit never reads it): 1, the 64-bit port's first revision, Fewer Constant Uploads, on there
+  // by default. A later port default change takes the next number.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
   twattila::graphics_page::ClearSavedRows(2, {"DrawRecordingStage", "DrawRecordingDepthA", "DrawRecordingColourA", "DrawRecordingDepthB",
                                               "DrawRecordingColourB", "DrawRecordingFamilies", "AnimationRowsWorkers", "ParallelInstanceFill",
                                               "FillWithDrawRecording", "ParallelEffectSpawns", "CachedParticleCount"});
+  if constexpr (ATTILA64) {
+    twattila::graphics_page::ClearSavedRows(1, {"FewerConstantUploads"}, "Attila64SettingsRevision");
+  }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
 
@@ -3707,6 +3927,7 @@ void DetachAddon() {
     picture_warned = false;
     buffer_overlay_logged = false;
     picture_overlay_logged = false;
+    fewer_constant_uploads_logged = false;
     tone_mapper_target_warned = false;
   }
 

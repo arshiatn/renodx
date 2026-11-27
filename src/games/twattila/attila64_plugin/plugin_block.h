@@ -77,9 +77,7 @@ enum Row : uint32_t {
   ROW_GRASS_CELLS,     // the grass cell radius (scales 19 and 20)
   ROW_CAMPAIGN_TREES,  // Campaign Tree Detail Distance (scale 18)
   ROW_SPRITES,         // Small Soldiers as Sprites, Sprite Size and Dead Unit Detail (scales 22 and 23)
-  // PLACEHOLDER, written beside the game code row's own change: this value is that row's (install key GameCode). No
-  // site, no hook and no row word of its own in this build; its change replaces this line and its two table entries.
-  ROW_GAME_CODE,
+  ROW_GAME_CODE,       // Faster Game CPU Code: hand-made stubs for game code (game_code.hpp), restart-only
   ROW_PARALLEL_EFFECTS,  // Effects on All Cores: the walk over a scene node's effect types (core_wanted CORE_EFFECTS)
   ROW_COUNT
 };
@@ -266,7 +264,7 @@ inline constexpr int TWEAKS_DEFAULT = 1;
 // Install the row's sites at all.
 inline constexpr const wchar_t* ROW_INI_KEYS[ROW_COUNT] = {L"BoneFlush", L"PassDraw",   L"CpuPlacement", L"UnitLod",
                                                            L"ModelDetail", L"ShadowMap", L"Grass",       L"GrassCells",
-                                                           L"CampaignTrees", L"Sprites", L"GameCode",  // placeholder
+                                                           L"CampaignTrees", L"Sprites",  L"GameCode",
                                                            L"ParallelEffects"};
 inline constexpr int ROW_INSTALL_DEFAULT = 1;
 // The restart-only values the add-on writes and the plugin reads at init.
@@ -278,6 +276,11 @@ inline constexpr wchar_t INI_SOL_FRAME_CAP[] = L"SolFrameCap";
 // makes them x 2^n (Max and High 2048, Medium 1024). The add-on writes 0, 1 or 2. Written only on the DirectX 11 route.
 inline constexpr wchar_t INI_SHADOW_MAP_SIZE[] = L"ShadowMapSize";
 inline constexpr int SHADOW_MAP_SIZE_STEPS = 2;  // the largest ShadowMapSize
+// Faster Game CPU Code for the next start, read as a decimal integer: 0 writes none of the game code row's stubs (the
+// row is still checked, and in when its checks pass; text that is no number reads as 0), any other number, or no
+// key, writes them. The add-on writes 0 or 1.
+inline constexpr wchar_t INI_FASTER_GAME_CODE[] = L"FasterGameCpuCode";
+inline constexpr int FASTER_GAME_CODE_DEFAULT = 1;
 // Two Shadow Cascades for the next start (0 or 1). Reserved: no plugin reads it yet and the add-on does not write it;
 // ROW_SHADOW_MAP only checks the cascade sites.
 inline constexpr wchar_t INI_SHADOW_CASCADES[] = L"ShadowCascades";

@@ -80,7 +80,123 @@ foreach ($name in $pluginCases.Keys) {
   $table[$name] = @{ addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0
                      plugin = $pluginCases[$name][0]
                      lines = @($identity, $mapped) + @($pluginCases[$name] | Select-Object -Skip 1 | ForEach-Object { "[Total War] 64-bit Attila: $_" }) + $upgraded
-                     forbid = @('engine plugin not installed', 'callbacks registered') }
+                     forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active', 'engine plugin notices') }
+}
+# The scale rows (a v2 block offering Unit Detail, Model Detail and Shadow Map Size, rows 0x3b, with the rest-pack
+# notice raised) and the case's settings in [renodx-preset1], asymmetric so a wrong index changes the mask: Unit Detail
+# Cavalry and Artillery (1, 3), Unit Animation (8-11), Facial (13), Footstep (15) and Model Detail (17) at 2x give bits
+# 0x2af0a (one line; Foot Soldiers, Elephants, the fade widths 4-7, Variety 12, Hand 14 and the unit shadows 16 stay
+# neutral), Shadow Map Size 4096 is written for the next start, the notice logged once.
+$table['plugin_scales'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = '1 59 0 2 59 1'
+  ini = @('GraphicsUnitDetailMedium=2', 'GraphicsUnitDetailHuge=2', 'GraphicsUnitAnimation=2', 'GraphicsFacialAnimation=2',
+          'GraphicsFootstepEffects=2', 'GraphicsObjectDetail=2', 'GraphicsShadowMapSize=1')
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x3b',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x3b',
+            '[Total War] 64-bit Attila: engine scales active 0x2af0a',
+            '[Total War] 64-bit Attila: engine value ShadowMapSize: 0x1 at the next start (this start: 0x0)',
+            '[Total War] 64-bit Attila: engine plugin notices 0x1 (rest pack: yes, model table full: no)') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered')
+}
+# The grass and campaign tree rows (a v2 block offering the grass, grass cell and campaign tree rows, rows 0x1c3, no
+# engine values): Grass Detail Distance 2x and Grass Density 1.5x set the grass scales' bits 19-21 (one line); Campaign
+# Tree Detail 2x sets no bit while its engine value is not found (its row hidden). The exe checks the kept scales 18-21
+# (1, 4, 2, 1.5). plugin_grass_tree: the fake plugin also publishes Campaign Tree Detail's value (rigid_campaign_tree_lod):
+# 18 = 4, bits 0x3c0000, the value written. plugin_tree_refused: the same value found but the campaign tree row not
+# offered (rows 0xc3, tried 0x1c3): 18 neutral, the value left at the game's.
+$grassIni = @('GraphicsGrassDistance=2', 'GraphicsGrassDensity=1.5', 'GraphicsCampaignDetail=2')
+$table['plugin_grass'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin grass_scales'; encoding = 0; plugin = '1 451 0 2 451'
+  ini = $grassIni
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x1c3',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x1c3',
+            '[Total War] 64-bit Attila: engine scales active 0x380000') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active 0x3c0000', 'engine plugin notices')
+}
+$table['plugin_grass_tree'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin grass_scales_tree tree_value_written'; encoding = 0
+  plugin = '1 451 0 2 451 0 1'; ini = $grassIni
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x1c3',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x1c3',
+            '[Total War] 64-bit Attila: engine scales active 0x3c0000') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active 0x380000', 'engine plugin notices')
+}
+$table['plugin_tree_refused'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin grass_scales tree_value_kept'; encoding = 0
+  plugin = '1 195 0 2 451 0 1'; ini = $grassIni
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0xc3',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x1c3',
+            '[Total War] 64-bit Attila: engine scales active 0x380000') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active 0x3c0000', 'engine plugin notices')
+}
+# The sprite rows (a v2 block offering the sprites row, rows 0x203): Small Soldiers as Sprites on and Dead Unit Detail
+# 0.5x. F7 draws no main view, so the focal length is unknown and Small Soldiers as Sprites sends 0 (off, its bit 22
+# clear); Dead Unit Detail sets bit 23 (one line). The exe checks the kept scales 22-23 (0, 0.5).
+# plugin_sprites_refused: the sprites row changed after the plugin (rows 0x203, 0x200 changed): its rows hidden, no bit,
+# no line (the scales stored as the add-on folded them).
+$spriteIni = @('GraphicsSmallSoldiersAsSprites=1', 'GraphicsDeadUnits=0.5')
+$table['plugin_sprites'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin sprite_scales'; encoding = 0; plugin = '1 515 0 2 515'
+  ini = $spriteIni
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x203',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x203',
+            '[Total War] 64-bit Attila: engine scales active 0x800000') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active 0xc00000',
+             'engine scales active 0x400000', 'engine plugin notices')
+}
+$table['plugin_sprites_refused'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin sprite_scales'; encoding = 0; plugin = '1 515 512 2 515'
+  ini = $spriteIni
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x3',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x203') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active', 'engine plugin notices')
+}
+# The game code row (a v2 block offering it, rows 0x403): Faster Game CPU Code mirrored into [Attila64Plugin.Values] for
+# the next start. plugin_game_code: the row Off, the key absent (on): 0 written against this start's 1.
+# plugin_game_code_key_off: the key 0 and the row at its default On: 1 written against this start's 0.
+# plugin_game_code_default: the row On, the key absent: nothing written. plugin_game_code_refused: the row tried, not
+# offered (rows 0x3, tried 0x403): the row Off, nothing written.
+$gameCodeValue = '[Total War] 64-bit Attila: engine value FasterGameCpuCode'
+$gameCodeCases = [ordered]@{
+  plugin_game_code = @{ plugin = '1 1027 0 2 1027'; ini = @('FasterGameCpuCode=0'); offered = '0x403'; tried = '0x403'
+                        value = "${gameCodeValue}: 0x0 at the next start (this start: 0x1)" }
+  plugin_game_code_key_off = @{ plugin = '1 1027 0 2 1027'; ini = @('[Attila64Plugin.Values]', 'FasterGameCpuCode=0'); offered = '0x403'
+                                tried = '0x403'; value = "${gameCodeValue}: 0x1 at the next start (this start: 0x0)" }
+  plugin_game_code_default = @{ plugin = '1 1027 0 2 1027'; ini = @(); offered = '0x403'; tried = '0x403' }
+  plugin_game_code_refused = @{ plugin = '1 3 0 2 1027'; ini = @('FasterGameCpuCode=0'); offered = '0x3'; tried = '0x403' }
+}
+foreach ($name in $gameCodeCases.Keys) {
+  $gameCode = $gameCodeCases[$name]
+  $table[$name] = @{
+    addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = $gameCode.plugin; ini = $gameCode.ini
+    lines = @($identity, $mapped, "[Total War] 64-bit Attila: engine plugin ready, rows offered $($gameCode.offered)",
+              "[Total War] 64-bit Attila: engine plugin rows tried $($gameCode.tried)") + @($gameCode.value | Where-Object { $_ }) + $upgraded
+    forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active', 'engine plugin notices') +
+             @(if (-not $gameCode.value) { $gameCodeValue })
+  }
+}
+# The core rows (a v2 block offering the CPU row, rows 0x7, the render part built: render_core_status 1, WAITING): each
+# writes only its own core_wanted bit (a bit no row writes, CORE_STEP 4, kept); the exe checks the bits left. While
+# Keep Render Core Free is hidden (RENDER_CORE_ROW_MEASURED false) it writes nothing, a saved On included.
+# plugin_render_core: Keep Render Core Free On saved, the plugin's bits 5 (battle + 4): 5 (shown: 7, "on").
+# plugin_render_core_battle_off: Keep Battle Core Free Off as well: 4 (shown: 6, "on"). plugin_render_core_kept: the
+# row at its default (Off), the plugin's bits 7 (its own RenderCore=1): the first present writes no render bit, 7 kept.
+$renderCore = '[Total War] 64-bit Attila: Keep Render Core Free'
+$renderCoreCases = [ordered]@{
+  plugin_render_core = @{ plugin = '1 7 0 2 7 0 0 5 1'; ini = @('KeepRenderCoreFree=1'); bits = 5; battle = 'on' }
+  plugin_render_core_battle_off = @{ plugin = '1 7 0 2 7 0 0 5 1'; ini = @('KeepBattleCoreFree=0', 'KeepRenderCoreFree=1'); bits = 4
+                                     battle = 'off' }
+  plugin_render_core_kept = @{ plugin = '1 7 0 2 7 0 0 7 1'; ini = @(); bits = 7; battle = 'on' }
+}
+foreach ($name in $renderCoreCases.Keys) {
+  $core = $renderCoreCases[$name]
+  $table[$name] = @{
+    addon = 'current'; args = "d3d11 fixed upgraded plugin core_wanted_$($core.bits)"; encoding = 0; plugin = $core.plugin; ini = $core.ini
+    lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x7',
+              '[Total War] 64-bit Attila: engine plugin rows tried 0x7', "[Total War] 64-bit Attila: Keep Battle Core Free $($core.battle)") +
+            @(if ($core.render) { "$renderCore $($core.render)" }) + $upgraded
+    forbid = @('engine plugin not installed', 'callbacks registered', 'engine plugin notices') + @(if (-not $core.render) { $renderCore })
+  }
 }
 # Registration end to end: rows forced wanted (RENODX_TW_PLUGIN_WANT), the callbacks registered at a present, the fake
 # hooks' thread calling into them, then unregistered and drained inside ReShade's unload before the add-on is freed.
@@ -181,12 +297,13 @@ foreach ($name in $Cases) {
   $env:RENODX_F7_PLUGIN = $case.plugin
   $env:RENODX_TW_PLUGIN_WANT = $case.want
   $env:ATTILA_NO_PLUGINS = $case.no_plugins
-  # A fresh ini: no LoadFromDllMain key, the tutorial done (no splash), the add-on's output rows explicit.
-  @(
+  # A fresh ini: no LoadFromDllMain key, the tutorial done (no splash), the add-on's output rows explicit, then the
+  # case's own settings.
+  (@(
     '[ADDON]', 'DisabledAddons=', '[GENERAL]', 'EffectSearchPaths=', 'TextureSearchPaths=', 'PresetPath=.\ReShadePreset.ini',
     '[OVERLAY]', 'TutorialProgress=4', '[renodx]', "SwapChainEncoding=$($case.encoding)",
     '[renodx-preset1]', 'tonemapper=3', 'peak_white_nits=1000', 'diffuse_white_nits=203', 'graphics_white_nits=203', 'gamma_correction=1'
-  ) | Set-Content -LiteralPath (Join-Path $dir 'ReShade.ini') -Encoding ascii
+  ) + @($case.ini | Where-Object { $_ })) | Set-Content -LiteralPath (Join-Path $dir 'ReShade.ini') -Encoding ascii
   $env:RENODX_CAPTURE_EVERY = '1'
   $exeArgs = $case.args + ' gpu'
   $process = Start-Process -FilePath (Join-Path $dir 'attila64.exe') -ArgumentList $exeArgs -WorkingDirectory $dir -PassThru -NoNewWindow `

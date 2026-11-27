@@ -47,6 +47,9 @@ enum SiteLabel : uint8_t {
   LABEL_GRASS_DRAW_ENTRY,
   LABEL_GRASS_CELL_ENTRY,
   LABEL_CAMPAIGN_TREE_ENTRY,
+  LABEL_SPRITE_DISTANCE,
+  LABEL_HALF_ENTRY,
+  LABEL_SPRITE_ROWS,
   LABEL_EFFECT_WALK_ENTRY,
   LABEL_COUNT
 };
@@ -55,12 +58,15 @@ inline constexpr std::array<const char*, LABEL_COUNT> LABEL_WORDS = {
     "MODEL_LOD_ENTRY", "SHADOW_SIZE_HIGH", "SHADOW_COUNT_HIGH", "SHADOW_EXTRA_HIGH",
     "SHADOW_SIZE_MAX", "SHADOW_COUNT_MAX", "SHADOW_EXTRA_MAX", "SHADOW_SIZE_MEDIUM",
     "GRASS_UPDATE_ENTRY", "GRASS_DRAW_ENTRY", "GRASS_CELL_ENTRY", "CAMPAIGN_TREE_ENTRY",
-    "EFFECT_WALK_ENTRY",
+    "SPRITE_DISTANCE", "HALF_ENTRY", "SPRITE_ROWS", "EFFECT_WALK_ENTRY",
 };
 
 // HOOK: a function's first whole instructions, replaced by the loader's entry hook. PATCH: one instruction's
 // immediate: checked like a hook's bytes, and rewritten in place only when its row has other bytes for it.
-enum SiteKind : uint8_t { SITE_HOOK, SITE_PATCH };
+// MID: whole instructions inside a function, replaced by a jump to the plugin's own stub (trampoline.hpp), whose
+// trampoline runs them. RAW_STUB: whole instructions replaced by a jump to hand-made bytes in code near the game
+// (game_code.hpp), not a C++ function; the game code they stand on is a HELD range.
+enum SiteKind : uint8_t { SITE_HOOK, SITE_PATCH, SITE_MID, SITE_RAW_STUB };
 
 // One replaced range. window = memory [address - SITE_MARGIN, address + length + SITE_MARGIN), the rest zero.
 struct Site {
@@ -72,7 +78,7 @@ struct Site {
   std::array<uint8_t, (2 * SITE_MARGIN) + SITE_MAX_LENGTH> window = {};
 };
 
-inline constexpr std::array<Site, 17> SITES = {{
+inline constexpr std::array<Site, 20> SITES = {{
     {
         .address = 0x3416d50,
         .length = 5,
@@ -266,6 +272,42 @@ inline constexpr std::array<Site, 17> SITES = {{
         },
     },
     {
+        .address = 0xa5049c,
+        .length = 8,
+        .row = ROW_SPRITES,
+        .label = LABEL_SPRITE_DISTANCE,
+        .kind = SITE_MID,
+        .window = {
+            0x00, 0x00, 0x48, 0x05, 0x8c, 0x03, 0x00, 0x00, 0xf3, 0x0f, 0x58, 0x05, 0xa8, 0x33, 0xd7, 0x02,
+            0xf3, 0x0f, 0x59, 0x00, 0xf3, 0x0f, 0x58, 0x01, 0xf3, 0x0f, 0x11, 0x84, 0x24, 0xb0, 0x00, 0x00,
+            0x00, 0x48, 0x8b, 0x03, 0x48, 0x8d, 0xb4, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
+    {
+        .address = 0x3009b90,
+        .length = 7,
+        .row = ROW_GAME_CODE,
+        .label = LABEL_HALF_ENTRY,
+        .kind = SITE_RAW_STUB,
+        .window = {
+            0xc3, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x8b, 0x17, 0x89, 0xd0, 0xc1, 0xe8, 0x10, 0x25, 0x00, 0x80, 0x00, 0x00, 0x89, 0xd1, 0xc1, 0xe9,
+            0x17, 0x0f, 0xb6, 0xf1, 0x81, 0xfe, 0x8f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
+    {
+        .address = 0x32d9de5,
+        .length = 6,
+        .row = ROW_GAME_CODE,
+        .label = LABEL_SPRITE_ROWS,
+        .kind = SITE_RAW_STUB,
+        .window = {
+            0xf3, 0x0f, 0x11, 0x53, 0x08, 0xf3, 0x0f, 0x10, 0x44, 0x24, 0x3c, 0xf3, 0x0f, 0x11, 0x43, 0x0c,
+            0xf3, 0x0f, 0x10, 0x44, 0x24, 0x38, 0xf3, 0x0f, 0x11, 0x84, 0x24, 0x94, 0x00, 0x00, 0x00, 0x48,
+            0x89, 0xef, 0xe8, 0x94, 0xfd, 0xd2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
+    {
         .address = 0x32fbf60,
         .length = 5,
         .row = ROW_PARALLEL_EFFECTS,
@@ -278,6 +320,25 @@ inline constexpr std::array<Site, 17> SITES = {{
         },
     },
 }};
+
+// The game code a RAW_STUB site's stub depends on: memory [lo, hi), with the site inside. span_hash = FNV-1a 64 of
+// those bytes without the site's (checked again at game start once the site is written), whole_hash = with them
+// (the site only checked).
+struct HeldRange {
+  uint32_t lo = 0;
+  uint32_t hi = 0;
+  uint8_t row = 0;
+  uint8_t label = 0;
+  uint64_t span_hash = 0;
+  uint64_t whole_hash = 0;
+};
+inline constexpr std::array<HeldRange, 2> HELD_RANGES = {{
+    {.lo = 0x3009b90, .hi = 0x3009c43, .row = ROW_GAME_CODE, .label = LABEL_HALF_ENTRY, .span_hash = 0x60bdddb446795942, .whole_hash = 0xeb2efd4ede0b8a3a},
+    {.lo = 0x32d9d49, .hi = 0x32da032, .row = ROW_GAME_CODE, .label = LABEL_SPRITE_ROWS, .span_hash = 0x8d9bee2c05a30924, .whole_hash = 0x71aed05d902f839e},
+}};
+// Where the sprite rows' stub goes on: after the region (done), or into it after the site (a row it leaves).
+inline constexpr uint32_t SPRITE_ROWS_DONE = 0x32da007;
+inline constexpr uint32_t SPRITE_ROWS_FALLBACK = 0x32d9deb;
 
 enum ForeignOwner : uint8_t { OWNER_LOADER, OWNER_OTHER, OWNER_COUNT };
 inline constexpr std::array<const char*, OWNER_COUNT> OWNER_WORDS = {"LOADER", "OTHER"};
