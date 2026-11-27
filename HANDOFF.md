@@ -18409,7 +18409,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         'Shadow map work' = the rays arms' proof; E11 registration on mvtr / rays) -> per-arm expectations; S1 R1
         fallback order, S2 lowdef point lights, S3 complete recordings only, S4 void on every stop, S5 stops on top
         of summary.txt + non-zero exit, S6 a 'rays ran' check; old lines 7 / 7 equal, safety OK, X6 OK, own choices
-        OK but the 80 nits. Fix round rts1_ (resumed, Opus High, est 40: all 4 MUST + all SHOULD) STARTED 00:01. rrts2_ (Opus xHigh, 9 min;
+        OK but the 80 nits. Fix round rts1_ (resumed, Opus High, est 40: all 4 MUST + all SHOULD) STARTED 00:01. DONE 00:24 (22 of 40 min;
+        scratch\rts1_\handback.md; patch a64_ab_rts1_patch.py, 30 edits, b626750c -> 9eeb9f82, live file untouched):
+        D2 fails at top <= 1.02 x paper white (the newest no-helper C2 menu top, read into a temp file; no reference
+        = info 'ATN's look'); per-arm expectations (rays arms: 'pass kind N' expected, E11 info until S5a; mvtr E10
+        / E11 0x1); rtkill quits at B 175 (ours), capture kept; Rt-Stage refuses paths outside the helper set, throws
+        on an existing target, removes only what it staged; R1 fallback order, 40 point-light variants, complete
+        recordings only, every stop voids, RT stops on top of summary.txt + exit 4 (crash stays 3), 'rays ran',
+        casts / @(), NoLight needs a read trace; old dry-run lines 0 diff, X6 + S1 controls as before, one new control
+        per MUST. Re-check crts1_ (Sonnet High, dry runs on copies) STARTED 00:22; then apply live, a fresh -C2
+        smoke, the sprite gate. rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
