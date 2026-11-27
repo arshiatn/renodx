@@ -7,6 +7,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -29,6 +30,15 @@
 namespace twattila::attila64_plugin::test {
 
 inline constexpr uintptr_t GAME_RESERVE_END = 0x527d000;  // the last load segment's end, page-rounded
+
+// The rows with a site in this build, as main.cpp folds them for its rows line (its own constant is local to it).
+inline constexpr uint32_t ALL_ROWS = [] {
+  uint32_t rows = 0;
+  for (const Site& site : SITES) {
+    rows |= RowBit(static_cast<Row>(site.row));
+  }
+  return rows;
+}();
 
 enum HookMode : uint8_t { HOOK_NORMAL, HOOK_NO_MEMORY, HOOK_WRITE_FAILS };
 
@@ -217,11 +227,7 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   const Block* shared = plugin.block;
   Expect(shared->version == VERSION && shared->bytes == BlockBytes(VERSION), "the block's version and size");
   Expect(shared->status.load(std::memory_order_acquire) == STATUS_READY, "the block is READY after init");
-  uint32_t rows = 0;
-  for (const Site& site : SITES) {
-    rows |= RowBit(static_cast<Row>(site.row));
-  }
-  Expect(shared->rows_applied == rows && shared->rows_refused == 0, "every row with a site applied");
+  Expect(shared->rows_applied == ALL_ROWS && shared->rows_refused == 0, "every row with a site applied");
   // v2's initial values: the rows tried, the core default (no RenderCore key here), the battle core waiting, the render
   // core without its thread yet, the engine values waiting for the game's start, the other status words not built, the
   // scales neutral.
@@ -229,7 +235,7 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   for (size_t scale = 0; scale < SCALE_COUNT; ++scale) {
     scales_neutral = scales_neutral && shared->scales[scale].load() == NEUTRAL_SCALES[scale];
   }
-  Expect(shared->rows_tried == rows && shared->core_wanted.load() == CORE_WANTED_DEFAULT
+  Expect(shared->rows_tried == ALL_ROWS && shared->core_wanted.load() == CORE_WANTED_DEFAULT
              && shared->core_status.load() == (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT)
              && shared->render_core_status.load() == (uint32_t{CORE_NO_THREAD} << CORE_STATE_SHIFT)
              && shared->engine_status.load() == 0
@@ -240,10 +246,31 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   Expect(Logged("renodx_attila64 2: game build ok") && Logged(", graphics ") && Logged("renodx_attila64: loader frame cap: ")
              && Logged("Changes drawing, sound memory and CPU core use only; battles, replays and multiplayer stay the same.")
              && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
-             && Logged("STEP_ENTRY 0xbb4e00: applied") && Logged("renodx_attila64: shadow map: game's size")
-             && Logged("rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
-                       "grass on, grass cells on, campaign trees on, sprites -"),
+             && Logged("STEP_ENTRY 0xbb4e00: applied") && Logged("renodx_attila64: shadow map: game's size"),
          "the init lines");
+  // The rows line follows the Row enum and the sites table (a later row needs no edit here): the first two rows as
+  // they have been since v1 (the enum is append-only), then one entry per row, "on" for a row with a site (no install
+  // key is 0 here) and "-" for a row without one. Each row's own word is checked where the row is.
+  const bool rows_line_follows_the_tables = [] {
+    constexpr std::string_view LINE_START = "renodx_attila64: rows: ";
+    const std::shared_lock lock(log_mutex);
+    for (const std::string& line : log_lines) {
+      std::string_view entries = line;
+      if (!entries.starts_with(LINE_START)) continue;
+      entries.remove_prefix(LINE_START.size());
+      if (!entries.starts_with("bone flush on, pass draw on, ")) return false;
+      uint32_t row = 0;
+      while (!entries.empty() && row < ROW_COUNT) {
+        const size_t entry_end = std::min(entries.find(", "), entries.size());
+        if (!entries.substr(0, entry_end).ends_with((((ALL_ROWS >> row) & 1u) != 0) ? " on" : " -")) return false;
+        entries.remove_prefix(std::min(entry_end + std::string_view(", ").size(), entries.size()));
+        ++row;
+      }
+      return entries.empty() && row == ROW_COUNT;
+    }
+    return false;
+  }();
+  Expect(rows_line_follows_the_tables, "the rows line: an entry per row, on for each row with a site");
   for (const Site& site : SITES) {
     char applied_line[96];
     std::snprintf(applied_line, sizeof(applied_line), "renodx_attila64: site %s %#x: applied%s", LABEL_WORDS[site.label],

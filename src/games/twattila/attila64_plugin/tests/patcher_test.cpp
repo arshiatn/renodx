@@ -373,9 +373,6 @@ void PassEnd(uint32_t pass_kind, const PassMeasure& measure) noexcept {
 const Callbacks CALLBACKS = {.before_pack = &BeforePack, .pass_begin = &PassBegin, .pass_end = &PassEnd};
 const Callbacks OTHER_CALLBACKS = CALLBACKS;
 
-inline constexpr uint32_t ALL_ROWS = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT)
-                                     | RowBit(ROW_UNIT_LOD) | RowBit(ROW_MODEL_DETAIL) | RowBit(ROW_SHADOW_MAP)
-                                     | RowBit(ROW_GRASS) | RowBit(ROW_GRASS_CELLS) | RowBit(ROW_CAMPAIGN_TREES);
 inline constexpr uint32_t HOOK_SITE_COUNT = [] {
   uint32_t count = 0;
   for (const Site& site : SITES) {
@@ -1465,8 +1462,10 @@ int wmain(int argc, wchar_t** argv) {
                && !Logged("loader frame cap"),
            "dll: Enabled=0 refuses and writes nothing");
   }
-  for (const Row row : {ROW_BONE_FLUSH, ROW_PASS_DRAW, ROW_CPU_PLACEMENT, ROW_UNIT_LOD, ROW_MODEL_DETAIL, ROW_SHADOW_MAP,
-                        ROW_GRASS, ROW_GRASS_CELLS, ROW_CAMPAIGN_TREES}) {
+  // Every row with a site (the sites table says which).
+  for (uint32_t row_index = 0; row_index < ROW_COUNT; ++row_index) {
+    const auto row = static_cast<Row>(row_index);
+    if ((ALL_ROWS & RowBit(row)) == 0) continue;
     set_ini_key_off(ROW_INI_KEYS[row]);
     write_game();
     const auto [plugin, result] = init_copy(ROW_INI_KEYS[row], MODULE_NAME, api);
@@ -1587,7 +1586,9 @@ int wmain(int argc, wchar_t** argv) {
            "grass draw: the code as read at init, a draw past the last LOD is left out");
     *at(SITES[LABEL_GRASS_DRAW_ENTRY].address + GRASS_DRAW_NO_LOD_BYTES - 8) ^= 1;
     plugin.game_started(&api);
-    Expect(Logged(GRASS_DRAW_CODE_LINE) && Logged("game started: 16 sites unchanged") && grass_draw_once(1, 50.f, 0.f, true),
+    char sites_in[64];
+    std::snprintf(sites_in, sizeof(sites_in), "game started: %zu sites unchanged", SITES.size());
+    Expect(Logged(GRASS_DRAW_CODE_LINE) && Logged(sites_in) && grass_draw_once(1, 50.f, 0.f, true),
            "grass draw: a byte patched before game start leaves the line, every draw reaches the game");
     set_scale(plugin.block, SCALE_GRASS_LOD, 1.f);
     Expect(grass_update_once() && lods_are(GAME_LODS), "grass draw: a byte patched before game start, back at 1x");
@@ -1733,7 +1734,7 @@ int wmain(int argc, wchar_t** argv) {
     plugin.game_started(&api);
     char hooks_unchanged[64];
     std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", HOOK_SITE_COUNT);
-    Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged) && Logged("game started: 9 sites unchanged"),
+    Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged),
            "shadow: a site that could not be put back counts as out at the game's start");
   }
   SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, nullptr);
