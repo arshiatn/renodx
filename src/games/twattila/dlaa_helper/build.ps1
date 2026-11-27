@@ -14,9 +14,12 @@ trap { break }
 # The old exe goes first: a failed build (a shader's or the helper's) leaves none and fails the script.
 Remove-Item "$out\renodx-tw-dlaa64.exe" -ErrorAction SilentlyContinue
 if (Test-Path "$out\renodx-tw-dlaa64.exe") { throw "$out\renodx-tw-dlaa64.exe could not be deleted (still running?)" }
+# RENODX_TW_CONTROL_DEFINES set (names, space-separated: the fidelity fixes' CONTROL_*, rt_path.hlsli and rt_d3d12.hpp
+# BakeCutoff): every shader and the helper built with them, an A / B helper of its own (tests only, never a player's).
+$control_defines = @($env:RENODX_TW_CONTROL_DEFINES -split ' ' | Where-Object { $_ } | ForEach-Object { '-D', $_ })
 # A shader that fails to compile fails the build (no helper with an older shader header).
 function Dxc {
-  & "$root\bin\dxc.exe" @args
+  & "$root\bin\dxc.exe" @args @control_defines
   if ($LASTEXITCODE -ne 0) { throw "dxc failed (exit $LASTEXITCODE): $($args -join ' ')" }
 }
 # NVIDIA's RTXDI-Library 3.2 (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/RTXDI-Library: commit
@@ -262,7 +265,7 @@ if (Test-Path "$nrd\_Bin\NRD.lib") {
 # Graphics, nothing without it.
 & "C:\Program Files\LLVM\bin\clang-cl.exe" /nologo -std:c++20 /O2 /MT /EHsc /DWIN32 /D_WINDOWS -DNOMINMAX `
   -D_ITERATOR_DEBUG_LEVEL=0 "-imsvc$root\include" "-imsvc$root\external\reshade" "-imsvc$root\external\DLSS\include" `
-  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include @nrd_include @recorder_include "/I$out" `
+  "-imsvc$root\external\Streamline\include" @nvapi_include @omm_include @fsr_include @xess_include @nrd_include @recorder_include @control_defines "/I$out" `
   "$PSScriptRoot\main.cpp" @regir_cpp /Ferenodx-tw-dlaa64.exe /link /SUBSYSTEM:WINDOWS `
   "$root\external\DLSS\lib\Windows_x86_64\x64\nvsdk_ngx_s.lib" @nvapi_library @nrd_library d3d11.lib d3d12.lib dxgi.lib shell32.lib version.lib user32.lib advapi32.lib wintrust.lib crypt32.lib dbghelp.lib `
   delayimp.lib /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d11.dll /DELAYLOAD:d3d12.dll

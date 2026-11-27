@@ -148,7 +148,8 @@ static const uint REUSE_VALIDATION_PERIOD = 3u;
 // The fidelity fixes' controls (11-26 wave 3; -D in a build of its own, never in build.ps1: a lab stem swap or the WARP
 // tests, one build A / B against the shipped one): CONTROL_TARGET_PAST_RANGE (X02, ReuseTarget), CONTROL_HISTORY_NO_DEPTH
 // (X05, HistoryDepthMatches' callers), CONTROL_TEMPORAL_NO_SHIFT (X04, PathTraceTexel), CONTROL_F16_STORE_RAW (X11,
-// StoredHalf; rt_trace.cs_6_5.hlsl's too), CONTROL_NRD_CHOSEN_HIT (X23), CONTROL_N_DOT_V_CLAMP (X48, ViewFacingNormal);
+// StoredHalf; rt_trace.cs_6_5.hlsl's too), CONTROL_NRD_CHOSEN_HIT (X23), CONTROL_N_DOT_V_CLAMP (X48, ViewFacingNormal),
+// CONTROL_SURFACE_CUT_OUTS_CULLED (X10, rt_scene.hlsli TraceSurface and PathRadiance's sky test);
 // REUSE_W_CLAMP_OFF / REUSE_CLAMP_TRACE (X08, at REUSE_W_CLAMP). X01's and X06's are bits (rt_reuse_bits.h).
 #if defined(REUSE_NEAR)
 // Near ReSTIR Reuse (only its rt_reuse_near build): three neighbours within half the reach (Lean Reuse's test with these
@@ -746,9 +747,9 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
     if (!hit) {
       // Past the first surface the sky (the game's ambient by direction); from the camera's pixel the game's own
       // ambient covers it, but with Path-Traced Ambient (the game's taken away: the paths' the occluded sky).
-      // No sky for the pixel itself through a solid cut-out either (TRACE_SURFACE culls what is alpha-tested: a thatched
-      // house's parts without a known micromap state were holes to it). Only here: asked of every ray that escapes, the
-      // bounce and the reflections cost 7 to 8% more (4K harness). Past it calibrated at the surface the ray left, as the
+      // A solid cut-out stops the ray in TRACE_SURFACE (X10), so no sky through one; CONTROL_SURFACE_CUT_OUTS_CULLED's
+      // TRACE_SURFACE culls them, and its sky test for the pixel itself stays with it (asked of every ray that escapes, the
+      // bounce and the reflections cost 7 to 8% more, 4K harness). Past it calibrated at the surface the ray left, as the
       // first ray's at its start and the screen's open sky (OpenSky): uncalibrated, Kept Cube's sky left the off-screen hits'
       // light 2.2% dark on box faces (reference suite step 2, contact_sky).
       if (vertex > 0u) {
@@ -758,7 +759,7 @@ float3 PathRadiance(float3 origin, float3 direction, float range, float3 sky_cal
         probe_sky += sky_there;
 #endif
       } else if ((path_flags & PATH_AMBIENT) != 0u && !Occluded(origin, direction, min(range, GRASS_AMBIENT_RANGE), GRASS_STILL)
-#if defined(OPACITY_MICROMAPS)
+#if defined(OPACITY_MICROMAPS) && defined(CONTROL_SURFACE_CUT_OUTS_CULLED)
                  && !Occluded(origin, direction, range, CUT_OUTS)
 #endif
       ) {

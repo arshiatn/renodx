@@ -322,9 +322,63 @@ bool OccludedSolid(float3 origin, float3 direction, float range) {
 // The nearest surface along a ray of the Light Bounce, its paths or the reflections (its query, committed:
 // CommittedStatus says whether one was; the smoke left out). With opacity micromaps solid surfaces only, the leaves'
 // solid parts among them (an alpha test for every candidate nearer than the hit, grass by the dozen, made them cost up
-// to 30 ms a frame, ATN 2026-10-29); else alpha-tested, at most MAX_CANDIDATES.
-#if defined(OPACITY_MICROMAPS)
-#define TRACE_SURFACE(query, ray)                                                        SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query;       query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, (ray));                       query.Proceed();
+// to 30 ms a frame, ATN 2026-10-29), and the solid cut-outs where their alpha test passes (X10, below); else
+// alpha-tested, at most MAX_CANDIDATES.
+#if defined(OPACITY_MICROMAPS) && !defined(CONTROL_SURFACE_CUT_OUTS_CULLED)
+// TRACE_SURFACE's hit with opacity micromaps, read as a RayQuery's committed one (its callers' query.Committed*()).
+struct SurfaceHit {
+  uint status;
+  float ray_t;
+  uint instance_id;
+  uint geometry_index;
+  uint primitive_index;
+  float3x4 object_to_world;
+  uint CommittedStatus() { return status; }
+  float CommittedRayT() { return ray_t; }
+  uint CommittedInstanceID() { return instance_id; }
+  uint CommittedGeometryIndex() { return geometry_index; }
+  uint CommittedPrimitiveIndex() { return primitive_index; }
+  float3x4 CommittedObjectToWorld3x4() { return object_to_world; }
+};
+
+// The culled query's nearest solid hit, then the solid cut-outs (CUT_OUTS) up to it, alpha-tested as TRACE_NEAREST (as
+// Occluded, the sun's and the lights' rays, and OccludedSolid's second query see them), the nearer kept. ours (X10, critic
+// rt_core B2): culled with the leaves, a cut-out's micro-triangles of no known state (its bake on its way; a wall's
+// triangle over more than a texture's width is unknown opaque, rt_omm_uvs) were holes to the paths, the bounce, SHaRC and
+// the reflections: light through thatched houses, fences, palisades; PathRadiance's sky test covered its misses only.
+// The leaves stay culled (their alpha tests' cost above); the cut-outs' own query keeps the alpha tests to them.
+// CONTROL_SURFACE_CUT_OUTS_CULLED: the culled query alone (and PathRadiance's sky test), today's macro to the byte.
+SurfaceHit TraceSurface(RayDesc ray) {
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) solid;
+  solid.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, ray);
+  solid.Proceed();
+  SurfaceHit hit = (SurfaceHit)0;
+  hit.status = solid.CommittedStatus();
+  if (hit.status == COMMITTED_TRIANGLE_HIT) {
+    hit.ray_t = solid.CommittedRayT();
+    hit.instance_id = solid.CommittedInstanceID();
+    hit.geometry_index = solid.CommittedGeometryIndex();
+    hit.primitive_index = solid.CommittedPrimitiveIndex();
+    hit.object_to_world = solid.CommittedObjectToWorld3x4();
+    ray.TMax = hit.ray_t;
+  }
+  TRACE_NEAREST(cut_out, ray, CUT_OUTS)
+  if (cut_out.CommittedStatus() == COMMITTED_TRIANGLE_HIT) {
+    hit.status = COMMITTED_TRIANGLE_HIT;
+    hit.ray_t = cut_out.CommittedRayT();
+    hit.instance_id = cut_out.CommittedInstanceID();
+    hit.geometry_index = cut_out.CommittedGeometryIndex();
+    hit.primitive_index = cut_out.CommittedPrimitiveIndex();
+    hit.object_to_world = cut_out.CommittedObjectToWorld3x4();
+  }
+  return hit;
+}
+#define TRACE_SURFACE(query, ray) SurfaceHit query = TraceSurface(ray);
+#elif defined(OPACITY_MICROMAPS)
+#define TRACE_SURFACE(query, ray)                                                    \
+  SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES | RAY_FLAG_CULL_NON_OPAQUE) query; \
+  query.TraceRayInline(scene, RAY_FLAG_NONE, NO_GRASS_SMOKE, (ray));                 \
+  query.Proceed();
 #else
 #define TRACE_SURFACE(query, ray)                                         \
   SCENE_QUERY(RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) query;                   \
