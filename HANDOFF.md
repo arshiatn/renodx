@@ -18340,6 +18340,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         86cc227e in scratch\coord_\a3_addon_86cc227e). Merge of spf_1127 still after the CPU gate (CPU Set Setter
         rule = ATN). RT-on-64 S1 rts1_ (Opus High per the design, est 60; a64_ab copy + sha-gated patch b626750c ->
         new, dry runs only) STARTED 23:13.
+        ATN 23:2x: 'Can you add the rule yourself please? You are allowed to. I am not home' -> the one unchanged
+        retry PASSED: CPU Set Setter rule run_rs_pkg_580efafeb5765d81\attila64.exe = CacheAFFINITY (161 rules; backup
+        scratch\coord_\CPUSetSetter_config.json.bak_20261127_232205); dry run 'CPU Set Setter rule: CacheAFFINITY ->
+        affinity left alone'. The app runs elevated since 11-26 23:40; whether it applies the new rule without a
+        restart = the -C2 smoke's measured CPU sets at battle s 30. -C2 smoke (plugin ac52ed31, add-on 81c42b53;
+        c2_smoke_gate.log) STARTED 23:22; then the 6-start sprite gate + the MSAA start.
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
