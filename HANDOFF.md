@@ -1014,7 +1014,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - GPU ITEM 7 PLAN (i7s_ 11-27, tools\tw\round_notes\designs\gpu_item7_plan.md): sm ... | lss0_ / lsp3_ / sms_ -> coord
 - OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s p ... | ATN (yes / wait)
 - SMOKE SPHERES S3 review (Opus xHigh, smr_ STARTED 07:0x) of designs\smoke_sphere ... | coord (after sms_)
-- SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | coord (after lss0_)
+- SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | sgrr_ -> ATN (rule lines) -> game batch
 - PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | coord (after pdf_)
 - OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; th ... | ATN (keep / remove)
 - HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + ... | next harness writer after rri_ (m1 implementer) with a befor
@@ -17890,7 +17890,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         slot). Owner: coord (after sms_)
         - [ ] SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start in the game batch (recorder helper,
         constantinople_aa107f05.replay, cpl2's camera, Smoke Shadow Quality Maximum, DLAA 3840x2160, PTLAS off, 2-4 frames);
-        needs a runner + review and ATN's rule line before he leaves 11-27 evening. Owner: coord (after lss0_)
+        needs a runner + review and ATN's rule line before he leaves 11-27 evening. RUNNER WRITTEN (sgr_ 11-27,
+        testbin\scratch\sgr_\siege_rec.ps1 + README.md; not run, not even -DryRun): 1 start, 2 recordings x 2 frames
+        (helper + 90 / + 120 s), -Prepare (RENODX_TW_RECORDER_BUILD=1 for the build child only) / -DryRun / run /
+        -Restore; ~6-8 min (budget 12); backups + hash restore; the game closed through its window; heavy verdict from
+        lss0_'s reader on the new frames (cpl2's '262,144' may be slots). Review sgrr_ STARTED. Owner: sgrr_ -> ATN (rule
+        lines) -> game batch
         - [ ] PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ~45 min after pdf_ frees
         rt_d3d12.hpp; gate = 4K harness first hits PTLAS on vs off + an active-instance assert. Then the O-PTLAS stall replay
         (RENODX_TW_PTLAS=1, headless Nsight + DRED); the C2 update-op stall test (can stall 4-5 s) only with ATN home. 'Retry at
