@@ -1033,8 +1033,10 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
-- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | rtf_ / c8f_ / p8af_ / p8bf_ / p59f_ -> coord (map edits, the
+- DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | c8f_ / p8af_ / p8bf_ / p59f_ -> coord (map edits, then imple
 - LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH ... | p8af_ / p8bf_ -> coord
+- MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-seco ... | coord (cpu_sets
+- SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creat ... | coord (next sol_fixes round)
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -18104,8 +18106,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         flips it). Steps: P1p Fable 5.2 Medium 60 / 120, R1-P1p Opus xHigh, F-P1p Sonnet High, P1a Opus High 35 / 70, S-C 3
         starts ~35 min. S-C = '-AB -Arms ep1c,ep8,ep8p2 -EnginePlugin -Probe full -Package <pkg_fixes> -Exe64Sha 580efafe...'.
         ATN: ep8p2 kind yes + rule lines; row hidden until S-C; if S-C shows +0..+2 % keep the row off (p2f_'s pick) or on; a
-        2-start pair if PK8 fails S-C. PK6 inputs collected (coord scratch p6f_inputs.md). Owner: rtf_ / c8f_ / p8af_ / p8bf_ /
-        p59f_ -> coord (map edits, then implementers)
+        2-start pair if PK8 fails S-C. PK6 inputs collected (coord scratch p6f_inputs.md). rtf_ DONE 11-27 (rt_port_64.md Rev 2 R2.1-R2.11, menu_stutter_1s.md Rev 2, both backup_32bit.md files; backups
+        testbin\scratch\rtf_\): RM1 R1-R3 on pkg_fixes 580efafe (run_rs_pkg_580efafeb5765d81), the -ReShade -PerfFix / -C2 +
+        -Package lift = PK6-64's (S1 stops if missing), 13 rule lines in start_1127.md (switch names fixed); RM2 crash stops
+        (CRASH / FATAL, crash_report, exit 4) + our-module lines -> told PK6's fix round (every 1.3.28 batch has the gap); RM3
+        order marked ATN confirms; RM4 S5e written in full (4 imm32 sites 0x30e46d8 / e3 / 0x30e470c / 17, key ShadowCascades=1,
+        restart only, Fable 5.2 Medium), ATN keep / drop (rtf_'s pick keep); RM5 S1 before the big batch, R2 arm E64-rrtm, G3 /
+        G3s / O1 owners named, ATN decides R1 / E64-dlaa in the batch (pick both); MS1 section 8 (Sol's film clock fix the
+        likely cause; ATN's by-eye look with SOLCAP Off at the end); BM1 F12 / K1. RS8: 35 includer files (Ryse / Tales /
+        Expeditions include twattila's rt_core.hpp). Map 3.3a + 6 item 9 replaced by coord 11-27. Owner: c8f_ / p8af_ / p8bf_ / p59f_ -> coord (map edits, then implementers)
         - [ ] LAST REVIEW lr4_ DONE (attila64\designs\last_review_pk8.md): PK8 Stage A GO WITH CHANGES (engine part GO; tooling
         and file lists only; seg 0 27.628 ms on 1.3.28 vs 27.627), Stage B GO WITH CHANGES (exactness, thread model,
         fingerprints hold; Sol's stack-check pattern in no fingerprinted range). C03 Step Pieces First stays PARKED (0.19 + 0.01
@@ -18122,6 +18131,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         B steps 1-8 after Stage A + S-C; the batch line + ep8,ep8b,ep8btt8 and the conditional ep8tt8; the guest deferral;
         census effort (High + xHigh read); scope notes (ships partly, mount class = the game's walk); default Off. Owner: p8af_
         / p8bf_ -> coord; ATN (the six items)
+        - [ ] MENU STUTTER a1 (s1s_ 11-25; rtf_ 11-27): optional tidy-up, drop the once-a-second ReadProcessCpus / SystemCpuSets
+        reads from cpu_sets.hpp Update() (:569-595, present thread); not tied to the stutter (likely Sol's 1.3.25 film clock
+        fix). Owner: coord (cpu_sets.hpp's next writer)
+        - [ ] SOL RELEASE CHECKLIST (rtf_ 11-27): add 're-diff dx_make_shader + the four creates per Sol release' to the
+        sol_fixes_<ver> checklist and record '1.3.28: same (lr5_ 11-27)'; note pkg_fixes (580efafe) = plain 1.3.28 code, b1 =
+        pkg_b1 (454ddb62); 1328 Present return is dx11_device.inc:497-498. Owner: coord (next sol_fixes round)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
