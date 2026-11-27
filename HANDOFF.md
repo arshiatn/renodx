@@ -361,41 +361,41 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - MIRRORS OF MADNESS START (run2_ 20:4x): game_startup_mode battle_benchmark / ben ... | next run batch
 - STEP 4 TRACES (nsr_ Low STARTED 22:2x): all 15 recordings BASE + SER on + SHaRC ... | nsr_, coordinator
 - RT / PT SETTINGS SWEEP (ATN 20:0x: "we are testing every RT and PT setting ... o ... | gpr_, coordinator ADDENDUM 11-25 night (ATN: 'for nsight rou
-- NSR1 sweep_coverage.py (offline, python -I): every rt_flags / rt_path_flags / rt ... | ?
-- NSR2 Nsight MCP readiness. Coord smoke 11-25 19:4x: list families OK (capture, r ... | ?
-- ATN: rule lines R1-R4 (exact text in nsr_handback.md '## Rule lines ATN must add ... | ?
+- NSR1 sweep_coverage.py (offline, python -I): every rt_flags / rt_path_flags / rt ... | nsr_
+- NSR2 Nsight MCP readiness. Coord smoke 11-25 19:4x: list families OK (capture, r ... | nsr_ nsr_ DONE 20:4x (plan_1117\nsr_handback
+- ATN: rule lines R1-R4 (exact text in nsr_handback.md '## Rule lines ATN must add ... | ATN, coord R1 / R4 CORRECTED by coord 21:0x before ATN added
 - Start nv-aftermath-monitor.exe before the sweep + its dump folder in the crash t ... | coord
 - P1: rt_di_flags + rt_diffuse_roughness as lab fields. Owner: gpr_ (NSR3) | gpr_ (NSR3)
-- ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); k ... | ?
-- lab.py trace_plan closes an idle session of ANY owner (same trap as -Stop): fix ... | ?
-- gto_ S4 re-scope: injection + ns_mcp attach_session / collect_trace; re-test the ... | ?
+- ns_capture_probe.py: player captures (--exe / --args or a lab kind 'capture'); k ... | next tooling slot (gti_ / gtl_)
+- lab.py trace_plan closes an idle session of ANY owner (same trap as -Stop): fix ... | gtl_
+- gto_ S4 re-scope: injection + ns_mcp attach_session / collect_trace; re-test the ... | gto_ follow-up
 - Cleanup on ATN's yes: testbin\scratch\nsr_\ident_a + prof_a (~520 MB, proof fold ... | ATN
-- NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, lin ... | ?
-- NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ?
-- gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | ?
+- NSR3 recordings: today's predate bridge v32 and the 64-bit add-on; PT DI 4b, lin ... | coord (run window), gpr_ (P1 / P2) OLD RECORDINGS (ATN 11-25
+- NSR4 strict rules: Forge 1 / 3 / 4 / 8 BUILT (lab + gate ids + budgets; iq_frame ... | ATN (enforce), coord nsr_ STARTED 11-25 19:5x (Opus High
+- gte_ hand-back -> gpr_ + gtw_ re-check of stage26 -> ATN's steps (golive + flip) ... | gte_, coord, ATN ATN 11-25 ~20:3x: 'is it possible to use it
 - gpr_ + gtw_ RE-CHECK stage26 (Opus xHigh, read-only + tests) -> GO / fixes. Owne ... | gpr_, gtw_
-- STAGE26 FIX ROUND (gte_ resumed, after gtw_'s hand-back, both reviews in one rou ... | ?
-- BEFORE ENFORCE: the coord's 'ATN plays' hold moves to gpu_lock.py acquire --pid ... | ?
-- ATN: install stage26b (section 3) at the morning wave boundary. Owner: ATN, coor ... | ATN, coord
-- gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a ... | ?
-- REVIEW ~12-09 (ATN: 'after a while we decide if we even need the 2x stop'): coun ... | ?
+- STAGE26 FIX ROUND (gte_ resumed, after gtw_'s hand-back, both reviews in one rou ... | gte_, coord gtw_ r26 GO 11-25 21:2x (plan_1117\gtw_r26_reche
+- BEFORE ENFORCE: the coord's 'ATN plays' hold moves to gpu_lock.py acquire --pid ... | coord gtw_ stage26b RE-CHECK GO 22:14 (12 min
+- ATN: install stage26b (section 3) at the morning wave boundary. Owner: ATN, coor ... | ATN, coord d11v_ (lane I review, Opus xHigh) STARTED 20:5x
+- gte_ open items: gtp_ round 26 (R25-2..6, HARNESS narrowing, commit repo after a ... | gtp_, coord
+- REVIEW ~12-09 (ATN: 'after a while we decide if we even need the 2x stop'): coun ... | coord, ATN
 - (2) DEFAULT CAP: a command without a price history runs under budget.py watch's ... | gtb_
-- ATN: PROPOSED block rows: T16 (block -Stop until gtl_'s owner fix; coord's view: ... | ?
-- CRASHES CLOSED WITHOUT A PITFALL ROW (pfx_'s list): F31 / ecr_ exit race ('the d ... | ?
-- pitfall_check.py report: line numbers drift on HANDOFF.md (4 lone CR bytes; file ... | ?
+- ATN: PROPOSED block rows: T16 (block -Stop until gtl_'s owner fix; coord's view: ... | ATN
+- CRASHES CLOSED WITHOUT A PITFALL ROW (pfx_'s list): F31 / ecr_ exit race ('the d ... | coord
+- pitfall_check.py report: line numbers drift on HANDOFF.md (4 lone CR bytes; file ... | gtp_ (next gate round)
 - F16 ROUNDING AUDIT (pdi5_ 11-25 19:4x, G4): f32tof16 rounds toward zero (pdi5_ c ... | coord (audit), each file's owner
 - LAB -STOP TRAP (bal3_ 19:35): gpu_lab.ps1 -Stop closes WHATEVER lab session is o ... | gtl_ (lab), next tooling slot
 - GPU LOCK FAIRNESS (pdi5_ 20:3x): the lab gives up after 22.5 s on a held gpu_job ... | gtl_ (lab), next tooling slot pdi5_ GPU DONE 21:14 (last ses
 - GPU CHECK SPEED (ATN 11-25 ~21:5x: 'for nsight we check why x took y time; what ... | gsi_, coord
-- FIX 15 SHARED LOCK MODE (ATN 11-25 ~23:0x 'run multiple recordings?'). Coord mea ... | ?
-- GSI SWAP: swap.ps1 -Check | -Swap | -Rollback (refuses unless safe + live == ori ... | ?
-- GSI GPU GATES (one GPU turn each, ~40 min for fix 15): fix 1 (8 E4 runs old vs n ... | ?
+- FIX 15 SHARED LOCK MODE (ATN 11-25 ~23:0x 'run multiple recordings?'). Coord mea ... | gsi_, coord gsi_ DONE 23:15 (63 min vs 90
+- GSI SWAP: swap.ps1 -Check | -Swap | -Rollback (refuses unless safe + live == ori ... | coord
+- GSI GPU GATES (one GPU turn each, ~40 min for fix 15): fix 1 (8 E4 runs old vs n ... | coord, then the helper writer slot
 - WORKTREE BUILDS NEED slangc (pdi5_ 22:1x): gated_build twattila configure fails ... | coord (next tooling slot)
 - CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO ... | ATN (answers), coord (M6 plan) ATN 11-25 20:3x: 'We agree to
-- Caesar's test build (Flag Wave export + heapfix.ini key append) -> ATN relays -> ... | ?
-- 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20 ... | ?
-- ATN: are the stuttering cutscenes films or in-engine scenes? Optional quick A/B: ... | ?
-- coord: analyse the test files; draft b1 (+ b2) for Sol (credit RenoDX / ATN, MIT ... | ?
+- Caesar's test build (Flag Wave export + heapfix.ini key append) -> ATN relays -> ... | Caesar (via ATN), coord
+- 64-BIT MENU / CUTSCENE 1 s STUTTER (ATN: 'maybe we find a fix'): s1s_ STARTED 20 ... | s1s_, coord s1s_ DONE (attila64\designs\menu_stutter_1s
+- ATN: are the stuttering cutscenes films or in-engine scenes? Optional quick A/B: ... | ATN
+- coord: analyse the test files; draft b1 (+ b2) for Sol (credit RenoDX / ATN, MIT ... | coord
 - GPU PLAN (11-24 status: plan_1117/resume_1124.md: fix1_, G1, SHaRC 1.8.3, SER R1 ... | coordinator
 - CPU BENCH ON HOLD (ATN 21:0x: "Don't do the CPU runs yet please. I am still tryi ... | ATN
 - SOL 6.2 REVIEW (ATN 21:1x gave Downloads\Attila_CPU_for_ChatGPT\Attila-CPU-Sol62 ... | ATN (EJOB / EVEC / EHALF integration stay with ATN's ChatGPT
@@ -437,7 +437,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT GI / ReSTIR owner: ATN's paths (flags 36913) noise floor 18-20 % from 4 to 16 ... | ?
 - reflection owner: r3_refl boxes +0.45 % / edge +3.1 % bias, already before H0 (h ... | ?
 - who owns the build env: gated_build's stderr shows `'vswhere.exe' is not recogni ... | ?
-- ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). | ?
+- ATN (cleanup list): tools\tw\h0\__pycache__ (07:42) may be deleted (upr_ 08:3x). ... | ?
 - lab owner (later, optional): record `dxr12` (machine state from config's answer) ... | ?
 - ATN (morning report): player risk - a cold shader cache (driver update / new rel ... | ?
 - c3i_ (nits, optional): N1 26g header lists test 8 (RigidAddOrder, not in 26g) + ... | ?
@@ -524,12 +524,12 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN (optional): raise CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS (20 now) if he wants ... | ?
 - gtl_ "uses diag" (sent 20:02): why the uses log has no stem rows (resident's use ... | ?
 - gtl_ stage3 suites in the sandbox (GO 20:02, lock free); landing only after ALL ... | ?
-- coord: Opus xHigh reviews for g08_ + g14_ when slots free (queued groups first). | ?
+- coord: Opus xHigh reviews for g08_ + g14_ when slots free (queued groups first). ... | ?
 - render_mt (lg3_ notes, out of scope): wire Describe() to device_loss::stall_note ... | ?
 - coord after the restart: lg3_'s zombie engine_code.exe in testbin\scratch\lg3_\e ... | ?
 - coord: land g12_'s land_list.md after `sha256sum -c base_hashes.txt` (merge by h ... | ?
 - render_mt (g12_): twattila/test_hooks.hpp: stable-sort RENODX_TW_SET / SET_FILE ... | ?
-- coord: Opus xHigh review of g12_'s staged diff (tools, review per group). | ?
+- coord: Opus xHigh review of g12_'s staged diff (tools, review per group). gtp_ R ... | ?
 - gtw_ (a0b03d68655ebfcaf) + gpr_ (aa304b6e977350cc3) re-check round 22 on gtp_sta ... | ?
 - gtp_ golive round 22 (bak29, swap gate_hook.py + run_tests.py, shas, mode.txt sh ... | ?
 - D2 in-game batch (g07_): an SSR trace (in-game SSR on, wet / polished floor or w ... | ?
@@ -542,7 +542,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ corpus (sent 20:25): corpus.json:1472 "Depth A", :1481 a real site name; af ... | ?
 - g07_ Opus xHigh review of ho_g07 (queued at the 20-agent cap) -> g07_ fixes -> r ... | ?
 - b3s_ fixes (sent 20:28) BEFORE S6 makes Check selectable: M1 ring released after ... | ?
-- b3t_: M7 = S3 Should 1 (animation_rows.inc tests) (sent 20:28). | ?
+- b3t_: M7 = S3 Should 1 (animation_rows.inc tests) (sent 20:28). g11_ DONE 20:3x ... | ?
 - g11_ Opus xHigh review (queued at the cap) -> fixes -> coord lands the land list ... | ?
 - later: commit the handwritten licenses/NVIDIA_NOTICE.txt (only in the old player ... | ?
 - gtl_ (sent 20:3x): helper_du_rec2 RECORDER build from e7eff346c (new folder) + s ... | ?
@@ -581,7 +581,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - render_mt owner: sort the SET entries by time when they are read (g12_'s request ... | ?
 - g11_'s test folder testbin\scratch\g11_\test (1.4 GB): g11_ deletes it on ATN's ... | ?
 - merge order: ho_g21 first, together with g02_'s list commit; then ho_g10's expec ... | ?
-- H2 A/B run after ATN adds a rule for it (or runs it himself). | ?
+- H2 A/B run after ATN adds a rule for it (or runs it himself). REVIEWS STARTED 21 ... | ?
 - g13_'s land list: parity_check.py lands together with parity\skips.tsv (after rv ... | ?
 - trace requests from the groups (in-game batch): D1 beach / Black Cove + torch sc ... | ?
 - RELEASE GATE: wave 1 (ho_g08, ho_g09 + G07's light-bounce rename, ho_g07 to 67d4 ... | ?
@@ -597,7 +597,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - merge ho_g02 a015262e6 TOGETHER with ho_g21 f7fb7a901 (shared atlas_far_plane.hp ... | ?
 - g02_ trace requests: WH1 CDCF1ADD far campaign terrain; WH2 snow / rain VFX rows ... | ?
 - WH1 / WH2 failed-trace edge: fix is in rt_scene.hpp -> g18_ (request routed). | ?
-- Rome Remastered fxaa gather check (GatherGreen like WH2 / Troy) -> g04_. | ?
+- Rome Remastered fxaa gather check (GatherGreen like WH2 / Troy) -> g04_. rvf_ SP ... | ?
 - grs_: record null-view rows at rt_d3d12.hpp:3071 (after gbf_'s rt_d3d12.hpp work ... | ?
 - gti_: dead_outputs.py reports "no store (null view)" for such rows instead of un ... | ?
 - gtl_ optional Low items (later stage): L1 Toolhelp snapshot keeps only the asked ... | ?
@@ -646,7 +646,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - item 1 add-on lines (g20_ gives exact lines): WH1 + WH2 -> G02; WH3 -> render_mt ... | ?
 - Faster GT-VBAO row (ATN 10, Experimental, off): G20 next wave after render_mt's ... | ?
 - g07_ next wave: build D2, d2_passes plain + -TexelMutant, ve_g10 (MA1 autoexposu ... | ?
-- D2 VFX half resolution (rvb_ MI3) BLOCKED on R2: a VFX-heavy combat trace + Time ... | ?
+- D2 VFX half resolution (rvb_ MI3) BLOCKED on R2: a VFX-heavy combat trace + Time ... | next D2 round
 - twattila/output_encoding.hpp:36 comment still says D2 never configures it (g07_ ... | ?
 - D2 Shadow Map Size in-game list (8 checks) in handbacks/g07_part_handback.md, fo ... | ?
 - t4i_ "gates" (sent 22:2x): G1 MAJOR LATCH R2 row for R2's 3 "off for the session ... | ?
@@ -684,7 +684,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - ATN 15 Shogun 2 per-map fit FIRST in the next wave (g04_): run scratch explore2 ... | ?
 - psycho35.hlsli owner: an ApplyPsychoV35 overload with a float4 knob scale (g04_ ... | ?
 - g04_ item 4 trace (MI8): Shogun 2 smoke battle (vfxoverlay00 draws' VS / IA / st ... | ?
-- g04_ item 7 (unseen-lights row) needs a helper flag (GPU plan's files). | ?
+- g04_ item 7 (unseen-lights row) needs a helper flag (GPU plan's files). rvc_ G09 ... | ?
 - BEFORE THE RESTART: copy the coord scratchpad (incl. t4i_bak, r3_08NN patches, h ... | ?
 - RELEASE GATE: NO Shogun 2 player release until the per-map fit lands (rvd_ R-MI3 ... | ?
 - g04_ per-map fit conditions (rvd_): replace tonemap.hlsli:417's slope / 0.88 con ... | ?
@@ -734,14 +734,14 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - coord: apply gtp_stage24\gated_build.ps1.proposed between builds (after exd_'s b ... | ?
 - gate hook round 24 golive (bak29 shadow) only after gpr_ + gtw_ GO; the suite st ... | ?
 - gbf_ builds + WARP exact after ATN's restart, then gbr_ (a661373416057b2f5) re-c ... | ?
-- gate hook round 25: gpr-R24-1 glued-quote join (Low). | ?
+- gate hook round 25: gpr-R24-1 glued-quote join (Low). exd_ DONE 22:2x (render_mt ... | ?
 - window-closed stress_test_log2 exit soak with the Exit Job Drain build (after AT ... | ?
 - gtp_ (abd95a89172354976): quiet mirror suite from bash + shadow golive bak29 (ro ... | ?
 - eba_ r2 -> ebr_ re-check -> t4i_ final-bench data; ATN Q9 (W3 Go < 8 ms) in the ... | ?
 - ETL evaluator proof on WPR-W3-5 b1.1 (driver-wait Go) while ATN is not playing, ... | ?
 - after the final bench: ebo_make.ps1:368 cut fold '-le' + a test with a cut on a ... | ?
 - ATN at READY: add the run rules for `ebo_run.ps1 -Final` / `-Final -DryRun` (+ - ... | ?
-- ebr_ review of t4i_ FINAL, then the real -Final -DryRun after the RC build. | ?
+- ebr_ review of t4i_ FINAL, then the real -Final -DryRun after the RC build. g23_ ... | ?
 - G23 implementation (after the final bench; helper files = GPU plan helper queue ... | ?
 - t4i_ part 3 (above) -> then ebr_ (a41704a31fb3d6080) reviews ALL of t4i_ FINAL a ... | ?
 - ATN at READY: allow `powershell -NoProfile -ExecutionPolicy Bypass -File C:\User ... | ?
@@ -773,7 +773,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - 5090 timing of GT-VBAO V1 / V2 (on by default once they pass) in the GPU window; ... | ?
 - ATN (later, with numbers): Faster GT-VBAO (V3) is 10.3 % worse with Auto Thickne ... | ?
 - rvh_ G23 code review 1 -> g23_ fixes -> re-check; then gbf_'s ho_gbf_g23 review ... | ?
-- G23 H9 GPU tests T2-T4 in the GPU window (ATN's go). | ?
+- G23 H9 GPU tests T2-T4 in the GPU window (ATN's go). GATE HOOK STAGE25b LIVE (AT ... | ?
 - Fable 5.2 High review of mem_ r2 (with rvm_'s re-check), once. | ?
 - FCA: 8 Opus xHigh analysts -> Fable 5.2 xHigh completeness critic -> ranked list ... | ?
 - G-S2 (owner g23_): ngx_backend.hpp FENCE_TIMEOUT -> GPU_WAIT_TIMEOUT once gbf_'s ... | ?
@@ -792,8 +792,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Helper owner (rvm_ n2 / n3): set re-sent under an old key while the pool is full ... | ?
 - Blood-pack shaders (Attila / Thrones 812 incl. 188 ps_4_1 gather shadow variants ... | ?
 - Stale comment twattila/rt_scene.hpp:633 names SkipGameSsao (G18 owner). WH1 :227 ... | ?
-- g14r_ r3 tool follow-up (report_check.py) still open. | ?
-- Rome II Specular Occlusion: the commit that later hooks it (traced reflections) ... | ?
+- g14r_ r3 tool follow-up (report_check.py) still open. g19_ F1 sent (branch ho_g1 ... | ?
+- Rome II Specular Occlusion: the commit that later hooks it (traced reflections) ... | whoever lands Rome II traced reflections
 - g24_ boxes: pair: claims need constant-logging traces; Expeditions tracer 'view ... | ?
 - bench WPR tasks must not take focus (fa3_ (d)) + false 'FAIL (6 fails)' switch l ... | ?
 - trap open questions (harness / game only): does alt-tab trigger it in normal pla ... | ?
@@ -840,20 +840,20 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - t4i_ adds ebo_run.ps1 -Data (2 W3 starts + PK4 check start + PK5 sampler window, ... | ?
 - Q41 (ATN 17:0x: 'why can't it use more rays to clean up lower DLSS scalings?'): ... | ?
 - pk4_ Rev 1.2 -> rv4_ light re-check -> tell p4i_ what changes for S2 / S3; pk5_ ... | ?
-- FRIDAY 11-27: pk4_ (Fable) the 4 NITs in 7.2 / 7.3 / 4.7 (rv4_'s list) + the fli ... | ?
+- FRIDAY 11-27: pk4_ (Fable) the 4 NITs in 7.2 / 7.3 / 4.7 (rv4_'s list) + the fli ... | CPU plan (cpu_plan_64_map
 - Coord: real gbf gates (gbf_gpu_gates.ps1, no switch) in the first quiet GPU wind ... | ?
 - rvg_ 13.10 light re-check: send AFTER 'rvg_ trc review' lands (one task at a tim ... | ?
-- S8 (TW audits) prerequisite: TW frame tracer writes a 'view WxH buffer WxH' line ... | ?
+- S8 (TW audits) prerequisite: TW frame tracer writes a 'view WxH buffer WxH' line ... | tools agent (GPU plan)
 - ATN OK 11-24: the ONE Attila -Data session runs BEFORE Friday when t4i_'s PK6 r2 ... | ?
-- FRIDAY 11-27: pk5_ folds A2-1..A2-6 + the 5 NITs into pk5_design.md (rv5_ light ... | ?
+- FRIDAY 11-27: pk5_ folds A2-1..A2-6 + the 5 NITs into pk5_design.md (rv5_ light ... | CPU plan (PK5-64, cpu_plan_64_map
 - Data session (t4i_ -Data): log the arena's state words at first present + battle ... | ?
 - mem_ / address space: PK5 A2 adds +0.25 MB. | ?
 - PK5 S0 microbench (pk5_ q2): coord runs it in a quiet CPU window (no ATN questio ... | ?
-- FRIDAY 11-27: PK5 implementer (Fable Medium) S0+ incl. S7, after PK4's steps and ... | ?
-- FRIDAY 11-27: pk3_ writes in R3-M1 / R3-M2 + SHOULDs / NITs (rv3_ light check) - ... | ?
+- FRIDAY 11-27: PK5 implementer (Fable Medium) S0+ incl. S7, after PK4's steps and ... | CPU plan (PK5-64 implementer, Fable Medium)
+- FRIDAY 11-27: pk3_ writes in R3-M1 / R3-M2 + SHOULDs / NITs (rv3_ light check) - ... | CPU plan (cpu_plan_64_map
 - t4i_ after rv3_ GO: render_mt\ebo\gates.json + a LATCH gate 'an item changed bet ... | ?
 - Friday pk5_ fold-in: PK5 tail code writes only mapped rows (never instance +0x60 ... | ?
-- PK7 heapfix package: pk3_ 15.13 note (only ATN sends). | ?
+- PK7 heapfix package: pk3_ 15.13 note (only ATN sends). s1a_ M1 DONE + MERGED (pl ... | ?
 - s1a_ FOUND (note in s1a_m1_handback.md): with the row ON, m1's apply can write N ... | ?
 - Coord GPU window: s1a_ item t (5090, gpu_job.lock): powershell -NoProfile -Execu ... | ?
 - PARKED (ATN hold 11-24): trc_ fixes MUST-1..3 + SHOULDs -> rvg_ re-check -> merg ... | ?
@@ -868,103 +868,102 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - decision 7 'Keep Battle Core Free' (ATN 11-24: 'Good idea but I am already givin ... | ?
 - ATN: D15 if the inline arm wins, where the default lives (rec: a restart-only pl ... | ?
 - ATN 11-24 ~00:0x going to sleep: 'I am not going to play or use my pc ... No nee ... | ?
-- L2B NEXT: W0 (block v2 agreed with C8 wave 2, 6 points in the design; plugin_des ... | ?
+- L2B NEXT: W0 (block v2 agreed with C8 wave 2, 6 points in the design; plugin_des ... | c8b0_ (B0, 11-27) -> L2B W2 writer
 - ATN 10:2x: ONE 'CPU' PAGE for 64-bit Attila (ours live / restart per row; PerfFi ... | ?
 - D: FULL 10:17 (0 bytes; C: 12.6 GB): pds2_'s HARNESS_DUMP verify dumps in its wo ... | ?
 - 64-BIT CPU DESIGNS STARTED 10:4x (Opus xHigh, read only, no builds; each -> Opus ... | ?
 - S4 HARNESS GAP (tooling, fix now): no harness mode reaches Own ReSTIR's Validate ... | ?
-- s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, ha ... | ?
-- LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_f ... | ?
-- REFLECTION REUSE 'FROM ReSTIR GI' FIX (rt_path.hlsli ReflectPixel, PATH_REFLECT_ ... | ?
-- BALANCED RAYTRACED CHOICE: bal3_ (Opus High, worktree, branch bal3_raytraced) ST ... | ?
-- bal3_ route-b cost numbers (after 'bal3_ resume') -> review (Opus xHigh) -> merg ... | ?
-- PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_
-- ATN NUMBERS (morning): Torch Light in PT GI (Experimental, off) = B12C2: +0.06 d ... | ?
-- pdi3_ OPEN: multi-ray builds (rt_path, rt_path_sharc, rt_path_ser) never reached ... | ?
-- pd3c_ S1 (S4 half closed): the lab swaps stems right after LoadPlayback (rt_serv ... | ?
-- pd3c_ S2 (S3 measured, not fixed): reference's seen route uses each variant's T2 ... | ?
-- pd3c_ S3 BEFORE ATN CHOOSES B12C2: E4 night128 on ec96c503c with NO_VALIDATE and ... | ?
-- pd3c_ S4 MISSING BOXES: S5 probe gate still open (x1.07 at 29 / 128); pre-existi ... | ?
-- pd3c_ S5 SOURCE COMMENTS (Forge): Validate keep cites RTXDI; TORCH_CANDIDATES 2 ... | ?
-- ATN NUMBERS (if no step-3 variant meets total +0.05 / ReGIR 0.02 on the final he ... | ?
-- PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | ?
-- F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_t ... | ?
-- CLEANUP after steps 3 + 5 merge: one shared OctahedralFold / OctahedralUnfold in ... | ?
-- PITFALL (pd4r_): RTXDI_ALLOWED_BIAS_CORRECTION is a user macro only SpatialResam ... | ?
-- PITFALL (pdi4c_): a Python rewrite of a CRLF working file left mixed line ending ... | ?
-- PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row ... | ?
-- PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | ?
-- UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | ?
-- U6 PART 1 MERGE (origin/u6f_fog bc623e2d3) together with part 2. Owner: coord (a ... | coord (after steps 3 + 5)
-- U6 PART 2 MUSTS (u6f_part1_review.md): P1 FOG_HISTORY = shade ran last trace at ... | ?
-- D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | ?
-- d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ?
-- FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | ?
-- d11 NITs (64 vs 8 OM slots check on the first dump, static_cast<void>, stoull gu ... | ?
-- ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ?
-- d11f_ SCRIPT FIX STARTED 06:2x (Opus High, CPU only, .bak_d11f): Note never thro ... | ?
-- d11 SCRIPT v1 LOCK RECORDS (cost of the 06:10 crash: every build / GPU job waite ... | ?
-- d11 CAPTURE RETRY (ATN 09:3x 'Yes, retry'): d11c_ resumed; START 2 of the round ... | ?
-- SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATT ... | ?
-- gpu_lock.py UNSTICK (ATN 09:4x 'Yes, build it': a backup for stale locks while h ... | ?
-- ATN'S ANSWERS 11-26 ~10:5x (to the overnight report): (1) P3 dark + P5 rule line ... | ?
-- ATN 11-26 ~11:3x QUESTIONS: (6) 'are you really sure RR before the tone mapper + ... | ?
-- ATN 11-26 ~11:5x (before work): (a) 'Always use 4K for everything' -> RULE (memo ... | ?
-- d11 START 3 VOID 11:50 (1 of 1 trimmed starts): movie keys OK (intro skipped in ... | ?
-- pdi4c_ GPU TURN DONE 11:47 (148 min vs ~100, 1.48x; handbacks\pdi4c_handback.md ... | ?
-- lsp2_ DONE 11:49 (9 min): all 7 recorded frames (live_proof / live_proof2) hold ... | ?
-- sdk_ DONE 11:52 (12 min; round_notes\sdk_audit_1126.md): every runtime DLL we sh ... | ?
-- lsp2_ 4K GPU DONE 11:52 (42 runs, 28 s; lsp_\lsp2_\results\20261126_115211\lsp2_ ... | ?
-- SOL'S PORT IS NEWER THAN OURS (coord 11-26 ~12:1x, ATN 'check if we got the newe ... | ?
-- pdi4c_ r5 READY 12:2x: origin/pdi4c_step4c_r5 = 9bf2313a3 (27 commits on ce1f836 ... | ?
-- d11g_ DONE 12:3x (9 min; testbin\scratch\d11g_\report.md): ROOT CAUSE of start 3 ... | ?
-- FIX WAVES 11-26 (wvp_ DONE 12:2x, 24 min: plan_1117\fidelity\wave_plan_1126.md = ... | ?
-- ATN 11-26 ~13:0x: (1) paste 1126b ADDED (allow 91: fx1_run.ps1 wildcard + WebFet ... | ?
-- r4k_ 4K AUDIT DONE 12:10 (19 min; round_notes\tests_4k_audit_1126.md): 21 GPU te ... | ?
-- ATN 11-26 ~12:2x: (1) run_4k.ps1 rule ADDED (allow 92) -> the coord runs `& run_ ... | ?
-- d11 START 4 VOID CAUSE: the camera line came (the 620049332 fix works), but the ... | ?
-- WAVES 12:3x: fx0b_ DONE (13 min; branch fx0b_w0b: 554af2693 rt_reference RefRout ... | ?
-- MERGED 11-26 ~13:1x: W0b 819d945f9 (fx0b_w0b; gated amd64 + x86 61 warnings, hel ... | ?
-- READY, NOT MERGED (merge order W6, W5b, W-H, W5a, W3): fxh_wh (W-H, see 12:3x); ... | ?
-- rrb_ DONE (34 min + 26 parked; plan_1117\designs\rr_before_tonemap.md): F1 ~90 % ... | ?
-- ATN 13:0x asked why '39.8 GB': not VRAM = Windows commit (RAM + page file reserv ... | ?
-- W6 MERGED 8f8bf5d62 (fx6_w6, 24 min of 60): X26 9d5f27a89 ffx_sssr.h valid_hit = ... | ?
-- D1 / sst_ DONE (29 min; plan_1117\designs\sss_scale_thickness.md): Bend's window ... | ?
-- h4k_ STOPPED AT A SAFE POINT (23 min; handbacks\h4k__handback.md): ITEM 1 DONE: ... | ?
-- pdi4c_ r6 (12:4x, local commits, push asked): S1 7a28d0114 (+ f4e579616 fused-bu ... | ?
-- D2 DONE (14 min; plan_1117\designs\cost_caps_q5.md): lsp_'s 4K quads_uncapped ar ... | ?
-- fx5b_ DONE (branch fx5b_w5b 3575ac0af, not merged; next in merge order after W6) ... | ?
-- ALL 7 FIX WAVES MERGED + PUSHED 11-26 (origin/atn-mods 3415dba18): W0b 819d945f9 ... | ?
-- pdi4c_ M2 TRACED AT 4K (r6): DI-interior E vs the bits (6.84 M px, band 2) r6 0. ... | ?
-- rrbi_ DONE (72 min of 90; branch rrbi_ c45733245, merged locally 6fc08a593, push ... | ?
-- W8 STARTED 15:1x (fx8_, Opus High, est 130): D1's A' (SSS at one screen pixel pe ... | ?
-- h4k_ DONE ON THE CPU, GPU PARTS NOT RUN (14:26; hand-back handoff_plan\handbacks ... | ?
-- 11-26 14:3x-14:5x (ATN in a break): (1) 64-bit licence record saved: tools\tw\at ... | ?
-- sb1_ DONE (b1 in testbin\attila64_1124\sol_fixes_1124, out\b1_20261126_1433): So ... | ?
-- SOLCAP (ATN 11-26 ~15:0x: Sol's frame cap OFF by default, 'it would ruin our Ref ... | ?
-- 4K REFERENCE SET: ATN ADDED THE RULE LINE 11-26 ~15:1x (ref_set.ps1 *). GPU orde ... | ?
-- cw1_ MERGED 8adf80664 (comments only, 9 files, every block keeps its line count) ... | ?
-- ATTILA AA FEED vs LINEAR t00 (found by cw1_'s comment pass, a PRODUCT question, ... | ?
-- W8 MERGED b9a5cf080 -> REVERTED 182c83dc6 (see the G1 box below) (fx8_w8 ac18984 ... | ?
-- gts_ STARTED 16:0x (Opus High, est 120; ATN: outside the cap): GPU test speed + ... | ?
-- 4K M6 BASELINE PASS 16:07 (all_modes_check -NewBaseline -Rev ce1f83655, 85 min G ... | ?
-- 64-BIT LOADER 1.3.27 / 1.3.28 OUT (11-26, public repo 0af665a4ad76 / 6ef3e72bcca ... | ?
-- W8 G1 FAILED -> REVERTED 182c83dc6 (src / test = the pre-merge tree 505959548, b ... | ?
-- 64-BIT CPU PREMISES MOVED (loader 1.3.24 / 1.3.25, in public 1.3.27 / 1.3.28): t ... | ?
-- A' BELOW 100 %: ATN 11-26 ~16:3x 'I would like to have it on' -> fx8_reland keep ... | ?
-- CPU PLAN STEP 0 (ATN 11-26 ~16:4x): the loader-1.3.28 A/B is now step 0 of the 6 ... | ?
-- 64-BIT BASE 1.3.28 READY (s128_ 11-26 16:2x; testbin\attila64_1124\sol_fixes_112 ... | ?
-- NSIGHT GPU TRACE ON NATIVE D3D11 (11-26, another RenoDX member's work, shown by ... | ?
-- USAGE 11-26 16:4x: no new agents today; running ones finish; only gts_, ab0_ + t ... | ?
-- tw_rt_open_sky's default -Expect is outdated (the 'exact' values already hold): ... | ?
-- TEST DUMP DIGESTS (gts_ 11-26): the harness hashes / checks the frames in RAM an ... | ?
-- W8 RE-LANDED, MERGED 5c2c5042f (fx8_reland 498a63470): A' code only in 5 new sss ... | ?
-- ATTILA AA FEED (aaf_ 11-26, measured only; testbin\scratch\aaf_\table_out.txt): ... | ?
-- gts_ FOLLOW-UPS (11-26 17:22, scratch\gts_\pc\compare_c.txt): DI hashing on a wo ... | ?
-- pdi4c_ r6 FINAL (origin/pdi4c_step4c_r6 148731b35; hand-back pdi4c_handback.md:5 ... | ?
-- GAME BLOCK 11-26 17:23-18:18 (11 starts, all clean exits): (a) 1.3.28 smoke with ... | ?
-- NEXT MERGE sdku_omm_dxc: its G1-G3 (Nsight DXC speed gate, OMM grass recording p ... | ?
-- CPU STEP 0b (19:30): spin on + L2B 134.72 = base 134.74 ms in one batch -> nothi ... | ?
+- LAB TOOL: rt_serve.h SHARED_FIELDS has no per-kind rt_path_flags (e.g. rt_path_f ... | coord (after pdi3_ merge) Evening: helper side done on pdi5_
+- REFLECTION REUSE 'FROM ReSTIR GI' FIX (rt_path.hlsli ReflectPixel, PATH_REFLECT_ ... | next helper fixer after steps 3 + 5 merge (ReflectPixel is i
+- BALANCED RAYTRACED CHOICE: bal3_ (Opus High, worktree, branch bal3_raytraced) ST ... | bal3_ bal3_ HAND-BACK 11-25 20:3x (handoff_plan\handbacks\ba
+- bal3_ route-b cost numbers (after 'bal3_ resume') -> review (Opus xHigh) -> merg ... | bal3_, coord bal3_ PAUSED its chain 20:4x after job 02 bal3b
+- PT DI STEP 3 (pdi3_) -> review -> fix round -> re-check -> merge (helper + twatt ... | pdi3_ pdi3_ DONE 00:0x: FINAL HEAD ec96c503c (149e75363 S4 +
+- ATN NUMBERS (morning): Torch Light in PT GI (Experimental, off) = B12C2: +0.06 d ... | ATN
+- pdi3_ OPEN: multi-ray builds (rt_path, rt_path_sharc, rt_path_ser) never reached ... | Nsight sweep (NSR1)
+- pd3c_ S1 (S4 half closed): the lab swaps stems right after LoadPlayback (rt_serv ... | step 3 follow-up (after 4c merges)
+- pd3c_ S2 (S3 measured, not fixed): reference's seen route uses each variant's T2 ... | same
+- pd3c_ S3 BEFORE ATN CHOOSES B12C2: E4 night128 on ec96c503c with NO_VALIDATE and ... | GPU queue (after pdi4c_)
+- pd3c_ S4 MISSING BOXES: S5 probe gate still open (x1.07 at 29 / 128); pre-existi ... | coord (critic pass)
+- pd3c_ S5 SOURCE COMMENTS (Forge): Validate keep cites RTXDI; TORCH_CANDIDATES 2 ... | coord pdi3_ HAND-BACK 11-25 20:2x (handoff_plan\handbacks\pd
+- ATN NUMBERS (if no step-3 variant meets total +0.05 / ReGIR 0.02 on the final he ... | pdi3_, coord -> ATN
+- PT DI STEP 5 (G2 pairwise MIS as one function, G4 compact reservoir, G5 neighbou ... | pdi5_ Owner map addition 19:xx: rt_d3d12
+- F16 AUDIT LIST (pd5r_, emulated drift): running averages that drift DARKER: rt_t ... | coord (next helper writer slot)
+- CLEANUP after steps 3 + 5 merge: one shared OctahedralFold / OctahedralUnfold in ... | coord (next helper writer slot)
+- PITFALL (pd4r_): RTXDI_ALLOWED_BIAS_CORRECTION is a user macro only SpatialResam ... | coord
+- PITFALL (pdi4c_): a Python rewrite of a CRLF working file left mixed line ending ... | coord
+- PITFALL G16: now proven (D3D11.3 3.2.2 cite, pdi5_'s controls) -> update the row ... | coord
+- PT DI STEP 4c (pdi4c_, Opus High, worktree, branch pdi4c_step4c from f23d665ca) ... | pdi4c_ Owner map addition (evening, coord OK): 4c's slots u7
+- UNIFIED U6 PART 1 (Volumetric ReSTIR fog, shader part behind its own define; own ... | u6f_ u6f_ PART 1 DONE (evening
+- U6 PART 1 MERGE (origin/u6f_fog bc623e2d3) together with part 2. Owner: coord (a ... | coord (after steps 3 + 5) SLOTS CLAIMED (coord): fog u85-u86
+- U6 PART 2 MUSTS (u6f_part1_review.md): P1 FOG_HISTORY = shade ran last trace at ... | u6f_ (part 2, after steps 3 + 5) pdi5_ STATUS (evening): G2 
+- D3D11 PASS SPEED (ATN 11-25 evening: SSS / GT-VBAO / GT-VBGI / SSSR now, 'record ... | d11s_ d11s_ DONE (evening
+- d11s_ QUESTIONS (picks): capture run yes; dump folder D:\Dev\d11_dumps yes; one ... | ATN (after d11r_) ATN 11-25 evening: no forest-with-units re
+- FROZEN 32-BIT = 32-BIT BACKUP (ATN 11-25 night: the fallback if the 64-bit port ... | coord (keep current) / ATN (revive) d11r_ REVIEW: GO WITH CH
+- d11 NITs (64 vs 8 OM slots check on the first dump, static_cast<void>, stoull gu ... | coord
+- ATN (not tonight; a game run): the 4 capture rule lines + OKs (env vars, set key ... | ATN / d11f_
+- d11f_ SCRIPT FIX STARTED 06:2x (Opus High, CPU only, .bak_d11f): Note never thro ... | ATN (locks + retry go)
+- d11 SCRIPT v1 LOCK RECORDS (cost of the 06:10 crash: every build / GPU job waite ... | d11f_ -> coord
+- d11 CAPTURE RETRY (ATN 09:3x 'Yes, retry'): d11c_ resumed; START 2 of the round ... | coord
+- SKIP THE INTRO MOVIES IN EVERY RUNNER (~2.5 min per start; steadier timing): ATT ... | d11f_
+- gpu_lock.py UNSTICK (ATN 09:4x 'Yes, build it': a backup for stale locks while h ... | unst_ -> ATN (paste)
+- ATN'S ANSWERS 11-26 ~10:5x (to the overnight report): (1) P3 dark + P5 rule line ... | ATN (Q2) / coord (G4 flip)
+- ATN 11-26 ~11:3x QUESTIONS: (6) 'are you really sure RR before the tone mapper + ... | coord / ATN (RR p 0
+- ATN 11-26 ~11:5x (before work): (a) 'Always use 4K for everything' -> RULE (memo ... | ATN (paste) / coord
+- d11 START 3 VOID 11:50 (1 of 1 trimmed starts): movie keys OK (intro skipped in ... | d11g_ -> coord
+- pdi4c_ GPU TURN DONE 11:47 (148 min vs ~100, 1.48x; handbacks\pdi4c_handback.md ... | pdi4c_ -> coord
+- lsp2_ DONE 11:49 (9 min): all 7 recorded frames (live_proof / live_proof2) hold ... | lsp2_ -> coord / ATN
+- sdk_ DONE 11:52 (12 min; round_notes\sdk_audit_1126.md): every runtime DLL we sh ... | ATN (yes / no) / next README writer
+- lsp2_ 4K GPU DONE 11:52 (42 runs, 28 s; lsp_\lsp2_\results\20261126_115211\lsp2_ ... | ATN (recording line, decision) / coord
+- SOL'S PORT IS NEWER THAN OURS (coord 11-26 ~12:1x, ATN 'check if we got the newe ... | ATN (Sol, where) / coord (A/B)
+- pdi4c_ r5 READY 12:2x: origin/pdi4c_step4c_r5 = 9bf2313a3 (27 commits on ce1f836 ... | pdi4cr_ / pdi4c_ / coord
+- d11g_ DONE 12:3x (9 min; testbin\scratch\d11g_\report.md): ROOT CAUSE of start 3 ... | coord
+- FIX WAVES 11-26 (wvp_ DONE 12:2x, 24 min: plan_1117\fidelity\wave_plan_1126.md = ... | the wave agents -> coord
+- ATN 11-26 ~13:0x: (1) paste 1126b ADDED (allow 91: fx1_run.ps1 wildcard + WebFet ... | coord / ATN (run_4k line)
+- r4k_ 4K AUDIT DONE 12:10 (19 min; round_notes\tests_4k_audit_1126.md): 21 GPU te ... | tools agent (after sdku_) / ATN (dump retention)
+- ATN 11-26 ~12:2x: (1) run_4k.ps1 rule ADDED (allow 92) -> the coord runs `& run_ ... | coord / pdi4c_ / h4k_
+- d11 START 4 VOID CAUSE: the camera line came (the 620049332 fix works), but the ... | coord
+- WAVES 12:3x: fx0b_ DONE (13 min; branch fx0b_w0b: 554af2693 rt_reference RefRout ... | coord
+- MERGED 11-26 ~13:1x: W0b 819d945f9 (fx0b_w0b; gated amd64 + x86 61 warnings, hel ... | coord
+- READY, NOT MERGED (merge order W6, W5b, W-H, W5a, W3): fxh_wh (W-H, see 12:3x); ... | coord
+- rrb_ DONE (34 min + 26 parked; plan_1117\designs\rr_before_tonemap.md): F1 ~90 % ... | ATN / coord
+- ATN 13:0x asked why '39.8 GB': not VRAM = Windows commit (RAM + page file reserv ... | coord
+- W6 MERGED 8f8bf5d62 (fx6_w6, 24 min of 60): X26 9d5f27a89 ffx_sssr.h valid_hit = ... | coord
+- D1 / sst_ DONE (29 min; plan_1117\designs\sss_scale_thickness.md): Bend's window ... | W8 implementer
+- h4k_ STOPPED AT A SAFE POINT (23 min; handbacks\h4k__handback.md): ITEM 1 DONE: ... | h4k_ / ATN
+- pdi4c_ r6 (12:4x, local commits, push asked): S1 7a28d0114 (+ f4e579616 fused-bu ... | pdi4c_
+- D2 DONE (14 min; plan_1117\designs\cost_caps_q5.md): lsp_'s 4K quads_uncapped ar ... | coord / implementer after the merges
+- fx5b_ DONE (branch fx5b_w5b 3575ac0af, not merged; next in merge order after W6) ... | coord
+- ALL 7 FIX WAVES MERGED + PUSHED 11-26 (origin/atn-mods 3415dba18): W0b 819d945f9 ... | coord / ATN (looks)
+- pdi4c_ M2 TRACED AT 4K (r6): DI-interior E vs the bits (6.84 M px, band 2) r6 0. ... | pdi4c_ / h4k_
+- rrbi_ DONE (72 min of 90; branch rrbi_ c45733245, merged locally 6fc08a593, push ... | ATN / coord
+- W8 STARTED 15:1x (fx8_, Opus High, est 130): D1's A' (SSS at one screen pixel pe ... | fx8_
+- h4k_ DONE ON THE CPU, GPU PARTS NOT RUN (14:26; hand-back handoff_plan\handbacks ... | coord / pdi4c_ / ATN
+- 11-26 14:3x-14:5x (ATN in a break): (1) 64-bit licence record saved: tools\tw\at ... | coord / sb1_
+- sb1_ DONE (b1 in testbin\attila64_1124\sol_fixes_1124, out\b1_20261126_1433): So ... | coord / cw1_
+- SOLCAP (ATN 11-26 ~15:0x: Sol's frame cap OFF by default, 'it would ruin our Ref ... | C8 wave
+- 4K REFERENCE SET: ATN ADDED THE RULE LINE 11-26 ~15:1x (ref_set.ps1 *). GPU orde ... | coord
+- cw1_ MERGED 8adf80664 (comments only, 9 files, every block keeps its line count) ... | next doc touch
+- ATTILA AA FEED vs LINEAR t00 (found by cw1_'s comment pass, a PRODUCT question, ... | next GPU-plan slot (Opus High), ATN (look)
+- W8 MERGED b9a5cf080 -> REVERTED 182c83dc6 (see the G1 box below) (fx8_w8 ac18984 ... | coord (G1), ATN (G2 look)
+- gts_ STARTED 16:0x (Opus High, est 120; ATN: outside the cap): GPU test speed + ... | gts_
+- 4K M6 BASELINE PASS 16:07 (all_modes_check -NewBaseline -Rev ce1f83655, 85 min G ... | pdi4c_ / coord
+- 64-BIT LOADER 1.3.27 / 1.3.28 OUT (11-26, public repo 0af665a4ad76 / 6ef3e72bcca ... | coord (ATN: now or next slot)
+- W8 G1 FAILED -> REVERTED 182c83dc6 (src / test = the pre-merge tree 505959548, b ... | fx8_ / ATN (below-100 % default)
+- 64-BIT CPU PREMISES MOVED (loader 1.3.24 / 1.3.25, in public 1.3.27 / 1.3.28): t ... | coord / Friday wave
+- A' BELOW 100 %: ATN 11-26 ~16:3x 'I would like to have it on' -> fx8_reland keep ... | fx8_ / next slot
+- CPU PLAN STEP 0 (ATN 11-26 ~16:4x): the loader-1.3.28 A/B is now step 0 of the 6 ... | coord
+- 64-BIT BASE 1.3.28 READY (s128_ 11-26 16:2x; testbin\attila64_1124\sol_fixes_112 ... | ab0_ / coord (game block)
+- NSIGHT GPU TRACE ON NATIVE D3D11 (11-26, another RenoDX member's work, shown by ... | ATN
+- USAGE 11-26 16:4x: no new agents today; running ones finish; only gts_, ab0_ + t ... | coord
+- tw_rt_open_sky's default -Expect is outdated (the 'exact' values already hold): ... | tests round
+- TEST DUMP DIGESTS (gts_ 11-26): the harness hashes / checks the frames in RAM an ... | coord / gts_ follow-up
+- W8 RE-LANDED, MERGED 5c2c5042f (fx8_reland 498a63470): A' code only in 5 new sss ... | coord / 11-27 design
+- ATTILA AA FEED (aaf_ 11-26, measured only; testbin\scratch\aaf_\table_out.txt): ... | 11-27 implementer, then ATN's A/B look
+- gts_ FOLLOW-UPS (11-26 17:22, scratch\gts_\pc\compare_c.txt): DI hashing on a wo ... | gts_ (11-27)
+- pdi4c_ r6 FINAL (origin/pdi4c_step4c_r6 148731b35; hand-back pdi4c_handback.md:5 ... | coord
+- GAME BLOCK 11-26 17:23-18:18 (11 starts, all clean exits): (a) 1.3.28 smoke with ... | coord / ATN (b1 upstream, 0b yes)
+- NEXT MERGE sdku_omm_dxc: its G1-G3 (Nsight DXC speed gate, OMM grass recording p ... | 11-27 GPU wave
+- CPU STEP 0b (19:30): spin on + L2B 134.72 = base 134.74 ms in one batch -> nothi ... | ATN (rule) / coord
 - PT DI S5G: the light_count mins' guard proofs (rt_di_surface.hlsli DiCurrentBuil ... | pdi4c_ follow-up (11-27+)
 - PT DI S6: DiStore's NaN / Inf / 65504 net, a one-frame count proving it inert (p ... | pdi4c_ follow-up (11-27+)
 - PT DI S7, S9, S11 / E5 judge: as in the pdi4cr_ review (pdi4c_handback.md:564 'B ... | pdi4c_ follow-up (11-27+)
@@ -974,173 +973,200 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PT DI M2 remainder: the last 0.14 % of DI-interior E after C5 (not blocking) (pd ... | pdi4c_ follow-up (11-27+)
 - PT DI switch-off transient (M1-trans): frames the bits mask needs to settle afte ... | pdi4c_ follow-up (11-27+)
 - R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
-- STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | ?
-- CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | ?
-- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | ?
-- gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | ?
-- SSS TEST FLAKE: test/tw_screen_space_shadows case 2 (100 %, Auto Thickness pole ... | ?
-- O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ?
-- GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | ?
-- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | ?
-- RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | ?
-- A/B LOOKS WAIT (ATN 11-27): every look / A/B check (AA feed, O2 thin shadows at ... | ?
-- GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds a ... | ?
-- sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the de ... | ?
-- PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ?
-- P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | ?
-- BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | ?
-- RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait ... | ?
-- CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | ?
-- Replay gaps (d11i_): sss.lights, smoke.map, ao.draw, bounce.sun_draw not replaye ... | ?
-- PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in | ?
-- CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | ?
-- CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | ?
-- CALLISTO C1: cal1_ (Opus High, worktree, branch cal1_c1) STARTED: new files only ... | ?
-- WARP HARNESS SHARED HELPER: ~190 lines copied from the vMF test into tw_callisto ... | ?
-- (PARKED 11-25 night: ship nothing; reopens if ATN likes vMF by eye) C1 MERGE (or ... | ?
-- ATN EYE TEST: vMF in game (its Experimental row, default 40 %) together with the ... | ?
-- CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent ... | ?
-- CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mism ... | later
-- CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ?
-- CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ?
-- SKILLS FOLLOW-UPS: F1 bringup's Balanced cell says Off / Basic / Raytraced: true ... | ?
-- PAGE DUMP TOOLING (testing.md's new trap row): root-cause Shogun 2's page-dump c ... | ?
-- RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | ?
-- RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ?
-- 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | ?
-- 4b ROW LINES (graphics_page.hpp): grey 'Torch and Fire Light from Path Tracing ( ... | ?
-- FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a v ... | ?
-- SOURCE FIDELITY AUDIT (ATN 11-26 ~00:1x: 'if we were not doing this paper's meth ... | ?
-- fa1_ B1 DI NEIGHBOUR RAY ORIGIN (bias, new): spatial bias ray + fused neighbour ... | ?
-- fa1_ B2 DiStore ZEROES THE PIXEL (rt_di_shade:23) on any negative / NaN / >= 655 ... | ?
-- fa1_ UNCITED PARAMETERS: targetHistoryLength 4 (RTXDI 0: its disocclusion boost ... | ?
-- fa1_ UNCITED BLOCKS: T1 (probe gate x1.07 at 29 / 128 not met) + camera-only DiM ... | ?
-- fa4_ B1 NRD IN_VIEWZ = CAMERA DISTANCE, not view Z (rt_nrd_front.hlsl:76 <- rt_p ... | ?
-- fa4_ B4 SKY GUIDES: cleared G-buffer decodes to normalize(-1,-1,-1), roughness 1 ... | ?
-- fa4_ B5 ReSTIR GI's chosen-sample hitT into REBLUR unfiltered (rt_path.hlsli:143 ... | ?
-- fa4_ B6 aa_dlaa_prepare:56 zeroes non-finite motion, cause unnamed (Forge lens): ... | ?
-- fa4_ B7 rr_d3d12.hpp:32-33 cites the deleted talesofarise_dlss/rr_d3d12.hpp (ae8 ... | ?
-- fa4_ RR PLACEMENT: RR runs after the tone mapper; DPG + RRG 3.1 say before. CHOS ... | ?
-- fa3_ B1 TWO VISIBILITY KINDS IN ONE STREAM (bias): in OMM builds TRACE_SURFACE c ... | ?
-- fa3_ B2 LIGHT LEAKS THROUGH SOLID CUT-OUTS (thatch, fences) in GI / bounce / SHa ... | ?
-- fa3_ B3 F16 RUNNING AVERAGES DRIFT DARK (D3D11.3 3.2.2): ambient_history (-0.12. ... | ?
-- fa3_ B4 TMin > TMax (spec RT:2564 undefined): SunRay layered loop (met + 0.01), ... | ?
-- fa3_ B5 SER NOT AS RTXPT'S: maybeReorderThread with a NOP hit object + 1-bit hin ... | ?
-- fa3_ B6 OMM BAKE vs ALPHA TEST AT THE CUTOFF (omm.h:406 '>' vs AlphaPasses '>=') ... | ?
+- STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | PK8 Stage B designer
+- CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | coord / ATN (2048 vs 2304 slots)
+- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | 11-27+ designer (start_1127
+- gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
+- SSS TEST FLAKE: test/tw_screen_space_shadows case 2 (100 %, Auto Thickness pole ... | next SSS test agent
+- O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
+- GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
+- AA FEED FSR / XeSS (aaf2_ 11-26): both stay on today's mode-0 feed in HDR; both ... | 11-27 GPU wave
+- RULE NOTE (aaf2_ 11-26): one WIP commit tried --no-verify (denied, not retried; ... | coord (briefs)
+- A/B LOOKS WAIT (ATN 11-27): every look / A/B check (AA feed, O2 thin shadows at ... | ATN (end of plans)
+- GAME RUNS IN ONE BATCH (ATN 11-27): no game starts until the CPU plan's builds a ... | coord
+- sdku_omm_dxc MERGE: G1 (Nsight DXC speed gate) on the PT modes other than the de ... | 11-27 analyst -> ATN
+- 11-27 06:01 WAVE (coord; no agent cap; Fable only for PK8 Stage B). GPU plan: om ... | coord
+- NOTHING-DROPPED AUDIT 11-27 (ndc_, testbin\scratch\ndc_\handback.md): 22 report ... | next audit agent
+- O2 AT THE DEFAULT FOLIAGE 0.5 (o2_ handback:47-48): the 1/3 row stays at 0.507x, ... | ATN (accept the number) -> next SSS designer
+- O2 NOT TIMED (o2_ handback:91): torch light mode, 960 / 1920 samples, the 1920-s ... | coord GPU plan (5090 parts)
+- O2d HOST CONTRACT (o2_ handback:83-86): O2d is exact only while no host marks de ... | next SSS writer
+- AA FEED: THRONES HDR t00 IS LINEAR was taken from aaf_ (aaf2_ handback:120), not ... | game batch (aaf3_ lists it)
+- AA FEED: CMAA2 ON THE GPU (aaf2_ handback:122): only its CPU model was checked. ... | aaf3_ if the harness runs CMAA2, else the next AA agent
+- tw_romer_dlaa NOT RUN (aaf2_ handback:87). Owner: coord (next Rome Remastered bu ... | coord (next Rome Remastered build gate, low)
+- FLIP PNGs: no bin-to-PNG step for reference\flip_tool.py from the trimmed OMM du ... | tools agent
+- OPTIONAL (a): a fresh CPU-baked grass recording (one 32-bit Attila start; its ru ... | ATN (yes / no) -> game batch
+- sdku__handback.md:102 calls the CPU baker the default (the GPU baker is; omr_ ha ... | coord (correct the note, low)
+- OMM G1 COVERAGE: the other ~190 all_modes.sh entries (non-PT / test-only) were n ... | omx_ (recommendation) -> coord
+- pdi4c_ NOT DONE (a): no per-pass Nsight split of the DI passes (pdi4c_handback.m ... | pdf_ if inside its budget, else the next DI agent
+- pdi4c_ NOT DONE (b): E6 bias modes 0 vs 3 not separated (pdi4c_handback.md:407). ... | pdf_ / next DI agent
+- pdi4c_ NOT DONE (c): S1 BASIC vs RAY_TRACED only on the fused pass, not the spli ... | pdf_ / next DI agent
+- pdi4c_ NOT DONE (d): no mode-3 DI run (pdi4c_handback.md:409-410). Owner: pdf_ / ... | pdf_ / next DI agent
+- pdi4c_ NOT DONE (e): the forced recording builds were not picture-checked (handb ... | pdf_ / next DI agent
+- pdi4c_ NOT DONE (f): F2, the fused spatial-only W4, not run (pdi4c_handback.md:3 ... | pdf_ / next DI agent
+- pdi4c_ NOT DONE (g): NV1 needs a foliage-heavy recording (pdi4c_handback.md:96 / ... | pdf_ / next DI agent
+- pdi4c_ COST LEAD: 0.67 ms with no DI pixels (3 lights) is mostly dispatch and ea ... | pdf_ / Nsight sweep
+- RR R5: one pass dump of t00's t0 (1x1 b / w) in a few scenes (rrbi__handback.md: ... | game batch (coord)
+- rt_d3d12.hpp:47's comment still says 'Windows release' (sdku__handback.md:43, co ... | next rt_d3d12 writer (low)
+- BRIEF RULE (fx1_, agent_times L70): briefs ask agents to stamp every step from ` ... | coord (briefs)
+- tw_pass_timing case 0 still checks the flags, not the registrations (d11i_handba ... | next d11 writer (low)
+- X37's one-function home in texture_lod_bias.hpp (fx5a__handback.md:175). Owner: ... | next texture_lod_bias writer (low)
+- PARITY ATTILA 54 OPEN (ndc_ 11-27, parity_check on the 11-25 d11i dumps): the ce ... | pcx_ (root cause, 11-27)
+- PARITY ROME REMASTERED 12 OPEN: 8 Grass.hlsl + 4 Terrain.hlsl VSMain level-B cas ... | pcx_ (verdicts) -> next Rome Remastered round
+- PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
+- P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
+- BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
+- RUNNER RULE: no agent tails or opens a running script's log (run.txt etc.); wait ... | every run brief
+- CLEANUP: drop the dead Auto Thickness path (BEND_SSS_AUTO_THICKNESS, AutoThickne ... | coord
+- Replay gaps (d11i_): sss.lights, smoke.map, ao.draw, bounce.sun_draw not replaye ... | coord
+- PERMISSION LINES: proposed wildcards (+ Edit denies for the game-run scripts) in ... | ATN
+- CALLISTO DIFFUSE (ATN 11-25 evening 'Maybe we should put that in?'): Forge on th ... | cal_, then ATN cal_ DONE 18:xx (designs\callisto_diffuse
+- CALLISTO REVISION 1: cal_ (resumed) writes Revision 1 (M1-M4, S1-S8, nits), the ... | cal_ cal_ REV 1 DONE (evening
+- CALLISTO C1: cal1_ (Opus High, worktree, branch cal1_c1) STARTED: new files only ... | cal1_ / cdr_ cdr_ RE-CHECK DONE (evening): GO WITH CHANGES, 
+- WARP HARNESS SHARED HELPER: ~190 lines copied from the vMF test into tw_callisto ... | coord (later, not blocking) cal1_ FIX ROUND DONE: fa030e458 
+- (PARKED 11-25 night: ship nothing; reopens if ATN likes vMF by eye) C1 MERGE (or ... | coord (after c0b_) c0b_ DONE (designs\callisto_c0b_fit
+- ATN EYE TEST: vMF in game (its Experimental row, default 40 %) together with the ... | ATN ATN 11-25 night: 'did you check vMF vs Lambert path trac
+- CALLISTO C0b: no Forge numbers by 2026-12-02 (or a no) -> one offline fit agent ... | coord (date)
+- CALLISTO C6 per-class amount (Forge's materialID idea): later, after cost + mism ... | cdr_ (C0 DROPPED: ATN 11-25 evening won't ask Forge ('he did
+- CALLISTO C0 (ATN -> Forge): score sets A / V16 (diffuse-Fresnel knob floored 0.0 ... | ATN
+- CALLISTO questions (cal_'s picks): all fixed sets ~ Lambert -> ship nothing; one ... | ATN after cdr_'s review
+- SKILLS FOLLOW-UPS: F1 bringup's Balanced cell says Off / Basic / Raytraced: true ... | coord (with bal3_'s merge)
+- PAGE DUMP TOOLING (testing.md's new trap row): root-cause Shogun 2's page-dump c ... | coord (tool fix) / ATN's OK (run)
+- RT ON THE 64-BIT PORT (ATN 11-25 evening 'Yes, start both'; coordinator correcte ... | rtp_ rtp_ DONE 19:xx (designs\rt_port_64
+- RT-ON-64 RULE LINES: 13 exact lines (a64_ab -R1 / -R2 / -R2Kill / -R3 with -DryR ... | ATN (at run time)
+- 4c main.cpp: pdi4c_ may add ONE keep() line (version >= 32: rt_light_surface, rt ... | pdi4c_, coord pdi4c_ HAND-BACK 22:02 (handoff_plan\handbacks
+- 4b ROW LINES (graphics_page.hpp): grey 'Torch and Fire Light from Path Tracing ( ... | 4b implementer
+- FUSED DI PASS (ATN 11-25 ~23:4x 'let's add this too'): pdi4c_ RESUMED 23:4x: a v ... | pd4r_, pdi4c_
+- SOURCE FIDELITY AUDIT (ATN 11-26 ~00:1x: 'if we were not doing this paper's meth ... | fa6_ PLAN: everything new from tonight is listed in plan_111
+- fa1_ B1 DI NEIGHBOUR RAY ORIGIN (bias, new): spatial bias ray + fused neighbour ... | pdi4c_ after 2
+- fa1_ B2 DiStore ZEROES THE PIXEL (rt_di_shade:23) on any negative / NaN / >= 655 ... | pdi4c_ after B1
+- fa1_ UNCITED PARAMETERS: targetHistoryLength 4 (RTXDI 0: its disocclusion boost ... | pdi4c_
+- fa1_ UNCITED BLOCKS: T1 (probe gate x1.07 at 29 / 128 not met) + camera-only DiM ... | pdi3_ (T1) / pdi4c_ (DiMotion)
+- fa4_ B1 NRD IN_VIEWZ = CAMERA DISTANCE, not view Z (rt_nrd_front.hlsl:76 <- rt_p ... | NRD route owner after the merges, then the ports
+- fa4_ B4 SKY GUIDES: cleared G-buffer decodes to normalize(-1,-1,-1), roughness 1 ... | RR guide owner
+- fa4_ B5 ReSTIR GI's chosen-sample hitT into REBLUR unfiltered (rt_path.hlsli:143 ... | NRD route owner
+- fa4_ B6 aa_dlaa_prepare:56 zeroes non-finite motion, cause unnamed (Forge lens): ... | coord -> owner GUARD ORIGINS (coord 11-26 for ATN's 'did we 
+- fa4_ B7 rr_d3d12.hpp:32-33 cites the deleted talesofarise_dlss/rr_d3d12.hpp (ae8 ... | next twattila writer
+- fa4_ RR PLACEMENT: RR runs after the tone mapper; DPG + RRG 3.1 say before. CHOS ... | critic -> coord
+- fa3_ B1 TWO VISIBILITY KINDS IN ONE STREAM (bias): in OMM builds TRACE_SURFACE c ... | next RT writer after the merges
+- fa3_ B2 LIGHT LEAKS THROUGH SOLID CUT-OUTS (thatch, fences) in GI / bounce / SHa ... | with B1
+- fa3_ B3 F16 RUNNING AVERAGES DRIFT DARK (D3D11.3 3.2.2): ambient_history (-0.12. ... | F16 fixer after steps 3 + 5
+- fa3_ B4 TMin > TMax (spec RT:2564 undefined): SunRay layered loop (met + 0.01), ... | next RT writer
+- fa3_ B5 SER NOT AS RTXPT'S: maybeReorderThread with a NOP hit object + 1-bit hin ... | R2 / R3 owner
+- fa3_ B6 OMM BAKE vs ALPHA TEST AT THE CUTOFF (omm.h:406 '>' vs AlphaPasses '>=') ... | OMM owner
 - fa3_ B7 stale comment rt_d3d12.hpp:9365-9368 ('Grass ... 2-state for every ray') ... | next twattila writer
-- fa3_ UNKNOWNs: rt_reference cs_6_5 RayQuery on an OMM TLAS without the opt-in (r ... | ?
-- fa2_ B1 VALIDATE OCCLUSION DROP M = 0 (rt_path.hlsli:875) breaks GRIS's partitio ... | ?
-- fa2_ B2 NO FirstRange CHECK in ReuseTarget / G1 / G2: with Own Sky Rays a neighb ... | ?
-- fa2_ B3 REFLECTION REUSE (:1662) is U2-type (diffuse bounce reservoir, constant ... | ?
-- fa2_ B4 TEMPORAL SHIFT WITHOUT THE RECONNECTION JACOBIAN (RTXDI applies one; pre ... | ?
-- fa2_ B5 TEMPORAL SURFACE TEST = receiver normal >= 0.8 only (no depth; PATH_PERM ... | ?
-- fa2_ B7 ReuseJacobian abs() where RTXDI saturates (pdsr_ S5; G0 bit 4096 already ... | ?
-- fa2_ G-1 W CLAMP (ClampWeight) also hides our own bright biases (B1 / B2 / U1) - ... | ?
-- fa2_ G-2 / G-3 SHaRC BANS ('reflections hung at 4K', 'depth 4 hung'; 1.6.5, neve ... | ?
-- fa2_ U1 VALIDATE'S LIGHT SWAP = leading candidate for pds2_'s unexplained colour ... | ?
-- fa6_ BUG-3 rt_cache_fill built cs_6_5 only (4 plain allocateRayQuery, no OMM fla ... | ?
-- fa6_ BUG-1 / BUG-2 PTLAS: instanceMask 0xFF (:8012; nvapi.h:21436 = the D3D12 de ... | ?
-- fa6_ C2 PTLAS STALL LIKELY CAUSE: helper21 sent UPDATE_INSTANCE with a null BLAS ... | ?
-- fa6_ THREE 'CAUSE UNKNOWN' HANGS MAY BE OURS: GrowBuffer(&member) released in-fl ... | ?
-- fa6_ SER CAP: NVAPI's THREAD_REORDERING cap answers the 'SER ON OLDER RTX' box n ... | ?
-- fa6_ UNKNOWN: DXR 1.2 OMM arrays passed to NVAPI cluster ops while the pipeline ... | ?
-- fa6_ LATER (spec v1.47): a PSO flag lets pre-6.9 shaders opt in to OMMs -> once ... | ?
-- fa6_ NEVER CONSIDERED (part D, 29 rows): RTXMU, DMM, LSS / spheres (smoke as sph ... | ?
-- fa5_ SR-B1 AMD's valid_hit = (i <= max_traversal_intersections) is always true ( ... | ?
-- fa5_ SS-B1 plain sss_bend sample count not a multiple of 4: up to 3 fade samples ... | ?
-- fa5_ SS-B4 torch exactly on the camera plane -> inf / NaN depth (sss_lights.cs:2 ... | ?
-- fa5_ SS-B5 Softness proxy 1/(1 - d) ignores projection A -> same-surface test ~4 ... | ?
-- fa5_ SS-B2 LICENCE: repack_game.py:84 misses Attila's in-folder Bend header (Apa ... | ?
-- fa5_ UNKNOWNs U-VB1 (thickness along the sample's own ray: Salm's or ours?), U-V ... | ?
-- fa9_ B2 THE JUDGES' CODE-BREAK CONTROLS DON'T EXIST: none of reference_suite 2.6 ... | ?
-- fa9_ B6 '3 SIGMA' AT TINY DOF: ref_compare.py:403 3 SE at t(3 dof) = ~5.8 % fals ... | ?
-- fa9_ B1 JUDGE SHARES THE BACK-FACE FLIP: RefNearest uses HitNormal (flips every ... | ?
-- fa9_ B3 RR SPECULAR-ALBEDO F0 not the game's (aa_rr_guides:54 lerp(0.04, albedo, ... | ?
-- fa9_ B5 n.v CLAMP 1e-3 FIRES IN NORMAL FRAMES (ReflectPixel / ReflectReservoirTe ... | ?
-- fa9_ UNKNOWNs: U1 ReflectAlpha's fit criterion unrecorded (~sigma_R; 1.3-1.5x FW ... | ?
-- fa7_ BUG-9 FSR viewSpaceToMetersFactor = 1 always (upscale_d3d12.hpp:321, fg_pro ... | ?
-- fa7_ BUG-2 FSR SHARPENING ROW DEAD: helper hardcodes enableSharpening = false (u ... | ?
-- fa7_ BUG-3 RR WITH < 32 JITTER PHASES outside the TW set: D1 / D2 8; Ryse, Tales ... | ?
+- fa3_ UNKNOWNs: rt_reference cs_6_5 RayQuery on an OMM TLAS without the opt-in (r ... | critic -> owners fa2_ DONE (27 min
+- fa2_ B1 VALIDATE OCCLUSION DROP M = 0 (rt_path.hlsli:875) breaks GRIS's partitio ... | ReSTIR GI writer after steps 3 + 5 merge
+- fa2_ B2 NO FirstRange CHECK in ReuseTarget / G1 / G2: with Own Sky Rays a neighb ... | same
+- fa2_ B3 REFLECTION REUSE (:1662) is U2-type (diffuse bounce reservoir, constant ... | same (with pds2_'s 3a 'From ReSTIR GI' fix)
+- fa2_ B4 TEMPORAL SHIFT WITHOUT THE RECONNECTION JACOBIAN (RTXDI applies one; pre ... | same
+- fa2_ B5 TEMPORAL SURFACE TEST = receiver normal >= 0.8 only (no depth; PATH_PERM ... | same
+- fa2_ B7 ReuseJacobian abs() where RTXDI saturates (pdsr_ S5; G0 bit 4096 already ... | same
+- fa2_ G-1 W CLAMP (ClampWeight) also hides our own bright biases (B1 / B2 / U1) - ... | same, last
+- fa2_ G-2 / G-3 SHaRC BANS ('reflections hung at 4K', 'depth 4 hung'; 1.6.5, neve ... | SHaRC depth 4 slot (ATN home, quiet GPU)
+- fa2_ U1 VALIDATE'S LIGHT SWAP = leading candidate for pds2_'s unexplained colour ... | fa7_, fa8_, fa9_, critic fa6_ DONE (17 min
+- fa6_ BUG-3 rt_cache_fill built cs_6_5 only (4 plain allocateRayQuery, no OMM fla ... | next RT writer after the merges
+- fa6_ BUG-1 / BUG-2 PTLAS: instanceMask 0xFF (:8012; nvapi.h:21436 = the D3D12 de ... | U12b
+- fa6_ C2 PTLAS STALL LIKELY CAUSE: helper21 sent UPDATE_INSTANCE with a null BLAS ... | U12b
+- fa6_ THREE 'CAUSE UNKNOWN' HANGS MAY BE OURS: GrowBuffer(&member) released in-fl ... | SHaRC depth 4 slot
+- fa6_ SER CAP: NVAPI's THREAD_REORDERING cap answers the 'SER ON OLDER RTX' box n ... | SER on older RTX box
+- fa6_ UNKNOWN: DXR 1.2 OMM arrays passed to NVAPI cluster ops while the pipeline ... | OMM owner
+- fa6_ LATER (spec v1.47): a PSO flag lets pre-6.9 shaders opt in to OMMs -> once ... | coord (watch)
+- fa6_ NEVER CONSIDERED (part D, 29 rows): RTXMU, DMM, LSS / spheres (smoke as sph ... | critic -> ATN fa5_ DONE (38 min, 3 forks
+- fa5_ SR-B1 AMD's valid_hit = (i <= max_traversal_intersections) is always true ( ... | SSSR owner (d11 pass work)
+- fa5_ SS-B1 plain sss_bend sample count not a multiple of 4: up to 3 fade samples ... | SSS owner
+- fa5_ SS-B4 torch exactly on the camera plane -> inf / NaN depth (sss_lights.cs:2 ... | SSS owner
+- fa5_ SS-B5 Softness proxy 1/(1 - d) ignores projection A -> same-surface test ~4 ... | SSS owner
+- fa5_ SS-B2 LICENCE: repack_game.py:84 misses Attila's in-folder Bend header (Apa ... | next release round
+- fa5_ UNKNOWNs U-VB1 (thickness along the sample's own ray: Salm's or ours?), U-V ... | critic -> owners
+- fa9_ B2 THE JUDGES' CODE-BREAK CONTROLS DON'T EXIST: none of reference_suite 2.6 ... | gate tool owner (tools
+- fa9_ B6 '3 SIGMA' AT TINY DOF: ref_compare.py:403 3 SE at t(3 dof) = ~5.8 % fals ... | same
+- fa9_ B1 JUDGE SHARES THE BACK-FACE FLIP: RefNearest uses HitNormal (flips every ... | reference owner
+- fa9_ B3 RR SPECULAR-ALBEDO F0 not the game's (aa_rr_guides:54 lerp(0.04, albedo, ... | RR guide owner (with fa4_ B4)
+- fa9_ B5 n.v CLAMP 1e-3 FIRES IN NORMAL FRAMES (ReflectPixel / ReflectReservoirTe ... | reflections owner
+- fa9_ UNKNOWNs: U1 ReflectAlpha's fit criterion unrecorded (~sigma_R; 1.3-1.5x FW ... | critic -> owners fa7_ DONE (27 min
+- fa7_ BUG-9 FSR viewSpaceToMetersFactor = 1 always (upscale_d3d12.hpp:321, fg_pro ... | FSR owner (helper)
+- fa7_ BUG-2 FSR SHARPENING ROW DEAD: helper hardcodes enableSharpening = false (u ... | FSR owner
+- fa7_ BUG-3 RR WITH < 32 JITTER PHASES outside the TW set: D1 / D2 8; Ryse, Tales ... | each port (jitter)
 - fa7_ BUG-5 XeSS LOD BIAS log2 - 1 by default; Intel's rule is log2 only (every g ... | XeSS owner
-- fa7_ BUG-6 DLSS L / M CREATED AT THE OPTIMAL SIZE (66.7 %) while the active size ... | ?
-- fa7_ BUG-1 DLSS EXPOSURE A/B DEAD: main.cpp never reads shared->dlss_exposure, A ... | ?
-- fa7_ BUG-7 NVAPI Reflex Off = no Sleep and no markers (reflex.hpp:79 / 98); NVID ... | ?
-- fa7_ BUG-8 UE infinite-far depth gets far = 1e5 every frame via the fallback (up ... | ?
-- fa7_ UNKNOWNs: U1 ATN'S WORD: Attila's DLSS default preset L at every scale vs N ... | ?
-- fa8_ B1 GPU + EYE: tw_attila64_present (F7, GPU window) with an SDR-output Rende ... | ?
-- fa8_ B2 ToneMapperHdr 'Y > 0 ? n / Y : 1': luminance <= 0 passes unexposed (stoc ... | ?
-- fa8_ B3 Divinity 2 proxy scRGB branch lacks BT.2020 -> BT.709 (unreachable: Outp ... | ?
-- fa8_ B4 upstream colorcorrect GammaSafe float4 overload calls Gamma (not sign-sa ... | ?
-- fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | ?
-- fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | ?
-- ROME REMASTERED PROXY CLAMP (coord 11-26, from fx0_): twromeremastered's swap ch ... | ?
-- cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR ... | ?
-- CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope. ... | ?
-- OLD GATE BUG (cbr_): 'git cherry-pick -m 1 <merge>' makes spec_cite_check.py fau ... | ?
-- (ATN 11-26 ~11:3x: 1 and 3-7 = the picks, agreed; 2 'what do you mean?' -> expla ... | ?
-- FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | ?
-- X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither ... | ?
-- O-SS5 SSS THICKNESS AT EVERY SCALE (ATN wants the picked thickness exact at any ... | ?
-- Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / ... | ?
-- X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coor ... | ?
-- LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\s ... | ?
-- lsp_ FOLLOW-UP 1 DONE / 2 OPEN (backoff uncapped vs quads capped, < 1 min GPU) S ... | ?
-- STEP 5 FOLLOW-UPS (pd5c_): (1) build.ps1:156-157 G5's REUSE_COMPATIBLE builds la ... | ?
-- REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so ... | ?
-- FIX WAVE 1 (judges: X46 judge's back-face flip rt_reference.hlsli:312 + HitNorma ... | ?
-- PLAYER HOLD-FRAME MODE (reference_suite.md 2.3.1, repeat frame N+2): no RENODX_T ... | ?
-- CONTACT BOXES BIAS AT R = 4 (fx1_ P3: 0.99306, r/g 0.9916, outliers 14 vs 3; not ... | ?
-- OUTLIER RULE READS r0 vs r1 ONLY (ref_compare.py:426-436): R >= 8 adds nothing t ... | ?
-- BASE HARNESS BUILD (tools\tw\reference\harness): stale include of a deleted work ... | ?
-- WAVE 2-6 JUDGE VERDICT SETS AT R >= 8 (fx1r_ power: R = 4 catches a 2 % bias 26 ... | wave briefs
+- fa7_ BUG-6 DLSS L / M CREATED AT THE OPTIMAL SIZE (66.7 %) while the active size ... | DLSS owner (+ a cost check)
+- fa7_ BUG-1 DLSS EXPOSURE A/B DEAD: main.cpp never reads shared->dlss_exposure, A ... | DLSS owner
+- fa7_ BUG-7 NVAPI Reflex Off = no Sleep and no markers (reflex.hpp:79 / 98); NVID ... | Reflex owner
+- fa7_ BUG-8 UE infinite-far depth gets far = 1e5 every frame via the fallback (up ... | FSR owner
+- fa7_ UNKNOWNs: U1 ATN'S WORD: Attila's DLSS default preset L at every scale vs N ... | critic -> owners
+- fa8_ B1 GPU + EYE: tw_attila64_present (F7, GPU window) with an SDR-output Rende ... | GPU queue (after pdi4c_) / ATN / release owner
+- fa8_ B2 ToneMapperHdr 'Y > 0 ? n / Y : 1': luminance <= 0 passes unexposed (stoc ... | TW HDR owner
+- fa8_ B3 Divinity 2 proxy scRGB branch lacks BT.2020 -> BT.709 (unreachable: Outp ... | D2 port
+- fa8_ B4 upstream colorcorrect GammaSafe float4 overload calls Gamma (not sign-sa ... | upstream note only
+- fa8_ STALE: 'TODO: renable when publishing' over an enabled clamp in 7 proxies. ... | critic
+- fa8_ UNKNOWNs: U1 V30 / V31 origin (Musa's 08-23..09-12 custom psychov30, gone u ... | critic -> owners
+- ROME REMASTERED PROXY CLAMP (coord 11-26, from fx0_): twromeremastered's swap ch ... | parity (critic G)
+- cbd_ NEW UNCITED ITEMS (not in the audit lists; step 3 code on atn-mods): ReGIR ... | step 3 follow-ups (with pd3c_ S1 / S2 / S5, after the 4c mer
+- CITATION BLOCKER .proposed FILES: spec_cite_check.py.proposed + estimator_scope. ... | done
+- OLD GATE BUG (cbr_): 'git cherry-pick -m 1 <merge>' makes spec_cite_check.py fau ... | gates tooling slot
+- (ATN 11-26 ~11:3x: 1 and 3-7 = the picks, agreed; 2 'what do you mean?' -> expla ... | ATN (morning)
+- FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | coord (waves)
+- X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither ... | wave 5 (with X22)
+- O-SS5 SSS THICKNESS AT EVERY SCALE (ATN wants the picked thickness exact at any ... | wave 6
+- Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / ... | waves (per cap's area)
+- X48 BACK-FACING SHADING NORMALS = RTXPT / FALCOR BEND toward the view (ATN: coor ... | wave 3 / 4 (reflections + paths)
+- LSS SMOKE-SPHERE PROBE (ATN 'sure'): lsp_ builds a standalone probe in testbin\s ... | done
+- lsp_ FOLLOW-UP 1 DONE / 2 OPEN (backoff uncapped vs quads capped, < 1 min GPU) S ... | done
+- STEP 5 FOLLOW-UPS (pd5c_): (1) build.ps1:156-157 G5's REUSE_COMPATIBLE builds la ... | next helper writer slot
+- REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so ... | gate tooling slot
+- FIX WAVE 1 (judges: X46 judge's back-face flip rt_reference.hlsli:312 + HitNorma ... | done
+- PLAYER HOLD-FRAME MODE (reference_suite.md 2.3.1, repeat frame N+2): no RENODX_T ... | ATN (rule line) -> GPU queue
+- CONTACT BOXES BIAS AT R = 4 (fx1_ P3: 0.99306, r/g 0.9916, outliers 14 vs 3; not ... | the ContactShade (H9) / GI energy wave -> cause before any f
+- OUTLIER RULE READS r0 vs r1 ONLY (ref_compare.py:426-436): R >= 8 adds nothing t ... | gate tooling slot
+- BASE HARNESS BUILD (tools\tw\reference\harness): stale include of a deleted work ... | gate tooling slot
+- WAVE 2-6 JUDGE VERDICT SETS AT R >= 8 (fx1r_ power: R = 4 catches a 2 % bias 26 ... | wave briefs (coord)
 - REF BREAKS MISSING (spec 9, built 5): offset20, fog_flat, clearance0, stale_bits ... | gate tooling slot
-- ATN RULE LINE: RENODX_TW_REF_BREAK + RENODX_TW_REF_INSIDE GPU proof runs (P5 bre ... | ?
-- G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ?
-- ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | ?
-- wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | ?
-- LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a c ... | ?
-- R4 REPLAY TRACE (sass_counters): the tooling slot finds ngfx's option for the at ... | ?
-- LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner ... | done
-- LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'licens ... | ?
-- fa5_ SHADERTOY CREDITS: when the Shadertoy-derived code ships, credits name Mirk ... | ?
-- LANE I (end of the GPU plan, ATN 11-26): 1 smoke / fire as Linear Swept Spheres ... | ?
-- CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | ?
-- WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | ?
+- ATN RULE LINE: RENODX_TW_REF_BREAK + RENODX_TW_REF_INSIDE GPU proof runs (P5 bre ... | ATN
+- G4 DEFAULT = 1? Tonight: faster (day -0.09 / night -0.04 ms total, warm), E4 sam ... | ATN
+- ALL_MODES BASELINE (pdi5_): all_modes_check still judges against the 11-22 basel ... | gate tooling slot [11-26: step 5 merged
+- wh3_forest_high SHaRC MOVE (pdi5_, for pdi3_): after the rebase onto step 3, 2 o ... | pdi3_ follow-up
+- LAB TOOLING (pdi5_ 11-26): (1) a session that ends after every ab job forces a c ... | done
+- R4 REPLAY TRACE (sass_counters): the tooling slot finds ngfx's option for the at ... | tooling slot (gti_ / gtl_) -> ATN
+- LANE I ALSO IN gpu_plan.md (its end section, ATN's 'end of the gpu plan'). Owner ... | coord
+- LICENCE 'UNCLEAR' HELPERS: the Shadertoys' Common.txt marks some helpers 'licens ... | crit_ (section E)
+- fa5_ SHADERTOY CREDITS: when the Shadertoy-derived code ships, credits name Mirk ... | crit_ E -> credits owner
+- LANE I (end of the GPU plan, ATN 11-26): 1 smoke / fire as Linear Swept Spheres ... | coord (later) FORGE'S RULES (ATN 11-26 ~00:5x forwarded 3 Di
+- CITATION BLOCKER (gate level): extend spec_cite_check (protected, tools\tw\gates ... | pdi4c_
+- WH2 PORT NOTE (pd4r_): under mode 0 + DI, WH2's shadows_only lights stay listed ... | WH2 port of PT DI
 - 4b NOTE (pd4r_): what the add-on shows when a trace returns early while its path ... | 4b
-- NV1 CONSERVATIVE VISIBILITY for DI initial + bias rays (RtxdiApplicationBridge.m ... | ?
-- NV2 OMM 2-STATE ON SECONDARY RAYS ONLY, 4-state on visible sun / torch shadows ( ... | ?
-- NV3 SHaRC UPDATE CHEAP LIGHT-SHADOW VISIBILITY (whitepaper 5090 case: 0.69 -> 0. ... | ?
-- NV4 ASYNC COMPUTE: RT + AS builds of frame N+1 beside RR of frame N (RTXPT Desig ... | ?
-- NV5 LIVE-STATE CUTS + FP16 in path / reflection kernels (Indiana Jones -15 %, it ... | ?
-- NV6 SMALL: RR packed normals + roughness (< 0.03 ms); thread-group size test + c ... | ?
-- NV9 NVIDIA-SAYS-DON'T (section 4): TLAS fast-build (rt_d3d12.hpp:8069) = U12c; s ... | ?
-- 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | ?
-- TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | ?
-- C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + ... | ?
-- pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | ?
+- NV1 CONSERVATIVE VISIBILITY for DI initial + bias rays (RtxdiApplicationBridge.m ... | pdi4c_ (told with the rebase head)
+- NV2 OMM 2-STATE ON SECONDARY RAYS ONLY, 4-state on visible sun / torch shadows ( ... | next RT writer slot after steps 3 / 5 / 4c merge
+- NV3 SHaRC UPDATE CHEAP LIGHT-SHADOW VISIBILITY (whitepaper 5090 case: 0.69 -> 0. ... | SHaRC writer after the merges
+- NV4 ASYNC COMPUTE: RT + AS builds of frame N+1 beside RR of frame N (RTXPT Desig ... | coord (design slot after U8)
+- NV5 LIVE-STATE CUTS + FP16 in path / reflection kernels (Indiana Jones -15 %, it ... | R2 / R3 owner
+- NV6 SMALL: RR packed normals + roughness (< 0.03 ms); thread-group size test + c ... | U13 / U5a owners
+- NV9 NVIDIA-SAYS-DON'T (section 4): TLAS fast-build (rt_d3d12.hpp:8069) = U12c; s ... | fa3_ / fa4_, coord
+- 4b VARIANTS ON 64-BIT: which of the 40 point-light variants the port draws (32-b ... | rtp_ (list) -> ATN
+- TDD HASHES: with The Dawnless Days on (installed, not in ATN's mod list), 37 of ... | tdd_ / m12_ m12_ DONE (evening
+- C4 FLAG WAVE: add the 1212 trigger + test set-up (1212 on disk); ~1 day + WARP + ... | rtp_ design / C4 implementer
+- pds2_ NEXT (sent 15:1x, bugs first): (1) f18fd4deb reference run (fog reflection ... | pds2_
 - pds2_ BRIGHTNESS ROW STARTED 11:2x on branch pds2_bright (from fdfdd56d9): G1 + ... | ?
-- ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back | ?
-- FRIDAY 11-27, ONLY ON ATN'S GO (he wakes ~06:00, switches accounts): Fable 5.2 x ... | ?
-- 64-bit release: private release step, 64-bit map section 6 item 13 (before the f ... | ?
+- ucf_ FOLLOW-UPS DONE 12:4x (origin/ucf_follow 185ab5554 on 4e85de8ed; hand-back ... | leftovers: Tales scRGB in game -> game batch
+- FRIDAY 11-27, ONLY ON ATN'S GO (he wakes ~06:00, switches accounts): Fable 5.2 x ... | coord
+- 64-bit release: private release step, 64-bit map section 6 item 13 (before the f ... | coord
 - p6r_ PK6-64 REVIEW 14:5x: GO WITH CHANGES (designs\pk6_design_review.md, hand-ba ... | ?
-- ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | ?
-- PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; ... | ?
-- PERFFIX ROWS IN foreign_sites.tsv (p9c_): real lengths (5-17 B, not 'taken as 16 ... | ?
-- PK9 RELEASE CHECK: if PerfFix ships after 7.5, rerun testbin\scratch\p9c_\pfmap. ... | ?
-- NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\rou ... | ?
-- TALES CAPTURE FIX IN GAME: in SDR, HDR10 and scRGB, a loading screen / battle en ... | ?
-- tw_scene_coverage crashes at start on atn-mods too (rvt_: 0xC0000005; since a98c ... | ?
-- Other tests that load rt_core without ReShade's config export may crash the same ... | ?
-- HELPER IGNORES THE PER-MATERIAL OPACITY FACTOR (rvt_ S2): 51 of Tales' 55 masks ... | ?
-- rvt_ nits outside ta_'s files: rt_core.hpp:425 comment says 0.333 (game clips at ... | ?
-- Nit N2 (rvt_, diagnostic only): the status can miss the error code in two rare c ... | ?
-- ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales mult ... | ?
-- ta_ QUESTIONS FOR ATN (ta_'s pick first): (1) Attila rows for Tales: Upscaling D ... | ?
-- ry_ QUESTIONS FOR ATN (ry_'s pick first): (1) Ryse's rays are sharper than the g ... | ?
-- vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ?
+- ATN QUESTION LIST PART 1 SENT ~ATN leaving for work (attila64\designs\atn_questi ... | coord
+- PRE-FRIDAY READ-ONLY CHECKS (ATN 11-25 ~12:5x: 'If they don't use fable, sure'; ... | coord
+- PERFFIX ROWS IN foreign_sites.tsv (p9c_): real lengths (5-17 B, not 'taken as 16 ... | the generator's holder (Friday builders)
+- PK9 RELEASE CHECK: if PerfFix ships after 7.5, rerun testbin\scratch\p9c_\pfmap. ... | coord (PK9 release)
+- NON-TW OFFLINE ROUND 11-25 (ATN ~13:1x 'Both if possible'; brief tools\nontw\rou ... | coord
+- TALES CAPTURE FIX IN GAME: in SDR, HDR10 and scRGB, a loading screen / battle en ... | next Tales data run (ATN's OK)
+- tw_scene_coverage crashes at start on atn-mods too (rvt_: 0xC0000005; since a98c ... | ta_
+- Other tests that load rt_core without ReShade's config export may crash the same ... | coord
+- HELPER IGNORES THE PER-MATERIAL OPACITY FACTOR (rvt_ S2): 51 of Tales' 55 masks ... | next shared round + Tales data run
+- rvt_ nits outside ta_'s files: rt_core.hpp:425 comment says 0.333 (game clips at ... | next shared round / next Tales round
+- Nit N2 (rvt_, diagnostic only): the status can miss the error code in two rare c ... | ta_ (next Tales branch)
+- ta_ SHARED requests: per-material opacity factor in rt_core / bridge (Tales mult ... | coord
+- ta_ QUESTIONS FOR ATN (ta_'s pick first): (1) Attila rows for Tales: Upscaling D ... | ATN ATN 11-25 evening: (1) put these rows into the skills no
+- ry_ QUESTIONS FOR ATN (ry_'s pick first): (1) Ryse's rays are sharper than the g ... | ATN
+- vMF S1b MEASURED-DATA FIT (ATN 12:0x 'why not'; plan_1117\designs\vmf_diffuse.md ... | ATN (the Forge message)
 - l2br_ (Opus xHigh, read only) L2B DESIGN REVIEW STARTED 09:5x -> designs\l2b_des ... | ?
-- CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | ?
-- (T1 / C2 / A3 parts DONE 11-25 09:06-09:24 on ATN's lines added 09:0x, see the A ... | ?
+- CPU PLAN TO 64-BIT (ATN 10:0x): render_mt tracks + FCA PK1-PK7 (+ his 'battle co ... | coord (CPU plan)
+- (T1 / C2 / A3 parts DONE 11-25 09:06-09:24 on ATN's lines added 09:0x, see the A ... | ATN (32-bit frozen
 - ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyR ... | ?
 - a64ab_ -Probe det|full / -Wpr pass after a64pir_'s review (plan probe\a64ab_plan ... | ?
 - A1 add-on lane (Opus High) after a64b_'s merge -> R1 -> T1 smoke + C2 trace (sha ... | ?
@@ -1152,21 +1178,20 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64pr_ review -> a64p_ applies it (port_plan.md Rev 2); a64p0d_ gets M1 / M4 / S ... | ?
 - MV COVERAGE GAPS -> workstream C after the bring-up: one row each (tessellated r ... | ?
 - s3f_ (Opus High, started 11-24): Sol's 3 items fixed in a COPY of his 1.3.20 sou ... | ?
-- ATN: send Sol the Downloads\Sol_fixes_1125 package when he wants (credit request ... | ?
-- ATN 11-25 ~00:0x: WPR traces on D: (C: 82 GB free, D: 327 GB). His tasks RenoDX_ ... | ?
+- ATN: send Sol the Downloads\Sol_fixes_1125 package when he wants (credit request ... | ATN
+- ATN 11-25 ~00:0x: WPR traces on D: (C: 82 GB free, D: 327 GB). His tasks RenoDX_ ... | ATN (info)
 - vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree- ... | ?
 - vMF credits.hpp line (paper, CC BY 4.0) lands with S4 (rows). | ?
 - a64pr_ (Opus xHigh) reviews port_plan.md (re-derives the step numbers from the l ... | ?
 - PORT WAVE 1 started 11-24 (read-only, decision-independent): a64p0d_ (Opus xHigh ... | ?
-- gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GP ... | ?
 - GPU WAVE 1 (low priority, resume_1124.md section 4): pdd2_ (Opus xHigh) PT DI + ... | ?
 - ATN: vMF Q4 WH3 sunlight row: ATN asked 'why last?'. Coord: WH3's sun already us ... | ?
-- SHARC DEPTH 4 (ATN 11-24: 'can you not fix and test it in nsight? ... if you can ... | ?
+- SHARC DEPTH 4 (ATN 11-24: 'can you not fix and test it in nsight? ... if you can ... | coordinator, after GPU wave 1's step 2
 - VMF RHO SKY TEST (pdd2_): the rho-histogram sky fix goes to vMF S2's implementer ... | ?
 - RTXDI FOUND LINE (pdd2_ addition, coord yes): step 2's build.ps1 prints whether ... | ?
 - coord: run the G23 GPU gate (GPU harness, no game; memory feedback_gpu_harness_r ... | ?
 - g23_ harness change (start-up wait in switch mode + T4, FSR from first active, s ... | ?
-- pds2_ S4 FIX STARTED 10:0x (branch pds2_s4 off atn-mods; + the review's 2 left n ... | ?
+- pds2_ S4 FIX STARTED 10:0x (branch pds2_s4 off atn-mods; + the review's 2 left n ... | coord (the lane list = GPU / CPU plan)
 - ATN 10:1x decisions: (a) C8 WAVE 2 YES -> c8p_ (Opus xHigh, read only) PLAN STAR ... | ?
 - S4 REFLECTION ZERO-NORMAL VALIDATE (pre-existing bug; bug fixes always on; owner ... | ?
 - ATN (numbers): SCREEN_NORMAL is on as a bug fix; its edge rows (36913 0.998 -> 0 ... | ?
@@ -1311,7 +1336,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Rarer Objects needs a view with siege towers or ships (bench scene choice) Owner ... | coordinator, end-of-batch bench
 - After everything: one A/B of ATN's CPU set rule against an affinity rule of the ... | the bench, ATN's OK at the time
 - D9123DE1 + its MSAA / stencil builds (constant tone mapper "with_bloom_and_gamma ... | the next data run or ATN's trace
-- (tw3_ 11-16: first a SHARED STEP: rt_core OnIndexWrite logs nothing and misses M ... | the next Rome Remastered data run (coordinator)
+- (tw3_ 11-16: first a SHARED STEP: rt_core OnIndexWrite logs nothing and misses M ... | the next Rome Remastered data run (coordinator) Was: GPU PER
 - Look-changing GPU savings (half-rate rays for grass / far soldiers, float16 anim ... | GPU round after the end bench
 
 ## CARRIED OVER (open lines of archived sections; HANDOFF_ARCHIVE.md, 2026-11-15)
@@ -15557,7 +15582,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         byte copy): the g23 rev's include closure is checked against the g23 tree ($G23TreePaths), pre / post / gbf stay on
         $HelperPaths. Coord -DryRun 17:09 (20261124_170940_24636): exit 0, 0 PROBLEM, 08e953b68 = 48 sources '(the g23 tree)';
         estimate ~20 min. Real gates NOT started: 4 / 4 build slots busy, CPU 65-100 %, free RAM 8.7 GB -> wait for a quiet
-        GPU window (no agent paused).
+        GPU window (no agent paused). Owner: CPU plan (cpu_plan_64_map.md 3.3 writer order)
         - [ ] Coord: real gbf gates (gbf_gpu_gates.ps1, no switch) in the first quiet GPU window; job 1 also answers Q41.
         g24_ 13.9 DONE (handoff_plan/handbacks/g24_139_handback.md; ho_g24 8366ad95e pushed, audit git 2fed755 local; one
         stamp g24-facts-7): every 13.9 item closed by refusal; selftest 111 / 111, 43 mutations caught. Reopened: Expeditions
@@ -15589,7 +15614,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         weekly reset). Until then: running agents finish their current job + Opus review loops -> coord recap of done / left
         -> GPU plan (plan_1117, Opus 5.5 only). No new Fable implementer / design fix-up before Friday. Memory
         project_full_cpu_analysis updated. ATN later: 'Opus only' not literal: Opus by default until Friday; when
-        Fable is needed or an issue won't fix, tell ATN (ATN decides).
+        Fable is needed or an issue won't fix, tell ATN (ATN decides). Owner: tools agent (GPU plan)
         - [ ] ATN OK 11-24: the ONE Attila -Data session runs BEFORE Friday when t4i_'s PK6 r2 (+ rv6_ re-check) and PK1
         stage 1 (p1i_ + rv1_) are ready, so Friday's builds have its data (no agent paused for it).
         pk5_ REV 1.2 DONE (render_mt/fca/designs/pk5_rev12_handback.md; pk5_design.md 839 lines): F1 ERMSB ours (S0
@@ -15610,7 +15635,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         the unpaused hint saw it at an earlier Update (+ T3 case); A2-5 gate on process affinity / provider thread count,
         not '8 CPUs'; A2-6 refusal reason struct reserved before the pause, logged once after resume.
         - [ ] FRIDAY 11-27: pk5_ folds A2-1..A2-6 + the 5 NITs into pk5_design.md (rv5_ light check), then the PK5
-        implementer. (was: rv5_ light re-check of Rev 1.2 (sent); fixes wait for Friday.)
+        implementer. (was: rv5_ light re-check of Rev 1.2 (sent); fixes wait for Friday.) Owner: CPU plan (PK5-64, cpu_plan_64_map.md 3.3)
         - [x] ATN OK 11-24 ('sure'): bench env vars RENODX_TW_DRAW_COPY / RENODX_TW_POSE_COPY / RENODX_TW_LIST_PREFETCH /
         RENODX_TW_ITEM_PAGES for the verify bench arms (set by ebo_run.ps1 arms only; t4i_ told).
         - [x] Told ATN 11-24: A2 is one-way per start (Uninstall leaves the bytes; off works from the next start).
@@ -15625,7 +15650,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (central -0.7), volley ~0, D1 -0.03..-0.07; package late melee central -2.0 (-1.3..-2.4), low confidence. Steps:
         S0, S7p (premise test + must-fail twin), S2..S5, S7a, S7b, S6; S7 parked if S0 shows main's units < 10 % of the call
         wall. No new row; new env RENODX_TW_ANIMATION_CARRY=0. Two more idle-PC step comparisons (S7a / S7b, ~10 min each,
-        same animation_timing.ps1 rule). Not done: callers of +0x16b1400 (needs pe_xref.py -> ATN).
+        same animation_timing.ps1 rule). Not done: callers of +0x16b1400 (needs pe_xref.py -> ATN). Owner: CPU plan (PK5-64 implementer, Fable Medium)
         - [x] rv3_ REV 3 REVIEW (render_mt/fca/designs/rv3_rev3_review_handback.md; 17:28-17:39): GO for every step once
         2 MUST are written in; 0 BLOCKER, 2 MUST, 6 SHOULD, 4 NIT. R3-M1: 'lifetime is the game's own premise' is wrong for
         carried items (they come after the stop; a task run inside the tail's wait can swap + free one -> B / pose product /
@@ -15638,7 +15663,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         from any thread). heapfix: no overlap (15.13 adds the body + wait hooks). pk5_ rule + no alloc / free, no game
         calls beyond the pose product, S7p snapshot rule in PK5's tests.
         - [ ] FRIDAY 11-27: pk3_ writes in R3-M1 / R3-M2 + SHOULDs / NITs (rv3_ light check) -> PK3 implementer.
-        (was: rv3_ review of Rev 3 (sent); fixes wait for Friday.)
+        (was: rv3_ review of Rev 3 (sent); fixes wait for Friday.) Owner: CPU plan (cpu_plan_64_map.md 3.3 writer order)
         - [x] ATN OK 11-24 ('Yes, both'): env RENODX_TW_ANIMATION_CARRY (PK3 test / bench switch; ebo_run arms only) +
         tools\tw\pe_xref.py (offline, read-only, gtp_lowprio) on empire.retail.dll next to dis_at.py (memory
         reference_tw_tools). rv3_ told it may list the callers of +0x16b1400.
@@ -16270,7 +16295,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         c8p_'s c8_wave2_plan.md lands -> W1 generator, W2 plugin, W3 add-on (carry recheck R1 v1-plugin note wording,
         R2 own is_visible -> GameCodeRowShown (32-bit must not show it), R3 write core_wanted at READY + on change,
         R4 'rarely' wording), W4 a64ab_ ep1 kind. 3 small ATN questions (init line, status texts / page, smoke toggles
-        the row off ~s 20 / on ~s 35): coord default = the CPU page below + smoke toggle (no extra start).
+        the row off ~s 20 / on ~s 35): coord default = the CPU page below + smoke toggle (no extra start). Owner: c8b0_ (B0, 11-27) -> L2B W2 writer
         - [ ] ATN 10:2x: ONE 'CPU' PAGE for 64-bit Attila (ours live / restart per row; PerfFix heapfix.ini + Sol
         settings.txt rows, restart-only, our page writes their files; FrameBridge shown forced off with our helper).
         Facts: both read their files only at start; PerfFix writes heapfix.ini ONCE and never appends new keys (ATN's
@@ -16341,7 +16366,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         roughness bytes (0/8/15, 102, 153, 230) miss it -> reservoirs empty. So 17 of 50 verify modes (every Own ReSTIR
         1024 row: atn*, own_reflect_4) + reflect_fog_reuse (512) have been NO-OPS since 11-03. Fix = mode rows with
         RT_REFLECTIONS_SQUARED_LOBE 16384 (own_sun_4_lobe, _copy, sun_4_lobe, own_reflect_4_lobe), no rebuild -> pds2_.
-        - [ ] s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, hand-back
+        - [x] s4r_ S4 REVIEW 12:2x: GO WITH CHANGES (plan_1117\designs\pt_s4_fix_review.md, hand-back
         handoff_plan\handbacks\s4r_review_handback.md). M1 prove offline (base vs fix on the 4 lobe rows: own_sun_4_lobe
         differs, controls identical) before it counts; S1 PRE-EXISTING contact-path bug (Light Bounce sky samples,
         PT AO + Own Sky Rays off: N = 0 -> lost sun / NaN -> W-clamp firefly; fix return 0 after the occlusion test, own
@@ -16392,7 +16417,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         twattila amd64 + x86 exit 0, talesofarise amd64 exit 0 (61 warnings each = baseline). Row stays Off. brr_ on the
         numbers: with Near (the default) units are already within 0.3-1.4 % of the reference without the row; the row
         closes most of it but inside corners get 1.7-3.3 points worse; 'faster' with Near (-0.09 / -0.16 ms) is real
-        (8-14x A/A) but a data effect of the kept light, read as 'no extra cost in a still replay'.
+        (8-14x A/A) but a data effect of the kept light, read as 'no extra cost in a still replay'. S4 fix merged (pds2_s4 is in atn-mods). Owner: done
         - [x] LAB METHOD (brr_): the recorder overwrites every request's rt_path_flags (rt_serve.h:895-898); the 36913-based
         arm flags have no AMBIENT / RT_REFLECTIONS / SPEC_OCC, so EVERY cost job since 11-22 measured Path Tracing without
         Path-Traced AO, Own Sky Rays or sun light and skipped the reflections request (not the RT/PT preset). pds2_ told
@@ -17723,6 +17748,55 @@ heading text are in HANDOFF_ARCHIVE.md)
         (tune_1127a). CPU plan: c8b0_ (C8 B0 + B0a, branch c8b0_1127, first writer, no game runs), pk8b_ (PK8 Stage B design,
         Fable 5.2 xHigh -> round_notes\attila64\designs\pk8_stage_b_design.md). Hand-backs: testbin\scratch\<prefix>\
         handback.md. Next CPU writer after c8b0_: L2B W2 (binding order, cpu_plan_64_map.md 3.3). Owner: coord
+        - [ ] NOTHING-DROPPED AUDIT 11-27 (ndc_, testbin\scratch\ndc_\handback.md): 22 report lines had no box -> the boxes below;
+        14 boxes got owners; handoff_index.py fixed (wrapped lines at the dash's indent were dropped: '?' 780 -> 511; coord,
+        backup .bak_coord1127). Not audited line by line: the 33 attila64\*_handback.md of 11-25 00:00-05:55, the fa1_..fa9_ /
+        crit_ tables (FIX WAVES boxes), sdk_audit_1126.md, tests_4k_audit_1126.md. Owner: next audit agent
+        - [ ] O2 AT THE DEFAULT FOLIAGE 0.5 (o2_ handback:47-48): the 1/3 row stays at 0.507x, so the design's <= 0.5x gate misses
+        at Attila's default Light Through Foliage; O2d helps only at 0. Owner: ATN (accept the number) -> next SSS designer
+        - [ ] O2 NOT TIMED (o2_ handback:91): torch light mode, 960 / 1920 samples, the 1920-sample cut, the Tales host; AMD
+        wave64 / Intel. Owner: coord GPU plan (5090 parts); ATN (AMD / Intel, no such GPU here)
+        - [ ] O2d HOST CONTRACT (o2_ handback:83-86): O2d is exact only while no host marks depth negative with foliage 0; an
+        assert, test or comment at the host contract. Owner: next SSS writer
+        - [ ] AA FEED: THRONES HDR t00 IS LINEAR was taken from aaf_ (aaf2_ handback:120), not checked: one Thrones pass dump.
+        Owner: game batch (aaf3_ lists it)
+        - [ ] AA FEED: CMAA2 ON THE GPU (aaf2_ handback:122): only its CPU model was checked. Owner: aaf3_ if the harness runs
+        CMAA2, else the next AA agent
+        - [ ] tw_romer_dlaa NOT RUN (aaf2_ handback:87). Owner: coord (next Rome Remastered build gate, low)
+        - [ ] FLIP PNGs: no bin-to-PNG step for reference\flip_tool.py from the trimmed OMM dumps (omr_ handback:87). Owner: tools
+        agent
+        - [ ] OPTIONAL (a): a fresh CPU-baked grass recording (one 32-bit Attila start; its runner is not written). Owner: ATN
+        (yes / no) -> game batch
+        - [ ] sdku__handback.md:102 calls the CPU baker the default (the GPU baker is; omr_ handback:83-84). Owner: coord (correct
+        the note, low)
+        - [ ] OMM G1 COVERAGE: the other ~190 all_modes.sh entries (non-PT / test-only) were not run (sdk4_ handback:15): does the
+        merge need them? Owner: omx_ (recommendation) -> coord
+        - [ ] pdi4c_ NOT DONE (a): no per-pass Nsight split of the DI passes (pdi4c_handback.md:406). Owner: pdf_ if inside its
+        budget, else the next DI agent
+        - [ ] pdi4c_ NOT DONE (b): E6 bias modes 0 vs 3 not separated (pdi4c_handback.md:407). Owner: pdf_ / next DI agent
+        - [ ] pdi4c_ NOT DONE (c): S1 BASIC vs RAY_TRACED only on the fused pass, not the split one (pdi4c_handback.md:408).
+        Owner: pdf_ / next DI agent
+        - [ ] pdi4c_ NOT DONE (d): no mode-3 DI run (pdi4c_handback.md:409-410). Owner: pdf_ / next DI agent
+        - [ ] pdi4c_ NOT DONE (e): the forced recording builds were not picture-checked (handback_gpu1126.md:102). Owner: pdf_ /
+        next DI agent
+        - [ ] pdi4c_ NOT DONE (f): F2, the fused spatial-only W4, not run (pdi4c_handback.md:398). Owner: pdf_ / next DI agent
+        - [ ] pdi4c_ NOT DONE (g): NV1 needs a foliage-heavy recording (pdi4c_handback.md:96 / :379). Owner: pdf_ / next DI agent
+        - [ ] pdi4c_ COST LEAD: 0.67 ms with no DI pixels (3 lights) is mostly dispatch and early-out (handback_gpu1126.md:101).
+        Owner: pdf_ / Nsight sweep
+        - [ ] RR R5: one pass dump of t00's t0 (1x1 b / w) in a few scenes (rrbi__handback.md:157). Owner: game batch (coord)
+        - [ ] rt_d3d12.hpp:47's comment still says 'Windows release' (sdku__handback.md:43, cosmetic). Owner: next rt_d3d12 writer
+        (low)
+        - [x] fx8_x30's merge commit has git's default message without the Co-Authored-By line (fx8__handback.md:119): noted, no
+        history rewrite. Owner: done
+        - [ ] BRIEF RULE (fx1_, agent_times L70): briefs ask agents to stamp every step from `date`. Owner: coord (briefs)
+        - [ ] tw_pass_timing case 0 still checks the flags, not the registrations (d11i_handback.md:198-200). Owner: next d11
+        writer (low)
+        - [ ] X37's one-function home in texture_lod_bias.hpp (fx5a__handback.md:175). Owner: next texture_lod_bias writer (low)
+        - [ ] PARITY ATTILA 54 OPEN (ndc_ 11-27, parity_check on the 11-25 d11i dumps): the census reads 'held 0 of 66' for Attila
+        and attila.tsv has no caster lines, while HANDOFF recorded 0 open in all 10 games -> census / ledger regression
+        suspected (the run rewrites tools\tw\parity\census_*.txt each time). Owner: pcx_ (root cause, 11-27)
+        - [ ] PARITY ROME REMASTERED 12 OPEN: 8 Grass.hlsl + 4 Terrain.hlsl VSMain level-B casters (10 'scene_draw host leaves it
+        out; add'), no ledger line. Owner: pcx_ (verdicts) -> next Rome Remastered round
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
@@ -19343,7 +19417,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         later (ATN's yes): worktree agent-ae7cab13600fa530f holds its own real bin\ copy (not a link).
         ucr_ RE-CHECK 13:2x: MERGE (Re-check 11-25 in ucf_clone_fix_review.md; hand-back ucr_recheck_handback.md).
         MERGED 1cd236071 (ucf_follow) + twattila / Tales amd64 build check.
-        11-25 ~18:xx: ucf_'s leftover wait loop (a never-true condition, ~8 h) stopped by coord; ucf_ finished.
+        11-25 ~18:xx: ucf_'s leftover wait loop (a never-true condition, ~8 h) stopped by coord; ucf_ finished. Owner: leftovers: Tales scRGB in game -> game batch; a second RenoDX add-on as handler (F7 case) -> next ucf_ test writer; the worktree's real bin\ copy -> ATN's yes
         - [x] FIXED ad85b2142, merged c8519a50b (ta_ 11-25; in-game check = box 'TALES CAPTURE FIX IN GAME') TALES scRGB COPY OUT OF BUFFER 0 (pre-existing, ucr_ 13:2x): Tales counts a source as cloned only when its
         clone is on (talesofarise/addon.cpp:935); in scRGB buffer 0 is real RGBA16F with its clone off, so a copy from it
         into an RGBA8 capture texture is dropped as mismatched and the capture stays stale. Matters only if Tales copies
@@ -19741,7 +19815,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         for the 64-bit port NOW by Opus 5.5 xHigh, NO builds. f64m_ (Opus xHigh, read only) MAP STARTED 10:0x ->
         attila64\designs\cpu_plan_64_map.md (per item CARRIES / RE-FIND / MOOT / CHANGED / NEW CONFLICT, battle-step MT
         answer, one-writer order with C8 wave 2 + L2B, fixer briefs) -> one Opus xHigh fixer + review per package.
-        FRIDAY 11-27 ONLY ON ATN's WORD: one last Fable 5.2 xHigh review + Fable 5.2 medium implementers.
+        FRIDAY 11-27 ONLY ON ATN's WORD: one last Fable 5.2 xHigh review + Fable 5.2 medium implementers. Owner: coord (CPU plan)
         - [ ] (T1 / C2 / A3 parts DONE 11-25 09:06-09:24 on ATN's lines added 09:0x, see the A3 entries; LEFT = the
         32-bit S4-rotation trace = FROZEN 32-BIT) COORD RUNS, WAIT FOR ATN's -ReShade RULE LINES (T1 / C2 need ReShade + the add-on in the 64-bit port; only
         -Smoke without ReShade exists). The 32-bit S4-rotation trace gates the next 32-bit Attila / Thrones / Rome II
@@ -19749,7 +19823,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         (+ shadow_refresh=2), T1 smoke (attila64_log 2 sites applied + 'game started: 2 sites unchanged'; ReShade.log
         'engine plugin ready, rows offered 3'), C2 (rows wanted 2 / 3; VIEW_DRAW first-call thread = present thread).
         A3 Smoke: ATN's 4 -ReShade lines (drop '-ReShade -Warp': ReShade skips WARP) + check the 'N code ranges' line
-        counts all PF_X.
+        counts all PF_X. Owner: ATN (32-bit frozen; reopens only on his word)
         - [ ] ATN: UTILS DISABLED-CLONE BUG (real, shared): utils/resource_upgrade.hpp OnCopyResource (~2782-2790), and
         the same in OnResolveTextureRegion / OnCopyTextureRegion, use an existing clone even when that side's clone is
         DISABLED. In scRGB compatibility mode (default) a copy INTO the back buffer lands in the proxy pass's scratch ->
@@ -19954,13 +20028,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         starts of exe a75c1b8a (00:12 plain; 09:12 ReShade + our HDR add-on, ab_runs\20261125_091228_Smoke: number +
         Discord button visible in HDR, 0 'not 8-bit', 0 CRASH, exit 0; not reached: 12-15 byte hook, DLL-caught
         exception), discord_button=off worded as optional; zip rebuilt with '/' names (old copies in session
-        scratchpad sol_pkg_old).
+        scratchpad sol_pkg_old). Owner: ATN
         - [ ] ATN 11-25 ~00:0x: WPR traces on D: (C: 82 GB free, D: 327 GB). His tasks RenoDX_WPR_Start = 'wpr.exe -start
         CPU -start GPU -filemode', RenoDX_WPR_Stop = 'wpr.exe -stop C:\...\nsight\attila_run\attila_wpr.etl' (coord
         never edits them) -> asked ATN to add -recordtempto D:\RenoDX_WPR to Start and stop into D:\RenoDX_WPR (folder
         made by coord); a64ab_'s -Wpr reads the etl from there. No restart needed (zombies are kernel-stuck, harmless).
         -> DONE by ATN, checked: Start '-start CPU -start GPU -filemode -recordtempto D:\RenoDX_WPR', Stop '-stop
-        D:\RenoDX_WPR\attila_wpr.etl' (RunLevel Highest). a64ab_ / a64pi_: the etl is D:\RenoDX_WPR\attila_wpr.etl.
+        D:\RenoDX_WPR\attila_wpr.etl' (RunLevel Highest). a64ab_ / a64pi_: the etl is D:\RenoDX_WPR\attila_wpr.etl. Owner: ATN (info)
         - [x] ATN 11-24: WH3 gets the Experimental vMF slider too (Forge: PT looks better with vMF) -> sent to pdd2_;
         SHaRC depth 4 plan: 'Good idea'.
         - [ ] vms1_ DONE (hand-back plan_1117/vms1_s1_handback.md): vMF S1 on branch worktree-agent-aa2f659ee853ca432
@@ -20002,13 +20076,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         Nsight rounds (G2, X, settings sweep, capture round 2) after them; Nsight inside each step = one cost trace a side +
         hang dumps. Helper-only steps run now offline (player + recordings); add-on steps (PT DI game-side shading /
         composite, O1 census) wait for the 64-bit add-on (a 64-bit capture may answer O1).
-        - [ ] gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GPU item, design drift (PT DI
+        - [x] gpn_ (Opus xHigh, read-only) writes plan_1117\resume_1124.md: status of every GPU item, design drift (PT DI
         Rev 1 / vMF / unified PT v2.7 vs today's helper), helper-now vs 64-bit-add-on split, bridge bump coordination with
         the port, first low-priority wave, open ATN questions -> save hand-back -> coord -> ATN -> implementers (Opus High).
         ATN (11-24): every CPU bench on the SAME map (stress_test_log2, battle s 20..200, ATN's settings, 4K). His goal: no
         'slow steps' = the sim at real time (10 steps / s = 180 s for the window; today 7.2 = 249 s with PerfFix 64; 32-bit
         always looked slow too). Sent to a64p_: estimate how far toward 180 s, the levers (incl. parts of the battle step on
-        more cores if Phase 0 shows one thread), and the Friday 11-27 FCA wave re-planned for 64-bit per design.
+        more cores if Phase 0 shows one thread), and the Friday 11-27 FCA wave re-planned for 64-bit per design. resume_1124.md written 11-24 21:51. Owner: done
         - [x] gpn_ DONE (hand-back plan_1117/gpn_resume_handback.md, plan plan_1117/resume_1124.md; coord spot-checked:
         bridge VERSION 32 (dlaa_bridge.h:17), merges 29eeab5ce / 7945f7a71 / 3bc663638, no vmf_diffuse / tw_point_light
         file yet): 12 done, 5 partly, 25 open, 9 blocked (7 by the 64-bit add-on / a 64-bit frame). Bridge stays v32 (it
@@ -20199,7 +20273,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         HARNESS_DUMP modes + rec_compare + DXIL compare, no game). THEN on the helper lane, serially (one writer for
         rt_path.hlsli / rt_d3d12.hpp): PT DI 4b / 4c -> vMF S2 (+ VMF RHO SKY TEST) -> SHaRC depth 4.
         64-bit lane: a3f_ -> C8 wave 2 (tweak rows, then hook rows) after a3f_ merges (addon.cpp); l2bd_ design ->
-        review -> L2B waves; C3 (RT on the port) design. Game starts: none needed now; ATN 11-25: trim every game batch.
+        review -> L2B waves; C3 (RT on the port) design. Game starts: none needed now; ATN 11-25: trim every game batch. S4 merged (pds2_s4 is in atn-mods). Owner: coord (the lane list = GPU / CPU plan)
         - [ ] ATN 10:1x decisions: (a) C8 WAVE 2 YES -> c8p_ (Opus xHigh, read only) PLAN STARTED 10:2x NOW (ATN: why
         wait? a3f_ changes one addon.cpp line only) -> designs\c8_wave2_plan.md: the 8 E items (census c8_notes section
         7), the tweak-row mechanism (block v2), hook-row waves, ONE game batch at the end -> implementers after a3f_ merges. (b) UTILS CLONE FIX
