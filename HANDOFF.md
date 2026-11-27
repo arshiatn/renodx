@@ -17933,7 +17933,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         return false' (PK1:649) holds only with scaling off (with it on, :404-422 returns true, only c29 changed) -> K4's
         brief adds that case. hzc_ DONE 17:4x (6 of 20 min; scratch\hzc_\handback.md): W3 horizon threshold 32.4
         rows (3 % of the height), 10 starts; deviation: middle 60 % of the width (full width locks onto a HUD edge);
-        lines sent to p91_ for T0; PK6 addendum written. fx4b_ W4b DONE 18:0x (28 of 100 min; fx4b_1127: X18 5c3951ce1 rt_cache_fill_omm,
+        lines sent to p91_ for T0; PK6 addendum written. p94_ (Opus Medium) DONE 18:1x (~10 of 30 min;
+        scratch\p94_\handback.md; p941127 6e1f9c418 from 6563e2199): EffectsOnAllCores Off / Automatic / On, default
+        Off, section CPU, shown only with ROW_PARALLEL_EFFECTS + the VFX_PARALLEL_UPDATER slot OK; EffectsSlotOk() by
+        name; Update() takes the stop (default 0), one fetch_or / fetch_and on bits 4-5; no KNOWN_ROWS edit; x86 page
+        SAME, a64 page = the new row + index shift; 2 mutations caught; gated amd64 + x86 exit 0. Deviation to rule on:
+        Off leaves the bits alone at the first present (as Keep Render Core Free). It also edited the shared
+        tools\tw\page_dump\dump_a64.cpp (outside its file list; backup .bak_p94_). Hardware F7 -> the batch (run.ps1
+        has no WARP mode). Review rp94_ (Opus xHigh) STARTED 18:3x. fx4b_ W4b DONE 18:0x (28 of 100 min; fx4b_1127: X18 5c3951ce1 rt_cache_fill_omm,
         X14 28d186dbd BakeCutoff, X10 702792bc6, X09 c5f73e5cd; controls byte-identical; gated amd64 / x86 / Tales
         exit 0; handoff_plan\handbacks\fx4b__handback.md) -> resumed for X18's rt_reference / rt_probe twins: DONE 17:39 (10 of 20 min; cb5d5c68a: rt_reference.hlsli
         4 sites on SCENE_QUERY, rt_probe micromap query under OPACITY_MICROMAPS, build.ps1 rt_probe_omm +
