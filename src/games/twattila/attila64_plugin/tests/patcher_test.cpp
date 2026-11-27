@@ -57,7 +57,8 @@ inline constexpr uintptr_t GRASS_UPDATE_RECORD = 0x6a0000;   // the four synthet
 inline constexpr uintptr_t GRASS_DRAW_RECORD = 0x6b0000;     // records
 inline constexpr uintptr_t GRASS_CELL_RECORD = 0x6c0000;
 inline constexpr uintptr_t CAMPAIGN_TREE_RECORD = 0x6d0000;
-inline constexpr uintptr_t PAIRS_RECORD = 0x6e0000;  // the synthetic pair resolver's record
+inline constexpr uintptr_t SPRITE_BED = 0x6e0000;  // the sprite site's test bed (fake_loader.hpp WriteMidBed)
+inline constexpr uintptr_t PAIRS_RECORD = 0x6f0000;  // the synthetic pair resolver's record
 // What a caller loads into rbx, rbp, r12, r13, r14 and r15 before its call.
 inline constexpr std::array<uint64_t, 6> CALLER_SENTINELS = {0xb0b0b0b0b0b0b0b0, 0xb5b5b5b5b5b5b5b5, 0xc0c0c0c0c0c0c0c0,
                                                              0xd0d0d0d0d0d0d0d0, 0xe0e0e0e0e0e0e0e0, 0xf0f0f0f0f0f0f0f0};
@@ -279,6 +280,14 @@ inline constexpr std::array<uint8_t, 102> GRASS_CELL_TAIL = {
     0x5b, 0x41, 0x5c, 0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f, 0x5d,  // pop rbx / r12 / r13 / r14 / r15 / rbp
     0xc3,                                                  // ret
 };
+// Effect walk: push rbp / r15 / r14 / r13 / r12 / rbx, sub rsp 0x178 and the first four bytes of movss [rsp + 0x28],
+// xmm1 (the window). The tail only returns: what the walk's hook does shows in the game's flag.
+inline constexpr std::array<uint8_t, 20> EFFECT_WALK_TAIL = {
+    0x24, 0x28,                                            // the window's f3 0f 11 4c: movss [rsp+0x28], xmm1
+    0x48, 0x81, 0xc4, 0x78, 0x01, 0x00, 0x00,              // add rsp, 0x178
+    0x5b, 0x41, 0x5c, 0x41, 0x5d, 0x41, 0x5e, 0x41, 0x5f, 0x5d,  // pop rbx / r12 / r13 / r14 / r15 / rbp
+    0xc3,                                                  // ret
+};
 // Campaign tree: the same pushes, sub rsp 0x68, mov r12d, r9d and the first four bytes of mov [rsp + 0x20], r8 (the
 // window). The tail returns its record's address.
 inline constexpr std::array<uint8_t, 75> CAMPAIGN_TREE_TAIL = {
@@ -306,7 +315,7 @@ struct PairsRecord {
   uint32_t calls;
 };
 inline constexpr std::array<uint8_t, 31> PAIRS_TAIL = {
-    0x48, 0xb8, 0x00, 0x00, 0x6e, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rax, PAIRS_RECORD
+    0x48, 0xb8, 0x00, 0x00, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00,  // mov rax, PAIRS_RECORD
     0x48, 0x89, 0x38,                                      // mov [rax], rdi
     0xff, 0x40, 0x08,                                      // inc dword [rax+8]
     0x48, 0x83, 0xc4, 0x28,                                // add rsp, 0x28
@@ -388,6 +397,16 @@ void PassEnd(uint32_t pass_kind, const PassMeasure& measure) noexcept {
 const Callbacks CALLBACKS = {.before_pack = &BeforePack, .pass_begin = &PassBegin, .pass_end = &PassEnd};
 const Callbacks OTHER_CALLBACKS = CALLBACKS;
 
+// The rows of this test's fake game: every row with a site but the game code row. The fake game does not hold the
+// game code that row's stubs stand on, so every plugin init here runs with that row's install key 0
+// (tests\game_code_test.cpp has the row, on the game's file).
+inline constexpr uint32_t ALL_ROWS = [] {
+  uint32_t rows = 0;
+  for (const Site& site : SITES) {
+    rows |= RowBit(static_cast<Row>(site.row));
+  }
+  return rows & ~RowBit(ROW_GAME_CODE);
+}();
 inline constexpr uint32_t HOOK_SITE_COUNT = [] {
   uint32_t count = 0;
   for (const Site& site : SITES) {
@@ -395,6 +414,21 @@ inline constexpr uint32_t HOOK_SITE_COUNT = [] {
   }
   return count;
 }();
+// The sites outside the shadow row: the hooks and the mid-function site.
+inline constexpr uint32_t JUMP_SITE_COUNT = [] {
+  uint32_t count = 0;
+  for (const Site& site : SITES) {
+    count += (site.kind == SITE_HOOK || site.kind == SITE_MID) ? 1 : 0;
+  }
+  return count;
+}();
+// The sites of ALL_ROWS: what a plugin init here puts in.
+inline constexpr size_t FAKE_GAME_SITE_COUNT = std::ranges::count_if(SITES, [](const Site& site) {
+  return (ALL_ROWS & RowBit(static_cast<Row>(site.row))) != 0;
+});
+// The fake game after the sprite site's window, which ends inside lea rsi, [rsp + 0x3d0]: that instruction's last four
+// bytes, then a jump back to the bed.
+inline constexpr std::array<uint8_t, 5> SPRITE_SITE_TAIL = {0xd0, 0x03, 0x00, 0x00, 0xe9};
 
 }  // namespace
 
@@ -458,6 +492,18 @@ int wmain(int argc, wchar_t** argv) {
     write_tail(LABEL_GRASS_DRAW_ENTRY, GRASS_DRAW_TAIL);
     write_tail(LABEL_GRASS_CELL_ENTRY, GRASS_CELL_TAIL);
     write_tail(LABEL_CAMPAIGN_TREE_ENTRY, CAMPAIGN_TREE_TAIL);
+    write_tail(LABEL_EFFECT_WALK_ENTRY, EFFECT_WALK_TAIL);
+    {
+      // The sprite site is inside a function: its bed jumps to the site, and the game's instructions after it (the
+      // store of the result, two loads) run on into the jump back.
+      const Site& sprite_site = SITES[LABEL_SPRITE_DISTANCE];
+      const uintptr_t sprite_end = sprite_site.address + sprite_site.length + SITE_MARGIN;
+      uintptr_t capture = 0;
+      WriteMidBed(at(SPRITE_BED), {}, sprite_site.address, 0x100, 0, SPRITE_BED_TAIL, &capture);
+      const auto back = static_cast<uint32_t>(capture - (sprite_end + SPRITE_SITE_TAIL.size() + sizeof(uint32_t)));
+      std::memcpy(at(sprite_end), SPRITE_SITE_TAIL.data(), SPRITE_SITE_TAIL.size());
+      std::memcpy(at(sprite_end + SPRITE_SITE_TAIL.size()), &back, sizeof(back));
+    }
     write_tail(LABEL_PAIRS_ENTRY, PAIRS_TAIL);
     {
       // The plugin's init takes the grass draw for the game's by the hash of its first bytes: five bytes past the fake
@@ -523,6 +569,7 @@ int wmain(int argc, wchar_t** argv) {
   const auto every_site_untouched = [&] { return std::ranges::all_of(SITES, site_untouched); };
   write_game();
   WriteTweakObjects();
+  WriteLoaderGuards();
 
   // Identity.
   Expect(CheckIdentity(api) == STATUS_READY, "identity: accepted");
@@ -558,11 +605,13 @@ int wmain(int argc, wchar_t** argv) {
     for (size_t index = 0; index < SITES.size(); ++index) {
       const Site& site = SITES[index];
       labels_ok = labels_ok && site.label == index && (labels_seen & (1u << site.label)) == 0
-                  && (REPLACEMENTS[site.label] != nullptr) == (site.kind == SITE_HOOK);
+                  && (REPLACEMENTS[site.label] != nullptr) == (site.kind == SITE_HOOK || site.kind == SITE_MID)
+                  && (MID_SITE_SCALES[site.label] != 0) == (site.kind == SITE_MID);
       labels_seen |= 1u << site.label;
     }
     Expect(labels_ok && labels_seen == (1u << LABEL_COUNT) - 1u && SITES.size() == LABEL_COUNT,
-           "labels: one per site in label order, a hook for each hook site and none for a patch site");
+           "labels: one per site in label order, a hook for each hook and mid-function site (its scales for that "
+           "one) and none for a patch site or a hand-made stub's");
     Expect(REPLACEMENTS[LABEL_PACK_ENTRY] == reinterpret_cast<void*>(&PackEntry)
                && REPLACEMENTS[LABEL_VIEW_DRAW_ENTRY] == reinterpret_cast<void*>(&ViewDrawEntry)
                && REPLACEMENTS[LABEL_STEP_ENTRY] == reinterpret_cast<void*>(&StepTaskEntry)
@@ -572,6 +621,9 @@ int wmain(int argc, wchar_t** argv) {
                && REPLACEMENTS[LABEL_GRASS_DRAW_ENTRY] == reinterpret_cast<void*>(&GrassDrawEntry)
                && REPLACEMENTS[LABEL_GRASS_CELL_ENTRY] == reinterpret_cast<void*>(&GrassCellEntry)
                && REPLACEMENTS[LABEL_CAMPAIGN_TREE_ENTRY] == reinterpret_cast<void*>(&CampaignTreeEntry)
+               && REPLACEMENTS[LABEL_SPRITE_DISTANCE] == reinterpret_cast<void*>(&SpriteDistanceHandler)
+               && MID_SITE_SCALES[LABEL_SPRITE_DISTANCE] == ((1u << SCALE_SPRITE_DISTANCE) | (1u << SCALE_DEAD_UNITS))
+               && REPLACEMENTS[LABEL_EFFECT_WALK_ENTRY] == reinterpret_cast<void*>(&EffectWalkEntry)
                && REPLACEMENTS[LABEL_PAIRS_ENTRY] == reinterpret_cast<void*>(&PairsEntry),
            "labels: each holds its own hook");
     Expect(LABEL_STEP_ENTRY == 2 && SITES[LABEL_STEP_ENTRY].row == ROW_CPU_PLACEMENT
@@ -579,15 +631,19 @@ int wmain(int argc, wchar_t** argv) {
                && SITES[LABEL_UNIT_LOD_ENTRY].row == ROW_UNIT_LOD && SITES[LABEL_MODEL_LOD_ENTRY].row == ROW_MODEL_DETAIL
                && SITES[LABEL_GRASS_UPDATE_ENTRY].row == ROW_GRASS && SITES[LABEL_GRASS_DRAW_ENTRY].row == ROW_GRASS
                && SITES[LABEL_GRASS_CELL_ENTRY].row == ROW_GRASS_CELLS
-               && SITES[LABEL_CAMPAIGN_TREE_ENTRY].row == ROW_CAMPAIGN_TREES,
+               && SITES[LABEL_CAMPAIGN_TREE_ENTRY].row == ROW_CAMPAIGN_TREES
+               && SITES[LABEL_SPRITE_DISTANCE].row == ROW_SPRITES
+               && SITES[LABEL_EFFECT_WALK_ENTRY].row == ROW_PARALLEL_EFFECTS,
            "labels: the first sites are in row order");
     uint32_t shadow_sites = 0;
     for (const Site& site : SITES) {
       Expect((site.kind == SITE_PATCH) == (site.row == ROW_SHADOW_MAP), "kinds: the shadow row's sites are the patches");
       shadow_sites += (site.row == ROW_SHADOW_MAP) ? 1 : 0;
     }
-    Expect(shadow_sites == 7 && HOOK_SITE_COUNT == SITES.size() - shadow_sites,
-           "kinds: the shadow row's 7 immediates, every other site a hook");
+    Expect(shadow_sites == 7 && SITES[LABEL_SPRITE_DISTANCE].kind == SITE_MID && JUMP_SITE_COUNT == HOOK_SITE_COUNT + 1
+               && JUMP_SITE_COUNT == FAKE_GAME_SITE_COUNT - shadow_sites,
+           "kinds: the shadow row's 7 immediates, the sprite row's mid-function site, every other site of the fake game "
+           "a hook");
   }
 
   // Site checks on the real sites' windows.
@@ -1201,53 +1257,113 @@ int wmain(int argc, wchar_t** argv) {
       set_scale(shared, SCALE_GRASS_RADIUS, 1.f);
       Expect(both_hold(200, 50.f, 300, 80.f), "two scrubs: at 1x before the crowd");
 
-      // More scrubs than states, through the hooks alone. The two above were last written at 1x; a crowd of 64 more
-      // at 2x fills the other 62 states (one of the crowd lives in a page of its own, to be freed), the last two of
-      // the crowd find none and keep the game's values, with the one line.
-      set_scale(shared, SCALE_GRASS_LOD, 4.f);
-      set_scale(shared, SCALE_GRASS_RADIUS, 2.f);
-      std::vector<std::array<uint8_t, 0x100>> crowd(MAX_SCRUBS, scrub);
-      auto* paged = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-      std::memcpy(paged, scrub.data(), scrub.size());
+      // More scrubs than one window's states, through the hooks alone. A scrub's state lies within SCRUB_WINDOW states
+      // of its address's home, so the crowd is picked from a block of memory by its home: every member's window is the
+      // same, and far from the two scrubs' above. (This file's ScrubHome is the DLL's: the same header.)
+      constexpr size_t CANDIDATES = 1u << 16;  // 64 a home
+      auto* region = static_cast<uint8_t*>(
+          VirtualAlloc(nullptr, CANDIDATES * scrub.size(), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+      const auto apart = [](size_t home, size_t other) {
+        const size_t distance = (home + SCRUB_STATES - other) % SCRUB_STATES;
+        return std::min(distance, SCRUB_STATES - distance) >= SCRUB_WINDOW;
+      };
+      const auto far_from_the_two = [&](size_t home) {
+        return apart(home, ScrubHome(scrub.data())) && apart(home, ScrubHome(second_scrub.data()));
+      };
+      size_t crowd_home = 0;
+      while (!far_from_the_two(crowd_home)) {
+        ++crowd_home;
+      }
+      // Two last written at 1x, the crowd of one window's size at 2x (its member PAGED's page is freed below), and
+      // two new ones for later.
+      constexpr size_t CROWD = SCRUB_WINDOW;
       constexpr size_t PAGED = 6;
-      const auto member = [&](size_t index) { return ((index == PAGED) ? paged : crowd[index].data()); };
+      std::vector<uint8_t*> same_home;
+      for (size_t candidate = 0; candidate < CANDIDATES && same_home.size() < CROWD + 4; ++candidate) {
+        uint8_t* object = region + (candidate * scrub.size());
+        if (ScrubHome(object) != crowd_home) continue;
+        // Each in a page of its own (the paged member's is freed below).
+        if (!same_home.empty() && (object - same_home.back()) < 0x1000) continue;
+        std::memcpy(object, ((same_home.size() >= CROWD + 2) ? second_scrub.data() : scrub.data()), scrub.size());
+        same_home.push_back(object);
+      }
+      Expect(same_home.size() == CROWD + 4, "scrubs of one home found");
+      const auto member = [&](size_t index) { return same_home[2 + index]; };
+      uint8_t* third_scrub = same_home[CROWD + 2];
+      uint8_t* fourth_scrub = same_home[CROWD + 3];
+      uint8_t* paged_page = region + ((member(PAGED) - region) / 0x1000 * 0x1000);
       const auto holds_after_update = [&](uint8_t* object, int32_t radius, float bias) {
         grass_update(object);
         grass_update(object);
         return std::memcmp(object + SCRUB_RADIUS, &radius, 4) == 0 && std::memcmp(object + SCRUB_BIAS, &bias, 4) == 0;
       };
+      const auto updates_pass = [&](uint64_t count) {
+        for (uint64_t update = 0; update < count; ++update) {
+          grass_update(member(0));
+        }
+      };
+      Expect(holds_after_update(same_home[0], 200, 50.f) && holds_after_update(same_home[1], 200, 50.f),
+             "two scrubs of the crowd's home at 1x");
+      set_scale(shared, SCALE_GRASS_LOD, 4.f);
+      set_scale(shared, SCALE_GRASS_RADIUS, 2.f);
       bool crowd_ok = true;
-      for (size_t index = 0; index < MAX_SCRUBS; ++index) {
-        crowd_ok = crowd_ok && holds_after_update(member(index), ((index < MAX_SCRUBS - 2) ? 201 : 200),
-                                                  ((index < MAX_SCRUBS - 2) ? 100.f : 50.f));
+      for (size_t index = 0; index < CROWD; ++index) {
+        crowd_ok = crowd_ok && holds_after_update(member(index), ((index < CROWD - 2) ? 201 : 200),
+                                                  ((index < CROWD - 2) ? 100.f : 50.f));
       }
-      Expect(crowd_ok && Logged("grass: more than 64 grass areas at once, the rest keep the game's radius"),
-             "scrubs past the table: the game's radius and bias, the line");
+      Expect(crowd_ok && Logged("grass: no state left for a grass area, it keeps the game's radius"),
+             "scrubs past their window: the game's radius and bias, the line");
       // Every state but one without an update for long.
-      for (uint64_t update = 0; update <= STALE_SCRUB_UPDATES; ++update) {
-        grass_update(member(0));
-      }
-      Expect(holds_after_update(member(MAX_SCRUBS - 2), 201, 100.f) && holds_after_update(member(MAX_SCRUBS - 1), 201, 100.f),
+      updates_pass(STALE_SCRUB_UPDATES + 1);
+      Expect(holds_after_update(member(CROWD - 2), 201, 100.f) && holds_after_update(member(CROWD - 1), 201, 100.f),
              "a stale state last written at 1x is taken (the two first scrubs')");
-      std::array<uint8_t, 0x100> third_scrub = second_scrub;
-      Expect(holds_after_update(third_scrub.data(), 300, 80.f) && grass_cell_once(third_scrub.data(), {1, 1}, 40401.f, 40401.f),
+      Expect(holds_after_update(third_scrub, 300, 80.f) && grass_cell_once(third_scrub, {1, 1}, 40401.f, 40401.f),
              "a stale state whose scrub still holds the 2x values is not taken: the new scrub keeps the game's");
       put(member(5), SCRUB_RADIUS, int32_t{999});
-      Expect(holds_after_update(third_scrub.data(), 300, 80.f), "a stale state whose scrub still holds one written value is not taken");
+      updates_pass(SCRUB_SEARCH_INTERVAL);
+      Expect(holds_after_update(third_scrub, 300, 80.f), "a stale state whose scrub still holds one written value is not taken");
+      // A refused scrub's window is searched again only SCRUB_SEARCH_INTERVAL update calls after the search that
+      // found nothing: a state that may be taken by now is not seen before.
       put(member(5), SCRUB_BIAS, 5.f);
-      Expect(holds_after_update(third_scrub.data(), 201, 160.f), "a stale state whose scrub holds other values is taken");
-      std::array<uint8_t, 0x100> fourth_scrub = second_scrub;
-      Expect(holds_after_update(fourth_scrub.data(), 300, 80.f), "no other stale state may be taken");
-      VirtualFree(paged, 0, MEM_RELEASE);
-      Expect(holds_after_update(fourth_scrub.data(), 201, 160.f), "a stale state whose scrub's memory is gone is taken");
+      updates_pass(SCRUB_SEARCH_INTERVAL - 4);
+      Expect(holds_after_update(third_scrub, 300, 80.f), "a refused scrub: no new search before the interval is over");
+      updates_pass(1);
+      Expect(holds_after_update(third_scrub, 201, 160.f), "a stale state whose scrub holds other values is taken, at the next search");
+      Expect(holds_after_update(fourth_scrub, 300, 80.f), "no other stale state may be taken");
+      VirtualFree(paged_page, 0x1000, MEM_DECOMMIT);
+      Expect(holds_after_update(fourth_scrub, 300, 80.f), "a refused scrub: its memory gone state is not seen before the interval either");
+      updates_pass(SCRUB_SEARCH_INTERVAL);
+      Expect(holds_after_update(fourth_scrub, 201, 160.f), "a stale state whose scrub's memory is gone is taken");
+
+      // A long session: many more short-lived scrubs than the 64 states of before, each updated a few times at 2x and
+      // left holding its 2x values, as a freed scrub's memory does. Every one is scaled (their homes all differ and lie
+      // away from the windows used above, so that the test does not depend on where its memory is).
+      constexpr size_t SESSION_SCRUBS = 200;
+      std::array<bool, SCRUB_STATES> home_used = {};
+      size_t session_scrubs = 0;
+      bool session_ok = true;
+      for (size_t candidate = 0; candidate < CANDIDATES && session_scrubs < SESSION_SCRUBS; ++candidate) {
+        uint8_t* object = region + (candidate * scrub.size());
+        const size_t home = ScrubHome(object);
+        if (home_used[home] || !apart(home, crowd_home) || !far_from_the_two(home)
+            || object - paged_page < 0x1000u) {
+          continue;
+        }
+        home_used[home] = true;
+        ++session_scrubs;
+        std::memcpy(object, scrub.data(), scrub.size());
+        session_ok = session_ok && holds_after_update(object, 201, 100.f) && grass_cell_once(object, {1, 1}, 40401.f, 3721.f);
+      }
+      Expect(session_scrubs == SESSION_SCRUBS && session_ok, "a long session: 200 scrubs one after another, every one scaled");
       // Back at 1x: a scrub that was idle all the time and kept its state comes back to the game's exact values, and
       // so do the others.
       set_scale(shared, SCALE_GRASS_LOD, 1.f);
       set_scale(shared, SCALE_GRASS_RADIUS, 1.f);
-      Expect(holds_after_update(member(1), 200, 50.f) && holds_after_update(member(MAX_SCRUBS - 3), 200, 50.f)
-                 && holds_after_update(third_scrub.data(), 300, 80.f) && holds_after_update(fourth_scrub.data(), 300, 80.f)
-                 && holds_after_update(member(0), 200, 50.f) && holds_after_update(member(MAX_SCRUBS - 1), 200, 50.f),
+      Expect(holds_after_update(member(1), 200, 50.f) && holds_after_update(member(CROWD - 3), 200, 50.f)
+                 && holds_after_update(third_scrub, 300, 80.f) && holds_after_update(fourth_scrub, 300, 80.f)
+                 && holds_after_update(member(0), 200, 50.f) && holds_after_update(member(CROWD - 1), 200, 50.f),
              "after a refused take: the idle scrub is exactly the game's at 1x, as every other");
+      VirtualFree(region, 0, MEM_RELEASE);
     }
 
     set_scale(shared, SCALE_CAMPAIGN_TREES, 4.f);
@@ -1270,6 +1386,96 @@ int wmain(int argc, wchar_t** argv) {
       Expect(pairs_record->manager == fake_manager.data() && pairs_record->calls == 2
                  && Logged("renodx_attila64: PAIRS_ENTRY: first call (thread "),
              "pairs: game code the row does not know, the game's function with its argument");
+    }
+
+    // The sprite site, through its bed: the soldier's record in r13, its display tables' entries in rax and rcx, its
+    // random value - 0.5 in xmm0; the game's own next instructions store the result. Neutral: the game's two
+    // instructions, no call of ours. Active: the cap by the soldier's height, the dead soldiers' scale, each alone and
+    // both; everything but the result as the game had it.
+    {
+      const auto sprite_bed = reinterpret_cast<MidBed>(SPRITE_BED);
+      const std::array<float, 4> distances = {90.f, 110.f, 200.f, 1000.f};
+      const std::array<float, 4> fade_widths = {22.5f, 27.5f, 50.f, 250.f};
+      std::array<uint8_t, 0x400> display = {};
+      std::array<uint8_t, 0x120> soldier = {};
+      std::memcpy(display.data() + DISPLAY_SPRITE_DISTANCES, distances.data(), sizeof(distances));
+      std::memcpy(display.data() + DISPLAY_SPRITE_DISTANCES + 0x10, fade_widths.data(), sizeof(fade_widths));
+      put(soldier.data(), SOLDIER_DISPLAY, display.data());
+      const uint64_t after_site_load = 0x7ab1e0000000beef;  // what the game's mov rax, [rbx] after the site reads
+      // One soldier's pass over the site: true when the stored result is `expected` bit for bit and every register
+      // and flag and the red zone is as it went in, but for the result in xmm0 and what the game's next instructions
+      // load.
+      const auto sprite_once = [&](size_t size, float dither, bool alive, float expected) {
+        soldier[SOLDIER_FLAGS] = static_cast<uint8_t>(0x52 | (alive ? SOLDIER_ALIVE : 0));
+        Registers in;
+        for (size_t number = 0; number < in.gpr.size(); ++number) {
+          in.gpr[number] = 0x0101010101010101 * (number + 1);
+        }
+        in.gpr[0] = reinterpret_cast<uintptr_t>(display.data() + DISPLAY_SPRITE_DISTANCES + 0x10 + (size * sizeof(float)));
+        in.gpr[1] = reinterpret_cast<uintptr_t>(display.data() + DISPLAY_SPRITE_DISTANCES + (size * sizeof(float)));
+        in.gpr[3] = reinterpret_cast<uintptr_t>(&after_site_load);
+        in.gpr[13] = reinterpret_cast<uintptr_t>(soldier.data());
+        in.flags = 0x202 | 0x8d5;  // every status flag set
+        for (size_t number = 0; number < in.xmm.size(); ++number) {
+          in.xmm[number].fill(static_cast<uint8_t>(0x30 + number));
+        }
+        std::memcpy(in.xmm[0].data(), &dither, sizeof(dither));
+        Registers out;
+        sprite_bed(&in, &out);
+        Registers kept = in;
+        kept.gpr[0] = after_site_load;
+        kept.gpr[4] = out.gpr[4];  // rsp: the bed's own
+        kept.gpr[6] = out.gpr[4] + 0x3d0;  // the game's lea rsi, [rsp + 0x3d0]
+        kept.slot = std::bit_cast<uint32_t>(expected);
+        kept.red_zone.fill(in.gpr[7]);
+        std::memcpy(kept.xmm[0].data(), &expected, sizeof(expected));
+        return out == kept;
+      };
+      const auto game_distance = [&](size_t size, float dither) { return (dither * fade_widths[size]) + distances[size]; };
+      Expect(!Logged("SPRITE_DISTANCE: first call") && sprite_once(0, 0.25f, true, 95.625f) && sprite_once(3, -0.5f, false, 875.f)
+                 && !Logged("SPRITE_DISTANCE: first call"),
+             "sprite: neutral, the game's distance, every register and flag kept, no call of ours");
+      set_scale(shared, SCALE_GRASS_LOD, 4.f);
+      set_scale(shared, SCALE_UNIT_LOD, 2.f);
+      shared->scales[SCALE_SPRITE_DISTANCE].store(20.f);
+      shared->scales[SCALE_DEAD_UNITS].store(0.5f);
+      Expect(sprite_once(1, 0.25f, false, game_distance(1, 0.25f)) && !Logged("SPRITE_DISTANCE: first call"),
+             "sprite: other rows' bits and its scales without their bits change nothing");
+      set_scale(shared, SCALE_GRASS_LOD, 1.f);
+      set_scale(shared, SCALE_UNIT_LOD, 1.f);
+      shared->scales[SCALE_DEAD_UNITS].store(1.f);
+
+      // Small Soldiers as Sprites: 20 m of distance per metre of height, + the game's spread.
+      set_scale(shared, SCALE_SPRITE_DISTANCE, 20.f);
+      Expect(sprite_once(0, 0.25f, true, 41.625f) && Logged("SPRITE_DISTANCE: first call"),
+             "sprite: a foot soldier turns into a sprite at 1.8 m x the scale + the spread, the first-call line");
+      Expect(sprite_once(1, 0.25f, true, 58.875f) && sprite_once(2, 0.25f, true, 92.5f) && sprite_once(3, 0.25f, true, 122.5f)
+                 && sprite_once(0, -0.5f, true, 24.75f),
+             "sprite: each size by its own height, the spread below the middle too");
+      shared->scales[SCALE_DEAD_UNITS].store(0.5f);
+      Expect(sprite_once(0, 0.25f, false, 41.625f), "sprite: a dead soldier as a living one while its own scale's bit is clear");
+      shared->scales[SCALE_DEAD_UNITS].store(1.f);
+      // A scale below 0 (not one the add-on sends) is no cap, as in the 32-bit add-on.
+      set_scale(shared, SCALE_SPRITE_DISTANCE, -20.f);
+      Expect(sprite_once(0, 0.25f, true, game_distance(0, 0.25f)) && sprite_once(2, 0.25f, false, game_distance(2, 0.25f)),
+             "sprite: a scale below 0 leaves the game's distance");
+      set_scale(shared, SCALE_SPRITE_DISTANCE, 1000.f);
+      Expect(sprite_once(0, 0.25f, true, game_distance(0, 0.25f)) && sprite_once(3, 0.25f, true, game_distance(3, 0.25f)),
+             "sprite: a cap past the game's distance leaves the game's bits");
+      // Dead Unit Detail with the cap, then alone.
+      set_scale(shared, SCALE_SPRITE_DISTANCE, 20.f);
+      set_scale(shared, SCALE_DEAD_UNITS, 0.5f);
+      Expect(sprite_once(0, 0.25f, false, 20.8125f) && sprite_once(0, 0.25f, true, 41.625f),
+             "sprite: a dead soldier's capped distance x its scale, a living one's not");
+      set_scale(shared, SCALE_SPRITE_DISTANCE, 0.f);
+      Expect(sprite_once(2, 0.25f, false, 106.25f) && sprite_once(2, 0.25f, true, game_distance(2, 0.25f))
+                 && sprite_once(1, -0.25f, true, game_distance(1, -0.25f)),
+             "sprite: the dead scale alone, the game's distance x it; a living soldier keeps the game's bits");
+      shared->scales[SCALE_SPRITE_DISTANCE].store(20.f);
+      Expect(sprite_once(0, 0.25f, true, game_distance(0, 0.25f)), "sprite: no cap from a scale whose bit is clear");
+      shared->scales[SCALE_SPRITE_DISTANCE].store(0.f);
+      set_scale(shared, SCALE_DEAD_UNITS, 1.f);
+      Expect(shared->scales_active.load() == 0 && sprite_once(0, 0.25f, false, 95.625f), "sprite: back at neutral, the game's distance");
     }
 
     // The step: its bit clear, the placement does nothing and the game's step runs with its task; its bit set, one
@@ -1301,9 +1507,14 @@ int wmain(int argc, wchar_t** argv) {
   std::printf("  hooks: the test's copy\n");
   write_game();
   for (const Site& site : SITES) {
-    if (site.kind != SITE_HOOK) continue;
+    if (site.kind == SITE_PATCH) continue;
     AppliedSite applied;
-    Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE, "hooks: site hooked");
+    const Refusal refusal =
+        ((site.kind == SITE_MID)
+             ? ApplyMidSite(api, site, reinterpret_cast<trampoline::MidHandler>(REPLACEMENTS[site.label]),
+                            &block.scales_active, MID_SITE_SCALES[site.label], &applied)
+             : ApplySite(api, site, REPLACEMENTS[site.label], &applied));
+    Expect(refusal == REFUSAL_NONE, "hooks: site hooked");
     originals[site.label] = applied.original;
   }
   expect_hook_bodies(&block);
@@ -1369,6 +1580,7 @@ int wmain(int argc, wchar_t** argv) {
   };
   const auto set_ini_key_off = [&](const wchar_t* key) {
     DeleteFileW(ini_path.c_str());
+    WritePrivateProfileStringW(INI_SECTION, ROW_INI_KEYS[ROW_GAME_CODE], L"0", ini_path.c_str());
     if (key != nullptr) {
       WritePrivateProfileStringW(INI_SECTION, key, L"0", ini_path.c_str());
     }
@@ -1393,11 +1605,22 @@ int wmain(int argc, wchar_t** argv) {
            "dll: the file holds the render core's reserve text as a whole string");
     Expect(dll_bytes.find("\0renodx_attila64: render thread %lu\0"sv) != std::string::npos,
            "dll: the file holds the render thread's line as a whole string");
+    // The game code row's word, for the batch tool's game-code arm (tests\game_code_test.cpp has the row itself).
+    Expect(dll_bytes.find("\0game code\0"sv) != std::string::npos,
+           "dll: the file holds the row's word \"game code\" as a whole string");
     Expect(dll_bytes.find("\0renodx_attila64: site %s %#x: applied\0"sv) != std::string::npos
                && dll_bytes.find("\0renodx_attila64: site %s %#x: applied (game's bytes kept)\0"sv) != std::string::npos
                && dll_bytes.find("\0renodx_attila64: shadow map %u: patched\0"sv) != std::string::npos
                && dll_bytes.find("\0renodx_attila64: shadow map: game's size\0"sv) != std::string::npos,
            "dll: the file holds the two applied lines and the shadow row's two lines as whole strings");
+    // The parallel effects row's word marks a DLL that reads the EffectsMode key: a whole string of its own (no line
+    // of the row ends in it), and the key's name is in the file too (a wide string).
+    const std::wstring_view mode_key(INI_EFFECTS_MODE);
+    Expect(dll_bytes.find("\0parallel effects\0"sv) != std::string::npos
+               && dll_bytes.find(std::string_view(reinterpret_cast<const char*>(mode_key.data()),
+                                                  (mode_key.size() + 1) * sizeof(wchar_t)))
+                      != std::string::npos,
+           "dll: the file holds the parallel effects row's word as a whole string, and the EffectsMode key");
   }
 
   const auto render_state_of = [](const Block* shared) {
@@ -1413,7 +1636,7 @@ int wmain(int argc, wchar_t** argv) {
   write_game();
   // The test's game image holds the sites' windows only: the battle step row's check of the game's code refuses it,
   // with its one line, and the row's hook passes every call on.
-  const Plugin main_plugin = ExpectPluginDll(api, copy_plugin(L"main", MODULE_NAME).c_str(), ENGINE_CODE_DIFFERS);
+  const Plugin main_plugin = ExpectPluginDll(api, copy_plugin(L"main", MODULE_NAME).c_str(), true, ENGINE_CODE_DIFFERS);
   Expect(std::ranges::count_if(log_lines, [](const std::string& line) { return line.find("battle step: ") != std::string::npos; }) == 1
              && Logged("renodx_attila64: battle step: game code differs (") && Logged(", battle step on")
              && Logged("renodx_attila64: site PAIRS_ENTRY 0x79a690: applied"),
@@ -1483,12 +1706,68 @@ int wmain(int argc, wchar_t** argv) {
     *at(SITES[ROW_PASS_DRAW].address + 1) ^= 1;
     plugin.game_started(&api);
     char others_unchanged[64];
-    std::snprintf(others_unchanged, sizeof(others_unchanged), "game started: %zu sites unchanged", SITES.size() - 1);
+    std::snprintf(others_unchanged, sizeof(others_unchanged), "game started: %zu sites unchanged", FAKE_GAME_SITE_COUNT - 1);
     Expect(plugin.block->rows_changed.load() == RowBit(ROW_PASS_DRAW) && Logged("VIEW_DRAW_ENTRY changed after we patched it")
                && Logged(others_unchanged),
            "dll: game start finds a site changed after init");
   } else {
     Expect(false, "dll: init for the changed-later case");
+  }
+
+  // The EffectsMode key: the two effect bits at init with the mode's line, and the DLL's walk hook through the site.
+  // 2 (On): the first walk stores 1 in the game's flag; 0 then puts the loader's value back, once.
+  for (const int mode_key : {1, 2, 0, 7}) {
+    DeleteFileW(ini_path.c_str());
+    WritePrivateProfileStringW(INI_SECTION, INI_EFFECTS_MODE, std::to_wstring(mode_key).c_str(), ini_path.c_str());
+    write_game();
+    const auto [plugin, result] = init_copy((std::wstring(L"effects_mode_") + std::to_wstring(mode_key)).c_str(), MODULE_NAME, api);
+    if (result != 0) {
+      Expect(false, "dll: init for an EffectsMode case");
+      continue;
+    }
+    const uint32_t effect_bits = ((mode_key == 1) ? (CORE_EFFECTS | CORE_EFFECTS_AUTO) : ((mode_key == 2) ? CORE_EFFECTS : 0));
+    char mode_line[96];
+    std::snprintf(mode_line, sizeof(mode_line), "renodx_attila64: parallel effects mode %s (ini EffectsMode)",
+                  EFFECTS_MODE_WORDS[EffectsModeOf(effect_bits)]);
+    Expect(plugin.block->core_wanted.load() == (CORE_WANTED_DEFAULT | effect_bits) && Logged(mode_line)
+               && Logged("EffectsMode=7 is not 0, 1 or 2 (no change)") == (mode_key == 7),
+           "dll: the EffectsMode key sets the two effect bits at init and says the mode");
+    plugin.game_started(&api);
+    if (mode_key == 1) continue;  // Automatic reads a node's table: effect_guard_test
+    const auto walk_site = reinterpret_cast<EffectWalkFn>(uintptr_t{SITES[LABEL_EFFECT_WALK_ENTRY].address});
+    *at(EFFECT_FLAG) = 0;
+    walk_site(nullptr, 0.f, 0.f);
+    Expect(Logged("renodx_attila64: parallel effects: offered (loader guards in place)")
+               && Logged("renodx_attila64: EFFECT_WALK_ENTRY: first call (thread ") && *at(EFFECT_FLAG) == ((mode_key == 2) ? 1 : 0),
+           "dll: the walk's first call says so, and On stores 1 in the game's flag");
+    plugin.block->core_wanted.fetch_xor(CORE_EFFECTS);
+    walk_site(nullptr, 0.f, 0.f);
+    Expect(*at(EFFECT_FLAG) == ((mode_key == 2) ? 0 : 1), "dll: the add-on's change of the mode shows at the next walk");
+    WriteTweakObjects();
+  }
+  set_ini_key_off(nullptr);
+
+  // The game's parallel effect flag is offered only behind the loader's guards: with one guard entry that is not the
+  // loader's hook, or with the game's read of the flag changed, its slot is ABSENT (the row's hook is in and inert).
+  for (const bool guard_case : {true, false}) {
+    uint8_t* changed = at(guard_case ? EFFECT_GUARD_ENTRIES[1] : (EFFECT_FLAG_READ_ADDRESS + 2));
+    write_game();
+    *changed ^= 1;
+    const auto [plugin, result] = init_copy((guard_case ? L"effect_guard" : L"effect_flag_read"), MODULE_NAME, api);
+    if (result == 0) {
+      plugin.game_started(&api);
+    }
+    *changed ^= 1;
+    char absent_line[96];
+    std::snprintf(absent_line, sizeof(absent_line), "renodx_attila64: tweaks: %zu checked, %zu ok, 3 absent", TWEAKS.size() - 3,
+                  TWEAKS.size() - 3);
+    Expect(result == 0 && (plugin.block->rows_applied & RowBit(ROW_PARALLEL_EFFECTS)) != 0
+               && plugin.block->tweaks[tweaks::LOADER_FLAG_TWEAK].verdict == VERDICT_ABSENT
+               && plugin.block->tweaks[tweaks::LOADER_FLAG_TWEAK].value_address == 0 && Logged(absent_line)
+               && Logged(guard_case ? "renodx_attila64: parallel effects: not offered (0x34e0170 not the loader's)"
+                                    : "renodx_attila64: parallel effects: not offered (flag read differs)")
+               && !Logged("parallel effects: offered"),
+           "dll: the parallel effect flag is not offered without the loader's guards or with another flag read");
   }
 
   set_ini_key_off(INI_ENABLED);
@@ -1499,7 +1778,7 @@ int wmain(int argc, wchar_t** argv) {
                && !Logged("loader frame cap"),
            "dll: Enabled=0 refuses and writes nothing");
   }
-  // Every row with a site (the sites table says which).
+  // Every row of the fake game (the sites table says which).
   for (uint32_t row_index = 0; row_index < ROW_COUNT; ++row_index) {
     const auto row = static_cast<Row>(row_index);
     if ((ALL_ROWS & RowBit(row)) == 0) continue;
@@ -1511,10 +1790,11 @@ int wmain(int argc, wchar_t** argv) {
     bool only_its_site_untouched = true;
     for (const Site& site : SITES) {
       only_its_site_untouched = only_its_site_untouched
-                                && site_untouched(site) == (site.row == row || site.kind == SITE_PATCH);
+                                && site_untouched(site)
+                                       == (site.row == row || site.row == ROW_GAME_CODE || site.kind == SITE_PATCH);
     }
     Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == others
-               && plugin.block->rows_refused == RowBit(row) && plugin.block->rows_tried == others
+               && plugin.block->rows_refused == (RowBit(row) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == others
                && Logged("skipped (OFF)") && only_its_site_untouched,
            "dll: a row's install key 0 leaves that row out, and out of the rows tried");
     // The battle step row's own key 0 is its lane's word, with the game's code not read; with the row in, this image
@@ -1527,12 +1807,20 @@ int wmain(int argc, wchar_t** argv) {
                && Logged(", battle step off") == (row == ROW_BATTLE_STEP)
                && Logged(", battle step on") == (row != ROW_BATTLE_STEP),
            "dll: the battle step row's key 0 is its site's skipped (OFF) line and its word off in the rows line");
+    Expect(Logged("renodx_attila64: site EFFECT_WALK_ENTRY 0x32fbf60: skipped (OFF)") == (row == ROW_PARALLEL_EFFECTS)
+               && Logged(", parallel effects off") == (row == ROW_PARALLEL_EFFECTS)
+               && Logged("parallel effects mode ") == (row != ROW_PARALLEL_EFFECTS),
+           "dll: without the parallel effects row its site is skipped, its row is off and the mode key is not read");
     // Both core status words are built only with the row in (without it the RenderCore key is not read either).
     const bool built = (row != ROW_CPU_PLACEMENT);
     Expect(plugin.block->core_status.load() == (built ? (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT) : 0)
                && plugin.block->render_core_status.load() == (built ? (uint32_t{CORE_NO_THREAD} << CORE_STATE_SHIFT) : 0),
            "dll: the core status words are built only with the CPU row applied");
     plugin.game_started(&api);
+    Expect(Logged("renodx_attila64: parallel effects: not offered (its row is off)") == (row == ROW_PARALLEL_EFFECTS)
+               && Logged("parallel effects: offered") == (row != ROW_PARALLEL_EFFECTS)
+               && (plugin.block->tweaks[tweaks::LOADER_FLAG_TWEAK].verdict == VERDICT_ABSENT) == (row == ROW_PARALLEL_EFFECTS),
+           "dll: without the parallel effects row the game's flag is not offered");
     Expect(Logged("renodx_attila64: render thread ") == built
                && plugin.block->render_core_status.load() == (built ? (uint32_t{CORE_WAITING} << CORE_STATE_SHIFT) : 0),
            "dll: the render thread is captured only with the CPU row applied");
@@ -1544,7 +1832,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"differs", MODULE_NAME, api);
     Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_BONE_FLUSH))
-               && plugin.block->rows_refused == RowBit(ROW_BONE_FLUSH) && plugin.block->rows_tried == ALL_ROWS
+               && plugin.block->rows_refused == (RowBit(ROW_BONE_FLUSH) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == ALL_ROWS
                && Logged("PACK_ENTRY 0x3416d50: skipped (DIFFERS)"),
            "dll: a site whose bytes differ is left out (still tried)");
   }
@@ -1554,7 +1842,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"step_neighbour", MODULE_NAME, api);
     Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_CPU_PLACEMENT))
-               && plugin.block->rows_refused == RowBit(ROW_CPU_PLACEMENT) && plugin.block->rows_tried == ALL_ROWS
+               && plugin.block->rows_refused == (RowBit(ROW_CPU_PLACEMENT) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == ALL_ROWS
                && plugin.block->core_status.load() == 0 && plugin.block->render_core_status.load() == 0
                && site_untouched(SITES[ROW_CPU_PLACEMENT])
                && Logged("STEP_ENTRY 0xbb4e00: skipped (NEIGHBOUR)"),
@@ -1566,11 +1854,29 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"no_memory", MODULE_NAME, api);
     Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == RowBit(ROW_SHADOW_MAP)
-               && plugin.block->rows_refused == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP)) && plugin.block->core_status.load() == 0
-               && Logged("skipped (NO_MEMORY)"),
-           "dll: no memory near the game leaves every hook row out (the patch row needs none)");
+               && plugin.block->rows_refused == ((ALL_ROWS & ~RowBit(ROW_SHADOW_MAP)) | RowBit(ROW_GAME_CODE)) && plugin.block->core_status.load() == 0
+               && Logged("PACK_ENTRY 0x3416d50: skipped (NO_MEMORY)") && Logged("SPRITE_DISTANCE 0xa5049c: skipped (NO_MEMORY)")
+               && site_untouched(SITES[LABEL_SPRITE_DISTANCE]),
+           "dll: no memory near the game leaves every hook and stub row out (the patch row needs none)");
   }
   hook_mode = HOOK_NORMAL;
+
+  // The loader refuses the sprite site's jump (the only write of this init: the shadow sizes stay the game's): the
+  // site keeps the game's bytes, its row is out and the other rows go in.
+  write_game();
+  failing_patch_calls = 1;
+  {
+    const auto [plugin, result] = init_copy(L"sprite_write", MODULE_NAME, api);
+    Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SPRITES))
+               && plugin.block->rows_refused == (RowBit(ROW_SPRITES) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == ALL_ROWS
+               && Logged("site SPRITE_DISTANCE 0xa5049c: skipped (WRITE_FAILED)") && Logged("campaign trees on, sprites off")
+               && site_untouched(SITES[LABEL_SPRITE_DISTANCE]),
+           "sprite: its jump refused leaves the game's bytes and the row out, the other rows in");
+    plugin.game_started(&api);
+    char sites_in[64];
+    std::snprintf(sites_in, sizeof(sites_in), "game started: %zu sites unchanged", FAKE_GAME_SITE_COUNT - 1);
+    Expect(plugin.block->rows_changed.load() == 0 && Logged(sites_in), "sprite: a refused site is not re-checked");
+  }
 
   // The grass row's second hook finds no memory: its first one is in and stays in (a hook cannot come out), the row is
   // refused, and the hook that stayed does nothing whatever the scales say. The other rows go in.
@@ -1580,7 +1886,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"grass_second_hook", MODULE_NAME, api);
     Expect(result == 0 && failing_hook_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_GRASS))
-               && plugin.block->rows_refused == RowBit(ROW_GRASS) && plugin.block->rows_tried == ALL_ROWS
+               && plugin.block->rows_refused == (RowBit(ROW_GRASS) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == ALL_ROWS
                && Logged("site GRASS_UPDATE_ENTRY 0x33fb140: applied")
                && Logged("site GRASS_DRAW_ENTRY 0x33f3e00: skipped (NO_MEMORY)")
                && Logged("grass off, grass cells on, campaign trees on"),
@@ -1598,7 +1904,7 @@ int wmain(int argc, wchar_t** argv) {
            "grass: the hook of a refused row writes nothing with its scales active, and no cell is cut");
     plugin.game_started(&api);
     char sites_in[64];
-    std::snprintf(sites_in, sizeof(sites_in), "game started: %zu sites unchanged", SITES.size() - 1);
+    std::snprintf(sites_in, sizeof(sites_in), "game started: %zu sites unchanged", FAKE_GAME_SITE_COUNT - 1);
     Expect(plugin.block->rows_changed.load() == 0 && Logged(sites_in), "grass: the hook that stayed in is still re-checked");
   }
 
@@ -1634,7 +1940,7 @@ int wmain(int argc, wchar_t** argv) {
     *at(SITES[LABEL_GRASS_DRAW_ENTRY].address + GRASS_DRAW_NO_LOD_BYTES - 8) ^= 1;
     plugin.game_started(&api);
     char sites_in[64];
-    std::snprintf(sites_in, sizeof(sites_in), "game started: %zu sites unchanged", SITES.size());
+    std::snprintf(sites_in, sizeof(sites_in), "game started: %zu sites unchanged", FAKE_GAME_SITE_COUNT);
     Expect(Logged(GRASS_DRAW_CODE_LINE) && Logged(sites_in) && grass_draw_once(1, 50.f, 0.f, true),
            "grass draw: a byte patched before game start leaves the line, every draw reaches the game");
     set_scale(plugin.block, SCALE_GRASS_LOD, 1.f);
@@ -1663,11 +1969,15 @@ int wmain(int argc, wchar_t** argv) {
     return init_copy(folder, MODULE_NAME, api);
   };
   char every_site_unchanged[64];
-  std::snprintf(every_site_unchanged, sizeof(every_site_unchanged), "game started: %zu sites unchanged", SITES.size());
+  std::snprintf(every_site_unchanged, sizeof(every_site_unchanged), "game started: %zu sites unchanged", FAKE_GAME_SITE_COUNT);
   Expect(shadow_sizes(2048.f, 1024.f), "shadow: the fake game holds the game's sizes");
   {
+    const size_t near_code_before = near_code_used;
     const auto [plugin, result] = shadow_case(L"shadow_1", L"1", true);
-    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && plugin.block->rows_refused == 0
+    // Every site in: the hooks' stubs and the sprite site's own, with 1 KB left of the loader's page for the loader.
+    Expect(near_code_used - near_code_before <= LOADER_NEAR_CODE_BYTES - 0x400,
+           "dll: one game run's code near the game fits the loader's page");
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && plugin.block->rows_refused == RowBit(ROW_GAME_CODE)
                && shadow_sizes(4096.f, 2048.f) && Logged("renodx_attila64: shadow map 4096: patched")
                && Logged("renodx_attila64: site SHADOW_SIZE_MAX 0x30e46eb: applied")
                && !Logged("site SHADOW_SIZE_MAX 0x30e46eb: applied (")
@@ -1716,7 +2026,7 @@ int wmain(int argc, wchar_t** argv) {
     const auto [plugin, result] = init_copy(L"shadow_differs", MODULE_NAME, api);
     *at(SITES[LABEL_SHADOW_COUNT_MAX].address) ^= 1;
     Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
-               && plugin.block->rows_refused == RowBit(ROW_SHADOW_MAP) && plugin.block->rows_tried == ALL_ROWS
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && plugin.block->rows_tried == ALL_ROWS
                && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
            "shadow: one site that differs leaves the whole row out, nothing written");
     Expect(Logged("site SHADOW_COUNT_MAX 0x30e470c: skipped (DIFFERS)") && Logged("site SHADOW_EXTRA_MAX 0x30e4717: skipped (NEIGHBOUR)")
@@ -1725,7 +2035,7 @@ int wmain(int argc, wchar_t** argv) {
            "shadow: the site's own refusal, and the row's for its other sites");
     plugin.game_started(&api);
     char hooks_unchanged[64];
-    std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", HOOK_SITE_COUNT);
+    std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", JUMP_SITE_COUNT);
     Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged), "shadow: a refused row's sites are not re-checked");
   }
   // The loader refuses the third write: the two sizes already written go back.
@@ -1734,7 +2044,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"shadow_write_fails", MODULE_NAME, api);
     Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
-               && plugin.block->rows_refused == RowBit(ROW_SHADOW_MAP) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
            "shadow: a refused write rolls the row back to the game's bytes");
     Expect(Logged("site SHADOW_SIZE_MEDIUM 0x30e4737: skipped (WRITE_FAILED)")
                && Logged("site SHADOW_SIZE_HIGH 0x30e46b7: withdrawn (a later site of its row failed)")
@@ -1750,7 +2060,7 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"shadow_second_write_fails", MODULE_NAME, api);
     Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
-               && plugin.block->rows_refused == RowBit(ROW_SHADOW_MAP) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && shadow_sizes(2048.f, 1024.f) && !Logged("renodx_attila64: shadow map"),
            "shadow: a refused second write leaves the game's bytes everywhere");
     Expect(Logged("site SHADOW_SIZE_MAX 0x30e46eb: skipped (WRITE_FAILED)") && Logged("site SHADOW_COUNT_MAX 0x30e470c: skipped (ROW)")
                && Logged("site SHADOW_EXTRA_MAX 0x30e4717: skipped (ROW)") && Logged("site SHADOW_SIZE_MEDIUM 0x30e4737: skipped (ROW)")
@@ -1760,14 +2070,14 @@ int wmain(int argc, wchar_t** argv) {
                && !Logged("could not be put back"),
            "shadow: after a refused write the row's later sites are skipped for the row, only the earlier ones withdrawn");
   }
-  // The loader refuses the third write and then the first put-back: that size keeps our bytes, its line says so, the
-  // row stays out and none of its sites is re-checked at the game's start.
+  // The loader refuses the third write and then the first put-back (the sprite site's write comes between them): that
+  // size keeps our bytes, its line says so, the row stays out and none of its sites is re-checked at the game's start.
   write_game();
-  failing_patch_calls = (1u << 2) | (1u << 3);
+  failing_patch_calls = (1u << 2) | (1u << 4);
   {
     const auto [plugin, result] = init_copy(L"shadow_put_back_fails", MODULE_NAME, api);
     Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
-               && plugin.block->rows_refused == RowBit(ROW_SHADOW_MAP) && !Logged("renodx_attila64: shadow map"),
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && !Logged("renodx_attila64: shadow map"),
            "shadow: a refused put-back leaves the row refused");
     const std::array<float, 2> doubled = {4096.f, 4096.f};
     Expect(std::memcmp(at(SITES[LABEL_SHADOW_SIZE_HIGH].address), doubled.data(), sizeof(doubled)) == 0
@@ -1780,7 +2090,7 @@ int wmain(int argc, wchar_t** argv) {
            "shadow: the put-back's own line names the site");
     plugin.game_started(&api);
     char hooks_unchanged[64];
-    std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", HOOK_SITE_COUNT);
+    std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", JUMP_SITE_COUNT);
     Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged),
            "shadow: a site that could not be put back counts as out at the game's start");
   }
@@ -1809,7 +2119,7 @@ int wmain(int argc, wchar_t** argv) {
                && !Logged("loader frame cap"),
            "dll: a renamed file refuses and writes nothing");
   }
-  set_ini_key_off(nullptr);
+  DeleteFileW(ini_path.c_str());
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
   return failures;

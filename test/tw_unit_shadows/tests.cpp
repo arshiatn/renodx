@@ -22,7 +22,7 @@
 // 7. Shadow map work (Render's hook), Attila's and Rome II's, also with the 64-bit loader's Shadow refresh rest frames;
 //    7b the 64-bit route (the engine plugin's hook calling attila64_plugin_link.hpp's callbacks); 7c the callbacks'
 //    registration and drain on a block as the plugin publishes it; 7d the engine values on the port; 7e the start files'
-//    reader (start_files.hpp) over files in a temp folder.
+//    reader (start_files.hpp) over files in a temp folder; 7f the scale rows and Shadow Map Size's key on the port.
 // 8. Rome II's Two Shadow Cascades Under Rays (twrome2/shadow_cascades.hpp) over its shipped empire.retail.dll.
 #include <windows.h>
 #include <d3d11.h>
@@ -36,6 +36,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <string>
@@ -534,42 +535,68 @@ int main(int argc, char** argv) {
     const uint32_t both = block.rows_applied;
     // Not READY: nothing registered.
     link::internal::block = &block;
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0);
     link::internal::found.store(link::Found::READY);
     const uint32_t epoch_before = link::internal::epoch.load();
-    link::Update(plugin::RowBit(plugin::ROW_PASS_DRAW), link::BATTLE_CORE_DEFAULT);
+    link::Update(plugin::RowBit(plugin::ROW_PASS_DRAW), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS
           && block.hooks_wanted.load() == plugin::RowBit(plugin::ROW_PASS_DRAW)
           && link::internal::module_reference != nullptr && link::internal::epoch.load() != epoch_before);
     const uint32_t epoch_registered = link::internal::epoch.load();
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.hooks_wanted.load() == both && link::internal::epoch.load() == epoch_registered);
     // The row's core_wanted bit: only CORE_BATTLE changes (another part's bit kept), written once per change of the
     // row (an equal present writes nothing); a v1 block (no core_wanted) gets no write.
     block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
-    link::Update(both, false);
+    link::Update(both, false, link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == plugin::CORE_RENDER);
     block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
-    link::Update(both, false);
+    link::Update(both, false, link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER));
     block.core_wanted.store(plugin::CORE_RENDER);
-    link::Update(both, true);
+    link::Update(both, true, link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER));
+    // Keep Render Core Free the same way: only CORE_RENDER changes, on and off (the battle part's bit and a bit no row
+    // writes kept), an equal present writes nothing.
+    block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_STEP);
+    link::Update(both, true, true);
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER | plugin::CORE_STEP));
+    block.core_wanted.store(plugin::CORE_RENDER);
+    link::Update(both, true, true);
+    CHECK(block.core_wanted.load() == plugin::CORE_RENDER);
+    block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER | plugin::CORE_STEP);
+    link::Update(both, true, false);
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_STEP));
+    block.core_wanted.store(plugin::CORE_STEP);
+    link::Update(both, true, true);
+    CHECK(block.core_wanted.load() == (plugin::CORE_RENDER | plugin::CORE_STEP));
+    link::Update(both, true, false);
+    CHECK(block.core_wanted.load() == plugin::CORE_STEP);
+    // RenderCore=0 (the plugin's render word OFF_INI): no render write either way.
+    block.render_core_status.store(plugin::CORE_OFF_INI);
+    link::Update(both, true, true);
+    CHECK(block.core_wanted.load() == plugin::CORE_STEP);
+    block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
+    link::Update(both, true, false);
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER));
+    block.render_core_status.store(0);
+    link::Update(both, true, link::RENDER_CORE_DEFAULT);
+    block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
     block.bytes = static_cast<uint32_t>(plugin::BlockBytes(1));
-    link::Update(both, false);
+    link::Update(both, false, !link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER)
           && block.hooks_wanted.load() == both);
     block.bytes = sizeof(plugin::Block);
     block.rows_changed.store(plugin::RowBit(plugin::ROW_PASS_DRAW));
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.hooks_wanted.load() == plugin::RowBit(plugin::ROW_BONE_FLUSH)
           && block.callbacks.load() == &link::internal::CALLBACKS);
     block.rows_changed.store(0);
-    link::Update(0, link::BATTLE_CORE_DEFAULT);
+    link::Update(0, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0
           && link::internal::module_reference == nullptr);
-    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT);
+    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS && link::internal::epoch.load() != epoch_registered);
     // A hook still inside for 50 ms: the wait ends when it leaves, the reference released.
     block.calls_in_flight.store(1);
@@ -578,24 +605,24 @@ int main(int argc, char** argv) {
       block.calls_in_flight.store(0);
     });
     const ULONGLONG short_start = GetTickCount64();
-    link::Update(0, link::BATTLE_CORE_DEFAULT);
+    link::Update(0, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     const ULONGLONG short_wait = GetTickCount64() - short_start;
     leaving.join();
     CHECK(short_wait >= 30 && short_wait < 1000 && block.callbacks.load() == nullptr
           && link::internal::module_reference == nullptr);
-    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT);
+    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS);
     block.calls_in_flight.store(1);
     const ULONGLONG drain_start = GetTickCount64();
-    link::Update(0, link::BATTLE_CORE_DEFAULT);
+    link::Update(0, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(GetTickCount64() - drain_start >= 1000 && block.callbacks.load() == nullptr
           && link::internal::module_reference != nullptr);
     block.calls_in_flight.store(0);
     FreeLibrary(std::exchange(link::internal::module_reference, nullptr));
     constexpr plugin::Callbacks OTHER_ADDON = {};
     block.callbacks.store(&OTHER_ADDON);
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == &OTHER_ADDON && block.hooks_wanted.load() == 0 && !link::internal::registered
           && link::internal::lost && link::internal::module_reference == nullptr);
     link::Uninstall();
@@ -605,18 +632,30 @@ int main(int argc, char** argv) {
     // again.
     block.callbacks.store(nullptr);
     link::Lookup(true);
-    link::Update(both, link::BATTLE_CORE_DEFAULT);
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(link::Result() == link::Found::DETACHED && block.callbacks.load() == nullptr
           && block.hooks_wanted.load() == 0);
     link::internal::block = nullptr;
     link::Install();
     CHECK(link::Result() == link::Found::PENDING);
-    // After a detach the next READY's first present writes the row's bit again.
+    // After a detach the next READY's first present writes the battle row's bit again, and the render row's only off
+    // its default: at it, the plugin's own bit (its RenderCore key) stays until the row changes.
+    const uint32_t render_default_bit = (link::RENDER_CORE_DEFAULT ? plugin::CORE_RENDER : 0u);
+    const uint32_t render_other_bit = plugin::CORE_RENDER ^ render_default_bit;
     link::internal::block = &block;
     link::internal::found.store(link::Found::READY);
-    block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
-    link::Update(0, false);
-    CHECK(block.core_wanted.load() == plugin::CORE_RENDER);
+    block.core_wanted.store(plugin::CORE_BATTLE | render_other_bit);
+    link::Update(0, false, link::RENDER_CORE_DEFAULT);
+    CHECK(block.core_wanted.load() == render_other_bit);
+    link::Update(0, false, !link::RENDER_CORE_DEFAULT);
+    link::Update(0, false, link::RENDER_CORE_DEFAULT);
+    CHECK(block.core_wanted.load() == render_default_bit);
+    link::Uninstall();
+    link::Install();
+    link::internal::found.store(link::Found::READY);
+    block.core_wanted.store(plugin::CORE_BATTLE | render_default_bit);
+    link::Update(0, true, !link::RENDER_CORE_DEFAULT);
+    CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | render_other_bit));
     link::Uninstall();
     link::internal::block = nullptr;
     link::Install();
@@ -625,7 +664,9 @@ int main(int argc, char** argv) {
         "7c callbacks: the lookup final at the last try, registered while READY, wanted and offered, bits follow, a "
         "changed row not wanted, unregistered and drained (a hook leaving after 50 ms ends the wait); a drain past "
         "1 s keeps the reference; another add-on's callbacks left alone; after the detach nothing registers; Keep "
-        "Battle Core Free writes only CORE_BATTLE, once per change, none on a v1 block, again after a detach\n");
+        "Battle Core Free writes only CORE_BATTLE, once per change, none on a v1 block, again after a detach; Keep "
+        "Render Core Free only CORE_RENDER, on and off, none with RenderCore=0 or on a v1 block, its first present only "
+        "off its default\n");
     // 7d. The engine values on the port (FindTweaks, MirrorRestartValues): each Tweak gets the plugin's checked value
     //     (live: the game's address; restart-only: an add-on cell at the default), a refused one none (the warning line);
     //     the mirror writes [Attila64Plugin.Values] clamped to tweaks.h's range, read once, written on a change with one
@@ -683,7 +724,7 @@ int main(int argc, char** argv) {
       renodx::utils::settings::Setting values_status;
       const auto present = [&](bool loader_frame_cap) {
         tw::engine_tweaks::Update(L"empire.retail.dll", options, nullptr, &values_found, &values_status);
-        link::MirrorRestartValues(loader_frame_cap);
+        link::MirrorRestartValues(loader_frame_cap, 0, true);
       };
       plugin::Block values_block;
       values_block.status.store(plugin::STATUS_READY);
@@ -864,6 +905,313 @@ int main(int argc, char** argv) {
       std::printf(
           "7e start files: the last line of a name counts (either case, '=' next), the value as written (CR / LF cut, "
           "not trimmed); no line / no file: none; FrameBridge's addon=off in either case; lines walked in order\n");
+    }
+    // 7f. The scale rows on the port (PublishScales, Shadow Map Size's mirror): a scale stored only when it changed, its
+    //     scales_active bit while it is not neutral and its row is offered (a row not offered: no bit, the scale still
+    //     stored; the grass scales 19-21 by ROW_GRASS alone, 18 by ROW_CAMPAIGN_TREES, the sprite scales 22-23 by
+    //     ROW_SPRITES, a sprite scale not finite and above 0 sent as 0), one line per change of the
+    //     bits, nothing on a v1 block; the plugin's notices logged once per new bit; ShadowMapSize written clamped, one
+    //     line per write, its own pending flag against the key this start read (out of range: the game's sizes), only while its row is
+    //     offered; the scales kept at the detach.
+    {
+      const auto lines = [](std::string_view text) {
+        return std::ranges::count_if(logged, [text](const std::string& line) { return line.find(text) != std::string::npos; });
+      };
+      const auto shadow_key = [] {
+        const auto found = config.find("Attila64Plugin.Values|ShadowMapSize");
+        return (found == config.end() ? std::string("absent") : found->second);
+      };
+      plugin::Block scale_block;
+      scale_block.status.store(plugin::STATUS_READY);
+      for (uint32_t index = 0; index < plugin::SCALE_COUNT; ++index) {
+        scale_block.scales[index].store(plugin::NEUTRAL_SCALES[index]);
+      }
+      scale_block.rows_applied = plugin::RowBit(plugin::ROW_UNIT_LOD) | plugin::RowBit(plugin::ROW_MODEL_DETAIL)
+                                 | plugin::RowBit(plugin::ROW_SHADOW_MAP);
+      scale_block.rows_tried = scale_block.rows_applied;
+      link::internal::block = &scale_block;
+      link::internal::found.store(link::Found::READY);
+      config.clear();
+      logged.clear();
+      std::array<float, plugin::SCALE_COUNT> scales = plugin::NEUTRAL_SCALES;
+      // Neutral: no bit, no line.
+      link::PublishScales(scales);
+      CHECK(scale_block.scales_active.load() == 0 && logged.empty());
+      // Unit Detail 2x on foot soldiers and Model Detail 2x (its scale 1 / 4): bits 0 and 17, one line.
+      scales[0] = 2.f;
+      scales[plugin::SCALE_MODEL_DETAIL] = 0.25f;
+      link::PublishScales(scales);
+      CHECK(scale_block.scales[0].load() == 2.f && scale_block.scales[plugin::SCALE_MODEL_DETAIL].load() == 0.25f
+            && scale_block.scales[1].load() == 1.f && scale_block.scales_active.load() == 0x20001 && logged.size() == 1
+            && lines("engine scales active 0x20001") == 1);
+      link::PublishScales(scales);
+      CHECK(logged.size() == 1);
+      // The unit shadows' 0 (casters skipped): bit 16; a grass scale (its row not applied here): stored, no bit.
+      scales[16] = 0.f;
+      scales[plugin::SCALE_GRASS_LOD] = 4.f;
+      link::PublishScales(scales);
+      CHECK(scale_block.scales[16].load() == 0.f && scale_block.scales[plugin::SCALE_GRASS_LOD].load() == 4.f
+            && scale_block.scales_active.load() == 0x30001 && lines("engine scales active 0x30001") == 1);
+      // Model Detail not offered (changed after the plugin; its hook may stay in): its bit clear, Unit Detail's kept.
+      scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_MODEL_DETAIL));
+      link::PublishScales(scales);
+      CHECK(scale_block.scales_active.load() == 0x10001 && lines("engine scales active 0x10001") == 1);
+      scale_block.rows_changed.store(0);
+      // Back to neutral: no bit, one line.
+      scales = plugin::NEUTRAL_SCALES;
+      link::PublishScales(scales);
+      CHECK(scale_block.scales_active.load() == 0 && scale_block.scales[0].load() == 1.f
+            && scale_block.scales[plugin::SCALE_GRASS_LOD].load() == 1.f && lines("engine scales active 0x0") == 1);
+      // The grass and campaign tree rows (scales 18-21): Campaign Tree Detail 2x (18 = 4), Grass Detail Distance 2x
+      // (19 = 4, 20 = 2) and Grass Density 1.5x (21). Their rows not applied: stored, no bit. ROW_GRASS_CELLS alone (it
+      // reads ROW_GRASS's 19 and 20): no bit. ROW_GRASS: 19-21; ROW_CAMPAIGN_TREES: 18; ROW_GRASS changed after the
+      // plugin: 18 alone; Grass Density alone: 21; back to neutral: none. (The fold's values and Campaign Tree Detail's
+      // value rule live in addon.cpp: F7's plugin_grass, plugin_grass_tree and plugin_tree_refused.)
+      {
+        const uint32_t scale_rows = scale_block.rows_applied;
+        scales[plugin::SCALE_CAMPAIGN_TREES] = 4.f;
+        scales[plugin::SCALE_GRASS_LOD] = 4.f;
+        scales[plugin::SCALE_GRASS_RADIUS] = 2.f;
+        scales[plugin::SCALE_GRASS_DENSITY] = 1.5f;
+        logged.clear();
+        link::PublishScales(scales);
+        CHECK(scale_block.scales[plugin::SCALE_CAMPAIGN_TREES].load() == 4.f
+              && scale_block.scales[plugin::SCALE_GRASS_LOD].load() == 4.f
+              && scale_block.scales[plugin::SCALE_GRASS_RADIUS].load() == 2.f
+              && scale_block.scales[plugin::SCALE_GRASS_DENSITY].load() == 1.5f && scale_block.scales_active.load() == 0
+              && logged.empty());
+        scale_block.rows_applied |= plugin::RowBit(plugin::ROW_GRASS_CELLS);
+        link::PublishScales(scales);
+        CHECK(scale_block.scales_active.load() == 0 && logged.empty());
+        scale_block.rows_applied |= plugin::RowBit(plugin::ROW_GRASS);
+        link::PublishScales(scales);
+        CHECK(scale_block.scales_active.load() == 0x380000 && lines("engine scales active 0x380000") == 1);
+        scale_block.rows_applied |= plugin::RowBit(plugin::ROW_CAMPAIGN_TREES);
+        link::PublishScales(scales);
+        CHECK(scale_block.scales_active.load() == 0x3c0000 && lines("engine scales active 0x3c0000") == 1);
+        scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_GRASS));
+        link::PublishScales(scales);
+        CHECK(scale_block.scales_active.load() == 0x40000 && lines("engine scales active 0x40000") == 1);
+        scale_block.rows_changed.store(0);
+        scales[plugin::SCALE_CAMPAIGN_TREES] = 1.f;
+        scales[plugin::SCALE_GRASS_LOD] = 1.f;
+        scales[plugin::SCALE_GRASS_RADIUS] = 1.f;
+        link::PublishScales(scales);
+        CHECK(scale_block.scales_active.load() == 0x200000 && scale_block.scales[plugin::SCALE_GRASS_LOD].load() == 1.f
+              && lines("engine scales active 0x200000") == 1);
+        scales = plugin::NEUTRAL_SCALES;
+        link::PublishScales(scales);
+        CHECK(scale_block.scales_active.load() == 0 && scale_block.scales[plugin::SCALE_GRASS_DENSITY].load() == 1.f
+              && logged.size() == 5);
+        scale_block.rows_applied = scale_rows;
+      }
+      // The sprite rows (scales 22 and 23, ROW_SPRITES): Small Soldiers as Sprites at 54 (a 1080-pixel focal length /
+      // Sprite Size 20) and Dead Unit Detail 0.5x. The row not applied (its rows hidden): stored, no bit, no line.
+      // Applied: 22 and 23; changed after the plugin: none. A sprite scale not finite and above 0 (negative, NaN, +inf):
+      // sent as 0, its neutral, Dead Unit Detail's bit alone; Small Soldiers as Sprites alone: 22; back to neutral:
+      // none.
+      {
+        const uint32_t scale_rows = scale_block.rows_applied;
+        const auto sprite_scale = [&] { return scale_block.scales[plugin::SCALE_SPRITE_DISTANCE].load(); };
+        logged.clear();
+        scales[plugin::SCALE_SPRITE_DISTANCE] = 54.f;
+        scales[plugin::SCALE_DEAD_UNITS] = 0.5f;
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 54.f && scale_block.scales[plugin::SCALE_DEAD_UNITS].load() == 0.5f
+              && scale_block.scales_active.load() == 0 && logged.empty());
+        scale_block.rows_applied |= plugin::RowBit(plugin::ROW_SPRITES);
+        link::PublishScales(scales);
+        CHECK(scale_block.scales_active.load() == 0xc00000 && lines("engine scales active 0xc00000") == 1);
+        scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_SPRITES));
+        link::PublishScales(scales);
+        CHECK(scale_block.scales_active.load() == 0 && lines("engine scales active 0x0") == 1);
+        scale_block.rows_changed.store(0);
+        scales[plugin::SCALE_SPRITE_DISTANCE] = -54.f;
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 0.f && scale_block.scales_active.load() == 0x800000
+              && lines("engine scales active 0x800000") == 1);
+        scales[plugin::SCALE_SPRITE_DISTANCE] = std::numeric_limits<float>::quiet_NaN();
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 0.f && scale_block.scales_active.load() == 0x800000 && logged.size() == 3);
+        scales[plugin::SCALE_SPRITE_DISTANCE] = std::numeric_limits<float>::infinity();
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 0.f && scale_block.scales_active.load() == 0x800000 && logged.size() == 3);
+        scales[plugin::SCALE_SPRITE_DISTANCE] = 54.f;
+        scales[plugin::SCALE_DEAD_UNITS] = 1.f;
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 54.f && scale_block.scales_active.load() == 0x400000
+              && lines("engine scales active 0x400000") == 1);
+        scales = plugin::NEUTRAL_SCALES;
+        link::PublishScales(scales);
+        CHECK(sprite_scale() == 0.f && scale_block.scales_active.load() == 0 && logged.size() == 5);
+        scale_block.rows_applied = scale_rows;
+      }
+      // A v1 block: nothing stored.
+      scale_block.bytes = static_cast<uint32_t>(plugin::BlockBytes(1));
+      scales[0] = 3.f;
+      link::PublishScales(scales);
+      CHECK(scale_block.scales[0].load() == 1.f && scale_block.scales_active.load() == 0);
+      scale_block.bytes = sizeof(plugin::Block);
+      scales[0] = 1.f;
+      // The notices: one line per new bit.
+      logged.clear();
+      scale_block.notices.fetch_or(plugin::NOTICE_REST_PACK);
+      link::PublishScales(scales);
+      link::PublishScales(scales);
+      CHECK(logged.size() == 1 && lines("engine plugin notices 0x1 (rest pack: yes, model table full: no)") == 1);
+      scale_block.notices.fetch_or(plugin::NOTICE_MODEL_TABLE_FULL);
+      link::PublishScales(scales);
+      CHECK(logged.size() == 2 && lines("engine plugin notices 0x3 (rest pack: yes, model table full: yes)") == 1);
+      // Shadow Map Size: this start read 1 (4096). The row at 1: nothing written, not pending; at 2: written, one line,
+      // pending (the audio note's flag stays clear); a row value past 2 (a hand-edited ReShade.ini): clamped; back at 1.
+      config["Attila64Plugin.Values|ShadowMapSize"] = "1";
+      logged.clear();
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(shadow_key() == "1" && logged.empty() && !link::ShadowMapSizePending());
+      link::MirrorRestartValues(false, 2, true);
+      CHECK(shadow_key() == "2" && logged.size() == 1
+            && lines("engine value ShadowMapSize: 0x2 at the next start (this start: 0x1)") == 1
+            && link::ShadowMapSizePending() && !link::ValuesPending() && !link::SolFrameCapPending());
+      link::MirrorRestartValues(false, 7, true);
+      CHECK(shadow_key() == "2" && logged.size() == 1 && link::ShadowMapSizePending());
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(shadow_key() == "1" && logged.size() == 2 && !link::ShadowMapSizePending());
+      // Its row not offered: the key left alone, no note.
+      scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_SHADOW_MAP));
+      link::MirrorRestartValues(false, 2, true);
+      CHECK(shadow_key() == "1" && logged.size() == 2 && !link::ShadowMapSizePending());
+      scale_block.rows_changed.store(0);
+      // The detach: the mirror's state reset, the scales kept (a hook reads them for the process).
+      scales[0] = 2.f;
+      link::PublishScales(scales);
+      link::MirrorRestartValues(false, 2, true);
+      CHECK(link::ShadowMapSizePending());
+      link::Uninstall();
+      CHECK(!link::ShadowMapSizePending() && !link::internal::shadow_map_size_mirrored.has_value()
+            && link::internal::notices_logged == 0 && scale_block.scales[0].load() == 2.f
+            && scale_block.scales_active.load() == 1);
+      // A start that read a key out of range (the plugin kept the game's sizes): the row at 0 is this start's; at 1
+      // pending.
+      link::internal::shadow_map_size_at_start.reset();
+      config["Attila64Plugin.Values|ShadowMapSize"] = "5";
+      link::internal::found.store(link::Found::READY);
+      logged.clear();
+      link::MirrorRestartValues(false, 0, true);
+      CHECK(shadow_key() == "0" && lines("engine value ShadowMapSize: 0x0 at the next start (this start: 0x0)") == 1
+            && !link::ShadowMapSizePending());
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(shadow_key() == "1" && link::ShadowMapSizePending());
+      // A start the plugin saw as not DX11 (a restart-only value with a key: NOT_DX11): nothing patched, so the row at
+      // the key's 1 is pending; the same value APPLIED: not pending.
+      link::internal::shadow_map_size_at_start = 1;
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(!link::ShadowMapSizePending());
+      plugin::TweakSlot route_slot = {.name = "SOUND_DEFAULT_BUFFER_SIZE_IN_KB", .default_bits = 0x5da4,
+                                      .written_bits = 0x5da4, .type = plugin::TWEAK_UINT, .verdict = plugin::VERDICT_OK,
+                                      .restart_only = 1, .restart_state = plugin::RESTART_NOT_DX11};
+      tw::engine_tweaks::Option route_option = {.tweaks = {{.name = "SOUND_DEFAULT_BUFFER_SIZE_IN_KB", .integer = true}}};
+      std::array<tw::engine_tweaks::Option*, 1> route_options = {&route_option};
+      scale_block.tweaks = &route_slot;
+      scale_block.tweak_count = 1;
+      scale_block.tweaks_status.store(plugin::TWEAKS_READY);
+      CHECK(link::FindTweaks(route_options));
+      logged.clear();
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(link::ShadowMapSizePending() && logged.empty());
+      route_slot.restart_state = plugin::RESTART_APPLIED;
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(!link::ShadowMapSizePending());
+      // Faster Game CPU Code (its row offered; ShadowMapSize's key stays 1, the row's 1: no other line). This start read
+      // the key absent (on), once: the row On writes nothing, not pending; Off writes 0 with one line, pending; a hand
+      // edit after the read is not read again; On writes 1, not pending; not offered: nothing written, not pending.
+      const std::string code_entry = "Attila64Plugin.Values|FasterGameCpuCode";
+      const auto code_key = [&code_entry] {
+        const auto found = config.find(code_entry);
+        return (found == config.end() ? std::string("absent") : found->second);
+      };
+      // A start that reads the key anew (the detach keeps this start's key: reset by hand) with `text` in the file.
+      const auto code_start = [&code_entry](const char* text) {
+        link::Uninstall();
+        link::internal::game_code_at_start.reset();
+        link::internal::found.store(link::Found::READY);
+        if (text == nullptr) {
+          config.erase(code_entry);
+        } else {
+          config[code_entry] = text;
+        }
+        logged.clear();
+      };
+      scale_block.rows_applied |= plugin::RowBit(plugin::ROW_GAME_CODE);
+      scale_block.rows_tried |= plugin::RowBit(plugin::ROW_GAME_CODE);
+      logged.clear();
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "absent" && logged.empty() && !link::GameCodePending()
+            && link::internal::game_code_at_start == std::optional<bool>(true));
+      link::MirrorRestartValues(false, 1, false);
+      CHECK(code_key() == "0" && logged.size() == 1
+            && lines("engine value FasterGameCpuCode: 0x0 at the next start (this start: 0x1)") == 1
+            && link::GameCodePending() && !link::ShadowMapSizePending() && !link::SolFrameCapPending());
+      config[code_entry] = "1";
+      link::MirrorRestartValues(false, 1, false);
+      CHECK(code_key() == "1" && logged.size() == 1 && link::GameCodePending());
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && logged.size() == 2
+            && lines("engine value FasterGameCpuCode: 0x1 at the next start (this start: 0x1)") == 1
+            && !link::GameCodePending());
+      scale_block.rows_changed.store(plugin::RowBit(plugin::ROW_GAME_CODE));
+      link::MirrorRestartValues(false, 1, false);
+      CHECK(code_key() == "1" && logged.size() == 2 && !link::GameCodePending());
+      scale_block.rows_changed.store(0);
+      // The detach: mirrored and pending reset, this start's key kept (the next READY reads the file again, but not as
+      // this start's): text the plugin reads as 0 is written again, against this start's On.
+      link::MirrorRestartValues(false, 1, false);
+      CHECK(link::GameCodePending());
+      link::Uninstall();
+      CHECK(!link::GameCodePending() && !link::internal::game_code_read && !link::internal::game_code_mirrored.has_value()
+            && link::internal::game_code_at_start == std::optional<bool>(true));
+      link::internal::found.store(link::Found::READY);
+      config[code_entry] = "abc";
+      logged.clear();
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && lines("engine value FasterGameCpuCode: 0x1 at the next start (this start: 0x1)") == 1
+            && !link::GameCodePending());
+      // Read as the plugin reads it (GetPrivateProfileIntW): text 0 (off), written again; 0x1 and empty on, written
+      // again; a plain number left as it is when the row matches it (0 / Off, 1 / On: no line, not pending).
+      code_start("abc");
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && lines("engine value FasterGameCpuCode: 0x1 at the next start (this start: 0x0)") == 1
+            && link::GameCodePending());
+      code_start("0x1");
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && lines("engine value FasterGameCpuCode: 0x1 at the next start (this start: 0x1)") == 1
+            && !link::GameCodePending());
+      code_start("");
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && logged.size() == 1 && !link::GameCodePending());
+      code_start("0");
+      link::MirrorRestartValues(false, 1, false);
+      CHECK(code_key() == "0" && logged.empty() && !link::GameCodePending());
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && lines("engine value FasterGameCpuCode: 0x1 at the next start (this start: 0x0)") == 1
+            && link::GameCodePending());
+      code_start("1");
+      link::MirrorRestartValues(false, 1, true);
+      CHECK(code_key() == "1" && logged.empty() && !link::GameCodePending());
+      code_start(nullptr);
+      link::Uninstall();
+      link::internal::block = nullptr;
+      link::Install();
+      std::printf(
+          "7f game code: FasterGameCpuCode read once as the plugin reads it (absent / empty / 0x1: on, text: 0), text "
+          "written again, one line per write, its own pending flag in both directions, left alone while its row is not "
+          "offered; the detach resets the mirror and keeps this start's key\n");
+      std::printf(
+          "7f scale rows: a scale stored on a change, its bit while not neutral and its row offered (not offered: none; "
+          "grass 19-21 by the grass row alone, campaign trees 18, sprites 22-23, a sprite scale not finite and above 0 sent as 0), "
+          "one line per change of the bits, nothing on a v1 "
+          "block; notices once per new bit; "
+          "ShadowMapSize clamped, one line per write, its own pending flag against this start's key (out of range: the "
+          "game's sizes; a NOT_DX11 start: 0), left alone while its row is not offered; the scales kept at the detach\n");
     }
     plugin_route = false;
     pass::active.store(false);

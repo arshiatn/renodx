@@ -18,7 +18,8 @@
 // 5-7. Frames into the picture, the loader's copy into buffer 0 and its 8-bit overlay, a mode change, a new window.
 // Then the captures (zz_capture) against the reference of the swap chain proxy.
 // Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8]
-//        [image_none|image_badmagic|image_table] [plugin [plugin_calls]] [perffix] [plain_empty] [gpu]
+//        [image_none|image_badmagic|image_table] [plugin [plugin_calls] [grass_scales|grass_scales_tree]
+//        [tree_value_written|tree_value_kept] [sprite_scales] [core_wanted_<bits>]] [perffix] [plain_empty] [gpu]
 //        attila64.exe d3d12 [gpu]   (C4: frames written; run.ps1 compares them with a run without the add-on)
 //        attila64.exe opengl        (C6: as C4, GPU only)
 
@@ -945,6 +946,49 @@ int main(int argc, char** argv) {
     const unsigned calls = (calls_export != nullptr ? calls_export() : 0u);
     std::cout << "  plugin: " << calls << " calls into the add-on's callbacks\n";
     if (has("plugin_calls") && calls == 0) Fail("no call into the add-on's callbacks (nothing registered)");
+    // The grass and campaign tree scales the add-on folded (kept at its detach), from the case's ReShade.ini: Grass
+    // Detail 2x, Grass Density 1.5x, Campaign Tree Detail 2x. grass_scales: the tree value not found or its row not
+    // offered (scale 18 neutral); grass_scales_tree: both (18 = 4). tree_value_written / tree_value_kept: the fake
+    // plugin's Campaign Tree Detail value written or left at the game's.
+    if (block != nullptr && (has("grass_scales") || has("grass_scales_tree"))) {
+      const std::array<float, 4> expected = {(has("grass_scales_tree") ? 4.f : 1.f), 4.f, 2.f, 1.5f};
+      std::array<float, 4> scales = {};
+      for (size_t index = 0; index < scales.size(); ++index) {
+        scales[index] = block->scales[twattila::attila64_plugin::SCALE_CAMPAIGN_TREES + index].load();
+      }
+      std::cout << std::format("  plugin: scales 18-21 {} {} {} {}\n", scales[0], scales[1], scales[2], scales[3]);
+      if (scales != expected) {
+        Fail(std::format("scales 18-21 {} {} {} {}, expected {} {} {} {}", scales[0], scales[1], scales[2], scales[3],
+                         expected[0], expected[1], expected[2], expected[3]));
+      }
+    }
+    // The sprite scales, from the case's ReShade.ini: Small Soldiers as Sprites on with no main view drawn (the focal
+    // length unknown: 0, off) and Dead Unit Detail 0.5x.
+    if (block != nullptr && has("sprite_scales")) {
+      const float sprite_distance = block->scales[twattila::attila64_plugin::SCALE_SPRITE_DISTANCE].load();
+      const float dead_units = block->scales[twattila::attila64_plugin::SCALE_DEAD_UNITS].load();
+      std::cout << std::format("  plugin: scales 22-23 {} {}\n", sprite_distance, dead_units);
+      if (sprite_distance != 0.f || dead_units != 0.5f) {
+        Fail(std::format("scales 22-23 {} {}, expected 0 0.5", sprite_distance, dead_units));
+      }
+    }
+    // core_wanted_<bits> (decimal): the plugin's core_wanted as the add-on's core rows left it, each row's own bit only.
+    if (const auto expected = std::ranges::find_if(args, [](std::string_view arg) { return arg.starts_with("core_wanted_"); });
+        block != nullptr && expected != args.end()) {
+      const uint32_t core_wanted = block->core_wanted.load();
+      const std::string_view expected_bits = expected->substr(std::string_view("core_wanted_").size());
+      std::cout << std::format("  plugin: core_wanted {}\n", core_wanted);
+      if (std::to_string(core_wanted) != expected_bits) Fail(std::format("core_wanted {}, expected {}", core_wanted, expected_bits));
+    }
+    if (has("tree_value_written") || has("tree_value_kept")) {
+      const auto written_export = reinterpret_cast<bool (*)()>(GetProcAddress(plugin, "renodx_f7_tree_lod_written"));
+      const bool written = (written_export != nullptr && written_export());
+      std::cout << "  plugin: Campaign Tree Detail's value " << (written ? "written" : "kept") << '\n';
+      if (written_export == nullptr || written != has("tree_value_written")) {
+        Fail(std::format("Campaign Tree Detail's value {}, expected {}", (written ? "written" : "kept"),
+                         (has("tree_value_written") ? "written" : "kept")));
+      }
+    }
   }
   if (reserved_range_violations.load() != 0) Fail(std::format("{} access violations inside 0x400000 + 16 MB", reserved_range_violations.load()));
   const bool passed = (result == 0 && failures.empty());

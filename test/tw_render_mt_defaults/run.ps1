@@ -35,14 +35,14 @@ $rows = @(
   @('ParallelEffectSpawns', '0.f', 'effect_spawns_row', '0.f', $false),
   @('CachedParticleCount', '0.f', 'particle_count_row', '0.f', $false),
   @('WorkerThreads', '1.f', 'worker_threads_row', '4.f', $true),
-  @('KeepRenderCoreFree', '0.f', 'keep_render_core_row', '0.f', $true),
+  @('KeepRenderCoreFree', 'KEEP_RENDER_CORE_DEFAULT', 'keep_render_core_row', 'KEEP_RENDER_CORE_DEFAULT', $true),
   @('FasterJobWakeUps', '0.f', 'job_wakeups_row', '0.f', $true),
   @('FasterRenderLists', '1.f', 'render_lists_row', '1.f', $true),
   @('FasterEffectPrefetch', '0.f', 'effect_prefetch_row', '0.f', $true),
   @('FasterEmitterPrefetch', '0.f', 'emitter_prefetch_row', '0.f', $true),
   @('FasterParticlePrefetch', '0.f', 'particle_prefetch_row', '0.f', $true),
   @('FasterSweepPrefetch', '0.f', 'sweep_prefetch_row', '0.f', $true),
-  @('FewerConstantUploads', '0.f', 'fewer_constant_uploads_row', '0.f', $true),
+  @('FewerConstantUploads', '(ATTILA64 ? 1.f : 0.f)', 'fewer_constant_uploads_row', '(ATTILA64 ? 1.f : 0.f)', $true),
   @('FewerDriverWaits', '0.f', 'fewer_driver_waits_row', '0.f', $true)
 )
 $hidden = '.is_visible = [] { return false; },'
@@ -99,6 +99,51 @@ Check ($text.Contains('instance_fill_on = (pool_room && instance_fill_row != 0.f
 Check ($text.Contains('fill_fold_on = (pool_room && fill_fold_row != 0.f);')) 'fill fold gated by pool_room'
 Check ($text.Contains('((animation_rows_row == 0.f || !pool_room)')) 'animation rows gated by pool_room'
 Check ($text -match '\.env_generation = env_generation,\s+\.game_cpus = game_cpus\}\);') 'the pool gets .game_cpus = game_cpus, last'
+# PK1-64 (the 64-bit port only): Fewer Driver Waits hidden and forced off there; Fewer Constant Uploads on there, alone
+# moved to the CPU page's section CPU, its saved Off cleared once under the port's own revision key, and its once-line.
+Check ($text.Contains('{.match = "FewerDriverWaits"},')) 'FewerDriverWaits in GAME_CODE_ROWS (hidden on the port)'
+Check ($text.Contains('twattila::buffer_pool::Update(context, !ATTILA64 && fewer_driver_waits_row != 0.f, traced);')) 'FewerDriverWaits forced off on the port'
+Check ($text.Contains('const auto moved = std::ranges::find(settings, "FewerConstantUploads", &renodx::utils::settings::Setting::key);') `
+       -and -not $text.Contains('{"FewerConstantUploads", "FewerDriverWaits"}') `
+       -and -not ($text -match '"FewerDriverWaits"[^\n]*&renodx::utils::settings::Setting::key')) 'FewerConstantUploads alone moved to section CPU on the port (no find of FewerDriverWaits)'
+$fcu = Block '.key = "FewerConstantUploads",' "`n      },"
+Check ($fcu.Contains('.label = (ATTILA64 ? "Fewer Constant Uploads (Experimental, restart)" : "Fewer Constant Uploads (Experimental)"),')) 'FewerConstantUploads label: (Experimental, restart) on the port, (Experimental) on 32-bit'
+Check ($fcu.Contains('.section = "Graphics (Experimental)",')) 'FewerConstantUploads 32-bit section Graphics (Experimental) unchanged'
+Check ($text -match 'if constexpr \(ATTILA64\) \{\s*twattila::graphics_page::ClearSavedRows\(1, \{"FewerConstantUploads"\}, "Attila64SettingsRevision"\);\s*\}') 'FewerConstantUploads cleared once on the port (Attila64SettingsRevision 1)'
+$port_clear = $text.IndexOf('ClearSavedRows(1, {"FewerConstantUploads"}, "Attila64SettingsRevision");', [StringComparison]::Ordinal)
+Check ($port_clear -ge 0 -and $port_clear -lt $text.IndexOf('renodx::utils::settings::Use(DLL_PROCESS_ATTACH', [StringComparison]::Ordinal)) 'the port clear before settings::Use'
+Check ($text.Contains('renodx::utils::log::i("[Total War] Fewer Constant Uploads: on.");')) 'Fewer Constant Uploads once-line'
+Check ($text.Contains("`n    fewer_constant_uploads_logged = false;`n")) 'Fewer Constant Uploads once-flag reset at detach'
+# PK5-64 P5-5 (the 64-bit port only): Faster Game CPU Code is the engine plugin's game code row, moved to the CPU page's
+# section CPU with its port label, shown while the plugin offers the row, its restart note after it, and its value
+# mirrored for the next start; the 32-bit row as before.
+Check ($text.Contains('GAME_CODE = twattila::attila64_plugin::ROW_GAME_CODE,')) 'PluginRow::GAME_CODE = ROW_GAME_CODE'
+Check ($text.Contains('{.match = "FasterGameCpuCode", .plugin_row = PluginRow::GAME_CODE},')) 'FasterGameCpuCode in GAME_CODE_ROWS with PluginRow::GAME_CODE'
+$gc = Block 'const auto game_code = std::ranges::find(settings, "FasterGameCpuCode", &renodx::utils::settings::Setting::key);' "`n                    });"
+Check ($gc.Contains('game_code_row->label = "Faster Game CPU Code (restart)";') -and $gc.Contains('game_code_row->section = CPU_SECTION;') `
+       -and $gc.Contains('game_code_row->is_visible = [] { return GameCodeRowShown(PluginRow::GAME_CODE); };') `
+       -and $gc.Contains('.label = RESTART_NOW,') -and $gc.Contains('return row->is_visible() && twattila::attila64_plugin_link::GameCodePending();')) 'FasterGameCpuCode on the CPU page: (restart) label, shown by its row, restart note'
+Check ($gc.Contains("game_code_row->tooltip = `"Faster versions of some of the game's own CPU code (sprite soldiers), same results.`";")) 'FasterGameCpuCode port tooltip (one sentence)'
+Check ($text -match 'MirrorRestartValues\(loader_frame_cap_row != 0\.f, static_cast<int>\(shadow_map_size\),\s+engine_code_row != 0\.f\);') 'FasterGameCpuCode mirrored for the next start'
+Check ((Read-Source 'graphics_page.hpp') -match '(?s)\.key = "FasterGameCpuCode",.{0,300}?\.label = "Faster Game CPU Code",') 'FasterGameCpuCode 32-bit label unchanged'
+# PK2P P1a (the 64-bit port only): Keep Render Core Free is the engine plugin's render core, its default the plugin's
+# CORE_RENDER bit (32-bit: 0, off), moved to the CPU page after Keep Battle Core Free, hidden until its A/B measured it
+# (RENDER_CORE_ROW_MEASURED false) and while the plugin built no render part, the toggle also with RenderCore=0; its bit
+# written by the link's Update; the 32-bit row as before.
+Check ($text.Contains('constexpr float KEEP_RENDER_CORE_DEFAULT = ((ATTILA64 && twattila::attila64_plugin_link::RENDER_CORE_DEFAULT) ? 1.f : 0.f);')) 'KeepRenderCoreFree default: the plugin''s CORE_RENDER bit on the port, 0 on 32-bit'
+Check ((Read-Source 'attila64_plugin_link.hpp') -match '(?s)inline constexpr bool RENDER_CORE_DEFAULT =\s+\(attila64_plugin::CORE_WANTED_DEFAULT & attila64_plugin::CORE_RENDER\) != 0;') 'RENDER_CORE_DEFAULT from CORE_WANTED_DEFAULT & CORE_RENDER'
+Check ($text -match '(?m)^constexpr bool RENDER_CORE_ROW_MEASURED = false;') 'RENDER_CORE_ROW_MEASURED false (the port row hidden until its A/B)'
+Check ($text.Contains('{.match = "KeepRenderCoreFree", .plugin_row = PluginRow::CPU_PLACEMENT},')) 'KeepRenderCoreFree in GAME_CODE_ROWS with PluginRow::CPU_PLACEMENT'
+$rc = Block 'const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree", &renodx::utils::settings::Setting::key);' "`n        });"
+Check ($rc.Contains('render_core_row->label = "Keep Render Core Free";') -and $rc.Contains('render_core_row->section = CPU_SECTION;') `
+       -and $rc.Contains('return render_core_shown() && render_core_state() != plugin::CORE_OFF_INI;') `
+       -and $rc.Contains('.is_visible = render_core_shown,')) 'KeepRenderCoreFree on the CPU page: port label, toggle hidden with RenderCore=0, its status line'
+Check ($text.Contains('return RENDER_CORE_ROW_MEASURED && GameCodeRowShown(PluginRow::CPU_PLACEMENT) && render_core_state() != 0;')) 'KeepRenderCoreFree shown only measured, the CPU row offered and the render part built'
+$battle = $text.IndexOf('.key = "KeepBattleCoreFree",', [StringComparison]::Ordinal)
+$render = $text.IndexOf('const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree"', [StringComparison]::Ordinal)
+Check ($battle -ge 0 -and $render -gt $battle -and $render -lt $text.IndexOf('const auto moved = std::ranges::find(settings, "FewerConstantUploads"', [StringComparison]::Ordinal)) 'KeepRenderCoreFree after Keep Battle Core Free, before Fewer Constant Uploads'
+Check ($text.Contains('(RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT));')) 'KeepRenderCoreFree written to the plugin (link Update) only once measured'
+Check ((Read-Source 'addon.cpp') -match '(?s)\.key = "KeepRenderCoreFree",.{0,300}?\.label = "Keep Render Core Free \(Experimental\)",\s+\.section = "Graphics \(Experimental\)",') 'KeepRenderCoreFree 32-bit label and section unchanged'
 Check ((Read-Source 'worker_pool.hpp') -match 'constexpr uint32_t MIN_GAME_CPUS = 8;') 'MIN_GAME_CPUS 8'
 # Automatic L1 (inside its row, which stays Off above): parallel from 20000 effect instances, serial below 16000, never below
 # 256; the bench env RENODX_TW_L1_UNITS read again at the pool's env generation.
