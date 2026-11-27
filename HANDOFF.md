@@ -18061,7 +18061,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (conflict-free), gated twattila amd64 + x86, the plugin rebuilt in main for its .sha256; the battle core is ON by
         default inside the plugin and the add-on can't turn it off until W3 -> NO install / release may carry
         renodx_attila64.dll before S2 passes (an arm that must not place sets CpuPlacement=0); W4's E-lines before the next
-        -EnginePlugin start. W3 / W4 notes in the review. Sonnet High final l2f_ STARTED 08:3x, merge after it. S2 needs first: c8b0_ +
+        -EnginePlugin start. W3 / W4 notes in the review. Sonnet High final l2f_ DONE (testbin\scratch\l2f_\review.md): GO, no MUST; merge-tree clean. SHOULDs: L2F-S1
+        RowsNotOffered() has one call site (inline it in C8 W1a or give it its second caller, c8f_ Rev 2); L2F-S2 no live test
+        of the FAILED paths -> read the first S2 log for 'Windows refused' + YIELDED; L2F-S3 ClearIfOurs' bool unused. MERGED
+        87bb99dfb (c8b0_1127 by ancestry + l2bw2_1127, --no-ff); twattila amd64 + x86 gated builds exit 0 (61 warnings each, as
+        before); the plugin rebuilt in main with -Test -Elf: 0 failures, build\attila64_plugin\renodx_attila64.dll.sha256 =
+        a4778fa7e2dcec36... RULES UNTIL S2: no install / release carries renodx_attila64.dll (the battle core is on by default
+        inside it and the add-on can't turn it off until W3); any other -EnginePlugin start places a core -> arms that must not
+        place set CpuPlacement=0; never two placers at once (probe 'full' + the plugin = YIELDED); W4's E2b / E4 / E5 / E6
+        before the next -EnginePlugin start. S2 needs first: c8b0_ +
         l2bw2_ merged + the plugin rebuilt in main (DLL + .sha256), W3 + R1, W4 in a64_ab (kind ep1, -EnginePlugin with -AB
         -Probe full, PROBE_LINES, E2b 'site STEP_ENTRY 0xbb4e00: applied', E4 'battle core on', E5 '3 sites unchanged'), ATN's
         yes for the ep1 arm + 2 rule lines, the INVALID flag, the CPU Set Setter rule on run_pkg_580efafeb5765d81\attila64.exe
