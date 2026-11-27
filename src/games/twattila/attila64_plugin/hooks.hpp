@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -27,6 +28,7 @@
 #include "model_lods.hpp"
 #include "plugin_block.h"
 #include "sites.h"
+#include "trampoline.hpp"
 
 // The plugin's hooks on game code: the shared block, the callback guard and the hook bodies. The game calls them with
 // its own (Linux) calling convention; they call the add-on's callbacks and the plugin's own code with the Windows one.
@@ -46,7 +48,8 @@ static std::array<std::atomic_bool, LABEL_COUNT> first_call_logged = {};
 // while their originals run (a tail call); the pass hook does on measured calls only, and no frame above it catches
 // (the generator's catch gate on its site); the unit LOD hook does while a scale of its own is active, and nothing its
 // original calls throws (read from the game's code: one direct call and two virtual ones, each with one possible
-// target). So the hook bodies need no landing pads, and every function they call is noexcept.
+// target); the sprite site's handler calls no game code. So the hook bodies need no landing pads, and every function
+// they call is noexcept.
 using PackFn = bool(ATTILA64_GAME_CALL*)(void* self, void* context, bool flag, void* list, uint32_t first,
                                          uint32_t* cursor, uint32_t count, uint32_t* written) noexcept;
 using ViewDrawFn = void(ATTILA64_GAME_CALL*)(void* node, void* context, void* view) noexcept;
@@ -71,6 +74,9 @@ using GrassCellFn = void(ATTILA64_GAME_CALL*)(const uint8_t* scrub, const uint8_
 using CampaignTreeFn = void*(ATTILA64_GAME_CALL*)(const uint8_t* node, const uint32_t* model, void* position,
                                                   uintptr_t fourth, uintptr_t fifth, uintptr_t sixth, float first_float,
                                                   float second_float) noexcept;
+using EffectWalkFn = void(ATTILA64_GAME_CALL*)(uint8_t* node, float first_float, float second_float) noexcept;
+// The game's compare of two counted strings (lengths, then bytes): it only reads, and the order does not matter.
+using EffectKeyEqualFn = bool(ATTILA64_GAME_CALL*)(const void* key, const void* other) noexcept;
 
 inline constexpr size_t NODE_ENABLED_OFFSET = 0x28;             // a byte; the game returns at once when it is 0
 inline constexpr size_t VIEW_KIND_SLOT = 0x80 / sizeof(void*);  // the view's pass kind, a virtual
@@ -135,50 +141,51 @@ struct ScrubState {
   std::array<int32_t, MAX_SCRUB_SLOTS> slot_radius = {};
 };
 // Each scrub's own state, by its address: with one state for all, a second scrub updating in turn with the first would
-// have our written radius and bias taken for the game's. An entry is claimed at a scrub's first update. Entries are
-// not freed (nothing tells when the game frees a scrub); a new scrub with none unused takes the one longest without an
-// update among those ScrubStateFree allows. With none the scrub keeps the game's radius and bias, and one log line
-// says so.
+// have our written radius and bias taken for the game's. A state is claimed at a scrub's first update. States are not
+// freed (nothing tells when the game frees a scrub, and a freed scrub's memory mostly keeps the values written last),
+// so the table is sized for a long session: SCRUB_STATES states (about 1.1 MiB), found by the address's hash
+// (Fibonacci hashing: Knuth, The Art of Computer Programming 3, 6.4) within SCRUB_WINDOW states from its home, so the
+// cell hook's search is a few keys. A new scrub takes, of its window's states that may be taken, the one longest
+// without an update (a never used one first). A state may be taken when it was never used; or it had no update for
+// STALE_SCRUB_UPDATES update calls (a scrub the game draws is updated every frame) and its scrub cannot come back
+// holding a value of ours: its last update left the game's own values (1x), or its memory holds neither value written
+// last (the game set both again, or the scrub is gone: other memory, or none). A scrub that still holds a written
+// value may be alive and idle; with its state gone its next update would take our values for the game's and scale
+// them again, so it is never taken. With none to take the scrub keeps the game's radius and bias, one log line says
+// so, and its window is searched again only SCRUB_SEARCH_INTERVAL update calls later (the search asks the system
+// about each stale scrub's memory).
 // Not told apart (it needs both floats' exact bits): a new scrub at a freed one's address whose own radius or bias
 // is the value written last there, or the game setting such a value again; that value is taken for ours. No field of
 // a scrub is known to stay for its life and differ between scrubs, and a wrong guess there would take our values for
 // the game's.
-inline constexpr size_t MAX_SCRUBS = 64;
+inline constexpr size_t SCRUB_STATE_BITS = 10;
+inline constexpr size_t SCRUB_STATES = size_t{1} << SCRUB_STATE_BITS;
+inline constexpr size_t SCRUB_WINDOW = 16;
 inline constexpr uint64_t STALE_SCRUB_UPDATES = 1u << 20;
+inline constexpr uint64_t SCRUB_SEARCH_INTERVAL = 1u << 16;
 struct ScrubStates {
   std::shared_mutex mutex;
-  uint64_t updates = 0;                                // every update hook call that ran its body
-  std::array<const uint8_t*, MAX_SCRUBS> scrubs = {};  // beside the states: the cell hook's search reads these alone
-  std::array<ScrubState, MAX_SCRUBS> states = {};
+  uint64_t updates = 0;                                  // every update hook call that ran its body
+  std::array<const uint8_t*, SCRUB_STATES> scrubs = {};  // beside the states: the searches read these alone
+  // Per home: `updates` at the last search of its window that found no state to take; 0: none yet.
+  std::array<uint64_t, SCRUB_STATES> failed_searches = {};
+  std::array<ScrubState, SCRUB_STATES> states = {};
 };
 static ScrubStates scrub_states;
 static_assert(std::is_trivially_destructible_v<ScrubStates>);
-static std::atomic_bool scrub_table_full_logged = false;
-// Whether a new scrub may take this state (the caller holds the lock). A never used one; else one without an update
-// for STALE_SCRUB_UPDATES update calls (a scrub the game draws is updated every frame) whose scrub cannot come back
-// holding a value of ours: its last update left the game's own values (1x), or its memory holds neither value written
-// last (the game set both again, or the scrub is gone: other memory, or none). A scrub that still holds a written
-// value may be alive and idle; with its state gone its next update would take our values for the game's and scale
-// them again, so it is never taken.
-static_assert(SCRUB_BIAS == SCRUB_RADIUS + sizeof(int32_t));
-static bool ScrubStateFree(size_t index) noexcept {
-  const ScrubState& state = scrub_states.states[index];
-  if (state.updated == 0) return true;
-  if (scrub_states.updates - state.updated <= STALE_SCRUB_UPDATES) return false;
-  if (state.written_radius == state.game_radius && state.written_bias == state.game_bias) return true;
-  // The scrub may be freed: its page is asked for first (committed, no guard page, readable), and the read is the
-  // system's, which fails where a read of ours would fault. No answer or no read: not a scrub any more.
-  const uint8_t* values = scrub_states.scrubs[index] + SCRUB_RADIUS;
-  MEMORY_BASIC_INFORMATION page = {};
-  std::array<uint32_t, 2> held = {};  // the radius, the bias
-  SIZE_T bytes_read = 0;
-  if (VirtualQuery(values, &page, sizeof(page)) == 0 || page.State != MEM_COMMIT
-      || (page.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0
-      || ReadProcessMemory(GetCurrentProcess(), values, held.data(), sizeof(held), &bytes_read) == 0
-      || bytes_read != sizeof(held)) {
-    return true;
+static_assert(SCRUB_BIAS == SCRUB_RADIUS + sizeof(int32_t), "the take rule reads both in one read");
+static std::atomic_bool scrub_refused_logged = false;
+// The first state of a scrub's window.
+static size_t ScrubHome(const uint8_t* scrub) noexcept {
+  return static_cast<size_t>((reinterpret_cast<uintptr_t>(scrub) * 0x9e3779b97f4a7c15ull) >> (64 - SCRUB_STATE_BITS));
+}
+// The scrub's state, or SCRUB_STATES with none (the caller holds the lock).
+static size_t FindScrubState(const uint8_t* scrub) noexcept {
+  const size_t home = ScrubHome(scrub);
+  for (size_t step = 0; step < SCRUB_WINDOW; ++step) {
+    if (const size_t index = (home + step) % SCRUB_STATES; scrub_states.scrubs[index] == scrub) return index;
   }
-  return held[0] != static_cast<uint32_t>(state.written_radius) && held[1] != state.written_bias;
+  return SCRUB_STATES;
 }
 // The hooks that write game memory run their bodies from their row's first scale that is not neutral on, for the
 // process: back at 1x they write the game's values x 1, the game's bits (the 32-bit add-on's models_scaled).
@@ -204,6 +211,21 @@ static uint32_t Fnv1a(const uint8_t* bytes, size_t count) noexcept {
   return hash;
 }
 
+// The soldier draw's per-soldier record (r13 at the sprite site), and the display tables it points at: four sprite
+// distances by the soldier's size (0-3; a size past 3 takes 0's), their fade widths 0x10 after them.
+inline constexpr size_t SOLDIER_DISPLAY = 0xc8;
+inline constexpr size_t SOLDIER_FLAGS = 0x11c;  // a byte
+// Bit 0 clear = dead, from one reader in the game's code: the function at 0xa56720 takes this record (rdx, kept in
+// rbx) and, only with the bit clear (0xa56786), divides the record's float at +0x118 by a game constant (0x4e8861c)
+// (elf_sites_test holds both instructions). The 32-bit game's flags bit 0 is the same rule. The code that clears the
+// bit when a soldier dies was not found: not proven (E), still to be seen in the game.
+inline constexpr uint8_t SOLDIER_ALIVE = 1;
+inline constexpr size_t DISPLAY_SPRITE_DISTANCES = 0x370;
+// A soldier's height by its size, metres: the 32-bit add-on's estimates (graphics_hooks.hpp SOLDIER_HEIGHTS: a foot
+// soldier, a rider, an elephant, a gun with its crew).
+inline constexpr std::array<float, 4> SOLDIER_HEIGHTS = {1.8f, 2.6f, 4.f, 3.f};
+inline constexpr uint32_t SPRITE_SCALES = (1u << SCALE_SPRITE_DISTANCE) | (1u << SCALE_DEAD_UNITS);
+
 // The add-on's unregister stores nullptr into `callbacks`, then waits (bounded) until `calls_in_flight` is 0
 // (plugin_block.h has its rules): with this increment-then-load (seq_cst on both sides) no callback starts after that
 // wait ends. Two atomics instead of the style guide's std::shared_mutex, one of the two cases where that rule does not
@@ -221,6 +243,73 @@ struct CallbackScope {
 
   const Callbacks* callbacks = nullptr;
 };
+
+// ROW_PARALLEL_EFFECTS, the walk hook's state. Main only, read from the game's code: the walk has two ways in. One is
+// its direct caller, which sits in one virtual slot (+0x70) of the node, and that slot's one call chain starts in the
+// game's main. The other is a two-byte jump to the walk at 0x32fbf50, 16 bytes before it, which sits in the node's
+// slot +0x140: no call through that slot on an effect node was found (every call and load-then-call of a slot +0x140
+// was read; none is in effect or scene code), so it counts as not reached, by search and not by proof. So plain values
+// without a lock, and the hook's own thread check below for the second way. The game's start writes loader_value and
+// stored on the loader's thread before it sets effects_offered (release); the hook reads them only after its acquire
+// load.
+//
+// The mode is two bits of core_wanted (plugin_block.h): Off = no CORE_EFFECTS, Automatic = both, On = CORE_EFFECTS
+// alone. Each walk sets the game's flag for the update the walk then runs: Off = the loader's value, On = 1,
+// Automatic = this node's state by the rule below. The flag is stored only when the target is not the plugin's last
+// store, or at the first deciding walk in a new mode that is not Off (the loader's own switches may have changed the
+// byte meanwhile; they are not supported in Automatic and On). In Off the plugin stores only to undo its own store.
+enum EffectsMode : uint8_t {
+  EFFECTS_OFF,
+  EFFECTS_AUTOMATIC,
+  EFFECTS_ON,
+};
+inline constexpr std::array<const char*, 3> EFFECTS_MODE_WORDS = {"Off", "Automatic", "On"};
+[[nodiscard]] constexpr EffectsMode EffectsModeOf(uint32_t wanted) {
+  if ((wanted & CORE_EFFECTS) == 0) return EFFECTS_OFF;
+  return ((wanted & CORE_EFFECTS_AUTO) != 0) ? EFFECTS_AUTOMATIC : EFFECTS_ON;
+}
+// The Automatic rule, the 32-bit add-on's (src/games/twattila/effect_update.hpp, its UnitRule and Automatic L1 note):
+// each walk sums the node's effect instances with the game's own slot test; the node runs parallel from AUTO_ON
+// instances on and serial again below AUTO_OFF, never below AUTO_FLOOR; a table with more slots than TABLE_SLOT_LIMIT
+// is not summed. The four numbers are that file's, measured on the 32-bit game's own parallel walk: no 64-bit number
+// exists yet. Deviations from it, ours: the state is per node (that file has one walk state: its walk has one node),
+// in EFFECT_NODE_LIMIT entries (one walk per node and frame and one place that builds effect nodes, so a battle has
+// few); a node beyond them leaves the flag as it is. An entry no walk used for EFFECT_NODE_STALE_WALKS walks is taken
+// again (ours: a node dies with its battle, and without it the fifth node of a session would end Automatic for good).
+// The walks counted are Automatic's own, so a stretch in Off or On ages no entry. A dead node's pointer is only
+// compared, never read; a new node at a dead one's address finds its entry and starts with its state (the threshold
+// it meets first is then AUTO_OFF, once).
+inline constexpr uint32_t TABLE_SLOT_LIMIT = 4096;
+inline constexpr uint32_t AUTO_FLOOR = 256;
+inline constexpr uint32_t AUTO_ON = 20000;
+inline constexpr uint32_t AUTO_OFF = 16000;
+inline constexpr size_t EFFECT_NODE_LIMIT = 4;
+inline constexpr uint64_t EFFECT_NODE_STALE_WALKS = 1024;
+struct EffectNode {
+  const uint8_t* node = nullptr;  // null: free
+  uint64_t walked = 0;            // EffectWalk::walks at its last walk
+  bool parallel = false;
+};
+struct EffectWalk {
+  uint8_t loader_value = 0;  // the flag as the loader left it at the game's start
+  uint8_t stored = 0;        // the plugin's last store; loader_value before any
+  EffectsMode mode = EFFECTS_OFF;  // the last deciding walk's
+  bool change_logged = false;      // the first state change's line carries the table's capacity and the sum's time
+  bool node_limit_logged = false;
+  bool slot_limit_logged = false;
+  uint64_t walks = 0;  // in Automatic
+  std::array<EffectNode, EFFECT_NODE_LIMIT> nodes = {};
+};
+static EffectWalk effect_walk;
+// The thread of the first offered walk. Ours, not the game's or the loader's: the state above is main-only by what
+// was read from the game's code, and the walk's second way in is unreached only by search. A walk on another thread
+// would race that state, so it gets the game's walk alone (the flag as it is) and one line. On the read path it is
+// one thread id compare per walk and changes nothing: every walk is on this thread.
+static std::atomic<DWORD> effect_walk_thread = 0;
+static std::atomic_bool effect_thread_logged = false;
+// The loader's five guards hold their entries and the game's read of the flag is the code that was read: checked once
+// at the game's start (main.cpp). Without it the hook only calls the game's walk.
+static std::atomic_bool effects_offered = false;
 
 // The calling site's own line (a row with several sites shows which of them the game called).
 static void LogFirstCall(SiteLabel label) noexcept {
@@ -383,31 +472,59 @@ static ATTILA64_GAME_CALL void GrassUpdateEntry(uint8_t* scrub) {
       std::memcpy(&lod_offset, node + NODE_LOD_OFFSET, sizeof(lod_offset));
     }
 
-    // This scrub's entry; else, of those that may be taken, the one longest without an update (a never used one
-    // first). Under a lock of its own: the game's update is called from here when there is none, with no local of
-    // ours alive.
-    size_t entry = MAX_SCRUBS;
+    // This scrub's state; else, of its window's states that may be taken (the rule above ScrubStates), the one
+    // longest without an update. Under a lock of its own: the game's update is called from here when there is none,
+    // with no local of ours alive.
+    size_t entry = SCRUB_STATES;
     bool first_update = false;
     {
       const std::scoped_lock lock(scrub_states.mutex);
       ++scrub_states.updates;
-      entry = static_cast<size_t>(std::ranges::find(scrub_states.scrubs, scrub) - scrub_states.scrubs.begin());
-      first_update = (entry == MAX_SCRUBS);
-      for (size_t index = 0; first_update && index < MAX_SCRUBS; ++index) {
-        if ((entry == MAX_SCRUBS || scrub_states.states[index].updated < scrub_states.states[entry].updated)
-            && ScrubStateFree(index)) {
-          entry = index;
+      entry = FindScrubState(scrub);
+      first_update = (entry == SCRUB_STATES);
+      const size_t home = ScrubHome(scrub);
+      if (first_update
+          && (scrub_states.failed_searches[home] == 0
+              || scrub_states.updates - scrub_states.failed_searches[home] >= SCRUB_SEARCH_INTERVAL)) {
+        for (size_t step = 0; step < SCRUB_WINDOW; ++step) {
+          const size_t index = (home + step) % SCRUB_STATES;
+          const ScrubState& state = scrub_states.states[index];
+          if (entry != SCRUB_STATES && state.updated >= scrub_states.states[entry].updated) continue;
+          bool may_be_taken = (state.updated == 0);
+          if (!may_be_taken && scrub_states.updates - state.updated > STALE_SCRUB_UPDATES) {
+            may_be_taken = (state.written_radius == state.game_radius && state.written_bias == state.game_bias);
+            if (!may_be_taken) {
+              // The scrub may be freed: its page is asked for first (committed, no guard page, readable), and the
+              // read is the system's, which fails where a read of ours would fault. No answer or no read: not a
+              // scrub any more.
+              const uint8_t* values = scrub_states.scrubs[index] + SCRUB_RADIUS;
+              MEMORY_BASIC_INFORMATION page = {};
+              std::array<uint32_t, 2> held = {};  // the radius, the bias
+              SIZE_T bytes_read = 0;
+              may_be_taken =
+                  VirtualQuery(values, &page, sizeof(page)) == 0 || page.State != MEM_COMMIT
+                  || (page.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0
+                  || ReadProcessMemory(GetCurrentProcess(), values, held.data(), sizeof(held), &bytes_read) == 0
+                  || bytes_read != sizeof(held)
+                  || (held[0] != static_cast<uint32_t>(state.written_radius) && held[1] != state.written_bias);
+            }
+          }
+          if (may_be_taken) {
+            entry = index;
+          }
+        }
+        if (entry == SCRUB_STATES) {
+          scrub_states.failed_searches[home] = scrub_states.updates;
         }
       }
-      if (entry != MAX_SCRUBS) {
+      if (entry != SCRUB_STATES) {
         scrub_states.scrubs[entry] = scrub;
         scrub_states.states[entry].updated = scrub_states.updates;
       }
     }
-    if (entry == MAX_SCRUBS) {
-      if (!scrub_table_full_logged.exchange(true)) {
-        loader->log("renodx_attila64: grass: more than %zu grass areas at once, the rest keep the game's radius",
-                    MAX_SCRUBS);
+    if (entry == SCRUB_STATES) {
+      if (!scrub_refused_logged.exchange(true)) {
+        loader->log("renodx_attila64: grass: no state left for a grass area, it keeps the game's radius");
       }
       [[clang::musttail]] return reinterpret_cast<GrassUpdateFn>(originals[LABEL_GRASS_UPDATE_ENTRY])(scrub);
     }
@@ -535,8 +652,8 @@ static ATTILA64_GAME_CALL void GrassCellEntry(const uint8_t* scrub, const uint8_
     std::memcpy(&record_count, cell + CELL_RECORD_COUNT, sizeof(record_count));
     std::memcpy(&records, cell + CELL_RECORDS, sizeof(records));
     const std::shared_lock lock(scrub_states.mutex);
-    const auto entry = static_cast<size_t>(std::ranges::find(scrub_states.scrubs, scrub) - scrub_states.scrubs.begin());
-    if (entry != MAX_SCRUBS && scrub_states.states[entry].slot_count != 0) {
+    if (const size_t entry = FindScrubState(scrub);
+        entry != SCRUB_STATES && scrub_states.states[entry].slot_count != 0) {
       const ScrubState& known = scrub_states.states[entry];
       int32_t radius = 0;
       for (uint32_t record = 0; record < record_count && radius < known.written_radius; ++record) {
@@ -581,7 +698,175 @@ static ATTILA64_GAME_CALL void PairsEntry(void* manager) {
   [[clang::musttail]] return reinterpret_cast<PairsFn>(originals[LABEL_PAIRS_ENTRY])(manager);
 }
 
-// Each hook site's hook, by SiteLabel; a patch site has none (patcher_test checks that each label holds its own).
+// ROW_SPRITES, inside the soldier draw: where a soldier turns into a flat sprite. The site's two instructions make that
+// distance: xmm0 (the soldier's random value - 0.5) x its size's fade width ([rax]), + its size's sprite distance
+// ([rcx]); the game stores the sum and draws a sprite when the camera is farther away.
+// - Small Soldiers as Sprites: no farther than where a soldier of its size is the add-on's pixel limit tall (its height
+//   x the scale), with the game's spread around it; only for a scale above 0.
+// - Dead Unit Detail: x its scale for a dead soldier.
+// The 32-bit add-on's OnImposterDistance (graphics_hooks.hpp), in its order; there the spread comes from a second call
+// of the game's function, here it is the site's own product. Each part only with its own bit set.
+// Called by the site's stub (trampoline.hpp), and only while one of the two bits is set: with none the game's own two
+// instructions run, with every register and flag as the game left them. The row has this one site: refused, it is not
+// in at all.
+static ATTILA64_GAME_CALL void SpriteDistanceHandler(trampoline::MidContext* context) noexcept {
+  const uint32_t active = block.scales_active.load(std::memory_order_relaxed) & SPRITE_SCALES;
+  // Both bits cleared since the stub read them: on to the game's own instructions.
+  if (active == 0) return;
+  LogFirstCall(LABEL_SPRITE_DISTANCE);
+  const auto* soldier = reinterpret_cast<const uint8_t*>(context->r13);
+  float dither = 0.f;
+  float fade_width = 0.f;
+  float distance = 0.f;
+  std::memcpy(&dither, context->xmm[0].data(), sizeof(dither));
+  std::memcpy(&fade_width, reinterpret_cast<const void*>(context->rax), sizeof(fade_width));
+  std::memcpy(&distance, reinterpret_cast<const void*>(context->rcx), sizeof(distance));
+  // The game's mulss and addss, in its order.
+  const float spread = dither * fade_width;
+  distance = spread + distance;
+  if (const float sprite_scale = block.scales[SCALE_SPRITE_DISTANCE].load(std::memory_order_relaxed);
+      (active & (1u << SCALE_SPRITE_DISTANCE)) != 0 && sprite_scale > 0.f) {
+    uintptr_t display = 0;
+    std::memcpy(&display, soldier + SOLDIER_DISPLAY, sizeof(display));
+    const size_t size = (context->rcx - display - DISPLAY_SPRITE_DISTANCES) / sizeof(float);
+    const float height = SOLDIER_HEIGHTS[(size < SOLDIER_HEIGHTS.size()) ? size : 0];
+    distance = std::min(distance, (height * sprite_scale) + spread);
+  }
+  if ((active & (1u << SCALE_DEAD_UNITS)) != 0 && (soldier[SOLDIER_FLAGS] & SOLDIER_ALIVE) == 0) {
+    distance *= block.scales[SCALE_DEAD_UNITS].load(std::memory_order_relaxed);
+  }
+  // The low float of xmm0, as the two instructions leave the rest of it; then past them.
+  std::memcpy(context->xmm[0].data(), &distance, sizeof(distance));
+  context->resume = uint64_t{SITES[LABEL_SPRITE_DISTANCE].address} + SITES[LABEL_SPRITE_DISTANCE].length;
+}
+
+// The plugin's [Attila64Plugin] EffectsMode key at init, before READY (an A/B without the add-on): absent (-1) no
+// change, 0 Off, 1 Automatic, 2 On; another value changes nothing. Then the mode's line.
+static void ApplyEffectsModeKey(Block* shared, int key) noexcept {
+  if (key == 0) {
+    shared->core_wanted.fetch_and(~(CORE_EFFECTS | CORE_EFFECTS_AUTO), std::memory_order_relaxed);
+  } else if (key == 1) {
+    shared->core_wanted.fetch_or(CORE_EFFECTS | CORE_EFFECTS_AUTO, std::memory_order_relaxed);
+  } else if (key == 2) {
+    shared->core_wanted.fetch_and(~CORE_EFFECTS_AUTO, std::memory_order_relaxed);
+    shared->core_wanted.fetch_or(CORE_EFFECTS, std::memory_order_relaxed);
+  } else if (key != -1) {
+    loader->log("renodx_attila64: parallel effects: EffectsMode=%d is not 0, 1 or 2 (no change)", key);
+  }
+  loader->log("renodx_attila64: parallel effects mode %s (ini EffectsMode)",
+              EFFECTS_MODE_WORDS[EffectsModeOf(shared->core_wanted.load(std::memory_order_relaxed))]);
+}
+
+// ROW_PARALLEL_EFFECTS: the walk over a scene node's effect types, once per node and frame on the game's main thread
+// (twice for a node the sky's environment bake draws again: the same sum, so no second store). Sets the game's
+// parallel flag for this walk (EffectWalk's note), then the game's walk with its own frame.
+static ATTILA64_GAME_CALL void EffectWalkEntry(uint8_t* node, float first_float, float second_float) {
+  LogFirstCall(LABEL_EFFECT_WALK_ENTRY);
+  bool on_walk_thread = false;
+  if (effects_offered.load(std::memory_order_acquire)) {
+    const DWORD thread = GetCurrentThreadId();
+    DWORD first_thread = effect_walk_thread.load(std::memory_order_relaxed);
+    if (first_thread == 0) {
+      // The first offered walk's thread becomes the walks' thread. Lost to another thread's walk, first_thread is
+      // that thread's.
+      if (effect_walk_thread.compare_exchange_strong(first_thread, thread)) {
+        first_thread = thread;
+      }
+    }
+    on_walk_thread = (first_thread == thread);
+    if (!on_walk_thread && !effect_thread_logged.exchange(true)) {
+      loader->log("renodx_attila64: parallel effects: the effect update ran on thread %lu, not on its usual thread %lu: "
+                  "left to the game there",
+                  thread, first_thread);
+    }
+  }
+  if (on_walk_thread) {
+    EffectWalk* walk = &effect_walk;
+    const EffectsMode mode = EffectsModeOf(block.core_wanted.load(std::memory_order_relaxed));
+    uint8_t target = ((mode == EFFECTS_ON) ? 1 : walk->loader_value);
+    // A walk that cannot decide (a node beyond the entries, a table above the limit) leaves the flag and the last mode
+    // as they are, so the first store of a new mode waits for a walk that can.
+    bool decided = true;
+    if (mode == EFFECTS_AUTOMATIC) {
+      ++walk->walks;
+      auto state = std::ranges::find(walk->nodes, node, &EffectNode::node);
+      if (state == walk->nodes.end()) {
+        state = std::ranges::min_element(walk->nodes, {}, &EffectNode::walked);
+        if (state->node == nullptr || walk->walks - state->walked > EFFECT_NODE_STALE_WALKS) {
+          *state = {.node = node};
+        } else {
+          state = walk->nodes.end();
+        }
+      }
+      const uint32_t capacity = *reinterpret_cast<const uint32_t*>(node + EFFECT_TABLE_CAPACITY);
+      decided = (state != walk->nodes.end() && capacity <= TABLE_SLOT_LIMIT);
+      if (state == walk->nodes.end()) {
+        if (!walk->node_limit_logged) {
+          walk->node_limit_logged = true;
+          loader->log("renodx_attila64: parallel effects: more than %zu nodes, the others' flag is left as it is",
+                      EFFECT_NODE_LIMIT);
+        }
+      } else {
+        state->walked = walk->walks;
+      }
+      if (decided) {
+        LARGE_INTEGER sum_start = {};
+        if (!walk->change_logged) {
+          QueryPerformanceCounter(&sum_start);
+        }
+        // The game's own walk of the table (read from its code; elf_sites_test holds each instruction): a slot whose
+        // key is the table's empty or deleted key is skipped before its value is read (a deleted slot may keep a
+        // dead pointer), then a null value; the count is the one the game's per-type update reads.
+        const auto key_equal = reinterpret_cast<EffectKeyEqualFn>(EFFECT_KEY_EQUAL);
+        const auto* slots = *reinterpret_cast<const uint8_t* const*>(node + EFFECT_TABLE_SLOTS);
+        uint32_t instances = 0;
+        for (uint32_t index = 0; index < capacity; ++index) {
+          const uint8_t* slot = slots + (index * EFFECT_SLOT_BYTES);
+          if (key_equal(slot, node + EFFECT_EMPTY_KEY) || key_equal(slot, node + EFFECT_DELETED_KEY)) continue;
+          const auto* type = *reinterpret_cast<const uint8_t* const*>(slot + EFFECT_SLOT_VALUE);
+          if (type != nullptr) {
+            instances += *reinterpret_cast<const uint32_t*>(type + EFFECT_TYPE_COUNT);
+          }
+        }
+        const bool parallel = (instances >= AUTO_FLOOR && instances >= (state->parallel ? AUTO_OFF : AUTO_ON));
+        if (parallel != state->parallel) {
+          state->parallel = parallel;
+          char first_change[64] = "";
+          if (!walk->change_logged) {
+            walk->change_logged = true;
+            LARGE_INTEGER sum_end = {};
+            LARGE_INTEGER frequency = {};
+            QueryPerformanceCounter(&sum_end);
+            QueryPerformanceFrequency(&frequency);
+            std::snprintf(first_change, sizeof(first_change), ", table capacity %u, sum %lld us", capacity,
+                          (sum_end.QuadPart - sum_start.QuadPart) * 1000000 / frequency.QuadPart);
+          }
+          loader->log((parallel ? "renodx_attila64: parallel effects: node %td on (%u instances, from %u)%s"
+                                : "renodx_attila64: parallel effects: node %td off (%u, below %u)%s"),
+                      state - walk->nodes.begin(), instances, (parallel ? AUTO_ON : AUTO_OFF), first_change);
+        }
+        target = (parallel ? 1 : 0);
+      } else if (capacity > TABLE_SLOT_LIMIT && !walk->slot_limit_logged) {
+        walk->slot_limit_logged = true;
+        loader->log("renodx_attila64: parallel effects: a table of %u slots (above %u) is not summed, its flag is left "
+                    "as it is",
+                    capacity, TABLE_SLOT_LIMIT);
+      }
+    }
+    if (decided) {
+      if (target != walk->stored || (mode != walk->mode && mode != EFFECTS_OFF)) {
+        *reinterpret_cast<uint8_t*>(EFFECT_FLAG) = target;
+        walk->stored = target;
+      }
+      walk->mode = mode;
+    }
+  }
+  [[clang::musttail]] return reinterpret_cast<EffectWalkFn>(originals[LABEL_EFFECT_WALK_ENTRY])(node, first_float,
+                                                                                             second_float);
+}
+
+// Each hook site's hook and each mid-function site's handler, by SiteLabel; a patch site has none (patcher_test checks
+// that each label holds its own).
 static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
   std::array<void*, LABEL_COUNT> hooks = {};
   hooks[LABEL_PACK_ENTRY] = reinterpret_cast<void*>(&PackEntry);
@@ -593,8 +878,16 @@ static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
   hooks[LABEL_GRASS_DRAW_ENTRY] = reinterpret_cast<void*>(&GrassDrawEntry);
   hooks[LABEL_GRASS_CELL_ENTRY] = reinterpret_cast<void*>(&GrassCellEntry);
   hooks[LABEL_CAMPAIGN_TREE_ENTRY] = reinterpret_cast<void*>(&CampaignTreeEntry);
+  hooks[LABEL_SPRITE_DISTANCE] = reinterpret_cast<void*>(&SpriteDistanceHandler);
+  hooks[LABEL_EFFECT_WALK_ENTRY] = reinterpret_cast<void*>(&EffectWalkEntry);
   hooks[LABEL_PAIRS_ENTRY] = reinterpret_cast<void*>(&PairsEntry);
   return hooks;
+}();
+// Each mid-function site's scales: its handler is called only while a bit of them is set in scales_active.
+inline constexpr std::array<uint32_t, LABEL_COUNT> MID_SITE_SCALES = [] {
+  std::array<uint32_t, LABEL_COUNT> scales = {};
+  scales[LABEL_SPRITE_DISTANCE] = SPRITE_SCALES;
+  return scales;
 }();
 
 }  // namespace twattila::attila64_plugin

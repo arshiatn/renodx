@@ -56,8 +56,6 @@ using namespace twattila::attila64_plugin;
 using namespace twattila::attila64_plugin::battle_step;
 using namespace twattila::attila64_plugin::test;
 
-inline constexpr int EXIT_SKIPPED = 77;
-
 // The game's fields that only the fakes read, and the fakes' own in bytes the game's code here does not touch.
 inline constexpr size_t PAIR_KEY = 0x10;     // a float: the game sorts its pairs by it
 inline constexpr size_t PAIR_ANSWER = 0x14;  // the fake pair test's answer
@@ -2973,27 +2971,17 @@ int wmain(int argc, wchar_t** argv) {
   RunCases("model", 10000, 1, 0x70616972);
   RunContactTableChecks();
 
-  GameFile game;
-  if (argc < 3 || MapGameFile(argv[2], &game) != MAP_DONE) {
+  GameImage image;
+  if (argc < 3 || MapGameElf(argv[2], &image) != 0) {
     std::printf("SKIPPED: the game-file part (battle_step_test.exe <renodx_attila64.dll> <game ELF>)\n");
     std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
     return ((failures == 0) ? EXIT_SKIPPED : failures);
   }
   const auto at = [](uintptr_t address) { return reinterpret_cast<uint8_t*>(address); };
-  // Each code range as the file holds it, then in memory as the plugin's init finds it (the loader's stack-check
-  // rewrite): the row's hashes are the memory's.
-  std::array<uint64_t, CODE_RANGES.size()> file_hashes = {};
-  for (size_t range = 0; range < CODE_RANGES.size(); ++range) {
-    file_hashes[range] = Fnv1a64(at(CODE_RANGES[range].address), CODE_RANGES[range].length);
-  }
-  const int rewritten = ApplyStackRule(at(GAME_LO), at(game.end));
-  std::printf("  mapped %#llx..%#llx, %d stack-check reads rewritten\n", uint64_t{GAME_LO}, uint64_t{game.end}, rewritten);
-  for (size_t range = 0; range < CODE_RANGES.size(); ++range) {
-    const uint64_t memory_hash = Fnv1a64(at(CODE_RANGES[range].address), CODE_RANGES[range].length);
-    if (memory_hash != file_hashes[range]) {
-      std::printf("  code range %#x+%#x: the stack-check rewrite changes it\n", CODE_RANGES[range].address, CODE_RANGES[range].length);
-    }
-    Expect(memory_hash == CODE_RANGES[range].hash, "code: each range's hash is the game's, in memory");
+  // Each code range in memory as the plugin's init finds it (MapGameElf applies the loader's stack-check rewrite):
+  // the row's hashes are the memory's.
+  for (const CodeRange& range : CODE_RANGES) {
+    Expect(Fnv1a64(at(range.address), range.length) == range.hash, "code: each range's hash is the game's, in memory");
   }
   for (const TableWord& word : TABLE_WORDS) {
     Expect(*reinterpret_cast<const uint64_t*>(uintptr_t{word.address}) == word.value, "code: each table word is the game's");
@@ -3038,7 +3026,7 @@ int wmain(int argc, wchar_t** argv) {
     const auto inside = [](uint64_t target) {
       return (target > RESOLVER && target < RESOLVER + HOOK_BYTES) || (target > CONTACT_LOOP && target < CONTACT_LOOP + HOOK_BYTES);
     };
-    for (uintptr_t address = GAME_LO; address + 8 <= game.writable_lo; ++address) {
+    for (uintptr_t address = GAME_LO; address + 8 <= image.writable_lo; ++address) {
       const uint8_t* code = at(address);
       int32_t rel32 = 0;
       std::memcpy(&rel32, code + 1 + ((code[0] == 0x0f) ? 1 : 0), sizeof(rel32));
@@ -3051,7 +3039,7 @@ int wmain(int argc, wchar_t** argv) {
         ++into_the_site;
       }
     }
-    for (uintptr_t address = GAME_LO; address + 8 <= game.end; address += 8) {
+    for (uintptr_t address = GAME_LO; address + 8 <= image.end; address += 8) {
       uint64_t word = 0;
       std::memcpy(&word, at(address), sizeof(word));
       if (inside(word)) {

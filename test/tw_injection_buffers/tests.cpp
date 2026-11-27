@@ -14,15 +14,27 @@
 // 6. The latch: the opt-in off after the ring's device used it: still taken there (an upload, the bytes bound), not on
 //    another device that never used it. CONTROL: the ring told it follows no device: not taken (ReShade's push).
 // 7. destroy_device of the ring's device releases it (then not taken with the opt-in off); another device's leaves it.
+// 8. (`hardware`, run.ps1 -Hardware: alone in its own process, so the Map count is never patched in) No regression on
+//    the hardware adapter, flags 0 as the 64-bit port's device: 540 draws a frame into a 3840 x 2160 target, each after
+//    its arm's push. Arm R is ReShade's D3D11 push (d3d11_impl_command_list.cpp push_constants: its copy, a 432-byte
+//    WRITE_DISCARD map, 5 binds); arm F is PushNativeD3D11Injection with the bytes changed 4 times a frame (F(4)) or
+//    every draw (F(540)). Runs R1, F(4)a, F(4)b, R2, F(540), each 60 warm-up and 600 timed frames, median a run.
+//    PASS when max(F(4)a, F(4)b) <= mean(R1, R2) + 3 x A/A, A/A = max(|R1 - R2|, 2 % of the mean). F/R, F(540)/R and
+//    A/A are printed as numbers; a REGRESSION exits 1.
 #include <windows.h>
 #include <d3d11.h>
 #include <d3dcompiler.h>
+#include <dxgi.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "src/mods/shader.hpp"
@@ -63,6 +75,14 @@ static HRESULT STDMETHODCALLTYPE CountingMap(ID3D11DeviceContext* context, ID3D1
 constexpr UINT SLOT = 13;
 constexpr size_t FLOATS = 108;
 static std::array<float, FLOATS> injection = {};
+
+// Cases 5 and 8: a full-screen triangle, and a pixel shader that reads b13's first and last 16 bytes (so the driver
+// keeps the binds).
+constexpr char FULL_SCREEN_VS[] =
+    "float4 main(uint id : SV_VertexID) : SV_Position { return float4(id == 2 ? 3.f : -1.f, id == 1 ? 3.f : -1.f, 0.f, 1.f); }";
+constexpr char INJECTION_PS[] =
+    "cbuffer injection : register(b13) { float4 values[27]; };"
+    "float4 main(float4 position : SV_Position) : SV_Target { return values[0] + values[26]; }";
 
 static ComPtr<ID3D11Buffer> Bound(ID3D11DeviceContext* context, int stage) {
   ComPtr<ID3D11Buffer> buffer;
@@ -126,11 +146,148 @@ static ComPtr<ID3DBlob> Compile(const char* source, const char* target) {
   return code;
 }
 
-int main() {
+int main(int argc, char** argv) {
+  const bool hardware = argc > 1 && std::strcmp(argv[1], "hardware") == 0;
   ComPtr<ID3D11Device> device;
   ComPtr<ID3D11DeviceContext> immediate;
-  CHECK(SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &device, nullptr,
-                                    &immediate)));
+  // Flags 0 on the default adapter in case 8: the 64-bit port's own D3D11CreateDevice.
+  CHECK(SUCCEEDED(D3D11CreateDevice(nullptr, (hardware ? D3D_DRIVER_TYPE_HARDWARE : D3D_DRIVER_TYPE_WARP), nullptr, 0, nullptr,
+                                    0, D3D11_SDK_VERSION, &device, nullptr, &immediate)));
+  Device game_device;
+  game_device.native = device;
+  mock::CommandList cmd_list;
+  cmd_list.owner = &game_device;
+  cmd_list.native = immediate;
+  for (size_t index = 0; index < FLOATS; ++index) {
+    injection[index] = 0.25f * static_cast<float>(index + 1);
+  }
+  shader::shader_injection = injection.data();
+  shader::shader_injection_size = FLOATS;
+  auto& ring = shader::internal::native_injection_ring;
+
+  if (hardware) {
+    // 8. The timing follows Microsoft's "Accurately Profiling Direct3D API Calls" (QPC around the calls, an event query
+    // and a flush to bound the GPU work) with a frame latency of 2, as IDXGIDevice1::SetMaximumFrameLatency keeps a
+    // game's present queue: each frame ends with an event and a Flush, then waits for frame N-2's event outside the timed
+    // span. Without the Flush and the wait the CPU runs ahead, and arm R's renames behave unlike a game's.
+    {
+      ComPtr<IDXGIDevice> dxgi_device;
+      ComPtr<IDXGIAdapter> adapter;
+      DXGI_ADAPTER_DESC adapter_desc = {};
+      CHECK(SUCCEEDED(device.As(&dxgi_device)) && SUCCEEDED(dxgi_device->GetAdapter(adapter.GetAddressOf()))
+            && SUCCEEDED(adapter->GetDesc(&adapter_desc)));
+      std::printf("8 adapter: %ls, device flags %u\n", adapter_desc.Description, device->GetCreationFlags());
+    }
+    constexpr UINT DRAWS = 540;
+    constexpr UINT WARM_UP_FRAMES = 60;
+    constexpr UINT TIMED_FRAMES = 600;
+    const D3D11_TEXTURE2D_DESC target_desc = {.Width = 3840, .Height = 2160, .MipLevels = 1, .ArraySize = 1,
+                                              .Format = DXGI_FORMAT_R8G8B8A8_UNORM, .SampleDesc = {1, 0},
+                                              .Usage = D3D11_USAGE_DEFAULT, .BindFlags = D3D11_BIND_RENDER_TARGET};
+    ComPtr<ID3D11Texture2D> target;
+    ComPtr<ID3D11RenderTargetView> target_view;
+    CHECK(SUCCEEDED(device->CreateTexture2D(&target_desc, nullptr, target.GetAddressOf())));
+    CHECK(SUCCEEDED(device->CreateRenderTargetView(target.Get(), nullptr, target_view.GetAddressOf())));
+    const ComPtr<ID3DBlob> vs_code = Compile(FULL_SCREEN_VS, "vs_5_0");
+    const ComPtr<ID3DBlob> ps_code = Compile(INJECTION_PS, "ps_5_0");
+    CHECK(vs_code && ps_code);
+    ComPtr<ID3D11VertexShader> vs;
+    ComPtr<ID3D11PixelShader> ps;
+    CHECK(SUCCEEDED(device->CreateVertexShader(vs_code->GetBufferPointer(), vs_code->GetBufferSize(), nullptr, vs.GetAddressOf())));
+    CHECK(SUCCEEDED(device->CreatePixelShader(ps_code->GetBufferPointer(), ps_code->GetBufferSize(), nullptr, ps.GetAddressOf())));
+    const D3D11_VIEWPORT viewport = {.TopLeftX = 0.f, .TopLeftY = 0.f, .Width = static_cast<float>(target_desc.Width),
+                                     .Height = static_cast<float>(target_desc.Height), .MinDepth = 0.f, .MaxDepth = 1.f};
+    immediate->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    immediate->VSSetShader(vs.Get(), nullptr, 0);
+    immediate->PSSetShader(ps.Get(), nullptr, 0);
+    immediate->OMSetRenderTargets(1, target_view.GetAddressOf(), nullptr);
+    immediate->RSSetViewports(1, &viewport);
+    // Arm R's buffer and ReShade's own copy of the pushed values (its _push_constants / _push_constants_data).
+    const D3D11_BUFFER_DESC push_desc = {.ByteWidth = sizeof(injection), .Usage = D3D11_USAGE_DYNAMIC,
+                                         .BindFlags = D3D11_BIND_CONSTANT_BUFFER, .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE};
+    ComPtr<ID3D11Buffer> push_buffer;
+    CHECK(SUCCEEDED(device->CreateBuffer(&push_desc, nullptr, push_buffer.GetAddressOf())));
+    std::array<float, FLOATS> reshade_values = {};
+    std::array<ComPtr<ID3D11Query>, 3> frame_done;
+    const D3D11_QUERY_DESC event_desc = {.Query = D3D11_QUERY_EVENT};
+    for (auto& query : frame_done) {
+      CHECK(SUCCEEDED(device->CreateQuery(&event_desc, query.GetAddressOf())));
+    }
+    LARGE_INTEGER frequency = {};
+    QueryPerformanceFrequency(&frequency);
+    shader::use_native_d3d11_injection.store(true);
+    UINT frame = 0;
+    float changed_value = 0.f;
+    // One run: the median submission time of a frame, in microseconds; nullopt when a push or the wait failed.
+    const auto median_frame_us = [&](bool native, UINT changes_a_frame) -> std::optional<double> {
+      std::vector<double> frame_us;
+      frame_us.reserve(TIMED_FRAMES);
+      for (UINT run_frame = 0; run_frame < WARM_UP_FRAMES + TIMED_FRAMES; ++run_frame, ++frame) {
+        LARGE_INTEGER start = {};
+        QueryPerformanceCounter(&start);
+        for (UINT draw = 0; draw < DRAWS; ++draw) {
+          if (draw % (DRAWS / changes_a_frame) == 0) {
+            injection[0] = ++changed_value;
+          }
+          if (native) {
+            if (!shader::PushNativeD3D11Injection(&cmd_list, SLOT, false)) return std::nullopt;
+          } else {
+            std::memcpy(reshade_values.data(), injection.data(), sizeof(injection));
+            D3D11_MAPPED_SUBRESOURCE mapped = {};
+            if (FAILED(immediate->Map(push_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return std::nullopt;
+            std::memcpy(mapped.pData, reshade_values.data(), sizeof(reshade_values));
+            immediate->Unmap(push_buffer.Get(), 0);
+            ID3D11Buffer* const bound = push_buffer.Get();
+            immediate->VSSetConstantBuffers(SLOT, 1, &bound);
+            immediate->HSSetConstantBuffers(SLOT, 1, &bound);
+            immediate->DSSetConstantBuffers(SLOT, 1, &bound);
+            immediate->GSSetConstantBuffers(SLOT, 1, &bound);
+            immediate->PSSetConstantBuffers(SLOT, 1, &bound);
+          }
+          immediate->Draw(3, 0);
+        }
+        immediate->End(frame_done[frame % frame_done.size()].Get());
+        immediate->Flush();
+        LARGE_INTEGER end = {};
+        QueryPerformanceCounter(&end);
+        if (run_frame >= WARM_UP_FRAMES) {
+          frame_us.push_back(1e6 * static_cast<double>(end.QuadPart - start.QuadPart) / static_cast<double>(frequency.QuadPart));
+        }
+        if (frame < 2) continue;
+        HRESULT done = S_FALSE;
+        while ((done = immediate->GetData(frame_done[(frame - 2) % frame_done.size()].Get(), nullptr, 0,
+                                          D3D11_ASYNC_GETDATA_DONOTFLUSH))
+               == S_FALSE) {
+          std::this_thread::yield();
+        }
+        if (done != S_OK) return std::nullopt;
+      }
+      std::ranges::nth_element(frame_us, frame_us.begin() + TIMED_FRAMES / 2);
+      return frame_us[TIMED_FRAMES / 2];
+    };
+    const std::optional<double> reshade_1 = median_frame_us(false, 4);
+    const std::optional<double> native_4a = median_frame_us(true, 4);
+    const std::optional<double> native_4b = median_frame_us(true, 4);
+    const std::optional<double> reshade_2 = median_frame_us(false, 4);
+    const std::optional<double> native_540 = median_frame_us(true, DRAWS);
+    CHECK(reshade_1 && native_4a && native_4b && reshade_2 && native_540);
+    const double reshade = (*reshade_1 + *reshade_2) / 2.0;
+    const double native_4 = std::max(*native_4a, *native_4b);
+    const double spread = std::max(std::abs(*reshade_1 - *reshade_2), 0.02 * reshade);
+    const double limit = reshade + 3.0 * spread;
+    std::printf("8 %u draws a frame at %ux%u, median us a frame: R1 %.1f, F(4)a %.1f, F(4)b %.1f, R2 %.1f, F(540) %.1f\n", DRAWS,
+                target_desc.Width, target_desc.Height, *reshade_1, *native_4a, *native_4b, *reshade_2, *native_540);
+    std::printf("8 R %.1f, A/A %.1f (%.1f %%), F/R %.3f, F(540)/R %.3f, ring %zu buffers; gate F(4) %.1f <= R + 3 x A/A %.1f\n",
+                reshade, spread, 100.0 * spread / reshade, native_4 / reshade, *native_540 / reshade, ring.buffers.size(), native_4,
+                limit);
+    if (native_4 > limit) {
+      std::printf("REGRESSION: F(4) above R + 3 x A/A\n");
+      return 1;
+    }
+    std::printf("PASS\n");
+    return 0;
+  }
+
   ComPtr<ID3D11DeviceContext> deferred;
   CHECK(SUCCEEDED(device->CreateDeferredContext(0, &deferred)));
   {
@@ -153,18 +310,6 @@ int main() {
     CHECK(discard_maps == 1);
     discard_maps = 0;
   }
-
-  Device game_device;
-  game_device.native = device;
-  mock::CommandList cmd_list;
-  cmd_list.owner = &game_device;
-  cmd_list.native = immediate;
-  for (size_t index = 0; index < FLOATS; ++index) {
-    injection[index] = 0.25f * static_cast<float>(index + 1);
-  }
-  shader::shader_injection = injection.data();
-  shader::shader_injection_size = FLOATS;
-  auto& ring = shader::internal::native_injection_ring;
 
   // 1.
   CHECK(!shader::use_native_d3d11_injection.load());
@@ -241,13 +386,8 @@ int main() {
   ComPtr<ID3D11RenderTargetView> target_view;
   CHECK(SUCCEEDED(device->CreateTexture2D(&target_desc, nullptr, target.GetAddressOf())));
   CHECK(SUCCEEDED(device->CreateRenderTargetView(target.Get(), nullptr, target_view.GetAddressOf())));
-  const ComPtr<ID3DBlob> vs_code = Compile(
-      "float4 main(uint id : SV_VertexID) : SV_Position { return float4(id == 2 ? 3.f : -1.f, id == 1 ? 3.f : -1.f, 0.f, 1.f); }",
-      "vs_5_0");
-  const ComPtr<ID3DBlob> ps_code = Compile(
-      "cbuffer injection : register(b13) { float4 values[27]; };"
-      "float4 main(float4 position : SV_Position) : SV_Target { return values[0] + values[26]; }",
-      "ps_5_0");
+  const ComPtr<ID3DBlob> vs_code = Compile(FULL_SCREEN_VS, "vs_5_0");
+  const ComPtr<ID3DBlob> ps_code = Compile(INJECTION_PS, "ps_5_0");
   CHECK(vs_code && ps_code);
   ComPtr<ID3D11VertexShader> vs;
   ComPtr<ID3D11PixelShader> ps;

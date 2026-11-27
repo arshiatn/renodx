@@ -9,6 +9,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include "plugin_block.h"
@@ -46,6 +47,10 @@ enum SiteLabel : uint8_t {
   LABEL_GRASS_DRAW_ENTRY,
   LABEL_GRASS_CELL_ENTRY,
   LABEL_CAMPAIGN_TREE_ENTRY,
+  LABEL_SPRITE_DISTANCE,
+  LABEL_HALF_ENTRY,
+  LABEL_SPRITE_ROWS,
+  LABEL_EFFECT_WALK_ENTRY,
   LABEL_PAIRS_ENTRY,
   LABEL_COUNT
 };
@@ -54,12 +59,16 @@ inline constexpr std::array<const char*, LABEL_COUNT> LABEL_WORDS = {
     "MODEL_LOD_ENTRY", "SHADOW_SIZE_HIGH", "SHADOW_COUNT_HIGH", "SHADOW_EXTRA_HIGH",
     "SHADOW_SIZE_MAX", "SHADOW_COUNT_MAX", "SHADOW_EXTRA_MAX", "SHADOW_SIZE_MEDIUM",
     "GRASS_UPDATE_ENTRY", "GRASS_DRAW_ENTRY", "GRASS_CELL_ENTRY", "CAMPAIGN_TREE_ENTRY",
+    "SPRITE_DISTANCE", "HALF_ENTRY", "SPRITE_ROWS", "EFFECT_WALK_ENTRY",
     "PAIRS_ENTRY",
 };
 
 // HOOK: a function's first whole instructions, replaced by the loader's entry hook. PATCH: one instruction's
 // immediate: checked like a hook's bytes, and rewritten in place only when its row has other bytes for it.
-enum SiteKind : uint8_t { SITE_HOOK, SITE_PATCH };
+// MID: whole instructions inside a function, replaced by a jump to the plugin's own stub (trampoline.hpp), whose
+// trampoline runs them. RAW_STUB: whole instructions replaced by a jump to hand-made bytes in code near the game
+// (game_code.hpp), not a C++ function; the game code they stand on is a HELD range.
+enum SiteKind : uint8_t { SITE_HOOK, SITE_PATCH, SITE_MID, SITE_RAW_STUB };
 
 // One replaced range. window = memory [address - SITE_MARGIN, address + length + SITE_MARGIN), the rest zero.
 struct Site {
@@ -71,7 +80,7 @@ struct Site {
   std::array<uint8_t, (2 * SITE_MARGIN) + SITE_MAX_LENGTH> window = {};
 };
 
-inline constexpr std::array<Site, 17> SITES = {{
+inline constexpr std::array<Site, 21> SITES = {{
     {
         .address = 0x3416d50,
         .length = 5,
@@ -265,6 +274,54 @@ inline constexpr std::array<Site, 17> SITES = {{
         },
     },
     {
+        .address = 0xa5049c,
+        .length = 8,
+        .row = ROW_SPRITES,
+        .label = LABEL_SPRITE_DISTANCE,
+        .kind = SITE_MID,
+        .window = {
+            0x00, 0x00, 0x48, 0x05, 0x8c, 0x03, 0x00, 0x00, 0xf3, 0x0f, 0x58, 0x05, 0xa8, 0x33, 0xd7, 0x02,
+            0xf3, 0x0f, 0x59, 0x00, 0xf3, 0x0f, 0x58, 0x01, 0xf3, 0x0f, 0x11, 0x84, 0x24, 0xb0, 0x00, 0x00,
+            0x00, 0x48, 0x8b, 0x03, 0x48, 0x8d, 0xb4, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
+    {
+        .address = 0x3009b90,
+        .length = 7,
+        .row = ROW_GAME_CODE,
+        .label = LABEL_HALF_ENTRY,
+        .kind = SITE_RAW_STUB,
+        .window = {
+            0xc3, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x8b, 0x17, 0x89, 0xd0, 0xc1, 0xe8, 0x10, 0x25, 0x00, 0x80, 0x00, 0x00, 0x89, 0xd1, 0xc1, 0xe9,
+            0x17, 0x0f, 0xb6, 0xf1, 0x81, 0xfe, 0x8f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
+    {
+        .address = 0x32d9de5,
+        .length = 6,
+        .row = ROW_GAME_CODE,
+        .label = LABEL_SPRITE_ROWS,
+        .kind = SITE_RAW_STUB,
+        .window = {
+            0xf3, 0x0f, 0x11, 0x53, 0x08, 0xf3, 0x0f, 0x10, 0x44, 0x24, 0x3c, 0xf3, 0x0f, 0x11, 0x43, 0x0c,
+            0xf3, 0x0f, 0x10, 0x44, 0x24, 0x38, 0xf3, 0x0f, 0x11, 0x84, 0x24, 0x94, 0x00, 0x00, 0x00, 0x48,
+            0x89, 0xef, 0xe8, 0x94, 0xfd, 0xd2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
+    {
+        .address = 0x32fbf60,
+        .length = 5,
+        .row = ROW_PARALLEL_EFFECTS,
+        .label = LABEL_EFFECT_WALK_ENTRY,
+        .kind = SITE_HOOK,
+        .window = {
+            0xeb, 0x0e, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x55, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x81, 0xec, 0x78, 0x01, 0x00,
+            0x00, 0xf3, 0x0f, 0x11, 0x4c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        },
+    },
+    {
         .address = 0x79a690,
         .length = 5,
         .row = ROW_BATTLE_STEP,
@@ -277,6 +334,25 @@ inline constexpr std::array<Site, 17> SITES = {{
         },
     },
 }};
+
+// The game code a RAW_STUB site's stub depends on: memory [lo, hi), with the site inside. span_hash = FNV-1a 64 of
+// those bytes without the site's (checked again at game start once the site is written), whole_hash = with them
+// (the site only checked).
+struct HeldRange {
+  uint32_t lo = 0;
+  uint32_t hi = 0;
+  uint8_t row = 0;
+  uint8_t label = 0;
+  uint64_t span_hash = 0;
+  uint64_t whole_hash = 0;
+};
+inline constexpr std::array<HeldRange, 2> HELD_RANGES = {{
+    {.lo = 0x3009b90, .hi = 0x3009c43, .row = ROW_GAME_CODE, .label = LABEL_HALF_ENTRY, .span_hash = 0x60bdddb446795942, .whole_hash = 0xeb2efd4ede0b8a3a},
+    {.lo = 0x32d9d49, .hi = 0x32da032, .row = ROW_GAME_CODE, .label = LABEL_SPRITE_ROWS, .span_hash = 0x8d9bee2c05a30924, .whole_hash = 0x71aed05d902f839e},
+}};
+// Where the sprite rows' stub goes on: after the region (done), or into it after the site (a row it leaves).
+inline constexpr uint32_t SPRITE_ROWS_DONE = 0x32da007;
+inline constexpr uint32_t SPRITE_ROWS_FALLBACK = 0x32d9deb;
 
 enum ForeignOwner : uint8_t { OWNER_LOADER, OWNER_OTHER, OWNER_COUNT };
 inline constexpr std::array<const char*, OWNER_COUNT> OWNER_WORDS = {"LOADER", "OTHER"};
@@ -291,7 +367,7 @@ struct Foreign {
 
 // Ranges no run-time window shows: the loader's checks and writes after our init (game start, test mode, exit),
 // its init write with a shorter check, the hooks no row may take, and any foreign range or target near a site.
-inline constexpr std::array<Foreign, 17> FOREIGN = {{
+inline constexpr std::array<Foreign, 18> FOREIGN = {{
     {.address = 0x573320, .length = 5, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x5cafa0, .length = 8, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x5cafa8, .length = 0, .owner = OWNER_LOADER, .kind = FOREIGN_TARGET},
@@ -305,10 +381,31 @@ inline constexpr std::array<Foreign, 17> FOREIGN = {{
     {.address = 0x33d54e1, .length = 6, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x33dc791, .length = 6, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x34ad1de, .length = 7, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
+    {.address = 0x3c5f770, .length = 8, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x4eff2ea, .length = 1, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x526961a, .length = 1, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x5269714, .length = 4, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
     {.address = 0x526f272, .length = 1, .owner = OWNER_LOADER, .kind = FOREIGN_RANGE},
 }};
+
+// The game's parallel effect update (hooks.hpp EffectWalkEntry). The entries the loader guards it with (its particle
+// pool take, list take and return, its spawn thunk and its piece body): all or none. Each is one of the loader's own
+// entry hooks in its source; the generator refuses fewer.
+inline constexpr auto EFFECT_GUARD_ENTRIES = std::to_array<uintptr_t>({0x34e0130, 0x34e0170, 0x34e01a0, 0x32ffa60, 0x35314b0});
+static_assert(EFFECT_GUARD_ENTRIES.size() == 5);
+// The per-type update's one read of the flag, a byte of the game's data: cmp byte [rip + disp32], 0.
+inline constexpr uintptr_t EFFECT_FLAG_READ_ADDRESS = 0x34ad1de;
+inline constexpr std::array<uint8_t, 7> EFFECT_FLAG_READ = {0x80, 0x3d, 0x8d, 0x20, 0xdc, 0x01, 0x00};
+inline constexpr uintptr_t EFFECT_FLAG = 0x526f272;
+// The walk over a scene node's effect types (its hook's site is LABEL_EFFECT_WALK_ENTRY), each number from the
+// instruction of the walk that holds it. A key is a counted string: a uint32_t length, its bytes at +8.
+inline constexpr size_t EFFECT_TABLE_SLOTS = 0x120;  // the node's effect table: its slots (0x32fc384)
+inline constexpr size_t EFFECT_TABLE_CAPACITY = 0x128;  // a uint32_t, in slots (0x32fc38c)
+inline constexpr size_t EFFECT_EMPTY_KEY = 0x130;  // the table's key of a slot never used (0x32fc2f6)
+inline constexpr size_t EFFECT_DELETED_KEY = 0x140;  // the table's key of a slot given up (0x32fc303)
+inline constexpr size_t EFFECT_SLOT_BYTES = 0x18;  // a slot: its key, then its value (0x32fc354)
+inline constexpr size_t EFFECT_SLOT_VALUE = 0x10;  // the effect type, or null (0x32fc32c)
+inline constexpr size_t EFFECT_TYPE_COUNT = 0x2c;  // a uint32_t: the type's instances (0x34ad1c6)
+inline constexpr uintptr_t EFFECT_KEY_EQUAL = 0x50def0;  // the walk's key compare (0x32fc36a, 0x32fc37b)
 
 }  // namespace twattila::attila64_plugin
