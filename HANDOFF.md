@@ -17997,7 +17997,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         test-only import-slot swap, release with a refused read / an ended thread, full yield_line); only the ended-
         thread check fails on today's header, the others by 5 mutations; DLL d1653f38 x4. FLAKE: run 2 of 3 SIDE BY
         SIDE exited 1 on the old 'busy thread keeps the core' check (serial run 4 + 5x battle_core_test clean).
-        Review rp1pt_ (Opus xHigh) STARTED 19:2x incl. the flake's root cause (serial x2 + one loaded run). m2d_ (Fable xHigh) DONE
+        Review rp1pt_ (Opus xHigh) STARTED 19:2x incl. the flake's root cause (serial x2 + one loaded run). p91_
+        (Opus Medium) DONE 18:03 (29 of 60 min; scratch\p91_\handback.md): two sha-gated a64_ab patches, NOT applied:
+        (1) a64_ab_pk9p1_patch.py 02cf94e1 -> ebcc5c91 (PK9 P1-P5 + P5-6 replay; HALF_ENTRY needs no edit), (2)
+        a64_ab_c8t0_patch.py ebcc5c91 -> 62fef322 (T0 + hzc_'s 4 horizon pieces); h91 21 / 21, A13 unchanged forms
+        identical, h_t0 11 / 11, test_lines 17 / 17; deviation: P5 vs A/A noise (no fixed limits). Left: the -C2 Smoke +
+        PK9 batches (hardware), CPU Set Setter rules for run_rs_c64 + run_rs_pkg (coord, before the batch), ep1c twins
+        refused until PK8's DLL. Review rp91_ (Opus xHigh) STARTED 19:3x; coord applies after it + a Sonnet final. m2d_ (Fable xHigh) DONE
         17:58 (27 of 40 min; designs\pk5_m2_memcpy.md, scratch\m2d_\handback.md): ONE caller 0x339b4a4 (97.88 %,
         ~1.67 of 1.71 ms a frame), size 0xe0 x count, destination the loader's Map pointer of a dynamic VB; class (c),
         lever (d) only, no build target; PK5 10.1 / 10.3 corrected (addendum); section 10 copied into backup_32bit.md;
