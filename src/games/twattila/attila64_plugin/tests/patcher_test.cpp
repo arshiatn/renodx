@@ -183,6 +183,20 @@ int wmain(int argc, wchar_t** argv) {
   Expect(CheckIdentity(api) == STATUS_WRONG_GAME, "identity: no ELF magic");
   *at(GAME_LO + 1) ^= 1;
 
+  // Block v2's size, and the per-site tables: one label per site, each with its hook.
+  Expect(VERSION == 2 && BlockBytes(0) == 0 && BlockBytes(1) == 40 && BlockBytes(2) == 216 && sizeof(Block) == 216,
+         "block: v1 is 40 bytes, v2 216");
+  {
+    uint32_t labels_seen = 0;
+    bool labels_ok = true;
+    for (const Site& site : SITES) {
+      labels_ok = labels_ok && site.label < LABEL_COUNT && (labels_seen & (1u << site.label)) == 0
+                  && REPLACEMENTS[site.label] != nullptr;
+      labels_seen |= 1u << site.label;
+    }
+    Expect(labels_ok && labels_seen == (1u << LABEL_COUNT) - 1u, "labels: one per site, each with its hook");
+  }
+
   // Site checks on the real sites' windows.
   for (const Site& site : SITES) {
     Expect(CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "site: accepted with the shipped foreign table");
@@ -217,12 +231,12 @@ int wmain(int argc, wchar_t** argv) {
     const Site& site = SITES[ROW_BONE_FLUSH];
     AppliedSite applied;
     hook_mode = HOOK_NO_MEMORY;
-    Expect(ApplySite(api, site, REPLACEMENTS[ROW_BONE_FLUSH], &applied) == REFUSAL_NO_MEMORY, "apply: no memory");
+    Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NO_MEMORY, "apply: no memory");
     hook_mode = HOOK_WRITE_FAILS;
-    Expect(ApplySite(api, site, REPLACEMENTS[ROW_BONE_FLUSH], &applied) == REFUSAL_WRITE_FAILED, "apply: write failed");
+    Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_WRITE_FAILED, "apply: write failed");
     hook_mode = HOOK_NORMAL;
     write_game();
-    Expect(ApplySite(api, site, REPLACEMENTS[ROW_BONE_FLUSH], &applied) == REFUSAL_NONE && applied.original != nullptr,
+    Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE && applied.original != nullptr,
            "apply: hooked");
     Expect(applied.bytes[0] == 0xe9 && SiteUnchanged(site, applied), "apply: snapshot of the jump");
     Expect(CheckSite(site, {}).refusal == REFUSAL_DIFFERS, "apply: a second check sees our bytes");
@@ -284,7 +298,7 @@ int wmain(int argc, wchar_t** argv) {
     shared->callbacks.store(nullptr);
 
     Expect(pack_once() && pack_record->calls == 1 && before_pack_calls == 0, "pack: bit clear, original with its arguments");
-    Expect(Logged("PACK_ENTRY: first call"), "pack: first-call line");
+    Expect(Logged("PACK_ENTRY: first call") && !Logged("VIEW_DRAW_ENTRY: first call"), "pack: its own first-call line only");
     shared->hooks_wanted.store(RowBit(ROW_BONE_FLUSH));
     Expect(pack_once() && pack_record->calls == 2 && before_pack_calls == 0, "pack: no callbacks registered");
     shared->callbacks.store(&CALLBACKS);
@@ -326,8 +340,8 @@ int wmain(int argc, wchar_t** argv) {
   write_game();
   for (const Site& site : SITES) {
     AppliedSite applied;
-    Expect(ApplySite(api, site, REPLACEMENTS[site.row], &applied) == REFUSAL_NONE, "hooks: site hooked");
-    originals[site.row] = applied.original;
+    Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE, "hooks: site hooked");
+    originals[site.label] = applied.original;
   }
   expect_hook_bodies(&block);
 
@@ -439,9 +453,9 @@ int wmain(int argc, wchar_t** argv) {
     const auto [plugin, result] = init_copy(ROW_INI_KEYS[row], MODULE_NAME, api);
     const Row other = (row == ROW_BONE_FLUSH) ? ROW_PASS_DRAW : ROW_BONE_FLUSH;
     Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == RowBit(other)
-               && plugin.block->rows_refused == RowBit(row) && Logged("skipped (OFF)") && site_untouched(SITES[row])
-               && !site_untouched(SITES[other]),
-           "dll: a row's install key 0 leaves that row out");
+               && plugin.block->rows_refused == RowBit(row) && plugin.block->rows_tried == RowBit(other)
+               && Logged("skipped (OFF)") && site_untouched(SITES[row]) && !site_untouched(SITES[other]),
+           "dll: a row's install key 0 leaves that row out, and out of the rows tried");
   }
   set_ini_key_off(nullptr);
 
@@ -450,8 +464,10 @@ int wmain(int argc, wchar_t** argv) {
   {
     const auto [plugin, result] = init_copy(L"differs", MODULE_NAME, api);
     Expect(result == 0 && plugin.block->rows_applied == RowBit(ROW_PASS_DRAW)
-               && plugin.block->rows_refused == RowBit(ROW_BONE_FLUSH) && Logged("PACK_ENTRY 0x3416d50: skipped (DIFFERS)"),
-           "dll: a site whose bytes differ is left out");
+               && plugin.block->rows_refused == RowBit(ROW_BONE_FLUSH)
+               && plugin.block->rows_tried == (RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW))
+               && Logged("PACK_ENTRY 0x3416d50: skipped (DIFFERS)"),
+           "dll: a site whose bytes differ is left out (still tried)");
   }
 
   write_game();

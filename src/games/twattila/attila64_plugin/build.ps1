@@ -1,7 +1,7 @@
 # Builds renodx_attila64.dll (the 64-bit Attila loader's plugin for the Attila add-on; see main.cpp) into
-# build\attila64_plugin (or -Out). It is not a CMake target (the repository's targets are addons): clang-cl for the
-# Linux calling convention and guaranteed tail calls, kernel32 only. The player puts it into the loader's plugins folder
-# under exactly this name.
+# build\attila64_plugin (or -Out), with its sha256 beside it (renodx_attila64.dll.sha256, for a64_ab). It is not a CMake
+# target (the repository's targets are addons): clang-cl for the Linux calling convention and guaranteed tail calls,
+# kernel32 only. The player puts it into the loader's plugins folder under exactly this name.
 # -Test also builds the tests into -TestOut and runs them with the DLL (elf_sites_test with -Elf <the game's Linux
 # executable>; without it, or with the game's address range taken, that test is SKIPPED and says so in the last line);
 # the exit code is the number of failures.
@@ -17,11 +17,14 @@ Set-Location $Out
 trap { break }
 $clang = "C:\Program Files\LLVM\bin\clang-cl.exe"
 $flags = @('/nologo', '-std:c++20', '/O2', '/MT', '/EHsc', '/DWIN32', '/D_WINDOWS', '-DNOMINMAX')
-# The old DLL goes first: a failed build leaves none and fails the script.
-Remove-Item "$Out\renodx_attila64.dll" -ErrorAction SilentlyContinue
+# The old DLL and its sidecar go first: a failed build leaves neither and fails the script.
+Remove-Item "$Out\renodx_attila64.dll", "$Out\renodx_attila64.dll.sha256" -ErrorAction SilentlyContinue
 if (Test-Path "$Out\renodx_attila64.dll") { throw "$Out\renodx_attila64.dll could not be deleted (still loaded?)" }
 & $clang @flags /LD "$PSScriptRoot\main.cpp" "/Fe$Out\renodx_attila64.dll" /link kernel32.lib
 if ($LASTEXITCODE -ne 0) { throw "renodx_attila64.dll failed to build (clang-cl exit $LASTEXITCODE)" }
+# The sidecar a64_ab checks the copied DLL against: "<sha256>  <file name>".
+$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "$Out\renodx_attila64.dll").Hash.ToLower()
+[IO.File]::WriteAllText("$Out\renodx_attila64.dll.sha256", "$hash  renodx_attila64.dll`n")
 if (-not $Test) { exit 0 }
 
 if (-not $TestOut) { throw "-Test needs -TestOut <folder for the test executables>" }

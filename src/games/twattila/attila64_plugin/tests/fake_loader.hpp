@@ -174,8 +174,21 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
   Expect(shared->status.load(std::memory_order_acquire) == STATUS_READY, "the block is READY after init");
   Expect(shared->rows_applied == (RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW)) && shared->rows_refused == 0,
          "both rows applied");
+  // v2's initial values: the rows tried, the core default, every status word not built, the scales neutral.
+  bool scales_neutral = true;
+  for (size_t scale = 0; scale < SCALE_COUNT; ++scale) {
+    scales_neutral = scales_neutral && shared->scales[scale].load() == NEUTRAL_SCALES[scale];
+  }
+  Expect(shared->rows_tried == (RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW))
+             && shared->core_wanted.load() == CORE_WANTED_DEFAULT && shared->core_status.load() == 0
+             && shared->render_core_status.load() == 0 && shared->engine_status.load() == 0
+             && shared->tweaks_status.load() == TWEAKS_NONE && shared->tweak_count == 0 && shared->tweaks == nullptr
+             && shared->notices.load() == 0 && shared->scales_active.load() == 0 && scales_neutral
+             && NEUTRAL_SCALES[SCALE_SPRITE_DISTANCE] == 0.0f && NEUTRAL_SCALES[SCALE_DEAD_UNITS] == 1.0f,
+         "v2's initial values");
   Expect(Logged("game build ok") && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
-             && Logged("rows: bone flush on, pass draw on"),
+             && Logged("rows: bone flush on, pass draw on, battle core -, unit lod -, model detail -, shadow map -, grass -, "
+                       "grass cells -, campaign trees -, sprites -"),
          "the init lines");
   for (const Site& site : SITES) {
     Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each site jumps to the hook");
