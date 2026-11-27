@@ -1009,7 +1009,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - OLD MG RETEST NOW? ATN wanted it 'once unified PT is in' (not in yet); lsp3_'s p ... | mgf_
 - SMOKE SPHERES S3 review (Opus xHigh, smr_ STARTED 07:0x) of designs\smoke_sphere ... | S6 implementer
 - SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | ATN (rule lines) -> game batch
-- PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | ptr_ -> coord (merge on GO)
+- PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | ptf_ -> coord (GPU pair, merge)
 - OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; th ... | ATN (keep / remove)
 - HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + ... | the next run of those rows
 - M1 / 2.9a DESIGN DONE (m1d_ 11-27, round_notes\designs\m1_29a_redesign.md): harn ... | coord (adopt + D1 rows) / next M1 designer (C3 / C4 text)
@@ -1039,6 +1039,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - S6 ONE-FRAME TRACE (pdr_ S4, 11-27): rt_di_shade.hlsl:26 names a one-frame trace ... | next DI agent
 - P1p UNTESTED BRANCHES (fp1p_ S1 / S2, 11-27): battle_core.hpp:649-658 (refused d ... | next battle_core
 - PTLAS X19 (ptf_ 11-27, new, also today): under PTLAS 2 of 3 CPU-instanced mesh i ... | next PTLAS agent (after ptf_'s merge)
+- HELPER ASSERT = MODAL BOX (ptr_ S2, 11-27): the helper is /SUBSYSTEM:WINDOWS, /M ... | next helper main
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -17970,7 +17971,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ~45 min after pdf_ frees
         rt_d3d12.hpp; gate = 4K harness first hits PTLAS on vs off + an active-instance assert. Then the O-PTLAS stall replay
         (RENODX_TW_PTLAS=1, headless Nsight + DRED); the C2 update-op stall test (can stall 4-5 s) only with ATN home. 'Retry at
-        ~1 ms TLAS' is not met (0.10-0.5 ms measured), U12b stays parked. ptf_ DONE 08:5x (~30 min; origin/ptf_1127: a39a8e4ba lost-place log line, d6ea3c8db X16 mask from the desc + X17 a place per cluster BLAS (PTLAS_INSTANCES = MAX + CLUSTER_BLASES, assert), 1b7527b27, 30c97fb8e X18 NEW: units / cluster BLASes rebuilt at one address kept their first bounds -> places >= MAX rewritten every request; 97 headers same; gated amd64 / x86 61; 4K gate: the grass control loses 2 of 7 instances, the fix none; the final build fails only instanced mesh + placed instance = X19 + B23). Final reviews: ptrs_ (Sonnet High) GO, 5 SHOULDs (shadowed 'active' :8398 / :8429, direct <cassert>, stale comment :647-648 / :4756, X18 rebuilds the PTLAS every request -> P2 measures it against 0.10-0.16 ms or forces only built / refit BLASes, ungated log line); ptr_ (Opus xHigh) STARTED 09:1x. Owner: ptr_ -> coord (merge on GO)
+        ~1 ms TLAS' is not met (0.10-0.5 ms measured), U12b stays parked. ptf_ DONE 08:5x (~30 min; origin/ptf_1127: a39a8e4ba lost-place log line, d6ea3c8db X16 mask from the desc + X17 a place per cluster BLAS (PTLAS_INSTANCES = MAX + CLUSTER_BLASES, assert), 1b7527b27, 30c97fb8e X18 NEW: units / cluster BLASes rebuilt at one address kept their first bounds -> places >= MAX rewritten every request; 97 headers same; gated amd64 / x86 61; 4K gate: the grass control loses 2 of 7 instances, the fix none; the final build fails only instanced mesh + placed instance = X19 + B23). Final reviews: ptrs_ (Sonnet High) GO, 5 SHOULDs (shadowed 'active' :8398 / :8429, direct <cassert>, stale comment :647-648 / :4756, X18 rebuilds the PTLAS every request -> P2 measures it against 0.10-0.16 ms or forces only built / refit BLASes, ungated log line); ptr_ (Opus xHigh, 17 min) GO WITH CHANGES (testbin\scratch\ptr_\review.md): X16 / X17 / X18 right against nvapi.h; M1 X18's forced rewrite drops write-once (:8433-8434; two instances on one place = two WRITE_INSTANCE ops with one index, UB, can't happen today) -> `|| (at >= MAX_INSTANCES && written.stamp != stamp)`; M2 #include <cassert>; S1 the recorder's 'instances' digest changes on purpose (new places; pictures same) -> S6 takes baselines after this merge; S3 cites (nvapi.h:21289 / :21323 / :21334, 'partition index' reading = ours, :666-668 unmeasured); S4 X16 not isolated by the gate; S5 P2 note. Fix round ptf_ (resumed) STARTED 10:0x: one commit + helper build + ONE 4K pair prepared (fixed vs 30c97fb8e, byte-identical expected), coord runs it. Owner: ptf_ -> coord (GPU pair, merge)
         - [ ] OLD MG NUMBERS CORRECTED (i7s_): only the 194 ms is the cluster layout's own; the 80 ms (rt_scene.hlsli:189) was the
         10-29 harness with every ray kind meeting the smoke (instance mask alone 81.5 -> 7.9 ms); 14->138 / 6->143 ms (:217-218)
         = smoke as candidates of the main sun + fog rays, fixed in helper63 321434abd. Dead MG code stays in rt_d3d12.hpp
@@ -18293,6 +18294,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         BLAS reused at one address keeps old bounds, check BLAS build order vs PTLAS write order. With B23 it still separates
         PTLAS from TLAS (P2 measures both). Needs a harness dump of first-hit InstanceID + distance per ray kind (harness writer
         after hw2_). Owner: next PTLAS agent (after ptf_'s merge)
+        - [ ] HELPER ASSERT = MODAL BOX (ptr_ S2, 11-27): the helper is /SUBSYSTEM:WINDOWS, /MT, no NDEBUG, so a failed assert
+        shows the UCRT's task-modal Abort / Retry / Ignore box: the thread blocks behind a fullscreen game until a click (Abort
+        then reaches main.cpp:248's SIGABRT handler). Fix: _set_error_mode(_OUT_TO_STDERR) in wWinMain (inert while asserts
+        hold). Owner: next helper main.cpp writer (ATN told)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
