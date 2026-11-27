@@ -100,11 +100,31 @@ $table['plugin_scales'] = @{
 }
 # The grass and campaign tree rows (a v2 block offering the grass, grass cell and campaign tree rows, rows 0x1c3, no
 # engine values): Grass Detail Distance 2x and Grass Density 1.5x set the grass scales' bits 19-21 (one line); Campaign
-# Tree Detail 2x sets no bit while its engine value is not found (its row hidden).
+# Tree Detail 2x sets no bit while its engine value is not found (its row hidden). The exe checks the kept scales 18-21
+# (1, 4, 2, 1.5). plugin_grass_tree: the fake plugin also publishes Campaign Tree Detail's value (rigid_campaign_tree_lod):
+# 18 = 4, bits 0x3c0000, the value written. plugin_tree_refused: the same value found but the campaign tree row not
+# offered (rows 0xc3, tried 0x1c3): 18 neutral, the value left at the game's.
+$grassIni = @('GraphicsGrassDistance=2', 'GraphicsGrassDensity=1.5', 'GraphicsCampaignDetail=2')
 $table['plugin_grass'] = @{
-  addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = '1 451 0 2 451'
-  ini = @('GraphicsGrassDistance=2', 'GraphicsGrassDensity=1.5', 'GraphicsCampaignDetail=2')
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin grass_scales'; encoding = 0; plugin = '1 451 0 2 451'
+  ini = $grassIni
   lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x1c3',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x1c3',
+            '[Total War] 64-bit Attila: engine scales active 0x380000') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active 0x3c0000', 'engine plugin notices')
+}
+$table['plugin_grass_tree'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin grass_scales_tree tree_value_written'; encoding = 0
+  plugin = '1 451 0 2 451 0 1'; ini = $grassIni
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0x1c3',
+            '[Total War] 64-bit Attila: engine plugin rows tried 0x1c3',
+            '[Total War] 64-bit Attila: engine scales active 0x3c0000') + $upgraded
+  forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active 0x380000', 'engine plugin notices')
+}
+$table['plugin_tree_refused'] = @{
+  addon = 'current'; args = 'd3d11 fixed upgraded plugin grass_scales tree_value_kept'; encoding = 0
+  plugin = '1 195 0 2 451 0 1'; ini = $grassIni
+  lines = @($identity, $mapped, '[Total War] 64-bit Attila: engine plugin ready, rows offered 0xc3',
             '[Total War] 64-bit Attila: engine plugin rows tried 0x1c3',
             '[Total War] 64-bit Attila: engine scales active 0x380000') + $upgraded
   forbid = @('engine plugin not installed', 'callbacks registered', 'engine scales active 0x3c0000', 'engine plugin notices')

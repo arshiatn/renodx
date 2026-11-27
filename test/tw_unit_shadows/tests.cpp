@@ -868,8 +868,8 @@ int main(int argc, char** argv) {
     // 7f. The scale rows on the port (PublishScales, Shadow Map Size's mirror): a scale stored only when it changed, its
     //     scales_active bit while it is not neutral and its row is offered (a row not offered: no bit, the scale still
     //     stored; the grass scales 19-21 by ROW_GRASS alone, 18 by ROW_CAMPAIGN_TREES), one line per change of the
-    //     bits, nothing on a v1 block; the plugin's notices logged once per new bit; ShadowMapSize written clamped, one line per write, its
-    //     own pending flag against the key this start read (out of range: the game's sizes), only while its row is
+    //     bits, nothing on a v1 block; the plugin's notices logged once per new bit; ShadowMapSize written clamped, one
+    //     line per write, its own pending flag against the key this start read (out of range: the game's sizes), only while its row is
     //     offered; the scales kept at the detach.
     {
       const auto lines = [](std::string_view text) {
@@ -920,10 +920,11 @@ int main(int argc, char** argv) {
       link::PublishScales(scales);
       CHECK(scale_block.scales_active.load() == 0 && scale_block.scales[0].load() == 1.f
             && scale_block.scales[plugin::SCALE_GRASS_LOD].load() == 1.f && lines("engine scales active 0x0") == 1);
-      // The grass and campaign tree rows (scales 18-21): Campaign Tree Detail 2x (18 = 4), Grass Detail Distance 2x (19 =
-      // 4, 20 = 2) and Grass Density 1.5x (21). Their rows not applied: stored, no bit. ROW_GRASS_CELLS alone (it reads
-      // ROW_GRASS's 19 and 20): no bit. ROW_GRASS: 19-21; ROW_CAMPAIGN_TREES: 18; ROW_GRASS changed after the plugin:
-      // 18 alone; Grass Density alone: 21; back to neutral: none.
+      // The grass and campaign tree rows (scales 18-21): Campaign Tree Detail 2x (18 = 4), Grass Detail Distance 2x
+      // (19 = 4, 20 = 2) and Grass Density 1.5x (21). Their rows not applied: stored, no bit. ROW_GRASS_CELLS alone (it
+      // reads ROW_GRASS's 19 and 20): no bit. ROW_GRASS: 19-21; ROW_CAMPAIGN_TREES: 18; ROW_GRASS changed after the
+      // plugin: 18 alone; Grass Density alone: 21; back to neutral: none. (The fold's values and Campaign Tree Detail's
+      // value rule live in addon.cpp: F7's plugin_grass, plugin_grass_tree and plugin_tree_refused.)
       {
         const uint32_t scale_rows = scale_block.rows_applied;
         scales[plugin::SCALE_CAMPAIGN_TREES] = 4.f;
@@ -1042,7 +1043,8 @@ int main(int argc, char** argv) {
       link::Install();
       std::printf(
           "7f scale rows: a scale stored on a change, its bit while not neutral and its row offered (not offered: none; "
-          "grass 19-21 by the grass row alone, campaign trees 18), one line per change of the bits, nothing on a v1 block; notices once per new bit; "
+          "grass 19-21 by the grass row alone, campaign trees 18), one line per change of the bits, nothing on a v1 "
+          "block; notices once per new bit; "
           "ShadowMapSize clamped, one line per write, its own pending flag against this start's key (out of range: the "
           "game's sizes; a NOT_DX11 start: 0), left alone while its row is not offered; the scales kept at the detach\n");
     }

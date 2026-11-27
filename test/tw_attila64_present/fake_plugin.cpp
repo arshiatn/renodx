@@ -7,9 +7,10 @@
 // game hooks, one thread that calls the add-on's callbacks through the hooks' guard while any row is wanted (no game
 // code: pass_begin finds nothing counted and answers PASS_DRAW). The test exe loads it where the loader loads its
 // plugins (after a plugin's test device, before the game's device).
-// RENODX_F7_PLUGIN="<status> <rows_applied> <rows_changed> [<version> [<rows_tried> [<notices>]]]" (attila64_plugin::Status,
-// Row and NOTICE_ bits; default "1 3 0", version 2 with rows_tried = rows_applied, no notices; version 1: a v1 plugin's
-// block, its 40 bytes).
+// RENODX_F7_PLUGIN="<status> <rows_applied> <rows_changed> [<version> [<rows_tried> [<notices> [<tree_value>]]]]"
+// (attila64_plugin::Status, Row and NOTICE_ bits; default "1 3 0", version 2 with rows_tried = rows_applied, no
+// notices; version 1: a v1 plugin's block, its 40 bytes). tree_value 1: one engine value slot, Campaign Tree Detail's
+// rigid_campaign_tree_lod (live, the game's 100 m), its values ready; the hooks' thread notes any write to it.
 
 #include <windows.h>
 
@@ -25,11 +26,24 @@ namespace plugin = twattila::attila64_plugin;
 
 plugin::Block block;
 std::atomic<unsigned> callback_calls = 0;
+// Campaign Tree Detail's engine value (tree_value 1): the game's 100 m, and whether anything wrote another value.
+constexpr uint32_t TREE_LOD_GAME_BITS = 0x42c80000;
+std::atomic<uint32_t> tree_lod_bits = TREE_LOD_GAME_BITS;
+std::atomic_bool tree_lod_written = false;
+plugin::TweakSlot tree_lod_slot = {.name = "rigid_campaign_tree_lod",
+                                   .value_address = reinterpret_cast<uintptr_t>(&tree_lod_bits),
+                                   .default_bits = TREE_LOD_GAME_BITS,
+                                   .written_bits = TREE_LOD_GAME_BITS,
+                                   .type = plugin::TWEAK_FLOAT,
+                                   .verdict = plugin::VERDICT_OK};
 
 // The hooks' guard (hooks.hpp): the wanted bits relaxed, calls_in_flight up, callbacks loaded, the call, down; pass_end
 // only while callbacks holds the pointer of its pass_begin.
 DWORD WINAPI Hooks(void*) {
   for (;;) {
+    if (tree_lod_bits.load(std::memory_order_relaxed) != TREE_LOD_GAME_BITS) {
+      tree_lod_written.store(true, std::memory_order_relaxed);
+    }
     if (block.hooks_wanted.load(std::memory_order_relaxed) != 0) {
       block.calls_in_flight.fetch_add(1);
       if (const plugin::Callbacks* callbacks = block.callbacks.load(); callbacks != nullptr) {
@@ -53,6 +67,11 @@ extern "C" __declspec(dllexport) plugin::Block* renodx_attila64_block() { return
 // F7's own: the calls made into the add-on's callbacks so far.
 extern "C" __declspec(dllexport) unsigned renodx_f7_callback_calls() { return callback_calls.load(); }
 
+// F7's own: whether Campaign Tree Detail's engine value was ever written (tree_value 1).
+extern "C" __declspec(dllexport) bool renodx_f7_tree_lod_written() {
+  return tree_lod_written.load() || tree_lod_bits.load() != TREE_LOD_GAME_BITS;
+}
+
 BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID) {
   if (reason != DLL_PROCESS_ATTACH) return TRUE;
   char value[64] = {};
@@ -62,8 +81,9 @@ BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID) {
   unsigned version = plugin::VERSION;
   unsigned tried = ~0u;
   unsigned notices = 0;
+  unsigned tree_value = 0;
   if (GetEnvironmentVariableA("RENODX_F7_PLUGIN", value, sizeof(value)) != 0) {
-    std::sscanf(value, "%u %u %u %u %u %u", &status, &rows, &changed, &version, &tried, &notices);
+    std::sscanf(value, "%u %u %u %u %u %u %u", &status, &rows, &changed, &version, &tried, &notices, &tree_value);
   }
   block.version = version;
   block.bytes = static_cast<uint32_t>(plugin::BlockBytes(version));
@@ -71,6 +91,11 @@ BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID) {
   block.rows_applied = rows;
   block.rows_changed.store(changed);
   block.notices.store(notices);
+  if (tree_value != 0) {
+    block.tweaks = &tree_lod_slot;
+    block.tweak_count = 1;
+    block.tweaks_status.store(plugin::TWEAKS_READY, std::memory_order_release);
+  }
   block.status.store(status, std::memory_order_release);
   // Runs once DllMain returns (the loader lock); never waited for, ends with the process.
   if (HANDLE thread = CreateThread(nullptr, 0, Hooks, nullptr, 0, nullptr); thread != nullptr) CloseHandle(thread);

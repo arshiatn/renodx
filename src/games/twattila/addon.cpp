@@ -1258,6 +1258,14 @@ inline bool GameCodeRowShown(PluginRow row) {
          || (twattila::attila64_plugin_link::RowsOffered() & (1u << static_cast<uint32_t>(row))) != 0;
 }
 
+// An engine value option on the port: every value of it found by the plugin's lookup (acquire: FindTweaks' values are
+// final). A row bound to it shows, and a hook of the same row applies, only then.
+inline bool OptionValuesFound(const tw::engine_tweaks::Option& option) {
+  return twattila::attila64_plugin_link::TweaksFound()
+         && std::ranges::all_of(option.tweaks,
+                                [](const tw::engine_tweaks::Tweak& tweak) { return tweak.value != nullptr; });
+}
+
 // The note rows in graphics_status's place on the port, at most one shown: one per final lookup result, READY's two
 // split by the block. A v1 block (an older plugin) shows the update note; a v2 block shows the other one while the
 // plugin could not turn on an engine option (attila64_plugin_link::OptionsRefused), whether a settings row reads it or
@@ -2257,6 +2265,14 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       // lookup, no status line), then the restart-only ones and Loader Frame Cap mirrored for the next start.
       if (!graphics_found) {
         graphics_found = twattila::attila64_plugin_link::FindTweaks(graphics_options);
+        // Campaign Tree Detail is one row of a value and a hook: without its hook (refused, switched off, or changed at
+        // the game's start) its value stays the game's too. The rows offered are final once the values are (the
+        // plugin's rows_changed is stored before its values' release).
+        if (graphics_found && !GameCodeRowShown(PluginRow::CAMPAIGN_TREES)) {
+          for (tw::engine_tweaks::Tweak& tweak : campaign_trees.tweaks) {
+            tweak.value = nullptr;
+          }
+        }
       }
       if (graphics_found) {
         tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, nullptr, &graphics_found, graphics_status);
@@ -2275,16 +2291,17 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       scales[15] = footstep_effects.scale;
       scales[16] = (twattila::rt_scene::CastersSkipped() ? 0.f : 1.f);
       scales[plugin::SCALE_MODEL_DETAIL] = 1.f / (object_detail.scale * object_detail.scale);
-      // Campaign Tree Detail's hook (graphics_hooks.hpp Update: the distances squared) only while its engine value was
-      // found too: its row shows with both, so nothing applies while the player cannot see it.
-      if (std::ranges::all_of(campaign_trees.tweaks, [](const tw::engine_tweaks::Tweak& tweak) { return tweak.value != nullptr; })) {
+      // Campaign Tree Detail's hook (graphics_hooks.hpp Update: the distances squared) only while its engine value is
+      // found and kept too (above): its row shows with both, so nothing applies while the player cannot see it.
+      if (OptionValuesFound(campaign_trees)) {
         scales[plugin::SCALE_CAMPAIGN_TREES] = campaign_trees.scale * campaign_trees.scale;
       }
       // The grass rows as graphics_hooks.hpp's scrub hooks take them: the models' LODs x Grass Detail squared, the
-      // cells' radius and bias x it, the bias / Grass Density (Update's floor against a hand-edited 0).
+      // cells' radius and bias x it, the bias / Grass Density (at least its floor).
       scales[plugin::SCALE_GRASS_LOD] = grass_distance.scale * grass_distance.scale;
       scales[plugin::SCALE_GRASS_RADIUS] = grass_distance.scale;
-      scales[plugin::SCALE_GRASS_DENSITY] = std::max(grass_density.scale, 0.010001118f);
+      scales[plugin::SCALE_GRASS_DENSITY] =
+          std::max(grass_density.scale, twattila::graphics_hooks::GRASS_DENSITY_FLOOR);
       twattila::attila64_plugin_link::PublishScales(scales);
       // shadow_pass's Update runs every present (it ends the frame's counts), here its second site: the 32-bit one
       // below waits for the at-start tests; the port has none.
@@ -3256,17 +3273,13 @@ void ConfigureAddon() {
       const tw::engine_tweaks::Option* option = (bound != graphics_options.end() ? *bound : nullptr);
       setting->is_visible = [row, option, own = setting->is_visible] {
         return GameCodeRowShown(row)
-               && (PLUGIN_READY_FORCED || option == nullptr
-                   || (twattila::attila64_plugin_link::TweaksFound()
-                       && std::ranges::all_of(option->tweaks, [](const tw::engine_tweaks::Tweak& tweak) {
-                            return tweak.value != nullptr;
-                          })))
+               && (PLUGIN_READY_FORCED || option == nullptr || OptionValuesFound(*option))
                && (own == nullptr || own());
       };
     }
     // The tests' empty lines and their note, and the Experimental note: only while a value or plugin row of their section
-    // shows (an all-hidden section draws no header; the grass section's own rows show without the plugin, its note as
-    // before not).
+    // shows (an all-hidden section draws no header; the grass section's Grass Height Distance shows without the plugin,
+    // its note only with a grass row the plugin offers).
     for (auto* setting : settings) {
       if (setting != note
           && (!setting->key.empty() || setting->value_type != renodx::utils::settings::SettingValueType::TEXT
