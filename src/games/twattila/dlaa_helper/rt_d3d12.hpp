@@ -272,6 +272,13 @@ using Microsoft::WRL::ComPtr;
 
 class RtScene12 {
  public:
+  // X18's control (CONTROL_DXR11_QUERIES_ON_OMM, tests only): rt_cache_fill, rt_probe and the reference's traced passes
+  // as their DXR 1.1 builds under DXR 1.2 too, as before (their queries undefined on a micromapped TLAS).
+#if defined(CONTROL_DXR11_QUERIES_ON_OMM)
+  static constexpr bool QUERY_TWINS = false;
+#else
+  static constexpr bool QUERY_TWINS = true;
+#endif
   // The device on the game's GPU, with DXR 1.1 (1.2 through the Agility SDK in `folder`\D3D12 when the driver has shader
   // model 6.9); false: unavailable (the status says why).
   // `details` (the addon's Log Details at the device's start): DRED, below. `any_gpu`: another vendor's GPU too (FSR or XeSS
@@ -771,13 +778,6 @@ class RtScene12 {
 #endif
       return made;
     };
-    // X18's control (CONTROL_DXR11_QUERIES_ON_OMM, tests only): rt_cache_fill, rt_probe and the reference's traced passes
-    // as their DXR 1.1 builds under DXR 1.2 too, as before (their queries undefined on a micromapped TLAS).
-#if defined(CONTROL_DXR11_QUERIES_ON_OMM)
-    constexpr bool QUERY_TWINS = false;
-#else
-    constexpr bool QUERY_TWINS = true;
-#endif
     // DXR 1.2: the ray queries that use the micromaps; else (or when they fail) DXR 1.1.
     dxr12_ = dxr12_ && pipeline(RT_TRACE_OMM, sizeof(RT_TRACE_OMM), &trace_pipeline_)
              && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_) && pipeline(RT_PATH_OMM, sizeof(RT_PATH_OMM), &path_pipeline_)
@@ -838,7 +838,8 @@ class RtScene12 {
       }
       void* mapped = nullptr;
       // Its DXR 1.2 build on the micromapped TLAS (X18).
-      const std::span<const uint8_t> probe_code = (dxr12_ && QUERY_TWINS) ? std::span<const uint8_t>(RT_PROBE_OMM) : std::span<const uint8_t>(RT_PROBE);
+      const std::span<const uint8_t> probe_code = ((dxr12_ && QUERY_TWINS) ? std::span<const uint8_t>(RT_PROBE_OMM)
+                                                                            : std::span<const uint8_t>(RT_PROBE));
       bool made = probe_rays_ && probe_hits_ && SUCCEEDED(probe_rays_->Map(0, nullptr, &mapped))
                   && pipeline(probe_code.data(), probe_code.size(), &probe_pipeline_);
       if (mapped != nullptr) {
@@ -1104,8 +1105,10 @@ class RtScene12 {
           {RT_REFERENCE_DIGEST, &reference_.digest},
           {RT_REFERENCE_STATE, &reference_.state},
           {RT_REFERENCE_GROUP, &reference_.group},
-          {traced_twins ? std::span<const uint8_t>(RT_REFERENCE_PATHS_OMM) : std::span<const uint8_t>(RT_REFERENCE_PATHS), &reference_.paths},
-          {traced_twins ? std::span<const uint8_t>(RT_REFERENCE_REFLECT_OMM) : std::span<const uint8_t>(RT_REFERENCE_REFLECT), &reference_.reflect},
+          {(traced_twins ? std::span<const uint8_t>(RT_REFERENCE_PATHS_OMM) : std::span<const uint8_t>(RT_REFERENCE_PATHS)),
+           &reference_.paths},
+          {(traced_twins ? std::span<const uint8_t>(RT_REFERENCE_REFLECT_OMM) : std::span<const uint8_t>(RT_REFERENCE_REFLECT)),
+           &reference_.reflect},
       }};
       const bool made = std::ranges::all_of(passes, [&](const auto& pass) { return pipeline(pass.first.data(), pass.first.size(), pass.second); });
       reference_.phase = made ? ReferencePhase::SETTLE : ReferencePhase::OFF;
@@ -3280,9 +3283,10 @@ class RtScene12 {
   // A stem's pipeline from `code` (a compute shader's DXIL, checked by rt_serve.h; empty: the base build's again), made with
   // the scene's root signature: rt_trace, rt_bounce, rt_path, rt_reflect, rt_reuse, rt_reflect_reservoir, rt_fog, rt_lights,
   // rt_cache_fill (their DXR 1.2 builds where Dxr12()), rt_soft, rt_scene_data, rt_place, rt_cache_resolve. False: `why`.
-  // SwapStem's stems and their pipelines (the first nine: DXR 1.2 builds where Dxr12(), their headers' _omm).
+  // SwapStem's stems and their pipelines (the first nine: DXR 1.2 builds where Dxr12(), their headers' _omm; under X18's
+  // control the first eight: rt_cache_fill's DXR 1.1 build runs, UseStem names it so).
   using StemPipeline = std::pair<std::string_view, ComPtr<ID3D12PipelineState> RtScene12::*>;
-  static constexpr size_t OMM_STEMS = 9;
+  static constexpr size_t OMM_STEMS = (QUERY_TWINS ? 9 : 8);
   static constexpr std::array<StemPipeline, 13> SwapStems() {
     return {{
         {"rt_trace", &RtScene12::trace_pipeline_},

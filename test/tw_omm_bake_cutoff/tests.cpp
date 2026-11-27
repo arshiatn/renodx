@@ -1,6 +1,6 @@
 // The helper's micromap bake cutoff against its ray queries' alpha test (X14), on the CPU: NVIDIA's OMM SDK 1.12.0 CPU
 // baker (the helper's, build\downloads\omm\extracted) bakes one triangle over a mask whose every texel sits exactly at the
-// cutoff (k / 255 of a UNORM8 texel, k = 1, 64, 128, 200, 254).
+// cutoff (k / 255 of a UNORM8 texel, every k = 1 .. 255: the table prints k = 1, 64, 128, 200, 254, 255).
 // The ray queries' AlphaPasses (dlaa_helper/rt_scene.hlsli) pass alpha >= cutoff: such a triangle is solid. The baker's
 // texel test is "texture > alphaCutoff ? Opaque : Transparent" (src: omm.h:406): at the raw cutoff the triangle bakes
 // fully transparent (special index -1), a state no alpha test sees again (D3D12 Raytracing spec, "Opacity micromaps and
@@ -89,10 +89,11 @@ int main(int argc, char** argv) {
     return 2;
   }
   bool fixed_matches = true;
-  bool raw_differs = false;
+  uint32_t raw_ties = 0;  // ties the raw cutoff bakes other than opaque
   bool below_transparent = true;
   std::printf("| k | cutoff k/255 | AlphaPasses | raw cutoff (CONTROL) | BakeCutoff | one texel below, BakeCutoff |\n|---|---|---|---|---|---|\n");
-  for (const uint8_t k : {uint8_t{1}, uint8_t{64}, uint8_t{128}, uint8_t{200}, uint8_t{254}}) {
+  for (uint32_t value = 1; value <= 255; ++value) {
+    const uint8_t k = static_cast<uint8_t>(value);
     // D3D's UNORM8 -> float (D3D11.3 3.2.3.6: c / 255, the float nearest), what SampleLevel returns at a texel's centre.
     const float cutoff = static_cast<float>(k) / 255.f;
     const int32_t raw = BakeTriangle(baker, k, cutoff);
@@ -100,14 +101,16 @@ int main(int argc, char** argv) {
     const int32_t below = BakeTriangle(baker, static_cast<uint8_t>(k - 1), std::nextafter(cutoff, 0.f));
     // AlphaPasses: texel >= cutoff, every sample of a uniform mask: solid.
     fixed_matches = fixed_matches && fixed == ommSpecialIndex_FullyOpaque;
-    raw_differs = raw_differs || raw != ommSpecialIndex_FullyOpaque;
+    raw_ties += (raw != ommSpecialIndex_FullyOpaque) ? 1u : 0u;
     below_transparent = below_transparent && below == ommSpecialIndex_FullyTransparent;
-    std::printf("| %u | %.9g | solid | %d | %d | %d |\n", k, cutoff, raw, fixed, below);
+    if (k == 1 || k == 64 || k == 128 || k == 200 || k >= 254 || fixed != ommSpecialIndex_FullyOpaque || below != ommSpecialIndex_FullyTransparent) {
+      std::printf("| %u | %.9g | solid | %d | %d | %d |\n", k, cutoff, raw, fixed, below);
+    }
   }
   ommDestroyBaker(baker);
   std::printf("(-1 fully transparent, -2 fully opaque)\n");
-  std::printf("%s fixed: every tie bakes fully opaque as AlphaPasses passes it\n", fixed_matches ? "PASS" : "FAIL");
-  std::printf("%s CONTROL raw cutoff: a tie bakes other than opaque (the bug seen)\n", raw_differs ? "PASS" : "FAIL");
-  std::printf("%s one texel below the cutoff: fully transparent with the fix\n", below_transparent ? "PASS" : "FAIL");
-  return (rule_in_source && fixed_matches && raw_differs && below_transparent) ? 0 : 1;
+  std::printf("%s fixed: all 255 ties bake fully opaque as AlphaPasses passes them\n", fixed_matches ? "PASS" : "FAIL");
+  std::printf("%s CONTROL raw cutoff: %u of 255 ties bake other than opaque (the bug seen)\n", (raw_ties != 0) ? "PASS" : "FAIL", raw_ties);
+  std::printf("%s one texel below the cutoff: fully transparent with the fix, all 255\n", below_transparent ? "PASS" : "FAIL");
+  return (rule_in_source && fixed_matches && raw_ties != 0 && below_transparent) ? 0 : 1;
 }
