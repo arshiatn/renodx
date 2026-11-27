@@ -35,6 +35,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -53,7 +54,30 @@ namespace scene = twattila::rt_scene;
 #define CHECK(x) do { if (!(x)) { std::printf("FAIL line %d: %s\n", __LINE__, #x); return 1; } } while (false)
 
 extern "C" __declspec(dllexport) const char* const NAME = "Unit shadows test";
-extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char*) {}
+// ReShade's log and global config as 7d reads them: the lines logged, and the config as "section|key" -> text.
+static std::vector<std::string> logged;
+static std::map<std::string, std::string> config;
+extern "C" __declspec(dllexport) void ReShadeLogMessage(void*, int, const char* message) { logged.emplace_back(message); }
+extern "C" __declspec(dllexport) bool ReShadeGetConfigValue(void*, void*, const char* section, const char* key, char* value,
+                                                            size_t* value_size) {
+  const auto found = config.find(std::string(section) + "|" + key);
+  if (found == config.end()) {
+    *value_size = 0;
+    return false;
+  }
+  // As ReShade's (source/addon.cpp): one element and its null copied, the size the count copied.
+  const std::string element = found->second + '\0';
+  if (value == nullptr) {
+    *value_size = element.size() + 1;
+  } else if (*value_size != 0) {
+    *value_size = element.copy(value, *value_size - 1);
+    value[*value_size] = '\0';
+  }
+  return true;
+}
+extern "C" __declspec(dllexport) void ReShadeSetConfigValue(void*, void*, const char* section, const char* key, const char* value) {
+  config[std::string(section) + "|" + key] = value;
+}
 
 // The game's distances at the highest Unit Detail (graphics_hooks.hpp's list).
 constexpr std::array<float, 18> GAME = {90.f, 110.f, 200.f, 1000.f, 22.5f, 27.5f, 50.f, 250.f, 40.f,
@@ -600,6 +624,176 @@ int main(int argc, char** argv) {
         "changed row not wanted, unregistered and drained (a hook leaving after 50 ms ends the wait); a drain past "
         "1 s keeps the reference; another add-on's callbacks left alone; after the detach nothing registers; Keep "
         "Battle Core Free writes only CORE_BATTLE, once per change, none on a v1 block, again after a detach\n");
+    // 7d. The engine values on the port (FindTweaks, MirrorRestartValues): each Tweak gets the plugin's checked value
+    //     (live: the game's address; restart-only: an add-on cell at the default), a refused one none (the warning line);
+    //     the mirror writes [Attila64Plugin.Values] clamped to tweaks.h's range, read once, written on a change with one
+    //     line per write; the pending notes (plan 2.3's four cases, Loader Frame Cap's); a v1 block; Uninstall.
+    {
+      const auto lines = [](std::string_view text) {
+        return std::ranges::count_if(logged, [text](const std::string& line) { return line.find(text) != std::string::npos; });
+      };
+      const auto key = [](std::string_view name) {
+        const auto found = config.find(std::format("Attila64Plugin.Values|{}", name));
+        return (found == config.end() ? std::string("absent") : found->second);
+      };
+      float live_value = 2.f;
+      float wrong_kind_value = 1.f;
+      std::array<plugin::TweakSlot, 6> slots = {
+          plugin::TweakSlot{.name = "LIVE_FLOAT", .value_address = reinterpret_cast<uintptr_t>(&live_value),
+                            .default_bits = std::bit_cast<uint32_t>(2.f), .written_bits = std::bit_cast<uint32_t>(2.f),
+                            .type = plugin::TWEAK_FLOAT, .verdict = plugin::VERDICT_OK},
+          plugin::TweakSlot{.name = "ABSENT_ONE", .verdict = plugin::VERDICT_ABSENT},
+          plugin::TweakSlot{.name = "CHANGED_ONE", .type = plugin::TWEAK_FLOAT, .verdict = plugin::VERDICT_CHANGED},
+          plugin::TweakSlot{.name = "WRONG_KIND", .value_address = reinterpret_cast<uintptr_t>(&wrong_kind_value),
+                            .type = plugin::TWEAK_BOOL, .verdict = plugin::VERDICT_OK},
+          plugin::TweakSlot{.name = "SOUND_DEFAULT_BUFFER_SIZE_IN_KB", .default_bits = 0x5da4, .written_bits = 0x5da4,
+                            .type = plugin::TWEAK_UINT, .verdict = plugin::VERDICT_OK, .restart_only = 1,
+                            .restart_state = plugin::RESTART_APPLIED},
+          plugin::TweakSlot{.name = "SOUND_DEFAULT_BUFFER_LOW_RATIO", .default_bits = 0x3f666666,
+                            .written_bits = 0x3f666666, .type = plugin::TWEAK_FLOAT, .verdict = plugin::VERDICT_OK,
+                            .restart_only = 1, .restart_state = plugin::RESTART_APPLIED},
+      };
+      plugin::TweakSlot& memory_slot = slots[4];
+      tw::engine_tweaks::Option live = {.scale = 1.5f, .tweaks = {{.name = "LIVE_FLOAT"}}};
+      tw::engine_tweaks::Option others = {
+          .tweaks = {{.name = "CHANGED_ONE"}, {.name = "WRONG_KIND"}, {.name = "ABSENT_ONE"}, {.name = "NOT_LISTED"}}};
+      tw::engine_tweaks::Option memory = {.scale = 2.f,
+                                          .tweaks = {{.name = "SOUND_DEFAULT_BUFFER_SIZE_IN_KB", .integer = true}}};
+      tw::engine_tweaks::Option ratio = {.tweaks = {{.name = "SOUND_DEFAULT_BUFFER_LOW_RATIO"}}};
+      std::array<tw::engine_tweaks::Option*, 4> options = {&live, &others, &memory, &ratio};
+      bool values_found = true;  // the add-on's graphics_found after FindTweaks: Update only applies
+      renodx::utils::settings::Setting values_status;
+      const auto present = [&](bool loader_frame_cap) {
+        tw::engine_tweaks::Update(L"empire.retail.dll", options, nullptr, &values_found, &values_status);
+        link::MirrorRestartValues(loader_frame_cap);
+      };
+      plugin::Block values_block;
+      values_block.status.store(plugin::STATUS_READY);
+      values_block.tweaks = slots.data();
+      values_block.tweak_count = static_cast<uint32_t>(slots.size());
+      values_block.tweaks_status.store(plugin::TWEAKS_PENDING);
+      link::internal::block = &values_block;
+      link::internal::found.store(link::Found::READY);
+      config.clear();
+      logged.clear();
+      // The plugin's check pending: not found yet.
+      CHECK(!link::FindTweaks(options) && !link::TweaksFound());
+      values_block.tweaks_status.store(plugin::TWEAKS_READY);
+      CHECK(link::FindTweaks(options) && link::TweaksFound());
+      CHECK(live.tweaks[0].value == &live_value && memory.tweaks[0].value != nullptr
+            && *static_cast<const uint32_t*>(memory.tweaks[0].value) == 0x5da4 && ratio.tweaks[0].value != nullptr
+            && std::ranges::all_of(others.tweaks, [](const auto& tweak) { return tweak.value == nullptr; }));
+      CHECK(link::OptionsRefused() && logged.size() == 1
+            && lines("engine options not turned on: rows 0x0, values CHANGED_ONE, WRONG_KIND") == 1);
+      // The values: live scaled in the game's memory, the restart cell scaled; the mirror writes the changed key only,
+      // one line, the frame cap key absent and off (no write).
+      logged.clear();
+      present(false);
+      CHECK(live_value == 3.f && wrong_kind_value == 1.f
+            && *static_cast<const uint32_t*>(memory.tweaks[0].value) == 0xbb48);
+      CHECK(key("SOUND_DEFAULT_BUFFER_SIZE_IN_KB") == "0000bb48" && key("SOUND_DEFAULT_BUFFER_LOW_RATIO") == "absent"
+            && key("SolFrameCap") == "absent" && config.size() == 1 && logged.size() == 1
+            && lines("engine value SOUND_DEFAULT_BUFFER_SIZE_IN_KB: 0xbb48 at the next start (this start: 0x5da4)") == 1);
+      CHECK(link::ValuesPending() && !link::SolFrameCapPending());
+      // The next present: nothing written, no line.
+      logged.clear();
+      present(false);
+      CHECK(logged.empty() && config.size() == 1 && link::ValuesPending());
+      // The clamp: tweaks.h's range (a hand-edited slider): above the top, a float's NaN to the low end, above the top.
+      memory.scale = 10.f;
+      present(false);
+      CHECK(key("SOUND_DEFAULT_BUFFER_SIZE_IN_KB") == "00017690" && logged.size() == 1);
+      ratio.scale = std::nanf("");
+      present(false);
+      CHECK(key("SOUND_DEFAULT_BUFFER_LOW_RATIO") == "3ee66666" && logged.size() == 2);
+      ratio.scale = 5.f;
+      present(false);
+      CHECK(key("SOUND_DEFAULT_BUFFER_LOW_RATIO") == "3f7fbe77" && logged.size() == 3
+            && lines("engine value SOUND_DEFAULT_BUFFER_LOW_RATIO: 0x3f7fbe77 at the next start (this start: 0x3f666666)")
+                   == 1);
+      // Plan 2.3's four cases. Both back at the game's default: equal to what this start applied, no note.
+      memory.scale = 1.f;
+      ratio.scale = 1.f;
+      present(false);
+      CHECK(key("SOUND_DEFAULT_BUFFER_SIZE_IN_KB") == "00005da4" && key("SOUND_DEFAULT_BUFFER_LOW_RATIO") == "3f666666"
+            && !link::ValuesPending());
+      // (1) This start applied 2x, the row now 1x: the note.
+      memory_slot.written_bits = 0xbb48;
+      present(false);
+      CHECK(link::ValuesPending());
+      // (2) The row at 2x again, equal to this start: no note.
+      memory.scale = 2.f;
+      present(false);
+      CHECK(!link::ValuesPending());
+      // (3) Out of range at this start (the plugin kept the default), the row at the default: the note.
+      memory.scale = 1.f;
+      memory_slot.written_bits = 0x5da4;
+      memory_slot.restart_state = plugin::RESTART_OUT_OF_RANGE;
+      present(false);
+      CHECK(link::ValuesPending());
+      // (4) Not on DX11 (not applied): the note.
+      memory_slot.restart_state = plugin::RESTART_NOT_DX11;
+      present(false);
+      CHECK(link::ValuesPending());
+      memory_slot.restart_state = plugin::RESTART_APPLIED;
+      present(false);
+      CHECK(!link::ValuesPending());
+      // Loader Frame Cap: on writes 1 (one line) and is pending (this start read none); off again writes 0, not pending;
+      // a start that read 1 with the row off: pending.
+      logged.clear();
+      present(true);
+      CHECK(key("SolFrameCap") == "1" && logged.size() == 1
+            && lines("engine value SolFrameCap: 0x1 at the next start (this start: 0x0)") == 1
+            && link::SolFrameCapPending());
+      present(true);
+      CHECK(logged.size() == 1 && link::SolFrameCapPending());
+      present(false);
+      CHECK(key("SolFrameCap") == "0" && logged.size() == 2 && !link::SolFrameCapPending());
+      link::internal::sol_frame_cap_at_start = true;
+      present(false);
+      CHECK(link::SolFrameCapPending());
+      present(true);
+      CHECK(!link::SolFrameCapPending());
+      link::internal::sol_frame_cap_at_start = false;
+      present(false);
+      // A key not 8 hex digits (hand-edited) is written again at the next find; a valid equal one is not.
+      config["Attila64Plugin.Values|SOUND_DEFAULT_BUFFER_SIZE_IN_KB"] = "5da4";
+      logged.clear();
+      CHECK(link::FindTweaks(options));
+      logged.clear();
+      present(false);
+      CHECK(key("SOUND_DEFAULT_BUFFER_SIZE_IN_KB") == "00005da4" && logged.size() == 1
+            && lines("SOUND_DEFAULT_BUFFER_SIZE_IN_KB") == 1);
+      // Tweaks=0 (NONE): found, no values, nothing refused.
+      values_block.tweaks_status.store(plugin::TWEAKS_NONE);
+      logged.clear();
+      CHECK(link::FindTweaks(options) && live.tweaks[0].value == nullptr && memory.tweaks[0].value == nullptr
+            && !link::internal::tweaks_refused.load() && logged.empty());
+      // A v1 block: found, no values, no mirror writes.
+      values_block.tweaks_status.store(plugin::TWEAKS_READY);
+      values_block.bytes = static_cast<uint32_t>(plugin::BlockBytes(1));
+      const size_t keys_before = config.size();
+      CHECK(link::FindTweaks(options) && live.tweaks[0].value == nullptr && memory.tweaks[0].value == nullptr);
+      present(true);
+      CHECK(config.size() == keys_before && key("SolFrameCap") == "0" && logged.empty());
+      values_block.bytes = sizeof(plugin::Block);
+      // Uninstall: found, refused and pending states reset; the next READY finds the values again.
+      CHECK(link::FindTweaks(options) && link::TweaksFound());
+      memory.scale = 2.f;
+      present(true);
+      CHECK(link::ValuesPending() && link::SolFrameCapPending());
+      link::Uninstall();
+      CHECK(!link::TweaksFound() && !link::ValuesPending() && !link::SolFrameCapPending()
+            && !link::internal::tweaks_refused.load() && !link::internal::sol_frame_cap_mirrored.has_value());
+      link::internal::block = nullptr;
+      link::Install();
+      CHECK(link::Result() == link::Found::PENDING && !link::FindTweaks(options));
+      std::printf(
+          "7d engine values: pending check not found; live and restart values matched (absent / changed / wrong type "
+          "/ unlisted none, the refused named once); the mirror writes a changed key once with one line, clamped (top, "
+          "NaN low, float top); plan 2.3's four pending cases; Loader Frame Cap pending / not pending; a bad key "
+          "rewritten; Tweaks=0 and a v1 block without values; Uninstall resets\n");
+    }
     plugin_route = false;
     pass::active.store(false);
     std::printf("7 shadow map work: Render's pattern once in the shipped empire.retail.dll; off / casters drawn: every call; "
