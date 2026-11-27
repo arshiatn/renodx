@@ -56,9 +56,11 @@ enum class Found : uint8_t {
   NOT_LOADED,     // in <exe dir>\plugins\ but not loaded (the loader's log says why)
 };
 
-// Keep Battle Core Free's default: the plugin's initial core_wanted bit.
+// Keep Battle Core Free's and Keep Render Core Free's defaults: the plugin's initial core_wanted bits.
 inline constexpr bool BATTLE_CORE_DEFAULT =
     (attila64_plugin::CORE_WANTED_DEFAULT & attila64_plugin::CORE_BATTLE) != 0;
+inline constexpr bool RENDER_CORE_DEFAULT =
+    (attila64_plugin::CORE_WANTED_DEFAULT & attila64_plugin::CORE_RENDER) != 0;
 
 namespace internal {
 
@@ -81,8 +83,10 @@ static bool registered = false;
 static bool lost = false;  // another add-on holds the callbacks: not tried again until the detach
 static bool registered_logged = false;
 static HMODULE module_reference = nullptr;
-// Under the mutex: Keep Battle Core Free's core_wanted bit as this add-on last wrote it (none yet: nullopt).
+// Under the mutex: Keep Battle Core Free's and Keep Render Core Free's core_wanted bits as this add-on last wrote (or,
+// for the render row's first present at its default, left) them (none yet: nullopt).
 static std::optional<bool> battle_core_written;
+static std::optional<bool> render_core_written;
 // The rows whose refusal raises the "could not turn on every engine option" note: all but the CPU row (refused, its rows
 // hide and the plugin's log says why).
 inline constexpr uint32_t KNOWN_ROWS = ((1u << plugin::ROW_COUNT) - 1u) & ~plugin::RowBit(plugin::ROW_CPU_PLACEMENT);
@@ -239,6 +243,18 @@ inline uint64_t BattleCoreStatus() {
   return BlockV2() ? internal::block->core_status.load(std::memory_order_relaxed) : 0;
 }
 
+// With Result() READY: the render part's render_core_status (attila64_plugin::CoreState and its fields, its own error
+// byte); 0 for a v1 block or a plugin that did not build the part.
+inline uint32_t RenderCoreStatus() {
+  return BlockV2() ? internal::block->render_core_status.load(std::memory_order_relaxed) : 0;
+}
+
+// With Result() READY and BlockV2(): the render part's core_wanted bit as the plugin reads it now (the row's, or the
+// plugin's own RenderCore key while the row was not changed).
+inline bool RenderCoreWanted() {
+  return (internal::block->core_wanted.load(std::memory_order_relaxed) & internal::plugin::CORE_RENDER) != 0;
+}
+
 // With Result() READY and BlockV2(): an engine option the plugin could not turn on: a known row tried but not offered
 // (its site refused, or changed after it), or a value a row uses refused (known once FindTweaks has run). A value this
 // game build lacks (ABSENT) hides its row without this.
@@ -360,9 +376,9 @@ inline void Lookup(bool last) {
 }
 
 // Every present with Result() READY (the loader's drawing thread): the rows whose hooks are wanted now (bit:
-// attila64_plugin::Row), and whether Keep Battle Core Free is on. The callbacks are registered while any is wanted and
-// offered.
-inline void Update(uint32_t rows_wanted, bool battle_core) {
+// attila64_plugin::Row), and whether Keep Battle Core Free and Keep Render Core Free are on. The callbacks are
+// registered while any is wanted and offered.
+inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core) {
   using internal::block;
   namespace plugin = internal::plugin;
   const std::unique_lock lock(internal::mutex);
@@ -371,17 +387,30 @@ inline void Update(uint32_t rows_wanted, bool battle_core) {
   // Only the row's own bit changes (the plugin's other parts keep theirs): at the first present after READY and after
   // every change of the row, a preset slot's load included. The plugin applies it at its next battle step or watchdog
   // tick.
-  if (BlockV2() && internal::battle_core_written != battle_core) {
-    if (battle_core) {
-      block->core_wanted.fetch_or(plugin::CORE_BATTLE, std::memory_order_relaxed);
+  const auto write_core_bit = [&](uint32_t bit, bool on, const char* row) {
+    if (on) {
+      block->core_wanted.fetch_or(bit, std::memory_order_relaxed);
     } else {
-      block->core_wanted.fetch_and(~plugin::CORE_BATTLE, std::memory_order_relaxed);
+      block->core_wanted.fetch_and(~bit, std::memory_order_relaxed);
     }
-    internal::battle_core_written = battle_core;
     if ((RowsOffered() & plugin::RowBit(plugin::ROW_CPU_PLACEMENT)) != 0) {
-      renodx::utils::log::i(
-          std::format("[Total War] 64-bit Attila: Keep Battle Core Free {}", (battle_core ? "on" : "off")));
+      renodx::utils::log::i(std::format("[Total War] 64-bit Attila: {} {}", row, (on ? "on" : "off")));
     }
+  };
+  if (BlockV2() && internal::battle_core_written != battle_core) {
+    write_core_bit(plugin::CORE_BATTLE, battle_core, "Keep Battle Core Free");
+    internal::battle_core_written = battle_core;
+  }
+  // The render row's first present writes only a row off its default: at its default the bit stays the plugin's (its
+  // own RenderCore=1 included) until the row changes. With RenderCore=0 (OFF_INI: off for the process) nothing is
+  // written.
+  if (BlockV2() && internal::render_core_written != render_core) {
+    const bool off_in_ini =
+        ((RenderCoreStatus() >> plugin::CORE_STATE_SHIFT) & plugin::CORE_FIELD_MASK) == plugin::CORE_OFF_INI;
+    if (!off_in_ini && (internal::render_core_written.has_value() || render_core != RENDER_CORE_DEFAULT)) {
+      write_core_bit(plugin::CORE_RENDER, render_core, "Keep Render Core Free");
+    }
+    internal::render_core_written = render_core;
   }
   if (internal::callback_failed.load(std::memory_order_relaxed) && !internal::callback_failure_logged) {
     internal::callback_failure_logged = true;
@@ -705,6 +734,7 @@ inline void Uninstall() {
   internal::lost = false;
   internal::registered_logged = false;
   internal::battle_core_written.reset();
+  internal::render_core_written.reset();
   internal::callback_failed = false;
   internal::callback_failure_logged = false;
   // The next READY finds the values again (a kept image's Tweaks too) and reads the keys again; this start's frame cap,

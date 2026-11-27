@@ -19,7 +19,7 @@
 // Then the captures (zz_capture) against the reference of the swap chain proxy.
 // Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8]
 //        [image_none|image_badmagic|image_table] [plugin [plugin_calls] [grass_scales|grass_scales_tree]
-//        [tree_value_written|tree_value_kept] [sprite_scales]] [perffix] [plain_empty] [gpu]
+//        [tree_value_written|tree_value_kept] [sprite_scales] [core_wanted_<bits>]] [perffix] [plain_empty] [gpu]
 //        attila64.exe d3d12 [gpu]   (C4: frames written; run.ps1 compares them with a run without the add-on)
 //        attila64.exe opengl        (C6: as C4, GPU only)
 
@@ -971,6 +971,14 @@ int main(int argc, char** argv) {
       if (sprite_distance != 0.f || dead_units != 0.5f) {
         Fail(std::format("scales 22-23 {} {}, expected 0 0.5", sprite_distance, dead_units));
       }
+    }
+    // core_wanted_<bits> (decimal): the plugin's core_wanted as the add-on's core rows left it, each row's own bit only.
+    if (const auto expected = std::ranges::find_if(args, [](std::string_view arg) { return arg.starts_with("core_wanted_"); });
+        block != nullptr && expected != args.end()) {
+      const uint32_t core_wanted = block->core_wanted.load();
+      const std::string_view expected_bits = expected->substr(std::string_view("core_wanted_").size());
+      std::cout << std::format("  plugin: core_wanted {}\n", core_wanted);
+      if (std::to_string(core_wanted) != expected_bits) Fail(std::format("core_wanted {}, expected {}", core_wanted, expected_bits));
     }
     if (has("tree_value_written") || has("tree_value_kept")) {
       const auto written_export = reinterpret_cast<bool (*)()>(GetProcAddress(plugin, "renodx_f7_tree_lod_written"));
