@@ -18191,7 +18191,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         nothing in the merge changes the add-on since): it runs in the batch. S5e s5e_ (Fable 5.2 Medium, est 40 / 80; worktree s5e_1127 from
         f81a17313; rt_port_64.md R2.4 + ATN's addendum: key 2 = Low's 1 cascade as a hidden test value if clean;
         plugin main.cpp / hooks.hpp / sites.h + twattila addon.cpp; ELF expect test + controls, gated x2, unit
-        shadows x2, defaults, F7 cases built only) STARTED 20:53. The sprite fix waits behind it (addon.cpp).
+        shadows x2, defaults, F7 cases built only) STARTED 20:53. The sprite fix waits behind it (addon.cpp). s5e_ DONE
+        21:13 (20 of 40 min; testbin\scratch\s5e_\handback.md): s5e_1127 5791c70f4 plugin (ShadowCascades=1 + DX11 writes
+        2, 0, 2, 0; key 0 keeps the game's bytes; a new Medium-writes check at 0x30e4751 refuses the whole row) +
+        d1f2b0782 add-on (row -> ROW_SHADOW_MAP, MirrorShadowCascades, port tooltip 'Applies after a restart.'); gate 1
+        PASS (W0 H18 / H19 display); build.ps1 -Test -Elf 0 failures, DLL fb0264cb; gated amd64 + x86 exit 0; unit
+        shadows x2 PASS; defaults all match (136 ok); F7 built only; x86 page SAME, a64 only this row + a dump section.
+        Facts: by address the game's numbers are 3, 1, 4, 2 (High then Max); key 2 NOT built: the lowest Shadows value
+        skips the shadow setup, no 1-cascade values exist in the game (an invented (1, 0) = ATN's call); the
+        plugin_block.h comment on INI_SHADOW_CASCADES is stale. New line in every start with the row: 'shadow cascades:
+        game's counts'. Reviews rs5e_ (Opus xHigh) + fs5e_ (Sonnet High) + F7 GPU run of the 3 new cases STARTED 21:14. F7 GPU
+        21:2x: 3 / 3 PASS (scratch\coord_\s5e_f7_gpu.log; rays-on fixture fine).
         - [ ] SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldiers as Sprites does nothing
         under Anti-Aliasing Off (the default), SMAA, CMAA2 and the game's MSAA (any method) on the 64-bit port, 32-bit
         Attila, Rome II and Thrones: the add-on keeps no main camera there (anti_aliasing.hpp:1651-1657, :681), so
