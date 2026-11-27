@@ -1031,6 +1031,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - AA FEED AT 67 % IN THE SCENE PATH (aaf3_): the harness scene path renders and ev ... | next harness writer (after rri_ / the m1 implementer)
 - LAST REVIEW lr2_ DONE (attila64\designs\last_review_c8w2_pk6_pk1.md): C8 wave 2 ... | design fix rounds (after lr1_ / lr3_ / lr4_ / lr5_) -> coord
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2bw2_ -> L2B W3 / W4 writers
+- LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited ... | ATN (hook block) -> coord (proof)
 - P3 DARK + P5 exact rule lines (RENODX_TW_REF_INSIDE / _BREAK, ~10 variants): lis ... | coord
 - BRIEF RULE: any agent whose lock / build wait passes its deadline reports at the ... | every brief
@@ -18014,6 +18015,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         paragraph (spin off -> gain likely lower), ATN's Q1 = (b) decided in S-C, F2 moved to run_pkg / -Package. Map 3.3
         battle_core.hpp row fixed (Stage B no guest). l2bw2_ (Fable 5.2 Medium) STARTED 07:08 on l2bw2_1127 from c8b0_1127.
         Owner: l2bw2_ -> L2B W3 / W4 writers; PK2P fix round
+        - [ ] LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO WITH CHANGES, 4 MUSTs each, no new
+        start needed before their implementers. Premises hold on 1.3.28: Sol has no site in PK5's ranges; PK9's switch block is
+        unchanged (+16 lines, game_fixes.inc:213); golden X de496970e53dddeb / 36c72e1b01f97d12 holds; serial-effects frame
+        14.72 ms (1.3.20: 14.80). PK5 MUSTs: 5-1 ROW_GAME_CODE = a v2 Row append, VERSION stays 2 (design says v3); 5-2 gc0 /
+        ep8+WPR lines in the 1.3.28 -Package / -Exe64Sha form; 5-3 the DLL breaks a64_ab E4 / E5 / E6 (:1932, :1940-1943) ->
+        expected lines + who updates them; 5-4 models P5-3 / P5-4 Fable 5.2 Medium, P5-0 / P5-1 / P5-2 / P5-5 / P5-6 Opus High.
+        PK9 MUSTs: 9-1 effects_mode = two core_wanted bits in v2 (CORE_EFFECTS 1<<4, CORE_EFFECTS_AUTO 1<<5), not a v3 field;
+        9-2 the 1.3.28 premise re-check (spin off by default -> ~163 effect forks a frame wake workers; the gain range and the
+        20000 / 16000 Automatic thresholds are 1.3.20 premises; a conditional 'vfx + task_waits=fast' arm only if S-A #2 < +3 %
+        = ATN's yes); 9-3 S-A #2 / vfxauto / WPR lines in the -Package form; 9-4 models P9-3 Fable 5.2 Medium, P9-0 / P9-1 /
+        P9-4 Opus High. Shoulds: A15's 'game code' literal matched as a whole C-string (PK8 logs 'battle step: game code
+        differs'); the Sol note is stale (N13 CLEAN, 1.3.20 cites); 'the walk runs on main' is only E (vtable caller 0x32fc4f0)
+        -> proof before a main-only state ships; vfxauto + the A15 EffectsMode literal are in no PK6 table; a refused PK9 row
+        raises READY's player note (link :154) = ATN's call; gen_plugin_sites.py:45 still reads src_1320 (l2bw2_'s W1 runs it on
+        src_1328). Owner: design fix rounds (after lr4_ / lr5_) -> coord; ATN (the conditional arm, the READY note)
         - [ ] PROMPT-DENY HOOK (ATN 09:4x 'something ... for future ones', after pdi4c_ waited 6-7 h on a prompt):
         tools\tw\hooks\agent_prompt_deny.py (sha256 882a9dc3...c7c4da), a PermissionRequest hook: agent_id set
         (subagent / teammate) -> behavior deny + message (no retry or variant; stop at a safe point; report the
