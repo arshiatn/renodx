@@ -1030,7 +1030,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LAST REVIEW OF THE 64-BIT DESIGNS (cpu_plan_64_map.md 6 items 7 / 12: after Stag ... | ?
 - AA FEED AT 67 % IN THE SCENE PATH (aaf3_): the harness scene path renders and ev ... | next harness writer (after rri_ / the m1 implementer)
 - LAST REVIEW lr2_ DONE (attila64\designs\last_review_c8w2_pk6_pk1.md): C8 wave 2 ... | design fix rounds (after lr1_ / lr3_ / lr4_ / lr5_) -> coord
-- LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2bw2_ -> L2B W3 / W4 writers
+- LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | design fix rounds (after lr4_) -> coord
 - DESIGN FIX ROUNDS (Opus xHigh) STARTED 07:4x: rtf_ (rt_port_64 / menu_stutter_1s ... | rtf_ / p2f_ / c8f_ / ssf_ -> coord (map edits, then implemen
@@ -18032,7 +18032,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         the analyzer's 'probe collides with PerfFix' INVALID flag fixed or waived (its 1.3.20 banner). PK2P: a 1.3.28 premise
         paragraph (spin off -> gain likely lower), ATN's Q1 = (b) decided in S-C, F2 moved to run_pkg / -Package. Map 3.3
         battle_core.hpp row fixed (Stage B no guest). l2bw2_ (Fable 5.2 Medium) STARTED 07:08 on l2bw2_1127 from c8b0_1127.
-        Owner: l2bw2_ -> L2B W3 / W4 writers; PK2P fix round
+        l2bw2_ DONE 11-27 (~20 min, testbin\scratch\l2bw2_\handback.md): W1 + W2 on l2bw2_1127 e20f47575 (coord checked: 8
+        files, +1152 / -44): sites.h from src_1328 (LABEL_STEP_ENTRY = 2, 0xbb4e00, 7 bytes, FOREIGN 16 -> 17), battle_core.hpp
+        (no hooks.hpp, trivially destructible, masked CORE_BATTLE gate, one ClearIfOurs), StepTaskEntry, ATN's start line,
+        CORE_WAITING; tests 0 failures (patcher 154, battle_core 104, elf_sites 38), 0 plugin warnings, twattila amd64 exit 0
+        (61 warnings as B0); fake_loader site count derived from SITES.size(), rows line still pinned (ROW_WORDS is in
+        main.cpp's anonymous namespace -> PK8 W-A2). 8 deviations from section 4 listed in the hand-back (e.g. a whole core =
+        exactly 2 logical CPUs; biggest-L3-first pick). Code review l2r2_ (Opus xHigh) STARTED 08:0x. S2 needs first: c8b0_ +
+        l2bw2_ merged + the plugin rebuilt in main (DLL + .sha256), W3 + R1, W4 in a64_ab (kind ep1, -EnginePlugin with -AB
+        -Probe full, PROBE_LINES, E2b 'site STEP_ENTRY 0xbb4e00: applied', E4 'battle core on', E5 '3 sites unchanged'), ATN's
+        yes for the ep1 arm + 2 rule lines, the INVALID flag, the CPU Set Setter rule on run_pkg_580efafeb5765d81\attila64.exe
+        (exists). Pass: window <= 228 s, X pair at tick 3749, CPU sets 14, one reserve line 'logical 14 + 15'. Owner: l2r2_ ->
+        W3 (after rri_'s addon.cpp) / W4 (after ATN's ep1 yes); PK2P fix round
         - [ ] LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO WITH CHANGES, 4 MUSTs each, no new
         start needed before their implementers. Premises hold on 1.3.28: Sol has no site in PK5's ranges; PK9's switch block is
         unchanged (+16 lines, game_fixes.inc:213); golden X de496970e53dddeb / 36c72e1b01f97d12 holds; serial-effects frame
