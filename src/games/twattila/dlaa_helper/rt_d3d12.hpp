@@ -6954,9 +6954,10 @@ class RtScene12 {
           std::ofstream hits(written_hits, std::ios::trunc);
           for (size_t index = 0; index < probe_labels_.size(); ++index) {
             const std::array<uint32_t, 8>& answer = answers[index];
-            hits << std::format("frame {} {} {} {} id {} index {} place {} t {:.4f} geometry {} primitive {} front {}\n", slot->probe_frame,
+            // The T's bits last (b23i_: a TLAS / PTLAS compare to the fp32 ulp; the fields before it keep their places).
+            hits << std::format("frame {} {} {} {} id {} index {} place {} t {:.4f} geometry {} primitive {} front {} bits {:08X}\n", slot->probe_frame,
                                 (ptlas_ != nullptr) ? "PTLAS" : "TLAS", probe_labels_[index], (answer[0] == 1) ? "hit" : "miss", answer[1],
-                                answer[2], answer[3], std::bit_cast<float>(answer[4]), answer[5], answer[6], answer[7]);
+                                answer[2], answer[3], std::bit_cast<float>(answer[4]), answer[5], answer[6], answer[7], answer[4]);
           }
         }
         std::error_code renamed;
