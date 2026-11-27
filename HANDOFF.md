@@ -18021,7 +18021,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         exit 0). DESIGN Q (to the reviewer, then ATN): under DXR 1.2 the reference now lets the micromaps decide before
         its own alpha test (shows the player's opacity), and the probe misses micro-triangles the bake marks
         transparent; keeping the reference bake-independent needs OMMs off for its scene. Review rfx4b_ (Opus xHigh,
-        the one GPU-lane agent) STARTED 18:2x, then Sonnet High final; its 4K GPU jobs PARKED (CPU first). Owner: coord
+        the one GPU-lane agent) DONE 19:3x (scratch\rfx4b_\review.md): GO WITH CHANGES; re-checked: 112 headers
+        byte-identical with the controls, 31 changed all DXR 1.2, scan.py / check.py fail on atn-mods, X14 holds for
+        all 255 cutoffs. MUST 1 rt_path.hlsli:2069 the rough-surface SO ray is not a reuse ray -> revert X09 there;
+        MUST 2 look list misses X10's edge-on cut-out normals in the sun / AO pass (rt_trace.cs_6_5.hlsl:300) and 'with
+        Opacity Micromaps (Leaves) off no ray sees leaves'; SHOULDs: loud control-build message, proof jobs by DXIL
+        digest (rt_d3d12.hpp:3407), J2 control both visibility controls, X14 test all 255. X18 + X14 may merge after
+        the NITs (no speed gate) -> split branch fx4b_a_1127; X10 / X09 wait for GPU gates J2 / J3 (PARKED). Design Q
+        DECIDED (reviewer's pick, no code): the reference stays for judging estimators; the bake is judged by a second
+        reference run with micromaps off (RTXPT Sample.cpp:1642-1676). Fix round fx4b_ (resumed, Opus High) STARTED
+        19:3x; then Sonnet High final. Look list -> ATN. Owner: coord
         - [ ] OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable 5.2 medium is really
         good ... Tell me later after which one is worth it'): Opus implementers Medium for well-specified steps (add-on
         rows, tooling, cite waves, ports, small fix rounds), High for shader math / big merge-ups / no line-level
