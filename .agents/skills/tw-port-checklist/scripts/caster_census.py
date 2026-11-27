@@ -129,10 +129,14 @@ addon = open(args.addon, encoding='utf-8', errors='replace').read()
 for include in re.findall(r'#include "\./([\w.]+)"', addon):
     path = os.path.join(os.path.dirname(args.addon), include)
     addon += '\n' + (open(path, encoding='utf-8', errors='replace').read() if os.path.exists(path) else '')
-scene = re.search(r'SCENE_SHADERS = \{\{(.*?)\n\}\};', addon, re.S)
+# Attila's (2026-11-25): SCENE_SHADERS = WithTwins<n, &Row::hash>(std::array<Row, m>{{ ... }}), each row with a TDD_TWINS
+# twin again under the twin's hash.
+scene = re.search(r'SCENE_SHADERS = (WithTwins<[^>]*>\(\s*std::array<[^{]*)?\{\{(.*?)\n\}\}(?(1)\));', addon, re.S)
+twins = dict(re.findall(r'\{\.game = 0x([0-9A-Fa-f]{8}), \.twin = 0x([0-9A-Fa-f]{8})\}', addon)) if scene and scene.group(1) else {}
+twins = {game.upper(): twin.upper() for game, twin in twins.items()}
 held = {}
 flags = {}
-for entry in re.finditer(r'\{\.hash = 0x([0-9A-Fa-f]{8})([^\n]*)', scene.group(1) if scene else ''):
+for entry in re.finditer(r'\{\.hash = 0x([0-9A-Fa-f]{8})([^\n]*)', scene.group(2) if scene else ''):
     masks = re.search(r'\.pixel_masks = (\w+)', entry.group(2))
     listed = None
     if masks:
@@ -140,8 +144,11 @@ for entry in re.finditer(r'\{\.hash = 0x([0-9A-Fa-f]{8})([^\n]*)', scene.group(1
         listed = set(re.findall(r'pixel_shader = 0x([0-9A-Fa-f]{8})', array.group(1))) if array else set()
         listed = {hash_.upper() for hash_ in listed}
     held[entry.group(1).upper()] = listed
-for chunk in re.split(r'\{\.hash = 0x', re.sub(r'//[^\n]*', '', scene.group(1)) if scene else '')[1:]:
+for chunk in re.split(r'\{\.hash = 0x', re.sub(r'//[^\n]*', '', scene.group(2)) if scene else '')[1:]:
     flags[chunk[:8].upper()] = chunk
+for game, twin in twins.items():
+    if game in held:
+        held[twin], flags[twin] = held[game], flags.get(game, '')
 
 if not args.whole_dump:
     rows = []
@@ -170,7 +177,9 @@ for block in re.findall(r'SmokeVertexShader, \d+> \w+ = \{\{(.*?)\}\};', addon, 
     smoke |= {hash_.upper() for hash_ in re.findall(r'\.hash = 0x([0-9A-Fa-f]{8})', block)}
 rt_scene_path = os.path.join(os.path.dirname(args.addon), '..', 'twattila', 'rt_scene.hpp')
 if 'rt_scene::PARTICLE_VERTEX_SHADERS' in addon and os.path.exists(rt_scene_path):
-    smoke |= {hash_.upper() for hash_ in re.findall(r'PARTICLE_VERTEX_SHADER = 0x([0-9A-Fa-f]{8})', open(rt_scene_path, encoding='utf-8').read())}
+    # PARTICLE_VERTEX_SHADER = 0x... before 75c314031, PARTICLE_VERTEX_SHADER_HASHES = {0x..., 0x...} since.
+    smoke |= {hash_.upper() for table in re.findall(r'PARTICLE_VERTEX_SHADER(?:_HASHES)? = ([^;]*);', open(rt_scene_path, encoding='utf-8').read())
+              for hash_ in re.findall(r'0x([0-9A-Fa-f]{8})', table)}
 scene_draw = re.search(r'\.scene_draw = \w', addon) is not None
 # A scene_draw host's own lists in its SceneDraw (Rome Remastered's depth prepass): a table it leaves out
 # (find(TABLE, shader->hash) != TABLE.end() ... return false) and a table it lets in by default (== TABLE.end(): the rest
