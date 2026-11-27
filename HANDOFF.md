@@ -18211,7 +18211,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         bef426e36): the refused-window + entry-miss row (kills the :2881 mutant), N3's optional row, rpxp_ N1-N4,
         fpxp_ N1 / N4 / N5; mutants 6 / 6, plugin test 0 failures, gated amd64; DLL 3725e9f6 (out4 time 23:32:56 looks
         early). Sonnet re-check cpxp_ (rebuilds from bef426e36, compares the sha) STARTED 23:46; then a -PerfFix smoke
-        on the checked DLL, merge of the plugin part.
+        on the checked DLL, merge of the plugin part. cpxp_ (12 min; scratch\cpxp_\review.md) GO, 0 MUST / 0 SHOULD:
+        every asked item done, nothing else changed; its own build from bef426e36 = cdfb1ee5 because the DLL holds
+        battle_step.hpp's source PATH (an assert at :3080; /Brepro does not cover it); built from the pxp_ path =
+        3725e9f6 = pxp_'s. NITs: plugin_block.h comment 137 columns (wrap in the add-on round), long test lines, a
+        fixed build path for releases. -> MERGED 23:58 a4d9a5353 (plugin part; the add-on side keeps its size guard,
+        lane 7 shows no text until the add-on round). Coord: main-tree plugin build + tests and gated x86 twattila /
+        twrome2 / thrones + amd64 twattila (plugin_block.h is shared) STARTED 23:58 (scratch\coord_\pxp_merge); that
+        DLL gets staged, then a -PerfFix smoke on it.
         - [ ] PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also run on the PerfFix stack
         once (same result as without PerfFix). Owner: coord (batch prep)
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
