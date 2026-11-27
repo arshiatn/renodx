@@ -18401,6 +18401,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         FSR / FG units in UE games) is ready (pdi4c_ + W-H merged) -> fxh2_ (Fable 5.2 Medium, worktree fxh2_1127,
         est 60; bridge append-only + version; code + gated builds + tests only, proof job P written, not run: the
         GPU lane opens after the batch) STARTED 23:41. Merge after reviews + its proof (gate before merge).
+        fxh2_ STOPPED 23:49: the Fable limit (resets 12-04 06:00). Saved in its worktree .claude\worktrees\fxh2_
+        (branch fxh2_1127 = 2aa6cc7ff, NOTHING committed): 10 files changed, +49 / -10 (dlaa_bridge.h / .hpp, helper
+        main.cpp, upscale_d3d12.hpp, fg_proxy_d3d12.hpp, rr_d3d12.hpp, expeditionsrome / ruse / talesofarise
+        addon.cpp, tw_helper_lifetime tests.cpp); helper build log only, no hand-back. Its links (bin / external) may
+        still be there: unlink alone before any cleanup. NEEDS ATN: finish it on Opus High from the saved diff, or
+        park it until the GPU lane / Fable's reset.
         rts2_ S2b DONE (18 of 30 min; 1d7ced4f9 on rts2_1127, not merged): ' stencil func F/B pass F/B fail F/B
         depthfail F/B' (stencil on only), ' dsv ro <d><s>', new ' | views' (rtv<n> / dsv / t<n> view formats) before
         ' | instanced'; 19 gated builds, tests x2, scale_audit byte-equal, census controls. Reviews rrts2_ (Opus
