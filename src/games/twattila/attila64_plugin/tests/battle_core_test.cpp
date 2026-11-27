@@ -922,15 +922,21 @@ int wmain() {
     }
 
     if (write_swapped) {
+      // A step whose reserve is to reach the armed write; true when it was refused there. Disarmed either way: a
+      // reserve that missed the write would have the next case's reset refused.
+      const auto refused_step = [&] {
+        step(0);
+        return !std::exchange(before_refused_write, nullptr);
+      };
       // Windows refuses the reserve's write of the default: the battle part fails for the session with no second try,
       // the default stays, and the render thread (selected before the write) is cleared again.
       new_session(1);
       render.Run(RENDER_CAPTURE);
       bool selected_at_write = false;
       before_refused_write = [&] { selected_at_write = Selected(render_handle) == render_core_ids; };
+      const bool refused_once = refused_step();
       step(0);
-      step(0);
-      Expect(selected_at_write && StatusField(CORE_STATE_SHIFT) == CORE_FAILED
+      Expect(refused_once && selected_at_write && StatusField(CORE_STATE_SHIFT) == CORE_FAILED
                  && (shared.core_status.load() >> CORE_ERROR_SHIFT) == ERROR_ACCESS_DENIED
                  && RenderField(CORE_STATE_SHIFT) == CORE_WITH_BATTLE && !Reserved() && Selected(render_handle).empty()
                  && holders(core) == 0 && ProcessDefault() == every_id && LinesWith(refused_write_line) == 1
@@ -940,8 +946,9 @@ int wmain() {
       new_session(1);
       render.Run(RENDER_CAPTURE);
       before_refused_write = [&] { SetThreadSelectedCpuSets(render_handle, own_rule.data(), 1); };
-      step(0);
-      Expect(StatusField(CORE_STATE_SHIFT) == CORE_FAILED && RenderField(CORE_STATE_SHIFT) == CORE_WITH_BATTLE
+      const bool refused_with_own_rule = refused_step();
+      Expect(refused_with_own_rule && StatusField(CORE_STATE_SHIFT) == CORE_FAILED
+                 && RenderField(CORE_STATE_SHIFT) == CORE_WITH_BATTLE
                  && Selected(render_handle) == own_rule && ProcessDefault() == every_id && LinesWith(refused_write_line) == 1
                  && LinesWith(kept_line) == 1,
              "refused write: a render thread with another program's sets is left alone, with its line");
@@ -950,8 +957,12 @@ int wmain() {
       RenderThread ended;
       ended.Run(RENDER_CAPTURE);
       before_refused_write = [&] { end_thread(&ended); };
-      step(0);
-      Expect(StatusField(CORE_STATE_SHIFT) == CORE_FAILED && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD
+      const bool refused_with_ended = refused_step();
+      if (!refused_with_ended) {
+        end_thread(&ended);
+      }
+      Expect(refused_with_ended && StatusField(CORE_STATE_SHIFT) == CORE_FAILED
+                 && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD
                  && ProcessDefault() == every_id && LinesWith(refused_write_line) == 1 && LinesWith(ended_line) == 1
                  && LinesWith(kept_line) == 0,
              "refused write: a render thread that ended is recorded as ended, with no line about its sets");
