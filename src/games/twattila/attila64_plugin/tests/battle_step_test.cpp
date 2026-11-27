@@ -2660,7 +2660,7 @@ void RunContactTableChecks() {
                       && (index == 0 || CONTACT_RANGES[index - 1].start + CONTACT_RANGES[index - 1].size <= range.start);
     // The range's masks are the next ones of the list: each whole inside the range, behind the one before it.
     uint32_t unmasked_from = range.start;
-    for (const size_t end = mask_index + range.masks; mask_index < end && ranges_in_order; ++mask_index) {
+    for (const size_t end = mask_index + range.mask_count; mask_index < end && ranges_in_order; ++mask_index) {
       ranges_in_order = mask_index < CONTACT_MASKS.size() && CONTACT_MASKS[mask_index].size != 0
                         && CONTACT_MASKS[mask_index].start >= unmasked_from
                         && CONTACT_MASKS[mask_index].start + CONTACT_MASKS[mask_index].size <= range.start + range.size;
@@ -2770,29 +2770,29 @@ void RunContactByteChecks() {
     named_hold = named_hold && range != nullptr && range->size == named.length && range->value == named.hash;
   }
   Expect(named_hold && Fnv1a<uint64_t>(at(0x3062d00), 0xb8) == 0x5ca2674289a8b5b7 && Fnv1a<uint64_t>(at(CONTACT_LOOP), 0x358) == 0x875d9d8f5e3c3893
-             && range_at(0x3062d00)->masks == 1 && CONTACT_MASKS.back().start == 0x3062d92 && CONTACT_MASKS.back().size == 4,
+             && range_at(0x3062d00)->mask_count == 1 && CONTACT_MASKS.back().start == 0x3062d92 && CONTACT_MASKS.back().size == 4,
          "contact code: the named ranges with the design's values; the task-thread loop's one mask, the list's last, on its four bytes");
 
-  // The other mod's windows (PerfFix, x87fix): 18 masks in six functions of the census. In the game file each window
+  // ours: the other mod's windows (PerfFix 7.5, x87fix), 18 masks in six functions of the census. In the game file each window
   // is, whole and nothing else, the compiler's block for one float -> int store under a changed x87 control word:
   // nine instructions, every operand a stack slot (rsp with an 8- or 32-bit offset).
   const auto is_control_word_block = [&](uint32_t start, uint32_t size) {
     struct Step {
       uint8_t prefix = 0;
       uint8_t opcode = 0;
-      uint8_t operation = 0;  // the instruction's reg field
+      uint8_t reg_field = 0;
     };
     constexpr uint8_t NO_OPERAND = 0xff;
     constexpr std::array<Step, 9> STEPS = {{
-        {.opcode = 0xd9, .operation = 0},                  // float load
-        {.opcode = 0x9b, .operation = NO_OPERAND},         // wait
-        {.opcode = 0xd9, .operation = 7},                  // control word store
-        {.prefix = 0x66, .opcode = 0x8b, .operation = 0},  // the stored word to ax
-        {.prefix = 0x66, .opcode = 0x0b, .operation = 0},  // or the rounding mode into ax
-        {.prefix = 0x66, .opcode = 0x89, .operation = 0},  // ax to a slot
-        {.opcode = 0xd9, .operation = 5},                  // control word load
-        {.opcode = 0xdb, .operation = 3},                  // int store
-        {.opcode = 0xd9, .operation = 5},                  // control word load, the stored one
+        {.opcode = 0xd9, .reg_field = 0},                  // float load
+        {.opcode = 0x9b, .reg_field = NO_OPERAND},         // wait
+        {.opcode = 0xd9, .reg_field = 7},                  // control word store
+        {.prefix = 0x66, .opcode = 0x8b, .reg_field = 0},  // the stored word to ax
+        {.prefix = 0x66, .opcode = 0x0b, .reg_field = 0},  // or the rounding mode into ax
+        {.prefix = 0x66, .opcode = 0x89, .reg_field = 0},  // ax to a slot
+        {.opcode = 0xd9, .reg_field = 5},                  // control word load
+        {.opcode = 0xdb, .reg_field = 3},                  // int store
+        {.opcode = 0xd9, .reg_field = 5},                  // control word load, the stored one
     }};
     const uint8_t* code = at(start);
     uint32_t offset = 0;
@@ -2803,23 +2803,23 @@ void RunContactByteChecks() {
       }
       if (code[offset] != step.opcode) return false;
       ++offset;
-      if (step.operation == NO_OPERAND) continue;
+      if (step.reg_field == NO_OPERAND) continue;
       const uint8_t modrm = code[offset];
       const uint8_t offset_kind = modrm >> 6;
-      if ((offset_kind != 1 && offset_kind != 2) || ((modrm >> 3) & 7) != step.operation || (modrm & 7) != 4 || code[offset + 1] != 0x24) return false;
+      if ((offset_kind != 1 && offset_kind != 2) || ((modrm >> 3) & 7) != step.reg_field || (modrm & 7) != 4 || code[offset + 1] != 0x24) return false;
       offset += 2 + ((offset_kind == 1) ? 1 : 4);
     }
     return offset == size;
   };
   struct MaskedFunction {
     uint32_t start = 0;
-    uint16_t masks = 0;
+    uint16_t mask_count = 0;
     uint64_t unmasked = 0;  // the census's value of the whole function
   };
   constexpr std::array<MaskedFunction, 6> MASKED_FUNCTIONS = {{
-      {.start = 0x773b90, .masks = 2, .unmasked = 0x687356a9d31ed992}, {.start = 0x7769c0, .masks = 2, .unmasked = 0x53d1ab1e90a178dd},
-      {.start = 0x78c7c0, .masks = 4, .unmasked = 0x5920c6a869342780}, {.start = 0x7969f0, .masks = 4, .unmasked = 0xe0360af71e5f8e55},
-      {.start = 0x7dfe30, .masks = 4, .unmasked = 0x6022169d1659fe6a}, {.start = 0x7e0650, .masks = 2, .unmasked = 0x34825c85f26ca00c},
+      {.start = 0x773b90, .mask_count = 2, .unmasked = 0x687356a9d31ed992}, {.start = 0x7769c0, .mask_count = 2, .unmasked = 0x53d1ab1e90a178dd},
+      {.start = 0x78c7c0, .mask_count = 4, .unmasked = 0x5920c6a869342780}, {.start = 0x7969f0, .mask_count = 4, .unmasked = 0xe0360af71e5f8e55},
+      {.start = 0x7dfe30, .mask_count = 4, .unmasked = 0x6022169d1659fe6a}, {.start = 0x7e0650, .mask_count = 2, .unmasked = 0x34825c85f26ca00c},
   }};
   bool functions_hold = true;
   bool windows_decode = true;
@@ -2828,13 +2828,12 @@ void RunContactByteChecks() {
   uint32_t window_bytes = 0;
   for (const MaskedFunction& function : MASKED_FUNCTIONS) {
     const ContactRange* range = range_at(function.start);
-    functions_hold = functions_hold && range != nullptr && range->masks == function.masks && range->value != function.unmasked
+    functions_hold = functions_hold && range != nullptr && range->mask_count == function.mask_count && range->value != function.unmasked
                      && Fnv1a<uint64_t>(at(function.start), range->size) == function.unmasked
                      && std::ranges::find(NOT_CENSUS_FUNCTIONS, function.start) == NOT_CENSUS_FUNCTIONS.end();
-    for (const size_t end = window + function.masks; functions_hold && window < end; ++window) {
+    for (const size_t end = window + function.mask_count; functions_hold && window < end; ++window) {
       const ContactMask& mask = CONTACT_MASKS[window];
-      const bool inside = mask.start >= range->start && mask.start + mask.size <= range->start + range->size;
-      if (!inside || !is_control_word_block(mask.start, mask.size)) {
+      if (mask.start < range->start || mask.start + mask.size > range->start + range->size || !is_control_word_block(mask.start, mask.size)) {
         std::printf("  contact mask %#x+%u: not the control-word block, or outside %#x+%#x\n", mask.start, mask.size, range->start, range->size);
         windows_decode = false;
       }

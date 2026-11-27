@@ -792,7 +792,7 @@ struct ContactRange {
   uint64_t value = 0;
   uint32_t start = 0;
   uint16_t size = 0;
-  uint16_t masks = 0;
+  uint16_t mask_count = 0;
 };
 
 struct ContactEntry {
@@ -801,10 +801,11 @@ struct ContactEntry {
   uint16_t check = 0;
 };
 
-// The masks (each one a coordinator's decision, with its reason), in address order. A reason stands once, above
-// the run of masks it holds for.
+// The masks (each one a coordinator's decision, with its reason), in address order.
+// ours (deviation: from 3.6's one line per mask, because the 18 reasons are one sentence): a reason stands once,
+// above the run of masks it holds for.
 inline constexpr auto CONTACT_MASKS = std::to_array<ContactMask>({
-    // another mod (PerfFix, x87fix) replaces the float -> int block here, in place; same integer for every float32 input, own stack slots only (pfx_ 11-27)
+    // another mod (PerfFix 7.5, x87fix) replaces the float -> int block here, in place; same integer for every float32 input, own stack slots only
     {.start = 0x773ba6, .size = 36},
     {.start = 0x773bf4, .size = 36},
     {.start = 0x776c6c, .size = 36},
@@ -856,10 +857,10 @@ inline constexpr auto CONTACT_RANGES = std::to_array<ContactRange>({
     {.value = 0x7cc7776910fb5d8b, .start = 0x713590, .size = 0x1af},
     {.value = 0xc63d7bd3b57259dd, .start = 0x745d80, .size = 0xef},
     {.value = 0x437eaa18167ba675, .start = 0x74ce90, .size = 0x3},
-    {.value = 0x023fd7ba8c3f0636, .start = 0x773b90, .size = 0x1ab, .masks = 2},
+    {.value = 0x023fd7ba8c3f0636, .start = 0x773b90, .size = 0x1ab, .mask_count = 2},
     {.value = 0x98d2defe598da71b, .start = 0x773ef0, .size = 0x5e},
     {.value = 0x98d44a1a9cb4ba29, .start = 0x776810, .size = 0x182},
-    {.value = 0x5b90225fc7762ef3, .start = 0x7769c0, .size = 0x4fb, .masks = 2},
+    {.value = 0x5b90225fc7762ef3, .start = 0x7769c0, .size = 0x4fb, .mask_count = 2},
     {.value = 0x903d0b83a7ae85d7, .start = 0x77d330, .size = 0x385},
     {.value = 0xe5bc600f0270e2cb, .start = 0x77d6c0, .size = 0x30e},
     {.value = 0xc3b729474c71c030, .start = 0x77da10, .size = 0x8},
@@ -873,12 +874,12 @@ inline constexpr auto CONTACT_RANGES = std::to_array<ContactRange>({
     {.value = 0x8154d1c8d1ecce44, .start = 0x786720, .size = 0x154},
     {.value = 0x75ae197626bc5f2f, .start = 0x788260, .size = 0xe},
     {.value = 0x875b832086cbbe13, .start = 0x788450, .size = 0x25f},
-    {.value = 0x3afeb5495025b85e, .start = 0x78c7c0, .size = 0x539, .masks = 4},
+    {.value = 0x3afeb5495025b85e, .start = 0x78c7c0, .size = 0x539, .mask_count = 4},
     {.value = 0x31b5d0af35a4361f, .start = 0x78dfa0, .size = 0x6},
     {.value = 0x46dfe5504691706d, .start = 0x78f310, .size = 0x288},
     {.value = 0x1f4750bcff0c777e, .start = 0x793570, .size = 0x34},
     {.value = 0x1f4750bcff0c777e, .start = 0x7935b0, .size = 0x34},
-    {.value = 0xfc2a865d751c5c59, .start = 0x7969f0, .size = 0x8ea, .masks = 4},
+    {.value = 0xfc2a865d751c5c59, .start = 0x7969f0, .size = 0x8ea, .mask_count = 4},
     {.value = 0x6483d8f00007ef70, .start = 0x7972e0, .size = 0x51f},
     {.value = 0x0fa2875f65bbade7, .start = 0x79a030, .size = 0x9},
     {.value = 0x5c6ec4849fa6c9fc, .start = 0x79a0f0, .size = 0xa6},
@@ -889,10 +890,10 @@ inline constexpr auto CONTACT_RANGES = std::to_array<ContactRange>({
     {.value = 0x1728af151ec23eb3, .start = 0x7a4c80, .size = 0x165},
     {.value = 0x4abf9283bcc940bf, .start = 0x7a8150, .size = 0x9d},
     {.value = 0x8d344e3af95c11d4, .start = 0x7de900, .size = 0x165},
-    {.value = 0xbbce348f89d8c6e2, .start = 0x7dfe30, .size = 0x37b, .masks = 4},
+    {.value = 0xbbce348f89d8c6e2, .start = 0x7dfe30, .size = 0x37b, .mask_count = 4},
     {.value = 0x42175c3689c3bdbb, .start = 0x7e03c0, .size = 0xb1},
     {.value = 0xcc54b5bbe57614f5, .start = 0x7e0480, .size = 0xec},
-    {.value = 0x28fcf29cd776d03c, .start = 0x7e0650, .size = 0x218, .masks = 2},
+    {.value = 0x28fcf29cd776d03c, .start = 0x7e0650, .size = 0x218, .mask_count = 2},
     {.value = 0x700df352907a1144, .start = 0x7e1490, .size = 0xb1},
     {.value = 0xda93a4da712ddb7f, .start = 0x7e4b20, .size = 0x4},
     {.value = 0x437eaa18167ba675, .start = 0x7e4b70, .size = 0x3},
@@ -1011,15 +1012,15 @@ inline constexpr auto CONTACT_RANGES = std::to_array<ContactRange>({
     {.value = 0x263e79dbc369bcf0, .start = 0x301fa50, .size = 0x26},
     {.value = 0xa74e22f15a95c1c6, .start = 0x3061e60, .size = 0x5d},
     {.value = 0xdb25a6d158992c20, .start = 0x3062aa0, .size = 0x67},
-    {.value = 0xe829e488b475825f, .start = 0x3062d00, .size = 0xb8, .masks = 1},
+    {.value = 0xe829e488b475825f, .start = 0x3062d00, .size = 0xb8, .mask_count = 1},
 });
 static_assert(CONTACT_RANGES.size() == 184);
 static_assert([] {
-  size_t masks = 0;
+  size_t mask_count = 0;
   for (const auto& range : CONTACT_RANGES) {
-    masks += range.masks;
+    mask_count += range.mask_count;
   }
-  return masks;
+  return mask_count;
 }() == CONTACT_MASKS.size());
 
 inline constexpr std::array<uint16_t, 2441> CONTACT_RANGE_CHECKS = {
@@ -2779,7 +2780,7 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
 // Whether the game's code and table entries the contact split's reasoning is about are the ones read: every range of
 // CONTACT_RANGES, then the entries' chain. The first that is not gets the row's one line, once: a range's start and
 // the offset of its first 16-byte block whose check word differs (the last block if none does), or an entry's table
-// and slot. The 64-bit values decide; the check words only name the place. A range's masked bytes are read as zero
+// and slot. The 64-bit values decide; the check words only name the place. Ours: a range's masked bytes are read as zero
 // whatever they hold: another patcher's known spots, each with its reason at CONTACT_MASKS.
 [[nodiscard]] static bool CheckContactCode(const LoaderApi& loader) noexcept {
   const auto differs = [&](uint64_t address, uint32_t offset) {
@@ -2802,7 +2803,7 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
       const uint32_t count = std::min(BLOCK_BYTES, range.size - offset);
       std::array<uint8_t, BLOCK_BYTES> bytes = {};
       std::memcpy(bytes.data(), reinterpret_cast<const void*>(uintptr_t{range.start} + offset), count);
-      for (size_t index = mask_index; index < mask_index + range.masks; ++index) {
+      for (size_t index = mask_index; index < mask_index + range.mask_count; ++index) {
         const ContactMask& mask = CONTACT_MASKS[index];
         for (uint32_t byte = 0; byte < count; ++byte) {
           if (range.start + offset + byte - mask.start < mask.size) {
@@ -2816,7 +2817,7 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
       }
     }
     check_index += block_count;
-    mask_index += range.masks;
+    mask_index += range.mask_count;
     if (hash != range.value) return differs(range.start, std::min(first_differing, block_count - 1) * BLOCK_BYTES);
   }
   uint64_t chain = FNV_OFFSET_BASIS<uint64_t>;
