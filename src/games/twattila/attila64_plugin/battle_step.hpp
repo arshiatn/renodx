@@ -601,12 +601,13 @@ static void SetLane(Block* block, EngineState lane, uint32_t shift = ENGINE_STEP
 // - Ours: the closed region (a shared lock per participant, the step's thread closes it with the exclusive one), the
 //   swap's pinned store order, the fence around the one class whose path writes filter inputs.
 
-// The contact pass and what it calls or reads: the per-object function, the tail's call, the task manager's getter;
+// The contact pass and what it calls or reads: the per-object function, the tail's call, the task manager's pointer
+// (the variable of the game's getter 0x3061e60, which builds the manager when it is null: the pass never does);
 // the static id set (2048 words of bits, then the id vector's capacity, count and data, then the guard of the pass's
 // first call), the radius addition and the game's "tasks in the battle step" byte.
 inline constexpr uintptr_t CONTACT_OBJECT_STEP = 0x803e70;
 inline constexpr uintptr_t CONTACT_TAIL_STEP = 0xc501c0;
-inline constexpr uintptr_t TASK_MANAGER_GETTER = 0x3061e60;
+inline constexpr uintptr_t TASK_MANAGER_POINTER = 0x4c0c630;
 inline constexpr uintptr_t GAME_ID_SET = 0x4c1cb00;
 inline constexpr size_t ID_SET_WORDS = 2048;
 inline constexpr size_t ID_SET_CAPACITY = 0x2008;
@@ -695,7 +696,6 @@ inline constexpr std::array<uint32_t, 2> SUMMARY_TICKS = {1000, 3000};
 
 using ContactObjectFn = void(ATTILA64_GAME_CALL*)(void* object, void* id_set) noexcept;
 using ContactTailFn = void(ATTILA64_GAME_CALL*)(void* listed) noexcept;
-using TaskManagerFn = void*(ATTILA64_GAME_CALL*)() noexcept;
 
 // How the apply runs an object: the game's walk, the game's function on the kept nodes, or the game's walk with the
 // fence read around it. The classes of the collision-object base by table pointer: FAST when a walk's two calls
@@ -2711,7 +2711,8 @@ struct ContactState {
   uint64_t plain_objects = 0;
   uint64_t objects_seen = 0;
 
-  // The tests' fake tables stand in here.
+  // The tests' fake tables stand in here, and a margin that is too small for one control.
+  double reach_margin = REACH_MARGIN;
   std::array<ContactClass, CLASS_SLOTS> classes = [] {
     std::array<ContactClass, CLASS_SLOTS> slots = {};
     for (const ContactClass& known : CONTACT_CLASSES) {
@@ -2796,9 +2797,10 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
 }
 
 // One participant's share of the open region: chunks of the object list, claimed one by one, each object's kept nodes
-// into contact_items and contact_nodes. Returns the chunks it did. It reads game memory, writes plugin memory, takes
-// no lock but the region's and calls nothing of the game's. The step's thread waits for the region; a helper that
-// cannot enter at once has nothing to do there.
+// into contact_items and contact_nodes. It reads game memory, writes plugin memory, takes no lock but the region's and
+// calls nothing of the game's. The step's thread waits for the region; a helper that cannot enter at once has nothing
+// to do there. Ours: it returns the chunks it did, for the summary line's share of the step's thread (a helper's
+// count is dropped).
 static uint32_t RunRegionShare(uint32_t slot) noexcept {
   std::shared_lock lock(contact.gate, std::defer_lock);
   if (slot == OWNER_SLOT) {
@@ -2808,6 +2810,8 @@ static uint32_t RunRegionShare(uint32_t slot) noexcept {
   }
   if (!contact.open) return 0;
   ContactSlot& own = contact_slots[slot];
+  const double twice_addition = 2.0 * std::fabs(double{contact.radius_addition});
+  const double margin = contact.reach_margin;
   uint32_t next_node = 0;  // the next free node of this participant's block, and the block's end
   uint32_t block_end = 0;
   uint32_t chunks_done = 0;
@@ -2855,6 +2859,12 @@ static uint32_t RunRegionShare(uint32_t slot) noexcept {
       // The game's walk (its cells in order, each chain in order, the object's own node skipped, an id's first node
       // only), with a test the game's circle and height filters cannot pass without: all in double, on the stored
       // values' sizes, so neither rounding nor the order of the game's float operations matters. A NaN keeps the node.
+      // The object's own terms are read once: nothing writes game memory while the region is open.
+      const double object_radius = std::fabs(double{At<float>(object, OBJECT_RADIUS)});
+      const double object_height = std::fabs(double{At<float>(object, OBJECT_HEIGHT)});
+      const float object_x = At<float>(object, OBJECT_X);
+      const float object_y = At<float>(object, OBJECT_Y);
+      const float object_z = At<float>(object, OBJECT_Z);
       ContactNode* last_kept = nullptr;
       bool pool_full = false;
       for (uint32_t cell = 0; cell < cell_count && !pool_full; ++cell) {
@@ -2873,17 +2883,14 @@ static uint32_t RunRegionShare(uint32_t slot) noexcept {
           ++item.mark_count;
 
           void* const record = At<void*>(node, offsetof(ContactNode, record));
-          const double reach = std::fabs(double{At<float>(object, OBJECT_RADIUS)})
-                               + std::fabs(double{At<float>(record, RECORD_RADIUS)})
-                               + (2.0 * std::fabs(double{contact.radius_addition}));
-          const float x_distance = At<float>(record, RECORD_X) - At<float>(object, OBJECT_X);
-          const float z_distance = At<float>(record, RECORD_Z) - At<float>(object, OBJECT_Z);
+          const double reach = object_radius + std::fabs(double{At<float>(record, RECORD_RADIUS)}) + twice_addition;
+          const float x_distance = At<float>(record, RECORD_X) - object_x;
+          const float z_distance = At<float>(record, RECORD_Z) - object_z;
           const double distance_squared = (double{x_distance} * x_distance) + (double{z_distance} * z_distance);
-          const float y_distance = At<float>(object, OBJECT_Y) - At<float>(record, RECORD_Y);
-          const double height = std::max(std::fabs(double{At<float>(object, OBJECT_HEIGHT)}),
-                                         std::fabs(double{At<float>(record, RECORD_HEIGHT)}));
-          if (distance_squared > (reach * reach * REACH_MARGIN) + REACH_FLOOR
-              || std::fabs(double{y_distance}) > (height * REACH_MARGIN) + REACH_FLOOR) {
+          const float y_distance = object_y - At<float>(record, RECORD_Y);
+          const double height = std::max(object_height, std::fabs(double{At<float>(record, RECORD_HEIGHT)}));
+          if (distance_squared > (reach * reach * margin) + REACH_FLOOR
+              || std::fabs(double{y_distance}) > (height * margin) + REACH_FLOOR) {
             continue;
           }
           if (next_node == block_end) {
@@ -3066,7 +3073,9 @@ inline constexpr HelperTable HELPER_TABLE;
   if (At<uint8_t>(manager, CONTACT_RESORT) != 0 || tick % RESORT_PERIOD == 0) return false;
   if (At<uint32_t>(manager, CONTACT_TAIL_COUNT) != 0) return original(CONTACT_REASON_SHIPS);
   if (*reinterpret_cast<const uint8_t*>(TASK_FLAG) == 0) return original(CONTACT_REASON_THREADS);
-  void* const task_manager = reinterpret_cast<TaskManagerFn>(TASK_MANAGER_GETTER)();
+  // Not the game's getter: with no manager yet it would build one here, which the game's pass never does.
+  void* const task_manager = *reinterpret_cast<void* const*>(TASK_MANAGER_POINTER);
+  if (task_manager == nullptr) return original(CONTACT_REASON_THREADS);
   const uint32_t task_threads = At<uint32_t>(task_manager, TASK_MANAGER_THREADS);
   if (task_threads < MIN_TASK_THREADS) return original(CONTACT_REASON_THREADS);
   const uint32_t object_count = At<uint32_t>(manager, CONTACT_OBJECT_COUNT);

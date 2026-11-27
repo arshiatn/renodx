@@ -1269,6 +1269,7 @@ inline constexpr size_t OBJECT_VALUE = 0x130;
 inline constexpr size_t OBJECT_BYTES = 0x140;
 inline constexpr size_t ID_SET_BYTES = 0x2020;
 inline constexpr uintptr_t CONTACT_LOOP = 0x5df300;
+inline constexpr uintptr_t TASK_MANAGER_GETTER = 0x3061e60;
 enum OwnerAction : uint32_t {
   ACTION_NONE,
   ACTION_FENCE_PUSH,        // class H's path: the fence count goes up and the walking object's flags lose two bits
@@ -1512,6 +1513,7 @@ bool HelpersAre(uint32_t queued_bits) {
   return right;
 }
 
+uintptr_t getter_variable = 0;  // where the game's getter keeps the task manager, from its own code
 // A new world without objects: the chain a tick reads (manager -> environment -> model with its tick and fence
 // manager; -> core -> database -> table), the task manager behind the game's getter, the game's statics as after the
 // pass's first call, and an id vector of `id_capacity`.
@@ -1537,6 +1539,7 @@ void NewContactScene(uint32_t object_capacity, uint32_t id_capacity) {
   int32_t variable_offset = 0;
   std::memcpy(&variable_offset, reinterpret_cast<const void*>(TASK_MANAGER_GETTER + 7), sizeof(variable_offset));
   *reinterpret_cast<void**>(TASK_MANAGER_GETTER + 11 + variable_offset) = scene.task_manager;
+  getter_variable = TASK_MANAGER_GETTER + 11 + static_cast<uintptr_t>(variable_offset);
   *reinterpret_cast<uint8_t*>(TASK_FLAG) = 1;
   *reinterpret_cast<float*>(CONTACT_RADIUS_ADDITION) = 0.f;
   std::memset(id_set_memory, 0, ID_SET_BYTES);
@@ -2052,7 +2055,9 @@ void RunRegionCases(const std::function<std::vector<void*>(uint32_t)>& base_scen
     KeepContactWorld();
     const ContactOutcome alone = RunContact(true);
     const uint64_t items_alone = ItemsValue(MIN_OBJECTS + 1);
-    Expect(alone.handled && alone.calls.empty() && contact.listed == MIN_OBJECTS && LinesWith("helpers 15)") == 1,
+    // The id set must be empty after a tick: its count would grow with every region otherwise.
+    const bool repeatable = alone.handled && alone.calls.empty() && At<uint32_t>(id_set_memory, ID_SET_COUNT) == 0;
+    Expect(repeatable && contact.listed == MIN_OBJECTS && LinesWith("helpers 15)") == 1,
            "region stress: a world without a response, every object but the last with one kept node, fifteen helpers a region");
     const uint32_t runs_before = helpers_run.load();
     const uint64_t own_chunks_before = contact.own_chunks;
@@ -2061,7 +2066,7 @@ void RunRegionCases(const std::function<std::vector<void*>(uint32_t)>& base_scen
     SetTaskThreads(HELPER_COUNT);
     in_tick = true;
     const auto start = std::chrono::steady_clock::now();
-    for (uint32_t region = 0; region < STRESS_REGIONS; ++region) {
+    for (uint32_t region = 0; region < (repeatable ? STRESS_REGIONS : 0); ++region) {
       const bool handled = ContactTick(scene.manager, &block, api);
       // The close let everyone out: nothing writes the items from here on.
       wrong_regions += ((handled && !contact.open && contact.next_chunk.load() >= contact.chunk_count
@@ -2223,6 +2228,38 @@ void RunContactCases() {
     KeepContactWorld();
     const ContactOutcome game = RunContact(false);
     Expect(!Same(game, RunContact(true)), "control: game code that moves another object is found");
+  }
+  {
+    // Control: a detect margin that is too small. Two objects in one cell, 0.998 of their radii's sum apart: the
+    // game's circle filter passes them, a margin of 0.99 on the squared reach does not.
+    std::vector<void*> objects = base_scene();
+    At<float>(objects[1], OBJECT_X) =
+        At<float>(objects[0], OBJECT_X) + (0.998f * (At<float>(objects[0], OBJECT_RADIUS) + At<float>(objects[1], OBJECT_RADIUS)));
+    const ContactOutcome alone = ExpectContactSame("control base: a pair just inside the game's circle");
+    Expect(alone.handled && alone.calls.size() == 53, "control base: the pair just inside the game's circle answers");
+    const ContactOutcome game = RunContact(false);
+    contact.reach_margin = 0.99;
+    const ContactOutcome tight = RunContact(true);
+    contact.reach_margin = REACH_MARGIN;
+    Expect(tight.handled && !Same(game, tight) && tight.calls.size() == 52, "control: a detect margin of 0.99 is found");
+  }
+  {
+    // Control: an apply without the restore. What it would leave in an object with two cells and a kept node (the swap's
+    // cell list and its count of one) is not the game's memory: the compare covers both fields.
+    std::vector<void*> objects = base_scene();
+    KeepContactWorld();
+    const ContactOutcome game = RunContact(false);
+    ContactOutcome row = RunContact(true);
+    Expect(row.handled && Same(game, row), "control base: the restored cell lists are the game's");
+    const size_t object_place = static_cast<size_t>(static_cast<uint8_t*>(objects[1]) - arena);
+    ContactOutcome no_pointer = row;
+    void* const swapped_cells = contact_cells.entries.data();
+    std::memcpy(no_pointer.memory.data() + object_place + OBJECT_CELLS, &swapped_cells, sizeof(swapped_cells));
+    ContactOutcome no_count = row;
+    const uint32_t swapped_count = 1;
+    std::memcpy(no_count.memory.data() + object_place + OBJECT_CELL_COUNT, &swapped_count, sizeof(swapped_count));
+    Expect(!Same(game, no_pointer) && !Same(game, no_count) && At<uint32_t>(objects[1], OBJECT_CELL_COUNT) == 2,
+           "control: an apply without the restore of the cell list or of its count is found");
   }
 
   // A stopped region: the tick is the game's, with the reason's line once, the row's lane partly, the row free, and
@@ -2477,6 +2514,17 @@ void RunContactCases() {
     row([] { *reinterpret_cast<uint8_t*>(TASK_FLAG) = 0; }, ENGINE_PARTLY, "renodx_attila64: contact split: partly (too few task threads)",
         "gate: a step without tasks");
     *reinterpret_cast<uint8_t*>(TASK_FLAG) = 1;
+    // No task manager yet: the game's getter would build one (a block from the game's heap, thread starts). The row
+    // reads the getter's variable and calls nothing: no block is taken, nothing is written.
+    Expect(getter_variable == TASK_MANAGER_POINTER, "gate: the task manager's pointer is the variable of the game's getter");
+    game_memory.clear();
+    note_game_memory = true;
+    row([] { *reinterpret_cast<void**>(TASK_MANAGER_POINTER) = nullptr; }, ENGINE_PARTLY,
+        "renodx_attila64: contact split: partly (too few task threads)", "gate: no task manager yet");
+    note_game_memory = false;
+    Expect(game_memory.empty() && *reinterpret_cast<void**>(TASK_MANAGER_POINTER) == nullptr,
+           "gate: with no task manager the getter is not called (none is built)");
+    *reinterpret_cast<void**>(TASK_MANAGER_POINTER) = scene.task_manager;
     row([] { At<uint32_t>(scene.task_manager, TASK_MANAGER_THREADS) = MIN_TASK_THREADS - 1; }, ENGINE_PARTLY,
         "renodx_attila64: contact split: partly (too few task threads)", "gate: three task threads");
     row([] { At<uint32_t>(scene.manager, CONTACT_OBJECT_COUNT) = MIN_OBJECTS - 1; }, ENGINE_NOT_USED_YET, nullptr, "gate: a short list");
