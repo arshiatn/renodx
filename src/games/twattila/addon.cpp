@@ -1189,6 +1189,7 @@ enum class PluginRow : uint8_t {
   GRASS = twattila::attila64_plugin::ROW_GRASS,
   CAMPAIGN_TREES = twattila::attila64_plugin::ROW_CAMPAIGN_TREES,
   SPRITES = twattila::attila64_plugin::ROW_SPRITES,
+  GAME_CODE = twattila::attila64_plugin::ROW_GAME_CODE,
   TWEAKS = 0xFE,
   NONE = 0xFF,
 };
@@ -1227,7 +1228,7 @@ constexpr std::array<GameCodeRow, 42> GAME_CODE_ROWS = {{
     {.match = "GraphicsSmallSoldiersAsSprites", .plugin_row = PluginRow::SPRITES},
     {.match = "GraphicsSpriteSize", .plugin_row = PluginRow::SPRITES},
     {.match = "RayTracedSkipShadowPass", .plugin_row = PluginRow::PASS_DRAW},
-    {.match = "FasterGameCpuCode"},
+    {.match = "FasterGameCpuCode", .plugin_row = PluginRow::GAME_CODE},
     {.match = "FasterRenderLists"},
     {.match = "FasterJobWakeUps"},
     {.match = "FasterEffectPrefetch"},
@@ -1642,7 +1643,8 @@ constexpr auto FLAG_PIXEL_SHADERS_MS = WithTwins<1>(std::array<uint32_t, 1>{0xCE
 // samplers biased too (texture_lod_bias.hpp SetWrappingTrilinear).
 float lod_bias_trilinear_row = 0.f;
 // Faster Game CPU Code (graphics_page.hpp, twattila/engine_code.hpp): on by default, every routine proven to give the game's
-// results (test/tw_engine_code).
+// results (test/tw_engine_code). The 64-bit port: the engine plugin's game code row at the next start, through
+// attila64_plugin_link::MirrorRestartValues.
 float engine_code_row = 1.f;
 // Denoise Before Tone Mapping (Experimental, 64-bit only; graphics_page.hpp's Ray Reconstruction rows): anti_aliasing.hpp
 // Settings::rr_before_tone_map.
@@ -2300,7 +2302,8 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       if (graphics_found) {
         tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, nullptr, &graphics_found, graphics_status);
       }
-      twattila::attila64_plugin_link::MirrorRestartValues(loader_frame_cap_row != 0.f, static_cast<int>(shadow_map_size));
+      twattila::attila64_plugin_link::MirrorRestartValues(loader_frame_cap_row != 0.f, static_cast<int>(shadow_map_size),
+                                                          engine_code_row != 0.f);
       // The scale rows' hooks, folded as the 32-bit hooks fold them (graphics_hooks.hpp OnUnitDistances, its battle
       // budget 1 until Big Battle Fix; engine_code.hpp's 1 / Model Detail squared); the other scales neutral.
       std::array<float, plugin::SCALE_COUNT> scales = plugin::NEUTRAL_SCALES;
@@ -3515,6 +3518,28 @@ void ConfigureAddon() {
     (*moved)->section = CPU_SECTION;
     cpu_rows.push_back(*moved);
     settings.erase(moved);
+    // The game code row (its 32-bit place: Ray Tracing's More Options), restart-only: the plugin writes its code at its
+    // init. Shown while the plugin offers the row (a player's Off keeps it offered), its restart note after it.
+    const auto game_code = std::ranges::find(settings, "FasterGameCpuCode", &renodx::utils::settings::Setting::key);
+    renodx::utils::settings::Setting* game_code_row = *game_code;
+    settings.erase(game_code);
+    game_code_row->label = "Faster Game CPU Code (restart)";
+    game_code_row->section = CPU_SECTION;
+    game_code_row->tooltip = "Faster versions of some of the game's own CPU code (sprite soldiers), same results.";
+    game_code_row->is_visible = [] { return GameCodeRowShown(PluginRow::GAME_CODE); };
+    cpu_rows.insert(cpu_rows.end(),
+                    {
+                        game_code_row,
+                        new renodx::utils::settings::Setting{
+                            .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                            .label = RESTART_NOW,
+                            .section = CPU_SECTION,
+                            .tint = RESTART_TINT,
+                            .is_visible = [row = game_code_row] {
+                              return row->is_visible() && twattila::attila64_plugin_link::GameCodePending();
+                            },
+                        },
+                    });
     settings.insert(std::ranges::find(settings, "About", &renodx::utils::settings::Setting::section), cpu_rows.begin(),
                     cpu_rows.end());
     renodx::utils::settings::section_tints.emplace_back(CPU_SECTION, 0xF0E68Cu);

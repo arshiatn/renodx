@@ -97,6 +97,7 @@ constexpr std::array<char, N> Narrow(const wchar_t (&wide)[N]) {
 inline constexpr auto VALUES_SECTION = Narrow(plugin::INI_VALUES_SECTION);
 inline constexpr auto SOL_FRAME_CAP_KEY = Narrow(plugin::INI_SOL_FRAME_CAP);
 inline constexpr auto SHADOW_MAP_SIZE_KEY = Narrow(plugin::INI_SHADOW_MAP_SIZE);
+inline constexpr auto FASTER_GAME_CODE_KEY = Narrow(plugin::INI_FASTER_GAME_CODE);
 // The scales_active bits of each scale row's hooks: set only while the row is offered (a refused row's hook may stay
 // in, the plugin's main.cpp).
 inline constexpr std::array<std::pair<plugin::Row, uint32_t>, 5> ROW_SCALES = {{
@@ -136,6 +137,13 @@ static std::atomic_bool sol_frame_cap_pending = false;
 static std::optional<int> shadow_map_size_at_start;
 static std::optional<int> shadow_map_size_mirrored;
 static std::atomic_bool shadow_map_size_pending = false;
+// Faster Game CPU Code the same way: the key as this start read it (as the plugin's GetPrivateProfileIntW reads it), the
+// key read since the lookup, the key as last read (a plain decimal number; other text: none, so the row writes it again)
+// or written, and whether the row differs from this start's.
+static std::optional<bool> game_code_at_start;
+static bool game_code_read = false;
+static std::optional<int> game_code_mirrored;
+static std::atomic_bool game_code_pending = false;
 // Under the mutex: the plugin's notices bits already logged.
 static uint32_t notices_logged = 0;
 // Written into each measured call's PassMeasure::reserved at pass_begin: a pass_end of another registration is ignored.
@@ -245,7 +253,7 @@ inline bool TweaksFound() {
 }
 
 // The restart mirror's pending states, for the "Restart the game now" notes: a restart-only value the next start would
-// read other than this start did, Loader Frame Cap's and Shadow Map Size's.
+// read other than this start did, Loader Frame Cap's, Shadow Map Size's and Faster Game CPU Code's.
 inline bool ValuesPending() {
   return internal::values_pending.load(std::memory_order_relaxed);
 }
@@ -254,6 +262,9 @@ inline bool SolFrameCapPending() {
 }
 inline bool ShadowMapSizePending() {
   return internal::shadow_map_size_pending.load(std::memory_order_relaxed);
+}
+inline bool GameCodePending() {
+  return internal::game_code_pending.load(std::memory_order_relaxed);
 }
 
 // At each init_device until READY, final at the first present (`last`): the loader loads its plugins before the game's
@@ -489,14 +500,15 @@ inline bool FindTweaks(std::span<tw::engine_tweaks::Option* const> options) {
 }
 
 // Every present with Result() READY on a v2 block, after the values' Update (the loader's drawing thread): the next
-// start's restart-only values, Loader Frame Cap (`sol_frame_cap`) and Shadow Map Size (`shadow_map_size`, while its row
-// is offered: a hidden row's saved key stays) into ReShade.ini [Attila64Plugin.Values], which the plugin reads at its
-// init. A value is clamped to its slider's range first (tweaks.h's, as the plugin checks: a hand-edited ReShade.ini may
-// hold any slider value). Each key is read once, then written only when it differs, with one log line per write
-// (ReShade saves the file about 1 s later, at a present). Pending: a value whose next start differs from this start's
-// (the bits it applied, else the default; a key it refused or did not apply: always), and each of the two rows against
+// start's restart-only values, Loader Frame Cap (`sol_frame_cap`), Shadow Map Size (`shadow_map_size`) and Faster Game
+// CPU Code (`faster_game_code`; these two while their row is offered: a hidden row's saved key stays) into ReShade.ini
+// [Attila64Plugin.Values], which the plugin reads at its init. A value is clamped to its slider's range first
+// (tweaks.h's, as the plugin checks: a hand-edited ReShade.ini may hold any slider value). Each key is read once, then
+// written only when it differs, with one log line per write (ReShade saves the file about 1 s later, at a present).
+// Pending: a value whose next start differs from this start's
+// (the bits it applied, else the default; a key it refused or did not apply: always), and each of the three rows against
 // the key this start read.
-inline void MirrorRestartValues(bool sol_frame_cap, int shadow_map_size) {
+inline void MirrorRestartValues(bool sol_frame_cap, int shadow_map_size, bool faster_game_code) {
   namespace plugin = internal::plugin;
   const std::unique_lock lock(internal::mutex);
   if (internal::found.load(std::memory_order_relaxed) != Found::READY || !BlockV2()) return;
@@ -591,6 +603,43 @@ inline void MirrorRestartValues(bool sol_frame_cap, int shadow_map_size) {
     shadow_pending = (size != size_at_start);
   }
   internal::shadow_map_size_pending.store(shadow_pending, std::memory_order_relaxed);
+  bool code_pending = false;
+  if ((RowsOffered() & plugin::RowBit(plugin::ROW_GAME_CODE)) != 0) {
+    if (!std::exchange(internal::game_code_read, true)) {
+      // As the plugin reads it (GetPrivateProfileIntW): absent or empty, the default (on); else a leading decimal or
+      // 0x hex number, none (text): 0. Other hand edits (`+1`, a number past int, leading spaces) may read otherwise
+      // here; they are not plain decimal numbers, so they stay unmirrored and the row's 0 / 1 is written back.
+      bool on_in_file = (plugin::FASTER_GAME_CODE_DEFAULT != 0);
+      internal::game_code_mirrored = plugin::FASTER_GAME_CODE_DEFAULT;
+      std::array<char, 16> text = {};
+      size_t size = text.size();
+      if (reshade::get_config_value(nullptr, internal::VALUES_SECTION.data(), internal::FASTER_GAME_CODE_KEY.data(),
+                                    text.data(), &size)) {
+        const std::string_view value(text.data());
+        const bool hex = value.starts_with("0x") || value.starts_with("0X");
+        const std::string_view digits = value.substr(hex ? 2 : 0);
+        int number = 0;
+        const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), number, (hex ? 16 : 10));
+        if (!value.empty()) {
+          on_in_file = (error == std::errc() && number != 0);
+        }
+        const bool plain_decimal = (!hex && error == std::errc() && end == digits.data() + digits.size());
+        internal::game_code_mirrored = (plain_decimal ? std::optional<int>(number) : std::nullopt);
+      }
+      if (!internal::game_code_at_start.has_value()) {
+        internal::game_code_at_start = on_in_file;
+      }
+    }
+    const bool code_at_start = *internal::game_code_at_start;
+    if (const int key = (faster_game_code ? 1 : 0); internal::game_code_mirrored != key) {
+      reshade::set_config_value(nullptr, internal::VALUES_SECTION.data(), internal::FASTER_GAME_CODE_KEY.data(), key);
+      internal::game_code_mirrored = key;
+      renodx::utils::log::i(std::format("[Total War] 64-bit Attila: engine value {}: {:#x} at the next start (this start: {:#x})",
+                                        internal::FASTER_GAME_CODE_KEY.data(), key, (code_at_start ? 1 : 0)));
+    }
+    code_pending = (faster_game_code != code_at_start);
+  }
+  internal::game_code_pending.store(code_pending, std::memory_order_relaxed);
 }
 
 // Every present with Result() READY on a v2 block (the loader's drawing thread): the scale rows' multipliers for the
@@ -658,8 +707,8 @@ inline void Uninstall() {
   internal::battle_core_written.reset();
   internal::callback_failed = false;
   internal::callback_failure_logged = false;
-  // The next READY finds the values again (a kept image's Tweaks too) and reads the keys again; this start's frame cap and
-  // shadow map keys stay.
+  // The next READY finds the values again (a kept image's Tweaks too) and reads the keys again; this start's frame cap,
+  // shadow map and game code keys stay.
   internal::tweaks_found = false;
   internal::tweaks_refused = false;
   internal::values_pending = false;
@@ -667,6 +716,9 @@ inline void Uninstall() {
   internal::sol_frame_cap_pending = false;
   internal::shadow_map_size_mirrored.reset();
   internal::shadow_map_size_pending = false;
+  internal::game_code_read = false;
+  internal::game_code_mirrored.reset();
+  internal::game_code_pending = false;
   internal::notices_logged = 0;
 }
 
