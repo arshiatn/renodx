@@ -17,7 +17,7 @@
 // 5-7. Frames into the picture, the loader's copy into buffer 0 and its 8-bit overlay, a mode change, a new window.
 // Then the captures (zz_capture) against the reference of the swap chain proxy.
 // Usage: attila64.exe d3d11 <1320|fixed> <upgraded|plain|broken|no_overlay> [pitch8]
-//        [image_none|image_badmagic|image_table] [plugin [plugin_calls]] [gpu]
+//        [image_none|image_badmagic|image_table] [plugin [plugin_calls]] [plain_empty] [gpu]
 //        attila64.exe d3d12 [gpu]   (C4: frames written; run.ps1 compares them with a run without the add-on)
 //        attila64.exe opengl        (C6: as C4, GPU only)
 
@@ -905,7 +905,10 @@ int main(int argc, char** argv) {
   // 3b. A plugin's test device.
   ShortDevice();
   CheckAddonsFreed("plugin test device", 2);
-  // 3c. The loader's plugins.
+  // 3c. The loader's plugins. plain_empty: ATTILA_PLAIN set to nothing (the loader loads no plugin then either).
+  if (has("plain_empty")) {
+    SetEnvironmentVariableW(L"ATTILA_PLAIN", L"");
+  }
   HMODULE plugin = nullptr;
   if (has("plugin")) {
     plugin = LoadLibraryW((here / "renodx_attila64.dll").c_str());

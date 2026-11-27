@@ -7,7 +7,8 @@
 // game hooks, one thread that calls the add-on's callbacks through the hooks' guard while any row is wanted (no game
 // code: pass_begin finds nothing counted and answers PASS_DRAW). The test exe loads it where the loader loads its
 // plugins (after a plugin's test device, before the game's device).
-// RENODX_F7_PLUGIN="<status> <rows_applied> <rows_changed>" (attila64_plugin::Status and Row bits; default "1 3 0").
+// RENODX_F7_PLUGIN="<status> <rows_applied> <rows_changed> [<version> [<rows_tried>]]" (attila64_plugin::Status and Row
+// bits; default "1 3 0", version 2 with rows_tried = rows_applied; version 1: a v1 plugin's block, its 40 bytes).
 
 #include <windows.h>
 
@@ -57,9 +58,14 @@ BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID) {
   unsigned status = plugin::STATUS_READY;
   unsigned rows = 3;
   unsigned changed = 0;
+  unsigned version = plugin::VERSION;
+  unsigned tried = ~0u;
   if (GetEnvironmentVariableA("RENODX_F7_PLUGIN", value, sizeof(value)) != 0) {
-    std::sscanf(value, "%u %u %u", &status, &rows, &changed);
+    std::sscanf(value, "%u %u %u %u %u", &status, &rows, &changed, &version, &tried);
   }
+  block.version = version;
+  block.bytes = static_cast<uint32_t>(plugin::BlockBytes(version));
+  block.rows_tried = ((tried == ~0u) ? rows : tried);
   block.rows_applied = rows;
   block.rows_changed.store(changed);
   block.status.store(status, std::memory_order_release);
