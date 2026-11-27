@@ -3,7 +3,8 @@
 # with nvngx_dlss.dll (and nvngx_dlssd.dll for Ray Reconstruction; for frame generation Streamline's sl.interposer.dll,
 # sl.common.dll, sl.dlss_g.dll, sl.reflex.dll, sl.pcl.dll and nvngx_dlssg.dll; for DXR 1.2 the Agility SDK's
 # D3D12\D3D12Core.dll; for FSR amd_fidelityfx_loader_dx12.dll, amd_fidelityfx_upscaler_dx12.dll and amd_fidelityfx_framegeneration_dx12.dll; for XeSS libxess.dll, libxess_fg.dll and libxell.dll). The ray tracing shaders (rt_*.cs_6_5.hlsl; rt_trace also for shader model 6.9 with opacity
-# micromaps) are compiled with bin\dxc.exe into headers in that folder.
+# micromaps) are compiled with bin\dxc.exe (DXC 1.9.2609.5, Microsoft's v1.9.2609 release: its dxc.exe, dxcompiler.dll
+# and dxil.dll) into headers in that folder.
 $root = Resolve-Path "$PSScriptRoot\..\..\..\.."
 $out = if ($args.Count -gt 0) { $args[0] } else { Join-Path $root "build\tw_dlaa_helper" }
 New-Item -ItemType Directory -Force $out | Out-Null
@@ -205,8 +206,10 @@ if (Test-Path "$nvapi\nvapi.h") {
   $nvapi_include = @("-imsvc$nvapi")
   $nvapi_library = @("$nvapi\amd64\nvapi64.lib")
 }
-# NVIDIA's Opacity Micro-Map SDK (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/OMM: its Windows release) for the
-# leaves' micromaps when it sits in build\downloads\omm\extracted; its omm-lib.dll (loaded at run time) ships next to the
+# NVIDIA's Opacity Micro-Map SDK 1.12.0 (NVIDIA RTX SDKs License, github.com/NVIDIA-RTX/Omm: its untagged main commit
+# b485825a, built from source as Release with OMM_ENABLE_PRECOMPILED_SHADERS_DXIL on and SPIR-V off; 1.12 has the CPU
+# Wrap fix for negative UVs on non-power-of-two textures) for the leaves' micromaps when it sits in
+# build\downloads\omm\extracted (bin\omm-lib.dll, include\omm.h); its omm-lib.dll (loaded at run time) ships next to the
 # helper.
 $omm = Join-Path $root "build\downloads\omm\extracted"
 $omm_include = @()
