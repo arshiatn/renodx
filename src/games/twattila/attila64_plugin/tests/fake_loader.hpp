@@ -7,12 +7,15 @@
 
 #include <windows.h>
 
+#include <array>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <mutex>
 #include <shared_mutex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -69,17 +72,20 @@ static bool Logged(const char* text) {
   return false;
 }
 
-// One 8 KB execute-read-write page in rel32 reach of the game, handed out front to back.
+// The loader's own room near the game: one 8 KB page for a whole game run, its own stubs included.
+inline constexpr size_t LOADER_NEAR_CODE_BYTES = 0x2000;
+// Execute-read-write memory in rel32 reach of the game, handed out front to back: 32 of the loader's pages, since one
+// test process stands for many game runs (near_code_used: all bytes handed out so far, for a test of one run's use).
+static size_t near_code_used = 0;
 static void* FakeCodeNearGame(size_t n) noexcept {
-  static uint8_t* page = nullptr;
-  static size_t used = 0;
-  for (uintptr_t at = 0x5300000; page == nullptr && at < 0x60000000; at += 0x10000) {
-    page = static_cast<uint8_t*>(
-        VirtualAlloc(reinterpret_cast<void*>(at), 0x2000, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
+  static uint8_t* pages = nullptr;
+  for (uintptr_t at = 0x5300000; pages == nullptr && at < 0x60000000; at += 0x10000) {
+    pages = static_cast<uint8_t*>(VirtualAlloc(reinterpret_cast<void*>(at), 32 * LOADER_NEAR_CODE_BYTES,
+                                               MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
   }
-  if (page == nullptr || used + n > 0x2000) return nullptr;
-  used += n;
-  return page + used - n;
+  if (pages == nullptr || hook_mode == HOOK_NO_MEMORY || near_code_used + n > 32 * LOADER_NEAR_CODE_BYTES) return nullptr;
+  near_code_used += n;
+  return pages + near_code_used - n;
 }
 
 static int FakePatch(uintptr_t at, const uint8_t* expect, const uint8_t* bytes, size_t len) noexcept {
@@ -177,6 +183,102 @@ static void WriteTweakObjects() {
   }
 }
 
+// Every register a mid-function site can see or change, for a test bed (WriteMidBed).
+struct Registers {
+  // By register number: rax, rcx, rdx, rbx, rsp (stored only), rbp, rsi, rdi, r8-r15.
+  std::array<uint64_t, 16> gpr = {};
+  uint64_t flags = 0;
+  // What the bed's tail stored for the test (a site's memory writes).
+  uint64_t slot = 0;
+  uint64_t pushed = 0;
+  // The two qwords right below the site's rsp (the System V red zone), which the bed fills with in's rdi.
+  std::array<uint64_t, 2> red_zone = {};
+  std::array<std::array<uint8_t, 16>, 16> xmm = {};
+
+  bool operator==(const Registers&) const = default;
+};
+static_assert(offsetof(Registers, flags) == 0x80 && offsetof(Registers, slot) == 0x88 && offsetof(Registers, pushed) == 0x90
+              && offsetof(Registers, red_zone) == 0x98 && offsetof(Registers, xmm) == 0xa8);
+using MidBed = void(ATTILA64_GAME_CALL*)(const Registers* in, Registers* out);
+inline constexpr size_t MID_BED_CAPACITY = 0x340;  // without the site's bytes and the tail
+
+// A test bed for a mid-function site, written at `code`: a function that loads every register and the flags from *in,
+// writes rdi into the red zone, runs the site, and stores them all to *out with the red zone as the site left it (from
+// below it, flags first: nothing in between changes one). The site is `site_bytes`
+// right there; or, with `site_at` not 0, code elsewhere that the bed jumps to and that comes back with a jump to
+// *capture. `reserve`: stack bytes below the bed's own frame (the stub at another stack alignment; room for a site's
+// own [rsp + x] store). `site_stack`: what the site's instructions leave on the stack. `tail`: code run once the
+// registers are stored, with rax = out and rsp as the site left it; it must take the site's stack bytes off again.
+// Returns the site's address.
+static uintptr_t WriteMidBed(uint8_t* code, std::span<const uint8_t> site_bytes, uintptr_t site_at, uint32_t reserve,
+                             uint32_t site_stack, std::span<const uint8_t> tail, uintptr_t* capture) {
+  uint8_t* start = code;
+  const auto emit = [&](std::initializer_list<uint8_t> bytes) { code = std::copy(bytes.begin(), bytes.end(), code); };
+  const auto emit_value = [&](uint64_t value, size_t size) {
+    std::memcpy(code, &value, size);
+    code += size;
+  };
+  // `opcode` with [`base` + displacement] and register `number` (a general or an xmm one).
+  const auto emit_access = [&](bool wide, std::initializer_list<uint8_t> opcode, uint8_t number, uint8_t base, size_t displacement) {
+    if (wide || number >= 8) {
+      emit({static_cast<uint8_t>(0x40 | (wide ? 0x08 : 0) | ((number >= 8) ? 0x04 : 0))});
+    }
+    emit(opcode);
+    emit({static_cast<uint8_t>(0x80 | ((number & 7) << 3) | base)});
+    emit_value(displacement, 4);
+  };
+  constexpr uint8_t RAX = 0;
+  constexpr uint8_t RCX = 1;
+  constexpr uint8_t RSP = 4;
+  constexpr uint8_t RDI = 7;
+  emit({0x53, 0x55, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x56});  // push rbx, rbp, r12-r15; push rsi (out)
+  emit({0x48, 0x81, 0xec});                                                  // sub rsp, reserve
+  emit_value(reserve, 4);
+  for (uint8_t number = 0; number < 16; ++number) {
+    emit_access(false, {0x0f, 0x10}, number, RDI, offsetof(Registers, xmm) + (16 * number));  // movups xmm, [rdi + ..]
+  }
+  emit({0xff, 0xb7});  // push qword ptr [rdi + flags]; popfq
+  emit_value(offsetof(Registers, flags), 4);
+  emit({0x9d});
+  for (const uint8_t number : {0, 1, 2, 3, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 7}) {
+    emit_access(true, {0x8b}, number, RDI, 8 * number);  // mov reg, [rdi + ..]; rdi last
+  }
+  emit({0x48, 0x89, 0x7c, 0x24, 0xf8, 0x48, 0x89, 0x7c, 0x24, 0xf0});  // mov [rsp - 8], rdi; mov [rsp - 16], rdi
+  uintptr_t site = reinterpret_cast<uintptr_t>(code);
+  if (site_at == 0) {
+    code = std::copy(site_bytes.begin(), site_bytes.end(), code);
+  } else {
+    site = site_at;
+    emit({0xe9});  // jmp site_at
+    emit_value(site_at - (reinterpret_cast<uintptr_t>(code) + 4), 4);
+  }
+  *capture = reinterpret_cast<uintptr_t>(code);
+  emit({0x48, 0x8d, 0x64, 0x24, 0x80});        // lea rsp, [rsp - 0x80]
+  emit({0x9c, 0x50, 0x48, 0x8b, 0x84, 0x24});  // pushfq; push rax; mov rax, [rsp + 16 + 0x80 + site_stack + reserve] (out)
+  emit_value(16 + 0x80 + site_stack + reserve, 4);
+  for (const uint8_t number : {1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) {
+    emit_access(true, {0x89}, number, RAX, 8 * number);  // mov [rax + ..], reg
+  }
+  for (uint8_t number = 0; number < 16; ++number) {
+    emit_access(false, {0x0f, 0x11}, number, RAX, offsetof(Registers, xmm) + (16 * number));  // movups [rax + ..], xmm
+  }
+  emit({0x8f, 0x80, 0, 0, 0, 0});  // pop qword ptr [rax]: the site's rax
+  emit({0x8f, 0x80});              // pop qword ptr [rax + flags]
+  emit_value(offsetof(Registers, flags), 4);
+  emit({0x48, 0x8b, 0x4c, 0x24, 0x78});  // mov rcx, [rsp + 0x78]; mov [rax + red_zone], rcx
+  emit_access(true, {0x89}, RCX, RAX, offsetof(Registers, red_zone));
+  emit({0x48, 0x8b, 0x4c, 0x24, 0x70});  // mov rcx, [rsp + 0x70]; mov [rax + red_zone + 8], rcx
+  emit_access(true, {0x89}, RCX, RAX, offsetof(Registers, red_zone) + 8);
+  emit({0x48, 0x8d, 0xa4, 0x24, 0x80, 0x00, 0x00, 0x00});  // lea rsp, [rsp + 0x80]
+  emit_access(true, {0x89}, RSP, RAX, 8 * RSP);            // mov [rax + ..], rsp
+  code = std::copy(tail.begin(), tail.end(), code);
+  emit({0x48, 0x81, 0xc4});  // add rsp, reserve
+  emit_value(reserve, 4);
+  emit({0x58, 0x41, 0x5f, 0x41, 0x5e, 0x41, 0x5d, 0x41, 0x5c, 0x5d, 0x5b, 0xc3});  // pop rax (out), r15-r12, rbp, rbx; ret
+  FlushInstructionCache(GetCurrentProcess(), start, static_cast<size_t>(code - start));
+  return site;
+}
+
 // One loaded copy of the plugin DLL (a copy at another path is another module with its own globals).
 struct Plugin {
   int (*init)(const LoaderApi*) = nullptr;
@@ -242,15 +344,15 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path) {
              && Logged("PACK_ENTRY 0x3416d50: applied") && Logged("VIEW_DRAW_ENTRY 0x33f6120: applied")
              && Logged("STEP_ENTRY 0xbb4e00: applied") && Logged("renodx_attila64: shadow map: game's size")
              && Logged("rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
-                       "grass on, grass cells on, campaign trees on, sprites -"),
+                       "grass on, grass cells on, campaign trees on, sprites on"),
          "the init lines");
   for (const Site& site : SITES) {
     char applied_line[96];
     std::snprintf(applied_line, sizeof(applied_line), "renodx_attila64: site %s %#x: applied%s", LABEL_WORDS[site.label],
                   site.address, ((site.kind == SITE_PATCH) ? " (game's bytes kept)" : ""));
     Expect(Logged(applied_line), "each site has its applied line");
-    if (site.kind == SITE_HOOK) {
-      Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each hook site jumps to the hook");
+    if (site.kind != SITE_PATCH) {
+      Expect(*reinterpret_cast<const uint8_t*>(site.address) == 0xe9, "each hook and mid-function site jumps to ours");
     } else {
       Expect(std::memcmp(reinterpret_cast<const void*>(uintptr_t{site.address}), site.window.data() + SITE_MARGIN, site.length) == 0,
              "each patch site keeps the game's bytes without a key");

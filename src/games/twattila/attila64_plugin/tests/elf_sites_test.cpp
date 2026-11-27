@@ -5,8 +5,9 @@
 
 // The plugin's sites against the game file itself: maps the Linux build's load segments at their addresses (read and
 // write, never executed), applies the loader's stack-check rewrite, and checks the build id and every site's window,
-// the hook or the patch through the fake loader, controls that must be refused, the shadow row's instructions, the
-// rest pack's call, the grass rows' layout facts and camera getters, each engine value's static constructor call
+// the hook, the patch or the mid-function stub through the fake loader, controls that must be refused, the shadow
+// row's instructions, the rest pack's call, the grass and sprite rows' layout facts and camera getters, each engine
+// value's static constructor call
 // (tweaks.h: the object, its name and its default), and the built DLL's init.
 // elf_sites_test.exe <renodx_attila64.dll> <game ELF>; SKIPPED (exit 77, reported by build.ps1 as not run)
 // without the ELF or when the game's range is taken.
@@ -106,6 +107,11 @@ int wmain(int argc, wchar_t** argv) {
   Expect(CheckIdentity(api) == STATUS_WRONG_GAME, "control: a wrong build id");
   *at(BUILD_ID_NOTE_ADDRESS + 16) ^= 1;
 
+  const auto word_at = [&](uintptr_t address) {
+    uint32_t word = 0;
+    std::memcpy(&word, at(address), sizeof(word));
+    return word;
+  };
   for (const Site& site : SITES) {
     std::printf("  site %s %#x\n", LABEL_WORDS[site.label], site.address);
     Expect(CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the site's window is the game's");
@@ -132,19 +138,29 @@ int wmain(int argc, wchar_t** argv) {
       Expect(RevertPatch(api, site, &applied) && CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the patch site put back");
       continue;
     }
-    Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE, "the fake loader hooks the site");
-    Expect(*at(site.address) == 0xe9 && SiteUnchanged(site, applied), "the site jumps to the hook, snapshot matches");
+    if (site.kind == SITE_MID) {
+      Expect(ApplyMidSite(api, site, reinterpret_cast<trampoline::MidHandler>(REPLACEMENTS[site.label]), &block.scales_active,
+                          MID_SITE_SCALES[site.label], &applied)
+                 == REFUSAL_NONE,
+             "the site's stub is built near the game and the fake loader writes the jump");
+      // The stub's trampoline: the site's own bytes, then a jump back to the instruction after them.
+      const auto* copied = static_cast<const uint8_t*>(applied.original);
+      Expect(std::memcmp(copied, site.window.data() + SITE_MARGIN, site.length) == 0 && copied[site.length] == 0xe9
+                 && reinterpret_cast<uintptr_t>(copied) + site.length + 5 + static_cast<int32_t>(word_at(reinterpret_cast<uintptr_t>(copied) + site.length + 1))
+                        == site.address + site.length,
+             "the stub runs the site's own bytes and jumps back behind them");
+      Expect(std::all_of(at(site.address + 5), at(site.address + site.length), [](uint8_t byte) { return byte == 0xcc; }),
+             "the site's bytes after the jump are int3");
+    } else {
+      Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE, "the fake loader hooks the site");
+    }
+    Expect(*at(site.address) == 0xe9 && SiteUnchanged(site, applied), "the site jumps to ours, snapshot matches");
     std::memcpy(at(site.address), site.window.data() + SITE_MARGIN, site.length);
     Expect(CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the site restored");
   }
 
   // The shadow row in the game's own code: each size is the immediate of a mov rax, imm64 that holds one float twice
   // (width and height: 2048, or Medium's 1024), each cascade number the immediate of a mov dword [r13 + disp32], imm32.
-  const auto word_at = [&](uintptr_t address) {
-    uint32_t word = 0;
-    std::memcpy(&word, at(address), sizeof(word));
-    return word;
-  };
   for (const Site& site : SITES) {
     if (site.row != ROW_SHADOW_MAP) continue;
     if (IsShadowSizeSite(site)) {
@@ -199,9 +215,18 @@ int wmain(int argc, wchar_t** argv) {
            {0x33f4442, {0x49, 0x8b, 0x4d, 0x48}, "campaign tree: the model's LODs at +0x48"},
            {0x33f4454, {0xf3, 0x0f, 0x10, 0x45, 0x50}, "campaign tree: a LOD's distance at +0x50"},
            {0x33f445e, {0x80, 0x7d, 0x5c, 0x00}, "campaign tree: a LOD's enabled byte at +0x5c"},
+           {0xa50411, {0x49, 0x8b, 0x85, 0xc8, 0x00, 0x00, 0x00}, "sprite: the soldier's display tables at +0xc8, in rax"},
+           {0xa5045a, {0x48, 0x8d, 0x88, 0x70, 0x03, 0x00, 0x00, 0x48, 0x05, 0x80, 0x03, 0x00, 0x00, 0xeb, 0x2b},
+            "sprite: the first size's distance at +0x370 in rcx, its fade width 0x10 on in rax"},
+           {0xa50487, {0x48, 0x8d, 0x88, 0x7c, 0x03, 0x00, 0x00, 0x48, 0x05, 0x8c, 0x03, 0x00, 0x00, 0xf3, 0x0f, 0x58, 0x05},
+            "sprite: the fourth size's two floats, then the constant added to the random value"},
+           {0xa504a4, {0xf3, 0x0f, 0x11, 0x84, 0x24, 0xb0, 0x00, 0x00, 0x00}, "sprite: the game stores xmm0 right after the site"},
+           {0xa50541, {0x41, 0x8a, 0x85, 0x1c, 0x01, 0x00, 0x00}, "sprite: the soldier's flags byte at +0x11c"},
        }) {
     Expect(std::equal(fact.bytes.begin(), fact.bytes.end(), at(fact.address)), fact.what);
   }
+  // addss xmm0, [rip + disp32] at 0xa50494: the random value comes to the site less 0.5.
+  Expect(word_at(0xa5049c + static_cast<int32_t>(word_at(0xa50498))) == 0xbf000000, "sprite: the constant before the site is -0.5");
   Expect(std::memcmp(at(GET_SCENE_CAMERA), GET_SCENE_CAMERA_CODE.data(), GET_SCENE_CAMERA_CODE.size()) == 0
              && std::memcmp(at(GET_CAMERA_POSITION), GET_CAMERA_POSITION_CODE.data(), GET_CAMERA_POSITION_CODE.size()) == 0,
          "grass draw: the two camera getters hold the code the hook expects");

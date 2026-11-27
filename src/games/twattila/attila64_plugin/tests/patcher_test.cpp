@@ -57,6 +57,7 @@ inline constexpr uintptr_t GRASS_UPDATE_RECORD = 0x6a0000;   // the four synthet
 inline constexpr uintptr_t GRASS_DRAW_RECORD = 0x6b0000;     // records
 inline constexpr uintptr_t GRASS_CELL_RECORD = 0x6c0000;
 inline constexpr uintptr_t CAMPAIGN_TREE_RECORD = 0x6d0000;
+inline constexpr uintptr_t SPRITE_BED = 0x6e0000;  // the sprite site's test bed (fake_loader.hpp WriteMidBed)
 // What a caller loads into rbx, rbp, r12, r13, r14 and r15 before its call.
 inline constexpr std::array<uint64_t, 6> CALLER_SENTINELS = {0xb0b0b0b0b0b0b0b0, 0xb5b5b5b5b5b5b5b5, 0xc0c0c0c0c0c0c0c0,
                                                              0xd0d0d0d0d0d0d0d0, 0xe0e0e0e0e0e0e0e0, 0xf0f0f0f0f0f0f0f0};
@@ -375,7 +376,8 @@ const Callbacks OTHER_CALLBACKS = CALLBACKS;
 
 inline constexpr uint32_t ALL_ROWS = RowBit(ROW_BONE_FLUSH) | RowBit(ROW_PASS_DRAW) | RowBit(ROW_CPU_PLACEMENT)
                                      | RowBit(ROW_UNIT_LOD) | RowBit(ROW_MODEL_DETAIL) | RowBit(ROW_SHADOW_MAP)
-                                     | RowBit(ROW_GRASS) | RowBit(ROW_GRASS_CELLS) | RowBit(ROW_CAMPAIGN_TREES);
+                                     | RowBit(ROW_GRASS) | RowBit(ROW_GRASS_CELLS) | RowBit(ROW_CAMPAIGN_TREES)
+                                     | RowBit(ROW_SPRITES);
 inline constexpr uint32_t HOOK_SITE_COUNT = [] {
   uint32_t count = 0;
   for (const Site& site : SITES) {
@@ -383,6 +385,22 @@ inline constexpr uint32_t HOOK_SITE_COUNT = [] {
   }
   return count;
 }();
+// The sites outside the shadow row: the hooks and the mid-function site.
+inline constexpr uint32_t JUMP_SITE_COUNT = [] {
+  uint32_t count = 0;
+  for (const Site& site : SITES) {
+    count += (site.kind != SITE_PATCH) ? 1 : 0;
+  }
+  return count;
+}();
+// The fake game after the sprite site's window, which ends inside lea rsi, [rsp + 0x3d0]: that instruction's last four
+// bytes, then a jump back to the bed.
+inline constexpr std::array<uint8_t, 5> SPRITE_SITE_TAIL = {0xd0, 0x03, 0x00, 0x00, 0xe9};
+// The bed's own tail: the float the game stored at [rsp + 0xb0] into the bed's record.
+// mov ecx, [rsp + 0xb0]; mov [rax + slot], rcx
+inline constexpr std::array<uint8_t, 14> SPRITE_BED_TAIL = {0x8b, 0x8c, 0x24, 0xb0, 0x00, 0x00, 0x00,
+                                                            0x48, 0x89, 0x88, 0x88, 0x00, 0x00, 0x00};
+static_assert(offsetof(Registers, slot) == 0x88);
 
 }  // namespace
 
@@ -446,6 +464,17 @@ int wmain(int argc, wchar_t** argv) {
     write_tail(LABEL_GRASS_DRAW_ENTRY, GRASS_DRAW_TAIL);
     write_tail(LABEL_GRASS_CELL_ENTRY, GRASS_CELL_TAIL);
     write_tail(LABEL_CAMPAIGN_TREE_ENTRY, CAMPAIGN_TREE_TAIL);
+    {
+      // The sprite site is inside a function: its bed jumps to the site, and the game's instructions after it (the
+      // store of the result, two loads) run on into the jump back.
+      const Site& sprite_site = SITES[LABEL_SPRITE_DISTANCE];
+      const uintptr_t sprite_end = sprite_site.address + sprite_site.length + SITE_MARGIN;
+      uintptr_t capture = 0;
+      WriteMidBed(at(SPRITE_BED), {}, sprite_site.address, 0x100, 0, SPRITE_BED_TAIL, &capture);
+      const auto back = static_cast<uint32_t>(capture - (sprite_end + SPRITE_SITE_TAIL.size() + sizeof(uint32_t)));
+      std::memcpy(at(sprite_end), SPRITE_SITE_TAIL.data(), SPRITE_SITE_TAIL.size());
+      std::memcpy(at(sprite_end + SPRITE_SITE_TAIL.size()), &back, sizeof(back));
+    }
     {
       // The plugin's init takes the grass draw for the game's by the hash of its first bytes: five bytes past the fake
       // draw's code are set so that the fake one hashes the same. FNV-1a's steps can be undone, so the last two bytes
@@ -545,11 +574,13 @@ int wmain(int argc, wchar_t** argv) {
     for (size_t index = 0; index < SITES.size(); ++index) {
       const Site& site = SITES[index];
       labels_ok = labels_ok && site.label == index && (labels_seen & (1u << site.label)) == 0
-                  && (REPLACEMENTS[site.label] != nullptr) == (site.kind == SITE_HOOK);
+                  && (REPLACEMENTS[site.label] != nullptr) == (site.kind != SITE_PATCH)
+                  && (MID_SITE_SCALES[site.label] != 0) == (site.kind == SITE_MID);
       labels_seen |= 1u << site.label;
     }
     Expect(labels_ok && labels_seen == (1u << LABEL_COUNT) - 1u && SITES.size() == LABEL_COUNT,
-           "labels: one per site in label order, a hook for each hook site and none for a patch site");
+           "labels: one per site in label order, a hook for each hook and mid-function site (its scales for that "
+           "one) and none for a patch site");
     Expect(REPLACEMENTS[LABEL_PACK_ENTRY] == reinterpret_cast<void*>(&PackEntry)
                && REPLACEMENTS[LABEL_VIEW_DRAW_ENTRY] == reinterpret_cast<void*>(&ViewDrawEntry)
                && REPLACEMENTS[LABEL_STEP_ENTRY] == reinterpret_cast<void*>(&StepTaskEntry)
@@ -558,21 +589,25 @@ int wmain(int argc, wchar_t** argv) {
                && REPLACEMENTS[LABEL_GRASS_UPDATE_ENTRY] == reinterpret_cast<void*>(&GrassUpdateEntry)
                && REPLACEMENTS[LABEL_GRASS_DRAW_ENTRY] == reinterpret_cast<void*>(&GrassDrawEntry)
                && REPLACEMENTS[LABEL_GRASS_CELL_ENTRY] == reinterpret_cast<void*>(&GrassCellEntry)
-               && REPLACEMENTS[LABEL_CAMPAIGN_TREE_ENTRY] == reinterpret_cast<void*>(&CampaignTreeEntry),
+               && REPLACEMENTS[LABEL_CAMPAIGN_TREE_ENTRY] == reinterpret_cast<void*>(&CampaignTreeEntry)
+               && REPLACEMENTS[LABEL_SPRITE_DISTANCE] == reinterpret_cast<void*>(&SpriteDistanceStub)
+               && MID_SITE_SCALES[LABEL_SPRITE_DISTANCE] == ((1u << SCALE_SPRITE_DISTANCE) | (1u << SCALE_DEAD_UNITS)),
            "labels: each holds its own hook");
     Expect(LABEL_STEP_ENTRY == 2 && SITES[LABEL_STEP_ENTRY].row == ROW_CPU_PLACEMENT
                && SITES[ROW_BONE_FLUSH].label == LABEL_PACK_ENTRY && SITES[ROW_PASS_DRAW].label == LABEL_VIEW_DRAW_ENTRY
                && SITES[LABEL_UNIT_LOD_ENTRY].row == ROW_UNIT_LOD && SITES[LABEL_MODEL_LOD_ENTRY].row == ROW_MODEL_DETAIL
                && SITES[LABEL_GRASS_UPDATE_ENTRY].row == ROW_GRASS && SITES[LABEL_GRASS_DRAW_ENTRY].row == ROW_GRASS
                && SITES[LABEL_GRASS_CELL_ENTRY].row == ROW_GRASS_CELLS
-               && SITES[LABEL_CAMPAIGN_TREE_ENTRY].row == ROW_CAMPAIGN_TREES,
+               && SITES[LABEL_CAMPAIGN_TREE_ENTRY].row == ROW_CAMPAIGN_TREES
+               && SITES[LABEL_SPRITE_DISTANCE].row == ROW_SPRITES,
            "labels: the first sites are in row order");
     uint32_t shadow_sites = 0;
     for (const Site& site : SITES) {
       Expect((site.kind == SITE_PATCH) == (site.row == ROW_SHADOW_MAP), "kinds: the shadow row's sites are the patches");
       shadow_sites += (site.row == ROW_SHADOW_MAP) ? 1 : 0;
     }
-    Expect(shadow_sites == 7 && HOOK_SITE_COUNT == 9, "kinds: 9 hook sites and the shadow row's 7 immediates");
+    Expect(shadow_sites == 7 && HOOK_SITE_COUNT == 9 && JUMP_SITE_COUNT == 10 && SITES[LABEL_SPRITE_DISTANCE].kind == SITE_MID,
+           "kinds: 9 hook sites, the shadow row's 7 immediates, the sprite row's mid-function site");
   }
 
   // Site checks on the real sites' windows.
@@ -1304,6 +1339,89 @@ int wmain(int argc, wchar_t** argv) {
     Expect((shared->notices.load() & NOTICE_MODEL_TABLE_FULL) == 0, "grass, campaign tree: no table notice");
     shared->rows_applied = rows_applied_before;
 
+    // The sprite site, through its bed: the soldier's record in r13, its display tables' entries in rax and rcx, its
+    // random value - 0.5 in xmm0; the game's own next instructions store the result. Neutral: the game's two
+    // instructions, no call of ours. Active: the cap by the soldier's height, the dead soldiers' scale, each alone and
+    // both; everything but the result as the game had it.
+    {
+      const auto sprite_bed = reinterpret_cast<MidBed>(SPRITE_BED);
+      const std::array<float, 4> distances = {90.f, 110.f, 200.f, 1000.f};
+      const std::array<float, 4> fade_widths = {22.5f, 27.5f, 50.f, 250.f};
+      std::array<uint8_t, 0x400> display = {};
+      std::array<uint8_t, 0x120> soldier = {};
+      std::memcpy(display.data() + DISPLAY_SPRITE_DISTANCES, distances.data(), sizeof(distances));
+      std::memcpy(display.data() + DISPLAY_SPRITE_DISTANCES + 0x10, fade_widths.data(), sizeof(fade_widths));
+      put(soldier.data(), SOLDIER_DISPLAY, display.data());
+      const uint64_t after_site_load = 0x7ab1e0000000beef;  // what the game's mov rax, [rbx] after the site reads
+      // One soldier's pass over the site: true when the stored result is `expected` bit for bit and every register
+      // and flag and the red zone is as it went in, but for the result in xmm0 and what the game's next instructions
+      // load.
+      const auto sprite_once = [&](size_t size, float dither, bool alive, float expected) {
+        soldier[SOLDIER_FLAGS] = static_cast<uint8_t>(0x52 | (alive ? SOLDIER_ALIVE : 0));
+        Registers in;
+        for (size_t number = 0; number < in.gpr.size(); ++number) {
+          in.gpr[number] = 0x0101010101010101 * (number + 1);
+        }
+        in.gpr[0] = reinterpret_cast<uintptr_t>(display.data() + DISPLAY_SPRITE_DISTANCES + 0x10 + (size * sizeof(float)));
+        in.gpr[1] = reinterpret_cast<uintptr_t>(display.data() + DISPLAY_SPRITE_DISTANCES + (size * sizeof(float)));
+        in.gpr[3] = reinterpret_cast<uintptr_t>(&after_site_load);
+        in.gpr[13] = reinterpret_cast<uintptr_t>(soldier.data());
+        in.flags = 0x202 | 0x8d5;  // every status flag set
+        for (size_t number = 0; number < in.xmm.size(); ++number) {
+          in.xmm[number].fill(static_cast<uint8_t>(0x30 + number));
+        }
+        std::memcpy(in.xmm[0].data(), &dither, sizeof(dither));
+        Registers out;
+        sprite_bed(&in, &out);
+        Registers kept = in;
+        kept.gpr[0] = after_site_load;
+        kept.gpr[4] = out.gpr[4];  // rsp: the bed's own
+        kept.gpr[6] = out.gpr[4] + 0x3d0;  // the game's lea rsi, [rsp + 0x3d0]
+        kept.slot = std::bit_cast<uint32_t>(expected);
+        kept.red_zone.fill(in.gpr[7]);
+        std::memcpy(kept.xmm[0].data(), &expected, sizeof(expected));
+        return out == kept;
+      };
+      const auto game_distance = [&](size_t size, float dither) { return (dither * fade_widths[size]) + distances[size]; };
+      Expect(!Logged("SPRITE_DISTANCE: first call") && sprite_once(0, 0.25f, true, 95.625f) && sprite_once(3, -0.5f, false, 875.f)
+                 && !Logged("SPRITE_DISTANCE: first call"),
+             "sprite: neutral, the game's distance, every register and flag kept, no call of ours");
+      set_scale(shared, SCALE_GRASS_LOD, 4.f);
+      set_scale(shared, SCALE_UNIT_LOD, 2.f);
+      shared->scales[SCALE_SPRITE_DISTANCE].store(20.f);
+      shared->scales[SCALE_DEAD_UNITS].store(0.5f);
+      Expect(sprite_once(1, 0.25f, false, game_distance(1, 0.25f)) && !Logged("SPRITE_DISTANCE: first call"),
+             "sprite: other rows' bits and its scales without their bits change nothing");
+      set_scale(shared, SCALE_GRASS_LOD, 1.f);
+      set_scale(shared, SCALE_UNIT_LOD, 1.f);
+      shared->scales[SCALE_DEAD_UNITS].store(1.f);
+
+      // Small Soldiers as Sprites: 20 m of distance per metre of height, + the game's spread.
+      set_scale(shared, SCALE_SPRITE_DISTANCE, 20.f);
+      Expect(sprite_once(0, 0.25f, true, 41.625f) && Logged("SPRITE_DISTANCE: first call"),
+             "sprite: a foot soldier turns into a sprite at 1.8 m x the scale + the spread, the first-call line");
+      Expect(sprite_once(1, 0.25f, true, 58.875f) && sprite_once(2, 0.25f, true, 92.5f) && sprite_once(3, 0.25f, true, 122.5f)
+                 && sprite_once(0, -0.5f, true, 24.75f),
+             "sprite: each size by its own height, the spread below the middle too");
+      shared->scales[SCALE_DEAD_UNITS].store(0.5f);
+      Expect(sprite_once(0, 0.25f, false, 41.625f), "sprite: a dead soldier as a living one while its own scale's bit is clear");
+      shared->scales[SCALE_DEAD_UNITS].store(1.f);
+      set_scale(shared, SCALE_SPRITE_DISTANCE, 1000.f);
+      Expect(sprite_once(0, 0.25f, true, game_distance(0, 0.25f)) && sprite_once(3, 0.25f, true, game_distance(3, 0.25f)),
+             "sprite: a cap past the game's distance leaves the game's bits");
+      // Dead Unit Detail with the cap, then alone.
+      set_scale(shared, SCALE_SPRITE_DISTANCE, 20.f);
+      set_scale(shared, SCALE_DEAD_UNITS, 0.5f);
+      Expect(sprite_once(0, 0.25f, false, 20.8125f) && sprite_once(0, 0.25f, true, 41.625f),
+             "sprite: a dead soldier's capped distance x its scale, a living one's not");
+      set_scale(shared, SCALE_SPRITE_DISTANCE, 0.f);
+      Expect(sprite_once(2, 0.25f, false, 106.25f) && sprite_once(2, 0.25f, true, game_distance(2, 0.25f))
+                 && sprite_once(1, -0.25f, true, game_distance(1, -0.25f)),
+             "sprite: the dead scale alone, the game's distance x it; a living soldier keeps the game's bits");
+      set_scale(shared, SCALE_DEAD_UNITS, 1.f);
+      Expect(shared->scales_active.load() == 0 && sprite_once(0, 0.25f, false, 95.625f), "sprite: back at neutral, the game's distance");
+    }
+
     // The step: its bit clear, the placement does nothing and the game's step runs with its task; its bit set, one
     // step reserves a core on this process (or finds why not, on a small machine), and the bit cleared releases it.
     const auto default_before = default_cpu_sets();
@@ -1333,9 +1451,14 @@ int wmain(int argc, wchar_t** argv) {
   std::printf("  hooks: the test's copy\n");
   write_game();
   for (const Site& site : SITES) {
-    if (site.kind != SITE_HOOK) continue;
+    if (site.kind == SITE_PATCH) continue;
     AppliedSite applied;
-    Expect(ApplySite(api, site, REPLACEMENTS[site.label], &applied) == REFUSAL_NONE, "hooks: site hooked");
+    const Refusal refusal =
+        ((site.kind == SITE_MID)
+             ? ApplyMidSite(api, site, reinterpret_cast<trampoline::MidHandler>(REPLACEMENTS[site.label]),
+                            &block.scales_active, MID_SITE_SCALES[site.label], &applied)
+             : ApplySite(api, site, REPLACEMENTS[site.label], &applied));
+    Expect(refusal == REFUSAL_NONE, "hooks: site hooked");
     originals[site.label] = applied.original;
   }
   expect_hook_bodies(&block);
@@ -1581,10 +1704,28 @@ int wmain(int argc, wchar_t** argv) {
     const auto [plugin, result] = init_copy(L"no_memory", MODULE_NAME, api);
     Expect(result == 0 && status_of(plugin) == STATUS_READY && plugin.block->rows_applied == RowBit(ROW_SHADOW_MAP)
                && plugin.block->rows_refused == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP)) && plugin.block->core_status.load() == 0
-               && Logged("skipped (NO_MEMORY)"),
-           "dll: no memory near the game leaves every hook row out (the patch row needs none)");
+               && Logged("PACK_ENTRY 0x3416d50: skipped (NO_MEMORY)") && Logged("SPRITE_DISTANCE 0xa5049c: skipped (NO_MEMORY)")
+               && site_untouched(SITES[LABEL_SPRITE_DISTANCE]),
+           "dll: no memory near the game leaves every hook and stub row out (the patch row needs none)");
   }
   hook_mode = HOOK_NORMAL;
+
+  // The loader refuses the sprite site's jump (the only write of this init: the shadow sizes stay the game's): the
+  // site keeps the game's bytes, its row is out and the other rows go in.
+  write_game();
+  failing_patch_calls = 1;
+  {
+    const auto [plugin, result] = init_copy(L"sprite_write", MODULE_NAME, api);
+    Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SPRITES))
+               && plugin.block->rows_refused == RowBit(ROW_SPRITES) && plugin.block->rows_tried == ALL_ROWS
+               && Logged("site SPRITE_DISTANCE 0xa5049c: skipped (WRITE_FAILED)") && Logged("campaign trees on, sprites off")
+               && site_untouched(SITES[LABEL_SPRITE_DISTANCE]),
+           "sprite: its jump refused leaves the game's bytes and the row out, the other rows in");
+    plugin.game_started(&api);
+    char sites_in[64];
+    std::snprintf(sites_in, sizeof(sites_in), "game started: %zu sites unchanged", SITES.size() - 1);
+    Expect(plugin.block->rows_changed.load() == 0 && Logged(sites_in), "sprite: a refused site is not re-checked");
+  }
 
   // The grass row's second hook finds no memory: its first one is in and stays in (a hook cannot come out), the row is
   // refused, and the hook that stayed does nothing whatever the scales say. The other rows go in.
@@ -1647,7 +1788,7 @@ int wmain(int argc, wchar_t** argv) {
            "grass draw: the code as read at init, a draw past the last LOD is left out");
     *at(SITES[LABEL_GRASS_DRAW_ENTRY].address + GRASS_DRAW_NO_LOD_BYTES - 8) ^= 1;
     plugin.game_started(&api);
-    Expect(Logged(GRASS_DRAW_CODE_LINE) && Logged("game started: 16 sites unchanged") && grass_draw_once(1, 50.f, 0.f, true),
+    Expect(Logged(GRASS_DRAW_CODE_LINE) && Logged("game started: 17 sites unchanged") && grass_draw_once(1, 50.f, 0.f, true),
            "grass draw: a byte patched before game start leaves the line, every draw reaches the game");
     set_scale(plugin.block, SCALE_GRASS_LOD, 1.f);
     Expect(grass_update_once() && lods_are(GAME_LODS), "grass draw: a byte patched before game start, back at 1x");
@@ -1678,7 +1819,11 @@ int wmain(int argc, wchar_t** argv) {
   std::snprintf(every_site_unchanged, sizeof(every_site_unchanged), "game started: %zu sites unchanged", SITES.size());
   Expect(shadow_sizes(2048.f, 1024.f), "shadow: the fake game holds the game's sizes");
   {
+    const size_t near_code_before = near_code_used;
     const auto [plugin, result] = shadow_case(L"shadow_1", L"1", true);
+    // Every site in: the hooks' stubs and the sprite site's own, with 1 KB left of the loader's page for the loader.
+    Expect(near_code_used - near_code_before <= LOADER_NEAR_CODE_BYTES - 0x400,
+           "dll: one game run's code near the game fits the loader's page");
     Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && plugin.block->rows_refused == 0
                && shadow_sizes(4096.f, 2048.f) && Logged("renodx_attila64: shadow map 4096: patched")
                && Logged("renodx_attila64: site SHADOW_SIZE_MAX 0x30e46eb: applied")
@@ -1737,7 +1882,7 @@ int wmain(int argc, wchar_t** argv) {
            "shadow: the site's own refusal, and the row's for its other sites");
     plugin.game_started(&api);
     char hooks_unchanged[64];
-    std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", HOOK_SITE_COUNT);
+    std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", JUMP_SITE_COUNT);
     Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged), "shadow: a refused row's sites are not re-checked");
   }
   // The loader refuses the third write: the two sizes already written go back.
@@ -1772,10 +1917,10 @@ int wmain(int argc, wchar_t** argv) {
                && !Logged("could not be put back"),
            "shadow: after a refused write the row's later sites are skipped for the row, only the earlier ones withdrawn");
   }
-  // The loader refuses the third write and then the first put-back: that size keeps our bytes, its line says so, the
-  // row stays out and none of its sites is re-checked at the game's start.
+  // The loader refuses the third write and then the first put-back (the sprite site's write comes between them): that
+  // size keeps our bytes, its line says so, the row stays out and none of its sites is re-checked at the game's start.
   write_game();
-  failing_patch_calls = (1u << 2) | (1u << 3);
+  failing_patch_calls = (1u << 2) | (1u << 4);
   {
     const auto [plugin, result] = init_copy(L"shadow_put_back_fails", MODULE_NAME, api);
     Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
@@ -1792,8 +1937,8 @@ int wmain(int argc, wchar_t** argv) {
            "shadow: the put-back's own line names the site");
     plugin.game_started(&api);
     char hooks_unchanged[64];
-    std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", HOOK_SITE_COUNT);
-    Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged) && Logged("game started: 9 sites unchanged"),
+    std::snprintf(hooks_unchanged, sizeof(hooks_unchanged), "game started: %u sites unchanged", JUMP_SITE_COUNT);
+    Expect(plugin.block->rows_changed.load() == 0 && Logged(hooks_unchanged) && Logged("game started: 10 sites unchanged"),
            "shadow: a site that could not be put back counts as out at the game's start");
   }
   SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, nullptr);
