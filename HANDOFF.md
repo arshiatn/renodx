@@ -975,7 +975,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - R11G11B10 round-to-zero census (change nothing yet): light_bounce_prepare.hlsli: ... | pdi4c_ follow-up (11-27+)
 - STEP PIECES FIRST (parked, c03_64_design.md): the step's join skips render piece ... | PK8 Stage B designer
 - CHEAPER A' (apd_ 11-26 design, tools\tw\round_notes\designs\sss_aprime_cheaper.m ... | coord / ATN (2048 vs 2304 slots)
-- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | 11-27+ designer (start_1127
+- DENOISE BEFORE TONE MAPPING BELOW 100 % (ATN 11-26 asked why 100 % only): below ... | rrdr_ (review) -> RR implementer (slot after c8b0_ on addon
 - gts_ LEFTOVERS: verify_gts equality on HEAD needs a 34b70eeef base build (r13_ru ... | coord (verify base build)
 - O2 THIN SHADOWS AT 58 % (W11, by eye): very thin casters (1 render px, e.g. spea ... | ATN (look) -> Opus xHigh designer
 - GPU QUEUE RULE (ATN 11-26, start_1127.md): briefs wait for the GPU lock with one ... | coord (every brief from 11-27)
@@ -17663,7 +17663,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         mapper a full-size scene while it draws with the corner's viewport and corner-size bloom / exposure, so the row skips
         while scaling (anti_aliasing.hpp:1469-1470; coord's reading, designer to confirm). Design (Opus xHigh, no code first):
         tone mapper at display size after RR, bloom / exposure read at the render share (effect_share), jitter ends at RR;
-        gate = 4K harness G1 like rrbi_'s at 67 / 58 / 50 %. Owner: 11-27+ designer (start_1127.md 5b)
+        gate = 4K harness G1 like rrbi_'s at 67 / 58 / 50 %.
+        DESIGN DONE (rrd_ 11-27, round_notes\designs\rr_before_tonemap_below100.md, scratch rrd_\): the gate is needed and
+        confirmed; corrections: the gate term is anti_aliasing.hpp:1478 (1467-1471 = comment) and also guards Apply(scaled=false)
+        at 1514; bloom is NOT corner-size (t00:51 / t09:64 read it at texcoord / CameraRenderShare, b40714f54), black / white
+        points at uv (0.5, 0.5) or cb b1, so only the bloom divisor is wrong after RR; effect_share is the WRONG share (1 with
+        Effects at Output off, the slider value): after RR every input is read at share 1; the tone mapper's viewport (corner
+        or whole) is unproven (O1 one-frame trace); missed: the SSS Debug View relies on DLSS's stretch. Design: Apply(native,
+        scene, scaled, true) in OnToneMapperDraw, the viewport / scissor restore moved into one helper with 2 callers, cb12
+        {1,1,1,1} for that draw, no HLSL change, Settings::stretched_debug_view keeps the row inert with the SSS Debug View on,
+        FSR / XeSS / SR / Debug View unchanged; ~ +-0.1 ms GPU at 4K. Plan: 7 steps, one Opus High implementer, 120-140 min
+        incl. ~40 GPU, new harness switch HARNESS_RR_INPUT=<percent>. Gate: G1s 34 runs at 4K (A0 vs B per scale, 100 % bit for
+        bit vs rrbi_'s G1), G1b bloom stand-in numbers, G2 ATN by eye (67 / 58 / 50 %), G3s Nsight + O1 in the game batch.
+        Risks: R2 bloom halos from the noisy scene (as at 100 %), R5 half-res particles after RR's read (as at 100 %). NEXT:
+        rrdr_ review (Opus xHigh), then the implementer once addon.cpp has a free slot in the CPU writer chain (its addon.cpp
+        part is small: tooltip + one Settings line). Open after the implementer: O1 viewport trace, R5, G2 (ATN), G3s (game batch); rrbi_'s own G3; rrb_'s R2
+        closes once G1s passes. Owner: rrdr_ (review) -> RR implementer (slot after c8b0_ on addon.cpp)
         - [x] gts_ SWITCH B DONE (11-26, scratch\gts_\switch_b_changed.txt, backups .bak_gts / .bak_gts2): DI_FRAMES digest,
         DI_E option 2 (Y runs get X's class maps; 48 real E files: digest sha256 = .bin, 54 energy lines identical in 3 forms,
         controls fail), worker-thread hashing, ProbeMean from digests; E file 199 MB -> ~57 KB (+2 s a job). Harness
