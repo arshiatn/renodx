@@ -318,11 +318,11 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
         const size_t offset = game_code::LAYOUT.offsets[site.label];
         in_reach = in_reach && trampoline::InJumpReach(site.address, stubs_address + offset);
         // The stub's jumps back into the game, from where it will run.
-        for (const game_code::StubExit& exit : stub.exits) {
-          const uintptr_t jump = stubs_address + offset + exit.rel32_offset - 1;
-          in_reach = in_reach && trampoline::InJumpReach(jump, exit.target);
-          const auto displacement = static_cast<uint32_t>(exit.target - (jump + trampoline::JUMP_BYTES));
-          std::memcpy(code.data() + offset + exit.rel32_offset, &displacement, sizeof(displacement));
+        for (const game_code::StubExit& stub_exit : stub.exits) {
+          const uintptr_t jump = stubs_address + offset + stub_exit.rel32_offset - 1;
+          in_reach = in_reach && trampoline::InJumpReach(jump, stub_exit.target);
+          const auto displacement = static_cast<uint32_t>(stub_exit.target - (jump + trampoline::JUMP_BYTES));
+          std::memcpy(code.data() + offset + stub_exit.rel32_offset, &displacement, sizeof(displacement));
         }
       }
       DWORD close_error = 0;

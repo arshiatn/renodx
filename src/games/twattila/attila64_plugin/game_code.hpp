@@ -34,9 +34,10 @@ namespace twattila::attila64_plugin::game_code {
 // classify by the exponent, round, shift. Ours, and why: OpenEXR's rounds to nearest even and Giesen's rounds a tie
 // up, and both keep a NaN; this one keeps the game's own rounding (a tie rounds down), its infinity for a NaN and its
 // leftover values in ecx, edx and esi, because the game's callers were compiled against exactly that function.
-// Built and tested, but not in STUBS: timed as its callers call it, the jump in front of it costs what its
-// straight-line path saves (about 10 % slower a call on normal inputs; the rule for writing it asks for 10 %
-// faster), so its site is only checked and the game's function runs. The sprite rows' stub does not need it.
+// Built and tested, but not in STUBS: timed as its callers call it, it is slower than the game's function (about
+// 10 % a call on normal inputs: the jump in front of it costs more than its straight-line path saves), and only
+// code that is faster is written. So its site is only checked and the game's function runs. The sprite rows' stub
+// does not need it.
 // One instruction per line, as assembled (clang, x86-64, Intel syntax); offsets from the stub's start.
 inline constexpr std::array<uint8_t, 0x92> HALF = {
     /* +0x00 mov edx, dword ptr [rdi] */ 0x8b, 0x17,
@@ -91,7 +92,8 @@ inline constexpr std::array<uint8_t, 0x92> HALF = {
 // registers, converted with SSE2 integer code, packed and stored with three stores. The game's two products are made
 // with its own two instructions (movss a; mulss b), so their bits and MXCSR's flags are the game's.
 // Per 32-bit lane, x the value and a = x without its sign: half = sign | (a normal half: (a + r - 0x38000000) >> 13,
-// r as in the half's function above) | (a > 0x477fffff: 0x7c00) | (a < 0x38800000: 1 when a > 0x33000400, else 0).
+// r = the 13 low bits of x & (x - 1), which is the game's rounding: a tie rounds down) | (a > 0x477fffff: 0x7c00)
+// | (a < 0x38800000: 1 when a > 0x33000400, else 0).
 // The game's own code does the whole row instead (the stub's second way out, after the instruction its site
 // replaced) when a value is a denormal half (0x33800000 <= a < 0x38800000), or when the row, the frame slots
 // [rsp - 8, rsp + 0x98), [r13 + 0x1c, r13 + 0x44) and [r15 + 0x60, r15 + 0x68) overlap in a way that makes the
@@ -101,8 +103,8 @@ inline constexpr std::array<uint8_t, 0x92> HALF = {
 // again before writing them (xmm6-15 are not used by that function at all), and it does not write the game's call
 // slot [rsp - 8].
 // The lane arithmetic is the usual shape of an SSE2 float-to-half conversion (masks per class from integer compares,
-// the rounding term added, a shift; as in the SSE2 variants beside Fabian Giesen's float_to_half_fast, public domain
-// under CC0; no code is taken from them). Ours, and why: the game's own rounding (a tie rounds down) and
+// the rounding term added, a shift; Fabian Giesen's float-to-half gists, public domain under CC0, show that shape;
+// no code is taken from them). Ours, and why: the game's own rounding (a tie rounds down) and
 // infinity-for-NaN, no F16C (its rounding and its exception flags are not the game's), and the denormal halves left
 // to the game's code.
 // One instruction per line, as assembled (clang, x86-64, Intel syntax); offsets from the stub's start. The two jumps'
@@ -381,6 +383,10 @@ inline constexpr std::array<StubExit, 2> SPRITE_ROWS_EXITS = {{
     {.rel32_offset = 0x4b9, .target = SPRITE_ROWS_DONE},
     {.rel32_offset = 0x4c4, .target = SPRITE_ROWS_FALLBACK},
 }};
+// Each exit's rel32 follows a jmp rel32 opcode.
+static_assert(std::ranges::all_of(SPRITE_ROWS_EXITS, [](const StubExit& stub_exit) {
+  return SPRITE_ROWS[stub_exit.rel32_offset - 1] == 0xe9;
+}));
 
 // A site's stub: its bytes and its jumps back into the game. No bytes: none is placed, the site is only checked.
 struct Stub {

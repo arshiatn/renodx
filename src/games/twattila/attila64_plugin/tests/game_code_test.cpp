@@ -819,7 +819,7 @@ int wmain(int argc, wchar_t** argv) {
   std::array<uint8_t, 6> site_jump = {};
   std::memcpy(site_jump.data(), at(ROWS_SITE.address), site_jump.size());
   const bool rows_in = (rows_result == 0 && rows_are(rows_plugin, GAME_CODE, 0, GAME_CODE) && site_jump[0] == 0xe9
-                        && std::memcmp(at(SPRITE_ROWS_FALLBACK), ROWS_SCRATCH_STORE.data(), ROWS_SCRATCH_STORE.size()) == 0);
+                        && std::equal(ROWS_SCRATCH_STORE.begin(), ROWS_SCRATCH_STORE.end(), at(SPRITE_ROWS_FALLBACK)));
   Expect(rows_in, "the sprite rows' stub is in for its runs, the game's next instruction as it was read");
   if (!rows_in) {
     std::printf("FAIL: %d checks, %d failure(s)\n", checks, failures);
@@ -903,7 +903,8 @@ int wmain(int argc, wchar_t** argv) {
     for (size_t index = 0; index < ROW_WORDS; ++index) {
       distinct = distinct && std::ranges::count(expected, expected[index]) == 1;
     }
-    Expect(distinct && std::memcmp(arena.bytes.data() + ARENA_ROW + ROW_WORDS_OFFSET, expected.data(), sizeof(expected)) == 0,
+    Expect(distinct
+               && std::memcmp(arena.bytes.data() + ARENA_ROW + ROW_WORDS_OFFSET, expected.data(), sizeof(expected)) == 0,
            "the lane table: the game's region writes each lane's half at its word, 20 different ones");
     Expect(row_words_right(in) && !fallback_taken(),
            "the sprite rows' stub writes each lane's half at its word, on its own path");
@@ -927,6 +928,18 @@ int wmain(int argc, wchar_t** argv) {
           ways_right = ways_right && fallback_taken() == (edge >= DENORMAL_HALF_FIRST && edge < NORMAL_HALF_FIRST);
         }
       }
+      std::memcpy(source, &FLOAT_ONE, sizeof(FLOAT_ONE));
+    }
+    // And 10^4 random denormal halves, either sign, each alone in a lane.
+    for (int iteration = 0; iteration < 10000; ++iteration) {
+      const Lane& lane = LANES[(ZERO_LANE + 1 + (random() % (ROW_WORDS - 1))) % ROW_WORDS];
+      uint8_t* source = lane_source(lane, in.gpr[RSP], in.gpr[R13], in.gpr[R15]);
+      const uint32_t x = (DENORMAL_HALF_FIRST + static_cast<uint32_t>(random() % (NORMAL_HALF_FIRST - DENORMAL_HALF_FIRST)))
+                         | (static_cast<uint32_t>(random()) << 31);
+      std::memcpy(source, &x, sizeof(x));
+      const bool words = row_words_right(in);
+      words_right = words_right && words;
+      ways_right = ways_right && fallback_taken();
       std::memcpy(source, &FLOAT_ONE, sizeof(FLOAT_ONE));
     }
     Expect(words_right, "the sprite rows' stub: every class edge alone in every lane gives the game's words");
@@ -961,14 +974,18 @@ int wmain(int argc, wchar_t** argv) {
   };
 
   std::printf("  the sprite rows: whole states, overlaps, page ends, the loop\n");
+  // MXCSR for mode 0..15: rounding x flush to zero x denormals are zero; every exception masked, the sticky flags any.
+  const auto mxcsr_mode = [&](uint32_t mode) {
+    return MXCSR_DEFAULT | ((mode & 3) << 13) | (((mode & 4) != 0) ? 0x8000u : 0u) | (((mode & 8) != 0) ? 0x40u : 0u)
+           | (static_cast<uint32_t>(random()) & 0x3f);
+  };
   {
-    // Random frames (any bits) and frames of class edges, under all 16 MXCSR modes (rounding x flush to zero x
-    // denormals are zero; every exception masked, the sticky flags any).
+    // 10^6 frames, random ones (any bits) and frames of class edges in turn, under all 16 MXCSR modes.
     const char* differs = nullptr;
     size_t own_path = 0;
     size_t game_path = 0;
     for (uint32_t mode = 0; mode < 16; ++mode) {
-      for (int iteration = 0; iteration < 4000 && differs == nullptr; ++iteration) {
+      for (int iteration = 0; iteration < 62500 && differs == nullptr; ++iteration) {
         CpuState in = row_state();
         if ((iteration % 2) != 0) {
           for (size_t offset = ARENA_RSP; offset < ARENA_R15 + 0x68; offset += sizeof(uint32_t)) {
@@ -976,18 +993,21 @@ int wmain(int argc, wchar_t** argv) {
             std::memcpy(arena.bytes.data() + offset, &x, sizeof(x));
           }
         }
-        in.mxcsr = MXCSR_DEFAULT | ((mode & 3) << 13) | (((mode & 4) != 0) ? 0x8000 : 0) | (((mode & 8) != 0) ? 0x40 : 0)
-                   | (static_cast<uint32_t>(random()) & 0x3f);
+        in.mxcsr = mxcsr_mode(mode);
         bool fell_back = false;
         differs = row_differs(in, ROWS_REGION, &fell_back);
-        ++(fell_back ? game_path : own_path);
+        if (fell_back) {
+          ++game_path;
+        } else {
+          ++own_path;
+        }
       }
     }
     if (differs != nullptr) {
       std::printf("  whole states: %s differs\n", differs);
     }
     std::printf("  whole states: %zu rows on the stub's own path, %zu through the game's code\n", own_path, game_path);
-    Expect(differs == nullptr && own_path > 10000 && game_path > 10000,
+    Expect(differs == nullptr && own_path > 100000 && game_path > 100000,
            "the sprite rows' stub: random and edge frames under 16 MXCSR modes leave the game's memory, kept "
            "registers and MXCSR");
   }
@@ -1083,7 +1103,11 @@ int wmain(int argc, wchar_t** argv) {
         fault_expected = true;
         run((ours ? ROWS_REGION : reinterpret_cast<uintptr_t>(reference_rows)), in, &out);
         fault_expected = false;
-        (ours ? stub_faults : game_faults) = (ours ? stub_faults : game_faults) && fault_seen;
+        if (ours) {
+          stub_faults = stub_faults && fault_seen;
+        } else {
+          game_faults = game_faults && fault_seen;
+        }
       }
     }
     RemoveVectoredExceptionHandler(handler);
@@ -1102,14 +1126,16 @@ int wmain(int argc, wchar_t** argv) {
   };
   {
     // The game's whole loop of four rows, from its counter's reset to the function's epilogue: the game's code around
-    // the region sets r14, xmm4 and rbp itself and reads what the stub leaves. Any bits, and realistic floats.
+    // the region sets r14, xmm4 and rbp itself and reads what the stub leaves. Any bits and realistic floats in turn,
+    // 10^4 loops under each of the 16 MXCSR modes.
     std::memcpy(at(ROWS_REGION_END), region_end_bytes.data(), region_end_bytes.size());
     write_jump(ROWS_LOOP_END, exit_pad);
     const char* differs = nullptr;
     size_t own_path = 0;
     size_t game_path = 0;
-    for (int iteration = 0; iteration < 20000 && differs == nullptr; ++iteration) {
+    for (int iteration = 0; iteration < 160000 && differs == nullptr; ++iteration) {
       CpuState in = row_state();
+      in.mxcsr = mxcsr_mode(static_cast<uint32_t>(iteration / 2) % 16);
       if ((iteration % 2) != 0) {
         for (size_t offset = 0; offset < arena.bytes.size(); offset += sizeof(float)) {
           const float value = realistic_float();
@@ -1121,7 +1147,11 @@ int wmain(int argc, wchar_t** argv) {
       in.gpr[R15] = arena_at(0x4c0);
       bool fell_back = false;
       differs = row_differs(in, ROWS_LOOP, &fell_back);
-      ++(fell_back ? game_path : own_path);
+      if (fell_back) {
+        ++game_path;
+      } else {
+        ++own_path;
+      }
     }
     std::memcpy(at(ROWS_LOOP_END), loop_end_bytes.data(), loop_end_bytes.size());
     write_jump(ROWS_REGION_END, exit_pad);
@@ -1130,7 +1160,7 @@ int wmain(int argc, wchar_t** argv) {
     }
     std::printf("  the loop: %zu times every row on the stub's own path, %zu times a row through the game's code\n",
                 own_path, game_path);
-    Expect(differs == nullptr && own_path > 1000 && game_path > 1000,
+    Expect(differs == nullptr && own_path > 10000 && game_path > 10000,
            "the game's loop of four rows with the stub leaves the game's memory, kept registers and MXCSR");
   }
 
@@ -1166,7 +1196,9 @@ int wmain(int argc, wchar_t** argv) {
   };
   // Inputs [first, last) as the float of `lane` alone (ROW_WORDS: of every lane at once), the other lanes 1.0f:
   // rows of their own memory through the game's entry, 64 a call of the bench's runner, their 20 words against the
-  // reference half's. *bad: the input that differs, or `last`.
+  // reference half's, and the way of each call's rows: the game's code for one of them exactly when the call holds
+  // a denormal half. *bad: the input that differs (the call's first for the way), or `last`.
+  // Ours: the other lanes hold 1.0f, one value for all of them; the lanes do not read each other.
   const auto lanes_differ = [&](size_t lane, uint64_t first, uint64_t last, uint64_t* bad) {
     constexpr size_t BATCH = 64;
     const size_t lanes_first = ((lane == ROW_WORDS) ? 0 : lane);
@@ -1193,8 +1225,10 @@ int wmain(int argc, wchar_t** argv) {
     *bad = last;
     for (uint64_t input = first; input < last && !input_differs.load(std::memory_order_relaxed); input += BATCH) {
       const size_t count = static_cast<size_t>(std::min<uint64_t>(BATCH, last - input));
+      bool denormal = false;
       for (size_t row = 0; row < count; ++row) {
         const auto x = static_cast<uint32_t>(input + row);
+        denormal = denormal || ((x & 0x7fffffff) >= DENORMAL_HALF_FIRST && (x & 0x7fffffff) < NORMAL_HALF_FIRST);
         for (size_t index = lanes_first; index < lanes_end; ++index) {
           if (LANES[index].base == BASE_ZERO) continue;
           std::memcpy(sources[row][index], &x, sizeof(x));
@@ -1202,28 +1236,33 @@ int wmain(int argc, wchar_t** argv) {
         std::memset(at(pointers[row].rbx + ROW_WORDS_OFFSET), 0xa5, 2 * ROW_WORDS);
       }
       TlsSetValue(runner_end_slot, pointers.data() + count);
+      TlsSetValue(fallback_slot, nullptr);
       reinterpret_cast<RowsRunner>(rows_runner)(pointers.data());
-      for (size_t row = 0; row < count; ++row) {
+      uint64_t differs_at = ((fallback_taken() == denormal) ? last : input);
+      for (size_t row = 0; row < count && differs_at == last; ++row) {
         const auto x = static_cast<uint32_t>(input + row);
         const auto half = static_cast<uint16_t>(reinterpret_cast<HalfCall>(reference_half)(&x));
         for (size_t index = lanes_first; index < lanes_end; ++index) {
           expected[index] = ((index == ZERO_LANE) ? uint16_t{0} : half);
         }
-        if (std::memcmp(at(pointers[row].rbx + ROW_WORDS_OFFSET), expected.data(), sizeof(expected)) == 0) continue;
-        *bad = input + row;
-        input_differs = true;
-        return;
+        if (std::memcmp(at(pointers[row].rbx + ROW_WORDS_OFFSET), expected.data(), sizeof(expected)) != 0) {
+          differs_at = input + row;
+        }
       }
+      if (differs_at == last) continue;
+      *bad = differs_at;
+      input_differs = true;
+      return;
     }
   };
   // The half's stub. The DLL does not write it (game_code.hpp), so it is placed here as the DLL would place it: its
   // bytes on a cache line past the gap, the game's function behind them, and the site's jump through the plugin's own
   // ApplyJump. Then it is reached through the game's own entry, against the reference.
   std::printf("  the half's stub\n");
-  const uintptr_t half_stub =
-      stubs_at(reinterpret_cast<uintptr_t>(api.code_near_game(game_code::LEAD_GAP_BYTES + (game_code::BLOCK_ALIGNMENT - 1)
-                                                              + game_code::HALF.size() + HALF_BYTES)),
-               game_code::LEAD_GAP_BYTES);
+  const uintptr_t half_stub = stubs_at(
+      reinterpret_cast<uintptr_t>(api.code_near_game(game_code::LEAD_GAP_BYTES + (game_code::BLOCK_ALIGNMENT - 1)
+                                                     + game_code::HALF.size() + HALF_BYTES)),
+      game_code::LEAD_GAP_BYTES);
   std::memcpy(at(half_stub), game_code::HALF.data(), game_code::HALF.size());
   std::memcpy(at(half_stub + game_code::HALF.size()), reference_half, HALF_BYTES);
   FlushInstructionCache(GetCurrentProcess(), at(half_stub), game_code::HALF.size() + HALF_BYTES);

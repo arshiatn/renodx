@@ -244,8 +244,11 @@ int wmain(int argc, wchar_t** argv) {
 
   WriteTweakObjects();
   // Every row in, the game code row's stubs with their gap too: one game run's code near the game fits what the
-  // loader's own code leaves of its page (LOADER_OWN_NEAR_CODE_BYTES: about 3 KiB of the 8, read from its source).
-  constexpr size_t LOADER_OWN_NEAR_CODE_BYTES = 0xc00;
+  // loader's own code leaves of its page at the loader's worst (LOADER_OWN_NEAR_CODE_BYTES, read from loader 1.3.28's
+  // source: about 0x720 bytes of its own requests and 32 bytes for each of its 77 hooks, 0x10c0 with every one on;
+  // about 3 KiB in a default start). So 0xf40 are ours; a row that needs more could leave the game code row, the last
+  // to ask, without memory at a real start.
+  constexpr size_t LOADER_OWN_NEAR_CODE_BYTES = 0x10c0;
   const size_t near_code_before = near_code_used;
   const Plugin plugin = ExpectPluginDll(api, argv[1], false);
   std::printf("  code near the game: %#zx bytes\n", near_code_used - near_code_before);

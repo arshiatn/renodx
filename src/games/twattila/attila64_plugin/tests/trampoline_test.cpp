@@ -14,6 +14,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -303,6 +304,28 @@ int main() {
                && run(bed, in) == game && plan.calls == 1,
            "code memory without write access: the stub is in and runs, the access as it was");
     VirtualProtect(next_code, trampoline::MID_STUB_CAPACITY, before, &before);
+
+    // Code memory whose first and last byte have different access (a block across two regions), either way round:
+    // refused, and nothing written, since one access could not be put back for both. The callers say WRITE_FAILED.
+    auto* split = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x2000, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
+    std::array<uint8_t, 16> block;
+    block.fill(0xc3);
+    // The control: the same block inside one region goes in.
+    DWORD close_error = 0;
+    Expect(WriteNearCode(split + 0x100, block, &close_error) && split[0x100] == 0xc3 && close_error == 0,
+           "code memory of two kinds of access, control: a block inside one region is written");
+    bool refused = true;
+    for (const DWORD first : {DWORD{PAGE_EXECUTE_READWRITE}, DWORD{PAGE_EXECUTE_READ}}) {
+      const DWORD last = ((first == PAGE_EXECUTE_READ) ? PAGE_EXECUTE_READWRITE : PAGE_EXECUTE_READ);
+      VirtualProtect(split, 0x1000, first, &before);
+      VirtualProtect(split + 0x1000, 0x1000, last, &before);
+      refused = refused && !WriteNearCode(split + 0x1000 - 8, block, &close_error)
+                && std::all_of(split + 0x1000 - 8, split + 0x1000 + 8, [](uint8_t byte) { return byte == 0; })
+                && VirtualQuery(split, &page, sizeof(page)) != 0 && page.Protect == first
+                && VirtualQuery(split + 0x1000, &page, sizeof(page)) != 0 && page.Protect == last;
+    }
+    Expect(refused, "code memory of two kinds of access: refused, nothing written, the access as it was");
+    VirtualFree(split, 0, MEM_RELEASE);
   }
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);
