@@ -5,7 +5,8 @@
 
 // The plugin's sites against the game file itself: maps the Linux build's load segments at their addresses (read and
 // write, never executed), applies the loader's stack-check rewrite, and checks the build id and every site's window,
-// the hook through the fake loader, controls that must be refused, and the built DLL's init.
+// the hook through the fake loader, controls that must be refused, each engine value's static constructor call
+// (tweaks.h: the object, its name and its default), and the built DLL's init.
 // elf_sites_test.exe <renodx_attila64.dll> <game ELF>; SKIPPED (exit 77, reported by build.ps1 as not run)
 // without the ELF or when the game's range is taken.
 
@@ -19,6 +20,7 @@
 
 #include "../hooks.hpp"
 #include "../patcher.hpp"
+#include "../tweaks.h"
 #include "fake_loader.hpp"
 
 inline constexpr int EXIT_SKIPPED = 77;
@@ -63,6 +65,8 @@ int wmain(int argc, wchar_t** argv) {
     return value;
   };
   uintptr_t game_end = 0;
+  uintptr_t writable_lo = 0;  // the load segment the game writes: its data
+  uintptr_t writable_hi = 0;
   const auto program_headers = field.operator()<uint64_t>(0x20);
   for (uint16_t index = 0; index < field.operator()<uint16_t>(0x38); ++index) {
     const size_t header = program_headers + (index * size_t{field.operator()<uint16_t>(0x36)});
@@ -77,6 +81,10 @@ int wmain(int argc, wchar_t** argv) {
     }
     std::memcpy(reinterpret_cast<void*>(address), elf.data() + offset, file_bytes);
     game_end = std::max<uintptr_t>(game_end, address + memory_bytes);
+    if ((field.operator()<uint32_t>(header + 4) & 2) != 0) {  // PF_W
+      writable_lo = address;
+      writable_hi = address + memory_bytes;
+    }
   }
   elf = {};
   const int rewritten = ApplyStackRule(reinterpret_cast<uint8_t*>(GAME_LO), reinterpret_cast<const uint8_t*>(game_end));
@@ -115,6 +123,56 @@ int wmain(int argc, wchar_t** argv) {
     Expect(CheckSite(site, FOREIGN).refusal == REFUSAL_NONE, "the site restored");
   }
 
+  // Each engine value in the game's own code: its static constructor call passes the object, the name and a plain
+  // default stored just before (mov byte / dword [rsp + n], imm). The objects are only built when the game runs.
+  const auto word_at = [&](uintptr_t address) {
+    uint32_t word = 0;
+    std::memcpy(&word, at(address), sizeof(word));
+    return word;
+  };
+  for (const TweakKind& kind : TWEAK_KINDS) {
+    bool stores_table = false;
+    for (uintptr_t address = kind.constructor; address < kind.constructor + 0x100; ++address) {
+      stores_table = stores_table || word_at(address) == kind.table;
+    }
+    Expect(stores_table, "tweaks: each type's constructor stores its table");
+  }
+  size_t tweaks_in_code = 0;
+  for (const TweakEntry& entry : TWEAKS) {
+    if (entry.object == 0) continue;
+    const TweakKind& kind = TWEAK_KINDS[entry.type];
+    bool ok = entry.object >= writable_lo && entry.object + kind.value_offset + kind.value_bytes <= writable_hi;
+    ok = ok && *at(entry.constructor_call) == 0xe8
+         && entry.constructor_call + 5 + word_at(entry.constructor_call + 1) == kind.constructor;
+    ok = ok && entry.default_store < entry.constructor_call && entry.constructor_call - entry.default_store < 0x80;
+    // c6 (byte) or c7 (dword), [rsp], [rsp + disp8] or [rsp + disp32], then the immediate.
+    const uint8_t mode = *at(entry.default_store + 1);
+    const uintptr_t immediate = entry.default_store + 3 + ((mode == 0x44) ? 1 : ((mode == 0x84) ? 4 : 0));
+    ok = ok && *at(entry.default_store) == ((kind.value_bytes == 1) ? 0xc6 : 0xc7)
+         && (mode == 0x04 || mode == 0x44 || mode == 0x84) && *at(entry.default_store + 2) == 0x24;
+    uint32_t stored = 0;
+    std::memcpy(&stored, at(immediate), kind.value_bytes);
+    ok = ok && stored == entry.default_bits;
+    bool passes_object = false;
+    bool passes_name = false;
+    for (uintptr_t address = entry.default_store; ok && address < entry.constructor_call; ++address) {
+      passes_object = passes_object || (*at(address) == 0xbf && word_at(address + 1) == entry.object);  // mov edi
+      if (*at(address) != 0xbe) continue;  // mov esi
+      const uintptr_t text = word_at(address + 1);
+      passes_name = passes_name
+                    || (text >= GAME_LO && text + TWEAK_NAME_CAPACITY <= game_end
+                        && std::strcmp(reinterpret_cast<const char*>(text), entry.name) == 0);
+    }
+    if (ok && passes_object && passes_name) {
+      ++tweaks_in_code;
+    } else {
+      std::printf("  tweak %s: not as tweaks.h says\n", entry.name);
+    }
+  }
+  std::printf("  tweaks: %zu constructor calls match\n", tweaks_in_code);
+  Expect(tweaks_in_code == TWEAKS.size() - 2, "tweaks: every object's constructor call passes its name and default");
+
+  WriteTweakObjects();
   ExpectPluginDll(api, argv[1]);
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);

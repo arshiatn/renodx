@@ -194,6 +194,7 @@ int wmain(int argc, wchar_t** argv) {
   };
   const auto every_site_untouched = [&] { return std::ranges::all_of(SITES, site_untouched); };
   write_game();
+  WriteTweakObjects();
 
   // Identity.
   Expect(CheckIdentity(api) == STATUS_READY, "identity: accepted");
