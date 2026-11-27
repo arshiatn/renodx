@@ -8,11 +8,13 @@
 // code: pass_begin finds nothing counted and answers PASS_DRAW). The test exe loads it where the loader loads its
 // plugins (after a plugin's test device, before the game's device).
 // RENODX_F7_PLUGIN="<status> <rows_applied> <rows_changed> [<version> [<rows_tried> [<notices> [<tree_value>
-// [<core_wanted> <render_core_status>]]]]]" (attila64_plugin::Status, Row and NOTICE_ bits; default "1 3 0", version 2
-// with rows_tried = rows_applied, no notices; version 1: a v1 plugin's block, its 40 bytes). tree_value 1: one engine
-// value slot, Campaign Tree Detail's rigid_campaign_tree_lod (live, the game's 100 m), its values ready; the hooks'
-// thread notes any write to it. core_wanted: its initial bits (default CORE_WANTED_DEFAULT); render_core_status: the
-// render part's word as the plugin's init publishes it (default 0, not built).
+// [<core_wanted> <render_core_status> [<effects_slot> [<engine_status>]]]]]]]" (attila64_plugin::Status, Row and
+// NOTICE_ bits; default "1 3 0", version 2 with rows_tried = rows_applied, no notices; version 1: a v1 plugin's block,
+// its 40 bytes). tree_value 1: one engine value slot, Campaign Tree Detail's rigid_campaign_tree_lod (live, the game's
+// 100 m), its values ready; the hooks' thread notes any write to it. core_wanted: its initial bits (default
+// CORE_WANTED_DEFAULT); render_core_status: the render part's word as the plugin's init publishes it (default 0, not
+// built). effects_slot: the loader's effect value slot VFX_PARALLEL_UPDATER (PK9 7.3) after the game's start check,
+// tweaks ready (0 none, 1 verdict OK, 2 CHANGED); engine_status: the engine rows' lanes (default 0, none built).
 
 #include <windows.h>
 
@@ -38,6 +40,9 @@ plugin::TweakSlot tree_lod_slot = {.name = "rigid_campaign_tree_lod",
                                    .written_bits = TREE_LOD_GAME_BITS,
                                    .type = plugin::TWEAK_FLOAT,
                                    .verdict = plugin::VERDICT_OK};
+// The block's slots: Campaign Tree Detail's, then the loader's effect value (no address: the add-on reads its verdict
+// only).
+plugin::TweakSlot slots[2] = {};
 
 // The hooks' guard (hooks.hpp): the wanted bits relaxed, calls_in_flight up, callbacks loaded, the call, down; pass_end
 // only while callbacks holds the pointer of its pass_begin.
@@ -86,9 +91,11 @@ BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID) {
   unsigned tree_value = 0;
   unsigned core_wanted = plugin::CORE_WANTED_DEFAULT;
   unsigned render_core_status = 0;
+  unsigned effects_slot = 0;
+  unsigned engine_status = 0;
   if (GetEnvironmentVariableA("RENODX_F7_PLUGIN", value, sizeof(value)) != 0) {
-    std::sscanf(value, "%u %u %u %u %u %u %u %u %u", &status, &rows, &changed, &version, &tried, &notices, &tree_value,
-                &core_wanted, &render_core_status);
+    std::sscanf(value, "%u %u %u %u %u %u %u %u %u %u %u", &status, &rows, &changed, &version, &tried, &notices,
+                &tree_value, &core_wanted, &render_core_status, &effects_slot, &engine_status);
   }
   block.version = version;
   block.bytes = static_cast<uint32_t>(plugin::BlockBytes(version));
@@ -98,9 +105,19 @@ BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID) {
   block.notices.store(notices);
   block.core_wanted.store(core_wanted);
   block.render_core_status.store(render_core_status);
+  block.engine_status.store(engine_status);
+  uint32_t slot_count = 0;
   if (tree_value != 0) {
-    block.tweaks = &tree_lod_slot;
-    block.tweak_count = 1;
+    slots[slot_count++] = tree_lod_slot;
+  }
+  if (effects_slot != 0) {
+    slots[slot_count++] = {.name = "VFX_PARALLEL_UPDATER",
+                           .type = plugin::TWEAK_BOOL,
+                           .verdict = (effects_slot == 1 ? plugin::VERDICT_OK : plugin::VERDICT_CHANGED)};
+  }
+  if (slot_count != 0) {
+    block.tweaks = slots;
+    block.tweak_count = slot_count;
     block.tweaks_status.store(plugin::TWEAKS_READY, std::memory_order_release);
   }
   block.status.store(status, std::memory_order_release);
