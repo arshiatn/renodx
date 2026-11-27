@@ -18181,6 +18181,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         hash run (ab_runs\20261127_225810_Smoke\1_B64P): all 18 'another mod changed the game code at' lines, one
         hash per function (6 values) -> pxp_ phase 2 (plugin only: PerfFix 7.5's values + a test) STARTED 23:07;
         the add-on part (EngineTexts, text, is_visible, ReShade.log line) after the sprite merge (addon.cpp).
+        pxp_ phase 2 DONE 23:16 (13 min; 5b4767f19, not merged): fit = the hash is per window; the windows of one
+        function are byte-equal in the game file and in PerfFix 7.5, so 6 values each; plugin test 0 failures, gated
+        amd64 exit 0, mutants 11 / 11, DLL ac52ed31 (staged in build\attila64_plugin; old f3cb7c8d in scratch\pxp_\out2).
+        Coord -PerfFix smoke on ac52ed31 (pxp2_smoke_pf.log; pass = no 'contact split: off (...)' line) + reviews
+        rpxp_ (Opus xHigh) + fpxp_ (Sonnet High) STARTED 23:17. Merge after both + the smoke.
         - [ ] PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also run on the PerfFix stack
         once (same result as without PerfFix). Owner: coord (batch prep)
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
