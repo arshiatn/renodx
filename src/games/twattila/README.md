@@ -1,5 +1,15 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Denoise Before Tone Mapping below 100% (2026-11-27; built only, not stamped, not installed, not run in game)
+
+- New: Denoise Before Tone Mapping (Experimental) at every render scale: below 100% Ray Reconstruction upscales the lit
+  scene before the tone mapper, which then draws at the display's size (the game's own viewport and scissor, cb12's
+  shares 1 so the bloom is read at the display uv). Below 100% with the SSS Debug View on, the row keeps today's order
+  (the view is drawn for DLSS to stretch). 100% is unchanged.
+- Verification in game (row on, RR on, 50%): one-frame trace (FrameTrace=1) with the row Off and On: On shows "tone
+  mapper draw: Ray Reconstruction on the scene before it" and the tone mapper's draw at the display's viewport. By eye:
+  the picture fills the screen (no corner, no zoom), bloom halos on their sources, the SSS Debug View still stretched.
+
 ## Dev, Denoise Before Tone Mapping (2026-11-26; built only, not stamped, not installed, not run in game)
 
 - New: **Denoise Before Tone Mapping (Experimental, off)**, 64-bit only, in the anti-aliasing's More Options while Ray
