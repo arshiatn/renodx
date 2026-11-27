@@ -17927,7 +17927,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         G1(c), G1c bounded on pixels > 0.05. For ATN: real frames 0.90-1.17x trace, night1 build + trace ~0.8x, gain in game
         unproven until S4; Round = darker, harder rims (tooltip fix). Fix round ssf_ (Opus xHigh, smoke_spheres.md only) + S5
         scr_ (Opus High, scr_1127: rt_scene.hlsli + rt_trace.cs_6_5.hlsl, ATN YES 11-26, gate 4K capped vs uncapped) STARTED
-        07:3x
+        07:3x. ssf_ DONE 11-27: smoke_spheres.md Rev 2 (29 change lines; all 6 MUSTs, all SHOULDs / NITs, 5 alternatives
+        declined with reasons): card skip below 2 Rmax, header via WriteBufferImmediate {0, room}, instance B = smoke_record + k
+        with one smoke capture + one contiguous card run (else quads + a status count), harness step 2 (HARNESS_SMOKE_ORDER /
+        HARNESS_SMOKE_CHANGE), same-request quads fallback at the plan site, RENODX_TW_SMOKE_SPHERES=2 (harness only), G1c mean
+        <= 0.0005 + max <= 0.002 where both arms >= SMOKE_DARK; Blackwell via NvAPI_GPU_GetArchInfo >= 0x1B0 (S6 logs the 5090's
+        value once). NEW R14: spheres can't share a BLAS with triangles -> the cards need their own BLAS (0.13-0.16 ms alone in
+        S1; dust / stress frames then 1.12-1.21x, the 23-particle frame 1.54x; its real share unknown until G1). Go / no-go on
+        build + trace = GO (synthetic 0.55-0.70x, night1 ~0.80x, 11 real frames 0.80-0.97x before R14). S6 table: 1 model-Q
+        probe arm (lsp3_gpu_job.ps1 -Part Q, ~1-2 min GPU), 2 harness (own writer slot, tw_rt_harness.cpp after rri_ / the m1
+        implementer), 3 sphere pass + build.ps1, 4 rt_scene.hlsli (after scr_ merges), 5 rt_d3d12.hpp (after pdf_ / P1), 6
+        dlaa_bridge.h bits, 7 gates (~25 GPU), 8 S6b addon.cpp row; S6a ~205 min, Opus High. Tooltip: 'RTX 50 only: smoke
+        shadows from round particles. Round: darker, harder-edged rims.'
         - [ ] SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start in the game batch (recorder helper,
         constantinople_aa107f05.replay, cpl2's camera, Smoke Shadow Quality Maximum, DLAA 3840x2160, PTLAS off, 2-4 frames);
         needs a runner + review and ATN's rule line before he leaves 11-27 evening. RUNNER WRITTEN (sgr_ 11-27,
