@@ -18075,7 +18075,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         h_t0 11 / 11, test_lines 17 / 17. Fix round p91f_ (Opus Medium) DONE 18:4x (21 of 25 min; scratch\p91f_\handback.md): SOLCAP uses the 2 % / n/a
         rule across both -C2 starts (the real 11-25 menu case fails the old copy), P5 fast-kind noise 0.81 ms (pk9:128),
         B64P start + sprites entry + 125:memory=1 + 2.6's pass lines, all NITs; chain 02cf94e1 -> aa861112 -> 1910c724;
-        h91 21 / 21, horizon 17 / 17, A13 exit codes unchanged. Sonnet High final sp91_ STARTED 18:44; then coord
+        h91 21 / 21, horizon 17 / 17, A13 exit codes unchanged. Sonnet High final sp91_ DONE: GO, nothing open (its own copies: chain + second-apply refusals, the 11-25 menu
+        reads n/a on both SOLCAP lines, P5 +0.70 ms 'within the noise' of 0.81, B64P string
+        '0:AntiAliasing=0;0:GraphicsSmallSoldiersAsSprites=1;125:memory=1;140:Time Each Pass (One Frame)=1' + 2.6's two
+        pass lines, h91 21 / 21, h_t0 21 / 21, test_lines 17 / 17, dry runs: only T0 / B64P lines differ, no exit code
+        changed). APPLIED by coord 19:00: tools\tw\attila64\ab\a64_ab.ps1 02cf94e1 -> aa861112 -> 1910c724 (backups
+        ab\a64_ab.pre_pk9p1_1127.ps1 = 02cf94e1, ab\a64_ab.pre_c8t0_1127.ps1 = aa861112). Next a64_ab writer: Stage B step 7
+        (check first), then RT-on-64 S1. Was: then coord
         applies (python -I -B SCR\p91_\a64_ab_pk9p1_patch.py, then a64_ab_c8t0_patch.py). m2d_ (Fable xHigh) DONE
         17:58 (27 of 40 min; designs\pk5_m2_memcpy.md, scratch\m2d_\handback.md): ONE caller 0x339b4a4 (97.88 %,
         ~1.67 of 1.71 ms a frame), size 0xe0 x count, destination the loader's Map pointer of a dynamic VB; class (c),
