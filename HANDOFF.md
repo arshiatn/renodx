@@ -18150,7 +18150,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         chain byte-identical, 9fb6fdf272eda086 still the unmasked census value; no new log literal; build.ps1 -Test -Elf
         0 failures, 0 warnings, DLL 934fc1c2; mutants 14 / 14, generator controls 4 / 4. Reviews rpxm_ (Opus xHigh) +
         fpxm_ (Sonnet High, the N-S3 late-mask read) STARTED 21:3x. Smoke with -PerfFix on DLL 934fc1c2 STARTED 21:26
-        (build\attila64_plugin = pxm_'s until the merge; fd4d700b kept in scratch\coord_\stage_fd4d700b), then without.
+        (build\attila64_plugin = pxm_'s until the merge; fd4d700b kept in scratch\coord_\stage_fd4d700b), then without. fpxm_
+        DONE (2 min) GO, 4 NITs (no ours: / deviation: mark in the source, the pfx_ tag in battle_step.hpp:807's line,
+        the masks also cover ~100 unchanged float-load bytes, single-use local 'inside'); re-hashed all 184 ranges with
+        the masks: values + 2441 check words match. SMOKES on DLL 934fc1c2 (scratch\coord_\pxm_smoke_pf.log /
+        pxm_smoke_nopf.log): with -PerfFix 7.5 'x87fix: 2756 of 2756 ... replaced', 'game code differs' lines 0, rows
+        '... contact split on', CONTACT_ENTRY first call (thread 31380), 21 sites unchanged, rows offered 0x3fff, clean
+        exit, no WER; scriptable PASS = NO only for the known T0 2.6 sprite first-call line (SPRITES NEED A CAMERA).
+        Without PerfFix PASS (CONTACT_ENTRY first call, battle step active, clean exit).
         ATN 20:3x: 'You are allowed to look at his code to see if we are getting to his blocks. He is fine with it'
         -> read-only conflict check pfx_ (Fable 5.2 xHigh; opens perffix_src read only, x87fix only; heapfix pkg stays
         unopened; findings in our words) STARTED 20:35: the pattern, the replacement, results, thread safety, the blocks
