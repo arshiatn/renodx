@@ -18083,7 +18083,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         rows fall out of its smaller L3; at most ~0.1-0.15 ms a frame; Intel not measured. Coord's second read of all 6
         runs: in the deciding cells U is also SLOWER beyond noise in 3 cells (-5..-8 % at 0xe0000) and rep movsb falls
         to ~17-19 GB/s in 4 of 12 cells at 0x380000 -> no change request to the loader's author; at most an FYI ('the
-        copy is fine, nothing to change') in the PK9 note, on ATN's word. Side line for ATN: with a
+        copy is fine, nothing to change') in the PK9 note, on ATN's word. ATN 18:48 'Sure': the FYI paragraph is in sol_note_pk9.txt (.bak_m2 kept);
+        ATN sends Sol everything after the CPU plan is done. Side line for ATN: with a
         cold source, ucrtbase memcpy / rep movsb are +4..5 % in every run (at most ~0.07 ms a frame; the game's source
         is 'others'); a note to the loader's author only if ATN asks. b32_ (Fable xHigh) DONE 17:44 (13 of 25 min; scratch\b32_\handback.md):
         backup_32bit.md Rev 3 (2.8 rows L1-L13 + G9-G11, 2.9 audit rows H1-H11; no 32-bit class moved); FROZEN 32-BIT
