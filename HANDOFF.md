@@ -18006,8 +18006,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         Medium) DONE 18:06 (35 of 45 min; scratch\p8am_\handback.md): p8a_1127 f39f7e1d1 = atn-mods 6563e2199 merged
         into Stage A b03587490, 11 fold points, ROW_BATTLE_STEP 12 / ROW_COUNT 13 (PK9's 11 kept), sites.h = the folded
         generator's output (21 sites; p8am_\gen\, install.sh not run yet), 4 test runs PASS, DLL 15947301, mutations
-        59 / 60 caught + m55 equivalent. Re-check rp8am_ (Sonnet High) STARTED 18:13; then merge p8a_1127, coord runs
-        p8am_\gen\install.sh + the main-tree plugin test + gated build; then Stage B step 5 (Fable Medium). wa3_ (Opus Medium
+        59 / 60 caught + m55 equivalent. Re-check rp8am_ (Sonnet High) DONE: GO, no MUST / SHOULD (scratch\rp8am_\review.md; both diffs one-sided, sites.h =
+        the folded generator's output, 3 deviations sound, its own plugin test exit 0, DLL 15947301). Stage A MERGED
+        949f1d1fe (18:33); p8am_\gen\install.sh run (gen_plugin_sites.py + plugin_sites.tsv, .bak_p8am kept);
+        main tree: plugin test exit 0 (0 failures, 14216 checks, the 3 game-file tests ran), gated amd64 twattila exit 0. Next: Stage B step 5 (Fable Medium) on p8b_1127. wa3_ (Opus Medium
         trial) STARTED 18:15: PK8 W-A3 'Faster Battle Step' add-on row (link.hpp + addon.cpp, P9-4's pattern incl.
         rp94_ MUST-1) on wa3_1127 = p8a_1127 + atn-mods, plus the F7 cases for P9-4 + W-A3 (built only); coord runs F7
         after it as one GPU-lock job (ATN 18:15: GPU OK for CPU work). Note: HANDOFF clock stamps 19:xx above were an
@@ -18023,7 +18025,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         a64_ab_c8t0_patch.py ebcc5c91 -> 62fef322 (T0 + hzc_'s 4 horizon pieces); h91 21 / 21, A13 unchanged forms
         identical, h_t0 11 / 11, test_lines 17 / 17; deviation: P5 vs A/A noise (no fixed limits). Left: the -C2 Smoke +
         PK9 batches (hardware), CPU Set Setter rules for run_rs_c64 + run_rs_pkg (coord, before the batch), ep1c twins
-        refused until PK8's DLL. Review rp91_ (Opus xHigh) STARTED 19:3x; coord applies after it + a Sonnet final. m2d_ (Fable xHigh) DONE
+        refused until PK8's DLL. Review rp91_ (Opus xHigh) DONE (scratch\rp91_\review.md): P9-1 GO WITH CHANGES (SHOULD: P5 p99 noise of the
+        fast kinds 0.81 ms = pk9:128, not 0.55; 2 NITs); T0 GO WITH CHANGES (MUST: the SOLCAP menu stretch skips c8:872's
+        2 % / n/a rule, the 11-25 data ran uncapped ~225 fps and passed as '(cap on)'; SHOULD: the -PerfFix B64P start
+        lacks 0:GraphicsSmallSoldiersAsSprites=1 + 125:memory=1 and 2.6's pass lines; 4 NITs); re-runs h91 21 / 21,
+        h_t0 11 / 11, test_lines 17 / 17. Fix round p91f_ (Opus Medium) STARTED 18:33; then a Sonnet High final; coord
+        applies. m2d_ (Fable xHigh) DONE
         17:58 (27 of 40 min; designs\pk5_m2_memcpy.md, scratch\m2d_\handback.md): ONE caller 0x339b4a4 (97.88 %,
         ~1.67 of 1.71 ms a frame), size 0xe0 x count, destination the loader's Map pointer of a dynamic VB; class (c),
         lever (d) only, no build target; PK5 10.1 / 10.3 corrected (addendum); section 10 copied into backup_32bit.md;
