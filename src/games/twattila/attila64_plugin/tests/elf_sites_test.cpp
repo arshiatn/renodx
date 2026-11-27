@@ -27,6 +27,7 @@
 #include "../hooks.hpp"
 #include "../patcher.hpp"
 #include "../tweaks.h"
+#include "../tweaks.hpp"
 #include "fake_loader.hpp"
 
 int wmain(int argc, wchar_t** argv) {
@@ -129,6 +130,13 @@ int wmain(int argc, wchar_t** argv) {
              "shadow: a cascade site is the immediate of a mov dword [r13 + disp32], imm32");
     }
   }
+  // Medium's own cascade writes follow its size's two stores, end where the three settings' paths meet (High jumps
+  // there), and are the numbers the row writes at High and Max.
+  Expect(std::memcmp(at(MEDIUM_CASCADES_ADDRESS), MEDIUM_CASCADES.data(), MEDIUM_CASCADES.size()) == 0
+             && word_at(MEDIUM_CASCADES_ADDRESS + MEDIUM_COUNT_OFFSET) == 2 && word_at(MEDIUM_CASCADES_ADDRESS + MEDIUM_EXTRA_OFFSET) == 0
+             && MEDIUM_CASCADES_ADDRESS == SITES[LABEL_SHADOW_SIZE_MEDIUM].address + SITES[LABEL_SHADOW_SIZE_MEDIUM].length + 7 + 11
+             && *at(0x30e46e7) == 0xeb && 0x30e46e7 + 2 + *at(0x30e46e8) == MEDIUM_CASCADES_ADDRESS + MEDIUM_CASCADES.size(),
+         "shadow: Medium's own cascade writes are 2 and 0, where patcher.hpp says");
   // The rest pack's return address follows a call of the pack function.
   Expect(*at(REST_PACK_RETURN - 5) == 0xe8 && REST_PACK_RETURN + static_cast<int32_t>(word_at(REST_PACK_RETURN - 4)) == SITES[LABEL_PACK_ENTRY].address,
          "rest pack: its return address is right after a call of the pack site");
@@ -516,6 +524,64 @@ int wmain(int argc, wchar_t** argv) {
       Expect(hooks_leave_the_lanes(third, ways_in),
              "engine rows: a row off for a changed site stays off at its hook's next call");
     }
+  }
+
+  // Two Shadow Cascades Under Rays on the game file, each case a copy's init on the file mapped again (a ReShade.ini
+  // beside this exe for the one init, the DirectX 11 route by the loader's test switch): the key, a byte changed
+  // before the init, and what the row's seven sites hold after it.
+  {
+    constexpr std::array<SiteLabel, 4> CASCADE_LABELS = {LABEL_SHADOW_COUNT_HIGH, LABEL_SHADOW_EXTRA_HIGH, LABEL_SHADOW_COUNT_MAX,
+                                                         LABEL_SHADOW_EXTRA_MAX};
+    constexpr std::array<uint32_t, 4> GAME_CASCADES = {3, 1, 4, 2};
+    constexpr std::array<uint32_t, 4> TWO_CASCADES = {2, 0, 2, 0};
+    struct CascadeCase {
+      const wchar_t* folder;
+      const wchar_t* key;
+      uintptr_t changed_byte;  // 0: none
+      bool row_in;
+      std::array<uint32_t, 4> cascades;
+      const char* line;
+    };
+    const uintptr_t fourth_site = SITES[LABEL_SHADOW_EXTRA_MAX].address;
+    const std::wstring ini_path = std::wstring(exe_dir_wide) + L"\\ReShade.ini";
+    SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, "1");
+    for (const CascadeCase& cascade_case : {
+             CascadeCase{L"cascades_1", L"1", 0, true, TWO_CASCADES, "renodx_attila64: shadow cascades 2: patched"},
+             CascadeCase{L"cascades_0", L"0", 0, true, GAME_CASCADES, "renodx_attila64: shadow cascades: game's counts"},
+             CascadeCase{L"cascades_differs", L"1", fourth_site, false, GAME_CASCADES,
+                         "renodx_attila64: site SHADOW_EXTRA_MAX 0x30e4717: skipped (DIFFERS)"},
+             CascadeCase{L"cascades_medium", L"1", MEDIUM_CASCADES_ADDRESS + MEDIUM_COUNT_OFFSET, false, GAME_CASCADES,
+                         "renodx_attila64: shadow cascades: Medium's own writes at 0x30e4751 are not the game's, the shadow map row stays out"},
+         }) {
+      const Plugin copy = copy_on_the_game_again(cascade_case.folder);
+      WritePrivateProfileStringW(INI_VALUES_SECTION, INI_SHADOW_CASCADES, cascade_case.key, ini_path.c_str());
+      {
+        const std::scoped_lock lock(log_mutex);
+        log_lines.clear();
+      }
+      if (cascade_case.changed_byte != 0) {
+        *at(cascade_case.changed_byte) ^= 1;
+      }
+      const bool init_ran = (copy.init != nullptr && copy.init(&api) == 0);
+      DeleteFileW(ini_path.c_str());
+      // The changed byte back, so that only the plugin's own writes show below.
+      if (cascade_case.changed_byte != 0) {
+        *at(cascade_case.changed_byte) ^= 1;
+      }
+      bool sites_hold = true;
+      for (size_t index = 0; index < CASCADE_LABELS.size(); ++index) {
+        sites_hold = sites_hold && word_at(SITES[CASCADE_LABELS[index]].address) == cascade_case.cascades[index];
+      }
+      for (const SiteLabel label : {LABEL_SHADOW_SIZE_HIGH, LABEL_SHADOW_SIZE_MAX, LABEL_SHADOW_SIZE_MEDIUM}) {
+        sites_hold = sites_hold
+                     && std::memcmp(at(SITES[label].address), SITES[label].window.data() + SITE_MARGIN, SITES[label].length) == 0;
+      }
+      Expect(init_ran && ((copy.block->rows_applied & RowBit(ROW_SHADOW_MAP)) != 0) == cascade_case.row_in
+                 && ((copy.block->rows_refused & RowBit(ROW_SHADOW_MAP)) == 0) == cascade_case.row_in && sites_hold
+                 && Logged(cascade_case.line) && Logged("shadow cascades 2: patched") == (cascade_case.cascades == TWO_CASCADES),
+             "cascades on the game file: the row, its seven sites' bytes and its line for the key");
+    }
+    SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, nullptr);
   }
 
   std::printf("%s: %d checks, %d failure(s)\n", ((failures == 0) ? "PASS" : "FAIL"), checks, failures);

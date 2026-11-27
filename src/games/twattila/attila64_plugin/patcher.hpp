@@ -93,6 +93,17 @@ struct AppliedSite {
 [[nodiscard]] constexpr bool IsShadowSizeSite(const Site& site) {
   return site.row == ROW_SHADOW_MAP && site.kind == SITE_PATCH && site.length == 2 * sizeof(float);
 }
+// Medium's own two cascade writes, right after its size (mov dword [r13 + 0xcc], 2; mov dword [r13 + 0xb8], 0): the
+// numbers Two Shadow Cascades Under Rays writes at High and Max, and the shadow row's check that the game still writes
+// them itself. src: the 32-bit add-on's MEDIUM_CASCADES (graphics_hooks.hpp shadow_map); the tests pin the bytes on
+// the game file.
+inline constexpr uintptr_t MEDIUM_CASCADES_ADDRESS = 0x30e4751;
+inline constexpr std::array<uint8_t, 22> MEDIUM_CASCADES = {
+    0x41, 0xc7, 0x85, 0xcc, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+    0x41, 0xc7, 0x85, 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+inline constexpr size_t MEDIUM_COUNT_OFFSET = 7;   // the first write's number, what a COUNT site holds
+inline constexpr size_t MEDIUM_EXTRA_OFFSET = 18;  // the second write's, what an EXTRA site holds
 
 // READY when the loader and the game build are the ones the sites were made for.
 [[nodiscard]] inline Status CheckIdentity(const LoaderApi& api) {

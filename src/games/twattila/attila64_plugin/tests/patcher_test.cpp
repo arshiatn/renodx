@@ -568,6 +568,8 @@ int wmain(int argc, wchar_t** argv) {
                                            static_cast<uint8_t>(cell_target >> 16), static_cast<uint8_t>(cell_target >> 24)});
     cell_caller.insert(cell_caller.end(), {0x48, 0x83, 0xc4, 0x38, RET});  // add rsp, 0x38; ret
     std::memcpy(at(GRASS_CELL_CALLER), cell_caller.data(), cell_caller.size());
+    // Medium's own cascade writes, which the shadow row's check reads.
+    std::memcpy(at(MEDIUM_CASCADES_ADDRESS), MEDIUM_CASCADES.data(), MEDIUM_CASCADES.size());
     // The two camera getters the grass draw's no-LOD return reads.
     std::memcpy(at(GET_SCENE_CAMERA), GET_SCENE_CAMERA_CODE.data(), GET_SCENE_CAMERA_CODE.size());
     std::memcpy(at(GET_CAMERA_POSITION), GET_CAMERA_POSITION_CODE.data(), GET_CAMERA_POSITION_CODE.size());
@@ -2060,6 +2062,121 @@ int wmain(int argc, wchar_t** argv) {
     Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && shadow_sizes(2048.f, 1024.f)
                && Logged("renodx_attila64: shadow map: game's size (ShadowMapSize=") && Logged(" out of range)"),
            "shadow: a key outside 0..2 writes nothing");
+  }
+  // Two Shadow Cascades Under Rays: the ShadowCascades key of the same section on the DirectX 11 route. 1 writes
+  // Medium's numbers (2 cascades, 0) over High's (3, 1) and Max's (4, 2); the sizes follow their own key.
+  constexpr std::array<SiteLabel, 4> CASCADE_LABELS = {LABEL_SHADOW_COUNT_HIGH, LABEL_SHADOW_EXTRA_HIGH, LABEL_SHADOW_COUNT_MAX,
+                                                       LABEL_SHADOW_EXTRA_MAX};
+  const auto cascades_are = [&](const std::array<uint32_t, 4>& numbers) {
+    bool match = true;
+    for (size_t index = 0; index < CASCADE_LABELS.size(); ++index) {
+      match = match && std::memcmp(at(SITES[CASCADE_LABELS[index]].address), &numbers[index], sizeof(uint32_t)) == 0;
+    }
+    return match;
+  };
+  constexpr std::array<uint32_t, 4> GAME_CASCADES = {3, 1, 4, 2};
+  constexpr std::array<uint32_t, 4> TWO_CASCADES = {2, 0, 2, 0};
+  const auto cascade_case = [&](const wchar_t* folder, const wchar_t* cascades_text, const wchar_t* size_text, bool dx11,
+                                uintptr_t changed_byte) {
+    SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, (dx11 ? "1" : nullptr));
+    set_ini_key_off(nullptr);
+    WritePrivateProfileStringW(INI_VALUES_SECTION, INI_SHADOW_CASCADES, cascades_text, ini_path.c_str());
+    WritePrivateProfileStringW(INI_VALUES_SECTION, INI_SHADOW_MAP_SIZE, size_text, ini_path.c_str());
+    write_game();
+    if (changed_byte != 0) {
+      *at(changed_byte) ^= 1;
+    }
+    return init_copy(folder, MODULE_NAME, api);
+  };
+  Expect(cascades_are(GAME_CASCADES), "cascades: the fake game holds the game's counts");
+  {
+    const auto [plugin, result] = cascade_case(L"cascades_1", L"1", L"0", true, 0);
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && plugin.block->rows_refused == RowBit(ROW_GAME_CODE)
+               && cascades_are(TWO_CASCADES) && site_untouched(SITES[LABEL_SHADOW_SIZE_HIGH])
+               && site_untouched(SITES[LABEL_SHADOW_SIZE_MAX]) && site_untouched(SITES[LABEL_SHADOW_SIZE_MEDIUM]),
+           "cascades: ShadowCascades=1 writes 2, 0, 2, 0 at the four cascade sites, the sizes stay the game's");
+    Expect(Logged("renodx_attila64: shadow cascades 2: patched") && Logged("renodx_attila64: shadow map: game's size")
+               && Logged("renodx_attila64: site SHADOW_EXTRA_MAX 0x30e4717: applied")
+               && !Logged("site SHADOW_EXTRA_MAX 0x30e4717: applied (") && !Logged("site SHADOW_COUNT_HIGH 0x30e46d8: applied (")
+               && Logged("renodx_attila64: site SHADOW_SIZE_MAX 0x30e46eb: applied (game's bytes kept)") && !Logged("game's counts"),
+           "cascades: the row's line and each written site's");
+    plugin.game_started(&api);
+    Expect(plugin.block->rows_changed.load() == 0 && Logged(every_site_unchanged),
+           "cascades: game start finds the written counts unchanged");
+    *at(SITES[LABEL_SHADOW_EXTRA_MAX].address) ^= 1;
+    plugin.game_started(&api);
+    Expect(plugin.block->rows_changed.load() == RowBit(ROW_SHADOW_MAP) && Logged("SHADOW_EXTRA_MAX changed after we patched it"),
+           "cascades: a later change of a written count is seen");
+  }
+  {
+    const auto [plugin, result] = cascade_case(L"cascades_1_size_1", L"1", L"1", true, 0);
+    const std::array<float, 2> doubled = {4096.f, 4096.f};
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && cascades_are(TWO_CASCADES)
+               && std::memcmp(at(SITES[LABEL_SHADOW_SIZE_MAX].address), doubled.data(), sizeof(doubled)) == 0
+               && Logged("renodx_attila64: shadow cascades 2: patched") && Logged("renodx_attila64: shadow map 4096: patched")
+               && !Logged("(game's bytes kept)"),
+           "cascades: with ShadowMapSize=1 too all seven sites are written");
+  }
+  {
+    const auto [plugin, result] = cascade_case(L"cascades_0", L"0", L"0", true, 0);
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && shadow_sizes(2048.f, 1024.f) && cascades_are(GAME_CASCADES)
+               && Logged("renodx_attila64: shadow cascades: game's counts") && !Logged("game's counts (")
+               && Logged("renodx_attila64: site SHADOW_EXTRA_MAX 0x30e4717: applied (game's bytes kept)"),
+           "cascades: ShadowCascades=0 keeps the game's bytes, the row is in");
+  }
+  {
+    const auto [plugin, result] = cascade_case(L"cascades_not_dx11", L"1", L"0", false, 0);
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && shadow_sizes(2048.f, 1024.f)
+               && Logged("renodx_attila64: shadow cascades: game's counts (ShadowCascades=1 not written: not DX11)"),
+           "cascades: nothing is written off the DirectX 11 route");
+  }
+  for (const auto& [folder, key_text] : {std::pair{L"cascades_2", L"2"}, std::pair{L"cascades_minus_1", L"-1"}}) {
+    const auto [plugin, result] = cascade_case(folder, key_text, L"0", true, 0);
+    Expect(result == 0 && plugin.block->rows_applied == ALL_ROWS && shadow_sizes(2048.f, 1024.f)
+               && Logged("renodx_attila64: shadow cascades: game's counts (ShadowCascades=") && Logged(" out of range)"),
+           "cascades: a key other than 0 or 1 writes nothing");
+  }
+  // The fourth cascade site is not the game's: the row is refused, none of its seven sites is written.
+  {
+    const auto [plugin, result] = cascade_case(L"cascades_differs", L"1", L"1", true, SITES[LABEL_SHADOW_EXTRA_MAX].address);
+    *at(SITES[LABEL_SHADOW_EXTRA_MAX].address) ^= 1;
+    Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && shadow_sizes(2048.f, 1024.f)
+               && Logged("site SHADOW_EXTRA_MAX 0x30e4717: skipped (DIFFERS)") && Logged("site SHADOW_COUNT_HIGH 0x30e46d8: skipped (ROW)")
+               && !Logged("renodx_attila64: shadow cascades") && !Logged("renodx_attila64: shadow map") && !Logged("withdrawn"),
+           "cascades: the fourth cascade site differs, the whole row stays out with the game's bytes");
+  }
+  // Medium's own cascade writes are not 2 and 0: the row is refused whatever the keys say.
+  for (const auto& [folder, key_text, offset] :
+       {std::tuple{L"cascades_medium_count", L"1", MEDIUM_COUNT_OFFSET}, std::tuple{L"cascades_medium_extra", L"1", MEDIUM_EXTRA_OFFSET},
+        std::tuple{L"cascades_medium_key_0", L"0", MEDIUM_COUNT_OFFSET}}) {
+    const auto [plugin, result] = cascade_case(folder, key_text, L"1", true, MEDIUM_CASCADES_ADDRESS + offset);
+    Expect(result == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && shadow_sizes(2048.f, 1024.f)
+               && Logged("renodx_attila64: shadow cascades: Medium's own writes at 0x30e4751 are not the game's, the shadow map row stays out")
+               && Logged("site SHADOW_SIZE_HIGH 0x30e46b7: skipped (ROW)") && Logged("site SHADOW_EXTRA_MAX 0x30e4717: skipped (ROW)")
+               && !Logged("patched") && !Logged("game's counts") && !Logged("withdrawn"),
+           "cascades: Medium's writes are not the game's, the whole row stays out");
+  }
+  // The loader refuses the fourth cascade write: the three counts written before it go back, the sizes come out too.
+  {
+    SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, "1");
+    set_ini_key_off(nullptr);
+    WritePrivateProfileStringW(INI_VALUES_SECTION, INI_SHADOW_CASCADES, L"1", ini_path.c_str());
+    write_game();
+    failing_patch_calls = 1u << 3;
+    const auto [plugin, result] = init_copy(L"cascades_write_fails", MODULE_NAME, api);
+    Expect(result == 0 && failing_patch_calls == 0 && plugin.block->rows_applied == (ALL_ROWS & ~RowBit(ROW_SHADOW_MAP))
+               && plugin.block->rows_refused == (RowBit(ROW_SHADOW_MAP) | RowBit(ROW_GAME_CODE)) && shadow_sizes(2048.f, 1024.f)
+               && !Logged("renodx_attila64: shadow cascades") && !Logged("renodx_attila64: shadow map"),
+           "cascades: a refused fourth write rolls the row back to the game's bytes");
+    Expect(Logged("site SHADOW_EXTRA_MAX 0x30e4717: skipped (WRITE_FAILED)") && Logged("site SHADOW_SIZE_MEDIUM 0x30e4737: skipped (ROW)")
+               && Logged("site SHADOW_COUNT_HIGH 0x30e46d8: withdrawn (a later site of its row failed)")
+               && Logged("site SHADOW_EXTRA_HIGH 0x30e46e3: withdrawn (a later site of its row failed)")
+               && Logged("site SHADOW_COUNT_MAX 0x30e470c: withdrawn (a later site of its row failed)")
+               && Logged("site SHADOW_SIZE_HIGH 0x30e46b7: withdrawn") && Logged("site SHADOW_SIZE_MAX 0x30e46eb: withdrawn")
+               && !Logged("could not be put back"),
+           "cascades: each site that was in has its withdrawn line");
   }
   // The fifth of the seven is not the game's: nothing of the row is written, the other rows go in.
   SetEnvironmentVariableA(tweaks::ROUTE_VARIABLE, "1");
