@@ -13,7 +13,8 @@
 //    take the counts in fours (X27): the plain march's with 32, 36 and 48, 12, 16 and 28, to the bit. CONTROL (must
 //    differ): fc24dbce's plain march with the odd counts.
 // 2. Auto Thickness: a deep box and a thick wall the sun shines past towards the camera leak less light behind their
-//    fronts (fewer ground pixels wrong against the reference), a pole no worse (5% + 20 pixels).
+//    fronts (fewer ground pixels wrong against the reference), a pole no worse (5% + 20 pixels); 8 runs each in turns,
+//    the pixels varying between runs (as case 1's) left out of both counts.
 // 3. A red banner: its shadow lets Light Through Banners of the sun through (its occlusion its solid one's x 0.65, within
 //    0.12), its filter is the banner's colour over its brightest channel (Coloured Shadows: green and blue taken, red
 //    kept), none in the sun. Pharaoh's form (the sun at float 4, an sRGB colour, power 1): the same within 0.01; CONTROL: a
@@ -466,19 +467,6 @@ static ID3D11ShaderResourceView* RunFrame(const Frame& frame, const sss::Setting
 
 static sss::Settings Defaults() { return {.enabled = true}; }
 
-// Ground pixels wrong against the reference (occlusion over half where it is lit, under half where it is shadowed).
-static int WrongPixels(const Frame& frame, std::span<const Box> boxes, const std::vector<uint8_t>& occlusion) {
-  int wrong = 0;
-  const Vector to_sun = {-frame.sun[0], -frame.sun[1], -frame.sun[2]};
-  for (size_t pixel = 0; pixel < occlusion.size(); ++pixel) {
-    if (frame.picture.hit[pixel] != -1) continue;
-    float distance = 0.f;
-    const bool shadowed = Occluder(boxes, frame.picture.position[pixel], to_sun, 1e30f, &distance) >= 0;
-    if (shadowed != (occlusion[pixel] > 127)) ++wrong;
-  }
-  return wrong;
-}
-
 // ---- Cases ------------------------------------------------------------------------------------------------------------
 
 static const std::array<Box, 1> BOX_SCENE = {{{.low = {-1.f, -2.f, 9.f}, .high = {1.f, 1.f, 11.f}}}};
@@ -696,11 +684,37 @@ static void TestAutoThickness() {
   for (const auto& test_case : cases) {
     const std::array<Box, 1> boxes = {test_case.box};
     const Frame frame = MakeFrame(480, 270, boxes, sun);
+    const Vector to_sun = {-frame.sun[0], -frame.sun[1], -frame.sun[2]};
+    // Off and on RUNS times each, in turns (case 1's twice-written pixels: ~155 far ground pixels, the same in every scene,
+    // flip run to run on WARP, one run's count +-15). A ground pixel counts only where every run of each side gives it
+    // the same occlusion; wrong against the reference: over half where it is lit, under half where it is shadowed.
+    std::array<std::vector<std::vector<uint8_t>>, 2> runs;
     sss::Settings settings = Defaults();
-    const int off = WrongPixels(frame, boxes, ReadView<uint8_t>(RunFrame(frame, settings)));
-    settings.auto_thickness = true;
-    const int on = WrongPixels(frame, boxes, ReadView<uint8_t>(RunFrame(frame, settings)));
-    std::printf("   %s: wrong ground pixels %d off, %d on\n", test_case.name, off, on);
+    for (int run = 0; run < RUNS; ++run) {
+      for (int side = 0; side < 2; ++side) {
+        settings.auto_thickness = (side == 1);
+        runs[side].push_back(ReadView<uint8_t>(RunFrame(frame, settings)));
+      }
+    }
+    int off = 0;
+    int on = 0;
+    int varying = 0;
+    for (size_t pixel = 0; pixel < runs[0][0].size(); ++pixel) {
+      if (frame.picture.hit[pixel] != -1) continue;
+      const bool stable = std::ranges::all_of(runs, [&](const auto& side) {
+        return std::ranges::all_of(side, [&](const auto& occlusion) { return occlusion[pixel] == side[0][pixel]; });
+      });
+      if (!stable) {
+        ++varying;
+        continue;
+      }
+      float distance = 0.f;
+      const bool shadowed = Occluder(boxes, frame.picture.position[pixel], to_sun, 1e30f, &distance) >= 0;
+      off += (shadowed != (runs[0][0][pixel] > 127)) ? 1 : 0;
+      on += (shadowed != (runs[1][0][pixel] > 127)) ? 1 : 0;
+    }
+    std::printf("   %s: wrong ground pixels %d off, %d on (%d varying between runs left out)\n", test_case.name, off, on, varying);
+    CHECK(varying < static_cast<int>(runs[0][0].size() / 500));
     if (test_case.must_improve) {
       CHECK(on < off);
     } else {
