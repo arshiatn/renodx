@@ -3664,16 +3664,16 @@ void ConfigureAddon() {
     // while the row cannot run (its key 0 in the plugin's ini, or the game's code differs); its line says why. The
     // graphics preset buttons leave the rows alone (not look settings).
     struct EngineRow {
-      const char* key;
-      float* binding;
-      float default_value;
-      const char* label;
-      const char* tooltip;
-      PluginRow plugin_row;
-      uint32_t lane_shift;
-      const EngineTexts* texts;
-      const char* status_prefix;
-      bool measured;
+      const char* key = nullptr;
+      float* binding = nullptr;
+      float default_value = 0.f;
+      const char* label = nullptr;
+      const char* tooltip = nullptr;
+      PluginRow plugin_row = PluginRow::NONE;
+      uint32_t lane_shift = 0;
+      const EngineTexts* texts = nullptr;
+      const char* status_prefix = nullptr;
+      bool measured = false;
     };
     const auto add_engine_row = [&cpu_rows](const EngineRow& row) {
       const auto status_shown = [row] {
