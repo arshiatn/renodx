@@ -7,8 +7,10 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <charconv>
 #include <cstdint>
 #include <filesystem>
@@ -16,11 +18,19 @@
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
+#include <span>
+#include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
+
+#include <include/reshade.hpp>
 
 #include "../../utils/log.hpp"
+#include "../twrome2/engine_tweaks.hpp"
 #include "./attila64_plugin/plugin_block.h"
+#include "./attila64_plugin/tweaks.h"
 #include "./object_motion.hpp"
 #include "./rt_scene.hpp"
 #include "./shadow_pass.hpp"
@@ -72,6 +82,41 @@ static bool registered_logged = false;
 static HMODULE module_reference = nullptr;
 // Under the mutex: Keep Battle Core Free's core_wanted bit as this add-on last wrote it (none yet: nullopt).
 static std::optional<bool> battle_core_written;
+// The rows whose refusal raises the "could not turn on every engine option" note: all but the CPU row (refused, its rows
+// hide and the plugin's log says why).
+inline constexpr uint32_t KNOWN_ROWS = ((1u << plugin::ROW_COUNT) - 1u) & ~plugin::RowBit(plugin::ROW_CPU_PLACEMENT);
+
+// plugin_block.h's ini names in ReShade's narrow form (the plugin reads them as UTF-16; they are ASCII).
+template <size_t N>
+constexpr std::array<char, N> Narrow(const wchar_t (&wide)[N]) {
+  std::array<char, N> narrow = {};
+  for (size_t index = 0; index < N; ++index) narrow[index] = static_cast<char>(wide[index]);
+  return narrow;
+}
+inline constexpr auto VALUES_SECTION = Narrow(plugin::INI_VALUES_SECTION);
+inline constexpr auto SOL_FRAME_CAP_KEY = Narrow(plugin::INI_SOL_FRAME_CAP);
+
+// A restart-only engine value a row writes, by its slot's index: the row's Tweak points `value` at `bits`, where
+// engine_tweaks' Apply writes the slider's bits; the restart mirror copies them, clamped, into ReShade.ini.
+struct RestartValue {
+  uint32_t bits = 0;
+  const plugin::TweakSlot* slot = nullptr;    // null: no row writes this slot
+  const plugin::TweakEntry* entry = nullptr;  // its range (tweaks.h)
+  bool ini_read = false;
+  // The bits in ReShade.ini: as read at READY (absent: the game's default; text the plugin refuses: none), then as written.
+  std::optional<uint32_t> mirrored;
+};
+// Under the mutex, filled by FindTweaks; kept across a detach (the Tweaks point into it until the next FindTweaks).
+static std::vector<RestartValue> restart_values;
+// FindTweaks has run (release: the Tweaks' values are final for readers that load it with acquire).
+static std::atomic_bool tweaks_found = false;
+static std::atomic_bool tweaks_refused = false;  // a value a row uses refused (another type, name or default)
+static std::atomic_bool values_pending = false;
+// Loader Frame Cap: the key as this start read it (the first READY present, before any write; the process's), the key
+// as last read or written, and whether the row differs from this start's.
+static std::optional<bool> sol_frame_cap_at_start;
+static std::optional<int> sol_frame_cap_mirrored;
+static std::atomic_bool sol_frame_cap_pending = false;
 // Written into each measured call's PassMeasure::reserved at pass_begin: a pass_end of another registration is ignored.
 static std::atomic<uint32_t> epoch = 0;
 // A callback caught an exception: logged once at the next present (the callbacks log only shadow_pass's learned-kind
@@ -163,6 +208,28 @@ inline uint32_t RowsTried() {
 // has no such field) or a plugin that did not build the part.
 inline uint64_t BattleCoreStatus() {
   return BlockV2() ? internal::block->core_status.load(std::memory_order_relaxed) : 0;
+}
+
+// With Result() READY and BlockV2(): an engine option the plugin could not turn on: a known row tried but not offered
+// (its site refused, or changed after it), or a value a row uses refused (known once FindTweaks has run). A value this
+// game build lacks (ABSENT) hides its row without this.
+inline bool OptionsRefused() {
+  return (RowsTried() & internal::KNOWN_ROWS & ~RowsOffered()) != 0
+         || internal::tweaks_refused.load(std::memory_order_relaxed);
+}
+
+// FindTweaks has run since the lookup: the Tweaks' values are final (acquire).
+inline bool TweaksFound() {
+  return internal::tweaks_found.load(std::memory_order_acquire);
+}
+
+// The restart mirror's pending states, for the "Restart the game now" notes: a restart-only value the next start would
+// read other than this start did, and Loader Frame Cap's.
+inline bool ValuesPending() {
+  return internal::values_pending.load(std::memory_order_relaxed);
+}
+inline bool SolFrameCapPending() {
+  return internal::sol_frame_cap_pending.load(std::memory_order_relaxed);
 }
 
 // At each init_device until READY, final at the first present (`last`): the loader loads its plugins before the game's
@@ -324,6 +391,152 @@ inline void Update(uint32_t rows_wanted, bool battle_core) {
   internal::wanted = rows;
 }
 
+// Every present with Result() READY until it returns true (the loader's drawing thread, before the values' Update):
+// each Tweak of `options` gets the value the plugin checked, matched by name (whichever side is newer). Live: the game's
+// own value; restart-only: an add-on cell holding the game's default (the restart mirror's). Another verdict, another
+// type than the add-on writes, a range this add-on does not know, or a name the plugin does not list: no value, and then
+// none for its whole option (its row hides). False while the plugin's check is pending; true without values on a v1 block or with Tweaks=0.
+inline bool FindTweaks(std::span<tw::engine_tweaks::Option* const> options) {
+  using internal::block;
+  namespace plugin = internal::plugin;
+  const std::unique_lock lock(internal::mutex);
+  if (internal::found.load(std::memory_order_relaxed) != Found::READY) return false;
+  const uint32_t status = (BlockV2() ? block->tweaks_status.load(std::memory_order_acquire) : plugin::TWEAKS_NONE);
+  if (status == plugin::TWEAKS_PENDING) return false;
+  const std::span<const plugin::TweakSlot> slots(block->tweaks, (status == plugin::TWEAKS_READY ? block->tweak_count : 0u));
+  internal::restart_values.assign(slots.size(), {});
+  std::string refused;
+  for (tw::engine_tweaks::Option* option : options) {
+    for (tw::engine_tweaks::Tweak& tweak : option->tweaks) {
+      tweak.value = nullptr;
+      const auto slot = std::ranges::find_if(slots, [&tweak](const plugin::TweakSlot& candidate) {
+        return candidate.name != nullptr && tweak.name == candidate.name;
+      });
+      if (slot == slots.end() || slot->verdict == plugin::VERDICT_ABSENT) continue;
+      // engine_tweaks writes a flag's byte, an int32 or a float.
+      bool same_type = (slot->type == plugin::TWEAK_FLOAT);
+      if (tweak.flag) {
+        same_type = (slot->type == plugin::TWEAK_BOOL);
+      } else if (tweak.integer) {
+        same_type = (slot->type == plugin::TWEAK_INT || slot->type == plugin::TWEAK_UINT);
+      }
+      auto entry = plugin::TWEAKS.end();
+      if (slot->restart_only != 0) {
+        entry = std::ranges::find_if(plugin::TWEAKS, [&tweak](const plugin::TweakEntry& known) {
+          return known.restart_only && tweak.name == known.name;
+        });
+      }
+      // A restart-only value also needs this add-on's range for it, of the slot's type (the mirror clamps by it).
+      if (slot->verdict != plugin::VERDICT_OK || !same_type
+          || (slot->restart_only != 0 && (entry == plugin::TWEAKS.end() || entry->type != slot->type))) {
+        refused += std::format("{}{}", (refused.empty() ? "" : ", "), tweak.name);
+        continue;
+      }
+      if (slot->restart_only == 0) {
+        tweak.value = reinterpret_cast<void*>(static_cast<uintptr_t>(slot->value_address));
+        continue;
+      }
+      internal::RestartValue& restart = internal::restart_values[static_cast<size_t>(slot - slots.begin())];
+      restart = {.bits = slot->default_bits, .slot = &*slot, .entry = &*entry};
+      tweak.value = &restart.bits;
+    }
+    // An option missing a value gets none (its row hides): nothing applied part-way while the player cannot see it. Its
+    // restart cells keep the default.
+    if (std::ranges::any_of(option->tweaks, [](const tw::engine_tweaks::Tweak& tweak) { return tweak.value == nullptr; })) {
+      for (tw::engine_tweaks::Tweak& tweak : option->tweaks) {
+        tweak.value = nullptr;
+      }
+    }
+  }
+  internal::tweaks_refused.store(!refused.empty(), std::memory_order_relaxed);
+  internal::tweaks_found.store(true, std::memory_order_release);
+  // The log's side of the "could not turn on every engine option" note.
+  if (BlockV2() && OptionsRefused()) {
+    renodx::utils::log::w(std::format("[Total War] 64-bit Attila: engine options not turned on: rows {:#x}{}{}",
+                                      RowsTried() & internal::KNOWN_ROWS & ~RowsOffered(),
+                                      (refused.empty() ? "" : ", values "), refused));
+  }
+  return true;
+}
+
+// Every present with Result() READY on a v2 block, after the values' Update (the loader's drawing thread): the next
+// start's restart-only values and Loader Frame Cap (`sol_frame_cap`) into ReShade.ini [Attila64Plugin.Values], which the
+// plugin reads at its init. A value's bits are clamped to its slider's range first (tweaks.h's, as the plugin checks:
+// a hand-edited ReShade.ini may hold any slider value). Each key is read once, then written only when it differs, with
+// one log line per write (ReShade saves the file about 1 s later, at a present). Pending: a value whose next start
+// differs from this start's (the bits it applied, else the default; a key it refused or did not apply: always), and the
+// frame cap row against the key this start read.
+inline void MirrorRestartValues(bool sol_frame_cap) {
+  namespace plugin = internal::plugin;
+  const std::unique_lock lock(internal::mutex);
+  if (internal::found.load(std::memory_order_relaxed) != Found::READY || !BlockV2()) return;
+  bool pending = false;
+  // The cells of this READY's find only: Uninstall keeps the last ones (the add-on's detach still reads the Tweaks' values
+  // in them after it), so before the next find they are not walked.
+  const bool values_found = internal::tweaks_found.load(std::memory_order_relaxed);
+  for (internal::RestartValue& restart : internal::restart_values) {
+    if (!values_found || restart.slot == nullptr) continue;
+    const uint32_t low = restart.entry->low_bits;
+    const uint32_t high = restart.entry->high_bits;
+    uint32_t bits = restart.bits;
+    switch (restart.entry->type) {
+      case plugin::TWEAK_FLOAT:
+        // A NaN to the low end.
+        if (!(std::bit_cast<float>(bits) >= std::bit_cast<float>(low))) {
+          bits = low;
+        } else if (std::bit_cast<float>(bits) > std::bit_cast<float>(high)) {
+          bits = high;
+        }
+        break;
+      case plugin::TWEAK_INT:
+        bits = static_cast<uint32_t>(
+            std::clamp(static_cast<int32_t>(bits), static_cast<int32_t>(low), static_cast<int32_t>(high)));
+        break;
+      default:
+        bits = std::clamp(bits, low, high);
+        break;
+    }
+    if (!std::exchange(restart.ini_read, true)) {
+      restart.mirrored = restart.slot->default_bits;
+      std::array<char, 16> text = {};
+      size_t size = text.size();
+      if (reshade::get_config_value(nullptr, internal::VALUES_SECTION.data(), restart.slot->name, text.data(), &size)) {
+        // The plugin reads exactly 8 hex digits.
+        uint32_t parsed = 0;
+        const auto [end, error] = std::from_chars(text.data(), text.data() + 8, parsed, 16);
+        const bool eight_hex_digits = (size == 9 && error == std::errc() && end == text.data() + 8);
+        restart.mirrored = (eight_hex_digits ? std::optional<uint32_t>(parsed) : std::nullopt);
+      }
+    }
+    const uint32_t this_start =
+        (restart.slot->restart_state == plugin::RESTART_APPLIED ? restart.slot->written_bits : restart.slot->default_bits);
+    if (restart.mirrored != bits) {
+      reshade::set_config_value(nullptr, internal::VALUES_SECTION.data(), restart.slot->name,
+                                std::format("{:08x}", bits).c_str());
+      restart.mirrored = bits;
+      renodx::utils::log::i(std::format("[Total War] 64-bit Attila: engine value {}: {:#x} at the next start (this start: {:#x})",
+                                        restart.slot->name, bits, this_start));
+    }
+    pending = pending || bits != this_start || restart.slot->restart_state == plugin::RESTART_OUT_OF_RANGE
+              || restart.slot->restart_state == plugin::RESTART_NOT_DX11;
+  }
+  internal::values_pending.store(pending, std::memory_order_relaxed);
+  if (!internal::sol_frame_cap_mirrored.has_value()) {
+    int key = 0;  // absent: off, as the plugin reads it
+    reshade::get_config_value(nullptr, internal::VALUES_SECTION.data(), internal::SOL_FRAME_CAP_KEY.data(), key);
+    internal::sol_frame_cap_mirrored = key;
+    if (!internal::sol_frame_cap_at_start.has_value()) internal::sol_frame_cap_at_start = (key == 1);
+  }
+  const bool cap_at_start = *internal::sol_frame_cap_at_start;
+  if (const int key = (sol_frame_cap ? 1 : 0); internal::sol_frame_cap_mirrored != key) {
+    reshade::set_config_value(nullptr, internal::VALUES_SECTION.data(), internal::SOL_FRAME_CAP_KEY.data(), key);
+    internal::sol_frame_cap_mirrored = key;
+    renodx::utils::log::i(std::format("[Total War] 64-bit Attila: engine value {}: {:#x} at the next start (this start: {:#x})",
+                                      internal::SOL_FRAME_CAP_KEY.data(), key, (cap_at_start ? 1 : 0)));
+  }
+  internal::sol_frame_cap_pending.store(sol_frame_cap != cap_at_start, std::memory_order_relaxed);
+}
+
 // Addon attach: the lookup runs again (an add-on kept loaded across a detach).
 inline void Install() {
   const std::unique_lock lock(internal::mutex);
@@ -343,6 +556,13 @@ inline void Uninstall() {
   internal::battle_core_written.reset();
   internal::callback_failed = false;
   internal::callback_failure_logged = false;
+  // The next READY finds the values again (a kept image's Tweaks too) and reads the keys again; this start's frame cap key
+  // stays.
+  internal::tweaks_found = false;
+  internal::tweaks_refused = false;
+  internal::values_pending = false;
+  internal::sol_frame_cap_mirrored.reset();
+  internal::sol_frame_cap_pending = false;
 }
 
 }  // namespace twattila::attila64_plugin_link

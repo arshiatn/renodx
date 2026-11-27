@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <format>
 #include <functional>
+#include <iterator>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -109,7 +110,8 @@ inline void WarnToneMapperTarget(reshade::api::device* device, reshade::api::res
 }
 
 ShaderInjectData shader_injection;
-// Settings Mode: 0 HDR & Effects, 1 Graphics 1 of 2 (lighting), 2 Graphics 2 of 2 (engine graphics).
+// Settings Mode: 0 HDR & Effects, 1 Graphics 1 of 2 (lighting), 2 Graphics 2 of 2 (engine graphics), 3 CPU (the port
+// only).
 float current_settings_mode = 0.f;
 
 bool IsHDRMode() {
@@ -1169,10 +1171,12 @@ constexpr bool PLUGIN_READY_FORCED = true;
 constexpr bool PLUGIN_READY_FORCED = false;
 #endif
 
-// The rows the 64-bit engine plugin can bring back: its rows (attila64_plugin::Row). NONE: hidden on the port.
+// The rows the 64-bit engine plugin can bring back: its rows (attila64_plugin::Row). TWEAKS: no hook, the engine values
+// alone (shown once its option's values are all found). NONE: hidden on the port.
 enum class PluginRow : uint8_t {
   PASS_DRAW = twattila::attila64_plugin::ROW_PASS_DRAW,
   CPU_PLACEMENT = twattila::attila64_plugin::ROW_CPU_PLACEMENT,
+  TWEAKS = 0xFE,
   NONE = 0xFF,
 };
 
@@ -1196,10 +1200,10 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
     {.match = "GraphicsUnitVariety"},
     {.match = "GraphicsFootstepEffects"},
     {.match = "GraphicsObjectDetail"},
-    {.match = "GraphicsBuildingDetail"},
+    {.match = "GraphicsBuildingDetail", .plugin_row = PluginRow::TWEAKS},
     {.match = "GraphicsCampaignDetail"},
-    {.match = "GraphicsCampaignPlants"},
-    {.match = "GraphicsCampaignProps"},
+    {.match = "GraphicsCampaignPlants", .plugin_row = PluginRow::TWEAKS},
+    {.match = "GraphicsCampaignProps", .plugin_row = PluginRow::TWEAKS},
     {.match = "GraphicsGrassDistance"},
     {.match = "GraphicsGrassDensity"},
     {.match = "GraphicsShadowMapSize"},
@@ -1229,18 +1233,23 @@ constexpr std::array<GameCodeRow, 41> GAME_CODE_ROWS = {{
     {.match = "graphics-presets"},
 }};
 
-// A game-code row on the port: shown once the 64-bit engine plugin is ready and offers its row.
+// A game-code row on the port: shown once the 64-bit engine plugin is ready and offers its row (TWEAKS: no row of its
+// own; its values decide).
 inline bool GameCodeRowShown(PluginRow row) {
   static_assert(twattila::attila64_plugin::ROW_COUNT <= 32, "a row's bit in a 32-bit mask");
   if constexpr (PLUGIN_READY_FORCED) return true;
-  return row != PluginRow::NONE
-         && twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY
-         && (twattila::attila64_plugin_link::RowsOffered() & (1u << static_cast<uint32_t>(row))) != 0;
+  if (row == PluginRow::NONE
+      || twattila::attila64_plugin_link::Result() != twattila::attila64_plugin_link::Found::READY) {
+    return false;
+  }
+  return row == PluginRow::TWEAKS
+         || (twattila::attila64_plugin_link::RowsOffered() & (1u << static_cast<uint32_t>(row))) != 0;
 }
 
 // The note rows in graphics_status's place on the port, at most one shown: one per final lookup result, READY's two
-// split by the block. A v1 block (an older plugin) shows the update note; a v2 block shows the other one while a row
-// the plugin tried is not offered (its hook refused or changed), whether a settings row reads it or not.
+// split by the block. A v1 block (an older plugin) shows the update note; a v2 block shows the other one while the
+// plugin could not turn on an engine option (attila64_plugin_link::OptionsRefused), whether a settings row reads it or
+// not.
 struct PluginNote {
   twattila::attila64_plugin_link::Found found = twattila::attila64_plugin_link::Found::PENDING;
   bool v1_block = false;  // READY's note for a v1 block
@@ -1619,6 +1628,11 @@ float keep_render_core_row = 0.f;
 // (attila64_plugin_link::Update).
 constexpr float KEEP_BATTLE_CORE_DEFAULT = (twattila::attila64_plugin_link::BATTLE_CORE_DEFAULT ? 1.f : 0.f);
 float keep_battle_core_row = KEEP_BATTLE_CORE_DEFAULT;
+// Loader Frame Cap (the port only, off: ATN 11-26): the 64-bit loader's 240 fps cap at the next start, through the
+// engine plugin (attila64_plugin_link::MirrorRestartValues).
+float loader_frame_cap_row = 0.f;
+// The restart notes' text: UI 4K Mod Compatibility's, and the port's audio and Loader Frame Cap notes.
+constexpr const char* RESTART_NOW = "Restart the game now to apply this!";
 // Parallel Effect Update (Experimental, off): effect_update.hpp, the game's effect update on the worker pool. Parallel Effect Spawns
 // (off, needs the row above): its particle spawns on the pool too. Cached Particle Count (off): engine_code.hpp's visible particle sum
 // once per update of a node instead of once per view.
@@ -2207,6 +2221,15 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
     }
     if (twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY) {
       namespace plugin = twattila::attila64_plugin;
+      // The engine values the plugin checked: found once, then the sliders applied as on 32-bit (found: no module
+      // lookup, no status line), then the restart-only ones and Loader Frame Cap mirrored for the next start.
+      if (!graphics_found) {
+        graphics_found = twattila::attila64_plugin_link::FindTweaks(graphics_options);
+      }
+      if (graphics_found) {
+        tw::engine_tweaks::Update(L"empire.retail.dll", graphics_options, nullptr, &graphics_found, graphics_status);
+      }
+      twattila::attila64_plugin_link::MirrorRestartValues(loader_frame_cap_row != 0.f);
       // shadow_pass's Update runs every present (it ends the frame's counts), here its second site: the 32-bit one
       // below waits for the at-start tests; the port has none.
       const bool pass_draw =
@@ -2401,12 +2424,18 @@ void ConfigureAddon() {
   };
   campaign_props.tweaks = {{.name = "campaign_props_max_distance"}};
 
-  // Graphics 2 of 2's tests (twattila/engine_tests.hpp). The port: none (they write the 32-bit game's values). The empty
-  // list also ends the at-start poll at once and drops this add-on from [ADDON] LoadFromDllMain (SyncEarlyLoad).
-  if constexpr (!ATTILA64) {
-    engine_tests = twattila::engine_tests::Attila();
+  // Graphics 2 of 2's tests (twattila/engine_tests.hpp). The port: their values through the 64-bit engine plugin
+  // (attila64_plugin_link::FindTweaks), the audio memory ones written at the next start (its restart mirror).
+  engine_tests = twattila::engine_tests::Attila();
+  if constexpr (ATTILA64) {
+    // The port's tooltip where the 32-bit one does not hold (the 64-bit game has the room).
+    std::ranges::find(engine_tests, "AudioSoundFileMemory", &twattila::engine_tests::EngineTest::key)->tooltip =
+        "Memory for the loaded sound files. Restart the game. Game: 86 MB.";
+    // Model Detail and Campaign Tree Detail wait for their hooks: their values stay the game's until those rows show.
+    graphics_options = {&building_detail, &campaign_plants, &campaign_props};
+  } else {
+    graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   }
-  graphics_options = {&object_detail, &building_detail, &campaign_trees, &campaign_plants, &campaign_props};
   for (auto& test : engine_tests) {
     graphics_options.push_back(&test.option);
   }
@@ -2499,8 +2528,11 @@ void ConfigureAddon() {
                         {"GraphicsBuildingDetail", 4.f}});
   vanilla_units.insert(vanilla_units.end(), atn_settings.begin(), atn_settings.end());
   auto* note = tw::engine_tweaks::Note();
-  note->label += " Some apply only after loading a battle or a save.\n"
-                 "The two presets below are the settings I would use myself.";
+  // The port: its first sentence alone while the preset buttons are hidden.
+  if constexpr (!ATTILA64) {
+    note->label += " Some apply only after loading a battle or a save.\n"
+                   "The two presets below are the settings I would use myself.";
+  }
   const auto unit_distance = [](size_t index, const std::string& key, const std::string& label,
                                 const std::string& units) {
     return tw::engine_tweaks::Slider(&unit_detail[index], key, label,
@@ -2534,7 +2566,7 @@ void ConfigureAddon() {
         ImGui::SameLine();
         const bool restart_pending = (ui_mod_compatibility != 0) != shadow_size_locked;
         ImGui::TextColored(ImVec4(1.f, 0.31f, 0.31f, 1.f), "%s",
-                           (restart_pending ? "Restart the game now to apply this!" : "Changing this needs a game restart."));
+                           (restart_pending ? RESTART_NOW : "Changing this needs a game restart."));
         return false;
       },
   };
@@ -2996,7 +3028,13 @@ void ConfigureAddon() {
       .on_change = [] { twattila::graphics_hooks::DumpGrass(); },
   });
   auto* grass_dump_row = settings.back();
-  twattila::engine_tests::Append(&settings, &engine_tests, SyncEarlyLoad);
+  // The port has no at-start writes (the plugin applies the audio values at the next start): its change callback does
+  // nothing (Append's rows call it).
+  if constexpr (ATTILA64) {
+    twattila::engine_tests::Append(&settings, &engine_tests, [] {});
+  } else {
+    twattila::engine_tests::Append(&settings, &engine_tests, &SyncEarlyLoad);
+  }
 
   // Appended Settings (Ambient Occlusion, Global Illumination)
   twattila::lighting_settings::Append(&settings, &shader_injection, [] { return rt_sliders.light_bounce != 0.f && twattila::feature_settings::Upscaling(aa_sliders); });
@@ -3107,12 +3145,6 @@ void ConfigureAddon() {
       engine_sections.push_back(test.section);
     }
   }
-  // Without tests (the 64-bit port) the grass rows' section is still Graphics 2 of 2's.
-  if constexpr (ATTILA64) {
-    if (std::ranges::find(engine_sections, twattila::engine_tests::GRASS) == engine_sections.end()) {
-      engine_sections.push_back(twattila::engine_tests::GRASS);
-    }
-  }
   twattila::feature_settings::SetTints(
       {"General", "Psycho V30", "PsychoV31", "PsychoV35", "Extra", "Extra (Experimental)", "Output (Restart Required)", "About"},
       engine_sections);
@@ -3145,17 +3177,104 @@ void ConfigureAddon() {
     namespace plugin = twattila::attila64_plugin;
     // The game-code rows wait for the 64-bit engine plugin: wrapped (never replaced) before AssignPages wraps them in
     // turn, so a row the plugin brings back lands on its own page. Their keys stay: saved values come back with the rows.
-    const std::array<const renodx::utils::settings::Setting*, 6> keyless_rows = {note, ui_mod_row, graphics_status,
-                                                                                 grass_trace_row, grass_dump_row, grass_tests_note};
+    // A row bound to an engine value option (the tests: TWEAKS) shows only once every value of it was found.
+    const std::array<const renodx::utils::settings::Setting*, 4> keyless_rows = {ui_mod_row, graphics_status, grass_trace_row,
+                                                                                 grass_dump_row};
     for (auto* setting : settings) {
       const auto entry = std::ranges::find_if(GAME_CODE_ROWS, [setting](const GameCodeRow& row) {
         return (!setting->key.empty() && setting->key == row.match) || (!setting->group.empty() && setting->group == row.match);
       });
-      if (entry == GAME_CODE_ROWS.end() && std::ranges::find(keyless_rows, setting) == keyless_rows.end()) continue;
-      setting->is_visible = [row = (entry != GAME_CODE_ROWS.end()) ? entry->plugin_row : PluginRow::NONE, own = setting->is_visible] {
-        return GameCodeRowShown(row) && (own == nullptr || own());
+      const auto bound = std::ranges::find_if(graphics_options, [setting](const tw::engine_tweaks::Option* option) {
+        return setting->binding == &option->scale;
+      });
+      PluginRow row = PluginRow::NONE;
+      if (entry != GAME_CODE_ROWS.end()) {
+        row = entry->plugin_row;
+      } else if (bound != graphics_options.end()) {
+        row = PluginRow::TWEAKS;
+      } else if (std::ranges::find(keyless_rows, setting) == keyless_rows.end()) {
+        continue;
+      }
+      const tw::engine_tweaks::Option* option = (bound != graphics_options.end() ? *bound : nullptr);
+      setting->is_visible = [row, option, own = setting->is_visible] {
+        return GameCodeRowShown(row)
+               && (PLUGIN_READY_FORCED || option == nullptr
+                   || (twattila::attila64_plugin_link::TweaksFound()
+                       && std::ranges::all_of(option->tweaks, [](const tw::engine_tweaks::Tweak& tweak) {
+                            return tweak.value != nullptr;
+                          })))
+               && (own == nullptr || own());
       };
     }
+    // The tests' empty lines and their note, and the Experimental note: only while a value row of their section shows
+    // (an all-hidden section draws no header; the grass section's own rows show without the plugin, its note as before
+    // not).
+    for (auto* setting : settings) {
+      if (setting != note
+          && (!setting->key.empty() || setting->value_type != renodx::utils::settings::SettingValueType::TEXT
+              || std::ranges::none_of(engine_tests, [setting](const twattila::engine_tests::EngineTest& test) {
+                   return test.section == setting->section;
+                 }))) {
+        continue;
+      }
+      std::vector<const renodx::utils::settings::Setting*> section_rows;
+      std::ranges::copy_if(settings, std::back_inserter(section_rows), [setting](const renodx::utils::settings::Setting* other) {
+        return other->section == setting->section
+               && std::ranges::any_of(graphics_options, [other](const tw::engine_tweaks::Option* option) {
+                    return other->binding == &option->scale;
+                  });
+      });
+      setting->is_visible = [section_rows = std::move(section_rows)] {
+        return std::ranges::any_of(section_rows, [](const renodx::utils::settings::Setting* row) {
+          return row->is_visible == nullptr || row->is_visible();
+        });
+      };
+    }
+    constexpr uint32_t RESTART_TINT = 0xFF4F4F;  // the UI 4K Mod Compatibility row's restart text
+    // The audio rows' restart note, after the last of them (before the section's empty line).
+    settings.insert(std::ranges::find_if(settings,
+                                         [](const renodx::utils::settings::Setting* setting) {
+                                           return setting->section == twattila::engine_tests::AUDIO && setting->key.empty();
+                                         }),
+                    new renodx::utils::settings::Setting{
+                        .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                        .label = RESTART_NOW,
+                        .section = twattila::engine_tests::AUDIO,
+                        .tint = RESTART_TINT,
+                        .is_visible = [] { return twattila::attila64_plugin_link::ValuesPending(); },
+                    });
+    // Loader Frame Cap beside Frame Rate Limit, with its restart note (a v2 plugin reads it at the next start).
+    const auto loader_frame_cap_shown = [] {
+      return PLUGIN_READY_FORCED
+             || (twattila::attila64_plugin_link::Result() == twattila::attila64_plugin_link::Found::READY
+                 && twattila::attila64_plugin_link::BlockV2());
+    };
+    const auto frame_limit = std::ranges::find(settings, "FrameGenerationFrameLimit", &renodx::utils::settings::Setting::key);
+    const std::string frame_limit_section = (*frame_limit)->section;
+    settings.insert(std::next(frame_limit),
+                    {
+                        new renodx::utils::settings::Setting{
+                            .key = "LoaderFrameCap",
+                            .binding = &loader_frame_cap_row,
+                            .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
+                            .default_value = 0.f,
+                            .label = "Loader Frame Cap (restart)",
+                            .section = frame_limit_section,
+                            .tooltip = "The 64-bit loader's own 240 fps cap. Off: no loader cap; use V-Sync or a\n"
+                                       "frame limit instead. Applies after a restart.",
+                            .labels = {"Off", "On"},
+                            .is_visible = loader_frame_cap_shown,
+                        },
+                        new renodx::utils::settings::Setting{
+                            .value_type = renodx::utils::settings::SettingValueType::TEXT,
+                            .label = RESTART_NOW,
+                            .section = frame_limit_section,
+                            .tint = RESTART_TINT,
+                            .is_visible = [loader_frame_cap_shown] {
+                              return loader_frame_cap_shown() && twattila::attila64_plugin_link::SolFrameCapPending();
+                            },
+                        },
+                    });
     // The plugin's note in graphics_status's place (the engine values it reports are the 32-bit game's): one row per
     // lookup result, at most one shown.
     auto note_at = std::ranges::find(settings, graphics_status);
@@ -3171,30 +3290,28 @@ void ConfigureAddon() {
                          if (result != note.found) return false;
                          if (result != twattila::attila64_plugin_link::Found::READY) return true;
                          if (twattila::attila64_plugin_link::BlockV2()) {
-                           // A known row tried but not offered (its site refused, or changed after it). The CPU row
-                           // is left out: refused, its rows hide, and the plugin's log says why.
-                           constexpr uint32_t KNOWN_ROWS =
-                               ((1u << plugin::ROW_COUNT) - 1u) & ~plugin::RowBit(plugin::ROW_CPU_PLACEMENT);
-                           return !note.v1_block
-                                  && (twattila::attila64_plugin_link::RowsTried() & KNOWN_ROWS
-                                      & ~twattila::attila64_plugin_link::RowsOffered())
-                                         != 0;
+                           return !note.v1_block && twattila::attila64_plugin_link::OptionsRefused();
                          }
                          return note.v1_block;
                        },
                    }));
     }
-    // Keep Battle Core Free and its status line below the note, while the plugin offers the CPU row and built its battle
-    // part (state 0: not built). The graphics preset buttons leave the row alone (not a look setting); it is saved per
-    // preset slot like every row.
+    // The CPU page (Settings Mode 3), its section "CPU": every CPU row of this mod on the port, new CPU rows too (live
+    // rows plain, a restart-only one with "(restart)" in its label and its restart note after it). The engine
+    // performance fix's and the start window's sections wait for ATN's answer on where their keys come from.
+    constexpr const char* CPU_SECTION = "CPU";
+    std::vector<renodx::utils::settings::Setting*> cpu_rows;
+    // Keep Battle Core Free and its status line, while the plugin offers the CPU row and built its battle part (state 0:
+    // not built). The graphics preset buttons leave the row alone (not a look setting); it is saved per preset slot like
+    // every row.
     const auto battle_core_shown = [] {
       return GameCodeRowShown(PluginRow::CPU_PLACEMENT)
              && ((twattila::attila64_plugin_link::BattleCoreStatus() >> plugin::CORE_STATE_SHIFT)
                  & plugin::CORE_FIELD_MASK)
                     != 0;
     };
-    settings.insert(
-        note_at,
+    cpu_rows.insert(
+        cpu_rows.end(),
         {
             new renodx::utils::settings::Setting{
                 .key = "KeepBattleCoreFree",
@@ -3202,7 +3319,7 @@ void ConfigureAddon() {
                 .value_type = renodx::utils::settings::SettingValueType::BOOLEAN,
                 .default_value = KEEP_BATTLE_CORE_DEFAULT,
                 .label = "Keep Battle Core Free",
-                .section = graphics_status->section,
+                .section = CPU_SECTION,
                 .tooltip = "Big battles can run faster: the battle simulation gets a CPU core to itself. Same picture.\n"
                            "Changes take effect at once. If it says stopped, restart the game to try again.",
                 .labels = {"Off", "On"},
@@ -3210,7 +3327,7 @@ void ConfigureAddon() {
             },
             new renodx::utils::settings::Setting{
                 .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
-                .section = graphics_status->section,
+                .section = CPU_SECTION,
                 .on_draw = [] {
                   const uint64_t status = twattila::attila64_plugin_link::BattleCoreStatus();
                   const auto field = [status](uint32_t shift) {
@@ -3233,8 +3350,31 @@ void ConfigureAddon() {
                 .is_visible = battle_core_shown,
             },
         });
+    // The renderer's CPU rows (their 32-bit place: Graphics 2 of 2).
+    for (const char* key : {"FewerConstantUploads", "FewerDriverWaits"}) {
+      const auto moved = std::ranges::find(settings, key, &renodx::utils::settings::Setting::key);
+      (*moved)->section = CPU_SECTION;
+      cpu_rows.push_back(*moved);
+      settings.erase(moved);
+    }
+    settings.insert(std::ranges::find(settings, "About", &renodx::utils::settings::Setting::section), cpu_rows.begin(),
+                    cpu_rows.end());
+    renodx::utils::settings::section_tints.emplace_back(CPU_SECTION, 0xF0E68Cu);
+    (*std::ranges::find(settings, "SettingsMode", &renodx::utils::settings::Setting::key))->labels.push_back("CPU");
+    // The other pages as on 32-bit, then the CPU rows on page 3 (AssignPages' wrap for a page of its own).
+    std::vector<renodx::utils::settings::Setting*> paged_rows;
+    std::ranges::copy_if(settings, std::back_inserter(paged_rows), [](const renodx::utils::settings::Setting* setting) {
+      return setting->section != CPU_SECTION;
+    });
+    twattila::feature_settings::AssignPages(&paged_rows, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
+    for (auto* setting : cpu_rows) {
+      setting->is_visible = [mode = &current_settings_mode, shown = setting->is_visible] {
+        return static_cast<int>(*mode) == 3 && (shown == nullptr || shown());
+      };
+    }
+  } else {
+    twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
   }
-  twattila::feature_settings::AssignPages(&settings, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
 
   configured = true;
 }
@@ -3332,10 +3472,29 @@ bool AttachAddon() {
     renodx::utils::log::w("[Total War] RENODX_TW_GAME_CPUS does not parse; ignored.");
   }
 
-  // The at-start tests (audio memory, read once as the game's audio starts): written as soon as the game has set its own
-  // values, on a thread of their own (the addon may load before the game's code runs: SyncEarlyLoad). Up to a minute.
-  SyncEarlyLoad();
-  twattila::engine_tests::StartAtStart(L"empire.retail.dll", &engine_tests, &at_start_done, &at_start_stop);
+  if constexpr (ATTILA64) {
+    // The port writes no at-start test (the plugin reads the audio values at its init). A ReShade.ini carried over from
+    // the 32-bit game may still list the add-on in [ADDON] LoadFromDllMain: said at the attach, left as it is.
+    std::array<char, 4096> listed = {};
+    size_t listed_size = listed.size();
+    if (reshade::get_config_value(nullptr, "ADDON", "LoadFromDllMain", listed.data(), &listed_size)) {
+      std::array<wchar_t, MAX_PATH> addon_path = {};
+      GetModuleFileNameW(addon_module_handle, addon_path.data(), static_cast<DWORD>(addon_path.size()));
+      const std::string addon_file = std::filesystem::path(addon_path.data()).filename().string();
+      for (size_t offset = 0; offset < listed_size && listed[offset] != '\0'; offset += std::strlen(listed.data() + offset) + 1) {
+        if (addon_file != listed.data() + offset) continue;
+        renodx::utils::log::i("[Total War] 64-bit Attila: ReShade.ini [ADDON] LoadFromDllMain lists this add-on (from the "
+                              "32-bit game): left as it is; not used on 64-bit");
+        break;
+      }
+    }
+  } else {
+    // The at-start tests (audio memory, read once as the game's audio starts): written as soon as the game has set its
+    // own values, on a thread of their own (the addon may load before the game's code runs: SyncEarlyLoad). Up to a
+    // minute.
+    SyncEarlyLoad();
+    twattila::engine_tests::StartAtStart(L"empire.retail.dll", &engine_tests, &at_start_done, &at_start_stop);
+  }
 
   renodx::mods::swapchain::Use(DLL_PROCESS_ATTACH, &shader_injection);
 #if !defined(_WIN64)
