@@ -66,6 +66,7 @@
 #include "rt_bounce.h"            // dxc -Fh (build.ps1)
 #include "rt_bounce_omm.h"        // dxc -Fh (build.ps1)
 #include "rt_cache_fill.h"        // dxc -Fh (build.ps1)
+#include "rt_cache_fill_omm.h"    // dxc -Fh (build.ps1)
 #include "rt_cache_resolve.h"     // dxc -Fh (build.ps1)
 #include "rt_compact.h"           // dxc -Fh (build.ps1)
 #include "rt_fog.h"               // dxc -Fh (build.ps1)
@@ -772,7 +773,8 @@ class RtScene12 {
              && pipeline(RT_BOUNCE_OMM, sizeof(RT_BOUNCE_OMM), &bounce_pipeline_) && pipeline(RT_PATH_OMM, sizeof(RT_PATH_OMM), &path_pipeline_)
              && pipeline(RT_REFLECT_OMM, sizeof(RT_REFLECT_OMM), &reflect_pipeline_) && pipeline(RT_REUSE_OMM, sizeof(RT_REUSE_OMM), &reuse_pipeline_)
              && pipeline(RT_REFLECT_RESERVOIR_OMM, sizeof(RT_REFLECT_RESERVOIR_OMM), &reflect_reservoir_pipeline_)
-             && pipeline(RT_FOG_OMM, sizeof(RT_FOG_OMM), &fog_pipeline_) && pipeline(RT_LIGHTS_OMM, sizeof(RT_LIGHTS_OMM), &lights_pipeline_);
+             && pipeline(RT_FOG_OMM, sizeof(RT_FOG_OMM), &fog_pipeline_) && pipeline(RT_LIGHTS_OMM, sizeof(RT_LIGHTS_OMM), &lights_pipeline_)
+             && pipeline(RT_CACHE_FILL_OMM, sizeof(RT_CACHE_FILL_OMM), &cache_fill_pipeline_);
     if (!dxr12_) {
       trace_pipeline_.Reset();
       bounce_pipeline_.Reset();
@@ -782,6 +784,7 @@ class RtScene12 {
       reflect_reservoir_pipeline_.Reset();
       fog_pipeline_.Reset();
       lights_pipeline_.Reset();
+      cache_fill_pipeline_.Reset();
     }
     if ((!trace_pipeline_ && !pipeline(RT_TRACE, sizeof(RT_TRACE), &trace_pipeline_))
         || (!bounce_pipeline_ && !pipeline(RT_BOUNCE, sizeof(RT_BOUNCE), &bounce_pipeline_)) || !pipeline(RT_SOFT, sizeof(RT_SOFT), &soft_pipeline_)
@@ -792,7 +795,7 @@ class RtScene12 {
         || (!reflect_reservoir_pipeline_ && !pipeline(RT_REFLECT_RESERVOIR, sizeof(RT_REFLECT_RESERVOIR), &reflect_reservoir_pipeline_))
         || (!fog_pipeline_ && !pipeline(RT_FOG, sizeof(RT_FOG), &fog_pipeline_))
         || (!lights_pipeline_ && !pipeline(RT_LIGHTS, sizeof(RT_LIGHTS), &lights_pipeline_))
-        || !pipeline(RT_CACHE_FILL, sizeof(RT_CACHE_FILL), &cache_fill_pipeline_)
+        || (!cache_fill_pipeline_ && !pipeline(RT_CACHE_FILL, sizeof(RT_CACHE_FILL), &cache_fill_pipeline_))
         || !pipeline(RT_CACHE_RESOLVE, sizeof(RT_CACHE_RESOLVE), &cache_resolve_pipeline_)
         || !pipeline(RT_REFLECT_FILTER, sizeof(RT_REFLECT_FILTER), &reflect_filter_pipeline_)
         || FAILED(device_->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(descriptors_.GetAddressOf())))) {
@@ -3260,11 +3263,11 @@ class RtScene12 {
   [[nodiscard]] uint32_t BurnRuns() const { return burn_runs_; }
 
   // A stem's pipeline from `code` (a compute shader's DXIL, checked by rt_serve.h; empty: the base build's again), made with
-  // the scene's root signature: rt_trace, rt_bounce, rt_path, rt_reflect, rt_reuse, rt_reflect_reservoir, rt_fog, rt_lights
-  // (their DXR 1.2 builds where Dxr12()), rt_soft, rt_scene_data, rt_place, rt_cache_fill, rt_cache_resolve. False: `why`.
-  // SwapStem's stems and their pipelines (the first eight: DXR 1.2 builds where Dxr12(), their headers' _omm).
+  // the scene's root signature: rt_trace, rt_bounce, rt_path, rt_reflect, rt_reuse, rt_reflect_reservoir, rt_fog, rt_lights,
+  // rt_cache_fill (their DXR 1.2 builds where Dxr12()), rt_soft, rt_scene_data, rt_place, rt_cache_resolve. False: `why`.
+  // SwapStem's stems and their pipelines (the first nine: DXR 1.2 builds where Dxr12(), their headers' _omm).
   using StemPipeline = std::pair<std::string_view, ComPtr<ID3D12PipelineState> RtScene12::*>;
-  static constexpr size_t OMM_STEMS = 8;
+  static constexpr size_t OMM_STEMS = 9;
   static constexpr std::array<StemPipeline, 13> SwapStems() {
     return {{
         {"rt_trace", &RtScene12::trace_pipeline_},
@@ -3275,10 +3278,10 @@ class RtScene12 {
         {"rt_reflect_reservoir", &RtScene12::reflect_reservoir_pipeline_},
         {"rt_fog", &RtScene12::fog_pipeline_},
         {"rt_lights", &RtScene12::lights_pipeline_},
+        {"rt_cache_fill", &RtScene12::cache_fill_pipeline_},
         {"rt_soft", &RtScene12::soft_pipeline_},
         {"rt_scene_data", &RtScene12::scene_data_pipeline_},
         {"rt_place", &RtScene12::place_pipeline_},
-        {"rt_cache_fill", &RtScene12::cache_fill_pipeline_},
         {"rt_cache_resolve", &RtScene12::cache_resolve_pipeline_},
     }};
   }

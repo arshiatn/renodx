@@ -197,6 +197,10 @@ foreach ($shader in @(@('rt_soft', 'RT_SOFT'), @('rt_scene_data', 'RT_SCENE_DATA
 foreach ($shader in @(@('rt_cache_fill', 'RT_CACHE_FILL'), @('rt_cache_resolve', 'RT_CACHE_RESOLVE'), @('rt_reflect_filter', 'RT_REFLECT_FILTER'))) {
   Dxc -nologo -T cs_6_5 -E main -O3 @regir -Fh "$out\$($shader[0]).h" -Vn $shader[1] "$PSScriptRoot\$($shader[0]).cs_6_5.hlsl"
 }
+# rt_cache_fill's ray queries (SeenDiffuseLight's rays) meet the micromapped TLAS: its DXR 1.2 twin (without
+# RAYQUERY_FLAG_ALLOW_OPACITY_MICROMAPS a query that meets an OMM is undefined, D3D12 Raytracing spec "Opacity micromaps and
+# TraceRayInline"). rt_cache_resolve and rt_reflect_filter trace nothing (no ray query in their DXIL): no twin.
+Dxc -nologo -T cs_6_9 -E main -O3 @regir -D OPACITY_MICROMAPS -Fh "$out\rt_cache_fill_omm.h" -Vn RT_CACHE_FILL_OMM "$PSScriptRoot\rt_cache_fill.cs_6_5.hlsl"
 # NVIDIA's NVAPI (MIT, github.com/NVIDIA/nvapi) for RTX Mega Geometry when it sits in build\downloads\nvapi (else the
 # helper builds without it).
 $nvapi = Join-Path $root "build\downloads\nvapi\extracted\nvapi-main"
