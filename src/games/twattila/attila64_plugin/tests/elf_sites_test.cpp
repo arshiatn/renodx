@@ -215,10 +215,10 @@ int wmain(int argc, wchar_t** argv) {
     // The hash init takes: over [entry, the instruction after the no-LOD jump), with the hook's site in it. One byte
     // of it changed is another hash.
     uint8_t* draw = at(SITES[LABEL_GRASS_DRAW_ENTRY].address);
-    Expect(Fnv1a(draw, GRASS_DRAW_NO_LOD_BYTES) == GRASS_DRAW_NO_LOD_HASH && draw[GRASS_DRAW_NO_LOD_BYTES - 5] == 0xe9,
+    Expect(battle_step::Fnv1a<uint32_t>(draw, GRASS_DRAW_NO_LOD_BYTES) == GRASS_DRAW_NO_LOD_HASH && draw[GRASS_DRAW_NO_LOD_BYTES - 5] == 0xe9,
            "grass draw: its code up to the no-LOD return is the code that was read");
     draw[0x80] ^= 1;
-    Expect(Fnv1a(draw, GRASS_DRAW_NO_LOD_BYTES) != GRASS_DRAW_NO_LOD_HASH, "grass draw: a patched byte is found");
+    Expect(battle_step::Fnv1a<uint32_t>(draw, GRASS_DRAW_NO_LOD_BYTES) != GRASS_DRAW_NO_LOD_HASH, "grass draw: a patched byte is found");
     draw[0x80] ^= 1;
   }
 
@@ -294,9 +294,15 @@ int wmain(int argc, wchar_t** argv) {
   constexpr size_t LOADER_OWN_NEAR_CODE_BYTES = 0x10c0;
   WriteLoaderGuards();
   const size_t near_code_before = near_code_used;
-  // The battle step row reads the game's own code here: as it expects, with no line.
-  const Plugin plugin = ExpectPluginDll(api, argv[1], false, ENGINE_NOT_USED_YET);
+  // The battle step row reads the game's own code here: as it expects, with no line. The contact split row too, at
+  // init and again at the game's start, with every site of ours in; its bit is not in the build's default, so its
+  // lane says off.
+  const Plugin plugin = ExpectPluginDll(api, argv[1], false, ENGINE_NOT_USED_YET, ENGINE_OFF);
   Expect(!Logged("battle step: "), "battle step: init finds the code that was read");
+  Expect(!Logged("contact split: ") && plugin.block != nullptr
+             && plugin.block->engine_status.load()
+                    == ((uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT) | (uint32_t{ENGINE_OFF} << ENGINE_SPLIT_SHIFT)),
+         "contact split: init and the game's start find the code that was read");
   std::printf("  code near the game: %#zx bytes\n", near_code_used - near_code_before);
   Expect(near_code_used - near_code_before <= LOADER_NEAR_CODE_BYTES - LOADER_OWN_NEAR_CODE_BYTES,
          "dll: one game run's code near the game, the game code row's too, fits the loader's page");
@@ -407,33 +413,77 @@ int wmain(int argc, wchar_t** argv) {
     Expect(dead_scaled, "sprite run: a dead soldier's distance x its scale, with the cap and alone; a living one's not");
   }
 
-  // The battle step row reads the game's code again at the game's start: a second copy of the DLL (its own module and
-  // globals) on the game file mapped again, with one byte of that code changed between its init and its game start.
-  {
-    Expect(MapGameElf(argv[2], &image) == 0, "battle step: the game file maps a second time");
+  // The engine rows at the game's start, each case on another copy of the DLL (its own module and globals, in its own
+  // folder beside this exe) with the game file mapped again.
+  wchar_t exe_dir_wide[MAX_PATH];
+  GetModuleFileNameW(nullptr, exe_dir_wide, MAX_PATH);
+  *std::wcsrchr(exe_dir_wide, L'\\') = L'\0';
+  const auto copy_on_the_game_again = [&](const wchar_t* folder) {
+    Expect(MapGameElf(argv[2], &image) == 0, "engine rows: the game file maps again");
     WriteTweakObjects();
     WriteLoaderGuards();
-    wchar_t copy_path[MAX_PATH];
-    GetModuleFileNameW(nullptr, copy_path, MAX_PATH);
-    *std::wcsrchr(copy_path, L'\\') = L'\0';
-    const std::wstring copy_dir = std::wstring(copy_path) + L"\\game_start_case";
+    const std::wstring copy_dir = std::wstring(exe_dir_wide) + L"\\" + folder;
     CreateDirectoryW(copy_dir.c_str(), nullptr);
     const std::wstring copy = copy_dir + L"\\" + MODULE_NAME;
-    Expect(CopyFileW(argv[1], copy.c_str(), FALSE) != FALSE, "battle step: a copy of the plugin DLL");
-    const Plugin second = LoadPlugin(copy.c_str());
+    Expect(CopyFileW(argv[1], copy.c_str(), FALSE) != FALSE, "engine rows: a copy of the plugin DLL");
+    return LoadPlugin(copy.c_str());
+  };
+  // The battle step row reads the game's code again at the game's start: one byte of that code changed between the
+  // copy's init and its game start. The contact split row the same, here with its install key 1 (a ReShade.ini beside
+  // this exe for the one init): the row's bit is set and its lane waits for the first tick; its changed byte is the
+  // per-object function's first.
+  {
+    const Plugin second = copy_on_the_game_again(L"game_start_case");
+    const std::wstring ini_path = std::wstring(exe_dir_wide) + L"\\ReShade.ini";
+    WritePrivateProfileStringW(INI_SECTION, ROW_INI_KEYS[ROW_CONTACT_SPLIT], L"1", ini_path.c_str());
     Expect(second.init != nullptr && second.init(&api) == 0
-               && second.block->engine_status.load() == (uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT),
-           "battle step: a second copy's init on the game file mapped again");
+               && second.block->engine_status.load()
+                      == ((uint32_t{ENGINE_NOT_USED_YET} << ENGINE_STEP_SHIFT)
+                          | (uint32_t{ENGINE_NOT_USED_YET} << ENGINE_SPLIT_SHIFT)),
+           "battle step, contact split: a second copy's init on the game file mapped again");
+    DeleteFileW(ini_path.c_str());
+    Expect(second.block != nullptr && second.block->core_wanted.load() == (CORE_WANTED_DEFAULT | CORE_SPLIT)
+               && !Logged("contact split: "),
+           "contact split: its install key 1 sets the row's bit, and only that");
     if (second.init != nullptr) {
       {
         const std::scoped_lock lock(log_mutex);
         log_lines.clear();
       }
       *at(battle_step::CODE_RANGES.back().address) ^= 1;
+      *at(battle_step::CONTACT_OBJECT_STEP) ^= 1;
       second.game_started(&api);
-      Expect(second.block->engine_status.load() == (uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT)
+      Expect(((second.block->engine_status.load() >> ENGINE_STEP_SHIFT) & ENGINE_LANE_MASK) == ENGINE_CODE_DIFFERS
                  && Logged("renodx_attila64: battle step: game code differs (") && second.block->rows_changed.load() == 0,
              "battle step: code changed after init is found at the game's start, with the row's line");
+      Expect(second.block->engine_status.load()
+                     == ((uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT)
+                         | (uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_SPLIT_SHIFT))
+                 && Logged("renodx_attila64: contact split: off (game code differs at 0x803e70+0x0)"),
+             "contact split: code changed after init is found at the game's start, with the row's line and the place");
+    }
+  }
+  // A byte of each engine row's own jump changed between init and the game's start: the site's line, the row off
+  // from there on, and no code line, since the game's code is still the code that was read.
+  {
+    const Plugin third = copy_on_the_game_again(L"site_changed_case");
+    Expect(third.init != nullptr && third.init(&api) == 0, "engine rows: a third copy's init");
+    if (third.init != nullptr) {
+      {
+        const std::scoped_lock lock(log_mutex);
+        log_lines.clear();
+      }
+      *at(SITES[LABEL_PAIRS_ENTRY].address + 1) ^= 1;
+      *at(SITES[LABEL_CONTACT_ENTRY].address + 1) ^= 1;
+      third.game_started(&api);
+      Expect(third.block->rows_changed.load() == (RowBit(ROW_BATTLE_STEP) | RowBit(ROW_CONTACT_SPLIT))
+                 && third.block->engine_status.load()
+                        == ((uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_STEP_SHIFT)
+                            | (uint32_t{ENGINE_CODE_DIFFERS} << ENGINE_SPLIT_SHIFT))
+                 && Logged("renodx_attila64: site PAIRS_ENTRY changed after we patched it")
+                 && Logged("renodx_attila64: site CONTACT_ENTRY changed after we patched it")
+                 && !Logged("battle step: ") && !Logged("contact split: "),
+             "engine rows: a site changed after init turns its row off at the game's start, without a code line");
     }
   }
 

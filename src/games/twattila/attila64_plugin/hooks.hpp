@@ -194,22 +194,15 @@ static std::atomic_bool campaign_trees_scaled = false;
 // Both camera getters hold their code (the update hook reads it every frame: the loader and other plugins write
 // game code after our init too).
 static std::atomic_bool camera_getters_read = false;
-// The grass draw's code from its entry to its no-LOD return is the code that was read (FNV-1a, 32 bits). Set at init,
-// before the site's hook goes in, and again at game start (the loader and other plugins write game code after our
-// init too); the hook's own early return stands on it, as the 32-bit add-on's draw_scrub_read.
+// The grass draw's code from its entry to its no-LOD return is the code that was read (battle_step::Fnv1a, 32 bits;
+// the tests pin the same hash on the game file). Set at init, before the site's hook goes in, and again at game start
+// (the loader and other plugins write game code after our init too); the hook's own early return stands on it, as
+// the 32-bit add-on's draw_scrub_read.
 inline constexpr size_t GRASS_DRAW_NO_LOD_BYTES = 0x110;
 inline constexpr uint32_t GRASS_DRAW_NO_LOD_HASH = 0xd7a250e2;
 inline constexpr const char* GRASS_DRAW_CODE_LINE =
     "renodx_attila64: grass draw: the game's code is not the code that was read, every draw goes to the game";
 static std::atomic_bool grass_draw_code_read = false;
-// Shared with the tests, which pin the same hash on the game file.
-static uint32_t Fnv1a(const uint8_t* bytes, size_t count) noexcept {
-  uint32_t hash = 0x811c9dc5;
-  for (size_t index = 0; index < count; ++index) {
-    hash = (hash ^ bytes[index]) * 0x01000193;
-  }
-  return hash;
-}
 
 // The soldier draw's per-soldier record (r13 at the sprite site), and the display tables it points at: four sprite
 // distances by the soldier's size (0-3; a size past 3 takes 0's), their fade widths 0x10 after them.
@@ -698,6 +691,16 @@ static ATTILA64_GAME_CALL void PairsEntry(void* manager) {
   [[clang::musttail]] return reinterpret_cast<PairsFn>(originals[LABEL_PAIRS_ENTRY])(manager);
 }
 
+// ROW_CONTACT_SPLIT: the battle step's contact pass (battle_step.hpp), whose detect half runs on the game's task
+// threads, or the call is left to the game's function (a tail call; the same signature as the pair resolver's). As
+// above: ContactTick calls game code from a frame of ours and no frame above this site catches (the generator's
+// catch gate on it); the row reads core_wanted itself and ignores hooks_wanted.
+static ATTILA64_GAME_CALL void ContactEntry(void* manager) {
+  LogFirstCall(LABEL_CONTACT_ENTRY);
+  if (battle_step::ContactTick(manager, &block, *loader)) return;
+  [[clang::musttail]] return reinterpret_cast<PairsFn>(originals[LABEL_CONTACT_ENTRY])(manager);
+}
+
 // ROW_SPRITES, inside the soldier draw: where a soldier turns into a flat sprite. The site's two instructions make that
 // distance: xmm0 (the soldier's random value - 0.5) x its size's fade width ([rax]), + its size's sprite distance
 // ([rcx]); the game stores the sum and draws a sprite when the camera is farther away.
@@ -881,6 +884,7 @@ static const std::array<void*, LABEL_COUNT> REPLACEMENTS = [] {
   hooks[LABEL_SPRITE_DISTANCE] = reinterpret_cast<void*>(&SpriteDistanceHandler);
   hooks[LABEL_EFFECT_WALK_ENTRY] = reinterpret_cast<void*>(&EffectWalkEntry);
   hooks[LABEL_PAIRS_ENTRY] = reinterpret_cast<void*>(&PairsEntry);
+  hooks[LABEL_CONTACT_ENTRY] = reinterpret_cast<void*>(&ContactEntry);
   return hooks;
 }();
 // Each mid-function site's scales: its handler is called only while a bit of them is set in scales_active.

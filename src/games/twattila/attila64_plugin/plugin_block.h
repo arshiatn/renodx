@@ -64,8 +64,7 @@ enum Status : uint32_t {
 };
 
 // One per feature; bit (1 << row) in rows_applied, rows_refused, rows_changed, rows_tried and hooks_wanted. Append only.
-// Reserved, no value yet: Big Battle Fix, Cached Particle Count and Exit Job Drain (parked), and the battle step's
-// second row ROW_CONTACT_SPLIT (ini key ContactSplit).
+// Reserved, no value yet: Big Battle Fix, Cached Particle Count and Exit Job Drain (parked).
 enum Row : uint32_t {
   ROW_BONE_FLUSH,      // before the game packs its animation textures: the add-on flushes its unit records
   ROW_PASS_DRAW,       // each scene node's draw into a view: the add-on may skip the game's shadow-map work
@@ -80,6 +79,7 @@ enum Row : uint32_t {
   ROW_GAME_CODE,       // Faster Game CPU Code: hand-made stubs for game code (game_code.hpp), restart-only
   ROW_PARALLEL_EFFECTS,  // Effects on All Cores: the walk over a scene node's effect types (core_wanted CORE_EFFECTS)
   ROW_BATTLE_STEP,     // Faster Battle Step: the battle step's pair resolver (core_wanted CORE_STEP, engine_status)
+  ROW_CONTACT_SPLIT,   // Multithreaded Collisions: the battle step's contact pass (core_wanted CORE_SPLIT, engine_status)
   ROW_COUNT
 };
 
@@ -108,11 +108,12 @@ struct Callbacks {
 // core_wanted, per bit. The plugin tests each part's bit (`& CORE_BATTLE`, `& CORE_RENDER`) and ignores bits it does
 // not know. The add-on changes only its rows' bits (`fetch_or` / `fetch_and`) and never stores the whole word, so a bit
 // that no loaded row writes keeps the plugin's initial value. The initial value is CORE_WANTED_DEFAULT; the plugin's
-// RenderCore key then sets or clears CORE_RENDER at init, and its BattleStep key 1 sets CORE_STEP.
+// RenderCore key then sets or clears CORE_RENDER at init, its BattleStep key 1 sets CORE_STEP and its ContactSplit key 1
+// CORE_SPLIT.
 inline constexpr uint32_t CORE_BATTLE = 1u << 0;  // Keep Battle Core Free
 inline constexpr uint32_t CORE_RENDER = 1u << 1;  // Keep Render Core Free
 inline constexpr uint32_t CORE_STEP = 1u << 2;    // Faster Battle Step
-inline constexpr uint32_t CORE_SPLIT = 1u << 3;   // reserved: the contact split row
+inline constexpr uint32_t CORE_SPLIT = 1u << 3;   // Multithreaded Collisions (the contact split row); off by default
 // Off = neither bit, Automatic = both, On = CORE_EFFECTS alone. CORE_EFFECTS_AUTO without CORE_EFFECTS reads as Off:
 // CORE_EFFECTS is the wanted bit, AUTO only qualifies it. Each change of stop is one fetch_or or fetch_and, so no
 // reader sees a stop that was not chosen.
@@ -268,7 +269,7 @@ inline constexpr int TWEAKS_DEFAULT = 1;
 inline constexpr const wchar_t* ROW_INI_KEYS[ROW_COUNT] = {L"BoneFlush", L"PassDraw",   L"CpuPlacement", L"UnitLod",
                                                            L"ModelDetail", L"ShadowMap", L"Grass",       L"GrassCells",
                                                            L"CampaignTrees", L"Sprites",  L"GameCode",
-                                                           L"ParallelEffects", L"BattleStep"};
+                                                           L"ParallelEffects", L"BattleStep", L"ContactSplit"};
 inline constexpr int ROW_INSTALL_DEFAULT = 1;
 // The restart-only values the add-on writes and the plugin reads at init.
 inline constexpr wchar_t INI_VALUES_SECTION[] = L"Attila64Plugin.Values";

@@ -12,6 +12,7 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -214,13 +215,18 @@ template <typename Fn>
   return reinterpret_cast<Fn>(At<void**>(object, 0)[slot]);
 }
 
-// FNV-1a, 64 bits, with the reference's parameters (Fowler, Noll and Vo; public domain): the value of `count` bytes
-// from the running value `hash` on. One copy for both rows' code checks and for the test, which pins the same values
-// on the game file.
-inline constexpr uint64_t FNV_OFFSET_BASIS = 0xcbf29ce484222325;
-[[nodiscard]] static uint64_t Fnv1a64(const uint8_t* bytes, size_t count, uint64_t hash = FNV_OFFSET_BASIS) noexcept {
+// FNV-1a, 32 or 64 bits, with the reference's parameters (Fowler, Noll and Vo; public domain): the value of `count`
+// bytes from the running value `hash` on. One copy for every code check of the plugin (the grass draw's is the 32-bit
+// one, both rows' here the 64-bit one) and for the tests, which pin the same values on the game file.
+template <typename Hash>
+  requires std::same_as<Hash, uint32_t> || std::same_as<Hash, uint64_t>
+inline constexpr Hash FNV_OFFSET_BASIS = static_cast<Hash>((sizeof(Hash) == sizeof(uint64_t)) ? 0xcbf29ce484222325 : 0x811c9dc5);
+template <typename Hash>
+inline constexpr Hash FNV_PRIME = static_cast<Hash>((sizeof(Hash) == sizeof(uint64_t)) ? 0x100000001b3 : 0x01000193);
+template <typename Hash>
+[[nodiscard]] static Hash Fnv1a(const uint8_t* bytes, size_t count, Hash hash = FNV_OFFSET_BASIS<Hash>) noexcept {
   for (size_t offset = 0; offset < count; ++offset) {
-    hash = (hash ^ bytes[offset]) * 0x100000001b3;
+    hash = (hash ^ bytes[offset]) * FNV_PRIME<Hash>;
   }
   return hash;
 }
@@ -238,7 +244,7 @@ static void SetLane(Block* block, EngineState lane, uint32_t shift = ENGINE_STEP
 // Whether the game's code and tables in memory are the ones read; the first that is not gets the row's one line.
 [[nodiscard]] static bool CheckGameCode(const LoaderApi& loader) noexcept {
   for (const CodeRange& range : CODE_RANGES) {
-    if (Fnv1a64(reinterpret_cast<const uint8_t*>(uintptr_t{range.address}), range.length) != range.hash) {
+    if (Fnv1a<uint64_t>(reinterpret_cast<const uint8_t*>(uintptr_t{range.address}), range.length) != range.hash) {
       loader.log("renodx_attila64: battle step: game code differs (%#x+%#x)", range.address, range.length);
       return false;
     }
@@ -2758,7 +2764,7 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
   size_t check_index = 0;
   for (const ContactRange& range : CONTACT_RANGES) {
     const uint32_t block_count = (range.size + BLOCK_BYTES - 1) / BLOCK_BYTES;
-    uint64_t hash = FNV_OFFSET_BASIS;
+    uint64_t hash = FNV_OFFSET_BASIS<uint64_t>;
     uint32_t first_differing = block_count;
     for (uint32_t block = 0; block < block_count; ++block) {
       const uint32_t offset = block * BLOCK_BYTES;
@@ -2773,7 +2779,7 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
           }
         }
       }
-      hash = Fnv1a64(bytes.data(), count, hash);
+      hash = Fnv1a(bytes.data(), count, hash);
       if (first_differing == block_count && static_cast<uint16_t>(hash) != CONTACT_RANGE_CHECKS[check_index + block]) {
         first_differing = block;
       }
@@ -2781,11 +2787,11 @@ static_assert(std::is_trivially_destructible_v<ContactItem> && std::is_trivially
     check_index += block_count;
     if (hash != range.value) return differs(range.start, std::min(first_differing, block_count - 1) * BLOCK_BYTES);
   }
-  uint64_t chain = FNV_OFFSET_BASIS;
+  uint64_t chain = FNV_OFFSET_BASIS<uint64_t>;
   const ContactEntry* named = &CONTACT_ENTRIES.back();
   bool found = false;
   for (const ContactEntry& entry : CONTACT_ENTRIES) {
-    chain = Fnv1a64(reinterpret_cast<const uint8_t*>(uintptr_t{entry.vtable} + entry.slot), sizeof(uint64_t), chain);
+    chain = Fnv1a(reinterpret_cast<const uint8_t*>(uintptr_t{entry.vtable} + entry.slot), sizeof(uint64_t), chain);
     if (!found && static_cast<uint16_t>(chain) != entry.check) {
       named = &entry;
       found = true;

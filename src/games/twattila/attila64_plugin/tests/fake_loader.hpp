@@ -398,10 +398,11 @@ static Plugin LoadPlugin(const wchar_t* dll_path) {
 // every tweak object (WriteTweakObjects) and the loader's effect guards (WriteLoaderGuards), with no route note beside
 // the test and no ReShade.ini keys but, with `game_code_key_off`, the game code row's install key 0 (an image without
 // the game code that row stands on): every other row with a site goes in, and no patch site has other bytes to
-// write. A hand-made stub's site is in with our jump, or only checked (its stub not built). `step_lane`: what the
-// battle step row's check of the game's code must find on this image.
+// write. A hand-made stub's site is in with our jump, or only checked (its stub not built). `step_lane` and
+// `split_lane`: what the battle step row's and the contact split row's checks of the game's code must find on this
+// image (the contact split's bit is not in the build's default: OFF on the game's code).
 static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, bool game_code_key_off,
-                              EngineState step_lane) {
+                              EngineState step_lane, EngineState split_lane) {
   const Plugin plugin = LoadPlugin(dll_path);
   if (plugin.init == nullptr) return plugin;
 
@@ -429,7 +430,8 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, boo
   Expect(shared->rows_tried == rows && shared->core_wanted.load() == CORE_WANTED_DEFAULT
              && shared->core_status.load() == (uint64_t{CORE_WAITING} << CORE_STATE_SHIFT)
              && shared->render_core_status.load() == (uint32_t{CORE_NO_THREAD} << CORE_STATE_SHIFT)
-             && shared->engine_status.load() == (uint32_t{step_lane} << ENGINE_STEP_SHIFT)
+             && shared->engine_status.load()
+                    == ((uint32_t{step_lane} << ENGINE_STEP_SHIFT) | (uint32_t{split_lane} << ENGINE_SPLIT_SHIFT))
              && shared->tweaks_status.load() == TWEAKS_PENDING && shared->tweak_count == 0 && shared->tweaks == nullptr
              && shared->notices.load() == 0 && shared->scales_active.load() == 0 && scales_neutral
              && NEUTRAL_SCALES[SCALE_SPRITE_DISTANCE] == 0.0f && NEUTRAL_SCALES[SCALE_DEAD_UNITS] == 1.0f,
@@ -441,11 +443,12 @@ static Plugin ExpectPluginDll(const LoaderApi& api, const wchar_t* dll_path, boo
              && Logged(game_code_key_off
                            ? "rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
                              "grass on, grass cells on, campaign trees on, sprites on, game code off, parallel effects on, "
-                             "battle step on"
+                             "battle step on, contact split on"
                            : "rows: bone flush on, pass draw on, battle core on, unit lod on, model detail on, shadow map on, "
                              "grass on, grass cells on, campaign trees on, sprites on, game code on, parallel effects on, "
-                             "battle step on")
+                             "battle step on, contact split on")
              && Logged("EFFECT_WALK_ENTRY 0x32fbf60: applied")
+             && Logged("renodx_attila64: site CONTACT_ENTRY 0x5df300: applied")
              && Logged("renodx_attila64: parallel effects mode Off (ini EffectsMode)"),
          "the init lines");
   // The rows line follows the Row enum and the sites table (a later row needs no edit here): one entry per row, "on"

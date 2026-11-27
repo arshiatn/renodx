@@ -16,7 +16,7 @@
 // game code that writes what the row's reasoning says it never writes), each reason for the game's own loop, an entry
 // while a call runs, the switch, the status lane and the row's log lines; and the text a batch tool looks for in the
 // DLL file.
-// The contact split row of the same file (ContactTick; its hook comes with the row's wiring) has its own part below:
+// The contact split row of the same file (ContactTick, behind hooks.hpp's ContactEntry) has its own part below:
 // its tables without the game file, and with it the checked code and table entries byte by byte, the code check's
 // lines, and the game's contact pass against the row on fake worlds. The row's helpers go through the engine's task
 // queue: the game's own fetch on a fake task manager, the test's lock, unlock and wake at the game's addresses, and
@@ -1660,13 +1660,19 @@ struct ContactOutcome {
   std::vector<OwnerCall> calls;
   std::vector<uint8_t> memory;  // the arena, then the game's id set
 };
-// `with_row`: through the row as the hook will call it (the game's function on a false). `fresh`: the row's state as
-// at the game's start. `threads`: the helpers a region gets.
-// A tick through the row, then the task threads' answer and what they left in the queue (taken as a task thread takes
-// a helper late, or the step thread in its own join).
+// `with_row`: through the row's hook (the game's function on a false). `fresh`: the row's state as at the game's
+// start. `threads`: the helpers a region gets.
+// What the plugin's contact hook holds as the game's function: it only counts (Tick's caller runs the game's pass).
+uint32_t contact_passed_on = 0;
+ATTILA64_GAME_CALL void ContactPassOn(void* /*manager*/) noexcept { ++contact_passed_on; }
+// A tick through the row's hook, then the task threads' answer and what they left in the queue (taken as a task thread
+// takes a helper late, or the step thread in its own join). A tick the hook did not hand to the game's function was
+// done by the row; one it handed on is the caller's to run.
 bool Tick() {
   in_tick = true;
-  const bool handled = ContactTick(scene.manager, &block, api);
+  const uint32_t passed_on_before = contact_passed_on;
+  twattila::attila64_plugin::ContactEntry(scene.manager);
+  const bool handled = contact_passed_on == passed_on_before;
   in_tick = false;
   if (!leave_queued) {
     WaitForTaskThreads();
@@ -1832,8 +1838,8 @@ void BuildContactWorld(std::mt19937_64* random, const ContactShape& shape) {
 
 // The row's items of the last region as one value: each place's object, mode, counts and kept chain.
 uint64_t ItemsValue(uint32_t object_count) {
-  uint64_t value = FNV_OFFSET_BASIS;
-  const auto add = [&](const auto& field) { value = Fnv1a64(reinterpret_cast<const uint8_t*>(&field), sizeof(field), value); };
+  uint64_t value = FNV_OFFSET_BASIS<uint64_t>;
+  const auto add = [&](const auto& field) { value = Fnv1a(reinterpret_cast<const uint8_t*>(&field), sizeof(field), value); };
   for (uint32_t place = 0; place < object_count; ++place) {
     const ContactItem& item = contact_items[place];
     add(item.object);
@@ -2621,7 +2627,7 @@ bool Names(const CodeCheck& check, uint64_t address, uint32_t offset) {
 // The contact split's tables, without the game file: the class table and its lookup, the ranges' order, the swap's
 // cell entries, the row's default, and the code check on memory that is not the game's.
 void RunContactTableChecks() {
-  uint64_t class_value = FNV_OFFSET_BASIS;
+  uint64_t class_value = FNV_OFFSET_BASIS<uint64_t>;
   std::array<uint32_t, 4> with_mode = {};
   bool ascending = true;
   bool found = true;
@@ -2631,7 +2637,7 @@ void RunContactTableChecks() {
     const uint64_t vptr = known.vptr;
     std::memcpy(bytes.data(), &vptr, sizeof(vptr));
     bytes.back() = known.mode;
-    class_value = Fnv1a64(bytes.data(), bytes.size(), class_value);
+    class_value = Fnv1a(bytes.data(), bytes.size(), class_value);
     ++with_mode[known.mode];
     ascending = ascending && (index == 0 || CONTACT_CLASSES[index - 1].vptr < known.vptr);
     uint8_t slot = ContactClassSlot(known.vptr);
@@ -2658,14 +2664,28 @@ void RunContactTableChecks() {
   }
   bool entries_in_order = true;
   for (size_t index = 1; index < CONTACT_ENTRIES.size(); ++index) {
-    const ContactEntry& before = CONTACT_ENTRIES[index - 1];
-    const ContactEntry& entry = CONTACT_ENTRIES[index];
+    const battle_step::ContactEntry& before = CONTACT_ENTRIES[index - 1];
+    const battle_step::ContactEntry& entry = CONTACT_ENTRIES[index];
     entries_in_order = entries_in_order && (before.vtable < entry.vtable || (before.vtable == entry.vtable && before.slot < entry.slot));
   }
   Expect(ranges_in_order && CONTACT_RANGES.size() == 184 && CONTACT_RANGE_CHECKS.size() == 2441 && entries_in_order
              && CONTACT_ENTRIES.size() == 1415 && CONTACT_ENTRY_CHAIN == 0x43d70ccc80a103b8,
          "code tables: 184 ranges in address order without overlap, each mask inside its range; 1415 entries in order");
   Expect((CORE_WANTED_DEFAULT & CORE_SPLIT) == 0, "the contact split's bit is not in the build's default");
+  // The row's place in the block and in the site table: appended after the battle step's, its key as the batch tool
+  // writes it, its one site the contact pass's first bytes, which the code check's range of the pass leaves out.
+  Expect(ROW_BATTLE_STEP == 12 && ROW_CONTACT_SPLIT == 13 && ROW_COUNT == 14
+             && std::wstring_view(ROW_INI_KEYS[ROW_CONTACT_SPLIT]) == L"ContactSplit" && CORE_SPLIT == 1u << 3
+             && ENGINE_SPLIT_SHIFT == 8,
+         "the contact split's row, key, bit and lane");
+  const Site& contact_site = SITES[LABEL_CONTACT_ENTRY];
+  Expect(contact_site.address == CONTACT_LOOP && contact_site.length == HOOK_BYTES && contact_site.row == ROW_CONTACT_SPLIT
+             && contact_site.kind == SITE_HOOK
+             && std::ranges::count_if(SITES, [](const Site& site) { return site.row == ROW_CONTACT_SPLIT; }) == 1
+             && std::ranges::any_of(CONTACT_RANGES, [&](const ContactRange& range) {
+                  return range.start == contact_site.address + contact_site.length && range.size == 0x358 - HOOK_BYTES;
+                }),
+         "the contact split's site: the pass's first five bytes, outside the code check");
 
   bool cells_zero = contact_cells.head == nullptr && contact_cells.none == nullptr
                     && contact_cells.entries[0].head == &contact_cells.head;
@@ -2695,13 +2715,13 @@ void RunContactByteChecks() {
   constexpr std::array<uint32_t, 8> NOT_CENSUS_FUNCTIONS = {0x5df305, 0x6e88f5, 0x803e70, 0xba51a0, 0xc501c0, 0x3061e60, 0x3062aa0, 0x3062d00};
   size_t check_index = 0;
   bool ranges_hold = true;
-  uint64_t census_value = FNV_OFFSET_BASIS;
+  uint64_t census_value = FNV_OFFSET_BASIS<uint64_t>;
   uint32_t census_functions = 0;
   for (const ContactRange& range : CONTACT_RANGES) {
-    uint64_t hash = FNV_OFFSET_BASIS;
+    uint64_t hash = FNV_OFFSET_BASIS<uint64_t>;
     for (uint32_t offset = 0; offset < range.size; ++offset) {
       const uint8_t byte = (masked(range, offset) ? uint8_t{0} : *at(range.start + offset));
-      hash = Fnv1a64(&byte, 1, hash);
+      hash = Fnv1a(&byte, 1, hash);
       if (offset % 16 == 15 || offset + 1 == range.size) {
         ranges_hold = ranges_hold && check_index < CONTACT_RANGE_CHECKS.size() && static_cast<uint16_t>(hash) == CONTACT_RANGE_CHECKS[check_index];
         ++check_index;
@@ -2712,7 +2732,7 @@ void RunContactByteChecks() {
       ranges_hold = false;
     }
     if (std::ranges::find(NOT_CENSUS_FUNCTIONS, range.start) == NOT_CENSUS_FUNCTIONS.end()) {
-      census_value = Fnv1a64(at(range.start), range.size, census_value);
+      census_value = Fnv1a<uint64_t>(at(range.start), range.size, census_value);
       ++census_functions;
     }
   }
@@ -2739,7 +2759,7 @@ void RunContactByteChecks() {
     const ContactRange* range = range_at(named.address);
     named_hold = named_hold && range != nullptr && range->size == named.length && range->value == named.hash;
   }
-  Expect(named_hold && Fnv1a64(at(0x3062d00), 0xb8) == 0x5ca2674289a8b5b7 && Fnv1a64(at(CONTACT_LOOP), 0x358) == 0x875d9d8f5e3c3893
+  Expect(named_hold && Fnv1a<uint64_t>(at(0x3062d00), 0xb8) == 0x5ca2674289a8b5b7 && Fnv1a<uint64_t>(at(CONTACT_LOOP), 0x358) == 0x875d9d8f5e3c3893
              && range_at(0x3062d00)->mask != CONTACT_NO_MASK && CONTACT_MASKS[range_at(0x3062d00)->mask].start == 0x3062d92
              && CONTACT_MASKS[range_at(0x3062d00)->mask].size == 4 && CONTACT_MASKS.size() == 1,
          "contact code: the named ranges with the design's values; one mask, on the task-thread loop's four bytes");
@@ -2748,7 +2768,7 @@ void RunContactByteChecks() {
   // (a range, or one of the 15 math leaves that are not in the value).
   constexpr std::array<uint32_t, 15> MATH_LEAVES = {0x3002e20, 0x3003660, 0x30040f0, 0x3004a70, 0x3004c60, 0x3005d80, 0x3007cf0, 0x301d610,
                                                     0x301ff20, 0x30200f0, 0x3020980, 0x3025cf0, 0x3026090, 0x3027ec0, 0x30678e0};
-  const auto entry_word = [&](const ContactEntry& entry) { return reinterpret_cast<uint64_t*>(at(uintptr_t{entry.vtable} + entry.slot)); };
+  const auto entry_word = [&](const battle_step::ContactEntry& entry) { return reinterpret_cast<uint64_t*>(at(uintptr_t{entry.vtable} + entry.slot)); };
   // The entries' chain on the memory as it is: its end value, and the first entry whose check word differs (the
   // last entry if none does).
   struct Chain {
@@ -2756,9 +2776,9 @@ void RunContactByteChecks() {
     size_t named = 0;
   };
   const auto chain_now = [&] {
-    Chain chain = {.value = FNV_OFFSET_BASIS, .named = CONTACT_ENTRIES.size()};
+    Chain chain = {.value = FNV_OFFSET_BASIS<uint64_t>, .named = CONTACT_ENTRIES.size()};
     for (size_t index = 0; index < CONTACT_ENTRIES.size(); ++index) {
-      chain.value = Fnv1a64(reinterpret_cast<const uint8_t*>(entry_word(CONTACT_ENTRIES[index])), sizeof(uint64_t), chain.value);
+      chain.value = Fnv1a(reinterpret_cast<const uint8_t*>(entry_word(CONTACT_ENTRIES[index])), sizeof(uint64_t), chain.value);
       if (chain.named == CONTACT_ENTRIES.size() && static_cast<uint16_t>(chain.value) != CONTACT_ENTRIES[index].check) {
         chain.named = index;
       }
@@ -2770,7 +2790,7 @@ void RunContactByteChecks() {
     bool words_are_functions = true;
     std::vector<uint32_t> vtables;
     std::vector<uint16_t> slots;
-    for (const ContactEntry& entry : CONTACT_ENTRIES) {
+    for (const battle_step::ContactEntry& entry : CONTACT_ENTRIES) {
       const uint64_t word = *entry_word(entry);
       words_are_functions = words_are_functions && word <= UINT32_MAX
                             && ((range_at(static_cast<uint32_t>(word)) != nullptr
@@ -2819,7 +2839,7 @@ void RunContactByteChecks() {
     constexpr std::array<uint8_t, 7> ACCESSOR_LOAD = {0x48, 0x8b, 0x83, 0x98, 0x21, 0x00, 0x00};
     int32_t accessor_offset = 0;
     std::memcpy(&accessor_offset, at(0x785e81), sizeof(accessor_offset));
-    Expect(Fnv1a64(at(0x5df9a5), 0x5dfb9c - 0x5df9a5) == 0x3af36b1c2f92753b, "contact code: the engine's enqueue is the one read");
+    Expect(Fnv1a<uint64_t>(at(0x5df9a5), 0x5dfb9c - 0x5df9a5) == 0x3af36b1c2f92753b, "contact code: the engine's enqueue is the one read");
     Expect(std::memcmp(at(0x785e74), WALK_LOADS.data(), WALK_LOADS.size()) == 0 && 0x785e85 + accessor_offset == 0x272c070
                && std::memcmp(at(0x272c07f), ACCESSOR_LOAD.data(), ACCESSOR_LOAD.size()) == 0 && range_at(0x785e60) != nullptr
                && range_at(0x785e60)->size == 0x50f && range_at(0x272c070) != nullptr && range_at(0x272c070)->size == 0x123
@@ -2868,7 +2888,7 @@ void RunContactByteChecks() {
   {
     bool named = true;
     for (size_t index = 0; index < CONTACT_ENTRIES.size(); index += 7) {
-      const ContactEntry& entry = CONTACT_ENTRIES[(index == 0) ? CONTACT_ENTRIES.size() - 1 : index - 1];
+      const battle_step::ContactEntry& entry = CONTACT_ENTRIES[(index == 0) ? CONTACT_ENTRIES.size() - 1 : index - 1];
       *entry_word(entry) ^= 0x10;
       named = named && Names(CheckCode(), entry.vtable, entry.slot);
       *entry_word(entry) ^= 0x10;
@@ -2878,14 +2898,14 @@ void RunContactByteChecks() {
     // and the line names a later entry.
     constexpr size_t CHANGED = 100;
     const uint64_t game_word = *entry_word(CONTACT_ENTRIES[CHANGED]);
-    uint64_t before_changed = FNV_OFFSET_BASIS;
+    uint64_t before_changed = FNV_OFFSET_BASIS<uint64_t>;
     for (size_t index = 0; index < CHANGED; ++index) {
-      before_changed = Fnv1a64(reinterpret_cast<const uint8_t*>(entry_word(CONTACT_ENTRIES[index])), sizeof(uint64_t), before_changed);
+      before_changed = Fnv1a(reinterpret_cast<const uint8_t*>(entry_word(CONTACT_ENTRIES[index])), sizeof(uint64_t), before_changed);
     }
     uint64_t other_word = game_word;
     do {
       other_word += uint64_t{1} << 32;
-    } while (static_cast<uint16_t>(Fnv1a64(reinterpret_cast<const uint8_t*>(&other_word), sizeof(other_word), before_changed))
+    } while (static_cast<uint16_t>(Fnv1a(reinterpret_cast<const uint8_t*>(&other_word), sizeof(other_word), before_changed))
              != CONTACT_ENTRIES[CHANGED].check);
     *entry_word(CONTACT_ENTRIES[CHANGED]) = other_word;
     const Chain chain = chain_now();
@@ -2930,6 +2950,9 @@ int wmain(int argc, wchar_t** argv) {
   // The plugin's hook as its init leaves it: the loader, and the game's function it passes on to.
   loader = &api;
   originals[LABEL_PAIRS_ENTRY] = reinterpret_cast<void*>(&PassOn);
+  originals[LABEL_CONTACT_ENTRY] = reinterpret_cast<void*>(&ContactPassOn);
+  // The hook's first-call line is patcher_test's: here it would be one more line in the first tick's case.
+  first_call_logged[LABEL_CONTACT_ENTRY].store(true);
 
   // The DLL file holds the row's word as one whole string of its own (a zero byte before and after): the batch tool
   // looks for exactly that. The bare bytes would not do, they are in every "battle step: ..." line too. The row's
@@ -2944,6 +2967,12 @@ int wmain(int argc, wchar_t** argv) {
                && dll_bytes.find("\0renodx_attila64: battle step: game code differs (%#x+%#x)\0"sv) != std::string::npos,
            "dll: the file holds the row's three lines as whole strings");
     Expect((CORE_WANTED_DEFAULT & CORE_STEP) != 0, "the row's bit is in the build's default");
+    // The contact split row's word the same, and its code check's line in the format the batch reads.
+    Expect(dll_bytes.find("\0contact split\0"sv) != std::string::npos,
+           "dll: the file holds the contact split row's word as a whole string");
+    Expect(dll_bytes.find(std::string(1, '\0') + CODE_DIFFERS_LINE + std::string(1, '\0')) != std::string::npos
+               && dll_bytes.find("\0renodx_attila64: contact split: partly (%s)\0"sv) != std::string::npos,
+           "dll: the file holds the contact split row's lines as whole strings");
   }
 
   manager_table[MANAGER_CREATE_SLOT] = reinterpret_cast<void*>(&FakeCreate);
@@ -2981,7 +3010,7 @@ int wmain(int argc, wchar_t** argv) {
   // Each code range in memory as the plugin's init finds it (MapGameElf applies the loader's stack-check rewrite):
   // the row's hashes are the memory's.
   for (const CodeRange& range : CODE_RANGES) {
-    Expect(Fnv1a64(at(range.address), range.length) == range.hash, "code: each range's hash is the game's, in memory");
+    Expect(Fnv1a<uint64_t>(at(range.address), range.length) == range.hash, "code: each range's hash is the game's, in memory");
   }
   for (const TableWord& word : TABLE_WORDS) {
     Expect(*reinterpret_cast<const uint64_t*>(uintptr_t{word.address}) == word.value, "code: each table word is the game's");
