@@ -6,7 +6,8 @@
 # with the DLL, battle_core_test, model_lods_test and trampoline_test on their own; elf_sites_test and game_code_test
 # with -Elf <the game's Linux executable>; without it, with a path that cannot be opened, or with the game's address
 # range taken, those tests are SKIPPED and say so in the last line); the exit code is the number of failures. -Bench has
-# game_code_test time its code instead of its long run (every input of the half): a -Bench run is no gate.
+# game_code_test time its code instead of its long runs (every input of the half and of each of the sprite rows' lanes,
+# about 15 minutes on four threads): a -Bench run is no gate.
 param([string]$Out = '', [switch]$Test, [string]$TestOut = '', [string]$Elf = '', [switch]$Bench)
 $root = Resolve-Path "$PSScriptRoot\..\..\..\.."
 if (-not $Out) { $Out = Join-Path $root "build\attila64_plugin" }
