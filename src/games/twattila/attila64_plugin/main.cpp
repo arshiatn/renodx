@@ -71,7 +71,7 @@ std::array<AppliedSite, SITES.size()> applied_sites = {};
 // A restart-only value's key in [Attila64Plugin.Values], read at init for the game's start.
 struct RestartKey {
   bool present = false;
-  bool parsed = false;  // 8 hex digits
+  bool eight_hex_digits = false;
   uint32_t bits = 0;
 };
 std::array<RestartKey, TWEAKS.size()> restart_keys = {};
@@ -185,14 +185,13 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
 
   // The restart-only keys the add-on wrote for this start. The loader reads its frame cap on the first frame, after
   // this init.
-  int sol_frame_cap = 0;
-  if (has_ini) {
-    sol_frame_cap = static_cast<int>(GetPrivateProfileIntW(INI_VALUES_SECTION, tweaks::INI_SOL_FRAME_CAP, 0, ini));
-  }
-  tweaks::SetLoaderFrameCap(sol_frame_cap == 1, tweaks::ImportedFrom(GetModuleHandleW(nullptr), "getenv"), *api);
-  if (ini_int(INI_TWEAKS, tweaks::TWEAKS_DEFAULT) != 0) {
-    for (size_t index = 0; has_ini && index < TWEAKS.size(); ++index) {
-      if (!TWEAKS[index].restart_only) continue;
+  const int sol_frame_cap =
+      (has_ini ? static_cast<int>(GetPrivateProfileIntW(INI_VALUES_SECTION, INI_SOL_FRAME_CAP, 0, ini)) : 0);
+  const HMODULE loader_c_library = tweaks::ImportedFrom(GetModuleHandleW(nullptr), "getenv");
+  tweaks::SetLoaderFrameCap(sol_frame_cap == 1, loader_c_library, *api);
+  if (ini_int(INI_TWEAKS, TWEAKS_DEFAULT) != 0) {
+    for (size_t index = 0; index < TWEAKS.size(); ++index) {
+      if (!has_ini || !TWEAKS[index].restart_only) continue;
       wchar_t key[TWEAK_NAME_CAPACITY] = {};
       std::ranges::copy(std::string_view(TWEAKS[index].name), key);
       wchar_t text[16];
@@ -200,7 +199,7 @@ extern "C" __declspec(dllexport) int attila64_plugin_init(const LoaderApi* api) 
         continue;
       }
       restart_keys[index].present = true;
-      restart_keys[index].parsed = tweaks::ParseKeyBits(text, &restart_keys[index].bits);
+      restart_keys[index].eight_hex_digits = tweaks::ParseKeyBits(text, &restart_keys[index].bits);
     }
     block.tweaks_status.store(TWEAKS_PENDING, std::memory_order_relaxed);
   }
@@ -285,7 +284,7 @@ extern "C" __declspec(dllexport) void attila64_plugin_game_started(const LoaderA
       ++ok;
       const RestartKey& key = restart_keys[index];
       if (!key.present) continue;
-      if (!key.parsed) {
+      if (!key.eight_hex_digits) {
         slot->restart_state = RESTART_OUT_OF_RANGE;
         loader->log("renodx_attila64: tweak %s: key not 8 hex digits, the game's value kept", entry.name);
         continue;

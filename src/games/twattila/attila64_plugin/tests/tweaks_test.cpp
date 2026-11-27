@@ -8,7 +8,8 @@
 // with the loader's note at several ages, the loader's frame cap, and the built DLL's init and game start with
 // [Attila64Plugin.Values] keys (copies of the DLL under dll_cases\, a ReShade.ini and a dx11_starting.txt next to this
 // exe, both removed at the end). Built with the C library as a DLL (build.ps1), as the loader exe is: this exe imports
-// getenv, so the frame cap is set through this exe's own C library and read back with this exe's getenv.
+// getenv, so the frame cap is set through this exe's own C library and read back with this exe's getenv. This exe also
+// exports a _putenv and a getenv of its own that do nothing, as a C library whose read-back fails.
 // tweaks_test.exe <renodx_attila64.dll>; exit code = failures.
 
 // This test reads the C library's environment with getenv on purpose (the call the loader makes).
@@ -31,6 +32,12 @@
 #include "../tweaks.h"
 #include "../tweaks.hpp"
 #include "fake_loader.hpp"
+
+// GetProcAddress on this exe finds these under the C library's names.
+extern "C" int DeafPutEnvironment(const char* /*text*/) { return 0; }
+extern "C" char* DeafGetEnvironment(const char* /*name*/) { return nullptr; }
+#pragma comment(linker, "/EXPORT:_putenv=DeafPutEnvironment")
+#pragma comment(linker, "/EXPORT:getenv=DeafGetEnvironment")
 
 int wmain(int argc, wchar_t** argv) {
   using namespace twattila::attila64_plugin;
@@ -191,6 +198,25 @@ int wmain(int argc, wchar_t** argv) {
                && write(sound, 0, false) == RESTART_OUT_OF_RANGE,
            "range: off DirectX 11 nothing is written, and the range is still said first");
     WriteTweakObjects();
+
+    // A signed value compares signed (no entry of today's table is one).
+    constexpr uintptr_t SIGNED_VALUE = 0x700000;
+    const TweakEntry signed_entry = {.name = "signed", .low_bits = static_cast<uint32_t>(-10), .high_bits = 5, .type = TWEAK_INT};
+    const auto write_signed = [&](int32_t value) {
+      std::memset(at(SIGNED_VALUE), 0, sizeof(value));
+      TweakSlot slot = {.value_address = SIGNED_VALUE};
+      const RestartState state = WriteRestartValue(signed_entry, static_cast<uint32_t>(value), true, &slot);
+      int32_t stored = 0;
+      std::memcpy(&stored, at(SIGNED_VALUE), sizeof(stored));
+      return std::pair{state, stored};
+    };
+    Expect(write_signed(-10) == std::pair{RESTART_APPLIED, -10} && write_signed(5) == std::pair{RESTART_APPLIED, 5}
+               && write_signed(-1) == std::pair{RESTART_APPLIED, -1},
+           "range: a signed integer at both ends and at -1 is written");
+    Expect(write_signed(-11) == std::pair{RESTART_OUT_OF_RANGE, 0} && write_signed(6) == std::pair{RESTART_OUT_OF_RANGE, 0}
+               && write_signed(std::numeric_limits<int32_t>::min()) == std::pair{RESTART_OUT_OF_RANGE, 0}
+               && write_signed(std::numeric_limits<int32_t>::max()) == std::pair{RESTART_OUT_OF_RANGE, 0},
+           "range: a signed integer one past each end is refused");
   }
 
   // The graphics route: the loader's test switch, else its note no older than this process (2 s of slack).
@@ -300,6 +326,13 @@ int wmain(int argc, wchar_t** argv) {
       SetLoaderFrameCap(false, without, api);
       Expect(Logged(CAP_LEFT_LINE) && cap_is_unset(), "cap: without the C library's two functions nothing is written");
     }
+    // This exe's own exports: the write is made, the read-back gives nothing, and the line says so.
+    clear_cap();
+    clear_log();
+    SetLoaderFrameCap(false, GetModuleHandleW(nullptr), api);
+    Expect(Logged("renodx_attila64: loader frame cap: left on (the loader's getenv did not read ATTILA_FPS_CAP=0 back)")
+               && !Logged(CAP_OFF_LINE) && std::getenv(FRAME_CAP_VARIABLE) == nullptr,
+           "cap: a read-back that fails is said, never the off line");
     clear_cap();
   }
 
@@ -309,7 +342,7 @@ int wmain(int argc, wchar_t** argv) {
   std::memcpy(at(BUILD_ID_NOTE_ADDRESS), BUILD_ID_NOTE.data(), BUILD_ID_NOTE.size());
   const std::wstring cases_dir = std::wstring(exe_dir_wide) + L"\\dll_cases";
   CreateDirectoryW(cases_dir.c_str(), nullptr);
-  const auto start_copy = [&](const wchar_t* folder, const char* players_cap = nullptr) {
+  const auto start_copy = [&](const wchar_t* folder, const char* players_cap = nullptr, int init_result = 0) {
     const std::wstring directory = cases_dir + L"\\" + folder;
     CreateDirectoryW(directory.c_str(), nullptr);
     const std::wstring target = directory + L"\\" + MODULE_NAME;
@@ -321,7 +354,7 @@ int wmain(int argc, wchar_t** argv) {
       SetEnvironmentVariableA(FRAME_CAP_VARIABLE, players_cap);
     }
     clear_log();
-    if (plugin.init == nullptr || plugin.init(&api) != 0) {
+    if (plugin.init == nullptr || plugin.init(&api) != init_result) {
       Expect(false, "dll: init");
       return Plugin{};
     }
@@ -422,6 +455,39 @@ int wmain(int argc, wchar_t** argv) {
     Expect(plugin.block->tweaks_status.load() == TWEAKS_NONE && plugin.block->tweak_count == 0 && plugin.block->tweaks == nullptr
                && !Logged("renodx_attila64: tweak") && value_of(sound) == sound.default_bits && Logged(CAP_OFF_LINE),
            "dll: Tweaks=0 checks, writes and publishes nothing");
+  }
+
+  // SolFrameCap: only exactly 1 keeps the cap. With a restart-only object that is not the game's while its key is
+  // there: refused by name, nothing written to it, the other key still written.
+  for (const wchar_t* other : {L"2", L"yes"}) {
+    set_keys();
+    set_value(INI_SOL_FRAME_CAP, other);
+    write_note(-1);
+    const Plugin plugin = start_copy((std::wstring(L"values_cap_") + other).c_str());
+    if (plugin.block == nullptr) continue;
+    Expect(Logged(CAP_OFF_LINE) && !Logged(CAP_ON_LINE) && process_cap() == "0", "dll: SolFrameCap 2 or text is off");
+    const uint64_t other_table = TWEAK_KINDS[TWEAK_FLOAT].table;
+    std::memcpy(at(sound.object), &other_table, sizeof(other_table));
+    plugin.game_started(&api);
+    Expect(Logged("renodx_attila64: tweak SOUND_DEFAULT_BUFFER_SIZE_IN_KB: refused (another type, value 0x0)")
+               && !Logged("renodx_attila64: tweak SOUND_DEFAULT_BUFFER_SIZE_IN_KB: 0x")
+               && Logged("renodx_attila64: tweaks: 81 checked, 80 ok, 2 absent, restart-only: 1 applied")
+               && value_of(sound) == sound.default_bits && slot_of(plugin, sound.name).verdict == VERDICT_WRONG_TYPE
+               && slot_of(plugin, sound.name).restart_state == RESTART_NONE && slot_of(plugin, sound.name).value_address == 0
+               && value_of(sound_limit) == 0x3f7d70a4,
+           "dll: a refused restart-only value is not written, whatever its key");
+  }
+
+  // Enabled=0: the plugin does nothing at all, so the loader's cap stays and no value is checked.
+  set_keys();
+  WritePrivateProfileStringW(INI_SECTION, INI_ENABLED, L"0", ini_path.c_str());
+  write_note(-1);
+  if (const Plugin plugin = start_copy(L"values_disabled", nullptr, 1); plugin.block != nullptr) {
+    plugin.game_started(&api);
+    Expect(plugin.block->status.load() == STATUS_OFF && Logged("Enabled=0") && !Logged("loader frame cap") && cap_is_unset()
+               && plugin.block->tweaks_status.load() == TWEAKS_NONE && !Logged("renodx_attila64: tweak")
+               && value_of(sound) == sound.default_bits,
+           "dll: Enabled=0 leaves the loader's cap and every value alone");
   }
 
   // A player's own value wins over the key.

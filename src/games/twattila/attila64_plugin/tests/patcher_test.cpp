@@ -606,7 +606,8 @@ int wmain(int argc, wchar_t** argv) {
   write_game();
   {
     const auto [plugin, result] = init_copy(L"off", MODULE_NAME, api);
-    Expect(result == 1 && status_of(plugin) == STATUS_OFF && Logged("Enabled=0") && every_site_untouched(),
+    Expect(result == 1 && status_of(plugin) == STATUS_OFF && Logged("Enabled=0") && every_site_untouched()
+               && !Logged("loader frame cap"),
            "dll: Enabled=0 refuses and writes nothing");
   }
   for (const Row row : {ROW_BONE_FLUSH, ROW_PASS_DRAW, ROW_CPU_PLACEMENT}) {
@@ -671,7 +672,7 @@ int wmain(int argc, wchar_t** argv) {
   *at(BUILD_ID_NOTE_ADDRESS + 20) ^= 1;
   {
     const auto [plugin, result] = init_copy(L"wrong_game", MODULE_NAME, api);
-    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_GAME && every_site_untouched(),
+    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_GAME && every_site_untouched() && !Logged("loader frame cap"),
            "dll: another game build refuses and writes nothing");
   }
 
@@ -680,12 +681,13 @@ int wmain(int argc, wchar_t** argv) {
     LoaderApi short_range = api;
     short_range.game_hi = GAME_HI_MIN - 1;
     const auto [plugin, result] = init_copy(L"wrong_loader", MODULE_NAME, short_range);
-    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_LOADER && site_untouched(SITES[0]),
+    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_LOADER && site_untouched(SITES[0]) && !Logged("loader frame cap"),
            "dll: a short game range refuses");
   }
   {
     const auto [plugin, result] = init_copy(L"renamed", L"renodx_attila64_old.dll", api);
-    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_LOADER && Logged("renamed") && every_site_untouched(),
+    Expect(result == 1 && status_of(plugin) == STATUS_WRONG_LOADER && Logged("renamed") && every_site_untouched()
+               && !Logged("loader frame cap"),
            "dll: a renamed file refuses and writes nothing");
   }
   set_ini_key_off(nullptr);

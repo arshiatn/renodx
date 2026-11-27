@@ -131,9 +131,14 @@ int wmain(int argc, wchar_t** argv) {
     return word;
   };
   for (const TweakKind& kind : TWEAK_KINDS) {
+    // mov qword [register], imm32: REX.W (with or without B), c7, a register-indirect operand, the table.
     bool stores_table = false;
     for (uintptr_t address = kind.constructor; address < kind.constructor + 0x100; ++address) {
-      stores_table = stores_table || word_at(address) == kind.table;
+      const uint8_t operand = *at(address + 2);
+      stores_table = stores_table
+                     || ((*at(address) == 0x48 || *at(address) == 0x49) && *at(address + 1) == 0xc7
+                         && (operand & 0xf8) == 0 && (operand & 7) != 4 && (operand & 7) != 5
+                         && word_at(address + 3) == kind.table);
     }
     Expect(stores_table, "tweaks: each type's constructor stores its table");
   }

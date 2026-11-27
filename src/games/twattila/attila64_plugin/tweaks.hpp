@@ -22,9 +22,6 @@
 // Also the loader's frame cap, which the loader reads once from its C library's environment on the first frame.
 namespace twattila::attila64_plugin::tweaks {
 
-inline constexpr int TWEAKS_DEFAULT = 1;  // INI_TWEAKS
-// [Attila64Plugin.Values]: 1 keeps the loader's frame cap, 0 or absent turns it off for this start.
-inline constexpr wchar_t INI_SOL_FRAME_CAP[] = L"SolFrameCap";
 inline constexpr char FRAME_CAP_VARIABLE[] = "ATTILA_FPS_CAP";
 inline constexpr char FRAME_CAP_OFF[] = "ATTILA_FPS_CAP=0";
 inline constexpr char ROUTE_VARIABLE[] = "ATTILA_DX11";
@@ -204,12 +201,10 @@ inline void SetLoaderFrameCap(bool keep_cap, HMODULE c_library, const LoaderApi&
   }
   using PutEnvironment = int (*)(const char*);
   using GetEnvironment = char* (*)(const char*);
-  PutEnvironment put = nullptr;
-  GetEnvironment get = nullptr;
-  if (c_library != nullptr) {
-    put = reinterpret_cast<PutEnvironment>(GetProcAddress(c_library, "_putenv"));
-    get = reinterpret_cast<GetEnvironment>(GetProcAddress(c_library, "getenv"));
-  }
+  const auto put =
+      (c_library != nullptr) ? reinterpret_cast<PutEnvironment>(GetProcAddress(c_library, "_putenv")) : nullptr;
+  const auto get =
+      (c_library != nullptr) ? reinterpret_cast<GetEnvironment>(GetProcAddress(c_library, "getenv")) : nullptr;
   if (put == nullptr || get == nullptr) {
     api.log("renodx_attila64: loader frame cap: left on (the loader's C library not found)");
     return;

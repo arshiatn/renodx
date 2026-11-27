@@ -21,7 +21,8 @@ $flags = @('/nologo', '-std:c++20', '/O2', '/MT', '/EHsc', '/DWIN32', '/D_WINDOW
 # The old DLL and its sidecar go first: a failed build leaves neither and fails the script.
 Remove-Item "$Out\renodx_attila64.dll", "$Out\renodx_attila64.dll.sha256" -ErrorAction SilentlyContinue
 if (Test-Path "$Out\renodx_attila64.dll") { throw "$Out\renodx_attila64.dll could not be deleted (still loaded?)" }
-& $clang @flags /LD "$PSScriptRoot\main.cpp" "/Fe$Out\renodx_attila64.dll" /link kernel32.lib
+# /Brepro: no link time in the file, so the same sources give the same sha.
+& $clang @flags /LD "$PSScriptRoot\main.cpp" "/Fe$Out\renodx_attila64.dll" /link kernel32.lib /Brepro
 if ($LASTEXITCODE -ne 0) { throw "renodx_attila64.dll failed to build (clang-cl exit $LASTEXITCODE)" }
 # The sidecar a64_ab checks the copied DLL against: "<sha256>  <file name>".
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "$Out\renodx_attila64.dll").Hash.ToLower()
