@@ -19340,6 +19340,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         wave 3 Q5 census, wave 4 Q5 source fixes; game-batch lines GB1 (32-bit recorder: forest, low-sun grass,
         burning city night + S4 siege), GB2 Tales (P1, X40, X38), GB3 WH3 (P1b), GB4 64-bit RT (X09 / X10 looks).
         Wave-1 briefs written 14:37 (scratch\<tag>\brief.md = COMMON + block + coord notes).
+        WAVE 1 STARTED 14:37: w4b2_ / j23p_ / x20_ (Opus High), x38_ / w0ca_ / gq1_ (Opus Medium, effort trial), in
+        parallel; gl_ (GPU-lock runner) starts when gq1_ hands back J0's script.
         - [ ] ATN D1: 4K reference storage for X08 / J2 / J3 / W3 proofs (~2.2 GB a replicate, ~100-200 GB): raw on D:
           (fwp_'s pick; D: 455 GB free 14:37) / half precision / stats only. Needed before gl_'s X08 job. Owner: ATN.
         - [ ] fwp_ D2-D5 for later: D2 X08 drop vs re-set if the picture moves; D3 O-HANG (b) / (c) when ATN is home; D4
