@@ -677,7 +677,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - O2 NOT TIMED (o2_ handback:91): torch light mode, 960 / 1920 samples, the 1920-s ... | coord GPU plan (5090 parts)
 - O2d HOST CONTRACT (o2_ handback:83-86): O2d is exact only while no host marks de ... | next SSS writer
 - AA FEED: CMAA2 ON THE GPU (aaf2_ handback:122): only its CPU model was checked. ... | aaf3_ if the harness runs CMAA2, else the next AA agent
-- tw_romer_dlaa NOT RUN (aaf2_ handback:87). Owner: coord (next Rome Remastered bu ... | coord (next Rome Remastered build gate, low)
 - FLIP PNGs: no bin-to-PNG step for reference\flip_tool.py from the trimmed OMM du ... | tools agent
 - OPTIONAL (a): a fresh CPU-baked grass recording (one 32-bit Attila start; its ru ... | ATN (yes / no) -> game batch
 - sdku__handback.md:102 calls the CPU baker the default (the GPU baker is; omr_ ha ... | coord (correct the note, low)
@@ -17498,7 +17497,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         SMAA path; the six CMAA2 compute passes run only on the game's D3D11 device; a GPU row needs a new D3D11 driver for
         the full chain. Owner: aaf3_ if the harness runs
         CMAA2, else the next AA agent
-        - [ ] tw_romer_dlaa NOT RUN (aaf2_ handback:87). Owner: coord (next Rome Remastered build gate, low)
+        - [x] tw_romer_dlaa NOT RUN (aaf2_ handback:87). Owner: coord (next Rome Remastered build gate, low)
+          RUN 11-28 15:28 (coord, atn-mods 9257b846a): gated renodx-twromeremastered.addon64 exit 0, test/tw_romer_dlaa/run.ps1
+          PASS (0 failures; WARP; 8 phases at 100 %, 32 at 50 %; swap chain hook at exe + 0xfb420; DLSS below 100 % ok).
         - [ ] FLIP PNGs: no bin-to-PNG step for reference\flip_tool.py from the trimmed OMM dumps (omr_ handback:87). Owner: tools
         agent
         - [ ] OPTIONAL (a): a fresh CPU-baked grass recording (one 32-bit Attila start; its runner is not written). Owner: ATN
