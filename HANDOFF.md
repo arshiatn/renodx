@@ -19524,6 +19524,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> j23p_ fix round (resumed 15:38): 5 MUSTs + SHOULDs of both reviews; coord: R stays >= 8 on every judged
         arm (fj23p_'s R 4 not taken); bins only in r0, X10 core sets first, whole-set disk check else UNJUDGED; then
         the X20 torch + X38 FLIP dump switches; then a Sonnet re-check. j0rc_'s judge fix may add one round.
+        j23p_ fix round DONE 16:06 (28 of ~65 min; j23p__handback.md fix-round section; no GPU, no refusals): 5 MUSTs
+        fixed (bake set rekeys under the same key until 64 frames before the freeze, gate = in-bake frames > 0 from the
+        RT_PROFILE csv + digest; edge view with an edge-on sun (0.55, 0.83, 0.05), R 8, a margin, an edge-on pixel count;
+        Nsight HelperDir / HarnessDir = rec_<arm>, in-process; route B on each replicate's own reference); every set on
+        the SIGNED control / fixed shift vs max(sigma3_t SE, 0.2 %), thresholds in one place (j_judge.py), ref_compare
+        --replicate-var --pool-outliers in one place (job_common.ps1); SHOULDs done, J3 judges X09 + X10 together.
+        Disk with HARNESS_REF_NO_MASKS (r0 only): J2 ~220 GB, J3 ~113 + 6 GB; whole sets disk-checked first, else
+        UNJUDGED; J2 + J3 do not fit together (e4off would be UNJUDGED) -> the REFERENCE DISK box (ATN). Step 5:
+        HARNESS_RR_TORCH / RR_STATS / SCENE_FLAGS / UPSCALER_DUMP added, untested on the GPU (X38's FLIP dump needs this
+        fork's exe). New exe 71562764E495; selfcheck + judge self-test PASS; both dry runs exit 0; a Select-String bug
+        found + fixed. Re-check fj23p2_ (Sonnet High) STARTED 16:04; GO -> J2 via gl_, then J3.
         - [ ] DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3's play-back arms run without
           DRED details (a TDR still stops the arm). Owner: coord -> wave 2 (main.cpp has no wave-1 writer); rj23p_ says
           whether J3 is safe to judge without it.
