@@ -18994,6 +18994,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] sbi_ -> Opus xHigh review -> Sonnet High final -> merge -> fresh backups -> group C -DryRun -> P15
         (-AB -Arms ep8,ep8b,ep8btt8 -EnginePlugin -Probe full <P>, design 5.3 step 4 gates) -> P16 (ep8tt8) only if
         ep8btt8's golden differs while ep8b's is the same. Owner: coord.
+        sbi_ DONE 09:36 (35 min; scratch\sbi_\handback.md): 5dfec999b on sbi_1128 (battle_step.hpp + battle_step_test.cpp
+        only): E1-E5 + E6 ('radius addition'); E4 a switch, the pool line 'partly (list pool: objects N, chunks C of K)'.
+        Tests: pool case stops at chunk 8 ('objects 2100, chunks 8 of 17', one line < 1 KB); 1448 handled (listed =
+        most_listed = 2,095,256), 1449 stops (chunks 12 of 17, latch), 1446 with 3 helpers handled; most_listed 107 +
+        reset. Deviation: 3 checks matched the active line's end -> now end in ', radius addition 0)'; the threaded
+        expect_stop matches up to ', chunks ' + exactly one line. build.ps1 -Test exit 0; plugin DLL
+        fb4e1919099e333ef45e042f97dd2e30d628dd02690cd033cc676dd7aabaff33; battle_step_test 15.9 s vs 16.2 base.
+        rsbi_ (Opus xHigh review) STARTED 09:35.
         FOR ATN Q1 (not blocking): the 64-bit DLL's image commit rises ~70 MiB for every player, row on or off (no
         RAM unless the row runs, ~1 % of the game's 6 GB). sbp_ + coord pick: accept; else a lazy VirtualAlloc
         (~15 lines + a failure line + a test seam).
