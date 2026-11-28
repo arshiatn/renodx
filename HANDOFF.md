@@ -739,6 +739,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sbi_ -> Opus xHigh review -> Sonnet High final -> merge -> fresh backups -> grou ... | coord
 - fxp_ -> read the proofs -> merge fxh2_1127 after step 4's captures (check rt_cor ... | coord
 - X41 proof: a new harness proof design (FSR's depth debug cell in the harness, or ... | coord (designer if the harness way)
+- rdfi_ -> Sonnet High final -> merge all 4 (ATN yes to C1) -> F7 (test\tw_attila6 ... | coord
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
@@ -19047,6 +19048,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         ATN 09:05 DECIDED: (1) PK8 Stage A default On = 'sure' -> dfi_'s C1 merges WITH C2 / C3 / revision 2 after
         the reviews (no separate wait). (2) sbp_ Q1 (+70 MiB image commit for every 64-bit player) = 'of course. We are
         not limited by the 32bit game anymore': the static 2048-block pool stays; no lazy VirtualAlloc.
+        dfi_ DONE 10:04 (67 min, est 45 / 90; scratch\dfi_\handback.md): dfi_1128 off b07b75179: C2 70d48b118 (Keep Render
+        Core Free On: CORE_RENDER in CORE_WANTED_DEFAULT, RENDER_CORE_ROW_MEASURED), C3 4a0d545c8 (Effects on All Cores
+        Automatic, 1.f; label keeps '(Experimental)'), rev 6d70a603e (Attila64SettingsRevision 2 clears the two saved
+        keys once), C1 cffc4df2e (BATTLE_STEP_ROW_MEASURED; its own last commit). Gated amd64 + x86 exit 0, defaults test
+        + tw_unit_shadows x86 / amd64 exit 0, plugin build.ps1 -Test -Elf exit 0 (DLL 41b4f5a2 at C2); addon64 2d564129,
+        addon32 c1c9b6da at C1; one mutant a commit fails only its check. Page a SAME; a64 / a64r refs
+        page_dump\page_a64_dfic1.txt + page_a64r_dfic1.txt (without C1: _dfirev). Deviations: (1) patcher_test's
+        expect_hook_bodies clears CORE_RENDER + stores the default without it (+ a DLL check: no RenderCore key keeps
+        CORE_RENDER); (2) F7: the add-on writes both effect bits on its first present even when the row is hidden ->
+        every other core_wanted case +48 (in C3). fp8a_ 'BattleStep=1 test due with W5' CLOSED (CORE_STEP stays).
+        rdfi_ (Opus xHigh review) STARTED 10:04.
+        - [ ] rdfi_ -> Sonnet High final -> merge all 4 (ATN yes to C1) -> F7 (test\tw_attila64_present\run.ps1, GPU
+        lock, after aa67_) -> the README notes lines (coord) -> restage a3_smoke + the plugin from the main tree ->
+        one defaults start in the next CPU batch. Owner: coord.
         gbf_ DONE 09:04 (12 min; scratch\gbf_\handback.md): a45a8f5fd on gbf_1128 (off be1baa287): E1 main_view_texture
         takes a scene flag (scene RGBA16 or R11G11B10_FLOAT, target RGBA16 only); E2 Apply's view in the texture's own
         format (RGBA16 TYPELESS -> FLOAT; OnTonemapDrawn passes RGBA16 only = same view as before; the CopyResource
