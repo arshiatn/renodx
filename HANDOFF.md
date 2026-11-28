@@ -18668,6 +18668,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         lines byte-identical, -AB / -R1 0 diff; blocks tested on made-up lines + the 00:31 smoke's E64-mv trace (vp
         3840x2160 at 0,0, 781681E4 before; 0 RR marks = DLAA, so rr50tm's rule rightly fails there). Final check cabg_
         (Sonnet High) STARTED 03:42.
+        cabg_ (3 min) GO, 0 MUST / 0 SHOULD (rt2c0 = like-for-like twin; the precondition never sets $script:EpSha;
+        the printed Values text = the written one; old arms unchanged; in-memory apply = d2572849); NITs: -R3 /
+        -R2Kill dry runs not diffed (-R3 only loses its 'E64-rt2c left out' note), E64-rt gains an info-only cascade
+        line, the plan text. APPLIED LIVE 03:45 (88dcff29 -> d2572849; backups .pre_abg_1128.ps1 +
+        .bak_coord_abg_; byte-equal to the reviewed copy; parse 0). One -R2 -DryRun after F7 ends (fabg_ S2).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
