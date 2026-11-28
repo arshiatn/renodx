@@ -45,9 +45,11 @@ if ($BuildOnly) { 'built'; return }
 # Lines every add-on run has; the forbidden ones never.
 $identity = '[Total War] 64-bit Attila: attila64.exe, loader 1.3.20.0'
 $mapped = '[Total War] 64-bit Attila: game code mapped, build id a64b000102030405060708090a0b0c0d0e0f1011, 1 code ranges'
-$upgraded = @("the game's picture upgraded (1280x720)", "the game's picture upgraded (1600x900)")
+$upgraded = @("the game's picture upgraded (3840x2160)", "the game's picture upgraded (2560x1440)")
 $notReadable = '[Total War] 64-bit Attila: game code not readable at the first present'
 $noPlugin = '[Total War] 64-bit Attila: engine plugin not installed, rows offered 0x0'
+$notLoaded = '[Total War] 64-bit Attila: engine plugin in plugins\ but not loaded (attila64_log.txt says why), rows offered 0x0'
+$switchedOff = '[Total War] 64-bit Attila: engine plugin not loaded: plugins switched off (ATTILA_NO_PLUGINS / ATTILA_PLAIN), rows offered 0x0'
 $forbidden = @('has no upgrade', 'leaves it alone', 'not readable at the first present', 'was not unregistered',
                'did not leave the add-on within 1 s', 'callback failed', 'another add-on holds', 'Engine Performance Fix loaded')
 # The color space every effect runtime reports, per output.
@@ -119,6 +121,71 @@ foreach ($name in $cascadesCases.Keys) {
     lines = @($identity, $mapped, "[Total War] 64-bit Attila: engine plugin ready, rows offered $($cascades.offered)",
               '[Total War] 64-bit Attila: engine plugin rows tried 0x3b', $cascades.value) + $upgraded
     forbid = @('engine plugin not installed', "${cascadesValue}: 0x$(if ($cascades.value -match '0x1 at') { '0' } else { '1' }) at")
+  }
+}
+# Batched Unit Capture on the port (S5a, rt_port_64 R1.1 gate 1 + R2.6 RS1): the add-on's per-change line
+# "unit flush offered {0|1}, registered {0|1}, on the draw thread {0|1}" over the truth table. A v2 block offering
+# BONE_FLUSH or not (rows 0x3 / 0x2), the rays traced (Ray-Traced Sun Shadows with DLSS: the batch wanted needs them),
+# Batched Unit Capture's row on or off, object motion's own bit (RENODX_TW_PLUGIN_WANT=1) or not, and the plugin's
+# before_pack on the presenting thread (RENODX_F7_PACK=present: the port's draw thread) or on its own thread. Expected:
+# offered = READY && BONE_FLUSH offered; registered = offered && (row on || object motion's bit); on the draw thread =
+# registered && the pack on the presenting thread (before_pack runs only while a row is registered). The first line
+# before a registration reads "registered 0, on the draw thread 0"; every other combination is forbidden. The control
+# (unit_flush_o1_r0_m1_other): object motion's 0x1 registered, the pack on its own thread: never "on the draw thread 1".
+$unitFlush = '[Total War] 64-bit Attila: unit flush offered'
+$callbacksWanted = '[Total War] 64-bit Attila: engine plugin callbacks registered (rows wanted'
+$unitFlushRaysOn = @('RayTracedSunShadows=1', 'AntiAliasing=5')
+foreach ($offered in 0, 1) {
+  foreach ($row in 0, 1) {
+    foreach ($motion in 0, 1) {
+      foreach ($pack in 'draw', 'other') {
+        $registered = [int]($offered -eq 1 -and ($row -eq 1 -or $motion -eq 1))
+        $here = [int]($registered -eq 1 -and $pack -eq 'draw')
+        $rows = if ($offered -eq 1) { 3 } else { 2 }
+        $others = @(foreach ($r in 0, 1) { foreach ($d in 0, 1) {
+          if (($r -ne $registered -or $d -ne $here) -and -not ($registered -eq 1 -and $r -eq 0 -and $d -eq 0)) {
+            "$unitFlush $offered, registered $r, on the draw thread $d"
+          } } })
+        $table["unit_flush_o${offered}_r${row}_m${motion}_$pack"] = @{
+          addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = "1 $rows 0 2 $rows"
+          want = $(if ($motion -eq 1) { '1' } else { '' }); pack = $(if ($pack -eq 'draw') { 'present' } else { '' })
+          ini = $unitFlushRaysOn + @("RayTracedBatchedUnits=$row")
+          lines = @($identity, $mapped, "[Total War] 64-bit Attila: engine plugin ready, rows offered 0x$rows",
+                    "$unitFlush $offered, registered $registered, on the draw thread $here") +
+                  @(if ($registered -eq 1) { "$callbacksWanted 0x1)" }) + $upgraded
+          forbid = @('engine plugin not installed', "$unitFlush $(1 - $offered)") + $others +
+                   @(if ($registered -eq 0) { 'callbacks registered' })
+        }
+      }
+    }
+  }
+}
+# The same with no plugin READY (hidden, nothing wanted, no flush: the line is never logged): not installed, in
+# plugins\ but not loaded, plugins switched off. A v1 block (an older plugin, rows 0x3): BONE_FLUSH is its row 0, so the
+# flush is offered and registered; it runs here with the pack on the presenting thread (unit_flush_v1_draw) and not
+# with the pack on its own thread (unit_flush_v1).
+$unitFlushHidden = [ordered]@{
+  unit_flush_not_installed = @{ lines = @($noPlugin) }
+  unit_flush_not_loaded = @{ plugins_dir = $true; lines = @($notLoaded) }
+  unit_flush_plugins_off = @{ plugins_dir = $true; no_plugins = '1'; lines = @($switchedOff) }
+}
+foreach ($name in $unitFlushHidden.Keys) {
+  $hidden = $unitFlushHidden[$name]
+  $table[$name] = @{ addon = 'current'; args = 'd3d11 fixed upgraded'; encoding = 0; plugins_dir = $hidden.plugins_dir
+                     no_plugins = $hidden.no_plugins; ini = $unitFlushRaysOn + @('RayTracedBatchedUnits=1')
+                     lines = @($identity, $mapped) + $hidden.lines + $upgraded
+                     forbid = @($unitFlush, 'callbacks registered') }
+}
+foreach ($pack in 'other', 'draw') {
+  $here = [int]($pack -eq 'draw')
+  $table["unit_flush_v1$(if ($pack -eq 'draw') { '_draw' })"] = @{
+    addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = '1 3 0 1'
+    pack = $(if ($pack -eq 'draw') { 'present' } else { '' }); ini = $unitFlushRaysOn + @('RayTracedBatchedUnits=1')
+    lines = @($identity, $mapped,
+              '[Total War] 64-bit Attila: engine plugin ready (block v1: an older plugin, its first rows only), rows offered 0x3',
+              "$unitFlush 1, registered 1, on the draw thread $here", "$callbacksWanted 0x1)") + $upgraded
+    forbid = @('engine plugin not installed', "$unitFlush 0", "$unitFlush 1, registered 0, on the draw thread 1",
+               "$unitFlush 1, registered 1, on the draw thread $(1 - $here)")
   }
 }
 # The grass and campaign tree rows (a v2 block offering the grass, grass cell and campaign tree rows, rows 0x1c3, no
@@ -278,8 +345,6 @@ $table['plugin_calls'] = @{
 }
 # The plugin's file in the loader's plugins\ but not loaded: by itself (the loader's log says why), or with the loader's
 # plugins switched off (ATTILA_NO_PLUGINS=1, or ATTILA_PLAIN set to nothing by the exe).
-$notLoaded = '[Total War] 64-bit Attila: engine plugin in plugins\ but not loaded (attila64_log.txt says why), rows offered 0x0'
-$switchedOff = '[Total War] 64-bit Attila: engine plugin not loaded: plugins switched off (ATTILA_NO_PLUGINS / ATTILA_PLAIN), rows offered 0x0'
 $table['plugin_not_loaded'] = @{ addon = 'current'; args = 'd3d11 fixed upgraded'; encoding = 0; plugins_dir = $true
                                  lines = @($identity, $mapped, $notLoaded) + $upgraded; forbid = @('engine plugin not installed', 'switched off') }
 $table['plugin_no_plugins'] = @{ addon = 'current'; args = 'd3d11 fixed upgraded'; encoding = 0; plugins_dir = $true; no_plugins = '1'
@@ -365,6 +430,7 @@ foreach ($name in $Cases) {
   }
   $env:RENODX_F7_PLUGIN = $case.plugin
   $env:RENODX_TW_PLUGIN_WANT = $case.want
+  $env:RENODX_F7_PACK = $case.pack
   $env:ATTILA_NO_PLUGINS = $case.no_plugins
   # A fresh ini: no LoadFromDllMain key, the tutorial done (no splash), the add-on's output rows explicit, then the
   # case's own settings.

@@ -15,12 +15,16 @@
 // CORE_WANTED_DEFAULT); render_core_status: the render part's word as the plugin's init publishes it (default 0, not
 // built). effects_slot: the loader's effect value slot VFX_PARALLEL_UPDATER (PK9 7.3) after the game's start check,
 // tweaks ready (0 none, 1 verdict OK, 2 CHANGED); engine_status: the engine rows' lanes (default 0, none built).
+// RENODX_F7_PACK=present: before_pack is called on the presenting thread (renodx_f7_pack_on_present, the exe's call
+// before each Present: the port's bone pack on its draw thread), not on the hooks' thread; otherwise on the hooks'
+// thread (the pack on another thread).
 
 #include <windows.h>
 
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <string_view>
 
 #include "src/games/twattila/attila64_plugin/plugin_block.h"
 
@@ -43,6 +47,7 @@ plugin::TweakSlot tree_lod_slot = {.name = "rigid_campaign_tree_lod",
 // The block's slots: Campaign Tree Detail's, then the loader's effect value (no address: the add-on reads its verdict
 // only).
 plugin::TweakSlot slots[2] = {};
+bool pack_on_present = false;
 
 // The hooks' guard (hooks.hpp): the wanted bits relaxed, calls_in_flight up, callbacks loaded, the call, down; pass_end
 // only while callbacks holds the pointer of its pass_begin.
@@ -54,7 +59,9 @@ DWORD WINAPI Hooks(void*) {
     if (block.hooks_wanted.load(std::memory_order_relaxed) != 0) {
       block.calls_in_flight.fetch_add(1);
       if (const plugin::Callbacks* callbacks = block.callbacks.load(); callbacks != nullptr) {
-        callbacks->before_pack();
+        if (!pack_on_present) {
+          callbacks->before_pack();
+        }
         plugin::PassMeasure measure = {};
         if (callbacks->pass_begin(5, &measure) == plugin::PASS_DRAW_MEASURED && block.callbacks.load() == callbacks) {
           callbacks->pass_end(5, measure);
@@ -73,6 +80,18 @@ extern "C" __declspec(dllexport) plugin::Block* renodx_attila64_block() { return
 
 // F7's own: the calls made into the add-on's callbacks so far.
 extern "C" __declspec(dllexport) unsigned renodx_f7_callback_calls() { return callback_calls.load(); }
+
+// F7's own, the exe's call before each Present: with RENODX_F7_PACK=present, the bone pack's before_pack through the
+// hooks' guard on the calling thread while any row is wanted.
+extern "C" __declspec(dllexport) void renodx_f7_pack_on_present() {
+  if (!pack_on_present || block.hooks_wanted.load(std::memory_order_relaxed) == 0) return;
+  block.calls_in_flight.fetch_add(1);
+  if (const plugin::Callbacks* callbacks = block.callbacks.load(); callbacks != nullptr) {
+    callbacks->before_pack();
+    callback_calls.fetch_add(1);
+  }
+  block.calls_in_flight.fetch_sub(1);
+}
 
 // F7's own: whether Campaign Tree Detail's engine value was ever written (tree_value 1).
 extern "C" __declspec(dllexport) bool renodx_f7_tree_lod_written() {
@@ -97,6 +116,8 @@ BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID) {
     std::sscanf(value, "%u %u %u %u %u %u %u %u %u %u %u", &status, &rows, &changed, &version, &tried, &notices,
                 &tree_value, &core_wanted, &render_core_status, &effects_slot, &engine_status);
   }
+  const DWORD pack_length = GetEnvironmentVariableA("RENODX_F7_PACK", value, sizeof(value));
+  pack_on_present = (pack_length < sizeof(value) && std::string_view(value, pack_length) == "present");
   block.version = version;
   block.bytes = static_cast<uint32_t>(plugin::BlockBytes(version));
   block.rows_tried = ((tried == ~0u) ? rows : tried);

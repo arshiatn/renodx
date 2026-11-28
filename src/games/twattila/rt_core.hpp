@@ -485,6 +485,10 @@ struct Host {
   // Whether the host calls FlushUnitCaptures before the game writes the bones its unit draws read again (Attila's PackAnimations
   // hook): Batched Unit Capture makes their corners later than the draw. Null: never batched.
   bool (*flushes_unit_captures)() = nullptr;
+  // Whether the host can flush them (Batched Unit Capture's row shown), where that differs from flushes_unit_captures:
+  // the 64-bit port's flush is offered by its engine plugin and runs only once asked for while the batch is wanted
+  // (rt_scene UnitBatchWanted). Null: flushes_unit_captures serves both (32-bit Attila).
+  bool (*unit_flush_offered)() = nullptr;
   // A loading screen lets the scene go at once (its cluster sets and atlas slices with the game's index buffers and textures
   // they hold, the cut-out textures), not RELEASE_FRAMES later inside the next load (the 32-bit games' address space). Each
   // host after its own run (Attila; R.U.S.E. keeps its scene alive between its replays). A bench's RENODX_TW_SCENE_RELEASE=0

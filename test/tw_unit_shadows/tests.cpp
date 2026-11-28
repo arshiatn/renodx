@@ -734,9 +734,34 @@ int main(int argc, char** argv) {
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS
           && block.hooks_wanted.load() == plugin::RowBit(plugin::ROW_PASS_DRAW)
           && link::internal::module_reference != nullptr && link::internal::epoch.load() != epoch_before);
-    const uint32_t epoch_registered = link::internal::epoch.load();
+    uint32_t epoch_registered = link::internal::epoch.load();
     link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.hooks_wanted.load() == both && link::internal::epoch.load() == epoch_registered);
+    // Batched Unit Capture's runs-here (S5a, rt_port_64 RS1): BONE_FLUSH registered and the last BeforePack on the
+    // asking thread; the mirror follows every change (a shrink and Unregister clear it), the pack thread is forgotten
+    // at Unregister. CONTROLS (mutation runs): without Unregister's mirror clear the last check fails; without its
+    // pack-thread clear the check after the new registration ("false until its own first BeforePack") fails.
+    const auto pack_elsewhere = [] { std::thread([] { link::internal::CALLBACKS.before_pack(); }).join(); };
+    link::internal::CALLBACKS.before_pack();
+    CHECK(link::UnitFlushRunsHere());
+    pack_elsewhere();
+    CHECK(!link::UnitFlushRunsHere());
+    link::internal::CALLBACKS.before_pack();
+    link::Update(plugin::RowBit(plugin::ROW_PASS_DRAW), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
+    CHECK(!link::UnitFlushRunsHere());
+    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
+    CHECK(link::UnitFlushRunsHere());
+    link::Update(0, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
+    CHECK(!link::UnitFlushRunsHere());
+    link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
+    CHECK(!link::UnitFlushRunsHere());  // a new registration: false until its own first BeforePack
+    link::internal::CALLBACKS.before_pack();
+    CHECK(link::UnitFlushRunsHere());
+    link::Update(0, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
+    link::internal::CALLBACKS.before_pack();  // a late pack on this thread after the stop
+    CHECK(!link::UnitFlushRunsHere());
+    link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
+    CHECK(block.hooks_wanted.load() == both && link::internal::registered);
     // The row's core_wanted bit: only CORE_BATTLE changes (another part's bit kept), written once per change of the
     // row (an equal present writes nothing); a v1 block (no core_wanted) gets no write.
     block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_RENDER);
@@ -787,6 +812,7 @@ int main(int argc, char** argv) {
     link::Update(0, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0
           && link::internal::module_reference == nullptr);
+    epoch_registered = link::internal::epoch.load();  // the last registration's (7c registered again since)
     link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS && link::internal::epoch.load() != epoch_registered);
     // A hook still inside for 50 ms: the wait ends when it leaves, the reference released.
@@ -903,7 +929,9 @@ int main(int argc, char** argv) {
         "Battle Core Free writes only CORE_BATTLE, once per change, none on a v1 block, again after a detach; Keep "
         "Render Core Free only CORE_RENDER, on and off, none with RenderCore=0 or on a v1 block, its first present only "
         "off its default; Multithreaded Collisions hidden: CORE_SPLIT untouched either way, shown: set / cleared once "
-        "per change, not offered: untouched\n");
+        "per change, not offered: untouched; Batched Unit Capture's runs-here: BONE_FLUSH registered and the last "
+        "BeforePack on this thread (another thread, a shrink, Unregister, a new registration before its first pack and "
+        "a late pack after the stop: false)\n");
     // 7d. The engine values on the port (FindTweaks, MirrorRestartValues): each Tweak gets the plugin's checked value
     //     (live: the game's address; restart-only: an add-on cell at the default), a refused one none (the warning line);
     //     the mirror writes [Attila64Plugin.Values] clamped to tweaks.h's range, read once, written on a change with one
