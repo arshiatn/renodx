@@ -171,6 +171,9 @@ static std::optional<int> game_code_mirrored;
 static std::atomic_bool game_code_pending = false;
 // Under the mutex: the plugin's notices bits already logged.
 static uint32_t notices_logged = 0;
+// Under the mutex: the engine lanes (bit 1 << shift) that read ENGINE_OTHER_MOD, logged once per add-on load (a detach
+// keeps them).
+static uint32_t other_mod_logged = 0;
 // Written into each measured call's PassMeasure::reserved at pass_begin: a pass_end of another registration is ignored.
 static std::atomic<uint32_t> epoch = 0;
 // A callback caught an exception: logged once at the next present (the callbacks log only shadow_pass's learned-kind
@@ -806,7 +809,8 @@ inline void MirrorShadowCascades(bool two_cascades) {
 // Every present with Result() READY on a v2 block (the loader's drawing thread): the scale rows' multipliers for the
 // plugin's hooks (attila64_plugin::Scale), the changed ones stored, then scales_active: a scale's bit while it is not
 // neutral and its row is offered (a clear bit: the hook leaves the game's call as it is). One log line when the bits
-// change, and one when the plugin raises a new notice (sticky bits). The scales stay at the add-on's detach.
+// change, one when the plugin raises a new notice (sticky bits), and one per add-on load for each engine lane
+// that reads ENGINE_OTHER_MOD. The scales stay at the add-on's detach.
 inline void PublishScales(const std::array<float, internal::plugin::SCALE_COUNT>& scales) {
   using internal::block;
   namespace plugin = internal::plugin;
@@ -846,6 +850,21 @@ inline void PublishScales(const std::array<float, internal::plugin::SCALE_COUNT>
         "[Total War] 64-bit Attila: engine plugin notices {:#x} (rest pack: {}, model table full: {})", notices,
         ((notices & plugin::NOTICE_REST_PACK) != 0 ? "yes" : "no"),
         ((notices & plugin::NOTICE_MODEL_TABLE_FULL) != 0 ? "yes" : "no")));
+  }
+  // A lane carries no address: the loader's log has the changed places.
+  for (const auto& [shift, line] : {
+           std::pair{plugin::ENGINE_STEP_SHIFT,
+                     "[Total War] 64-bit Attila: Faster Battle Step cannot run: another mod changed the game code it "
+                     "needs (an Engine Performance Fix update?); attila64_log.txt in the game folder says where."},
+           std::pair{plugin::ENGINE_SPLIT_SHIFT,
+                     "[Total War] 64-bit Attila: Multithreaded Collisions cannot run: another mod changed the game "
+                     "code it needs (an Engine Performance Fix update?); attila64_log.txt in the game folder says "
+                     "where."},
+       }) {
+    if ((internal::other_mod_logged & (1u << shift)) == 0 && EngineLaneState(shift) == plugin::ENGINE_OTHER_MOD) {
+      internal::other_mod_logged |= 1u << shift;
+      renodx::utils::log::i(line);
+    }
   }
 }
 

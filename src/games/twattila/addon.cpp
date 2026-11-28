@@ -1342,31 +1342,38 @@ static_assert(std::ranges::find(CORE_STATE_TEXTS, nullptr) == CORE_STATE_TEXTS.e
 
 // An engine row's status line on the port, by its lane's EngineState (src: PK8 F1 item 7, one table indexed by
 // EngineState). State 0 (not built) hides the row.
-using EngineTexts = std::array<const char*, twattila::attila64_plugin::ENGINE_CODE_DIFFERS + 1>;
+using EngineTexts = std::array<const char*, twattila::attila64_plugin::ENGINE_OTHER_MOD + 1>;
 // Faster Battle Step's, after "Battle step: " (the texts PK8 11.1's).
 constexpr EngineTexts BATTLE_STEP_TEXTS = {
-    "",                                                            // not built
-    "not used yet",                                                // ENGINE_NOT_USED_YET
-    "active",                                                      // ENGINE_ACTIVE
-    "partly (some battle data is new to it: normal speed there)",  // ENGINE_PARTLY
-    "off",                                                         // ENGINE_OFF
-    "off (ini)",                                                   // ENGINE_OFF_INI
-    "off (game code differs)",                                     // ENGINE_CODE_DIFFERS
+    "",                                                                           // not built
+    "not used yet",                                                               // ENGINE_NOT_USED_YET
+    "active",                                                                     // ENGINE_ACTIVE
+    "partly (some battle data is new to it: normal speed there)",                 // ENGINE_PARTLY
+    "off",                                                                        // ENGINE_OFF
+    "off (ini)",                                                                  // ENGINE_OFF_INI
+    "off (game code differs: game update or another mod? see attila64_log.txt)",  // ENGINE_CODE_DIFFERS
+    // ENGINE_OTHER_MOD: never set (the battle step has no pinned spot).
+    "off (another mod changed the game code: Engine Performance Fix update? see attila64_log.txt)",
 };
+static_assert(std::ranges::find(BATTLE_STEP_TEXTS, nullptr) == BATTLE_STEP_TEXTS.end(), "a text for every EngineState");
 // Multithreaded Collisions', after "Collisions: " (src: PK8 Stage B 14). deviation: from 14's three reason texts
 // ("partly (ships: normal speed)", "partly (too few CPU threads)", "partly (very large battle: normal speed)"),
 // because lane B has one PARTLY value and no reason (3.7): every PARTLY reads as 14's Rev 2 / Rev 4 text for the log
 // reasons, "partly (normal speed)", true for each reason (the original runs those ticks); the reason is in the
 // loader's log.
 constexpr EngineTexts CONTACT_SPLIT_TEXTS = {
-    "",                         // not built
-    "not used yet",             // ENGINE_NOT_USED_YET
-    "active",                   // ENGINE_ACTIVE
-    "partly (normal speed)",    // ENGINE_PARTLY
-    "off",                      // ENGINE_OFF
-    "off (ini)",                // ENGINE_OFF_INI
-    "off (game code differs)",  // ENGINE_CODE_DIFFERS
+    "",                                                                           // not built
+    "not used yet",                                                               // ENGINE_NOT_USED_YET
+    "active",                                                                     // ENGINE_ACTIVE
+    "partly (normal speed)",                                                      // ENGINE_PARTLY
+    "off",                                                                        // ENGINE_OFF
+    "off (ini)",                                                                  // ENGINE_OFF_INI
+    "off (game code differs: game update or another mod? see attila64_log.txt)",  // ENGINE_CODE_DIFFERS
+    // ENGINE_OTHER_MOD
+    "off (another mod changed the game code: Engine Performance Fix update? see attila64_log.txt)",
 };
+static_assert(std::ranges::find(CONTACT_SPLIT_TEXTS, nullptr) == CONTACT_SPLIT_TEXTS.end(),
+              "a text for every EngineState");
 
 // Ambient Occlusion Visibility Bitmask (twattila/ao_pass.hpp): the addon's own shader in place of the game's AO
 // pass (whose replacement is the game's code only).
@@ -3668,8 +3675,9 @@ void ConfigureAddon() {
     });
     // The engine rows (PK8 11.1 Faster Battle Step, PK8 Stage B 14 Multithreaded Collisions) and their status lines,
     // live, while the plugin built the row's lane (0: not built), once their batch measured them. The toggle hides
-    // while the row cannot run (its key 0 in the plugin's ini, or the game's code differs); its line says why. The
-    // graphics preset buttons leave the rows alone (not look settings).
+    // while the row cannot run (its key 0 in the plugin's ini, the game's code differs, a spot another mod changes
+    // holds unknown bytes, or a newer plugin's state); its line says why. The graphics preset buttons leave the rows
+    // alone (not look settings).
     struct EngineRow {
       const char* key = nullptr;
       float* binding = nullptr;
@@ -3702,8 +3710,8 @@ void ConfigureAddon() {
                   .labels = {"Off", "On"},
                   .is_visible = [row, status_shown] {
                     const uint32_t state = twattila::attila64_plugin_link::EngineLaneState(row.lane_shift);
-                    return status_shown() && GameCodeRowShown(row.plugin_row)
-                           && state != plugin::ENGINE_OFF_INI && state != plugin::ENGINE_CODE_DIFFERS;
+                    // NOT_USED_YET .. OFF: the states that can run (status_shown: not 0).
+                    return status_shown() && GameCodeRowShown(row.plugin_row) && state <= plugin::ENGINE_OFF;
                   },
               },
               new renodx::utils::settings::Setting{
