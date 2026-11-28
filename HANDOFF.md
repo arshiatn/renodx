@@ -18712,6 +18712,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         185.7 vs 185.3 (inside noise). PK9 with 2 control starts: ep1c windows 218.4 / 220.3 (median 219.35) -> ep1cvfx
         +5.25 s, ep1cvfxauto +1.35 s (inside the 1.5 s noise). Note: ep1c fps 63.2 (A) vs 66.8 (B) = 5.7 % between
         batches (both first starts), above the 0.5 % in-batch A/A. Group C -DryRun next.
+        Group C -DryRun 04:37 ok (ep8b / ep8btt8 write ContactSplit=1). [x] Group C DONE 04:52 (15 min, exit 0;
+        ab_runs\20261128_043720_AB): 3 / 3 valid, golden same x3 (= [x] the PerfFix golden box: P15 on the PerfFix
+        stack, perffix64.dll 69cb12bf), determinism same for all pairs over 3749 ticks, E4 'contact split on', 21 sites
+        unchanged, CONTACT_ENTRY applied + first call. ep8 65.0 fps window 185.9 s, step wall median 98.74 ms, seg 29
+        31.32 ms | ep8b 63.1 fps 185.6 s 97.95 ms 31.37 ms | ep8btt8 58.9 fps (x0.906) 183.9 s 96.70 ms 30.75 ms.
+        STAGE B FAIL on speed (golden same): seg 29 needs <= control - 7 ms (got +0.05), step median <= x0.98 (got
+        x0.992); ep8btt8 fps needs >= x0.97 (got x0.906). CAUSE: both B starts log 'contact split: partly (list
+        pool)' = STOP_POOL: the node pool (256 blocks x 1024 nodes, design 3.6 limits) fills in the gate battle, so
+        the tick goes to the original and the skip latch holds the 100-tick period (design 3.5) -> B never runs.
+        Not void (no 'another mod' line). P16 not run (ep8btt8's golden is the same). The row stays Off.
+        [ ] APPLY PHASE (owner: coord -> a Stage B fix design, Opus xHigh): size the node pool from a node count of
+        the gate battle (a census / probe counter), then re-run P15. Group I -DryRun next.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
