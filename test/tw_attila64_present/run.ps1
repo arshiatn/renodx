@@ -266,8 +266,8 @@ foreach ($name in $gameCodeCases.Keys) {
   }
 }
 # The core rows (a v2 block offering the CPU row, rows 0x7, the render part built: render_core_status 1, WAITING): each
-# writes only its own core_wanted bit (CORE_STEP 4: Faster Battle Step's, hidden, writes the plugin's default On, the
-# bit already set); the exe checks the bits left. Keep Render Core Free is on by default (CORE_WANTED_DEFAULT holds
+# writes only its own core_wanted bit (CORE_STEP 4: Faster Battle Step's, shown, at its default On, the bit already
+# set); the exe checks the bits left. Keep Render Core Free is on by default (CORE_WANTED_DEFAULT holds
 # CORE_RENDER), and its first present writes only a row off that default (attila64_plugin_link::Update).
 # Effects on All Cores at its default Automatic adds both effect bits (48) in every case here and below, the row
 # offered or not. plugin_render_core_kept: no ini, the plugin's bits 7: 7, no render line. plugin_render_core_saved_off:
@@ -306,16 +306,16 @@ $effectsCases = [ordered]@{
   plugin_effects_slot_changed = @{ plugin = '1 2051 0 2 2051 0 0 5 0 2'; ini = @(); bits = 53 }
 }
 # Faster Battle Step (PK8 W-A3; the add-on owns CORE_STEP 4 from its first present): a v2 block offering
-# ROW_BATTLE_STEP (rows 0x1003, lane NOT_USED_YET) with core_wanted 1 (the bit clear, so the write shows). While the
-# row is hidden (BATTLE_STEP_ROW_MEASURED false) it writes the plugin's default On, a saved Off included.
-# plugin_battle_step_on: no key: 5, the line "on". plugin_battle_step_saved_off: FasterBattleStep=0 waits: 5, the line
-# "on", no "off" (at the measured flip: 1, the line "off"). plugin_battle_step_not_offered: rows 0x3 (BattleStep=0
+# ROW_BATTLE_STEP (rows 0x1003, lane NOT_USED_YET) with core_wanted 1 (the bit clear, so the write shows). The row is
+# shown (BATTLE_STEP_ROW_MEASURED true, the 11-28 batch), so a saved Off is written.
+# plugin_battle_step_on: no key: 5, the line "on". plugin_battle_step_saved_off: FasterBattleStep=0: 1, the line "off",
+# no "on". plugin_battle_step_not_offered: rows 0x3 (BattleStep=0
 # leaves the site out): the bit written (5), no line.
 $battleStep = '[Total War] 64-bit Attila: Faster Battle Step'
 $effectsCases['plugin_battle_step_on'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 1'; ini = @(); bits = 53; line = "$battleStep on"
                                             forbid = @("$battleStep off") }
-$effectsCases['plugin_battle_step_saved_off'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 1'; ini = @('FasterBattleStep=0'); bits = 53
-                                                   line = "$battleStep on"; forbid = @("$battleStep off") }
+$effectsCases['plugin_battle_step_saved_off'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 1'; ini = @('FasterBattleStep=0'); bits = 49
+                                                   line = "$battleStep off"; forbid = @("$battleStep on") }
 $effectsCases['plugin_battle_step_not_offered'] = @{ plugin = '1 3 0 2 3 0 0 1 0 0 1'; ini = @(); bits = 53; forbid = @($battleStep) }
 # Multithreaded Collisions (PK8 Stage B step 6): a v2 block offering ROW_CONTACT_SPLIT (rows 0x2003). While the row is
 # hidden (CONTACT_SPLIT_ROW_MEASURED false) the add-on writes no CORE_SPLIT 8, a saved row of the other value included,

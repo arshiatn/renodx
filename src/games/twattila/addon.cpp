@@ -1741,14 +1741,14 @@ float keep_battle_core_row = KEEP_BATTLE_CORE_DEFAULT;
 constexpr float EFFECTS_ON_ALL_CORES_DEFAULT = 1.f;
 float effects_on_all_cores_row = EFFECTS_ON_ALL_CORES_DEFAULT;
 // Faster Battle Step (the port only): the 64-bit engine plugin's battle step, its CORE_STEP core_wanted bit
-// (attila64_plugin_link::Update). Its default is the plugin's (PK8 11.1: On once S-C passes and ATN says so, Q1).
+// (attila64_plugin_link::Update). Its default is the plugin's (PK8 11.1: On; S-C passed in the 11-28 batch).
 constexpr float FASTER_BATTLE_STEP_DEFAULT = (twattila::attila64_plugin_link::BATTLE_STEP_DEFAULT ? 1.f : 0.f);
 float faster_battle_step_row = FASTER_BATTLE_STEP_DEFAULT;
 // src: PK8 F1 item 4 (:228-229): CORE_WANTED_DEFAULT holds CORE_STEP for the S-C build, kept at the release only if
 // S-C passes and ATN says on (Q1). deviation: from PK8 11.1, which shows the row, because PK2P P1a's form hides it
-// until then: the row and its status line show only once S-C measured it (true: a release step), and the add-on
-// writes the plugin's default.
-constexpr bool BATTLE_STEP_ROW_MEASURED = false;
+// until then: the row and its status line show only once S-C measured it (true since the 11-28 batch), and the
+// add-on writes the plugin's default until then.
+constexpr bool BATTLE_STEP_ROW_MEASURED = true;
 // Multithreaded Collisions (the port only, Experimental, Off: PK8 Stage B 14): the 64-bit engine plugin's contact
 // split, its CORE_SPLIT core_wanted bit (attila64_plugin_link::Update).
 float multithreaded_collisions_row = 0.f;

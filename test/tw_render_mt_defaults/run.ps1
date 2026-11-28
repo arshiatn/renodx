@@ -146,6 +146,8 @@ $battle = $text.IndexOf('.key = "KeepBattleCoreFree",', [StringComparison]::Ordi
 $render = $text.IndexOf('const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree"', [StringComparison]::Ordinal)
 Check ($battle -ge 0 -and $render -gt $battle -and $render -lt $text.IndexOf('const auto moved = std::ranges::find(settings, "FewerConstantUploads"', [StringComparison]::Ordinal)) 'KeepRenderCoreFree after Keep Battle Core Free, before Fewer Constant Uploads'
 Check ($text.Contains('(RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT),')) 'KeepRenderCoreFree written to the plugin (link Update) only once measured'
+# Faster Battle Step (PK8 Stage A, the port only): shown since the 11-28 batch (S-C passed), its default the plugin's.
+Check ($text -match '(?m)^constexpr bool BATTLE_STEP_ROW_MEASURED = true;') 'BATTLE_STEP_ROW_MEASURED true (the row shown since S-C)'
 # Effects on All Cores (PK9, the port only): Automatic by default (ATN 11-28), one constant for the binding and the row.
 Check ($text -match '(?m)^constexpr float EFFECTS_ON_ALL_CORES_DEFAULT = 1\.f;' -and $text -match '(?m)^float effects_on_all_cores_row = EFFECTS_ON_ALL_CORES_DEFAULT;') 'EffectsOnAllCores starts at EFFECTS_ON_ALL_CORES_DEFAULT = 1 (Automatic)'
 $eac = Block '.key = "EffectsOnAllCores",' "`n    });"
