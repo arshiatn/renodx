@@ -1376,6 +1376,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
       context4->Wait(fence.Get(), shared->value);
       if (output) {
+        // src: DLSS Programming Guide (31 March 2026) 3.9, p. 25: the renderer's exposure as a 1x1 texture, "Only
+        // supported by Presets J and K"; 3.10, p. 27: that parameter "is the preferred method", AutoExposure its
+        // stand-in. So the addon's exposure (0: none), AutoExposure only without one.
+        const int auto_exposure = (shared->dlss_exposure > 0.f ? 0 : NVSDK_NGX_DLSS_Feature_Flags_AutoExposure);
         evaluated = backend.Evaluate(context.Get(), {
                                                         .color = color.Get(),
                                                         .depth = depth.Get(),
@@ -1385,11 +1389,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                                         .height = shared->height,
                                                         .jitter_x = shared->jitter_x,
                                                         .jitter_y = shared->jitter_y,
-                                                        // src: DLSS Programming Guide (31 March 2026) 3.9, p. 25: the
-                                                        // renderer's exposure as a 1x1 texture, "Only supported by Presets
-                                                        // J and K"; 3.10, p. 27: that parameter "is the preferred method",
-                                                        // AutoExposure its stand-in. So the addon's exposure (0: none),
-                                                        // AutoExposure only without one.
                                                         .exposure = shared->dlss_exposure,
                                                         .reset = (shared->reset != 0),
                                                         .output_width = shared->output_width,
@@ -1400,7 +1399,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                                         .preset = shared->preset,
                                                         .create_flags = NVSDK_NGX_DLSS_Feature_Flags_IsHDR
                                                                         | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes
-                                                                        | (shared->dlss_exposure > 0.f ? 0 : NVSDK_NGX_DLSS_Feature_Flags_AutoExposure),
+                                                                        | auto_exposure,
                                                     });
         set_status(backend.Status());
       } else {
