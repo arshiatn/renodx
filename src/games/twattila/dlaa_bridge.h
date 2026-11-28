@@ -610,7 +610,7 @@ struct Shared {
   // The addon's (v33; older addons: none, 1): the game's view-space unit in metres, FSR's viewSpaceToMetersFactor
   // (src: FSR SDK 2.4.0 ffx_upscale.h:110, ffx_framegeneration.h:241, "The scale factor to convert view space units to
   // meters"): 1 for the games in metres, 0.01 for Unreal's and R.U.S.E.'s centimetres. Then four free bytes (0).
-  float metres_per_unit = 0.f;
+  float metres_per_unit = 1.f;
   uint32_t free_v33 = 0;
 };
 
