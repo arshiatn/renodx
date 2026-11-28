@@ -699,7 +699,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - SMOKE SPHERES S3 review (Opus xHigh, smr_ STARTED 07:0x) of designs\smoke_sphere ... | S6 implementer
 - SMOKE SIEGE START S4: only if lss0_ finds no heavy smoke frame: one 32-bit start ... | ATN (rule lines) -> game batch
 - PTLAS X16 (rt_d3d12.hpp:8435) + X17 (:8399) fix (bug fixes always on): Opus High ... | done (X19 box
-- HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + ... | the next run of those rows
 - M1 / 2.9a DESIGN DONE (m1d_ 11-27, round_notes\designs\m1_29a_redesign.md): harn ... | coord (adopt + D1 rows) / next M1 designer (C3 / C4 text)
 - M1 D1 ROWS (m1d_): two proposed all_modes.sh rows (the file belongs to the h4k_ ... | coord (with the m1 implementer)
 - LIGHT BOUNCE FAILURE PATH (m1d_): a bounce that fails after a dark trace (helper ... | m1 implementer (R4 number) -> ATN (fix or accept)
@@ -743,6 +742,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
 - BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
+- W0c FIND 1 (wave 2, the rt_serve.h owner): rt_serve.h:453 lifts any older record ... | coord -> wave 2
+- W0c FIND 2 (wave 2, trace_ owner of rt_d3d12.hpp): the 2 m ReGIR cell has no num ... | coord -> wave 2
 - fwp_ D2-D5 for later: D2 X08 drop vs re-set if the picture moves; D3 O-HANG (b) ... | coord -> ATN as each comes up
 - P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2 ... | coord (game runs), after the fxh2_1127 merge
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
@@ -17632,7 +17633,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         10-29 harness with every ray kind meeting the smoke (instance mask alone 81.5 -> 7.9 ms); 14->138 / 6->143 ms (:217-218)
         = smoke as candidates of the main sun + fog rays, fixed in helper63 321434abd. Dead MG code stays in rt_d3d12.hpp
         (:6835, :7813, :7823-7824, :8020-8023, :8267 / :8270, :10889), listed for ATN, not dropped. Owner: ATN (keep / remove)
-        - [ ] HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + 0.5 + j)/s - 0.5
+        - [x] DONE 11-28 14:55 (m1i_ fixed the sampler 11-27; gq1_ grep: no run list uses HARNESS_RR_IMAGE with
+          HARNESS_RR_JITTER, nothing to re-baseline). Was: HARNESS_RR_IMAGE JITTER SIGN (rrdr_ 11-27, pre-existing): its sampler uses (x + 0.5 + j)/s - 0.5
         (tw_rt_harness.cpp:3981-3982); the game and the upscaler test use i + 0.5 - j (anti_aliasing.hpp:444-447 / 1131-1134;
         tw_rt_harness.cpp:232-234 / 326): the picture shakes 2j against what RR is told. A fix changes that path's old baselines
         (rrbi_ rows). m1i_ DONE 08:48: the sampler now reads i - j on both axes, RR still told +j (= anti_aliasing.hpp:444-447 / 1131-1132, HARNESS_UPSCALER, HARNESS_RR_INPUT); every HARNESS_RR_IMAGE + HARNESS_RR_JITTER row (rrbi_, hrr_ / h4k_ with both) re-baselines on its next run (testbin\scratch\m1i_\jitter_sign_note.md). Owner: the next run of those rows
@@ -19369,6 +19371,30 @@ heading text are in HANDOFF_ARCHIVE.md)
         timestamps replace Nsight (GPU Trace records D3D12 / Vulkan only); no FLIP (needs a harness dump switch, j23p_).
         ATN later: preset Default unchanged, his call after the job. Reviews rx38_ (Opus xHigh) + fx38_ (Sonnet High)
         STARTED 14:52; job to gl_'s queue after GO.
+        gq1_ DONE ~14:5x (16 of 40 min; RN\handoff_plan\handbacks\gq1__handback.md; scripts only, worktree gq1_ no
+        commits): 3 reference helpers (shipped / REUSE_W_CLAMP_OFF / REUSE_CLAMP_TRACE) + a 4K pdi1 reference harness
+        B6714867666A on the v32 bridge (pdi1 source fails on v33: tw_rt_harness.cpp:3652 old field name -> j23p_ told);
+        J0 = scratch\gq1_\j0_job.ps1 + j0_judge.py (45 replicates, ~22 min under the lock, ~100 GB on D:\RenoDX_refs\j0;
+        pass = each of the 5 breaks fails on a named mask and that mask passes unbroken; deviations: the broken run is
+        the --reference, onelight gets 3 lights); X08 = x08_job.ps1 + x08_verdict.py (E4 / E5 refs R = 8 both arms,
+        A/B + one trace frame, ~25 min, ~108 GB; gaps: specular_meta.x not countable (no dump path), the reflect
+        reference judges specular occlusion only). RR_IMAGE grep: no run list uses both switches -> box ticked.
+        gl_ (Opus Low, GPU-lock runner, scratch\gl_\brief.md) STARTED 14:5x: J0 script read OK, -DryRun exit 0 (45
+        replicates, ~99 GB; D: 452.5 GB, RAM 18.4 GB free), STOPPED before the lock for Attila PID 32028 = the known
+        threadless leftover (0 threads, 0.6 MB; never killed) -> coord resumed gl_ 15:0x: J0 for real, then X08 on PASS.
+        w0ca_ DONE ~15:0x (17 of 40 min; RN\handoff_plan\handbacks\w0ca__handback.md): w0ca_1128 c5534d6da (on
+        8053e666a, pushed), comments only: already tagged (targetHistoryLength 4, camera-only DiMotion, S6 at
+        rt_di_shade.hlsl:24-26, 8192 DI offsets); new tags RabSampler (dev:), RegirLights 128 cap (guard inert),
+        RAB_GetLightTargetPdfForVolume (src: / ours: / guard output, O-MA3), rt_regir_presample main (src: / dev:);
+        comment lines > 120 re-wrapped (code lines left); p5_dxil.py passes @regir (-D PATH_REGIR) as build.ps1 + twins,
+        50 listings equal; helper 116 / 116 headers equal, fused pass both builds equal; gated twattila amd64 + x86 exit
+        0; spec_cite_check 0 flags. Wave-2 texts in the hand-back. Reviews rw0ca_ (Opus xHigh) + fw0ca_ (Sonnet High)
+        STARTED 15:0x.
+        - [ ] W0c FIND 1 (wave 2, the rt_serve.h owner): rt_serve.h:453 lifts any older recording to v32, so its
+          v29-v31 fields play as zeros instead of absent (fix text in w0ca__handback.md; changes bytes). Owner: coord
+          -> wave 2.
+        - [ ] W0c FIND 2 (wave 2, trace_ owner of rt_d3d12.hpp): the 2 m ReGIR cell has no number or stated reason
+          anywhere -> an A/B (harness, lock job) or a reason before it gets a tag. Owner: coord -> wave 2.
         - [x] DECIDED 14:40 (ATN 'Raw on D please. It is full precision'): references raw on D:\RenoDX_refs\<job>\;
           gq1_ told; never deleted. Was: ATN D1: 4K reference storage for X08 / J2 / J3 / W3 proofs (~2.2 GB a replicate, ~100-200 GB): raw on D:
           (fwp_'s pick; D: 455 GB free 14:37) / half precision / stats only. Needed before gl_'s X08 job. Owner: ATN.
