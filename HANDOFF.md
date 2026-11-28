@@ -706,7 +706,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - LIGHT BOUNCE RESOLVE ACROSS A CARRY SWITCH (m1d_): light_bounce.hpp:709-717 (var ... | ATN (eye, after the plans)
 - M1 NOT READ (m1d_): a settings change between the trace and the Light Bounce pas ... | m1 implementer (read + note)
 - omv_ DUMPS: testbin\scratch\omv_\dumps = 7.8 GB of 4K raw textures (results are ... | ATN (trim yes / no)
-- AA FEED AT 67 % IN THE SCENE PATH (aaf3_): the harness scene path renders and ev ... | next harness writer (after rri_ / the m1 implementer)
 - LAST REVIEW lr1_ DONE (attila64\designs\last_review_l2b_pk2p.md): L2B + PK2P GO ... | l2r2_ -> W3 (after rri_'s addon
 - LAST REVIEW lr3_ DONE (attila64\designs\last_review_pk5_pk9.md): PK5-64 + PK9 GO ... | design fix rounds (after lr4_ / lr5_) -> coord
 - LAST REVIEW lr5_ DONE (attila64\designs\last_review_rt64_rest.md): rt_port_64 Re ... | S5e after C8 W4p
@@ -17680,7 +17679,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         real code on c8b0_1127: lr1_ L2B + PK2P (-> last_review_l2b_pk2p.md, + an L2B W2 checklist), lr2_ C8 wave 2 + PK6-64 +
         PK1-64, lr3_ PK5-64 + PK9, lr4_ PK8 Stage A + B, lr5_ RT-on-64 + shader_hash_64 + menu_stutter_1s + PK4-64 +
         backup_32bit cross-check (all in attila64\designs\last_review_*.md). Then L2B W2 (engine change -> Fable 5.2 Medium).
-        - [ ] AA FEED AT 67 % IN THE SCENE PATH (aaf3_): the harness scene path renders and evaluates at full size
+        - [x] DONE 11:06 (aa67_: V4 20 / 20, V5 9 / 10 within 0.003; the feed verdicts hold at 67 %). Was: AA FEED AT 67 % IN THE SCENE PATH (aaf3_): the harness scene path renders and evaluates at full size
         (tw_rt_harness.cpp ~4026; HARNESS_RR_SCALE only in the switch test), so aaf_'s columns exist at 100 % only; a 67 % arm
         needs: colour rendered + jitter-sampled at the input size, Evaluate given that size, the camera matrix passed for FSR
         (zero today when HARNESS_SR > 0). Owner: next harness writer (after rri_ / the m1 implementer)
@@ -19206,6 +19205,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         runs_core.txt 77 runs ~95 GPU min (V1-V5 pass lines, table.py); runs_klm100.txt 30 runs ~36 min OPTIONAL.
         No SMAA arm (no harness path; SMAA has no render scale). aaf3_'s 100 % FSR / XeSS rows move (they now get the
         camera): base = z_ab_u1_F1_new. Coord: core list only, right after fxp_ (the game batch waits for it).
+        aa67_ RUNS DONE 11:06 (74.2 GPU min, 6 holds, 77 / 77 exit 0, no hang; scratch\aa67_\handback.md 'Runs',
+        table_out.txt, results\20261128_095132). V1 valid 77 / 77. V2 unset path: dark K0 17 / 17 identical; u1 F1 FAIL
+        at the 5th digit (111.0904 vs 111.0867 nits, 3e-5) = FSR run-to-run (its A/A differs the same; DLSS row bit-
+        identical; the code proof shows the same call). V3 floors: DLSS K 0, XeSS 0, FSR ~1e-4. V4 band |67 - 100 %| <=
+        0.08: 20 / 20 (largest today's feed: FSR fire -0.069, XeSS u1 +0.057; linear <= 0.036; K / L / M vs aaf_'s old-
+        exe 100 % within 0.008). V5 9 / 10 (XeSS edge flips by 0.003; by dark PQ linear stays nearer: 74.3 vs 96.3,
+        truth 72.4). AT 67 %: the linear feed's dark gain holds for all 5 (dark PQ today -> linear, truth 5.6: FSR 12.4
+        -> 10.5, XeSS 11.0 -> 7.3, K 9.9 -> 6.9, L 10.1 -> 6.2, M 10.3 -> 6.3); known u1 costs stay (XeSS 1.097 -> 0.811,
+        K 0.960 -> 0.814); FSR u1 gain stays (1.328 -> 0.950). FSR camera info: u1 linear 0.9601 vs 0.9598 (aaf3_'s
+        zero-camera caveat does not change u1). = THE AA FEED VERDICTS HOLD AT 67 % (box closed below).
+        F7 for dfi_1128 STARTED 11:07 (coord, f7_gpu.sh, log scratch\coord_\f7_dfi.log).
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
