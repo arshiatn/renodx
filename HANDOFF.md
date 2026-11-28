@@ -19352,11 +19352,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         (90); gated twattila amd64 + x86 exit 0. Helper folders scratch\w4b2_\fixed / control_visibility /
         control_leaves_culled / control_all / base -> j23p_ told. Extra worktree w4b2_base: clean after J2 / J3 (links
         first). Re-check fw4b2_ (Sonnet High, rebase only) STARTED 14:45. Merge after J2 / J3 pass.
-        fw4b2_ DONE 14:48 (2 min; scratchw4b2_eview.md) GO, no MUST / SHOULD, 2 NITs: six files blob-identical to
+        fw4b2_ DONE 14:48 (2 min; scratch\fw4b2_\review.md) GO, no MUST / SHOULD, 2 NITs: six files blob-identical to
         fx4b_1127's final; diff vs 8053e666a 4 files, all X10 / X09 / fix round; patch-ids match (X18 / X14 pairs too;
         build.ps1's switch already in via 0e517ce29, equal blob); 116 headers each: fixed vs base 85 equal / 31 changed,
         control_all = base 116 / 116, fixed = fx4b_'s x18c build 116 / 116. w4b2_1128 READY, merges after J2 / J3.
-        Dead code (delete round item 7): f99180a24 removes twattilag_camera.hpp (no includer; Shogun 2 upscaling.hpp's
+        Dead code (delete round item 7): f99180a24 removes twattila\fg_camera.hpp (no includer; Shogun 2 upscaling.hpp's
         comment reworded); gated twshogun2completeedition amd64 exit 0. README history lines left as history.
         x38_ DONE 14:52 (14 of 45 min; RN\handoff_plan\handbacks\x38__handback.md): x38_1128 9ae872248 (on 8053e666a,
         pushed): ngx_backend.hpp (every helper game's DLSS SR) creates presets L / M at the ACTIVE size when the input is
