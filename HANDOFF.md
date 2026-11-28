@@ -18768,6 +18768,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         $REPLAY). [ ] R1 census (owner: coord): NEEDS ATN = which replay (ATN's night1.replay exists); then a
         reviewed a64_ab patch for an R1 replay + its -DryRun, then F again. G does not need F (batch plan).
         Group G -DryRun next.
+        ATN 11-28 05:3x: R1 uses night1.replay ('night ... 100% got torches'). Group G -DryRun 05:28 ok (10 arms,
+        pre-seeds 0 / 1). Group G (-R2) 05:28-05:32 STOPPED at start 1, exit 4 (ab_runs\20261128_052852_Smoke):
+        E64-dlaa clean (exit 0, 0 CRASH / FATAL, no WER, 21 sites, DLSS could-not-start 0, helper b3c96cee ran) but
+        R1.2's DLSS stop rule failed on 'pictures F 200: none; F 215: none', Time Each Pass none = 'not reached
+        before the quit: timing'. ROOT CAUSE (runner): battle clock 0 came 84 s after the start (log_timed
+        05:30:29.468 vs start 05:29:05.4), the default Quit B 115 closed the game at F ~190, so the F 200 / 215
+        zz_capture frames and PassAt 200 never came; a64_ab's comment assumes F = B + ~112. E64-rtkill (F 260,
+        Quit 175) would fail the same way -> group H held. First E64-dlaa start ever (no earlier R2 run).
+        Every remaining group is blocked on a tooling fix, so the fix agents run now (no game run meanwhile):
+        rsc_ (a64_ab d2572849: R-family quits vs F items at offsets 84 / 112 + '-R1Replay night1.replay', Opus
+        Medium, est 20 / 40, scratch\rsc_\brief.md) and smo_ (siege_rec.ps1 cc1eed77: stage the build's omm-lib /
+        nvngx DLLs with backup + hash restore, Opus Medium, est 15 / 30, scratch\smo_\brief.md) STARTED 05:35.
+        Then one Opus xHigh review of both + Sonnet High final, coord applies, dry runs, then G, H, F (night1), J.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
