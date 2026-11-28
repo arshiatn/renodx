@@ -742,6 +742,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rdfi_ -> Sonnet High final -> merge all 4 (ATN yes to C1) -> F7 (test\tw_attila6 ... | coord
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
+- FOR ATN (batch2_plan.md 5): Q1 yes to the 4 new arms dflt / d1 / w3s / E64-ptd1 ... | ATN
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -19164,6 +19165,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         arm'. Chain: ... -> bc9cf693 (rsc4_) -> 089a4c79 (abe_ patch e).
         bp2_ (Opus xHigh, plan only: the next game batch = apply checks + step 4's captures -> round_notesatch2_plan.md,
         est 25 / 50) STARTED 10:52.
+        bp2_ DONE 11:06 (14 min): round_notes\batch2_plan.md. Pre-flight F1-F12: aa67_ ends -> F7 88 / 88 -> merge dfi_1128
+        + README New: lines -> plugin build.ps1 -Test -Elf from the main tree (build\attila64_plugin still f3a14087
+        00:11) -> gated add-on build (addon64 + x86 twin) -> helper unchanged since 129a0246c (rt_stage stays) ->
+        restage a3_smoke add-on + plugin in ONE step (b756de5c -> a3_smoke_prev_b756de5c) -> HDR display / CPU Set
+        Setter (no new exe) -> -DryRun twins. PART 1 (existing lines): G1 -C2 smoke 2 starts 10 min (F12's fresh
+        E64-mv smoke), G2 P15 3 starts 16 min (+P16 5 min on its rule), G4 w3 rerun = P17 + WPR 1, 7 min. PART 2 (patch
+        f + ATN's yes): G3 -R2 subset dlaa / pt / rrtm / rr50 / rr50tm + NEW E64-ptd1, 6 starts 32 min (bind mark at
+        100 % + 50 %, G-a 'RT rays ran', the two Nsight recordings; fallback full -R2 53 min); G2b defaults 'ep8,dflt'
+        2 starts 11 min (NEW dflt); G5 d1 = WPR 2 ~8 min (NEW); G6 w3s = WPR 3 ~7 min (NEW); N1 / N2 Nsight ~20 min
+        (gpu_trace.ps1, recorder bd51c10d). 16 starts (+1), ~105 game min + ~20 Nsight. Waits: P1 / P1b (X41), the
+        fxh2_1127 merge, the last ride. abf_ (patch f: f1 dflt, f2 pinned day1 replay, f3 d1, f4 w3s, f5 E64-ptd1, f6
+        -Smoke -R<n> -Arms, f7 S4; Opus High, est 75 / 150) STARTED 11:07.
+        - [ ] FOR ATN (batch2_plan.md 5): Q1 yes to the 4 new arms dflt / d1 / w3s / E64-ptd1 (pick yes); Q2 64-bit WPRs
+        AA Off + render core pinned off, not the 11-24 DLSS Ultra Performance (pick keep); Q3 two Nsight traces (stress +
+        day1) not three (pick 2); Q4 ATN adds a settings rule line for gpu_trace.ps1 with arguments (else a prompt per
+        trace; ATN's own edit). Owner: ATN.
         gbf_ round 3 DONE 10:2x (9 min): aeaca9f07 on gbf3_1128 (worktree gbf3_, off aeb9d2059): frame_trace::Mark("tone
         mapper draw: Ray Reconstruction's result bound for the tone mapper") right after PSSetShaderResources in
         OnToneMapperDraw + a one-line why. 16 gated builds exit 0 (13 amd64 + 3 x86); Attila addon64 CBA929771CFDE468...,
