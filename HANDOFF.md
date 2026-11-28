@@ -19359,6 +19359,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         reference now). Horizon info only (frames 63797 -> 64585 + the pre-key control). Capture only.
         G6 = WPR 3 (-AB -Arms w3s -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log scratch\coord_\b2_G6_run.log)
         STARTED 14:00.
+        G6 PASS 14:06 (6 min, exit 0; ab_runs\20261128_140048_AB): 1 / 1 valid, golden same, 2 / 2 RENODX_TW_SET rows
+        (FewerConstantUploads=1, AntiAliasing=0), 'Fewer Constant Uploads: on.' once, quiet (A8), no crash. WPR 3
+        CAPTURED: Start clock_steps 1000 -> Stop 1600, both exit 0, window in front 100 %,
+        D:\RenoDX_WPR\attila_wpr_20261128_140048_AB_1_B64P-w3s.etl (1.82 GB). w3s 67.2 fps, median 14.43, p99 20.65 ms,
+        GPU busy 8.12 ms, window 186.1 s, 9.81 steps / s, slow 69 %. Horizon info only. BATCH 2 GAME PART DONE (G1 /
+        G2 / G4 / G3 / G2b / G5 / G6 all valid; P16 not needed). Step 4's three WPRs captured (w3, d1, w3s).
+        N2 Nsight (day1 PT view) on ...\a64_20261128_131123_Smoke\6_E64-ptd1\frame_69025 (B 100, battle s 236, after
+        day1's clock jump), -Name a64_ns_d1_pt, log scratch\coord_\n2_1128.log, STARTED 14:0x. rsbf_ (Opus xHigh review
+        of sbf_'s Stage B design, scratch\rsbf_\brief.md, est 25 / 50) STARTED 14:07.
         x41d_ DONE 12:5x (~20 min; scratch\x41d_\design.md + x41d_h33.diff / x41d_h32.diff / build_x41.ps1 /
         stage_x41.ps1 / run_x41.ps1 / analyze_x41.py): CAUSE of fxp_'s static > moving: the only metre term the scene
         reaches is FSR 3.1.6 accumulate.h:50 (distance factor from the farthest depth, no motion in it), which sizes the
