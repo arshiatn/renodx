@@ -14,7 +14,7 @@
 // "_done"). Handles are the helper's own (the addon duplicates them into it); 64-bit fields so both builds agree.
 namespace twattila::dlaa_bridge {
 
-constexpr uint32_t VERSION = 32;
+constexpr uint32_t VERSION = 33;
 // The helper still answers addons of this version (v20 grew RT_CAPTURES, RT_DRAWN and RT_PLACEMENTS in place: older
 // addons' blocks no longer match).
 constexpr uint32_t OLDEST_VERSION = 20;
@@ -607,11 +607,18 @@ struct Shared {
   // The addon's (v32; 0: none): Path-Traced Torch Light's two helper-written DI textures (RT_DI_LIGHTS' rules: the light
   // SSAO dims and the light it does not), for the addon's composite.
   uint64_t rt_di_light[2] = {};
+  // The addon's (v33, at the start and with every request; older addons: none, 1): the game's view-space unit in
+  // metres, FSR's viewSpaceToMetersFactor (src: FSR SDK 2.4.0 ffx_upscale.h:110, ffx_framegeneration.h:241, "The scale
+  // factor to convert view space units to meters"): 1 for the games in metres, 0.01 for Unreal's and R.U.S.E.'s
+  // centimetres, WH3's campaign map 1 / its metre. Then four free bytes (0).
+  float metres_per_unit = 1.f;
+  uint32_t free_v33 = 0;
 };
 
 // The block's size for a version (an older addon's ends earlier).
 constexpr size_t SharedBytes(uint32_t version) {
-  if (version >= 32) return sizeof(Shared);
+  if (version >= 33) return sizeof(Shared);
+  if (version == 32) return offsetof(Shared, metres_per_unit);
   if (version == 31) return offsetof(Shared, rt_light_kinds);
   if (version == 30) return offsetof(Shared, rt_lights_more);
   if (version >= 25) return offsetof(Shared, fence_generation);
@@ -638,7 +645,9 @@ constexpr size_t SharedBytes(uint32_t version) {
 static_assert(SharedBytes(31) == offsetof(Shared, rt_grass_range) + sizeof(float), "v32 starts right after v31's block");
 static_assert(offsetof(Shared, rt_light_surface) == offsetof(Shared, rt_restir_flags) + sizeof(uint32_t),
               "no padding before v32's 64-bit handle in the 32- and 64-bit builds");
-static_assert(sizeof(Shared) == offsetof(Shared, rt_di_light) + sizeof(Shared::rt_di_light),
+static_assert(SharedBytes(32) == offsetof(Shared, rt_di_light) + sizeof(Shared::rt_di_light),
+              "v33 starts right after v32's block");
+static_assert(sizeof(Shared) == offsetof(Shared, free_v33) + sizeof(uint32_t),
               "the block ends at its last field in both builds");
 
 // The helper's exit codes (not in the block: no version), each end of its own (dlaa_helper/main.cpp) and the addon's

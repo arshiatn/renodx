@@ -196,7 +196,7 @@ class ProxyFrameGeneration12 {
 
   // One present (the request's value: the frame is written; the next is signalled once copied). False: not presented (the
   // game's own image shows).
-  bool Present(dlaa_bridge::Shared* shared) {
+  bool Present(dlaa_bridge::Shared* shared, float metres_per_unit) {
     const uint64_t value = shared->value;
     if (!fence_ || !frame_ || failed_ || shared->fg_window == 0) {
       SignalOnly(value);
@@ -358,7 +358,9 @@ class ProxyFrameGeneration12 {
             // Infinite: no far plane (src: ffx_framegeneration.h:239, "used only in case of non-infinite depth").
             .cameraFar = (chain_infinite_far_ ? std::numeric_limits<float>::max() : shared->fg_far),
             .cameraFovAngleVertical = 2.f * std::atan(1.f / projection[5]),
-            .viewSpaceToMetersFactor = 1.f,
+            // src: ffx_framegeneration.h:241, "The scale factor to convert view space units to meters." (its view
+            // depths: ffx_frameinterpolation.cpp:858).
+            .viewSpaceToMetersFactor = metres_per_unit,
             .depth = ffxApiGetResourceDX12(depth_.Get(), FFX_API_RESOURCE_STATE_COMPUTE_READ),
             .motionVectors = ffxApiGetResourceDX12(motion_.Get(), FFX_API_RESOURCE_STATE_COMPUTE_READ),
         };

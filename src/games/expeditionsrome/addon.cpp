@@ -658,6 +658,8 @@ bool AttachAddon() {
   // DLSS, graphics and ray tracing (the former DLSS add-on): after the shader mod, so its callbacks run after this part's
   // on the same shaders, as when it loaded second.
   expeditionsrome::dlss_graphics::Install();
+  // Unreal's unit is a centimetre (FAR_PLANE's note, ray_tracing.hpp CENTIMETRES): FSR's depth thresholds are metres.
+  twattila::dlaa_bridge::bridge.metres_per_unit = 0.01f;
   // Frame generation (the helper presents; HUD-less images through the swap chain shader, its constants at b13) and
   // Reflex for the game's own presents.
   twattila::frame_generation::Install(__swap_chain_proxy_vertex_shader_dx11, __swap_chain_proxy_pixel_shader_dx11, &shader_injection,

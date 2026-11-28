@@ -466,6 +466,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   bool upscaler_tried = false;
   bool upscaler_open = false;
   bool upscaler_live = false;
+  // The game's view-space unit in metres (v33: the addon writes it with every request; WH3's campaign map has its
+  // own), FSR's viewSpaceToMetersFactor for its upscaler and frame generation.
+  const auto metres_per_unit = [&] { return (version >= 33) ? shared->metres_per_unit : 1.f; };
   const auto other_upscaler = [&] { return version >= 22 && shared->upscaler != twattila::dlaa_bridge::UPSCALER_DLSS; };
   std::array<uint32_t, 7> upscale_said = {};
   // Ray tracing (v4 addons with it on): its D3D12 device and the addon's objects opened there. After a GPU reset removed
@@ -1236,7 +1239,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       // Frame generation (D3D12): its copy queue waits for the addon's value and signals the next.
       const bool proxied = generation_backend != twattila::dlaa_bridge::FG_BACKEND_DLSS;
       if (generation_open) {
-        evaluated = proxied ? proxy_generation->Present(shared) : generation->Present(shared);
+        evaluated = proxied ? proxy_generation->Present(shared, metres_per_unit()) : generation->Present(shared);
       } else {
         context4->Wait(fence.Get(), shared->value);
         context4->Signal(fence.Get(), shared->value + 1);
@@ -1327,6 +1330,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
           .jitter_x = shared->jitter_x,
           .jitter_y = shared->jitter_y,
           .reset = (shared->reset != 0),
+          .sharpness = shared->fsr_sharpness,
+          .metres_per_unit = metres_per_unit(),
       };
       std::copy_n(shared->view_to_clip, 16, upscale.view_to_clip.begin());
       evaluated = upscaler_open && upscaler->Evaluate(upscale);
@@ -1371,6 +1376,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       }
       context4->Wait(fence.Get(), shared->value);
       if (output) {
+        // src: DLSS Programming Guide (31 March 2026) 3.9, p. 25: the renderer's exposure as a 1x1 texture, "Only
+        // supported by Presets J and K"; 3.10, p. 27: that parameter "is the preferred method", AutoExposure its
+        // stand-in. So the addon's exposure (0: none), AutoExposure only without one.
+        const int auto_exposure = (shared->dlss_exposure > 0.f ? 0 : NVSDK_NGX_DLSS_Feature_Flags_AutoExposure);
         evaluated = backend.Evaluate(context.Get(), {
                                                         .color = color.Get(),
                                                         .depth = depth.Get(),
@@ -1380,6 +1389,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                                         .height = shared->height,
                                                         .jitter_x = shared->jitter_x,
                                                         .jitter_y = shared->jitter_y,
+                                                        .exposure = shared->dlss_exposure,
                                                         .reset = (shared->reset != 0),
                                                         .output_width = shared->output_width,
                                                         .output_height = shared->output_height,
@@ -1389,7 +1399,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
                                                         .preset = shared->preset,
                                                         .create_flags = NVSDK_NGX_DLSS_Feature_Flags_IsHDR
                                                                         | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes
-                                                                        | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure,
+                                                                        | auto_exposure,
                                                     });
         set_status(backend.Status());
       } else {

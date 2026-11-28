@@ -211,7 +211,8 @@ class Upscaler12 {
               // Depth 0 near (no DEPTH_INVERTED); DEPTH_INFINITE for an infinite far plane (src: ffx_upscale.h:53, FSR SDK
               // 2.4.0). Dynamic resolution: any render size up to the output's.
               .flags = FFX_UPSCALE_ENABLE_HIGH_DYNAMIC_RANGE | FFX_UPSCALE_ENABLE_AUTO_EXPOSURE | FFX_UPSCALE_ENABLE_DYNAMIC_RESOLUTION
-                       | (made_infinite_far_ ? static_cast<uint32_t>(FFX_UPSCALE_ENABLE_DEPTH_INFINITE) : 0u),
+                       | (made_infinite_far_ ? static_cast<uint32_t>(FFX_UPSCALE_ENABLE_DEPTH_INFINITE) : 0u)
+                       | (debug_view_ ? static_cast<uint32_t>(FFX_UPSCALE_ENABLE_DEBUG_VISUALIZATION) : 0u),
               .maxRenderSize = {.width = made_width_, .height = made_height_},
               .maxUpscaleSize = {.width = made_width_, .height = made_height_},
           };
@@ -320,7 +321,12 @@ class Upscaler12 {
           .motionVectorScale = {.x = 1.f, .y = 1.f},
           .renderSize = {.width = request.width, .height = request.height},
           .upscaleSize = {.width = request.output_width, .height = request.output_height},
-          .enableSharpening = false,
+          // src: ffx_upscale.h:102-103 (FSR SDK 2.4.0), "an additional sharpening pass", its sharpness "between 0
+          // and 1, where 0 is no additional sharpness". ours: no pass at 0 (the picture as before the slider worked;
+          // a pass at 0 still sharpens: the FSR 3.1 provider's ffx_fsr3upscaler.cpp:1109 maps the value to RCAS's
+          // stops, 0 the weakest of them).
+          .enableSharpening = request.sharpness > 0.f,
+          .sharpness = request.sharpness,
           .frameTimeDelta = (first_frame_ ? 16.698658f : std::chrono::duration<float, std::milli>(now - last_time_).count()),
           .preExposure = 1.f,
           .reset = reset,
@@ -330,7 +336,10 @@ class Upscaler12 {
           .cameraFar = (made_infinite_far_ ? std::numeric_limits<float>::max()
                                            : projection[10] * near_plane / (projection[10] - 1.f)),
           .cameraFovAngleVertical = 2.f * std::atan(1.f / projection[5]),
-          .viewSpaceToMetersFactor = 1.f,
+          // src: ffx_upscale.h:110, "The scale factor to convert view space units to meters" (the FSR 3.1 provider's
+          // depth thresholds are metres: ffx_fsr3upscaler_common.h:41-43, :319; ffx_fsr3upscaler_accumulate.h:50).
+          .viewSpaceToMetersFactor = request.metres_per_unit,
+          .flags = (debug_view_ ? static_cast<uint32_t>(FFX_UPSCALE_FLAG_DRAW_DEBUG_VIEW) : 0u),
       };
       last_time_ = now;
       if (backend_ == dlaa_bridge::UPSCALER_FSR) {
@@ -413,6 +422,10 @@ class Upscaler12 {
 #if defined(RENODX_FSR_SDK)
   ffxFunctions fsr_ = {};
   ffxContext fsr_context_ = nullptr;
+  // RENODX_TW_FSR_DEBUG_VIEW (a test switch, never a player's): FSR's debug views in the output, its 3 x 3 grid
+  // with the dilated depth in metres top right, red at 25 m (src: ffx_upscale.h:58, :63;
+  // ffx_fsr3upscaler_debug_view.h:112-121, :153). Unset: the create and dispatch flags as without it.
+  const bool debug_view_ = GetEnvironmentVariableW(L"RENODX_TW_FSR_DEBUG_VIEW", nullptr, 0) != 0;
 #endif
 #if defined(RENODX_XESS_SDK)
   // No depth flag (0 near), no high-resolution or jittered motion; HDR colour is its default.

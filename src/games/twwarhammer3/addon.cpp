@@ -3462,6 +3462,9 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
   if (auto& campaign_frames = twattila::frame_history::campaign_frames; campaign_frames.load(std::memory_order_relaxed) != 0) {
     campaign_frames.fetch_sub(1, std::memory_order_relaxed);
   }
+  // FSR's view-space unit (Shared::metres_per_unit): on the campaign map a metre is RT_HOST's campaign_metre units,
+  // so a unit is 1 / that metres; a battle's unit is a metre.
+  twattila::dlaa_bridge::bridge.metres_per_unit = 1.f / twattila::rt_scene::internal::RangeScale();
   talesofarise::pixel_trace::OnPresent(queue);
   twattila::light_bounce::Update(swapchain, twattila::lighting_settings::LightBounceSliders(shader_injection));
   twwarhammer3::vfx_particles::OnPresent();
