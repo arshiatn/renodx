@@ -18760,6 +18760,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         what hzc_ calibrated on. So w3's camera proof cannot pass as built. Owner: next a64_ab writer (apply phase):
         read the horizon from zz_capture frames (or the add-on's own capture) on -ReShade starts, or prove the
         camera another way; then one w3 rerun only if the apply phase needs the camera proof. Group F -DryRun next.
+        Group F -DryRuns 05:18 ok (both lines). Group F line 1 (-R1) 05:19-05:27, exit 4 = the R1.8b STOP, not a crash
+        (ab_runs\20261128_051913_Smoke): E64-tr then its late twin E64-tr-late both clean (exit 0, 0 CRASH / FATAL,
+        no WER / dumps, 21 sites unchanged, check_logs clean) but NO POINT LIGHT in any trace of stress_test_log2;
+        the runner stops for 'a replay with torches or a night battle (Q4)'. E64-mvtr not started; line 2 (-PerfFix
+        -R1, B64P-tr, same replay) SKIPPED (it would stop the same way). The replay is fixed in a64_ab (:286
+        $REPLAY). [ ] R1 census (owner: coord): NEEDS ATN = which replay (ATN's night1.replay exists); then a
+        reviewed a64_ab patch for an R1 replay + its -DryRun, then F again. G does not need F (batch plan).
+        Group G -DryRun next.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
