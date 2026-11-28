@@ -19162,6 +19162,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         backup a64_ab.ps1.bak_abe_20261128_105134 (bc9cf693...), live now
         089a4c790caa208372215c9f4f6157ced6f7c5a0eb8b2fcfc50d2665459775f9; live -DryRun (group C line) 'self-test: ok for every
         arm'. Chain: ... -> bc9cf693 (rsc4_) -> 089a4c79 (abe_ patch e).
+        bp2_ (Opus xHigh, plan only: the next game batch = apply checks + step 4's captures -> round_notesatch2_plan.md,
+        est 25 / 50) STARTED 10:52.
         gbf_ round 3 DONE 10:2x (9 min): aeaca9f07 on gbf3_1128 (worktree gbf3_, off aeb9d2059): frame_trace::Mark("tone
         mapper draw: Ray Reconstruction's result bound for the tone mapper") right after PSSetShaderResources in
         OnToneMapperDraw + a one-line why. 16 gated builds exit 0 (13 amd64 + 3 x86); Attila addon64 CBA929771CFDE468...,
