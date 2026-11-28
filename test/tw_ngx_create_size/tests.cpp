@@ -32,7 +32,7 @@ int main() {
       {.name = "L one row above", .inside_range = true, .preset = L, .active_width = 2560, .active_height = 1441, .expected_at_active = true},
       {.name = "L 66.7 %", .inside_range = true, .preset = L, .active_width = 2560, .active_height = 1440, .expected_at_active = false},
       {.name = "M 66.7 %", .inside_range = true, .preset = M, .active_width = 2560, .active_height = 1440, .expected_at_active = false},
-      {.name = "L 60 % (below)", .inside_range = true, .preset = L, .active_width = 2304, .active_height = 1296, .expected_at_active = false},
+      {.name = "L 64 % (below)", .inside_range = true, .preset = L, .active_width = 2458, .active_height = 1382, .expected_at_active = false},
       {.name = "K 77 %", .inside_range = true, .preset = K, .active_width = 2957, .active_height = 1663, .expected_at_active = false},
       {.name = "Default 77 %", .inside_range = true, .preset = DEFAULT, .active_width = 2957, .active_height = 1663, .expected_at_active = false},
       {.name = "L outside (33 %)", .inside_range = false, .preset = L, .active_width = 1268, .active_height = 713, .expected_at_active = true},
