@@ -18440,6 +18440,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         199.2 stop / 204.8 info / 216.6 pass, lowdef planted hash named. Re-check crts1b_ (Sonnet High) STARTED 01:33.
         [ ] CPU Set Setter sometimes applies its mask late (2 of 6 gate starts): owner coord, watch the new check's
         cpu_sets_early lines in the batch; tell ATN (his tool).
+        crts1b_ (9 min) GO, 0 MUST: S1 the poll re-read CPU Set Setter's config ~60 times a start and a throw would
+        reach the start's catch (kills the game, stops the batch); S2 Close-Rule's A/A now drops old outside-mask
+        starts (coord: noted, accepted, the stageA numbers use only matched starts from now); S3 an 'error N' reading
+        could count as inside; 4 NITs. v2 rts1_ (11 min; 88dcff29): the mask read once per start, the whole poll in
+        try/catch ('unread (<reason>)', the start goes on), only a parsable reading can be inside, NITs; poll controls
+        on a fake clock incl. missing / non-JSON / no-mask / locked configs. Final check crts1b_ (3 min) GO, 0 MUST /
+        0 SHOULD (old dry-run lines 0 diff in 10 rows; throw controls). APPLIED LIVE 01:55 (9eeb9f82 -> 88dcff29,
+        backups .bak_rts1b_ + .bak_coord_rts1b_, parse 0). RT S1 is complete.
         -C2 smoke 20261128_003123_Smoke on 9eeb9f82: both starts PASS, smoke_pass true (E64-sr2 + E64-mv), item 6 on
         E64-mv: 0x5F9CD405 / 0x0ECFE74C / 0xDAC80ECC drawn, 0xC2AA8FDA 'not drawn, 32-bit 0 of 21 too (info)' (X6
         works), 14 CPU sets each, clean exits, 0 WER. Sprite gate dry run: self-test ok for every arm. SPRITE GATE
