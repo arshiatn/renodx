@@ -19134,6 +19134,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         OnToneMapperDraw + a one-line why. 16 gated builds exit 0 (13 amd64 + 3 x86); Attila addon64 CBA929771CFDE468...,
         addon32 CE93AE1B9CD50F97.... Old gbf_1128 worktree: its 9 junctions removed one by one (no recursion); folder
         left. rgbf_ follow-up review STARTED 10:21, then fgbf_ final, merge.
+        rgbf_ r3 GO (placement: the only bind, no return between; text = a64_ab $O1_BIND; Mark = one relaxed atomic load
+        without a trace); NIT the 122-column comment -> ffb139932 (wrap; twattila amd64 exit 0, addon64 5BAFC661: the sha
+        moves with line numbers / relink). fgbf_ r3 GO. MERGED gbf3_1128 into atn-mods 9dad56b66 (--no-ff), pushed 10:25.
         - [ ] abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> -DryRun. Before any start
         on the W5 DLL. Owner: coord.
         GPU LANE NEXT (ATN 09:3x 'Do we have time to run the next gpu stuff?'): fxp_ still runs (P2c, GPU lock held by
