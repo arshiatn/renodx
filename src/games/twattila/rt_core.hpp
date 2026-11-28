@@ -990,8 +990,12 @@ struct Runtime {
   // 2026-10-28: the helper's 16384 static records filled within a minute, 93 meshes in the scene).
   std::unordered_map<uint32_t, uint32_t> new_static;
   uint64_t new_static_time = 0;
-  // The helper's status logged this long after the settings changed (each effect's GPU time as they are tried).
+  // The helper's status logged this long after the settings changed (each effect's GPU time as they are tried) or after
+  // the helper's first status.
   uint64_t status_log_time = 0;
+  // The last status line had no status from the helper: the line again once its first status comes (the 64-bit add-on
+  // starts the helper a minute after the first settings, group G 2026-11-28: every log said 'no status' while rays ran).
+  bool status_line_without_helper = false;
   // A trace point asked for a trace this session: the status line's reason while the helper has written no status yet
   // (R.U.S.E.'s line ended at ": " when its trace point never ran, 2026-11-16).
   bool trace_asked = false;
@@ -4479,7 +4483,8 @@ inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) 
 inline void Update(const Settings& settings) {
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
-  if (!(runtime.settings == settings)) runtime.status_log_time = GetTickCount64() + 3000;
+  constexpr uint64_t STATUS_LINE_DELAY_MS = 3000;
+  if (!(runtime.settings == settings)) runtime.status_log_time = GetTickCount64() + STATUS_LINE_DELAY_MS;
   runtime.settings = settings;
   const bool nrd = settings.nrd && !dlaa_bridge::bridge.reconstructing;
   // Path-Traced AO is the Light Bounce's light: with AO under Ray Reconstruction at REBLUR it cleans that too, as RTAO.
@@ -4649,6 +4654,10 @@ inline void Update(const Settings& settings) {
                                         profile.frames, profile.path.string()));
     }
   }
+  if (runtime.status_line_without_helper && runtime.status_log_time == 0 && !dlaa_bridge::TraceStatus().empty()) {
+    runtime.status_line_without_helper = false;
+    runtime.status_log_time = GetTickCount64() + STATUS_LINE_DELAY_MS;
+  }
   if (runtime.status_log_time != 0 && GetTickCount64() >= runtime.status_log_time) {
     runtime.status_log_time = 0;
     std::string effects;
@@ -4664,6 +4673,7 @@ inline void Update(const Settings& settings) {
     // Before the helper's first status, why there is none (a missing status line is a finding: no trace point, or every
     // request refused).
     std::string status = dlaa_bridge::TraceStatus();
+    runtime.status_line_without_helper = status.empty();
     if (status.empty()) {
       status = (runtime.trace_asked ? "no status from the helper yet (see the \"no trace this frame\" lines)"
                                     : "no trace asked yet (the pass that asks for it has not run)");
