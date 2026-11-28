@@ -19017,6 +19017,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         rgbf_ (Opus xHigh review, incl. the R11G11B10F path through the helper + any copy between formats) STARTED 09:06.
         - [ ] rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trace B 70) -> E64-rrtm +
         E64-rr50tm in game -> ATN's first look (darks, bloom halos below 100 %). Owner: coord.
+        rgbf_ DONE 09:13 (7 min; scratch\rgbf_\review.md): GO WITH CHANGES, no MUST. The R11G11B10F path is valid end to
+        end: a view in the scene's own format, the prepare shader writes the bridge's RGBA16F colour (dlaa_bridge.hpp
+        :1060), the helper / NGX see the same format as before; no cross-format copy can run (target copy skipped,
+        warp-history copy off with Debug View 0, the copy fallback only on a failed view creation). OnTonemapDrawn
+        passes RGBA16 only (:1643); 32-bit compiles the call out. Merge-tree clean. S1 README:39 (no a64_ab arm names,
+        wrap), S2 README:5-7 player-facing Fixed: line, N1 / N2 / N3 (wraps, one single-use local, a wrong comment)
+        -> gbf_ round 2 (18 gated builds again) STARTED 09:13; then the Sonnet High final.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
