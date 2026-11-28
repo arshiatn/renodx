@@ -741,6 +741,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
+- X41 RUN (owner: coord -> one GPU agent, after batch 2 part 2): x41d_\design.md's ... | ?
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -19307,6 +19308,26 @@ heading text are in HANDOFF_ARCHIVE.md)
         12:46 (scratch\coord_\b2_dry.ps1, b2dry\): G3 (6 starts E64-dlaa ... E64-ptd1, day1.replay read for E64-ptd1),
         G2b 'ep8,dflt', G5 d1, G6 w3s: exit 0, 'self-test: ok for every arm', nothing refused. Part 2 (G3 -> G2b -> G5
         -> G6 -> N2) starts when sbf_ + x41d_ end (game runs hold all agents).
+        x41d_ DONE 12:5x (~20 min; scratch\x41d_\design.md + x41d_h33.diff / x41d_h32.diff / build_x41.ps1 /
+        stage_x41.ps1 / run_x41.ps1 / analyze_x41.py): CAUSE of fxp_'s static > moving: the only metre term the scene
+        reaches is FSR 3.1.6 accumulate.h:50 (distance factor from the farthest depth, no motion in it), which sizes the
+        history clamp box (acc:54-57: 3.0 at 30 m vs 1.53 at 0.3 m) for static and moving alike; motion (2.5 px a frame)
+        cuts the history weight to ~0.15 (acc:99), so the tighter box moves the output less; the other metre terms do
+        nothing in this scene (fxh2_'s 'static = no effect' read acc:50 as a motion term). PROOF PICKED: FSR's own debug
+        view, the top-right cell = saturate(view depth x factor / 25) (debug_view.h:112-121, :153), with one new switch
+        moving the depth plane to 2 units: E unit 1 -> 0.0800, 0.01 -> 0.000800, 10 -> 0.800 (2 % tolerance); A/A 0
+        (deterministic) -> margins 792x / 7198x the pass line (10 x A/A + floor 1e-4). Arms: test H33x + helper
+        c884bc2a9 (late 0.01, late 10 then back to 1 mid-run, 0.01 before the start); late-set control H33x + 02bc1fd94
+        must stay 0.08 with a positive control in the same run reading 0.0008; version control H32x + 02bc1fd94 exactly
+        0.08. R 3 per arm, 12 arms, 36 processes at 3840x2160, ~9 GPU min (runner ~25 / 50 min, dumps ~2.4 GB). Patches
+        on copies of fxp_'s harness_H33 / H32 sources (git apply clean, CRLF kept; patched 60C02871 / 82222F57; the live
+        harness source is BCFB86D2 since aa67_); no helper rebuild. Allowed FAILs under the debug view: 'jitter unchanged
+        is the best' + 'motion right sign' (the grid covers 6 of 9 scored cells), logged; dark tones / every frame /
+        no NGX must stay ok; probe first (stop if the debug view is not drawn). FSR FG's unit read checked by code only
+        (helper main.cpp:1242 = :1334's read). P1 (Tales) / P1b (WH3) then only confirm each game's value in game.
+        - [ ] X41 RUN (owner: coord -> one GPU agent, after batch 2 part 2): x41d_\design.md's run brief; PASS -> X41
+        proved; then fxh2_1127's merge turn (after step 4's captures; rt_core / bridge conflicts with ga_ checked).
+        P1 / P1b as merge conditions or later in-game checks: ATN's call (coord suggests: later checks).
         N1 Nsight (stress PT view, no game) on the fallback recording a64_20261128_065848_Smoke\3_E64-pt: run 1 exit 7
         (the player quit at once: it takes ONE frame folder, not the recording's parent; batch2_plan's N1 / N2 line is
         wrong there), run 2 with ...\3_E64-pt\frame_62649 DONE 12:34 exit 0: nsight\runs\a64_ns_w3_pt\
