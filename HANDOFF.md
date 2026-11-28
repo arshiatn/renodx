@@ -18531,6 +18531,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         MOVEFILE_WRITE_THROUGH, Write(file, FileKind, row) + asserts. Gated amd64 + x86 exit 0 (61), tw_start_files
         x2, tw_unit_shadows x2, defaults match, PD 32-bit SAME, 64-bit as intended. Known limit: a future numeric Sol
         key reading 0 / 1 gets an Off / On row until listed. Final check ccp_ (Sonnet High) STARTED 02:36.
+        ccp_ (3 min) GO, 0 MUST: both MUSTs hold vs picker.c / plugins.inc (upscaling=0 turns FrameBridge's own
+        addon=on off at the next start: framebridge_prepare); S1 a mid-file read error may give eofbit, not badbit
+        (MSVC STL) -> Write could still rewrite a shorter file; S2 no test of the never-shown list; S3 the mutation
+        lines don't match the committed tests.cpp; 4 NITs ('written' logged when nothing was written, columns, a
+        single-use local, a held-at-first-present snapshot). Coord: S1 is the writer's safety -> small round cp_
+        (resumed, est 12 / 25: size-checked read proof, S2 CHECK, mutations rerun on the committed file, NITs 1-3,
+        N4 = known limit) STARTED 02:39. Then a short Sonnet re-check, merge, S5a.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
