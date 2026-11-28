@@ -18444,7 +18444,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         asks one more pair (owner: rts1_'s follow-up patch).
         [ ] For ATN: the sprite watch leans +0.3-1.7 % frame time with the row On (within noise); design 3.3's cheaper
         variant (watch only the buffer the last main sun draw had bound: a pointer compare per map) would also trim the
-        cost TAA / DLSS users already pay. Coord suggests it after the batch, measured the same way. rrts2_ (Opus xHigh, 9 min;
+        cost TAA / DLSS users already pay. Coord suggests it after the batch, measured the same way.
+        MSAA start 20261128_011053_AB (sprmsaa): valid, camera line + 'engine scales active 0x400000', MSAA warning
+        none, golden same, clean exit, 16.39 ms, GPU busy 10.65 (MSAA). -> spf_1127 MERGED 05607429b (--no-ff, pushed;
+        clean, 7 files). Main-tree gated builds + tw_unit_shadows x86 / amd64 STARTED (scratch\coord_\spf_merge).
+        [ ] README.md:2030 old TAA WARP numbers -> spf_'s 55.33 / 43.09 / 54.39 / 54.10 / 45.64 / 93.86 / 63.11 with the
+        release notes (owner: coord at release); taa_test.cpp once on the merged tree (a record, no runner).
+        STARTED 01:19 (agents allowed again after the game runs): rts1_ follow-up patch (resumed, Opus High: crts1_
+        S1 / S2 with the stop at <= 1.00 x paper white, NITs, the CPU-set mismatch mark); W-H2 fix round fxh2o_
+        (resumed, Opus High: rfxh2_ M1 + S1-S3, ffxh2_ S1 / S3, WH3 campaign per-request unit); pxa_ (NEW, Opus Medium
+        trial; worktree pxa_1128 from 05607429b; addon.cpp + plugin_block.h comments): the PerfFix pin add-on part
+        (EngineTexts + nullptr assert, the 'another mod' text, is_visible, one ReShade.log line, lane 6 text, rpxp_ N5).
+        No file overlap between the three. rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
