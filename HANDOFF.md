@@ -3599,7 +3599,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         Helper fixes 2 / 3 / QW3 / QW4 = design notes (gsi_handback section 7) after steps 3 / 5 / 4c merge. Owner:
         coord, then the helper writer slot
       - [ ] WORKTREE BUILDS NEED slangc (pdi5_ 22:1x): gated_build twattila configure fails in a worktree ('Could not find
-        SLANGC_BIN'): CMake looks only in <tree>in and worktrees never link bin. Coord: copy slangc.exe + its DLLs as
+        SLANGC_BIN'): CMake looks only in <tree>\bin and worktrees never link bin. Coord: copy slangc.exe + its DLLs as
         plain files (never a bin junction). Fix tooling: gated_build copies the bin tools CMake needs into a worktree's
         bin before configure (or CMake gets a SLANGC_BIN cache path to the main tree). Owner: coord (next tooling slot)
       - [x] DONE (audit 11-27: ATN 11-25 20:3x 'We agree to both' (4035); text sent; his build = box 4040): CAESAR (PerfFix 64 / Flag Wave author) ANSWER 11-25 19:18 (ATN relayed): (1) NO BUNDLING: 'don't bundle or
@@ -18555,7 +18555,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         rt_scene's batch-wanted predicate, the port's Update term + per-change line, F7 truth table (-BuildOnly; the
         coord runs F7 on the GPU), F7 at 3840x2160 if still 1280x720, every rt_core / rt_scene includer built)
         STARTED 02:51. Then reviews (Opus xHigh + Sonnet High), F7 on the GPU, merge, then the big batch.
-        Big batch plan bbp_ (Opus xHigh, read only, est 35 / 70; testbin\scratchbp_rief.md -> batch_plan.md:
+        Big batch plan bbp_ (Opus xHigh, read only, est 35 / 70; testbin\scratch\bbp_\brief.md -> batch_plan.md:
         before-list, starts in run order with commands, count + why (cited) + gate per start, not-in-batch list,
         trims, rule lines (settings.local.json read only), open questions) STARTED 02:52 beside s5a_.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
