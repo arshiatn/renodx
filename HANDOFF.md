@@ -741,6 +741,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - FOR ATN (batch2_plan.md 5): Q1 yes to the 4 new arms dflt / d1 / w3s / E64-ptd1 ... | ATN
+- patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -19229,6 +19230,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         (scratch\coord_\b2_dry.ps1, b2dry\): G1 / G2 / P16 exit 0 'self-test: ok for every arm', plugin 836c5f27; G4
         exit 1 = F12 (needs the C8 E64-mv smoke with this plugin sha) as planned. F12: part 1 (G1 -> G2 (+P16) -> G4)
         starts when abf_ ends (game runs hold all agents).
+        abf_ DONE 11:4x (35 of 75 min; scratch\abf_\handback.md, patch_abf.py, abf.diff): patch f 47 edits, in 089a4c79
+        -> out 72e14a0b (fresh copy gives 72e14a0b; 2nd apply / no argument / wrong sha / CRLF refused, exit 1). Tests:
+        parse + fsc3_ scan 0 / 0; test_f7 6 / 6 on real 4K frames (live keeps its old verdicts); test_w3 17 / 17 both
+        copies (new adds only a 'no pre-key control' note); test_args 18 / 18 (f6 refusals, f1 / f3 refusals, f2 wrong-
+        sha / missing-replay: a dry run notes a bad pin, a real batch stops exit 2); test_wpr 17 / 17 (d1 WPR on the
+        runner's tick clock B 310 -> 370, skipping day1's 100 -> 240 clock jump; w3 still on the probe files). Dry twins
+        A-D / F1 / F2 / G / H / G1 / G2 ok both copies (only diff: A's P1 note lists dflt); E / G4 = F12 both (ok + byte-
+        identical with F12 off on test copies); G5 d1 / G6 w3s / G3 + E64-ptd1 / G2b 'ep8,dflt' ok on new, refused by
+        live. Left (for the reviews / first d1 start): d1 capture seconds (first present 70..140) an estimate; the
+        plan's 'WPR 100..160' is now B 310..370; probe W1 = 400 dump + analyze_d0 / PerfFix compares unverified on day1;
+        Rt-Check D2c clamp reference still looks for the stress replay (not changed for E64-ptd1); d1 horizon fallback
+        window start = clock line + 300 wall s; the plan's P1 wording for dflt is loose (existing plugin-kind P1 rule).
+        Space for ATN: proof\abe_copy 1.4 GB unusable (lost timestamps), abe_copy2 1.4 GB + f7 776 MB hold test frames.
+        Reviews (Opus xHigh + Sonnet High) wait for part 1 (game runs hold all agents). G1 (-Smoke -ReShade
+        -EnginePlugin -C2, log scratch\coord_\b2_G1_run.log) STARTED 11:42.
+        - [ ] patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, sha 72e14a0b) -> -DryRun
+        twins -> part 2 (after ATN's yes to Q1). Owner: coord.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
