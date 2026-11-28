@@ -735,6 +735,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - J exit crash 0x75f0: confirm from the dump's stack that 0x75f0 in heapfix P 8e8f ... | coord, apply phase (read-only dump reading, no heapfix sourc
 - G-a: re-log the RT status line once the helper's first status arrives (or arm th ... | coord, apply phase (add-on change + gated build + a3_smoke)
 - G-b: root-cause RR Before Tone Mapping not applying at 50 % render scale on 64-b ... | coord, apply phase
+- a64_ab R2Kill: check_logs' 'the helper stopped' line after the kill time is the ... | coord, next a64_ab patch (with G-a's check)
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | the W-H2 fix round after reviews
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
@@ -18900,6 +18901,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] G-b: root-cause RR Before Tone Mapping not applying at 50 % render scale on 64-bit (which early return;
         was 32-bit rr50tm ever PASS?), fix at the source. Owner: coord, apply phase.
         Group H (-R2Kill, E64-rtkill) -DryRun ok, STARTED 07:54 (coord_\gH_run.log).
+        GROUP H DONE 08:01 (ab_runs\20261128_075423_Smoke): E64-rtkill exit 0 at 383 s, quit line True, 0 CRASH / FATAL,
+        no WER, 3 / 3 zz_capture frames. Helper killed at B 60 (battle s 62.8, pid 29636): the add-on logged 'the helper
+        ended ... (0xFFFFFFFF)' + 'what the game's GPU waited for from it was freed', the game played on, F 260 picture
+        normal (black 0.4 %, p50 43 nits, top 305), crash none, left alone 0 = THE KILL TEST PASSES. PASS NO only on
+        (G-a) the RT status line and check_logs' 'helper stopped' BAD line = the kill the test makes on purpose.
+        - [ ] a64_ab R2Kill: check_logs' 'the helper stopped' line after the kill time is the expected one (not BAD) in
+        a kill arm; only a second stop or one before the kill counts. Owner: coord, next a64_ab patch (with G-a's check).
+        THE BIG BATCH IS DONE (08:01): A B C D E F G H I J all run; open from it: Stage B pool sizing (C), horizon
+        metric from zz_capture (E), G-a status line, G-b RR before tone map at 50 %, J exit crash 0x75f0, R2Kill
+        check_logs nit, R3 DI keys. Nothing of ours running (one threadless Attila.exe 32028 = WER's copy from J's exit
+        crash, left alone); no lock held. Next: the morning report to ATN, then step 3 (apply the batch's results).
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
