@@ -741,7 +741,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
 - BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
-- X20 AT THE DEFAULT (ATN, after x20_'s fix round confirms it): the IGN-under-RR r ... | coord -> wave 2 (main
+- X20 AT THE DEFAULT (ATN, after x20_'s fix round confirms it): the IGN-under-RR r ... | coord -> ATN
+- DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3' ... | coord -> wave 2 (main
 - REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of r ... | ATN
 - j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch swi ... | coord -> j23p_
 - J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / h ... | ?
@@ -19476,7 +19477,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (J2 255 -> ~189 GB, J3 84 -> ~63 GB; coord ok needed, R >= 8 rule); bake set refs mostly dropped (INVALID) +
         fx4b open item = expected APART; no SHaRC cost rows; no verdict table + partial sets judged; J3 disk stop skips
         cost plays. 8 NITs. 'Unset = old scenes' proven on CPU hashes only. DRED off in the player: safe to judge.
-        Waiting for rj23p_, then one fix round (j23p_).        - [ ] DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3's play-back arms run without
+        Waiting for rj23p_, then one fix round (j23p_).
+        - [ ] DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3's play-back arms run without
           DRED details (a TDR still stops the arm). Owner: coord -> wave 2 (main.cpp has no wave-1 writer); rj23p_ says
           whether J3 is safe to judge without it.
         - [ ] REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of raw references vs ATN's
