@@ -18731,6 +18731,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         C2b / C3, 8 dumps, 4 Time Each Pass files (one frame 22.953 ms GPU, 2109 commands in pass_timing_1), the game's
         own exit code 0 at 399 s, no WER, foliage share of the Bend depth 80.7 %, '=== done: no problem seen'. The
         2.10 D3D11 pass analysis reads these in the apply phase. Group J -DryRun next.
+        Group J -DryRun 05:01 NOT READY, exit 2 (scratch\coord_\gJ_dry.log): 'omm-lib.dll of the build differs from the
+        game folder's' = sgr_\rec_helper\omm-lib.dll fd32fbd5 (1.12, from the 11-27 omm merge 46075d216, in the 03:22
+        -Prepare build) vs ATN's install b0c031f2 (1.10, helper120 11-23); the start copies only the exe in, so the
+        recorder would run on 1.10. Everything else ready (helper sources 0 files changed since e1373ed1f, bridge v32
+        in v20..v32, commit 16.6 GB, free 21.9 GB, D: 496 GB, 4K). Nothing started. J MOVED after group H (no D-H
+        dependency; no agent may run during the runs). [ ] siege_rec.ps1 patch (owner: coord, after H; implementer +
+        Sonnet High review): copy the build's omm-lib.dll (+ the nvngx pair if they differ) in beside the exe for the
+        start, in the hash-checked backup / restore, then the -DryRun and the run (omv_ 11-27: 1.10 vs 1.12 swapped
+        under one exe = 0 bytes apart in 11 of 12 modes). Group D -DryRun next.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
