@@ -19142,6 +19142,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> gbf_ round 3 STARTED 10:12 (branch gbf3_1128 off today's tip: ONE frame_trace::Mark after the bind,
         'tone mapper draw: Ray Reconstruction's result bound for the tone mapper'; 16 gated builds) and abe_ round 2
         STARTED 10:12 (S1 / S2 / S3 on the new mark / N1-N5; same gated patch from bc9cf693, new out sha).
+        abe_ round 2 DONE 10:4x (31 min): patch_abe.py 3627571e... bc9cf693... -> 089a4c790caa208372215c9f4f6157ced6f7c5a0eb8b2fcfc50d2665459775f9
+        (refuses c76696f7 / 1802fdd2 / 2nd apply / no argument). -ReShade frames against log_timed.txt key down / up
+        (before: from the clock line, < key down - 0.25 s; after: > key up + 0.5 s, before the window); captures
+        50-54, 64, 66; kill stop compared to the ms; row On only on the bind mark + < 2 % black (old mark = 'gates passed,
+        Apply called' info; staged add-on bytes checked: 'add-on without the bind mark'); control folder by number; F11
+        accepts revision >= 1 (rdfi_ S2). Tests: hzc_ 17 / 17, w3r2 E1-E8 as designed, H0 clean / H1-H3 not, R1 pass /
+        R2-R5 fail, O1 pass / O2 + O3 fail, F11 1 / 2 / 3 ok, missing / 0 / x refused, h91 21 / 21; dry runs A-H ok;
+        0 clashes. Round 1's w3 E1-E5 now 'not measured' (after frame too close to key up: intended). Any pre-gbf_ r3
+        batch's rr50tm now FAILS 'add-on without the bind mark' (by design). Scratch: abe_\proof 6.3 GB + ptest*
+        (~4 MB): delete only on ATN's OK. rabe_ follow-up STARTED 10:45.
         gbf_ round 3 DONE 10:2x (9 min): aeaca9f07 on gbf3_1128 (worktree gbf3_, off aeb9d2059): frame_trace::Mark("tone
         mapper draw: Ray Reconstruction's result bound for the tone mapper") right after PSSetShaderResources in
         OnToneMapperDraw + a one-line why. 16 gated builds exit 0 (13 amd64 + 3 x86); Attila addon64 CBA929771CFDE468...,
