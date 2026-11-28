@@ -1633,6 +1633,7 @@ void FreshContact() {
   contact.chunks = 0;
   contact.visited = 0;
   contact.listed = 0;
+  contact.most_listed = 0;
   contact.plain_objects = 0;
   contact.objects_seen = 0;
   block.core_wanted.store(CORE_SPLIT);
@@ -2062,7 +2063,7 @@ void RunRegionCases(const std::function<std::vector<void*>(uint32_t)>& base_scen
     const uint64_t items_alone = ItemsValue(MIN_OBJECTS + 1);
     // The id set must be empty after a tick: its count would grow with every region otherwise.
     const bool repeatable = alone.handled && alone.calls.empty() && At<uint32_t>(id_set_memory, ID_SET_COUNT) == 0;
-    Expect(repeatable && contact.listed == MIN_OBJECTS && LinesWith("helpers 15)") == 1,
+    Expect(repeatable && contact.listed == MIN_OBJECTS && LinesWith("helpers 15, radius addition 0)") == 1,
            "region stress: a world without a response, every object but the last with one kept node, fifteen helpers a region");
     const uint32_t runs_before = helpers_run.load();
     const uint64_t own_chunks_before = contact.own_chunks;
@@ -2190,7 +2191,7 @@ void RunContactCases() {
     base_scene();
     const ContactOutcome alone = ExpectContactSame("contact base: neighbours pass the game's filters, the row does the tick");
     Expect(alone.handled && alone.regions == 1 && alone.calls.size() == 53 && LaneIs(ENGINE_ACTIVE) && active_line(2100, 0) == 1
-               && step_lines.size() == 1 && LinesWith("listed 106, helpers 6)") == 1 && !contact.busy.load() && !contact.open,
+               && step_lines.size() == 1 && LinesWith("listed 106, helpers 6, radius addition 0)") == 1 && !contact.busy.load() && !contact.open,
            "contact base: active, one line with the tick's sizes, the row free again");
     Expect(cells_untouched(), "contact base: the swap's cell entries are zero but each head pointer, after a tick too");
     const ContactOutcome again = RunContact(true, 0, false);
@@ -2200,7 +2201,8 @@ void RunContactCases() {
     RestoreContactWorld();
     std::vector<void*> objects = base_scene();
     AddToCell(objects[1], At<void**>(At<void*>(objects[0], OBJECT_CELLS), CELL_HEAD), 8);
-    Expect(ExpectContactSame("an object twice in one cell").handled && contact.visited == 107 && contact.listed == 107,
+    Expect(ExpectContactSame("an object twice in one cell").handled && contact.visited == 107 && contact.listed == 107
+               && contact.most_listed == 107,
            "an object twice in one cell: visited once, kept once");
     base_scene();
     KeepContactWorld();
@@ -2284,8 +2286,11 @@ void RunContactCases() {
                && LaneIs(ENGINE_PARTLY) && !contact.busy.load() && !contact.table_off && contact.skip_period == 1,
            what);
     Expect(later_items_unwritten, "stop: the claiming ends with the chunk that found it, later items stay unwritten");
+    // The pool line's chunk count is the helpers' claims: with them, the text before it.
+    const std::string_view threaded_line = std::string_view(line).substr(0, std::string_view(line).find(", chunks "));
     const ContactOutcome threaded = RunContact(true, 3);
-    Expect(Same(game, threaded) && !threaded.handled && LinesWith(line) == 1, "stop: the same with helpers");
+    Expect(Same(game, threaded) && !threaded.handled && LinesWith(threaded_line) == 1 && step_lines.size() == 1,
+           "stop: the same with helpers");
     // The skip latch: the period's other ticks run no region; the re-sort tick is the game's as ever; the tick
     // after it tries again.
     KeepTick(150);
@@ -2317,17 +2322,47 @@ void RunContactCases() {
     At<void*>(objects[3], OBJECT_ENVIRONMENT) = Take(0x70);
     expect_stop("renodx_attila64: contact split: partly (environment differs)", 1, "another environment: the game's tick");
   }
-  {
-    // The node pool: every object in one cell, at one place, with flags the game's filters reject at once. Each walk
-    // keeps 2099 nodes, so the 126th object's does not fit.
+  // The node pool: the first `crowded` objects in one cell, at one place, with flags the game's filters reject at
+  // once, so each of their walks keeps crowded - 1 nodes; the rest of the 2100 alone in their own cells.
+  const auto crowded_scene = [](uint32_t crowded) {
     NewContactScene(2108, 8192);
     void** head = NewHead();
     for (uint32_t object = 0; object < 2100; ++object) {
-      void* made = NewObject(fast_tables[0], object, 0.f, 0.f, 1);
-      At<uint32_t>(made, 0x60) = 1;
-      AddToCell(made, head, 8);
+      if (object < crowded) {
+        void* made = NewObject(fast_tables[0], object, 0.f, 0.f, 1);
+        At<uint32_t>(made, 0x60) = 1;
+        AddToCell(made, head, 8);
+      } else {
+        AddToCell(NewObject(fast_tables[0], object, 10.f * static_cast<float>(object), 0.f, 1), NewHead(), 8);
+      }
     }
-    expect_stop("renodx_attila64: contact split: partly (list pool)", 1, "list pool: the game's tick");
+  };
+  {
+    // 2099 nodes a walk: the 1000th object's (in chunk 7) does not fit.
+    crowded_scene(2100);
+    expect_stop("renodx_attila64: contact split: partly (list pool: objects 2100, chunks 8 of 17)", 8,
+                "list pool: the game's tick, the line with how far the pool reached");
+    Expect(step_lines.size() == 1 && step_lines[0].size() < 1024, "list pool: the line once, under 1 KB");
+  }
+  {
+    // The pool's edge with the step's thread alone: 1448 x 1447 kept nodes fit, 1449 x 1448 do not.
+    crowded_scene(1448);
+    KeepContactWorld();
+    contact_case = "the pool's edge: 1448 objects in one cell";
+    const ContactOutcome game = RunContact(false);
+    const ContactOutcome alone = RunContact(true);
+    Expect(alone.handled && Same(game, alone) && contact.listed == uint64_t{1448} * 1447
+               && contact.most_listed == uint64_t{1448} * 1447,
+           "the pool's edge: 1448 objects in one cell fit");
+    crowded_scene(1449);
+    expect_stop("renodx_attila64: contact split: partly (list pool: objects 2100, chunks 12 of 17)", 12,
+                "the pool's edge: 1449 objects in one cell stop");
+  }
+  {
+    // With three helpers each participant may leave up to 1023 nodes of its last block unused: 1446 x 1445 fit.
+    crowded_scene(1446);
+    const ContactOutcome alone = ExpectContactSame("the pool's edge with helpers: 1446 objects in one cell");
+    Expect(alone.handled && contact.listed == uint64_t{1446} * 1445, "the pool's edge with helpers: 1446 objects fit");
   }
 
   // The table test: a null table or link. The game's own walk would build the table (a file read), so the game's
@@ -2545,7 +2580,7 @@ void RunContactCases() {
     RestoreContactWorld();
     At<uint32_t>(scene.task_manager, TASK_MANAGER_THREADS) = MIN_TASK_THREADS;
     KeepContactWorld();
-    Expect(RunContact(true).handled && LinesWith("helpers 2)") == 1, "gate: four task threads are enough, two helpers");
+    Expect(RunContact(true).handled && LinesWith("helpers 2, radius addition 0)") == 1, "gate: four task threads are enough, two helpers");
     KeepTick(250);
     contact.skip_period = 1;
     Expect(RunContact(true, 0, false).handled, "skip latch: a stale period skips only its own number");
@@ -2577,7 +2612,8 @@ void RunContactCases() {
                "summary: a tick with a tail entry between the lines");
         continue;
       }
-      Expect(handled && LinesWith(line) == 1 && LinesWith("own chunks 100 %, visited ") != 0 && LinesWith(tail) == 1,
+      Expect(handled && LinesWith(line) == 1 && LinesWith("own chunks 100 %, visited ") != 0 && LinesWith(tail) == 1
+                 && LinesWith(", listed max ") != 0,
              "summary: one line at the 1000th and at the 3000th tick");
     }
     Expect(std::ranges::all_of(step_lines, [](const std::string& line) { return line.size() < 1024; }),
