@@ -18796,6 +18796,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         14757fd6, Opus Medium, est 8 / 16, scratch\smo2_\brief.md) STARTED 05:46. N3-N6 left (text / test gaps).
         ATN 11-28 05:4x: night1.replay = 'the big burning city at night + a lot of artilleries and archers' (99.99 %
         sure) = the replay B23 / PTLAS and the smoke Mega Geometry retest wait for; confirm by the R1 census frames.
+        smo2_ DONE 05:49 (3 min; scratch\smo2_\handback.md): patch_smo2_.py, siege_rec 14757fd6 -> e13c28e8, README
+        bf03e459 -> 491c2f63 (S1 also covers the exe; S2 = Unrestored-Runs, -Restore / -Prepare not refused).
+        fsmo_ (Sonnet High final, scratch\fsmo_\review.md) GO, no MUST / SHOULD. Coord APPLIED both 05:51: live
+        siege_rec.ps1 = e13c28e8..., README = 491c2f63...; -DryRun -Helper sgr_\rec_helper READY (omm-lib STAGED fd32fbd5
+        over the game's b0c031f2, coord_\gJ_dry2.log). Group J runs after rrsc_ ends (game runs hold all agents).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
