@@ -546,7 +546,7 @@ inline bool AmbientReplaced() {
 }
 
 // Batched Unit Capture wanted now: its scene shaders' batch versions, its row on in `settings` (this present's, after
-// Update took them) and the rays traced (`active`, stored by that Update). A host whose flush must be asked for asks
+// Update took them) and the rays on (`active`, stored by that Update). A host whose flush must be asked for asks
 // while this holds (the 64-bit port's BONE_FLUSH row): with the rays or the row off nothing is registered for it.
 inline bool UnitBatchWanted(const Settings& settings) {
   return internal::BatchInScene() && settings.batched_units && internal::active.load(std::memory_order_relaxed);

@@ -182,9 +182,10 @@ static std::atomic<uint32_t> epoch = 0;
 static std::atomic_bool callback_failed = false;
 static bool callback_failure_logged = false;
 // UnitFlushRunsHere's reads from a draw callback (no mutex there): the rows registered now (`wanted` as Update stored
-// it, 0 from Unregister on) and the thread of the last BeforePack (none before the first). Two atomics, not one state
-// under a lock: each alone makes the answer false (nothing registered, or the pack on another thread) and no invariant
-// spans both.
+// it, 0 from Unregister on) and the thread of the last BeforePack since this registration (none before its first). Two
+// atomics, not one state under a lock: each alone makes the answer false (nothing registered, or the pack on another
+// thread) and no invariant spans both. Both stores of the mirror come before hooks_wanted's (Update's and Unregister's):
+// a draw decided after the bone flush stops never waits for it.
 static std::atomic<uint32_t> registered_rows = 0;
 static std::atomic<std::thread::id> pack_thread;
 static_assert(std::atomic<std::thread::id>::is_always_lock_free);
@@ -249,6 +250,8 @@ inline void Unregister() {
     }
     Sleep(spins < 64 ? 0 : 1);
   }
+  // Drained: no BeforePack runs now, so the next registration answers false until its own first one.
+  pack_thread.store(std::thread::id(), std::memory_order_relaxed);
   FreeLibrary(std::exchange(module_reference, nullptr));
 }
 
@@ -271,8 +274,8 @@ inline bool BlockV2() {
 }
 
 // The plugin offers the bone flush before each pack (a v1 block too: BONE_FLUSH is its row 0). Batched Unit Capture's
-// row shows with it (rt_scene Host::unit_flush_offered), and the port's Update wants the row while the batch is wanted.
-// Not whether the flush is registered: that follows from the batch wanted.
+// row shows with it (rt_scene Host::unit_flush_offered); the port's Update asks for the row while the batch is wanted,
+// and Update keeps it only while offered. Not whether the flush is registered: that follows from the batch wanted.
 inline bool UnitFlushOffered() {
   namespace plugin = internal::plugin;
   return Result() == Found::READY && (RowsOffered() & plugin::RowBit(plugin::ROW_BONE_FLUSH)) != 0;
@@ -280,8 +283,8 @@ inline bool UnitFlushOffered() {
 
 // The bone flush runs before each pack on this thread: BONE_FLUSH registered now and the last BeforePack on this
 // thread. Batched Unit Capture's batch decision on the draw thread (rt_scene Host::flushes_unit_captures on the port):
-// batched draws wait for this flush, so before the first BeforePack, or with the pack on another thread, nothing is
-// batched. Lock-free (a draw callback).
+// batched draws wait for this flush, so before this registration's first BeforePack, or with the pack on another
+// thread, nothing is batched. Lock-free (a draw callback).
 inline bool UnitFlushRunsHere() {
   namespace plugin = internal::plugin;
   return (internal::registered_rows.load(std::memory_order_relaxed) & plugin::RowBit(plugin::ROW_BONE_FLUSH)) != 0
@@ -541,12 +544,11 @@ inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uin
         "[Total War] 64-bit Attila: an engine plugin callback failed (its work skipped for that call)");
   }
   // Batched Unit Capture's flush as the presents so far left it (a registration below shows at the next present), once
-  // per change: offered, registered, and the last BeforePack on this thread (the port's present runs on its draw
-  // thread).
+  // per change: offered, registered, and UnitFlushRunsHere as the batch decision reads it (the port's present runs on
+  // its draw thread).
   const bool flush_offered = UnitFlushOffered();
-  const bool flush_registered =
-      (internal::registered_rows.load(std::memory_order_relaxed) & plugin::RowBit(plugin::ROW_BONE_FLUSH)) != 0;
-  const bool flush_here = internal::pack_thread.load(std::memory_order_relaxed) == std::this_thread::get_id();
+  const bool flush_registered = (internal::wanted & plugin::RowBit(plugin::ROW_BONE_FLUSH)) != 0;
+  const bool flush_here = UnitFlushRunsHere();
   if (const uint32_t flush_state = (flush_offered ? 1u : 0u) | (flush_registered ? 2u : 0u) | (flush_here ? 4u : 0u);
       internal::unit_flush_logged != flush_state) {
     internal::unit_flush_logged = flush_state;
@@ -588,9 +590,9 @@ inline void Update(uint32_t rows_wanted, bool battle_core, bool render_core, uin
           std::format("[Total War] 64-bit Attila: engine plugin callbacks registered (rows wanted {:#x})", rows));
     }
   }
+  internal::registered_rows.store(rows, std::memory_order_relaxed);
   block->hooks_wanted.store(rows);
   internal::wanted = rows;
-  internal::registered_rows.store(rows, std::memory_order_relaxed);
 }
 
 // Every present with Result() READY until it returns true (the loader's drawing thread, before the values' Update):
@@ -939,7 +941,6 @@ inline void Uninstall() {
   internal::contact_split_written.reset();
   internal::callback_failed = false;
   internal::callback_failure_logged = false;
-  internal::pack_thread.store(std::thread::id(), std::memory_order_relaxed);
   internal::unit_flush_logged.reset();
   // The next READY finds the values again (a kept image's Tweaks too) and reads the keys again; this start's frame cap,
   // shadow map and game code keys stay.

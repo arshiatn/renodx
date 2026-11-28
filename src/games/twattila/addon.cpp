@@ -2456,13 +2456,12 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       const bool pass_draw =
           twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped(), true);
       // Bone flush: before each bone pack, limb motion vectors' unit records (object_motion's own switch:
-      // FlushUnitRecords has work only while it is on) and Batched Unit Capture's corners while the plugin offers the
-      // flush and the batch is wanted (its draws batch only once the flush runs on the draw thread:
-      // UnitFlushRunsHere, the Install's host line).
-      const bool unit_flush =
-          twattila::attila64_plugin_link::UnitFlushOffered() && twattila::rt_scene::UnitBatchWanted(rt_settings);
+      // FlushUnitRecords has work only while it is on) and Batched Unit Capture's corners while the batch is wanted
+      // (Update keeps the rows the plugin offers; the draws batch only once the flush runs on the draw thread:
+      // UnitFlushRunsHere, AttachAddon's host line).
       twattila::attila64_plugin_link::Update(
-          ((twattila::object_motion::internal::active.load(std::memory_order_relaxed) || unit_flush)
+          ((twattila::object_motion::internal::active.load(std::memory_order_relaxed)
+            || twattila::rt_scene::UnitBatchWanted(rt_settings))
                ? plugin::RowBit(plugin::ROW_BONE_FLUSH)
                : 0u)
           | (pass_draw ? plugin::RowBit(plugin::ROW_PASS_DRAW) : 0u),
