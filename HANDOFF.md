@@ -19038,6 +19038,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         rr50tm's vacuous vp clause (gb_ E4). Offline proofs + AST scan + -DryRun twins of groups A..J.
         - [ ] abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> -DryRun. Before any start
         on the W5 DLL. Owner: coord.
+        GPU LANE NEXT (ATN 09:3x 'Do we have time to run the next gpu stuff?'): fxp_ still runs (P2c, GPU lock held by
+        its run_job.ps1). aa67_ (Opus High, brief scratch\aa67_\brief.md, est 40 / 80) STARTED 09:33: the AA feed at 67 %
+        in the harness SCENE path (box below), CODE PHASE ONLY (backup, opt-in arm, byte-identical proof, 4K build, the
+        GPU job script); its GPU runs start only after fxp_ ends (max 1 GPU agent): the coord resumes it.
+        Plan fix: the critic's X18 was already MERGED 11-27 (fe8ff5078, W4b: rt_cache_fill / rt_reference / rt_probe
+        DXR 1.2 twins); all_plans 1.1 / 2.7 said 'open': corrected.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
