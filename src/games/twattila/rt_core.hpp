@@ -992,6 +992,9 @@ struct Runtime {
   uint64_t new_static_time = 0;
   // The helper's status logged this long after the settings changed (each effect's GPU time as they are tried).
   uint64_t status_log_time = 0;
+  // The last status line had no status from the helper: the line again once its first status comes (the 64-bit add-on
+  // starts the helper a minute after the first settings, group G 2026-11-28: every log said 'no status' while rays ran).
+  bool status_line_without_helper = false;
   // A trace point asked for a trace this session: the status line's reason while the helper has written no status yet
   // (R.U.S.E.'s line ended at ": " when its trace point never ran, 2026-11-16).
   bool trace_asked = false;
@@ -4649,6 +4652,10 @@ inline void Update(const Settings& settings) {
                                         profile.frames, profile.path.string()));
     }
   }
+  if (runtime.status_line_without_helper && runtime.status_log_time == 0 && !dlaa_bridge::TraceStatus().empty()) {
+    runtime.status_line_without_helper = false;
+    runtime.status_log_time = GetTickCount64() + 3000;
+  }
   if (runtime.status_log_time != 0 && GetTickCount64() >= runtime.status_log_time) {
     runtime.status_log_time = 0;
     std::string effects;
@@ -4664,6 +4671,7 @@ inline void Update(const Settings& settings) {
     // Before the helper's first status, why there is none (a missing status line is a finding: no trace point, or every
     // request refused).
     std::string status = dlaa_bridge::TraceStatus();
+    runtime.status_line_without_helper = status.empty();
     if (status.empty()) {
       status = (runtime.trace_asked ? "no status from the helper yet (see the \"no trace this frame\" lines)"
                                     : "no trace asked yet (the pass that asks for it has not run)");
