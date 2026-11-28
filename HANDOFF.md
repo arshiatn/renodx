@@ -733,7 +733,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 d ... | the next attila64_plugin_link
 - E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | next a64_ab writer (apply phase): read the horizon from zz_c
 - G-a: re-log the RT status line once the helper's first status arrives (or arm th ... | coord, apply phase (add-on change + gated build + a3_smoke)
-- G-b: root-cause RR Before Tone Mapping not applying at 50 % render scale on 64-b ... | coord, apply phase
 - a64_ab R2Kill: check_logs' 'the helper stopped' line after the kill time is the ... | coord, next a64_ab patch (with G-a's check)
 - APPLY i: the d11 day1 dumps (group I) -> the 2.10 D3D11 pass analysis, after wav ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
@@ -18910,7 +18909,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] G-a: re-log the RT status line once the helper's first status arrives (or arm the timer at the helper's
         start) so the 64-bit log shows the real status; then a64_ab's RT line check passes on its own. Owner: coord,
         apply phase (add-on change + gated build + a3_smoke).
-        - [ ] G-b: root-cause RR Before Tone Mapping not applying at 50 % render scale on 64-bit (which early return;
+        - [x] ROOT CAUSE 08:53 (gb_, scratch\gb_\rootcause.md, 10 min): NOT a 50 % issue: the row never ran in game on
+        the port at ANY scale. anti_aliasing.hpp:1578-1580's scene test fails on its format clause :1567: the tone
+        mapper's scene (the game's light buffer) is R11G11B10_FLOAT ('f26' in all 10 G traces, 100 % too), the lambda
+        takes RGBA16 only; premise error in plan_1117\designs\rr_before_tonemap.md:92 / :149 (c45733245), kept by
+        below100.md:114. 32-bit never ran the row (64-bit only). Side finding: the frame trace logs a draw after its
+        on_drawn (command_action replays it), so O1's 'vp 3840x2160 at 0,0' clause can never fail; zz_capture is the
+        real D1 / D2 check. Look risks for ATN (first in-game look ever): darks (R3), bloom halos below 100 % (R2),
+        RR reads the 6/6/5-bit light, FG HUD-less image; the row stays Off. -> gbf_ (E1 scene may be R11G11B10F,
+        target RGBA16 only; E2 Apply's view in the texture's own format; E3 comment + README Fixed: + README:33;
+        Opus High, worktree gbf_1128, gated builds of every target with anti_aliasing.hpp, est 20 / 40) STARTED 08:53.
+        a64_ab patch e adds gb_'s E4 (E64-rrtm trace B 70 = the first 100 % proof) and E5 (viewport in the :1586 mark
+        lives in the add-on: with gbf_ if cheap, else later). Was:
+        G-b: root-cause RR Before Tone Mapping not applying at 50 % render scale on 64-bit (which early return;
         was 32-bit rr50tm ever PASS?), fix at the source. Owner: coord, apply phase.
         Group H (-R2Kill, E64-rtkill) -DryRun ok, STARTED 07:54 (coord_\gH_run.log).
         GROUP H DONE 08:01 (ab_runs\20261128_075423_Smoke): E64-rtkill exit 0 at 383 s, quit line True, 0 CRASH / FATAL,
