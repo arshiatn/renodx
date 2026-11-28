@@ -12,7 +12,8 @@
 // 3b. A plugin's test device (made and released): the same asserts.
 // 3c. plugin: the loader's plugins, as F7's renodx_attila64.dll (fake_plugin.cpp: the engine plugin's block, a thread
 //     calling the callbacks while a row is wanted); at the end its callbacks must be gone (none registered, or
-//     unregistered and drained at the add-on's unload). plugin_calls: the callbacks must have been called. perffix:
+//     unregistered and drained at the add-on's unload), and before each Present its pack call (the pack on this thread
+//     with RENODX_F7_PACK=present). plugin_calls: the callbacks must have been called. perffix:
 //     perffix64.dll (run.ps1's copy of the fake plugin) as Engine Performance Fix, for the add-on's start notes.
 // 4. Window, device, flip swap chain (RGBA8, 2 buffers), the picture (RGBA8, SRV | RT) and its depth.
 // 5-7. Frames into the picture, the loader's copy into buffer 0 and its 8-bit overlay, a mode change, a new window.
@@ -501,6 +502,9 @@ struct D3D11Game {
 };
 
 bool use_warp = true;
+// The plugin's renodx_f7_pack_on_present (plugin cases): called before each Present, its bone pack on this thread with
+// RENODX_F7_PACK=present (fake_plugin.cpp).
+void (*pack_on_present)() = nullptr;
 
 // WARP through its adapter (driver type unknown): ReShade skips a device made with D3D_DRIVER_TYPE_WARP.
 HRESULT CreateD3D11(ID3D11Device** device, ID3D11DeviceContext** context) {
@@ -645,11 +649,12 @@ void DrawFrame(D3D11Game* game, bool fixed_form, bool pitch8) {
   if (before_copy != nullptr) DrawOverlay(game, before_copy, pitch8);
   game->context->CopyResource(buffer.Get(), game->picture.Get());
   if (after_copy != nullptr) DrawOverlay(game, after_copy, pitch8);
+  if (pack_on_present != nullptr) pack_on_present();
   game->swap_chain->Present(0, 0);
 }
 
 int RunD3D11(bool fixed_form, Expect expect, bool pitch8) {
-  D3D11Game game = {.width = 1280, .height = 720};
+  D3D11Game game = {.width = 3840, .height = 2160};
   game.window = MakeWindow(game.width, game.height);
   if (FAILED(CreateD3D11(&game.device, &game.context))) {
     Fail("the game's D3D11CreateDevice failed");
@@ -701,8 +706,8 @@ int RunD3D11(bool fixed_form, Expect expect, bool pitch8) {
   ReleasePicture(&game);
   game.back_buffer_rtv.Reset();
   game.context->Flush();
-  game.width = 1600;
-  game.height = 900;
+  game.width = 2560;
+  game.height = 1440;
   if (FAILED(game.swap_chain->ResizeBuffers(0, game.width, game.height, DXGI_FORMAT_UNKNOWN, 0))) Fail("ResizeBuffers failed");
   MakeBackBufferView(&game);
   MakePicture(&game);
@@ -715,8 +720,8 @@ int RunD3D11(bool fixed_form, Expect expect, bool pitch8) {
   game.swap_chain.Reset();
   game.context->Flush();
   DestroyWindow(game.window);
-  game.width = 1280;
-  game.height = 720;
+  game.width = 3840;
+  game.height = 2160;
   game.window = MakeWindow(game.width, game.height);
   MakeChain(&game);
   MakePicture(&game);
@@ -751,8 +756,8 @@ int RunD3D12() {
   const D3D12_COMMAND_QUEUE_DESC queue_desc = {.Type = D3D12_COMMAND_LIST_TYPE_DIRECT};
   ComPtr<ID3D12CommandQueue> queue;
   device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&queue));
-  const uint32_t width = 1280;
-  const uint32_t height = 720;
+  const uint32_t width = 3840;
+  const uint32_t height = 2160;
   HWND window = MakeWindow(width, height);
   const DXGI_SWAP_CHAIN_DESC1 chain_desc = {
       .Width = width,
@@ -846,7 +851,7 @@ int RunOpenGl() {
   const auto scissor = reinterpret_cast<GlScissor>(GetProcAddress(gl, "glScissor"));
   const auto enable = reinterpret_cast<GlEnable>(GetProcAddress(gl, "glEnable"));
   const auto disable = reinterpret_cast<GlDisable>(GetProcAddress(gl, "glDisable"));
-  HWND window = MakeWindow(1280, 720);
+  HWND window = MakeWindow(3840, 2160);
   HDC dc = GetDC(window);
   const PIXELFORMATDESCRIPTOR format = {.nSize = sizeof(PIXELFORMATDESCRIPTOR),
                                         .nVersion = 1,
@@ -914,7 +919,11 @@ int main(int argc, char** argv) {
   HMODULE plugin = nullptr;
   if (has("plugin")) {
     plugin = LoadLibraryW((here / "renodx_attila64.dll").c_str());
-    if (plugin == nullptr) Fail("renodx_attila64.dll not loaded");
+    if (plugin != nullptr) {
+      pack_on_present = reinterpret_cast<void (*)()>(GetProcAddress(plugin, "renodx_f7_pack_on_present"));
+    } else {
+      Fail("renodx_attila64.dll not loaded");
+    }
   }
   if (has("perffix") && LoadLibraryW((here / "perffix64.dll").c_str()) == nullptr) Fail("perffix64.dll not loaded");
 
