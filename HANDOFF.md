@@ -735,6 +735,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G-a: re-log the RT status line once the helper's first status arrives (or arm th ... | coord, apply phase (add-on change + gated build + a3_smoke)
 - a64_ab R2Kill: check_logs' 'the helper stopped' line after the kill time is the ... | coord, next a64_ab patch (with G-a's check)
 - APPLY i: the d11 day1 dumps (group I) -> the 2.10 D3D11 pass analysis, after wav ... | coord
+- Check whether any non-Attila job expects exactly ONE 'Ray tracing with' line (th ... | coord, before the next non-TW build
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -18948,6 +18949,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         status_line_without_helper; the helper's first status re-arms the line 3 s later once; gated amd64 + x86 exit
         0 (renodx-twattila.addon64 0A7999EE..., .addon32 8551D9E5...); not run in game. Review rga_ (Opus xHigh)
         STARTED 08:46; then a Sonnet High final, merge, a3_smoke restage, a64_ab check e.
+        rga_ DONE 08:53 (7 min; scratch\rga_\review.md): GO, no MUST. One extra line on 64-bit, never a stream (status
+        never empties within a load); 32-bit keeps one line when the first already has a status (a 32-bit DLAA session
+        gets the 2nd line = intended); 'DLAA: starting the helper' never reaches this status; threading clean (Update,
+        runtime lock, present thread); a64_ab:1501 accepts the line. S1 -> patch e: 'RT rays ran' must match a POSITIVE
+        status ('\[Total War\] Ray tracing with (?!nothing).*: Ray tracing (ready )?\(DXR 1\.\d'), else a refused /
+        failed helper passes. N1 (:993 comment) + N2 (3000 ms in one constexpr) -> ga_ resumed 08:53.
+        Info: rt_core.hpp is shared (Tales, Ryse, R.U.S.E., Expeditions, Divinity 1 / 2, Shogun 2, Rome Remastered):
+        their next rebuilds get the extra line too.
+        - [ ] Check whether any non-Attila job expects exactly ONE 'Ray tracing with' line (the X40 Tales status line
+        job first) before those games' next rebuild with ga_'s change. Owner: coord, before the next non-TW build.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
