@@ -742,6 +742,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
 - BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
+- DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3' ... | coord -> wave 2 (main
+- REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of r ... | ATN
 - j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch swi ... | coord -> j23p_
 - W0c FIND 1 (wave 2, the rt_serve.h owner): rt_serve.h:453 lifts any older record ... | coord -> wave 2
 - W0c FIND 2 (wave 2, trace_ owner of rt_d3d12.hpp): the 2 m ReGIR cell has no num ... | coord -> wave 2
@@ -19412,6 +19414,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         only); new vs base the same 16 rt_lights* headers, control = base 116. NV9 job: the harness cannot send the bit,
         so its Gradient arm = the control build (job header says so). Reviews rx20_ (Opus xHigh, builds wh3 too) +
         fx20_ (Sonnet High) STARTED 15:08.
+        j23p_ DONE 15:10 (~35 of 60 min; RN\handoff_plan\handbacks\j23p__handback.md; files outside the repo, branch
+        j23p_1128 no commits): pdi1 fork tools\tw\reference\pdi1_harness_src (only it has reference_mode.hpp;
+        *.before_j23p backups): HARNESS_CUT_OUT_BOX=cut_out|leaf (a room whose sun-side wall is a palisade cut-out card,
+        RT_SOLID_CUT_OUT + RT_OWN_CUTOFF; inside view + an edge-on view for rt_trace's sun, X10 MUST-2),
+        HARNESS_CUT_OUT_REKEY (re-bake frames); v33 bridge fix done; 4K exe scratch\j23p_\harness\tw_rt_harness_4k.exe
+        7156F6311C29; self-check PASS, switch unset = old output hashes, judge self-test PASS. j2_job.ps1 (~50 min under
+        the lock, up to ~255 GB on D:\RenoDX_refs\j2, X10 core sets first, disk guard between replicates); j3_job.ps1
+        (~75 min + one headless Nsight per arm, ~75 GB); both default to w4b2_'s folders, dry runs pass; 3 J3 recorder +
+        reference helpers from 747223522 (116 headers = w4b2_'s). Reviews rj23p_ (Opus xHigh) + fj23p_ (Sonnet High)
+        STARTED 15:10.
+        - [ ] DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3's play-back arms run without
+          DRED details (a TDR still stops the arm). Owner: coord -> wave 2 (main.cpp has no wave-1 writer); rj23p_ says
+          whether J3 is safe to judge without it.
+        - [ ] REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of raw references vs ATN's
+          ~100-200 GB (D1) and D: ~452 GB free + 87 GB from del_. Asked ATN 15:10. Owner: ATN.
         - [ ] j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch switch
           (scratch\x20_\harness_rr_torch_spec.md); X38's FLIP dump switch (x38__handback.md); the pdi1 v33 field fix
           if not done. Owner: coord -> j23p_.
