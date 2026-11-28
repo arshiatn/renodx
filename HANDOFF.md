@@ -19024,6 +19024,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         passes RGBA16 only (:1643); 32-bit compiles the call out. Merge-tree clean. S1 README:39 (no a64_ab arm names,
         wrap), S2 README:5-7 player-facing Fixed: line, N1 / N2 / N3 (wraps, one single-use local, a wrong comment)
         -> gbf_ round 2 (18 gated builds again) STARTED 09:13; then the Sonnet High final.
+        gbf_ round 2 DONE 09:19: 6acd7122d (README player-facing Fixed: line, no arm names; wraps; rgba16 folded; the
+        fallback-copy comment corrected). Rebuild exit 0 amd64 + x86; Attila addon64 CBAA2B2DCB81877D..., addon32
+        E6ED55BA3E2DA72C.... Correction: 16 add-ons include anti_aliasing.hpp (Ryse + Shogun 2 do not; round 1's grep
+        matched comments). fgbf_ (Sonnet High final) STARTED 09:18.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
