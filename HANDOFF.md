@@ -741,7 +741,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
-- X41 RUN (owner: coord -> one GPU agent, after batch 2 part 2): x41d_\design.md's ... | ?
 - P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2 ... | coord (game runs), after the fxh2_1127 merge
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
@@ -19375,6 +19374,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         x41r_ (Opus High, X41 run per x41d_\design.md, scratch\x41r_\brief.md, est 25 / 50; the one GPU agent) STARTED
         14:08. fxh2_1127 (tip 08f9c0676, 8 commits on 2aa6cc7ff) vs atn-mods: merge-tree exit 0, no conflict (ga_'s
         rt_core change included). Merge on X41 PASS; then helper + bridge v33 rebuilds and gated builds.
+        x41r_ DONE 14:1x (9 min; scratch\x41r_\handback.md, X41.analysis.txt / .tsv / .log; exes + dumps ~3.0 GB in
+        testbin\x41p_\): X41 PROVED (coord read X41.analysis.txt): debug view drawn in every process; TEST (H33x
+        D7AD6971 + helper c884bc2a9) D_static(M001, M1) 0.07916, D_static(M10, M1) 0.7198 vs 10 x A/A + floor 1e-4 =
+        792x / 7198x, D_moving(M10, M1) 0 (back to 1): PASS; LATE-SET CONTROL (H33x + 02bc1fd94) max D 0: within (fails
+        as it must), positive control S001 0.07916 ok; VERSION CONTROL (H32x 381F8096 + 02bc1fd94) every cell 0.08 =
+        unit 1. Cells: T_M1 0.07996, T_M001 0.000800, T_M10 0.7998 static / 0.07996 moving, T_S001 0.000800; L_* 0.07996,
+        L_S001 0.000800; V_* 0.07996. A/A 0. Only harness FAIL: 'jitter unchanged is the best' in T_M10 (allowed by the
+        design). 'AMD FSR Upscaling 3.1.6 active'. 6.6 GPU min. => fix wave W-H2 (X33 / X34 / X41) PROVED.
+        MERGED fxh2_1127 55f8b37c8 (14:2x, --no-ff, pushed; ATN 13:1x 'If the x41 proof passes ... merge'; 11 files:
+        bridge v33 dlaa_bridge.h / .hpp, helper main.cpp / upscale_d3d12 / fg_proxy_d3d12 / rr_d3d12, add-ons
+        twwarhammer3 / talesofarise / expeditionsrome / ruse, tw_helper_lifetime). Main-tree checks (helper build.ps1,
+        gated amd64 14 bridge add-ons + x86 3, tw_helper_lifetime amd64 + x86; scratch\coord_\fxh2_merge_checks.sh,
+        logs fxh2m_*.log) STARTED 14:17.
         x41d_ DONE 12:5x (~20 min; scratch\x41d_\design.md + x41d_h33.diff / x41d_h32.diff / build_x41.ps1 /
         stage_x41.ps1 / run_x41.ps1 / analyze_x41.py): CAUSE of fxp_'s static > moving: the only metre term the scene
         reaches is FSR 3.1.6 accumulate.h:50 (distance factor from the farthest depth, no motion in it), which sizes the
@@ -19392,7 +19404,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         is the best' + 'motion right sign' (the grid covers 6 of 9 scored cells), logged; dark tones / every frame /
         no NGX must stay ok; probe first (stop if the debug view is not drawn). FSR FG's unit read checked by code only
         (helper main.cpp:1242 = :1334's read). P1 (Tales) / P1b (WH3) then only confirm each game's value in game.
-        - [ ] X41 RUN (owner: coord -> one GPU agent, after batch 2 part 2): x41d_\design.md's run brief; PASS -> X41
+        - [x] DONE 14:2x (x41r_ PROVED; fxh2_1127 merged 55f8b37c8). Was: X41 RUN (owner: coord -> one GPU agent, after batch 2 part 2): x41d_\design.md's run brief; PASS -> X41
         proved; then fxh2_1127's merge turn (after step 4's captures; rt_core / bridge conflicts with ga_ checked).
         ATN 11-28 13:1x: 'If the x41 proof passes. Take your pick. Add those to the all plan and merge' -> P1 (Tales) /
         P1b (WH3) become LATER in-game checks (not merge conditions); fxh2_1127 MERGES when the X41 run passes (and after
