@@ -19349,6 +19349,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         DELETE ROUND (ATN 11-28 14:4x 'Your pick sounds good' = all of all_plans 11.9's list but the 61 GiB 4K M6 baseline
         bins): del_ (Opus High, scratch\del_\brief.md: dry run plan.tsv, links before folders, merged + clean + not
         today's worktrees only, never list) STARTED 14:4x. fg_camera.hpp (dead code) = coord, a commit + gated builds.
+        del_ DONE 15:13 (scratch\del_\handback.md + plan.tsv + done.tsv): 257.5 GiB freed, 179 rows, 0 errors, 0
+        refused; C: 181 -> 240 GB free, D: 479 -> 616 GB: t4i_ ETL proof 87.4; W3-1 / W3-3 / W3-4 / D1 ETLs 41.0 (W3-2 +
+        W3-5 kept); 113 merged clean worktrees 70.5 (links first, then prune; main tree bin / external intact); dumps
+        31.7; proof leftovers 26.9; small 0.02. KEPT: 5 worktrees holding *_rec / *_ref / run_* folders (pdi3_step3
+        207 GiB, pdi4c 91, pds2_nits 16, pdi1_ 11, bal3 6 = reference runs / recordings: kept by rule), 21 unmerged + 2
+        dirty worktrees, the wave-1 ones, trees outside .claude\worktrees; skipped the dis.py readers (not sure which
+        files) and 11.9 rows outside the brief; C:\Usersarshi...sdrfix_ path-bug folder 0.16 GiB (not approved, left).
         w4b2_ DONE 14:45 (7 of 45 min; RN\handoff_plan\handbacks\w4b2__handback.md): w4b2_1128 on 8053e666a =
         307afb564 X10 / 51e36f46f X09 / 747223522 fix round, pushed; only conflict build.ps1's control switch (atn-mods'
         kept); rt_scene / rt_path / rt_d3d12 / build.ps1 / check.py byte-identical to origin/fx4b_1127; helper (reference
