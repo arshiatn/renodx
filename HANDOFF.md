@@ -19002,6 +19002,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         expect_stop matches up to ', chunks ' + exactly one line. build.ps1 -Test exit 0; plugin DLL
         fb4e1919099e333ef45e042f97dd2e30d628dd02690cd033cc676dd7aabaff33; battle_step_test 15.9 s vs 16.2 base.
         rsbi_ (Opus xHigh review) STARTED 09:35.
+        rsbi_ DONE 09:45 (10 min; scratch\rsbi_\review.md): GO WITH CHANGES, no MUST; production code correct (stop rule,
+        latch, exactness, no race, 13 / 13 formats, 80 MiB zero-filled .data +70 MiB with the file size the same, nothing
+        iterates the pool; merge-tree clean). S1 the 1446 test's bound: 7 participants (8 scene threads queue 6 helper
+        tasks), margin 521 nodes (design 5.2 has the same slip); S2 pin 'listed max 106'; NITs: lines > 120, threaded stop
+        ' of 17)', a non-zero radius addition check. -> sbi_ round 2 STARTED 09:44.
+        P15 READ NOTE (rsbi_ N4): the first big region pays one-time page faults on fresh pool pages (~10 MB at the bound,
+        up to 80 MiB on a fill): 'region max' includes that cost; judge the medians.
         FOR ATN Q1 (not blocking): the 64-bit DLL's image commit rises ~70 MiB for every player, row on or off (no
         RAM unless the row runs, ~1 % of the game's 6 GB). sbp_ + coord pick: accept; else a lazy VirtualAlloc
         (~15 lines + a failure line + a test seam).
