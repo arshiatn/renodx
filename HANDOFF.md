@@ -19219,6 +19219,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         Effects on All Cores Automatic, Faster Battle Step shown, the one-time reset of both saved keys; 'built only, not
         stamped, not installed, not run in game'). Batch 2 pre-flight F4 (plugin build.ps1 -Test -Elf from the main tree,
         log scratch\coord_\f4_plugin_1128.log) STARTED 11:22.
+        BATCH 2 PRE-FLIGHT DONE 11:36 (main tree 1e02a9f78): F4 plugin build.ps1 -Test -Elf exit 0, 0 failures
+        (elf_sites_test / game_code_test / battle_step_test ran, 14577 checks), 0 warnings, DLL + sidecar 836c5f27. F5
+        gated amd64 exit 0 (addon64 4bcb75cf) + x86 exit 0 (addon32 61bd92d5, not staged), 61 warnings each. F6 helper
+        log 129a0246c..HEAD empty -> rt_stage stays. F7 restaged in one step: a3_smoke addon64 b756de5c ->
+        testbin\attila64_present\a3_smoke_prev_b756de5c\, staged 4bcb75cf (hash-checked), dxgi.dll / zz_capture
+        untouched; plugin 836c5f27 (AB copies it per start, sidecar-checked). F9 LG TV listed, CPU Set Setter running
+        (both CacheAFFINITY rules), Steam running. F11 DryRun twins on the live runner 089a4c79
+        (scratch\coord_\b2_dry.ps1, b2dry\): G1 / G2 / P16 exit 0 'self-test: ok for every arm', plugin 836c5f27; G4
+        exit 1 = F12 (needs the C8 E64-mv smoke with this plugin sha) as planned. F12: part 1 (G1 -> G2 (+P16) -> G4)
+        starts when abf_ ends (game runs hold all agents).
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
