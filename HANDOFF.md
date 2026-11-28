@@ -742,6 +742,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
 - BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
+- j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch swi ... | coord -> j23p_
 - W0c FIND 1 (wave 2, the rt_serve.h owner): rt_serve.h:453 lifts any older record ... | coord -> wave 2
 - W0c FIND 2 (wave 2, trace_ owner of rt_d3d12.hpp): the 2 m ReGIR cell has no num ... | coord -> wave 2
 - fwp_ D2-D5 for later: D2 X08 drop vs re-set if the picture moves; D3 O-HANG (b) ... | coord -> ATN as each comes up
@@ -19381,6 +19382,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         for L / M + an unverified '3840x2160 helper log' claim; the A/A noise estimate for P4; drop disjoint samples;
         amend fwp_ plan rows saying 'Nsight strict' for X38; the timing builds' sha; a DRED n/a note in the job output.
         Fix round waits for rx38_ (Opus xHigh), then x38_ resumed with both lists.
+        x20_ DONE PART 15:01 (RN\handoff_plan\handbacks\x20__handback.md): x20_1128 8ceac6a52 (on 8053e666a, pushed):
+        under RR (not Steady) rt_lights.cs_6_5.hlsl's soft-shadow threshold + spot turn use the helper's existing pcg4d
+        Random per pixel per frame (cite DLSS-RR Integration Guide 3.5, printed p17-18, not p21); bridge
+        RT_SCENE_LIGHT_GRADIENT_NOISE = 4 in rt_scene_flags, stays v33 (older helpers ignore a new bit); row 'Torch
+        Shadow Sampling' (NVIDIA / Gradient), default NVIDIA, the bit sent only while RR runs; control
+        CONTROL_LIGHT_GRADIENT_NOISE = base on 116 headers, the new build changes only the 16 rt_lights* headers; no
+        WARP test runs rt_lights (none written); builds exit 0 (helper base / new / control, twattila amd64 + x86,
+        shogun2 + wh3 amd64). STOP: no free rt_flags bit (18 / 23 / 30 / 31 are the helper's) -> its patch
+        scratch\x20_\rt_d3d12_x20.patch (rt_d3d12.hpp :5029, :8933-8934) + one page.Take line graphics_page.hpp:905;
+        coord: both files free (w4b2_ done, trace_ not started, no writer of graphics_page.hpp) -> x20_ RESUMED 15:01
+        to apply both on its branch. GPU job scratch\x20_\x20_nv9_job.ps1 (76 runs, ~20 min, ~11-21 GB on D:; pass RR off
+        byte-identical; control: the new build's light_mask differs from base under RR); the post-RR numbers need a
+        harness switch (scratch\x20_\harness_rr_torch_spec.md). Reviews after the resumed commit.
+        - [ ] j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch switch
+          (scratch\x20_\harness_rr_torch_spec.md); X38's FLIP dump switch (x38__handback.md); the pdi1 v33 field fix
+          if not done. Owner: coord -> j23p_.
         gq1_ DONE ~14:5x (16 of 40 min; RN\handoff_plan\handbacks\gq1__handback.md; scripts only, worktree gq1_ no
         commits): 3 reference helpers (shipped / REUSE_W_CLAMP_OFF / REUSE_CLAMP_TRACE) + a 4K pdi1 reference harness
         B6714867666A on the v32 bridge (pdi1 source fails on v33: tw_rt_harness.cpp:3652 old field name -> j23p_ told);
