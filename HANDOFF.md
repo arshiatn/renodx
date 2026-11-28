@@ -19417,6 +19417,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         50 listings equal; helper 116 / 116 headers equal, fused pass both builds equal; gated twattila amd64 + x86 exit
         0; spec_cite_check 0 flags. Wave-2 texts in the hand-back. Reviews rw0ca_ (Opus xHigh) + fw0ca_ (Sonnet High)
         STARTED 15:0x.
+        fw0ca_ DONE 15:01 (scratch\fw0ca_\review.md) GO WITH CHANGES, no MUST: comment-stripped code identical in all
+        11 files; 28 shader builds (4 DI passes, fused, ReGIR presample, rt_lights DI, rt_path + compat, rt_reference)
+        base vs new -Fh hashes equal (full 116 not rebuilt); p5_dxil.py 50 / 50, @regir flags = build.ps1; new line
+        numbers real, 'already tagged' quotes hold. SHOULD 1 rt_rtxdi_bridge.hlsli:73-74 `src:` says 'nearest point',
+        the cited doc line does not; RTXDI's sample uses the average distance (PolymorphicLight.hlsli:206) -> `dev:`;
+        2 wave-2 W2-3 ReGIR text misses the UNIFORM-mode deviations rt_d3d12.hpp:4291 / :4296; 3 W2-6 text adds a
+        single-use local; 4 W2-9 redundant with rt_reference.hlsli:517-519; 5 rt_serve.h:453 finding real but its fix
+        wrong twice (the shared_bytes check refuses the legitimate v31 -> v32 lift; 'already is that version' -> '>=').
+        W2-5 right (3 compat variants with / without PATH_REGIR byte-identical). Fix round waits for rw0ca_.
         - [ ] W0c FIND 1 (wave 2, the rt_serve.h owner): rt_serve.h:453 lifts any older recording to v32, so its
           v29-v31 fields play as zeros instead of absent (fix text in w0ca__handback.md; changes bytes). Owner: coord
           -> wave 2.
