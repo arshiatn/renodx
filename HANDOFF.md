@@ -19028,6 +19028,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         fallback-copy comment corrected). Rebuild exit 0 amd64 + x86; Attila addon64 CBAA2B2DCB81877D..., addon32
         E6ED55BA3E2DA72C.... Correction: 16 add-ons include anti_aliasing.hpp (Ryse + Shogun 2 do not; round 1's grep
         matched comments). fgbf_ (Sonnet High final) STARTED 09:18.
+        fgbf_ DONE 09:19: GO (NIT README:3 125 columns, as older headers: left). MERGED gbf_1128 into atn-mods 13af5cd1e
+        (--no-ff), pushed. Left: a64_ab patch e's E4, then E64-rrtm + E64-rr50tm in game, then ATN's first look.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
