@@ -741,6 +741,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
 - BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
+- X20 OTHER ROW USERS' READMEs (rx20_ N5): the IGN-under-RR row's text in the othe ... | coord -> the X20 merge step
+- X20 HOST-PATH RUN (x20_ SHOULD 1): HARNESS_SCENE_FLAGS B arm (spec item 3 in scr ... | j23p_ (harness) -> gl_
 - X20 AT THE DEFAULT (ATN; CONFIRMED by x20_'s fix round 15:57): the IGN-under-RR ... | coord -> ATN
 - DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3' ... | coord -> wave 2 (main
 - REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of r ... | ATN
@@ -823,7 +825,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - OLD GATE BUG (cbr_): 'git cherry-pick -m 1 <merge>' makes spec_cite_check.py fau ... | gates tooling slot
 - (ATN 11-26 ~11:3x: 1 and 3-7 = the picks, agreed; 2 'what do you mean?' -> expla ... | ATN (morning)
 - FIX WAVE 1 judges X46 / X47 / X49 (must be able to fail before waves 2-6 are sco ... | coord (waves)
-- X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither ... | wave 5 (with X22)
+- X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide 3.5, printed p17-18: no scr ... | wave 5 (with X22)
 - Q5 COST CAPS = BUGS (ATN): the 22 written caps (MAX_CANDIDATES 64, SMOKE_DARK / ... | waves (per cap's area)
 - STEP 5 FOLLOW-UPS (pd5c_): (1) build.ps1:156-157 G5's REUSE_COMPATIBLE builds la ... | next helper writer slot
 - REC_COMPARE SHaRC AS A MAP (pd5c_): compare SHaRC chunks as key -> radiance, so ... | gate tooling slot
@@ -19479,7 +19481,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         information'; reproduced on synthetic dumps); held: part B fail-closed + self-test (2 mutations caught), own
         116-header rebuild (control 0, new 16 rt_lights*), guide quotes verbatim, row texts say 'above 1 ray per pixel',
         NV9 -DryRun exit 0, 83 runs, 4K only. -> x20_ fix round 2 (resumed 15:57, verdict only); then gl_ NV9.
-        X20 skipped NITs: listed with reasons in x20__handback.md 'Fix round' (accepted by fx20b_ except none flagged).
+        X20 skipped NITs: listed with reasons in x20__handback.md 'Fix round' + 'Fix round 2'.
+        x20_ fix round 2 DONE ~16:00 (scratch only, no commit): part A fails closed (missing / empty / wrong-sized A/A dump =
+        INVALID; light_mask differing between the two base processes = INCONCLUSIVE); self-test 6 cases PASS, the old
+        verdict FAILS 3; self-test now runs before Enter-GpuLock + in -DryRun; NV9 -DryRun exit 0, 83 runs. The
+        add-on -> rt_scene_flags -> rt_d3d12 hunk is checked by reading (2 reviews) until the HARNESS_SCENE_FLAGS run.
+        NV9 -> gl_ (resumed 15:59, after J0 -NewOnly).
+        - [ ] X20 OTHER ROW USERS' READMEs (rx20_ N5): the IGN-under-RR row's text in the other games' READMEs that show
+          the row. Owner: coord -> the X20 merge step.
+        - [ ] X20 HOST-PATH RUN (x20_ SHOULD 1): HARNESS_SCENE_FLAGS B arm (spec item 3 in scratch\x20_\
+          harness_rr_torch_spec.md) proves add-on -> rt_scene_flags -> rt_d3d12. Owner: j23p_ (harness) -> gl_.
         - [ ] X20 AT THE DEFAULT (ATN; CONFIRMED by x20_'s fix round 15:57): the IGN-under-RR row changes the picture
           only above 1 ray per pixel (fx20_), so at the default it does nothing: keep the row as it is, or a design
           that also acts at 1 ray / px? Owner: coord -> ATN.
@@ -19559,6 +19570,15 @@ heading text are in HANDOFF_ARCHIVE.md)
           re-judge of the 45; cone2 lout sets + a G5 lout 4K check (-NewOnly for gl_); ref_compare.py opt-in pooled
           variance + pooled outliers (defaults byte-identical); x08 verdict on e4c signed + e5 pooled; texts for
           j23p_ / W3 / rt_reference. j23p_ told (addendum 15:41): J2 on the signed pair shift, J3 routeb signed.
+          gq2_ DONE ~15:58 (~17 min; gq2__handback.md): J0 re-judged (SC\gq2_\j0_rejudge.txt, signed paired rule, 0.2 %
+          paired floor): range_half, onelight, no_g2g1 READ (boxes clears the floor by only 0.012 %), nocal control
+          holds; cone2 not run -> J0 exit 1 until j0_job.ps1 -NewOnly (2 lout replicates, ~2 GPU min, ~4.4 GB, G5 stop
+          inside the hold, exit 6 if G5 fails). ref_compare.py: opt-in --replicate-var (per tile) + --pool-outliers,
+          no flag = byte-identical (5 sets at 640 + 1 at 4K), synthetic self-tests PASS. X08 decides on signed e4c / e5
+          shifts, e4 full dropped: ~17 GPU min, ~72 GB (was ~25 min, ~108 GB); e5 compares 6-9 GB RAM each, one at a
+          time. Sections for j23p_ (sent 15:59 with the flag names), W3, rt_reference in the hand-back.
+          Reviews rgq2_ (Opus xHigh) + fgq2_ (Sonnet High) STARTED 15:59; X08 runs after GO. gl_ (resumed 15:59):
+          J0 -NewOnly, then X20 NV9.
         - [ ] CONTACTSHADE 4K RESIDUAL (j0rc_): at 4K the candidate misses even the `contact` reference (boxes -1.02 %,
           concave +1.1 %, outliers 0.106 % vs 0.015 % at 640); the REFERENCE side moves (face means +1.6 / +2.2 / +0.9 %,
           candidate <= 0.3 %); 640 hid it. Owner: the ContactShade (H9) / GI energy wave (:21115 area).
@@ -20994,7 +21014,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] O-RR12 RR BEFORE vs AFTER THE TONE MAPPER: HARNESS_RR A/B (RR guide 3.7 / 3.9 feed rules; noise, darks,
         ghosting) in the HARNESS_RR job with fa4_ U1's sqrt check; the winner = the default with its cite. Owner: GPU queue
         (with fa4_ U1) -> hrr_ DONE 04:24: KEEP AFTER + sqrt (no gain before at matched encoding; numbers in the note)
-        - [ ] X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide p21: no screen-space dither in sampling): under RR the
+        - [ ] X20 IGN UNDER RR = NVIDIA'S WAY BY DEFAULT (RR guide 3.5, printed p17-18: no screen-space dither in sampling): under RR the
         default sampler drops IGN for NVIDIA's advice; IGN stays a row for ATN's eye; NV9 numbers in the report. Owner:
         wave 5 (with X22)
         - [x] DONE (audit 11-27: O-SS5 Fix A' merged 5c2c5042f (W8 re-land, 17624)): O-SS5 SSS THICKNESS AT EVERY SCALE (ATN wants the picked thickness exact at any DLSS scale):
@@ -21437,7 +21457,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         RTXDI_ApplyPermutationSampling; the per-texel hash is OUR choice, not an RR rule). Owner: coord
         - [ ] NV9 NVIDIA-SAYS-DON'T (section 4): TLAS fast-build (rt_d3d12.hpp:8069) = U12c; smoke particles as
         candidates = CHOSEN (smoke shadows, capped); SCREEN-SPACE DITHER under RR (InterleavedGradientNoise
-        rt_lights.cs_6_5.hlsl:319-320, rt_trace.cs_6_5.hlsl:322 / 333-334 / 395, rt_path.hlsli:981; RR guide p21 avoid)
+        rt_lights.cs_6_5.hlsl:319-320, rt_trace.cs_6_5.hlsl:322 / 333-334 / 395, rt_path.hlsli:981; RR guide 3.5 (printed p17-18) avoid)
         -> mode fixes it (M2), the hybrid keeps it -> fa4_ verifies -> ATN with numbers; Half / Quarter bounce into RR
         input (p22; does the RR route force Full?) -> fa4_; over-inlined spills = R2 / R3; runtime ray flags = U13;
         COMMON resting state (shared with D3D11?) -> fa3_. Compliant: SIGMA blocker distance, face culling off, BLAS
