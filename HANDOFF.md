@@ -19590,6 +19590,17 @@ heading text are in HANDOFF_ARCHIVE.md)
           time. Sections for j23p_ (sent 15:59 with the flag names), W3, rt_reference in the hand-back.
           Reviews rgq2_ (Opus xHigh) + fgq2_ (Sonnet High) STARTED 15:59; X08 runs after GO. gl_ (resumed 15:59):
           J0 -NewOnly, then X20 NV9.
+          J0 TOP-UP PASS 16:00 (gl_, scratch\gl_\j0\verdict2.md; j0_judge exit 0): G5 PASS (lout 0.99990 +- 6.4e-7);
+          READ: q_range_half (concave -1.279 / closed -1.304 / edge -1.327 %), torch_onelight (boxes +3.163 / edge
+          +2.247 / concave +3.897 %), reflect_no_g2g1 (boxes +0.212 / edge +0.277 / concave +0.343 %), lout_cone2
+          (penumbra 58732 texels, 0.957 beyond 4 sigma vs bar 0.011, sum -3.022 %); open PASS / nocal FAIL as
+          required; 2 replicates, no TDR, lock 0.8 min, 4.08 GB (kept). => the 4K judge tells all 5 breaks.
+          fgq2_ DONE ~16:0x (scratch\fgq2_\review.md) GO WITH CHANGES, no MUST: paired rule sound (candidates cancel
+          exactly); its own re-judge of the 45 = gq2_'s byte for byte; a no-op break is not read; ref_compare byte-
+          identical on 6 more sets. no_g2g1 on boxes is 16 SE above the floor but a scene-tile bootstrap puts it under
+          0.2 % in 41 % of draws (edge 5 %, concave 15 %) -> read it on edge / concave + a higher-roughness reflect pair.
+          SHOULD: run / INVALID / break-name checks in the judge; e5 compare ~9.3 GB RAM at R 8; 2 hand-back notes.
+          Waiting for rgq2_, then one gq2_ fix round, then X08 via gl_ (gl_ runs X20 NV9 now).
         - [ ] CONTACTSHADE 4K RESIDUAL (j0rc_): at 4K the candidate misses even the `contact` reference (boxes -1.02 %,
           concave +1.1 %, outliers 0.106 % vs 0.015 % at 640); the REFERENCE side moves (face means +1.6 / +2.2 / +0.9 %,
           candidate <= 0.3 %); 640 hid it. Owner: the ContactShade (H9) / GI energy wave (:21115 area).
