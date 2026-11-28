@@ -79,6 +79,11 @@ enum class Method : uint8_t {
 // An upscaler in the helper: the same frame path, textures, jitter, render scale and object motion for all.
 constexpr bool Upscales(Method method) { return method >= Method::DLAA; }
 
+// A method that jitters the main view's camera and keeps its camera and depth each frame: SMAA T2x, TAA, an upscaler.
+constexpr bool Temporal(Method method) {
+  return method == Method::SMAA_T2X || method == Method::TAA || Upscales(method);
+}
+
 // The bridge's upscaler (dlaa_bridge.h's UPSCALER_*) for an upscaling method; DLSS for the others.
 constexpr uint32_t UpscalerOf(Method method) {
   return Upscales(method) ? static_cast<uint32_t>(method) - static_cast<uint32_t>(Method::DLAA) : dlaa_bridge::UPSCALER_DLSS;
@@ -138,6 +143,10 @@ struct Settings {
   // The tone mapper writes linear (Attila's and Thrones' t00 in the HDR modes, rrbi_ G0): SMAA, CMAA2 and DLSS take it as
   // it is (Apply; aaf_ 11-26), FSR and XeSS too (aaf3_ 11-27); Ray Reconstruction stays at `frame_gamma`.
   bool linear_frame = false;
+  // A host wants MainFocalPixels under every method (Small Soldiers as Sprites): the camera uploads are watched and the
+  // display's size read under Off, SMAA and CMAA2 too. ours: TAA's camera path (JitterCamera, OnSunDraw's main-view
+  // test) kept for one more caller; nothing jittered or written back outside a temporal method (spr_ 3.2).
+  bool main_focal = false;
 };
 
 namespace internal {
@@ -324,6 +333,9 @@ struct Runtime {
   bool full_depth_copy = false;
   Camera camera;
   Camera previous_camera;
+  // The main view's projection _m11 at its last sun light draw, under any method and sample count (MainFocalPixels);
+  // apart from `camera`, which stays TAA's (one sample, a temporal method).
+  float focal_projection = 0.f;
   std::vector<Upload> uploads;
   ComPtr<ID3D11Texture2D> scene_depth;
   // The G-buffer channels 1-3 the guides were written from this frame (RewriteSunGuides), released at the frame's end.
@@ -332,8 +344,9 @@ struct Runtime {
 };
 
 static Runtime runtime;
-// TAA or SMAA T2x on: the camera uploads are watched (else every event returns at once).
-static std::atomic_bool temporal = false;
+// A temporal method or Settings::main_focal: the camera uploads and the sun light draws are watched (else every event
+// returns at once).
+static std::atomic_bool camera_watched = false;
 // DLSS: this frame's 3D span (present to the tone mapper) draws at the render size: viewports and scissors at the
 // display's size (or a power-of-two fraction of it) at 0, 0 scaled, and the main camera's viewport dimensions. The
 // game's post passes take their texture coordinates from the pixel position and the screen size (the tone mapper:
@@ -424,7 +437,7 @@ inline bool JitterCamera(ID3D11Buffer* buffer, std::byte* data) {
   if (upload == runtime.uploads.end()) {
     upload = runtime.uploads.insert(runtime.uploads.end(), Upload{.buffer = buffer});
     if (!runtime.logged_camera) {
-      renodx::utils::log::i("[Total War] Anti-aliasing: the main view's camera found for TAA.");
+      renodx::utils::log::i("[Total War] Anti-aliasing: the main view's camera found.");
       runtime.logged_camera = true;
     }
   }
@@ -489,7 +502,7 @@ inline bool JitterCamera(ID3D11Buffer* buffer, std::byte* data) {
 
 inline void OnMapBufferRegion(reshade::api::device* device, reshade::api::resource resource, uint64_t offset, uint64_t,
                               reshade::api::map_access access, void** data) {
-  if (!temporal.load(std::memory_order_relaxed) || access == reshade::api::map_access::read_only || offset != 0
+  if (!camera_watched.load(std::memory_order_relaxed) || access == reshade::api::map_access::read_only || offset != 0
       || data == nullptr || *data == nullptr) {
     return;
   }
@@ -512,7 +525,7 @@ inline void OnUnmapBufferRegion(reshade::api::device*, reshade::api::resource re
 // UpdateSubresource: the main camera's uploaded jittered instead (true: the game's update skipped).
 inline bool OnUpdateBufferRegion(reshade::api::device* device, const void* data, reshade::api::resource resource,
                                  uint64_t offset, uint64_t size) {
-  if (!temporal.load(std::memory_order_relaxed) || data == nullptr || offset != 0) return false;
+  if (!camera_watched.load(std::memory_order_relaxed) || data == nullptr || offset != 0) return false;
   if (device->get_api() != reshade::api::device_api::d3d11) return false;
   auto* buffer = reinterpret_cast<ID3D11Buffer*>(resource.handle);
   if (!CameraSized(buffer)) return false;
@@ -669,8 +682,9 @@ inline bool WriteGuides(ID3D11DeviceContext* native, const std::array<ID3D11Shad
   return true;
 }
 
-// The sun light draws (the main view's lighting): the camera they read (one the uploads noted) and the depth-stencil
-// buffer (the display's size, one sample) for this frame.
+// The sun light draws (the main view's lighting): the main view's focal (any method, any sample count); under a
+// temporal method also the camera they read (one the uploads noted) and the depth-stencil buffer (the display's size,
+// one sample) for this frame.
 constexpr auto OnSunDraw = []<typename T, typename Context>(
                                Context& command) -> renodx::utils::command_action::CallbackResult<Context> {
   using Arguments = typename Context::ArgumentType;
@@ -678,7 +692,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
                 && !std::is_same_v<Arguments, renodx::utils::command_action::DrawIndexedArguments>) {
     return {};
   } else {
-    if (!temporal.load(std::memory_order_relaxed)) return {};
+    if (!camera_watched.load(std::memory_order_relaxed)) return {};
     if (command.cmd_list->get_device()->get_api() != reshade::api::device_api::d3d11) return {};
     auto* native = reinterpret_cast<ID3D11DeviceContext*>(command.cmd_list->get_native());
     renodx::utils::directx::TryNativeFromReShadeProxy(&native);
@@ -697,7 +711,15 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
     texture->GetDesc(&desc);
     const std::unique_lock lock(runtime.mutex);
     const auto upload = std::ranges::find(runtime.uploads, camera.Get(), &Upload::buffer);
-    if (desc.SampleDesc.Count != 1) {
+    const bool is_main_view = upload != runtime.uploads.end() && upload->camera.valid
+                              && desc.Width == runtime.display_width && desc.Height == runtime.display_height;
+    // deviation: from TAA's rule (one-sample depth), the main view's focal is kept under the game's MSAA, because a
+    // projection needs no 1-sample depth.
+    if (is_main_view) {
+      runtime.focal_projection = upload->camera.projection[5];
+    }
+    const bool temporal = Temporal(runtime.settings.method);
+    if (temporal && desc.SampleDesc.Count != 1) {
       runtime.msaa_frame = runtime.frame;
       if (!runtime.logged_msaa) {
         renodx::utils::log::w("[Total War] Anti-aliasing: the game's MSAA is on: turn the in-game anti-aliasing off for "
@@ -705,10 +727,7 @@ constexpr auto OnSunDraw = []<typename T, typename Context>(
         runtime.logged_msaa = true;
       }
     }
-    if (upload == runtime.uploads.end() || !upload->camera.valid || desc.Width != runtime.display_width
-        || desc.Height != runtime.display_height || desc.SampleDesc.Count != 1) {
-      return {};
-    }
+    if (!is_main_view || desc.SampleDesc.Count != 1 || !temporal) return {};
     if (runtime.camera_frame != runtime.frame) {
       runtime.previous_camera = runtime.camera;
       runtime.camera_frame = runtime.frame;
@@ -1111,7 +1130,7 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   bool continued = false;
   ComPtr<ID3D11Device> device;
   native->GetDevice(device.GetAddressOf());
-  if (method == Method::SMAA_T2X || method == Method::TAA || Upscales(method)) {
+  if (Temporal(method)) {
     if (runtime.camera_frame != runtime.frame || !runtime.scene_depth || runtime.applied_frame == runtime.frame) return;
     depth_view = CopyDepth(device.Get(), native, runtime.scene_depth.Get());
     if (depth_view == nullptr) return;
@@ -1649,12 +1668,13 @@ inline void OnTonemapDrawn(reshade::api::command_list* cmd_list) {
 // SMAA T2x: its two sub-samples) while they run (none after a frame without).
 inline void Update(reshade::api::swapchain* swapchain, const Settings& settings) {
   reshade::api::resource_desc display = {};
-  if (settings.method != Method::OFF) {
+  // deviation: from Off's old 0 x 0, Off reads the display's size too while a host wants the focal, because the main
+  // view is told by it (view_share::Update gets the real size, unscaled, as under SMAA).
+  if (settings.method != Method::OFF || settings.main_focal) {
     display = swapchain->get_device()->get_resource_desc(swapchain->get_current_back_buffer());
   }
-  const bool temporal =
-      (settings.method == Method::SMAA_T2X || settings.method == Method::TAA || Upscales(settings.method));
-  internal::temporal.store(temporal, std::memory_order_relaxed);
+  const bool camera_watched = Temporal(settings.method) || settings.main_focal;
+  internal::camera_watched.store(camera_watched, std::memory_order_relaxed);
   // Objects' motion: TAA's at once (all in this D3D11 addon; MotionView waits for TAA's first frame), an upscaler's once the
   // helper runs (the menus before a battle draw none of it for nothing).
   const bool object_motion_on = settings.object_motion && (settings.method == Method::TAA || (Upscales(settings.method) && dlaa_bridge::bridge.started));
@@ -1738,7 +1758,11 @@ inline void Update(reshade::api::swapchain* swapchain, const Settings& settings)
   } else {
     runtime.jitter = {};
   }
-  if (!temporal) runtime.uploads.clear();
+  // Not watched: no camera noted, and no stale focal (MainFocalPixels 0).
+  if (!camera_watched) {
+    runtime.uploads.clear();
+    runtime.focal_projection = 0.f;
+  }
 }
 
 // The camera uploads watched and the sun light draws' depth noted (`draws`: the addon's, kept while installed); the
@@ -1811,7 +1835,8 @@ inline void Uninstall() {
   internal::runtime.full_depth_copy = false;
 }
 
-// The main view's camera last uploaded in `buffer` (DLAA, TAA, SMAA T2x: the uploads are watched); false: it holds none.
+// The main view's camera last uploaded in `buffer` (DLAA, TAA, SMAA T2x or Settings::main_focal: the uploads are
+// watched); false: it holds none.
 inline bool MainCamera(ID3D11Buffer* buffer, internal::Camera* camera) {
   const std::unique_lock lock(internal::runtime.mutex);
   const auto upload = std::ranges::find(internal::runtime.uploads, buffer, &internal::Upload::buffer);
@@ -1821,10 +1846,12 @@ inline bool MainCamera(ID3D11Buffer* buffer, internal::Camera* camera) {
 }
 
 // The main view's vertical focal length in display pixels: the display's height / (2 tan(vertical field of view / 2)),
-// from its camera's projection _m11. 0: no main camera yet (the uploads are watched under a temporal method only).
+// from its camera's projection _m11 at its last sun light draw. 0: no main view drawn yet, or nobody asked (no temporal
+// method and no Settings::main_focal).
 inline float MainFocalPixels() {
   const std::shared_lock lock(internal::runtime.mutex);
-  return std::max(0.f, static_cast<float>(internal::runtime.display_height) * internal::runtime.camera.projection[5] * 0.5f);
+  const auto& runtime = internal::runtime;
+  return std::max(0.f, static_cast<float>(runtime.display_height) * runtime.focal_projection * 0.5f);
 }
 
 // Whether the game's MSAA drew the main view's sun light this frame or the last (a temporal method selected): TAA, SMAA T2x,

@@ -1757,6 +1757,7 @@ void OnPresent(reshade::api::command_queue*, reshade::api::swapchain* swapchain,
   twattila::rt_scene::Update(rt_settings);
   auto aa_settings = twattila::feature_settings::AaSettings(aa_sliders);
   aa_settings.sdr_output = shader_injection.swap_chain_encoding == 2.f;
+  aa_settings.main_focal = small_soldiers_as_sprites != 0.f;
   aa_settings.frame_gamma = TW_FRAME_GAMMA;
   aa_settings.linear_frame = IsHDRMode();  // as Attila's: t00 writes linear in the HDR modes (aaf_ 11-26); SDR as before
   twattila::rt_scene::Configure(rt_settings, &aa_settings);
@@ -2078,7 +2079,7 @@ void ConfigureAddon() {
           .label = "Small Soldiers as Sprites (Experimental)",
           .section = "Graphics (Experimental)",
           .tooltip = "Soldiers turn into flat sprites once they are smaller on screen than Sprite Size, even within\n"
-                     "Unit Detail's distance. Lighter for the CPU in big battles. Needs TAA, SMAA T2x, DLSS, FSR or XeSS.",
+                     "Unit Detail's distance. Lighter for the CPU in big battles.",
           .labels = {"Off", "On"},
       },
       new renodx::utils::settings::Setting{

@@ -259,7 +259,7 @@ Test (ATN):
 4. DLSS Performance with the game's AO, then RT AO: the AO stays on its objects; with RT AO no double darkening.
 5. Water Clarity 4 at a river, then Water Caustics 1: clearer water, rippling light on the bed.
 6. Facial / Hand Animation 8x, Grass Detail Distance 4x, Grass Density 2x, Campaign Plant / Prop 4x: detail farther; FPS.
-7. Small Soldiers as Sprites with TAA or DLSS: small far soldiers become sprites; Sprite Size moves where.
+7. Small Soldiers as Sprites (any Anti-Aliasing, Off too): small far soldiers become sprites; Sprite Size moves where.
 8. Light Through Foliage 0.5 with Bend's shadows; Smoke Shadows 1 without rays, then the rays'.
 9. Sprite Soldier and Far Tree Shadows with RT shadows: far soldiers and tree cards cast; no black blocks.
 10. The campaign map with RT/PT: tree and plant shadows; Faster Game CPU Code on: log "half floats faster", FPS.
