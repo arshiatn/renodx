@@ -18688,6 +18688,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         fa2515d7 kept); the old 81c42b53 and the stray .bak_p8b_smoke (3d47031a) moved to scratch\coord_\a3_smoke_prev\,
         nothing deleted. [x] B1: Windows lists the one display (GSM, active; 3840x2160 at 175 %). No agent running.
         Big batch STARTS with group A's -DryRun.
+        Group A -DryRun 03:55 (scratch\coord_\gA_dry.log): exit 0, starts B64P-ep1c / ep1cvfx / ep1cvfxauto, about 20 min,
+        CacheAFFINITY for both exes, CPU Set Setter running, perffix64.dll 69cb12bf (B9), plugin f3a14087 = sidecar,
+        probe 0257a9aa, 'self-test: ok for every arm'. Group A RUN STARTED 03:55 (scratch\coord_\gA_run.log).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
