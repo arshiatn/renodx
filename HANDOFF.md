@@ -18840,6 +18840,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         attila64\ab\a64_ab.ps1.bak_rsc_20261128_061313 / .bak_rsc2_20261128_061313). F -DryRun on night1 exit 0
         (E64-tr / E64-mvtr, quit 200, coord_\gF1_dry2.log). Group F part 1 (-R1 -R1Replay night1.replay) STARTED 06:13
         (coord_\gF1_run2.log); then F part 2 (-PerfFix -R1 night1), G (-R2), H (-R2Kill).
+        Group F part 1 STOPPED 06:13:40 at start 1 BEFORE the game started (nothing staged, no backup, locks
+        released): 'STOP: missing: ...\Attila\replays\System.Collections.Hashtable'. ROOT CAUSE (ours, rsc_):
+        Run-Start's new local '$replay = Arm-Replay $Arm' IS $REPLAY (PowerShell names ignore case); by dynamic
+        scoping the start's own precondition re-check (:1675 "$REPLAY_DIR\$REPLAY") saw the hashtable, and :1788
+        compared it with itself. It breaks EVERY start (G / H too); the dry runs' self-test stops before that
+        re-check, and three reviews read it as fine. -> rsc3_ (rename + a case-insensitive clash sweep of every
+        rsc_ / rsc2_ identifier + an offline proof, Opus Medium, est 6 / 12, scratch\rsc3_\brief.md) STARTED 06:15.
+        Lesson for briefs: a64_ab locals must not reuse a script variable's name in any case; dry runs do not
+        cover Run-Start's precondition re-check.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
