@@ -18849,6 +18849,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         rsc_ / rsc2_ identifier + an offline proof, Opus Medium, est 6 / 12, scratch\rsc3_\brief.md) STARTED 06:15.
         Lesson for briefs: a64_ab locals must not reuse a script variable's name in any case; dry runs do not
         cover Run-Start's precondition re-check.
+        rsc3_ DONE 06:19 (5 min; scratch\rsc3_\handback.md): patch_rsc3.py 51a8d546 -> afd58425 (5 edits, all 10
+        uses inside Run-Start); clash sweep: only $replay; offline proof rsc3_\test_rsc3.ps1 (loads the file's 68
+        functions, runs the real Run-Start + Pre-Problems with stubbed writes): live FAIL 3 / 3, patched ok. fsc3_
+        (Sonnet High final, scratch\fsc3_\review.md) GO, own AST scan 0 clashes in all 68 functions (fsc3_\scan.ps1).
+        Coord APPLIED 06:21: live a64_ab.ps1 = afd584252f8f35d0... (backup .bak_rsc3_20261128_062107); proof on the
+        live file ok. Group F part 1 (-R1 -R1Replay night1.replay) STARTED again 06:21 (coord_\gF1_run3.log).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
