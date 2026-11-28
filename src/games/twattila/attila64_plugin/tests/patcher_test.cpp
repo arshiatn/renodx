@@ -1682,7 +1682,8 @@ int wmain(int argc, wchar_t** argv) {
     // battle core (the test's own copy above, with no render thread, selects this thread). With no RenderCore key the
     // init keeps the build's default, CORE_RENDER included; expect_hook_bodies leaves the bit clear, else the render core
     // holds this thread.
-    Expect((main_plugin.block->core_wanted.load() & CORE_RENDER) != 0, "dll: no RenderCore key, the render part's bit from the build's default");
+    Expect((main_plugin.block->core_wanted.load() & CORE_RENDER) != 0,
+           "dll: no RenderCore key, the render part's bit from the build's default");
     expect_hook_bodies(main_plugin.block);
     Expect(step_once() && (core_state_of(main_plugin.block) != CORE_ACTIVE || selected_count() == 0),
            "step: the render thread is not selected onto the battle core");
@@ -1691,7 +1692,8 @@ int wmain(int argc, wchar_t** argv) {
     main_plugin.block->core_wanted.store(CORE_WANTED_DEFAULT);
   }
 
-  // The RenderCore key. 1: the render part's bit is set at init, and one step reserves both cores (this thread is the
+  // The RenderCore key. 1: the render part's bit is set at init (the build's default holds it already, so this case
+  // cannot show the key; battle_core_test's new_session does), and one step reserves both cores (this thread is the
   // render thread and holds the render core). 0: off for the process, whatever the bit says later.
   WritePrivateProfileStringW(INI_SECTION, INI_RENDER_CORE, L"1", ini_path.c_str());
   write_game();

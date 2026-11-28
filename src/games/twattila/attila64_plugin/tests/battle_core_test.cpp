@@ -780,7 +780,8 @@ int wmain() {
     // The render part alone (the key absent leaves the bits as they are): it takes the battle core's place, and no
     // step thread is selected.
     new_session(-1);
-    Expect(shared.core_wanted.load() == (CORE_WANTED_DEFAULT & ~CORE_RENDER) && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD,
+    Expect(shared.core_wanted.load() == (CORE_WANTED_DEFAULT & ~CORE_RENDER)
+               && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD,
            "key: absent leaves the bits");
     shared.core_wanted.store(CORE_RENDER);
     capture_and_step();
