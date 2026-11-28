@@ -19394,6 +19394,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         310.9.16 not 310.7; reword the deviation comment; a preset M arm; amend the Nsight rows. Fix round x38_ (Opus
         Medium, resumed with both lists) STARTED 15:07; then a Sonnet High re-check, then gl_'s queue.
         rx38_ worktree left: unlink its external\* junctions before deleting.
+        x38_ fix round DONE 15:12 (905d07c32 on x38_1128, pushed; hand-back 'Fix round'): MUST the job waits for the
+        helper's exit before each exe copy + log read (missing log / timeout / killed helper / wrong log count = FAIL);
+        SHOULDs: ASK ATN (exit 2) when P4 is slower, fails on bad exit codes / removal lines, drops samples with no GPU
+        time, warm-up / spikes / Create timed apart, A/A from per-run means, preset M arm, DLSS 310.9.16, DRED n/a +
+        helpers' sha in the output, DPG comment reworded + cites debug41; CPU test amd64 + x86 PASS, control fails; 3
+        helpers rebuilt, headers equal. Re-check fx38b_ (Sonnet High) STARTED 15:12; GO -> gl_'s queue.
         x20_ DONE PART 15:01 (RN\handoff_plan\handbacks\x20__handback.md): x20_1128 8ceac6a52 (on 8053e666a, pushed):
         under RR (not Steady) rt_lights.cs_6_5.hlsl's soft-shadow threshold + spot turn use the helper's existing pcg4d
         Random per pixel per frame (cite DLSS-RR Integration Guide 3.5, printed p17-18, not p21); bridge
