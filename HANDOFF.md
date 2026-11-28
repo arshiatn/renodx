@@ -18724,6 +18724,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         Not void (no 'another mod' line). P16 not run (ep8btt8's golden is the same). The row stays Off.
         [ ] APPLY PHASE (owner: coord -> a Stage B fix design, Opus xHigh): size the node pool from a node count of
         the gate battle (a census / probe counter), then re-run P15. Group I -DryRun next.
+        Group I -DryRun 04:53 ok (commit 16.9 GB, D: 507 GB free, backups listed). [x] Group I = d11 START 5 DONE
+        05:00 (7 min, exit 0; testbin\attila64_1124\d11_runs\20261128_045347_day1, dumps D:\Dev\d11_dumps\
+        d11cap64_20261128_045347_day1 = 10.5 GB): camera moved (20 notches, 3 pulses, -127.04 deg; camera.posted 0 because
+        our game window was in front, so the script's SendInput-into-our-window path ran), segments day1_C1 / C2a /
+        C2b / C3, 8 dumps, 4 Time Each Pass files (one frame 22.953 ms GPU, 2109 commands in pass_timing_1), the game's
+        own exit code 0 at 399 s, no WER, foliage share of the Bend depth 80.7 %, '=== done: no problem seen'. The
+        2.10 D3D11 pass analysis reads these in the apply phase. Group J -DryRun next.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
