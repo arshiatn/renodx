@@ -18677,6 +18677,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         (scratch\coord_\s5a_f7fix.log). -R2 -DryRun on the live d2572849 (03:50, scratch\coord_\r2_dry_d2572849.log):
         exit 0, 10 arms, about 60 min, CPU Set Setter rule found, rt_stage stages 12 files per helper start, pre-seeds
         ShadowCascades=0 (rt2c0) / =1 (rt2c), 'self-test: ok for every arm'.
+        s5a_ tiny round DONE 03:52 (9 min; 63bbb1947: tw_unit_shadows :737 epoch_registered not const, re-snapped
+        before :815 so :817 checks a new epoch again; link :187-188 rewrapped; 7c comment names both controls).
+        Gated x86 + amd64 exit 0, tw_unit_shadows x86 + amd64 PASS; mutations: epoch skip for a BONE_FLUSH-only
+        registration FAILs :817 (the old test PASSed it), no pack-thread clear FAILs :757. amd64 build began 03:50:03
+        after F7's 'GPU lock released' 03:49:54. [x] S5a MERGED 03:52 as d9f0cb307 (--no-ff; no file under
+        attila64_plugin\ changed, so B7 = no plugin rebuild).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
