@@ -42,6 +42,15 @@
 //      stream output's bit for bit, w 1;
 //   B2 the second draw marked stale, and the third drawn with a width of 256 at b2: their corners NaN, the first's still bit for bit;
 //   B3 CONTROL: the first draw's animation texture written again after the draws, before the flush: its corners differ.
+// S. The 64-bit port's IA slot 15 under the 4-bone units' (0ECFE74C) capture and batch: Sol's backend feeds a shader input its
+//   game's vertex description lacks from slot 15 (an element R32G32B32A32_FLOAT at offset 0, a 64-byte zero buffer bound with
+//   stride 0 at device creation: attila64 loader dx11_device.inc:254-261, bound at :260, its dx_make_layout :1193-1218; MIT);
+//   our captures and the batch's mesh / rows stream output draw through that IA. Per description (each of POSITION0-6 the one it
+//   lacks, then none), B's 3 draws:
+//   S1 the per-draw capture and the batch (mesh + rows stream output, FlushBatch's compute) with the zero buffer are the
+//      reference bit for bit: B's per-draw stream output through the whole layout, the lacked element's bytes zeroed;
+//   S2 CONTROL: slot 15 a buffer of ones changes the capture's / the batch's corners exactly when the capture's / the batch
+//      mesh's input signature reads the element ("unread": no slot-15 dependence, not a failure; no element: none read).
 // K. Rome II's cut-out captures: the UV the alpha tests read, as the game's vertex shaders write it (CheckCutOuts).
 // L. Rome II's cut-out pixel shaders (88 unit ones, the rigid shadow alpha test): their cut-offs (CheckCutOutAlphaTests).
 // tests.exe <dump root: the folder holding dump_shader_<game>_pack\cso> <build root: the folder holding <game>.include\embed>
@@ -527,6 +536,7 @@ struct BatchedFamily {
   // vs30_main's (POSITION0-5, 2 bones a vertex) or main_4_bones' (POSITION0-6: POSITION2 three weights): their mesh and rows
   // shaders, the mesh's texels a vertex.
   bool four_bones = false;
+  bool slot_15 = false;  // S (the 4-bone units' 0ECFE74C)
 };
 
 static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& dump_root, const std::string& build32_root) {
@@ -675,13 +685,20 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
     }
     return values;
   };
+  // The IA the game binds: S swaps the vertex buffer, the input layout and slot 15 (nullptr: unbound).
+  ID3D11Buffer* ia_vertices = vertex_buffer.Get();
+  ID3D11InputLayout* ia_layout = input_layout.Get();
+  ID3D11Buffer* ia_slot_15 = nullptr;
   // The game's state at a unit draw, then the add-on's draw through the remap indices (rt_core.hpp Capture).
   const auto game_state = [&](size_t d, ID3D11Buffer* size) {
-    const std::array<ID3D11Buffer*, 2> buffers = {vertex_buffer.Get(), instance_buffer.Get()};
+    const std::array<ID3D11Buffer*, 2> buffers = {ia_vertices, instance_buffer.Get()};
     const std::array<UINT, 2> strides = {vertex_stride, 120};
     constexpr std::array<UINT, 2> OFFSETS = {0, 0};
     context->IASetVertexBuffers(0, 2, buffers.data(), strides.data(), OFFSETS.data());
-    context->IASetInputLayout(input_layout.Get());
+    constexpr UINT SLOT_15_STRIDE = 0;
+    constexpr UINT SLOT_15_OFFSET = 0;
+    context->IASetVertexBuffers(15, 1, &ia_slot_15, &SLOT_15_STRIDE, &SLOT_15_OFFSET);
+    context->IASetInputLayout(ia_layout);
     context->IASetIndexBuffer(remaps[d].Get(), DXGI_FORMAT_R32_UINT, 0);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
     const std::array<ID3D11Buffer*, 3> constants = {camera.Get(), config.Get(), size};
@@ -689,18 +706,22 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
     context->VSSetShaderResources(0, 1, animation_maps[DRAWS[d].texture].GetAddressOf());
     context->PSSetShader(nullptr, nullptr, 0);
   };
-  ComPtr<ID3D11Buffer> streamed;
-  made = make_buffer(nullptr, TEXELS * 16, D3D11_BIND_STREAM_OUTPUT, 0, &streamed);
-  for (size_t d = 0; made && d < DRAWS.size(); ++d) {
-    game_state(d, animation_size.Get());
-    const UINT offset = DRAWS[d].captured_first * 16;
-    context->VSSetShader(capture_vs.Get(), nullptr, 0);
-    context->GSSetShader(capture_gs.Get(), nullptr, 0);
-    context->SOSetTargets(1, streamed.GetAddressOf(), &offset);
-    context->DrawIndexedInstanced(DRAWS[d].vertices, DRAWS[d].instances, 0, int(DRAWS[d].base_vertex), DRAWS[d].first_instance);
-  }
-  context->SOSetTargets(0, nullptr, nullptr);
-  const std::vector<uint32_t> per_draw = read_back(streamed.Get(), TEXELS * 16);
+  // The per-draw stream output (all zeros when its buffer cannot be made).
+  const auto per_draw_capture = [&]() {
+    ComPtr<ID3D11Buffer> streamed;
+    if (!make_buffer(nullptr, TEXELS * 16, D3D11_BIND_STREAM_OUTPUT, 0, &streamed)) return std::vector<uint32_t>(TEXELS * 4);
+    for (size_t d = 0; d < DRAWS.size(); ++d) {
+      game_state(d, animation_size.Get());
+      const UINT offset = DRAWS[d].captured_first * 16;
+      context->VSSetShader(capture_vs.Get(), nullptr, 0);
+      context->GSSetShader(capture_gs.Get(), nullptr, 0);
+      context->SOSetTargets(1, streamed.GetAddressOf(), &offset);
+      context->DrawIndexedInstanced(DRAWS[d].vertices, DRAWS[d].instances, 0, int(DRAWS[d].base_vertex), DRAWS[d].first_instance);
+    }
+    context->SOSetTargets(0, nullptr, nullptr);
+    return read_back(streamed.Get(), TEXELS * 16);
+  };
+  const std::vector<uint32_t> per_draw = per_draw_capture();
   // The batched path: the meshes and rows streamed at the draws, then FlushBatch's table, runs (by animation texture and width),
   // dispatches and copies.
   const auto batched = [&](bool stale_second, bool narrow_third, bool written_first) {
@@ -797,14 +818,14 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
     }
     return read_back(captured.Get(), TEXELS * 16);
   };
-  // Per draw: corners differing from the per-draw stream output's, and NaN (a quiet NaN's bits in all four).
-  const auto compare = [&](const std::vector<uint32_t>& values, size_t d, uint64_t* differ, uint64_t* nan) {
+  // Per draw: corners differing from a per-draw stream output's, and NaN (a quiet NaN's bits in all four).
+  const auto compare = [&](const std::vector<uint32_t>& values, const std::vector<uint32_t>& reference, size_t d, uint64_t* differ, uint64_t* nan) {
     *differ = 0;
     *nan = 0;
     for (UINT corner = 0; corner < DRAWS[d].vertices * DRAWS[d].instances; ++corner) {
       const size_t at = size_t{DRAWS[d].captured_first + corner} * 4;
-      *differ += (values.size() == per_draw.size() && std::memcmp(&values[at], &per_draw[at], 16) == 0) ? 0 : 1;
-      *nan += (values.size() == per_draw.size() && values[at] == 0x7FC00000u && values[at + 1] == 0x7FC00000u && values[at + 2] == 0x7FC00000u
+      *differ += (values.size() == reference.size() && std::memcmp(&values[at], &reference[at], 16) == 0) ? 0 : 1;
+      *nan += (values.size() == reference.size() && values[at] == 0x7FC00000u && values[at + 1] == 0x7FC00000u && values[at + 2] == 0x7FC00000u
                && values[at + 3] == 0x7FC00000u)
                   ? 1
                   : 0;
@@ -818,25 +839,113 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
   }
   const auto whole = batched(false, false, false);
   std::array<std::array<uint64_t, 2>, 3> b1 = {};
-  for (size_t d = 0; d < DRAWS.size(); ++d) compare(whole, d, &b1[d][0], &b1[d][1]);
+  for (size_t d = 0; d < DRAWS.size(); ++d) compare(whole, per_draw, d, &b1[d][0], &b1[d][1]);
   const bool b1_ok = !whole.empty() && w_not_1 == 0 && b1[0][0] == 0 && b1[1][0] == 0 && b1[2][0] == 0;
   std::printf("  B1 batched vs per-draw: %llu / %llu / %llu of %u / %u / %u corners differ, w not 1 %llu (0)\n", (unsigned long long)b1[0][0],
               (unsigned long long)b1[1][0], (unsigned long long)b1[2][0], DRAWS[0].vertices * DRAWS[0].instances, DRAWS[1].vertices * DRAWS[1].instances,
               DRAWS[2].vertices * DRAWS[2].instances, (unsigned long long)w_not_1);
   const auto left_out = batched(true, true, false);
   std::array<std::array<uint64_t, 2>, 3> b2 = {};
-  for (size_t d = 0; d < DRAWS.size(); ++d) compare(left_out, d, &b2[d][0], &b2[d][1]);
+  for (size_t d = 0; d < DRAWS.size(); ++d) compare(left_out, per_draw, d, &b2[d][0], &b2[d][1]);
   const bool b2_ok = !left_out.empty() && b2[0][0] == 0 && b2[1][1] == DRAWS[1].vertices * DRAWS[1].instances
                      && b2[2][1] == DRAWS[2].vertices * DRAWS[2].instances;
   std::printf("  B2 stale second, third at width 256: first %llu differ (0), second %llu NaN (%u), third %llu NaN (%u)\n", (unsigned long long)b2[0][0],
               (unsigned long long)b2[1][1], DRAWS[1].vertices * DRAWS[1].instances, (unsigned long long)b2[2][1], DRAWS[2].vertices * DRAWS[2].instances);
   const auto written = batched(false, false, true);
   std::array<uint64_t, 2> b3 = {};
-  compare(written, 0, &b3[0], &b3[1]);
+  compare(written, per_draw, 0, &b3[0], &b3[1]);
   const bool b3_ok = !written.empty() && b3[0] > 0;
   std::printf("  B3 CONTROL the first draw's bones written before the flush: %llu of %u corners differ (> 0)\n", (unsigned long long)b3[0],
               DRAWS[0].vertices * DRAWS[0].instances);
-  const bool passed = b1_ok && b2_ok && b3_ok;
+  bool s_ok = true;
+  if (family.slot_15) {
+    // Sol's zero buffer (dx11_device.inc:255-260: 64 bytes, stride 0) and the control's ones.
+    const std::array<float, 16> zero_values = {};
+    std::array<float, 16> one_values = {};
+    one_values.fill(1.f);
+    ComPtr<ID3D11Buffer> zero_buffer, one_buffer;
+    s_ok = make_buffer(zero_values.data(), sizeof(zero_values), D3D11_BIND_VERTEX_BUFFER, 0, &zero_buffer)
+           && make_buffer(one_values.data(), sizeof(one_values), D3D11_BIND_VERTEX_BUFFER, 0, &one_buffer);
+    // Each POSITION's components a shader reads: its input signature's ReadWriteMask.
+    const auto position_reads = [](const std::vector<uint8_t>& shader) {
+      std::array<BYTE, 8> reads = {};
+      ComPtr<ID3D11ShaderReflection> reflection;
+      if (FAILED(D3DReflect(shader.data(), shader.size(), IID_ID3D11ShaderReflection, reinterpret_cast<void**>(reflection.GetAddressOf())))) return reads;
+      D3D11_SHADER_DESC desc = {};
+      reflection->GetDesc(&desc);
+      for (UINT i = 0; i < desc.InputParameters; ++i) {
+        D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+        reflection->GetInputParameterDesc(i, &parameter);
+        if (std::strcmp(parameter.SemanticName, "POSITION") == 0 && parameter.SemanticIndex < reads.size()) {
+          reads[parameter.SemanticIndex] = parameter.ReadWriteMask;
+        }
+      }
+      return reads;
+    };
+    const auto capture_reads = position_reads(capture);
+    const auto mesh_reads = position_reads(mesh);
+    UINT drawn_corners = 0;
+    for (const DrawSpec& draw : DRAWS) drawn_corners += draw.vertices * draw.instances;
+    const auto differing = [&](const std::vector<uint32_t>& values, const std::vector<uint32_t>& reference) {
+      uint64_t total = 0;
+      for (size_t d = 0; d < DRAWS.size(); ++d) {
+        uint64_t differ = 0;
+        uint64_t nan = 0;
+        compare(values, reference, d, &differ, &nan);
+        total += differ;
+      }
+      return total;
+    };
+    // The description's lacked POSITION (vertex_positions: it lacks none).
+    for (UINT lacked = 0; s_ok && lacked <= vertex_positions; ++lacked) {
+      const bool lacks = lacked < vertex_positions;
+      std::vector<D3D11_INPUT_ELEMENT_DESC> description_elements = layout;
+      std::vector<uint8_t> zeroed = vertex_data;
+      if (lacks) {
+        // dx_make_layout: the shader's input the description lacks, after the description's elements, at slot 15.
+        description_elements.erase(description_elements.begin() + lacked);
+        description_elements.push_back({"POSITION", lacked, DXGI_FORMAT_R32G32B32A32_FLOAT, 15, 0, D3D11_INPUT_PER_VERTEX_DATA, 0});
+        const UINT offset = (lacked == 0) ? 0 : (4 + (lacked * 4));
+        const UINT bytes = (lacked == 0) ? 8 : 4;
+        for (UINT v = 0; v < VERTICES; ++v) std::memset(&zeroed[(size_t{v} * vertex_stride) + offset], 0, bytes);
+      }
+      ComPtr<ID3D11InputLayout> description_layout;
+      ComPtr<ID3D11Buffer> zeroed_buffer;
+      if (FAILED(device->CreateInputLayout(description_elements.data(), UINT(description_elements.size()), game_vs.data(), game_vs.size(),
+                                           description_layout.GetAddressOf()))
+          || !make_buffer(zeroed.data(), UINT(zeroed.size()), D3D11_BIND_VERTEX_BUFFER, 0, &zeroed_buffer)) {
+        std::printf("  S could not make the description's layout (POSITION%u lacked)\n", lacked);
+        s_ok = false;
+        break;
+      }
+      ia_vertices = zeroed_buffer.Get();
+      ia_layout = input_layout.Get();
+      ia_slot_15 = nullptr;
+      const auto reference = per_draw_capture();
+      ia_vertices = vertex_buffer.Get();
+      ia_layout = description_layout.Get();
+      ia_slot_15 = zero_buffer.Get();
+      const uint64_t capture_zeros = differing(per_draw_capture(), reference);
+      const uint64_t batch_zeros = differing(batched(false, false, false), reference);
+      ia_slot_15 = one_buffer.Get();
+      const uint64_t capture_ones = differing(per_draw_capture(), reference);
+      const uint64_t batch_ones = differing(batched(false, false, false), reference);
+      const bool capture_reads_it = lacks && capture_reads[lacked] != 0;
+      const bool mesh_reads_it = lacks && mesh_reads[lacked] != 0;
+      const bool s1 = capture_zeros == 0 && batch_zeros == 0;
+      const bool s2 = ((capture_ones > 0) == capture_reads_it) && ((batch_ones > 0) == mesh_reads_it);
+      const std::string described = lacks ? std::format("POSITION{} lacked", lacked) : std::string("nothing lacked");
+      std::printf("  S1 %s, slot 15 zeros: capture %llu, batch %llu of %u corners differ from the reference (0, 0)\n", described.c_str(),
+                  (unsigned long long)capture_zeros, (unsigned long long)batch_zeros, drawn_corners);
+      std::printf("  S2 CONTROL slot 15 ones: capture %llu (%s), batch %llu (%s)\n", (unsigned long long)capture_ones,
+                  capture_reads_it ? "read: > 0" : "unread: 0", (unsigned long long)batch_ones, mesh_reads_it ? "read: > 0" : "unread: 0");
+      s_ok = s_ok && s1 && s2;
+    }
+    ID3D11Buffer* no_buffer = nullptr;
+    constexpr UINT NO_STRIDE = 0;
+    context->IASetVertexBuffers(15, 1, &no_buffer, &NO_STRIDE, &NO_STRIDE);
+  }
+  const bool passed = b1_ok && b2_ok && b3_ok && s_ok;
   std::printf("  %s\n", passed ? "PASSED" : "FAILED");
   return passed;
 }
@@ -1207,7 +1316,7 @@ int main(int argc, char** argv) {
            BatchedFamily{"Attila main units sm4.1", "0xA691CFF4.vs_4_1", "rt_capture_unit_sm41", "rt_batch_unit_sm41"},
            BatchedFamily{"Attila dismember units sm3", "0xDAC80ECC.vs_4_0", "rt_capture_unit_dismember_sm3", "rt_batch_unit_dismember_sm3"},
            BatchedFamily{"Attila dismember units sm4.1", "0xEA1AEB0E.vs_4_1", "rt_capture_unit_dismember_sm41", "rt_batch_unit_dismember_sm41"},
-           BatchedFamily{"Attila 4-bone units sm3", "0x0ECFE74C.vs_4_0", "rt_capture_unit_4_bones_sm3", "rt_batch_unit_4_bones_sm3", true},
+           BatchedFamily{"Attila 4-bone units sm3", "0x0ECFE74C.vs_4_0", "rt_capture_unit_4_bones_sm3", "rt_batch_unit_4_bones_sm3", true, true},
            BatchedFamily{"Attila 4-bone units sm4.1", "0x372628AB.vs_4_1", "rt_capture_unit_4_bones_sm41", "rt_batch_unit_4_bones_sm41", true},
            BatchedFamily{"Attila 4-bone dismember units sm3", "0xC2AA8FDA.vs_4_0", "rt_capture_unit_4_bones_dismember_sm3",
                          "rt_batch_unit_4_bones_dismember_sm3", true},
