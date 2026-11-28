@@ -19408,6 +19408,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         time, warm-up / spikes / Create timed apart, A/A from per-run means, preset M arm, DLSS 310.9.16, DRED n/a +
         helpers' sha in the output, DPG comment reworded + cites debug41; CPU test amd64 + x86 PASS, control fails; 3
         helpers rebuilt, headers equal. Re-check fx38b_ (Sonnet High) STARTED 15:12; GO -> gl_'s queue.
+        fx38b_ DONE 15:19 (scratch\fx38b_\review.md) GO WITH CHANGES, no MUST: all rx38_ / fx38_ items done (strict
+        helper wait + log, exit 2 when slower, DLSS 310.9.16, M arm, DRED line); CPU test amd64 + x86 PASS, control
+        fails; headers equal; the timing code was refactored, the size choice unchanged. SHOULD: the summary silently
+        PASSes with no timing lines or a truncated L segment; the spike count includes later runs' warm-up; no -DryRun.
+        -> x38_ (resumed 15:19) fixes the three + one dry run; then gl_ runs X38 (not judge-scored).
         x20_ DONE PART 15:01 (RN\handoff_plan\handbacks\x20__handback.md): x20_1128 8ceac6a52 (on 8053e666a, pushed):
         under RR (not Steady) rt_lights.cs_6_5.hlsl's soft-shadow threshold + spot turn use the helper's existing pcg4d
         Random per pixel per frame (cite DLSS-RR Integration Guide 3.5, printed p17-18, not p21); bridge
