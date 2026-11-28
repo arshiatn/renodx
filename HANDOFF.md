@@ -18594,6 +18594,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         siege -Prepare STARTED 03:21 (F7 on the GPU beside it: not a timed start). Rule (start_1127): game runs hold
         all agents -> the batch starts when rs5a_ / fs5a_ / abg_ / F7 are done; groups A, B, C, I, J first (no
         agents running), then the S5a fix round / merge / abg_ apply / restage, then D-H.
+        Siege -Prepare: first build refused itself ('BUILT BUT NOT HEAD': a coord HANDOFF commit moved HEAD mid-build);
+        rerun 03:22 exit 0: sgr_\rec_helper exe d100886d from e1373ed1f (later HANDOFF commits are fine: the run
+        refuses only when helper sources / the recording format changed).
+        abg_ (Opus Medium, 6 of 15 min; scratch\abg_\handback.md; patch a64_ab_abg_patch.py 88dcff29 -> 2f4635c6):
+        -R2 = dlaa, rt, pt, rrtm, rt-sr2, rtnb, rt2c, rr50, rr50tm (plain helper, trace B 70, quit 115, budget
+        480 s); rt2c = E64-rt + RayTracedShadowCascades=1 + plugin ShadowCascades=1 pre-seed, PASS on the s5e_
+        cascade lines (E64-rt: same lines info only); rr50 / rr50tm = E64-pt + AntiAliasingDlssMode=4 + RR before
+        tone map 0 / 1, info lines count the trace marks; key 'Preseed' (not 'Values': $h.Values trap); old -R2 lines
+        byte-identical, -AB / -R1 dry runs 0 diff. Reviews rabg_ (Opus xHigh) + fabg_ (Sonnet High), read only,
+        STARTED 03:23; the coord applies after them, before group G.
+        fs5a_ (5 min) GO WITH CHANGES: M1 the per-change line's third field is 'pack thread == this thread', not
+        UnitFlushRunsHere() (link :546-557), so F7 never exercises the predicate rt_core reads: a wrong runs-here
+        passes all 20 cases -> log UnitFlushRunsHere(); S1 Unregister should also clear pack_thread; S2 RS3 counts
+        the third field only (the lag adds 1/0/0, 1/1/0, 1/1/1 lines); S3 UnitBatchWanted single caller (RS2 asked
+        for it: coord OK) + inline addon.cpp:2462's single-use local; S4 Update's shrink order vs Unregister's;
+        5 NITs. rs5a_ still running.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
