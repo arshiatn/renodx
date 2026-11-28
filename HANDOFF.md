@@ -18855,6 +18855,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         (Sonnet High final, scratch\fsc3_\review.md) GO, own AST scan 0 clashes in all 68 functions (fsc3_\scan.ps1).
         Coord APPLIED 06:21: live a64_ab.ps1 = afd584252f8f35d0... (backup .bak_rsc3_20261128_062107); proof on the
         live file ok. Group F part 1 (-R1 -R1Replay night1.replay) STARTED again 06:21 (coord_\gF1_run3.log).
+        Group F part 1 DONE 06:31 (ab_runs\20261128_062120_Smoke): E64-tr + E64-mvtr both exit 0 at 279 s, quit line True
+        (night1 lasts past loader b 200 -> the night1 length question is closed), 0 CRASH / FATAL, no WER, clean unload,
+        21 sites unchanged, rows 0x3fff, traces B 40..100 + Time Each Pass (10.6 / 11.9 ms) + captures at battle s ~119 /
+        ~134, PASS (scriptable) x2, smoke_pass True x2; R1.8b point-light stop did not fire (stress_test_log2's did).
+        Item 5 vs the single 32-bit night1 frame: 18 / 17 not drawn on 64-bit (info: that frame is RT + DLSS-P, rrsc_ N4).
+        Picture (capture_76393, sent to ATN): a night siege of a big walled city, units at the walls, no fire yet at
+        battle s ~119. ATN's part: the look. F part 2 (-PerfFix -R1 night1) -DryRun ok, STARTED 06:32 (coord_\gF2_run.log).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
