@@ -18930,6 +18930,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         15 / 30); gb_ RR Before Tone Mapping at 50 % root cause (Opus xHigh, 15 / 30); jcr_ J exit crash dump (Opus
         Medium, 10 / 20); s4c_ S4 census (Opus Medium, 12 / 24). Overlap: one writer (ga_, rt_core.hpp); the rest read.
         - [ ] APPLY i: the d11 day1 dumps (group I) -> the 2.10 D3D11 pass analysis, after wave 1. Owner: coord.
+        ga_ DONE 08:4x (4 min; scratch\ga_\handback.md, ga.diff): ff46b08da on ga_1128 (worktree .claude\worktrees\ga_,
+        links: bin, 8 external, build\downloads = junctions, unlink first), rt_core.hpp only: flag
+        status_line_without_helper; the helper's first status re-arms the line 3 s later once; gated amd64 + x86 exit
+        0 (renodx-twattila.addon64 0A7999EE..., .addon32 8551D9E5...); not run in game. Review rga_ (Opus xHigh)
+        STARTED 08:46; then a Sonnet High final, merge, a3_smoke restage, a64_ab check e.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
