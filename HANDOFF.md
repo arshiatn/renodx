@@ -741,6 +741,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
+- BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
 - P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2 ... | coord (game runs), after the fxh2_1127 merge
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
@@ -19288,6 +19289,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         inputs; no implementer before Monday. Monday 22:00+, old Fable rules (Fable 5.2 xHigh design, Fable 5.2 Medium
         build, Opus xHigh + Sonnet High reviews): Stage B, then 'Step Pieces First' (parked behind Stage B), then the
         last ride. R-int census + P15' in that round. The row stays Off. Owner: coord.
+        - [ ] BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one game batch (smoke, P15',
+          Step Pieces First fps + golden; ep8btt8 reported only); then the last ride's fresh W3 WPR and its final
+          verify bench. Before each run: no new GPU agent once that item's reviews start; running GPU agents finish
+          first (never stopped / paused).
         G4 dry twin re-run after G1 12:06 ok ('self-test: ok for every arm', -Wpr on start 1). G4 = P17 + WPR 1 (-AB
         -Arms w3 -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log scratch\coord_\b2_G4_run.log) STARTED 12:06.
         G4 PASS 12:13 (7 min, exit 0; ab_runs\20261128_120648_AB): 1 / 1 valid, golden same, E-checks all pass (plugin
