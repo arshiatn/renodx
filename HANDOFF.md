@@ -743,7 +743,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
 - BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
-- ATN D1: 4K reference storage for X08 / J2 / J3 / W3 proofs (~2.2 GB a replicate, ... | ATN
 - fwp_ D2-D5 for later: D2 X08 drop vs re-set if the picture moves; D3 O-HANG (b) ... | coord -> ATN as each comes up
 - P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2 ... | coord (game runs), after the fxh2_1127 merge
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
@@ -19342,7 +19341,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         Wave-1 briefs written 14:37 (scratch\<tag>\brief.md = COMMON + block + coord notes).
         WAVE 1 STARTED 14:37: w4b2_ / j23p_ / x20_ (Opus High), x38_ / w0ca_ / gq1_ (Opus Medium, effort trial), in
         parallel; gl_ (GPU-lock runner) starts when gq1_ hands back J0's script.
-        - [ ] ATN D1: 4K reference storage for X08 / J2 / J3 / W3 proofs (~2.2 GB a replicate, ~100-200 GB): raw on D:
+        - [x] DECIDED 14:40 (ATN 'Raw on D please. It is full precision'): references raw on D:\RenoDX_refs\<job>\;
+          gq1_ told; never deleted. Was: ATN D1: 4K reference storage for X08 / J2 / J3 / W3 proofs (~2.2 GB a replicate, ~100-200 GB): raw on D:
           (fwp_'s pick; D: 455 GB free 14:37) / half precision / stats only. Needed before gl_'s X08 job. Owner: ATN.
         - [ ] fwp_ D2-D5 for later: D2 X08 drop vs re-set if the picture moves; D3 O-HANG (b) / (c) when ATN is home; D4
           Q5 row 13 light mask + Steady Torch Shadows default + look rows; D5 anything slower = numbers + suggestion.
