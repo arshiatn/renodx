@@ -741,7 +741,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
 - BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
-- X20 AT THE DEFAULT (ATN, after x20_'s fix round confirms it): the IGN-under-RR r ... | coord -> ATN
+- X20 AT THE DEFAULT (ATN; CONFIRMED by x20_'s fix round 15:57): the IGN-under-RR ... | coord -> ATN
 - DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3' ... | coord -> wave 2 (main
 - REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of r ... | ATN
 - j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch swi ... | coord -> j23p_
@@ -19421,6 +19421,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         exactly 1 create, 9 x frames evaluations or 8 tones pictures; spikes counted after each create's own warm-up;
         -DryRun prints the plan and exits 0 before the lock (ran: 0); summary self-tests OK. X38 GPU job -> gl_
         (resumed 15:20; ~25 min under the lock; D3D11 timestamps; PASS / FAIL / exit 2 = ASK ATN).
+        X38 GPU JOB PASS ~15:49 (gl_, scratch\gl_\x38\verdict.md; lock 26.8 min, ~70 MB): 32 runs exit 0, DLSS 310.9.16, no
+        removal / timeout; fixed creates at the active size for L 77 % / ~72 % and M 77 %, the control at 2560x1440
+        (fails as it must); steady GPU ms fixed vs control: L 77 % 2.8994 vs 2.8956, L ~72 % 2.6810 vs 2.6775, L 66.7 %
+        2.3663 vs 2.3655 (both at 2560x1440), M 77 % 2.4646 vs 2.4655 = within noise (0.02 ms); picture diff 0 in all
+        four; no spikes (BUG-6 not reproduced); control CPU max 17-19 ms vs fixed 0.5-0.9 ms. = bug fix, same speed +
+        picture -> ON. MERGED 2545f5010 (--no-ff); gated talesofarise amd64 + twattila amd64 + x86 exit 0;
+        tw_ngx_create_size amd64 + x86 PASS, -Control fails. 'Preset Default' item: not reachable with upscaling in
+        shipped settings (rx38_) -> nothing for ATN; FLIP dump switch stays a j23p_ follow-up.
         x20_ DONE PART 15:01 (RN\handoff_plan\handbacks\x20__handback.md): x20_1128 8ceac6a52 (on 8053e666a, pushed):
         under RR (not Steady) rt_lights.cs_6_5.hlsl's soft-shadow threshold + spot turn use the helper's existing pcg4d
         Random per pixel per frame (cite DLSS-RR Integration Guide 3.5, printed p17-18, not p21); bridge
@@ -19458,7 +19466,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> x20_ fix round (resumed 15:34): verdict fail-closed + self-test, default-case texts (row + design
         unchanged; ATN told), shared threshold dev: or per light, bit-30 arm / harness spec for j23p_, pan flicker env,
         hard-shadow byte control, no-stress-lights run, cheap NITs; then a Sonnet re-check, NV9 via gl_, merge.
-        - [ ] X20 AT THE DEFAULT (ATN, after x20_'s fix round confirms it): the IGN-under-RR row changes the picture
+        x20_ fix round DONE ~15:50 (5fccb564b on x20_1128, pushed; x20__handback.md 'Fix round'): verdict fails closed
+        (missing / wrong-sized dump = INVALID; self-test runs first); at 1 ray / px X20 changes nothing: comment, tooltip,
+        README corrected, C's r1 arms dropped, row + design unchanged (ATN box below); per-light thresholds (guide 3.5:
+        minimize correlations between lower-dimensional projections; one hash per light, rays > 1 only); found + fixed a
+        local that made dxc reorder 2 control headers (control vs base 0 / 116, new 16 rt_lights*); bit-30 arm tests the
+        shader path, HARNESS_SCENE_FLAGS spec -> j23p_ (harness_rr_torch_spec.md); S3-S5 arms + NITs done; gated twattila
+        amd64 + x86 exit 0; NV9 -DryRun exit 0, 83 runs. One `rm` of empty dry-run folders refused, not retried.
+        Re-check fx20b_ (Sonnet High) STARTED 15:57; GO -> NV9 via gl_ -> merge.
+        fx20b_ DONE ~15:55 (scratch\fx20b_\review.md) GO WITH CHANGES: MUST the verdict's part A fails open (a missing
+        A/A dump A_still_r4_base2 makes every texture 'non-deterministic', so a real base-vs-new change reads 'no
+        information'; reproduced on synthetic dumps); held: part B fail-closed + self-test (2 mutations caught), own
+        116-header rebuild (control 0, new 16 rt_lights*), guide quotes verbatim, row texts say 'above 1 ray per pixel',
+        NV9 -DryRun exit 0, 83 runs, 4K only. -> x20_ fix round 2 (resumed 15:57, verdict only); then gl_ NV9.
+        X20 skipped NITs: listed with reasons in x20__handback.md 'Fix round' (accepted by fx20b_ except none flagged).
+        - [ ] X20 AT THE DEFAULT (ATN; CONFIRMED by x20_'s fix round 15:57): the IGN-under-RR row changes the picture
           only above 1 ray per pixel (fx20_), so at the default it does nothing: keep the row as it is, or a design
           that also acts at 1 ray / px? Owner: coord -> ATN.
         j23p_ DONE 15:10 (~35 of 60 min; RN\handoff_plan\handbacks\j23p__handback.md; files outside the repo, branch
