@@ -19340,6 +19340,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         6_E64-ptd1 (day1: B 85 / 100 at battle s 94.0 / 236.2; day1's clock jump). For ATN's eye: the F 200 / 215
         pictures of rrtm vs pt and rr50tm vs rr50 (capture\*.bmp in each start); the RR-before-TM row stays Off.
         G2b (-AB -Arms ep8,dflt -EnginePlugin -Probe full, log scratch\coord_\b2_G2b_run.log) STARTED 13:44.
+        G2b PASS 13:55 (11 min, exit 0; ab_runs\20261128_134433_AB): 2 / 2 valid, golden same x2, determinism same over
+        3749 ticks; dflt ini 'EffectsMode=1 | ContactSplit=0' (no BattleStep / RenderCore key = the DLL defaults), CPU sets
+        12 (logical 0-11) + 'render core: logical 12 + 13', ep8 CPU sets 14; 'parallel effects mode Automatic (ini
+        EffectsMode)' + 'offered (loader guards in place)'; P3 effects 201241489 updated freely, 561 one at a time (free
+        share 100 %); Sol's own option line 'one by one' (ours does the parallel part); no trap, no crash. NUMBERS (one
+        start each): dflt 78.5 fps vs ep8 64.2 = +22.3 % (parts said +25-30 %), median 12.04 vs 14.58 ms, p99 18.80 vs
+        26.98 ms, window 187.8 vs 185.3 s (+2.5 s; parts +2-4 s, noise 1.5 s), steps / s 9.67 vs 9.82, slow 64 vs 66 %.
+        = the 64-bit player defaults (Stage A + render core + Automatic) together: closes HO dflt_ 4.2 / the 'one defaults
+        start'. G5 = WPR 2 (-AB -Arms d1 -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log
+        scratch\coord_\b2_G5_run.log) STARTED 13:55.
         x41d_ DONE 12:5x (~20 min; scratch\x41d_\design.md + x41d_h33.diff / x41d_h32.diff / build_x41.ps1 /
         stage_x41.ps1 / run_x41.ps1 / analyze_x41.py): CAUSE of fxp_'s static > moving: the only metre term the scene
         reaches is FSR 3.1.6 accumulate.h:50 (distance factor from the farthest depth, no motion in it), which sizes the
