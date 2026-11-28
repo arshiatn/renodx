@@ -2,9 +2,10 @@
 
 ## Dev, torch shadows under Ray Reconstruction (2026-11-28; built only, not stamped, not installed, not run in game)
 
-- Fixed: under DLSS Ray Reconstruction, soft torch and fire shadows (and several rays a pixel) use white noise, as
-  NVIDIA's Ray Reconstruction guide asks, instead of a screen-space pattern. New: Torch Shadow Sampling (NVIDIA by
-  default; Gradient: the older pattern). Without Ray Reconstruction nothing changes.
+- Fixed: **torch and fire shadows under DLSS Ray Reconstruction with more than 1 ray a pixel** (Rays a Pixel) use
+  white noise, as NVIDIA's Ray Reconstruction guide asks, instead of a screen-space pattern. At 1 ray a pixel and
+  without Ray Reconstruction nothing changes.
+- New: **Torch Shadow Sampling**, with the torch rows: NVIDIA (default) or Gradient (the older pattern).
 
 ## Dev, 64-bit defaults from the 11-28 tests (2026-11-28; built only, not stamped, not installed, not run in game)
 

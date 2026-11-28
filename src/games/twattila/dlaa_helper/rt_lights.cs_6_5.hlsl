@@ -298,32 +298,31 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     traced = reached_slots & chosen;
     lit = ~(reached_slots & kept_dark);
   }
-  // Soft shadows under Ray Reconstruction: each ray to a point of the light's disk (light_size), the bit lit where the
-  // share of rays that reached it beats a threshold uniform in [0, 1) (P(lit) = the share), which RR averages into
-  // the share (hard: half). Several rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar
-  // pixel, the spots turned per pixel. Steady: each ray to the light's centre, most of a pixel's rays decide.
-  // Under RR the threshold and the turn are white noise, each pixel's own every frame (X20; src: DLSS-RR Integration
-  // Guide 3.5, p17-18: "DLSS RR assumes independent samples", "Do use high quality hash functions and white noise",
-  // avoid "screen space dithering in the sampling algorithms"; Random is rt_scene.hlsli's pcg4d, from the hash paper
-  // the guide cites). ours: one threshold a pixel for all its lights, as before (a pixel's lights' bits correlate with
-  // each other, not across the screen). Torch Shadow Sampling Gradient (LIGHT_GRADIENT_NOISE, set by the helper on
-  // this dispatch alone from the addon's RT_SCENE_LIGHT_GRADIENT_NOISE: rt_trace reads bit 30 as its PART_SUN) or
-  // CONTROL_LIGHT_GRADIENT_NOISE (tests): interleaved gradient noise as before X20, a screen-space dither moved each
-  // frame. Without RR both as before.
+  // Soft shadows under Ray Reconstruction: each ray to a point of the light's disk (light_size). Several rays a pixel
+  // (Rays a Pixel) each from its own spot of a planar pixel, the spots turned per pixel; the bit lit where the share
+  // of rays that reached the light beats a threshold uniform in [0, 1) (P(lit) = the share), which RR averages into
+  // the share (hard: half). With one ray neither threshold nor turn decides anything (the bit is the ray's; its disk
+  // point is Random already). Steady: each ray to the light's centre, most of a pixel's rays decide.
+  // X20: under RR the threshold and the turn are white noise, new each frame (src: DLSS-RR Integration Guide 3.5,
+  // p17-18: "DLSS RR assumes independent samples", "Do use high quality hash functions and white noise", avoid "screen
+  // space dithering in the sampling algorithms"; Random is rt_scene.hlsli's pcg4d, the hash paper the guide cites),
+  // a threshold for each light (the guide's "Correlations should be minimized between all lower-dimensional
+  // projections": one shared threshold made a pixel's lights' bits move together). ours: one turn a pixel for all its
+  // lights, the pixel's spots as the sun's (rt_trace). Torch Shadow Sampling Gradient (LIGHT_GRADIENT_NOISE: the helper
+  // sets bit 30 on this dispatch alone, from the addon's RT_SCENE_LIGHT_GRADIENT_NOISE; rt_trace reads it as PART_SUN)
+  // or CONTROL_LIGHT_GRADIENT_NOISE (tests): the interleaved gradient noise of before X20, one for all lights.
   static const uint LIGHT_GRADIENT_NOISE = 1u << 30;
-  // Random's dimensions: DIM_LIGHT_DISK's indices past every light's rays (light x 16 + ray x 2 + 0 / 1 < 128 x 16).
+  // Random's dimensions: DIM_LIGHT_DISK's indices past every light's rays (light x 16 + ray x 2 + 0 / 1 < 128 x 16):
+  // the thresholds at + 2048 + light (light < 128), the turn at + 2176.
   static const uint DIM_LIGHT_THRESHOLD = DIM_LIGHT_DISK + 2048u;
-  static const uint DIM_LIGHT_TURN = DIM_LIGHT_DISK + 2049u;
+  static const uint DIM_LIGHT_TURN = DIM_LIGHT_DISK + 2176u;
 #if defined(CONTROL_LIGHT_GRADIENT_NOISE)
   const bool white_noise = false;
 #else
   const bool white_noise = reconstructed && !steady && (flags & LIGHT_GRADIENT_NOISE) == 0u;
 #endif
   const uint rays = clamp(shadow_rays, 1u, 8u);
-  const float threshold = (reconstructed && !steady && (soft || rays > 1u))
-                              ? (white_noise ? Random(uint4(id.xy, frame, DIM_LIGHT_THRESHOLD))
-                                             : InterleavedGradientNoise(float2(id.xy)))
-                              : 0.5f;
+  const float threshold = (reconstructed && !steady && (soft || rays > 1u)) ? InterleavedGradientNoise(float2(id.xy)) : 0.5f;
   const float turn = white_noise ? Random(uint4(id.xy, frame, DIM_LIGHT_TURN))
                                  : InterleavedGradientNoise(float2(id.xy) + 37.f);
   [loop]
@@ -336,7 +335,10 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
       const float3 from = light_origin + ((rays > 1u && planar) ? PixelSpot(int2(id.xy), SpotOf(ray, turn)) : 0.f);
       if (LightRayReaches(light, from, soft, id.xy, light * 16u + ray * 2u)) ++reached_rays;
     }
-    if ((float)reached_rays <= threshold * (float)rays) lit &= ~(1u << slot);
+    // A threshold for each light; one ray: none decides (no hash spent).
+    if ((float)reached_rays <= ((white_noise && rays > 1u) ? Random(uint4(id.xy, frame, DIM_LIGHT_THRESHOLD + light)) : threshold) * (float)rays) {
+      lit &= ~(1u << slot);
+    }
   }
 #if defined(TORCH_IRRADIANCE)
   // Torch Light in Path-Traced GI's torch light here (PT DI step 3, T1: the paths' hits the screen shows take it,

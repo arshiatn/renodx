@@ -2114,9 +2114,9 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .default_value = 0.f,
           .label = "Torch Shadow Sampling",
           .section = section,
-          .tooltip = "The noise in soft torch and fire shadows that Ray Reconstruction cleans.\n"
+          .tooltip = "The noise in torch and fire shadows that Ray Reconstruction cleans, with more than 1 ray a pixel.\n"
                      "NVIDIA: as NVIDIA advises for Ray Reconstruction. Gradient: the older pattern.\n"
-                     "Needs DLSS Ray Reconstruction (NVIDIA only).",
+                     "Needs DLSS Ray Reconstruction (NVIDIA only) and Rays a Pixel above 1.",
           .labels = {"NVIDIA", "Gradient"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },
