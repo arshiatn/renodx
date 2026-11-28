@@ -741,8 +741,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
-- BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
-- DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3' ... | coord -> wave 2 (main
+- BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | coord -> wave 2 (main
 - REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of r ... | ATN
 - j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch swi ... | coord -> j23p_
 - J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / h ... | ?
@@ -19447,11 +19446,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         (~75 min + one headless Nsight per arm, ~75 GB); both default to w4b2_'s folders, dry runs pass; 3 J3 recorder +
         reference helpers from 747223522 (116 headers = w4b2_'s). Reviews rj23p_ (Opus xHigh) + fj23p_ (Sonnet High)
         STARTED 15:10.
-        - [ ] DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3's play-back arms run without
+        fj23p_ DONE 15:25 (scratch\fj23p_\review.md) GO WITH CHANGES: scene sound (closed room, sun only through the
+        plank gaps, opaque / clear / unknown micromap states; the control cannot pass by accident); 4K exe = its source;
+        116 J3 headers = w4b2_'s. MUST: j3_job.ps1:130-132 calls gpu_trace.ps1 via powershell -File, so -Env keeps only
+        its first value and PATH_FLAGS lands in -HarnessDir (reproduced): call it in-process. SHOULD: J3 play failures
+        unchecked (player log, exit code); micromap-on rows trust the recording's flags (pass 128); no DXIL digest
+        check for play_<arm>; j_judge digests pass a no-op control; J2 cheap sets (edge, leafpt) last; control arms R 4
+        (J2 255 -> ~189 GB, J3 84 -> ~63 GB; coord ok needed, R >= 8 rule); bake set refs mostly dropped (INVALID) +
+        fx4b open item = expected APART; no SHaRC cost rows; no verdict table + partial sets judged; J3 disk stop skips
+        cost plays. 8 NITs. 'Unset = old scenes' proven on CPU hashes only. DRED off in the player: safe to judge.
+        Waiting for rj23p_, then one fix round (j23p_).        - [ ] DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3's play-back arms run without
           DRED details (a TDR still stops the arm). Owner: coord -> wave 2 (main.cpp has no wave-1 writer); rj23p_ says
           whether J3 is safe to judge without it.
         - [ ] REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of raw references vs ATN's
           ~100-200 GB (D1) and D: ~452 GB free + 87 GB from del_. Asked ATN 15:10. Owner: ATN.
+          fj23p_ 15:25: D: 565 GB free, guard at 232.5 GB -> 332 GB usable; J2 255 + J3 ~84 + X08 ~110 = ~449 GB, so
+          the three cannot all finish without deletes or trims (control arms R 4 would save ~87 GB).
         - [ ] j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch switch
           (scratch\x20_\harness_rr_torch_spec.md); X38's FLIP dump switch (x38__handback.md); the pdi1 v33 field fix
           if not done. Owner: coord -> j23p_.
