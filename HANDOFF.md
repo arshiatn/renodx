@@ -19059,6 +19059,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         CORE_RENDER); (2) F7: the add-on writes both effect bits on its first present even when the row is hidden ->
         every other core_wanted case +48 (in C3). fp8a_ 'BattleStep=1 test due with W5' CLOSED (CORE_STEP stays).
         rdfi_ (Opus xHigh review) STARTED 10:04.
+        rdfi_ DONE 10:18 (14 min; scratch\rdfi_\review.md): C2 GO, C3 GO, rev GO WITH CHANGES, C1 GO. MUST: F7's fresh
+        ReShade.ini (test\tw_attila64_present\run.ps1:444) has no Attila64SettingsRevision, so revision 2 deletes the
+        cases' saved keys (addon.cpp:4087): saved_off, effects_off, effects_on would FAIL -> add 'Attila64SettingsRevision=2'.
+        S1 an F7 case that runs the revision itself. S2 (a64_ab): the F11 guard (:1092) accepts only revision '1' ->
+        >= 2 (sent to abe_ round 2); arms pinning the two keys in a fresh ini need revision 2 (none today). The +48 is
+        correct (the walk hook reads the bits only when the row applies); all 14 F7 numbers right bit by bit after the
+        MUST; patcher_test deviation does not weaken a check; merge-tree clean, no shared file. After the merge: rebuild
+        the plugin + its tests (sbi_ changed battle_step.hpp), restage a3_smoke add-on + plugin TOGETHER (an old plugin
+        beside the new add-on = toggle On but render core off). NIT 4 FOR ATN: revision 2 also resets a saved Effects
+        On (2) to Automatic once (fine while the 64-bit add-on is unreleased). Process slip: one recursive grep over the
+        repo's D:\Dev\renodx\tools (not tools\tw; found nothing): noted.
+        dfi_ round 2 STARTED 10:17 (MUST + S1 + NITs 1-3; no GPU).
         - [ ] rdfi_ -> Sonnet High final -> merge all 4 (ATN yes to C1) -> F7 (test\tw_attila64_present\run.ps1, GPU
         lock, after aa67_) -> the README notes lines (coord) -> restage a3_smoke + the plugin from the main tree ->
         one defaults start in the next CPU batch. Owner: coord.
