@@ -692,7 +692,9 @@ inline constexpr uint32_t MIN_TASK_THREADS = 4;
 // An object with more cells takes the game's walk. A walk that visits more ids clears its whole private set.
 inline constexpr uint32_t FAKE_ENTRY_COUNT = 64;
 inline constexpr uint32_t VISITED_LIMIT = 2048;
-inline constexpr uint32_t NODE_BLOCK_COUNT = 256;
+// Ours: 32 kept nodes an object at OBJECT_LIMIT. A tick that keeps more re-checks more nodes in the apply than its
+// walk saved, so the game's loop is also the faster answer there.
+inline constexpr uint32_t NODE_BLOCK_COUNT = 2048;
 inline constexpr uint32_t NODE_BLOCK_NODES = 1024;
 inline constexpr uint32_t CLASS_SLOTS = 256;
 inline constexpr uint32_t RESORT_PERIOD = 100;  // the game's: every 100th tick re-sorts the list
@@ -2779,6 +2781,7 @@ struct ContactState {
   uint64_t chunks = 0;
   uint64_t visited = 0;
   uint64_t listed = 0;
+  uint64_t most_listed = 0;  // the largest shortlist of one handled tick
   uint64_t plain_objects = 0;
   uint64_t objects_seen = 0;
 
@@ -2799,7 +2802,8 @@ struct ContactState {
 };
 static ContactState contact;
 static std::array<ContactItem, OBJECT_LIMIT> contact_items;                             // 1.6 MB, zero until used
-static std::array<ContactNode, size_t{NODE_BLOCK_COUNT} * NODE_BLOCK_NODES> contact_nodes;  // 10.5 MB, the same
+// 80 MiB of zero pages; a region touches its own tick's need only.
+static std::array<ContactNode, size_t{NODE_BLOCK_COUNT} * NODE_BLOCK_NODES> contact_nodes;
 static std::array<ContactSlot, SLOT_COUNT> contact_slots;
 // Not constexpr-built: the entries hold the object's own addresses.
 static constinit ContactCells contact_cells = [] {
@@ -3157,11 +3161,21 @@ inline constexpr HelperTable HELPER_TABLE;
   const auto original = [&](ContactReason reason) {
     contact.original_ticks.fetch_add(1, std::memory_order_relaxed);
     if ((contact.reasons_logged.fetch_or(1u << reason, std::memory_order_relaxed) & (1u << reason)) == 0) {
-      if (reason == CONTACT_REASON_CLASS) {
-        loader.log("renodx_attila64: contact split: partly (unknown class: vtable 0x%llx)",
-                   uint64_t{contact.unknown_vptr});
-      } else {
-        loader.log("renodx_attila64: contact split: partly (%s)", CONTACT_REASON_WORDS[reason]);
+      switch (reason) {
+        case CONTACT_REASON_CLASS:
+          loader.log("renodx_attila64: contact split: partly (unknown class: vtable 0x%llx)",
+                     uint64_t{contact.unknown_vptr});
+          break;
+        case CONTACT_REASON_POOL:
+          // Ours: the chunks claimed against all say how far the pool reached in this tick.
+          loader.log("renodx_attila64: contact split: partly (list pool: objects %u, chunks %u of %u)",
+                     contact.object_count,
+                     std::min(contact.next_chunk.load(std::memory_order_relaxed), contact.chunk_count),
+                     contact.chunk_count);
+          break;
+        default:
+          loader.log("renodx_attila64: contact split: partly (%s)", CONTACT_REASON_WORDS[reason]);
+          break;
       }
     }
     if (reason != CONTACT_REASON_ID_SET) {
@@ -3357,6 +3371,7 @@ inline constexpr HelperTable HELPER_TABLE;
   contact.chunks += chunk_count;
   contact.visited += visited;
   contact.listed += listed;
+  contact.most_listed = std::max(contact.most_listed, listed);
   contact.plain_objects += plain_objects;
   contact.objects_seen += object_count;
   ++contact.handled_ticks;
@@ -3364,8 +3379,9 @@ inline constexpr HelperTable HELPER_TABLE;
   const bool partly = (contact.reasons_logged.load(std::memory_order_relaxed) & ~(1u << CONTACT_REASON_ID_SET)) != 0;
   SetLane(block, (partly ? ENGINE_PARTLY : ENGINE_ACTIVE), ENGINE_SPLIT_SHIFT);
   if (contact.handled_ticks == 1) {
-    loader.log("renodx_attila64: contact split: active (objects %u, plain %u, listed %llu, helpers %u)", object_count,
-               plain_objects, listed, helper_count);
+    loader.log("renodx_attila64: contact split: active (objects %u, plain %u, listed %llu, helpers %u"
+               ", radius addition %g)",
+               object_count, plain_objects, listed, helper_count, double{contact.radius_addition});
   }
   if (std::ranges::find(SUMMARY_TICKS, contact.handled_ticks) != SUMMARY_TICKS.end()) {
     const auto microseconds = [](uint64_t time) {
@@ -3373,11 +3389,11 @@ inline constexpr HelperTable HELPER_TABLE;
           std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::duration(time)).count());
     };
     loader.log("renodx_attila64: contact split: %u ticks (region mean %llu us, max %llu us, join wait mean %llu us, own "
-               "chunks %llu %%, visited %llu, listed %llu, plain %llu %%, fence ticks %u (first at tick %u, index %u), "
-               "original ticks %u)",
+               "chunks %llu %%, visited %llu, listed %llu, listed max %llu, plain %llu %%, fence ticks %u "
+               "(first at tick %u, index %u), original ticks %u)",
                contact.handled_ticks, microseconds(contact.region_time / contact.handled_ticks),
                microseconds(contact.longest_region), microseconds(contact.join_wait / contact.handled_ticks),
-               (contact.own_chunks * 100) / contact.chunks, contact.visited, contact.listed,
+               (contact.own_chunks * 100) / contact.chunks, contact.visited, contact.listed, contact.most_listed,
                (contact.plain_objects * 100) / contact.objects_seen, contact.fence_ticks, contact.first_fence_tick,
                contact.first_fence_index, contact.original_ticks.load(std::memory_order_relaxed));
   }
