@@ -444,8 +444,7 @@ int main(int argc, char** argv) {
   Check(SUCCEEDED(game.device.As(&game.device5)) && SUCCEEDED(game.context.As(&game.context4)), "game shared fence support");
   Check(SUCCEEDED(game.device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&game.tail))), "tail fence");
   auto& bridge = bridge_api::bridge;
-  // An Unreal game's unit (centimetres, as Tales and Expeditions install it): each Start carries it into the block
-  // (v33).
+  // An Unreal game's unit (centimetres, as Tales and Expeditions install it): Start carries it (v33).
   bridge.metres_per_unit = 0.01f;
   // The context's Signal and Wait through the test's: the interface's calls must reach them, and still do their work.
   original_signal = reinterpret_cast<FenceCall>(PatchSlot(game.context4.Get(), SIGNAL_SLOT, reinterpret_cast<void*>(&TestSignal)));
