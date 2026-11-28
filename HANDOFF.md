@@ -741,7 +741,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
-- ATN: Stage B on 6-core / 4C8T / 6C6T CPUs: the cap sends them to the game's own ... | ATN
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
 - BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
 - P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2 ... | coord (game runs), after the fxh2_1127 merge
@@ -19313,7 +19312,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         ContactCores; 9 prior art to check (Box2D v3 category / mask / group + proxy order; Box2D samples min(8,
         threads / 2); UE4 logical CPUs = a deviation); 10 6-core / 4C8T / 6C6T fall back to the game's loop -> ATN
         (never-drop rule). 6 NITs. => Fable designer input Monday (sbf_ design + this review).
-        - [ ] ATN: Stage B on 6-core / 4C8T / 6C6T CPUs: the cap sends them to the game's own loop (today's build
+        - [x] DECIDED 14:31 (ATN 'Your pick'): game's own loop there; emulated 8 / 12-thread test parked (all_plans 7.5).
+          Was: ATN: Stage B on 6-core / 4C8T / 6C6T CPUs: the cap sends them to the game's own loop (today's build
           would run 9 / 5 / 3 helpers there, never measured; only 8+ cores get the battle core anyway). Owner: ATN.
         - [ ] Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b ContactCores=16): ATN's yes on
           the new arms once the Fable design names them. Owner: coord -> ATN.
