@@ -18458,7 +18458,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         (resumed, Opus High: rfxh2_ M1 + S1-S3, ffxh2_ S1 / S3, WH3 campaign per-request unit); pxa_ (NEW, Opus Medium
         trial; worktree pxa_1128 from 05607429b; addon.cpp + plugin_block.h comments): the PerfFix pin add-on part
         (EngineTexts + nullptr assert, the 'another mod' text, is_visible, one ReShade.log line, lane 6 text, rpxp_ N5).
-        No file overlap between the three. rrts2_ (Opus xHigh, 9 min;
+        No file overlap between the three. pxa_ DONE 01:25 (~7 of 30 min; scratch\pxa_\handback.md; pxa_1128 pushed, not merged):
+        81835b9cb addon.cpp: EngineTexts sized ENGINE_OTHER_MOD + 1, a nullptr static_assert per table, lane 7 text in
+        both tables, the toggle hidden on lane 7, lane 6 'off (game code differs: game update or another mod? see
+        attila64_log.txt)', lane 7 'off (another mod changed its code: PerfFix update?)'; 4ee6d9a0b link.hpp: one
+        ReShade.log line per process in PublishScales when a lane reads 7; a88f871c3 plugin_block.h comments (rpxp_ N5,
+        <= 120 columns). Gated amd64 + x86 twattila / twrome2 / thrones exit 0, tw_unit_shadows x2 PASS, defaults 136
+        ok, page dumps a / a64r SAME, a64 only the lane texts + build date. Reviews rpxa_ (Opus xHigh) + fpxa_ (Sonnet
+        High), read only, STARTED 01:25. Next addon.cpp writer after the merge: cp_ (the CPU page, Opus High; brief
+        scratch\cp_\brief.md written). rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
