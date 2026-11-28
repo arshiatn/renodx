@@ -19064,6 +19064,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         check_logs expected stop line after the kill, (3) 'RT rays ran' positive match (rga_ S1; two status lines OK),
         (4) RenderCore='0' Pins on 18 kinds + '1' explicit on ep8p2 / ep2 / ep1cp2 (dflt_), (5) E64-rrtm trace B 70 +
         rr50tm's vacuous vp clause (gb_ E4). Offline proofs + AST scan + -DryRun twins of groups A..J.
+        abe_ DONE 09:53 (33 min; scratch\abe_\handback.md): patch_abe.py (e2400da3..., NO default target: give the live
+        path) bc9cf693... -> c76696f741436dc3e0a89b92819d7db4f45c8c6ac58379c1095cab31da0a488b; refuses a 2nd apply / wrong
+        sha / no argument. (1) w3 / spr starts fire zz_capture at first-present s 50-53 + 64; W3-Lines picks the frames
+        before / after the camera key; black / missing / mistimed = 'not measured' (group E copy: 'not measured: no
+        zz_capture frames'; real 4K frames: two battle frames 787 -> 787 FAIL, menu vs battle 253 -> 787 PASS); hzc_ 17 /
+        17, h91 21 / 21. (2) one helper stop at / after the kill = clean (H PASS; 2nd stop or early stop FAIL). (3) rga_
+        S1's regex (refused / failed / request-failed now FAIL; the live copy passed them). (4) RenderCore='0' Pins on
+        the 18 kinds (ep8p2 / ep2 / ep1cp2 already '1'). (5) E64-rrtm trace B 70; O1 vp clause info only; row On = mark +
+        zz_capture F 200 / F 215 < 2 % black (G: 0.3 / 0.4 %). Clash scan 0; dry runs A-H exit 0 'self-test: ok' (diffs:
+        RenderCore=0 ini text A / B / C, E's capture env, G's rrtm marker). LEFT: G's + H's REAL logs FAIL part 3 (add-on
+        b756de5c predates ga_: only 'no status') = expected until the a3_smoke restage; E needs one w3 rerun for a real
+        camera-key pair; capture seconds rest on 8 starts (+-2 s load = 'not measured'); 5 x 33 MB raws per w3 / spr
+        start; ~4.3 GB copies in abe_\proof + ptest / ptest2 (the safety check refused one rm: left, delete only on
+        ATN's OK). rabe_ (Opus xHigh review) STARTED 09:54.
         - [ ] abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> -DryRun. Before any start
         on the W5 DLL. Owner: coord.
         GPU LANE NEXT (ATN 09:3x 'Do we have time to run the next gpu stuff?'): fxp_ still runs (P2c, GPU lock held by
