@@ -184,8 +184,8 @@ static bool callback_failure_logged = false;
 // UnitFlushRunsHere's reads from a draw callback (no mutex there): the rows registered now (`wanted` as Update stored
 // it, 0 from Unregister on) and the thread of the last BeforePack since this registration (none before its first). Two
 // atomics, not one state under a lock: each alone makes the answer false (nothing registered, or the pack on another
-// thread) and no invariant spans both. Both stores of the mirror come before hooks_wanted's (Update's and Unregister's):
-// a draw decided after the bone flush stops never waits for it.
+// thread) and no invariant spans both. Both stores of the mirror come before hooks_wanted's (Update's and
+// Unregister's): a draw decided after the bone flush stops never waits for it.
 static std::atomic<uint32_t> registered_rows = 0;
 static std::atomic<std::thread::id> pack_thread;
 static_assert(std::atomic<std::thread::id>::is_always_lock_free);

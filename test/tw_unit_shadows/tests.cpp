@@ -734,12 +734,13 @@ int main(int argc, char** argv) {
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS
           && block.hooks_wanted.load() == plugin::RowBit(plugin::ROW_PASS_DRAW)
           && link::internal::module_reference != nullptr && link::internal::epoch.load() != epoch_before);
-    const uint32_t epoch_registered = link::internal::epoch.load();
+    uint32_t epoch_registered = link::internal::epoch.load();
     link::Update(both, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.hooks_wanted.load() == both && link::internal::epoch.load() == epoch_registered);
     // Batched Unit Capture's runs-here (S5a, rt_port_64 RS1): BONE_FLUSH registered and the last BeforePack on the
     // asking thread; the mirror follows every change (a shrink and Unregister clear it), the pack thread is forgotten
-    // at Unregister. CONTROL (mutation run): without Unregister's mirror clear the last check fails.
+    // at Unregister. CONTROLS (mutation runs): without Unregister's mirror clear the last check fails; without its
+    // pack-thread clear the check after the new registration ("false until its own first BeforePack") fails.
     const auto pack_elsewhere = [] { std::thread([] { link::internal::CALLBACKS.before_pack(); }).join(); };
     link::internal::CALLBACKS.before_pack();
     CHECK(link::UnitFlushRunsHere());
@@ -811,6 +812,7 @@ int main(int argc, char** argv) {
     link::Update(0, link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == nullptr && block.hooks_wanted.load() == 0
           && link::internal::module_reference == nullptr);
+    epoch_registered = link::internal::epoch.load();  // the last registration's (7c registered again since)
     link::Update(plugin::RowBit(plugin::ROW_BONE_FLUSH), link::BATTLE_CORE_DEFAULT, link::RENDER_CORE_DEFAULT);
     CHECK(block.callbacks.load() == &link::internal::CALLBACKS && link::internal::epoch.load() != epoch_registered);
     // A hook still inside for 50 ms: the wait ends when it leaves, the reference released.
