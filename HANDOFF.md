@@ -19405,6 +19405,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         to apply both on its branch. GPU job scratch\x20_\x20_nv9_job.ps1 (76 runs, ~20 min, ~11-21 GB on D:; pass RR off
         byte-identical; control: the new build's light_mask differs from base under RR); the post-RR numbers need a
         harness switch (scratch\x20_\harness_rr_torch_spec.md). Reviews after the resumed commit.
+        x20_ DONE 15:08 (resumed, x20__handback.md update section): f675bebee on x20_1128 (pushed): rt_d3d12.hpp passes
+        the Gradient bit to the torch lights' dispatch only and restores it right after (rt_trace never sees it);
+        graphics_page.hpp one page.Take puts the row with the torch rows, only_some_games (Shogun 2 builds its own torch
+        rows); rebuilt exit 0: helper new + control, gated twattila amd64 + x86, shogun2 amd64 (wh3 amd64 first commit
+        only); new vs base the same 16 rt_lights* headers, control = base 116. NV9 job: the harness cannot send the bit,
+        so its Gradient arm = the control build (job header says so). Reviews rx20_ (Opus xHigh, builds wh3 too) +
+        fx20_ (Sonnet High) STARTED 15:08.
         - [ ] j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch switch
           (scratch\x20_\harness_rr_torch_spec.md); X38's FLIP dump switch (x38__handback.md); the pdi1 v33 field fix
           if not done. Owner: coord -> j23p_.
