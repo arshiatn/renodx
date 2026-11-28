@@ -18557,7 +18557,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         STARTED 02:51. Then reviews (Opus xHigh + Sonnet High), F7 on the GPU, merge, then the big batch.
         Big batch plan bbp_ (Opus xHigh, read only, est 35 / 70; testbin\scratch\bbp_\brief.md -> batch_plan.md:
         before-list, starts in run order with commands, count + why (cited) + gate per start, not-in-batch list,
-        trims, rule lines (settings.local.json read only), open questions) STARTED 02:52 beside s5a_.
+        trims, rule lines (settings.local.json read only), open questions) STARTED 02:52 beside s5a_. DONE 03:14
+        (23 of 35 min): 28 game starts ~208 min (+ P16 ep8tt8 if ep8btt8's golden differs, + one R1 late twin).
+        Run order: A P5 ep1c / ep1cvfx / ep1cvfxauto (PK9 S-A + Automatic, L2B S2 read, N9), B P11 ep1c / ep8 /
+        ep8p2 / gc0 (S-C, Stage A, PK5's control), C P15 ep8 / ep8b / ep8btt8 (Stage B + the PerfFix golden: -Package
+        AB lines load PerfFix, so HO's 'P15 carries no PerfFix' is stale), I d11 day1 capture (START 5), J 32-bit
+        siege S4, D -C2 smoke x2 (E64-sr2 (e), C8 re-check, the CPU page's first game run, PK1 12.1 / K4), E w3 + WPR
+        (K3, horizon metric, PK6 1.4), F -R1 x3 (census), G -R2 (6 + rt2c + rr50 / rr50tm), H -R2Kill. Before:
+        HDR display, quiet PC for A / B / C / E (a64_ab's $BUILD_TOOLS has no user: it will NOT refuse a start while
+        agents build), F7 ALL on the GPU (S5a's gate), restage a3_smoke (81c42b53 is older than S2 / the CPU page /
+        S5a) before D-H, fill rt_stage (folder missing: main-tree helper + recorder builds), siege -Prepare in a
+        build gap. Rule lines and CPU Set Setter rules: none missing. Coord took every pick: Q1 P11; Q2 + Q3 YES (one
+        a64_ab patch); Q4 no timed group while any agent builds; Q5 A / B / C / I / J fill S5a's wait (reviews are
+        read only); Q6 R5 from group I's dump; Q7 R2Kill last; Q8 a3_smoke's stray .bak moved to scratch, not
+        deleted; Q9 the DryRun's perffix64.dll sha, group C void (no retry) if ep8b's contact split is off.
+        a64_ab patch abg_ (Opus Medium trial, est 15 / 30; copy + sha-gated patch: -R2 + E64-rt2c, E64-rr50,
+        E64-rr50tm; DryRun diffs) STARTED 03:16. Reviews then the coord applies before group G.
+        [ ] a64_ab: make $BUILD_TOOLS refuse a timed start while a build tool runs (bbp_ B4; owner: next a64_ab
+        writer after the batch).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
