@@ -736,6 +736,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G-a: re-log the RT status line once the helper's first status arrives (or arm th ... | coord, apply phase (add-on change + gated build + a3_smoke)
 - G-b: root-cause RR Before Tone Mapping not applying at 50 % render scale on 64-b ... | coord, apply phase
 - a64_ab R2Kill: check_logs' 'the helper stopped' line after the kill time is the ... | coord, next a64_ab patch (with G-a's check)
+- APPLY i: the d11 day1 dumps (group I) -> the 2.10 D3D11 pass analysis, after wav ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | the W-H2 fix round after reviews
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
@@ -18914,6 +18915,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         crash, left alone); no lock held. Next: the morning report to ATN, then step 3 (apply the batch's results).
         Round report sent 08:0x. ATN 08:3x: PK9 'Doesn't automatic sound better?' -> AUTOMATIC (coord agrees); 'do the
         apply-phase items first before the GPU stuff' -> all_plans 3.3 'APPLY PHASE LIST' a-h written 08:40.
+        APPLY PHASE WAVE 1 STARTED 08:42 (briefs testbin\scratch\<name>\brief.md): sbp_ Stage B pool sizing design
+        (Opus xHigh, est 20 / 40); dflt_ defaults plan PK9 Automatic + Stage A / PK2P (+W5) / PK5 (Opus xHigh, 12 / 24);
+        ga_ RT status line after the helper's first status (Opus High, worktree ga_1128, gated amd64 + x86 builds,
+        15 / 30); gb_ RR Before Tone Mapping at 50 % root cause (Opus xHigh, 15 / 30); jcr_ J exit crash dump (Opus
+        Medium, 10 / 20); s4c_ S4 census (Opus Medium, 12 / 24). Overlap: one writer (ga_, rt_core.hpp); the rest read.
+        - [ ] APPLY i: the d11 day1 dumps (group I) -> the 2.10 D3D11 pass analysis, after wave 1. Owner: coord.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
