@@ -36,17 +36,29 @@ inline bool StartsWithNoCase(std::string_view text, std::string_view prefix) {
 }
 
 // Each line of `file` in order, cut at its first CR or LF (Sol's strcspn, S28 picker.c:83), to `visit` (none: no such
-// file). Binary: a 0x1A byte does not end the file. False: the file is there but was not read to its end (not opened,
-// for example held by another program, or a read error).
+// file). Binary: a 0x1A byte does not end the file. False, nothing visited: the file is there but was not read to its
+// end (not opened, for example held by another program, or a read that stopped early: a locked range, a lost share).
+// The proof is the byte count, not the stream's flags: the whole file in one read, its size from the same handle.
 template <typename Visit>
 bool ForEachLine(const std::filesystem::path& file, Visit visit) {
-  std::ifstream stream(file, std::ios::binary);
-  for (std::string line; std::getline(stream, line);) {
-    line.resize(std::min(line.find('\r'), line.size()));
-    visit(std::string_view(line));
+  std::ifstream stream(file, std::ios::binary | std::ios::ate);
+  if (!stream.is_open()) {
+    std::error_code error;
+    return !std::filesystem::exists(file, error) && !error;
   }
-  std::error_code error;
-  return (stream.is_open() ? !stream.bad() : !std::filesystem::exists(file, error) && !error);
+  const std::streamoff size = stream.tellg();
+  if (size < 0) return false;
+  std::string text(static_cast<size_t>(size), '\0');
+  stream.seekg(0);
+  stream.read(text.data(), static_cast<std::streamsize>(size));
+  if (stream.gcount() != size) return false;
+  for (size_t at = 0; at < text.size();) {
+    const size_t end = std::min(text.find('\n', at), text.size());
+    const std::string_view line(text.data() + at, end - at);
+    visit(line.substr(0, line.find('\r')));
+    at = end + 1;
+  }
+  return true;
 }
 
 // Sol's name test (S28 picker.c:63, :82): the line starts with the name in either case, then '='.
@@ -540,9 +552,16 @@ enum class FileKind : uint8_t {
   HEAPFIX_INI,   // the profile API
 };
 
-// Writes `row`'s value (an editable row's: a choice's index or the count) into `file`, its owner's way; false: not
-// written (the file as it was). Only a player's change writes, and no other key is removed. True with nothing written:
-// the file already has the value, or an off-only row was moved back to On.
+// What Write did. UNCHANGED: nothing to write (the file already has the value, or an off-only row was moved back to
+// On). FAILED: not written, the file as it was.
+enum class WriteResult : uint8_t {
+  WRITTEN,
+  UNCHANGED,
+  FAILED,
+};
+
+// Writes `row`'s value (an editable row's: a choice's index or the count) into `file`, its owner's way. Only a
+// player's change writes, and no other key is removed.
 // - settings.txt: Sol's settings_put (S28 picker.c:72-92): no write when the value is already the same (strcmp); else
 //   every non-empty line not naming the key kept in order (the key's older lines and empty lines go), `key=value`
 //   appended, each line ended with CRLF as his text-mode fopen "w" writes "\n". Sol's own write keeps 31 lines; this
@@ -551,19 +570,20 @@ enum class FileKind : uint8_t {
 // - heapfix.ini: no write when the file already reads that value (a missing key: its default); refused without the
 //   file (the fix writes it at its first start). Else WritePrivateProfileStringW for the one key: every comment and
 //   other key kept, the key added to its section when missing.
-[[nodiscard]] inline bool Write(const std::filesystem::path& file, FileKind kind, const FileRow& row) {
+[[nodiscard]] inline WriteResult Write(const std::filesystem::path& file, FileKind kind, const FileRow& row) {
   assert(row.editable && row.value >= 0 && (kind == FileKind::SETTINGS_TXT || !row.section.empty()));
-  if (row.off_only && row.value != 0) return true;
+  if (row.off_only && row.value != 0) return WriteResult::UNCHANGED;
   const std::string value = (row.choices.empty() ? std::to_string(row.value) : row.choices[row.value].value);
   if (kind == FileKind::SETTINGS_TXT) {
-    if (Value(file, row.key) == value) return true;
+    if (Value(file, row.key) == value) return WriteResult::UNCHANGED;
     std::vector<std::string> kept;
-    const bool read = ForEachLine(file, [&](std::string_view line) {
-      if (!line.empty() && !LineNames(line, row.key)) {
-        kept.emplace_back(line);
-      }
-    });
-    if (!read) return false;
+    if (!ForEachLine(file, [&](std::string_view line) {
+          if (!line.empty() && !LineNames(line, row.key)) {
+            kept.emplace_back(line);
+          }
+        })) {
+      return WriteResult::FAILED;
+    }
     kept.push_back(row.key + "=" + value);
     const std::filesystem::path temporary = file.native() + L".tmp";
     std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
@@ -573,16 +593,16 @@ enum class FileKind : uint8_t {
     stream.close();
     if (!stream.fail()
         && MoveFileExW(temporary.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE) {
-      return true;
+      return WriteResult::WRITTEN;
     }
     DeleteFileW(temporary.c_str());
-    return false;
+    return WriteResult::FAILED;
   }
-  if (GetFileAttributesW(file.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
+  if (GetFileAttributesW(file.c_str()) == INVALID_FILE_ATTRIBUTES) return WriteResult::FAILED;
   if (std::ranges::any_of(FixRows(file), [&row](const FileRow& now) {
         return now.section == row.section && now.key == row.key && now.value == row.value;
       })) {
-    return true;
+    return WriteResult::UNCHANGED;
   }
   const auto widen = [](std::string_view text) {
     const int text_size = static_cast<int>(text.size());
@@ -590,9 +610,11 @@ enum class FileKind : uint8_t {
     MultiByteToWideChar(CP_UTF8, 0, text.data(), text_size, wide.data(), static_cast<int>(wide.size()));
     return wide;
   };
-  return WritePrivateProfileStringW(widen(row.section).c_str(), widen(row.key).c_str(), widen(value).c_str(),
-                                    file.c_str())
-         != FALSE;
+  return (WritePrivateProfileStringW(widen(row.section).c_str(), widen(row.key).c_str(), widen(value).c_str(),
+                                     file.c_str())
+                  != FALSE
+              ? WriteResult::WRITTEN
+              : WriteResult::FAILED);
 }
 
 }  // namespace twattila::start_files

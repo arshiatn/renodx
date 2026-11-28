@@ -3900,10 +3900,14 @@ void ConfigureAddon() {
           ImGui::PopStyleColor();
         }
         if (edited && row.editable) {
-          if (start_files::Write(rows.exe_dir / file_name,
-                                 (fix ? start_files::FileKind::HEAPFIX_INI : start_files::FileKind::SETTINGS_TXT), row)) {
+          const start_files::WriteResult result =
+              start_files::Write(rows.exe_dir / file_name,
+                                 (fix ? start_files::FileKind::HEAPFIX_INI : start_files::FileKind::SETTINGS_TXT), row);
+          if (result == start_files::WriteResult::WRITTEN) {
             renodx::utils::log::i(std::format(
                 "[Total War] 64-bit Attila: CPU page: {} written in {} (used from the next start)", row.key, file_name));
+          }
+          if (result != start_files::WriteResult::FAILED) {
             rows.unsaved_key.clear();
           } else {
             renodx::utils::log::w(std::format("[Total War] 64-bit Attila: CPU page: could not write {} in {}{}", row.key,
