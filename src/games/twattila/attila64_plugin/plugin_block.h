@@ -119,8 +119,9 @@ inline constexpr uint32_t CORE_SPLIT = 1u << 3;   // Multithreaded Collisions (t
 // reader sees a stop that was not chosen.
 inline constexpr uint32_t CORE_EFFECTS = 1u << 4;       // Effects on All Cores
 inline constexpr uint32_t CORE_EFFECTS_AUTO = 1u << 5;  // ... only in big battles (Automatic)
-// Both parts by default is a release step (this constant), not a layout change.
-inline constexpr uint32_t CORE_WANTED_DEFAULT = CORE_BATTLE | CORE_STEP;
+// The parts on by default are a release step (this constant), not a layout change: the battle core, the render
+// core (PK2P S-C, 11-28) and the battle step.
+inline constexpr uint32_t CORE_WANTED_DEFAULT = CORE_BATTLE | CORE_RENDER | CORE_STEP;
 
 // One state list for both core status words; 0 = not built. The render part has its own state and error. A render
 // failure or yield never ends the battle part. A shared (process-level) end or gate ends both, and the render word then

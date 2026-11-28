@@ -774,7 +774,9 @@ int main(int argc, char** argv) {
     link::Update(both, true, link::RENDER_CORE_DEFAULT);
     CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER));
     // Keep Render Core Free the same way: only CORE_RENDER changes, on and off (the battle part's bit and a bit no row
-    // writes kept), an equal present writes nothing.
+    // writes kept), an equal present writes nothing. The row Off first, so the next On is a change under either
+    // RENDER_CORE_DEFAULT.
+    link::Update(both, true, false);
     block.core_wanted.store(plugin::CORE_BATTLE | plugin::CORE_STEP);
     link::Update(both, true, true);
     CHECK(block.core_wanted.load() == (plugin::CORE_BATTLE | plugin::CORE_RENDER | plugin::CORE_STEP));

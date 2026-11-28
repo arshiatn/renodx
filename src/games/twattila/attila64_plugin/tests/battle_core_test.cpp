@@ -636,6 +636,7 @@ int wmain() {
       return !Reserved();
     };
     // A session as after the plugin's init with this RenderCore key: nothing reserved, no render thread, an empty log.
+    // The bits start without CORE_RENDER (the build's default holds it), so the key 1 shows.
     const auto new_session = [&](int render_core_key) {
       battle_core::release_after_ms = 0;
       released();
@@ -657,7 +658,7 @@ int wmain() {
       }
       SetThreadSelectedCpuSets(render_handle, nullptr, 0);
       SetProcessDefault(every_id);
-      shared.core_wanted.store(CORE_WANTED_DEFAULT);
+      shared.core_wanted.store(CORE_WANTED_DEFAULT & ~CORE_RENDER);
       shared.core_status.store(uint64_t{CORE_WAITING} << CORE_STATE_SHIFT);
       shared.render_core_status.store(0);
       {
@@ -779,7 +780,8 @@ int wmain() {
     // The render part alone (the key absent leaves the bits as they are): it takes the battle core's place, and no
     // step thread is selected.
     new_session(-1);
-    Expect(shared.core_wanted.load() == CORE_WANTED_DEFAULT && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD,
+    Expect(shared.core_wanted.load() == (CORE_WANTED_DEFAULT & ~CORE_RENDER)
+               && RenderField(CORE_STATE_SHIFT) == CORE_NO_THREAD,
            "key: absent leaves the bits");
     shared.core_wanted.store(CORE_RENDER);
     capture_and_step();

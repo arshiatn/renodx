@@ -266,18 +266,21 @@ foreach ($name in $gameCodeCases.Keys) {
   }
 }
 # The core rows (a v2 block offering the CPU row, rows 0x7, the render part built: render_core_status 1, WAITING): each
-# writes only its own core_wanted bit (CORE_STEP 4: Faster Battle Step's, hidden, writes the plugin's default On, the
-# bit already set); the exe checks the bits left. While
-# Keep Render Core Free is hidden (RENDER_CORE_ROW_MEASURED false) it writes nothing, a saved On included.
-# plugin_render_core: Keep Render Core Free On saved, the plugin's bits 5 (battle + 4): 5 (shown: 7, "on").
-# plugin_render_core_battle_off: Keep Battle Core Free Off as well: 4 (shown: 6, "on"). plugin_render_core_kept: the
-# row at its default (Off), the plugin's bits 7 (its own RenderCore=1): the first present writes no render bit, 7 kept.
+# writes only its own core_wanted bit (CORE_STEP 4: Faster Battle Step's, shown, at its default On, the bit already
+# set); the exe checks the bits left. Keep Render Core Free is on by default (CORE_WANTED_DEFAULT holds
+# CORE_RENDER), and its first present writes only a row off that default (attila64_plugin_link::Update).
+# Effects on All Cores at its default Automatic adds both effect bits (48) in every case here and below, the row
+# offered or not. plugin_render_core_kept: no ini, the plugin's bits 7: 7, no render line. plugin_render_core_saved_off:
+# Off saved: 5, "off". plugin_render_core_battle_off: Keep Battle Core Free Off: 6, no render line.
+# plugin_render_core_saved_on: On saved, the plugin's bits 5 (the render bit clear): at its default the bit stays the
+# plugin's: 5, no render line. (Each + 48 in the table.)
 $renderCore = '[Total War] 64-bit Attila: Keep Render Core Free'
 $renderCoreCases = [ordered]@{
-  plugin_render_core = @{ plugin = '1 7 0 2 7 0 0 5 1'; ini = @('KeepRenderCoreFree=1'); bits = 5; battle = 'on' }
-  plugin_render_core_battle_off = @{ plugin = '1 7 0 2 7 0 0 5 1'; ini = @('KeepBattleCoreFree=0', 'KeepRenderCoreFree=1'); bits = 4
-                                     battle = 'off' }
-  plugin_render_core_kept = @{ plugin = '1 7 0 2 7 0 0 7 1'; ini = @(); bits = 7; battle = 'on' }
+  plugin_render_core_kept = @{ plugin = '1 7 0 2 7 0 0 7 1'; ini = @(); bits = 55; battle = 'on' }
+  plugin_render_core_saved_off = @{ plugin = '1 7 0 2 7 0 0 7 1'; ini = @('KeepRenderCoreFree=0'); bits = 53; battle = 'on'
+                                    render = 'off' }
+  plugin_render_core_battle_off = @{ plugin = '1 7 0 2 7 0 0 7 1'; ini = @('KeepBattleCoreFree=0'); bits = 54; battle = 'off' }
+  plugin_render_core_saved_on = @{ plugin = '1 7 0 2 7 0 0 5 1'; ini = @('KeepRenderCoreFree=1'); bits = 53; battle = 'on' }
 }
 foreach ($name in $renderCoreCases.Keys) {
   $core = $renderCoreCases[$name]
@@ -290,44 +293,54 @@ foreach ($name in $renderCoreCases.Keys) {
   }
 }
 # Effects on All Cores (PK9 P9-4, rp94_ MUST-1: the add-on owns bits 4-5 from its first present, Off included): a v2
-# block offering ROW_PARALLEL_EFFECTS (rows 0x803), core_wanted 0x35 (battle, step and both effect bits, as EffectsMode=1
-# leaves them), the loader's slot VFX_PARALLEL_UPDATER OK after the start check. plugin_effects_off: the row at its
-# default Off: bits 4-5 cleared (5), its line. plugin_effects_on: EffectsOnAllCores=2: CORE_EFFECTS_AUTO cleared (21),
-# its line. plugin_effects_slot_changed: the slot's verdict CHANGED: the bits still written (5), no line.
+# block offering ROW_PARALLEL_EFFECTS (rows 0x803), the loader's slot VFX_PARALLEL_UPDATER OK after the start check.
+# plugin_effects_default: the row at its default Automatic, core_wanted 7 (the plugin's default): both effect bits set
+# (55), its line. plugin_effects_off: EffectsOnAllCores=0, core_wanted 0x37 (as EffectsMode=1 leaves them): bits 4-5
+# cleared (7), its line. plugin_effects_on: EffectsOnAllCores=2: CORE_EFFECTS_AUTO cleared (23), its line.
+# plugin_effects_slot_changed: the slot's verdict CHANGED: the bits still written (55), no line.
 $effects = '[Total War] 64-bit Attila: Effects on All Cores'
 $effectsCases = [ordered]@{
-  plugin_effects_off = @{ plugin = '1 2051 0 2 2051 0 0 53 0 1'; ini = @(); bits = 5; line = "$effects Off" }
-  plugin_effects_on = @{ plugin = '1 2051 0 2 2051 0 0 53 0 1'; ini = @('EffectsOnAllCores=2'); bits = 21; line = "$effects On" }
-  plugin_effects_slot_changed = @{ plugin = '1 2051 0 2 2051 0 0 53 0 2'; ini = @(); bits = 5 }
+  plugin_effects_default = @{ plugin = '1 2051 0 2 2051 0 0 7 0 1'; ini = @(); bits = 55; line = "$effects Automatic" }
+  plugin_effects_off = @{ plugin = '1 2051 0 2 2051 0 0 55 0 1'; ini = @('EffectsOnAllCores=0'); bits = 7; line = "$effects Off" }
+  plugin_effects_on = @{ plugin = '1 2051 0 2 2051 0 0 55 0 1'; ini = @('EffectsOnAllCores=2'); bits = 23; line = "$effects On" }
+  plugin_effects_slot_changed = @{ plugin = '1 2051 0 2 2051 0 0 7 0 2'; ini = @(); bits = 55 }
 }
 # Faster Battle Step (PK8 W-A3; the add-on owns CORE_STEP 4 from its first present): a v2 block offering
-# ROW_BATTLE_STEP (rows 0x1003, lane NOT_USED_YET) with core_wanted 1 (the bit clear, so the write shows). While the
-# row is hidden (BATTLE_STEP_ROW_MEASURED false) it writes the plugin's default On, a saved Off included.
-# plugin_battle_step_on: no key: 5, the line "on". plugin_battle_step_saved_off: FasterBattleStep=0 waits: 5, the line
-# "on", no "off" (at the measured flip: 1, the line "off"). plugin_battle_step_not_offered: rows 0x3 (BattleStep=0
-# leaves the site out): the bit written (5), no line.
+# ROW_BATTLE_STEP (rows 0x1003, lane NOT_USED_YET) with core_wanted 1 (the bit clear, so the write shows). The row is
+# shown (BATTLE_STEP_ROW_MEASURED true, the 11-28 batch), so a saved Off is written.
+# plugin_battle_step_on: no key: 53, the line "on". plugin_battle_step_saved_off: FasterBattleStep=0: 49, the line
+# "off", no "on". plugin_battle_step_not_offered: rows 0x3 (BattleStep=0 leaves the site out): the bit written (53), no
+# line.
 $battleStep = '[Total War] 64-bit Attila: Faster Battle Step'
-$effectsCases['plugin_battle_step_on'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 1'; ini = @(); bits = 5; line = "$battleStep on"
+$effectsCases['plugin_battle_step_on'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 1'; ini = @(); bits = 53; line = "$battleStep on"
                                             forbid = @("$battleStep off") }
-$effectsCases['plugin_battle_step_saved_off'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 1'; ini = @('FasterBattleStep=0'); bits = 5
-                                                   line = "$battleStep on"; forbid = @("$battleStep off") }
-$effectsCases['plugin_battle_step_not_offered'] = @{ plugin = '1 3 0 2 3 0 0 1 0 0 1'; ini = @(); bits = 5; forbid = @($battleStep) }
+$effectsCases['plugin_battle_step_saved_off'] = @{ plugin = '1 4099 0 2 4099 0 0 1 0 0 1'; ini = @('FasterBattleStep=0'); bits = 49
+                                                   line = "$battleStep off"; forbid = @("$battleStep on") }
+$effectsCases['plugin_battle_step_not_offered'] = @{ plugin = '1 3 0 2 3 0 0 1 0 0 1'; ini = @(); bits = 53; forbid = @($battleStep) }
 # Multithreaded Collisions (PK8 Stage B step 6): a v2 block offering ROW_CONTACT_SPLIT (rows 0x2003). While the row is
 # hidden (CONTACT_SPLIT_ROW_MEASURED false) the add-on writes no CORE_SPLIT 8, a saved row of the other value included,
 # so a batch arm's ContactSplit key holds. plugin_contact_split_hidden_on: core_wanted 13 (ContactSplit=1, lane B
-# NOT_USED_YET), MultithreadedCollisions=0 saved: 13, no line. plugin_contact_split_hidden_off: core_wanted 5 (the
-# default ini, lane B OFF), MultithreadedCollisions=1 saved: 5, no line.
+# NOT_USED_YET), MultithreadedCollisions=0 saved: 61, no line. plugin_contact_split_hidden_off: core_wanted 5 (lane B
+# OFF), MultithreadedCollisions=1 saved: 53, no line.
 $collisions = '[Total War] 64-bit Attila: Multithreaded Collisions'
+# The port's settings revision 2 itself (every other case's ini holds Attila64SettingsRevision=2, so its saved keys
+# stay): rows 0x807 (CPU + effects), the render part WAITING, the slot OK, no revision key, KeepRenderCoreFree=0 and
+# EffectsOnAllCores=0 saved (as every 64-bit preset before revision 2): both cleared, so both at their defaults: 55,
+# "Automatic", no render "off".
+$effectsCases['plugin_settings_revision_2'] = @{ plugin = '1 2055 0 2 2055 0 0 7 1 1'; ini = @('KeepRenderCoreFree=0', 'EffectsOnAllCores=0')
+                                                 bits = 55; line = "$effects Automatic"; no_revision = $true
+                                                 forbid = @("$renderCore off", "$effects Off") }
 $effectsCases['plugin_contact_split_hidden_on'] = @{ plugin = '1 8195 0 2 8195 0 0 13 0 0 257'
-                                                     ini = @('MultithreadedCollisions=0'); bits = 13; forbid = @($collisions) }
+                                                     ini = @('MultithreadedCollisions=0'); bits = 61; forbid = @($collisions) }
 $effectsCases['plugin_contact_split_hidden_off'] = @{ plugin = '1 8195 0 2 8195 0 0 5 0 0 1025'
-                                                      ini = @('MultithreadedCollisions=1'); bits = 5; forbid = @($collisions) }
+                                                      ini = @('MultithreadedCollisions=1'); bits = 53; forbid = @($collisions) }
 foreach ($name in $effectsCases.Keys) {
   $case = $effectsCases[$name]
   $rows = ($case.plugin -split ' ')[1]
   $offered = '0x{0:x}' -f [int]$rows
   $table[$name] = @{
     addon = 'current'; args = "d3d11 fixed upgraded plugin core_wanted_$($case.bits)"; encoding = 0; plugin = $case.plugin; ini = $case.ini
+    no_revision = $case.no_revision
     lines = @($identity, $mapped, "[Total War] 64-bit Attila: engine plugin ready, rows offered $offered",
               "[Total War] 64-bit Attila: engine plugin rows tried $offered") + @($case.line | Where-Object { $_ }) + $upgraded
     forbid = @('engine plugin not installed', 'callbacks registered', 'engine plugin notices') + @($case.forbid | Where-Object { $_ }) +
@@ -432,11 +445,13 @@ foreach ($name in $Cases) {
   $env:RENODX_TW_PLUGIN_WANT = $case.want
   $env:RENODX_F7_PACK = $case.pack
   $env:ATTILA_NO_PLUGINS = $case.no_plugins
-  # A fresh ini: no LoadFromDllMain key, the tutorial done (no splash), the add-on's output rows explicit, then the
-  # case's own settings.
+  # A fresh ini: no LoadFromDllMain key, the tutorial done (no splash), the add-on's output rows and the port's settings
+  # revision explicit (else revision 2 removes a case's saved EffectsOnAllCores / KeepRenderCoreFree; no_revision: the
+  # case that runs it), then the case's own settings.
   (@(
     '[ADDON]', 'DisabledAddons=', '[GENERAL]', 'EffectSearchPaths=', 'TextureSearchPaths=', 'PresetPath=.\ReShadePreset.ini',
-    '[OVERLAY]', 'TutorialProgress=4', '[renodx]', "SwapChainEncoding=$($case.encoding)",
+    '[OVERLAY]', 'TutorialProgress=4', '[renodx]', "SwapChainEncoding=$($case.encoding)"
+  ) + @(if (-not $case.no_revision) { 'Attila64SettingsRevision=2' }) + @(
     '[renodx-preset1]', 'tonemapper=3', 'peak_white_nits=1000', 'diffuse_white_nits=203', 'graphics_white_nits=203', 'gamma_correction=1'
   ) + @($case.ini | Where-Object { $_ })) | Set-Content -LiteralPath (Join-Path $dir 'ReShade.ini') -Encoding ascii
   $env:RENODX_CAPTURE_EVERY = '1'

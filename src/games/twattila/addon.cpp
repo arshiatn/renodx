@@ -1730,24 +1730,25 @@ float effect_prefetch_row = 0.f;
 // core_wanted bit, attila64_plugin_link::Update).
 constexpr float KEEP_RENDER_CORE_DEFAULT = ((ATTILA64 && twattila::attila64_plugin_link::RENDER_CORE_DEFAULT) ? 1.f : 0.f);
 float keep_render_core_row = KEEP_RENDER_CORE_DEFAULT;
-// The port's Keep Render Core Free shows only once its A/B measured it (true: a release step).
-constexpr bool RENDER_CORE_ROW_MEASURED = false;
+// The port's Keep Render Core Free shows only once its A/B measured it (true since the 11-28 batch, PK2P S-C).
+constexpr bool RENDER_CORE_ROW_MEASURED = true;
 // Keep Battle Core Free (the port only, on): the 64-bit engine plugin's battle core, its core_wanted bit
 // (attila64_plugin_link::Update).
 constexpr float KEEP_BATTLE_CORE_DEFAULT = (twattila::attila64_plugin_link::BATTLE_CORE_DEFAULT ? 1.f : 0.f);
 float keep_battle_core_row = KEEP_BATTLE_CORE_DEFAULT;
-// Effects on All Cores (the port only, Experimental, Off until the soak: PK9 10): 0 Off, 1 Automatic, 2 On, the 64-bit
-// engine plugin's two effect core_wanted bits (attila64_plugin_link::Update).
-float effects_on_all_cores_row = 0.f;
+// Effects on All Cores (the port only, Experimental): 0 Off, 1 Automatic, 2 On, the 64-bit engine plugin's two effect
+// core_wanted bits (attila64_plugin_link::Update). Automatic by default (ATN 11-28, after the batch's PK9 starts).
+constexpr float EFFECTS_ON_ALL_CORES_DEFAULT = 1.f;
+float effects_on_all_cores_row = EFFECTS_ON_ALL_CORES_DEFAULT;
 // Faster Battle Step (the port only): the 64-bit engine plugin's battle step, its CORE_STEP core_wanted bit
-// (attila64_plugin_link::Update). Its default is the plugin's (PK8 11.1: On once S-C passes and ATN says so, Q1).
+// (attila64_plugin_link::Update). Its default is the plugin's (PK8 11.1: On; S-C passed in the 11-28 batch).
 constexpr float FASTER_BATTLE_STEP_DEFAULT = (twattila::attila64_plugin_link::BATTLE_STEP_DEFAULT ? 1.f : 0.f);
 float faster_battle_step_row = FASTER_BATTLE_STEP_DEFAULT;
 // src: PK8 F1 item 4 (:228-229): CORE_WANTED_DEFAULT holds CORE_STEP for the S-C build, kept at the release only if
 // S-C passes and ATN says on (Q1). deviation: from PK8 11.1, which shows the row, because PK2P P1a's form hides it
-// until then: the row and its status line show only once S-C measured it (true: a release step), and the add-on
-// writes the plugin's default.
-constexpr bool BATTLE_STEP_ROW_MEASURED = false;
+// until then: the row and its status line show only once S-C measured it (true since the 11-28 batch), and the
+// add-on writes the plugin's default until then.
+constexpr bool BATTLE_STEP_ROW_MEASURED = true;
 // Multithreaded Collisions (the port only, Experimental, Off: PK8 Stage B 14): the 64-bit engine plugin's contact
 // split, its CORE_SPLIT core_wanted bit (attila64_plugin_link::Update).
 float multithreaded_collisions_row = 0.f;
@@ -3712,7 +3713,7 @@ void ConfigureAddon() {
         .key = "EffectsOnAllCores",
         .binding = &effects_on_all_cores_row,
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 0.f,
+        .default_value = EFFECTS_ON_ALL_CORES_DEFAULT,
         .label = "Effects on All Cores (Experimental)",
         .section = CPU_SECTION,
         .tooltip = "Runs battle effects on all CPU cores. Faster in big battles; small effect details can change.\n"
@@ -4075,13 +4076,15 @@ bool AttachAddon() {
   // Ray Reconstruction is off, the banners' light and colour on. 2 (the render_mt defaults): the rows whose default changed
   // and the rows hidden now (a value saved earlier would stay on unseen). The 64-bit port has its own key,
   // Attila64SettingsRevision (32-bit never reads it): 1, the 64-bit port's first revision, Fewer Constant Uploads, on there
-  // by default. A later port default change takes the next number.
+  // by default. 2, the 11-28 batch's defaults: Effects on All Cores Automatic, Keep Render Core Free on. A later port
+  // default change takes the next number.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
   twattila::graphics_page::ClearSavedRows(2, {"DrawRecordingStage", "DrawRecordingDepthA", "DrawRecordingColourA", "DrawRecordingDepthB",
                                               "DrawRecordingColourB", "DrawRecordingFamilies", "AnimationRowsWorkers", "ParallelInstanceFill",
                                               "FillWithDrawRecording", "ParallelEffectSpawns", "CachedParticleCount"});
   if constexpr (ATTILA64) {
     twattila::graphics_page::ClearSavedRows(1, {"FewerConstantUploads"}, "Attila64SettingsRevision");
+    twattila::graphics_page::ClearSavedRows(2, {"EffectsOnAllCores", "KeepRenderCoreFree"}, "Attila64SettingsRevision");
   }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);

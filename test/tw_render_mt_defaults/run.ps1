@@ -109,8 +109,10 @@ Check ($text.Contains('const auto moved = std::ranges::find(settings, "FewerCons
 $fcu = Block '.key = "FewerConstantUploads",' "`n      },"
 Check ($fcu.Contains('.label = (ATTILA64 ? "Fewer Constant Uploads (Experimental, restart)" : "Fewer Constant Uploads (Experimental)"),')) 'FewerConstantUploads label: (Experimental, restart) on the port, (Experimental) on 32-bit'
 Check ($fcu.Contains('.section = "Graphics (Experimental)",')) 'FewerConstantUploads 32-bit section Graphics (Experimental) unchanged'
-Check ($text -match 'if constexpr \(ATTILA64\) \{\s*twattila::graphics_page::ClearSavedRows\(1, \{"FewerConstantUploads"\}, "Attila64SettingsRevision"\);\s*\}') 'FewerConstantUploads cleared once on the port (Attila64SettingsRevision 1)'
+Check ($text -match 'if constexpr \(ATTILA64\) \{\s*twattila::graphics_page::ClearSavedRows\(1, \{"FewerConstantUploads"\}, "Attila64SettingsRevision"\);') 'FewerConstantUploads cleared once on the port (Attila64SettingsRevision 1)'
 $port_clear = $text.IndexOf('ClearSavedRows(1, {"FewerConstantUploads"}, "Attila64SettingsRevision");', [StringComparison]::Ordinal)
+# The port's revision 2 (the 11-28 batch's defaults): every 64-bit preset saved 0 for both rows, right after revision 1.
+Check ($text -match 'ClearSavedRows\(1, \{"FewerConstantUploads"\}, "Attila64SettingsRevision"\);\s*twattila::graphics_page::ClearSavedRows\(2, \{"EffectsOnAllCores", "KeepRenderCoreFree"\}, "Attila64SettingsRevision"\);\s*\}') 'EffectsOnAllCores + KeepRenderCoreFree cleared once on the port (Attila64SettingsRevision 2)'
 Check ($port_clear -ge 0 -and $port_clear -lt $text.IndexOf('renodx::utils::settings::Use(DLL_PROCESS_ATTACH', [StringComparison]::Ordinal)) 'the port clear before settings::Use'
 Check ($text.Contains('renodx::utils::log::i("[Total War] Fewer Constant Uploads: on.");')) 'Fewer Constant Uploads once-line'
 Check ($text.Contains("`n    fewer_constant_uploads_logged = false;`n")) 'Fewer Constant Uploads once-flag reset at detach'
@@ -127,12 +129,13 @@ Check ($gc.Contains("game_code_row->tooltip = `"Faster versions of some of the g
 Check ($text -match 'MirrorRestartValues\(loader_frame_cap_row != 0\.f, static_cast<int>\(shadow_map_size\),\s+engine_code_row != 0\.f\);') 'FasterGameCpuCode mirrored for the next start'
 Check ((Read-Source 'graphics_page.hpp') -match '(?s)\.key = "FasterGameCpuCode",.{0,300}?\.label = "Faster Game CPU Code",') 'FasterGameCpuCode 32-bit label unchanged'
 # PK2P P1a (the 64-bit port only): Keep Render Core Free is the engine plugin's render core, its default the plugin's
-# CORE_RENDER bit (32-bit: 0, off), moved to the CPU page after Keep Battle Core Free, hidden until its A/B measured it
-# (RENDER_CORE_ROW_MEASURED false) and while the plugin built no render part, the toggle also with RenderCore=0; its bit
-# written by the link's Update; the 32-bit row as before.
+# CORE_RENDER bit (32-bit: 0, off; the port: on, PK2P W5), moved to the CPU page after Keep Battle Core Free, shown
+# since its A/B measured it (RENDER_CORE_ROW_MEASURED true, the 11-28 batch), hidden while the plugin built no render
+# part, the toggle also with RenderCore=0; its bit written by the link's Update; the 32-bit row as before.
 Check ($text.Contains('constexpr float KEEP_RENDER_CORE_DEFAULT = ((ATTILA64 && twattila::attila64_plugin_link::RENDER_CORE_DEFAULT) ? 1.f : 0.f);')) 'KeepRenderCoreFree default: the plugin''s CORE_RENDER bit on the port, 0 on 32-bit'
 Check ((Read-Source 'attila64_plugin_link.hpp') -match '(?s)inline constexpr bool RENDER_CORE_DEFAULT =\s+\(attila64_plugin::CORE_WANTED_DEFAULT & attila64_plugin::CORE_RENDER\) != 0;') 'RENDER_CORE_DEFAULT from CORE_WANTED_DEFAULT & CORE_RENDER'
-Check ($text -match '(?m)^constexpr bool RENDER_CORE_ROW_MEASURED = false;') 'RENDER_CORE_ROW_MEASURED false (the port row hidden until its A/B)'
+Check ($text -match '(?m)^constexpr bool RENDER_CORE_ROW_MEASURED = true;') 'RENDER_CORE_ROW_MEASURED true (the port row shown since its A/B)'
+Check ((Read-Source 'attila64_plugin\plugin_block.h').Contains('inline constexpr uint32_t CORE_WANTED_DEFAULT = CORE_BATTLE | CORE_RENDER | CORE_STEP;')) 'CORE_WANTED_DEFAULT: battle core, render core, battle step'
 Check ($text.Contains('{.match = "KeepRenderCoreFree", .plugin_row = PluginRow::CPU_PLACEMENT},')) 'KeepRenderCoreFree in GAME_CODE_ROWS with PluginRow::CPU_PLACEMENT'
 $rc = Block 'const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree", &renodx::utils::settings::Setting::key);' "`n        });"
 Check ($rc.Contains('render_core_row->label = "Keep Render Core Free";') -and $rc.Contains('render_core_row->section = CPU_SECTION;') `
@@ -143,6 +146,13 @@ $battle = $text.IndexOf('.key = "KeepBattleCoreFree",', [StringComparison]::Ordi
 $render = $text.IndexOf('const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree"', [StringComparison]::Ordinal)
 Check ($battle -ge 0 -and $render -gt $battle -and $render -lt $text.IndexOf('const auto moved = std::ranges::find(settings, "FewerConstantUploads"', [StringComparison]::Ordinal)) 'KeepRenderCoreFree after Keep Battle Core Free, before Fewer Constant Uploads'
 Check ($text.Contains('(RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT),')) 'KeepRenderCoreFree written to the plugin (link Update) only once measured'
+# Faster Battle Step (PK8 Stage A, the port only): shown since the 11-28 batch (S-C passed), its default the plugin's.
+Check ($text -match '(?m)^constexpr bool BATTLE_STEP_ROW_MEASURED = true;') 'BATTLE_STEP_ROW_MEASURED true (the row shown since S-C)'
+# Effects on All Cores (PK9, the port only): Automatic by default (ATN 11-28), one constant for the binding and the row.
+Check ($text -match '(?m)^constexpr float EFFECTS_ON_ALL_CORES_DEFAULT = 1\.f;' -and $text -match '(?m)^float effects_on_all_cores_row = EFFECTS_ON_ALL_CORES_DEFAULT;') 'EffectsOnAllCores starts at EFFECTS_ON_ALL_CORES_DEFAULT = 1 (Automatic)'
+$eac = Block '.key = "EffectsOnAllCores",' "`n    });"
+Check ($eac.Contains('.binding = &effects_on_all_cores_row,') -and $eac.Contains('.default_value = EFFECTS_ON_ALL_CORES_DEFAULT,') `
+       -and $eac.Contains('.label = "Effects on All Cores (Experimental)",')) 'EffectsOnAllCores default EFFECTS_ON_ALL_CORES_DEFAULT, label (Experimental)'
 # Multithreaded Collisions (PK8 Stage B 14): default Off, hidden until measured, and no CORE_SPLIT write while hidden.
 Check ($text -match '(?m)^constexpr bool CONTACT_SPLIT_ROW_MEASURED = false;' -and $text -match '(?m)^float multithreaded_collisions_row = 0\.f;') 'MultithreadedCollisions hidden, starts at 0'
 Check ($text -match '(?s)\.key = "MultithreadedCollisions",.{0,200}?\.default_value = 0\.f,') 'MultithreadedCollisions default 0'
