@@ -19478,6 +19478,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         fx4b open item = expected APART; no SHaRC cost rows; no verdict table + partial sets judged; J3 disk stop skips
         cost plays. 8 NITs. 'Unset = old scenes' proven on CPU hashes only. DRED off in the player: safe to judge.
         Waiting for rj23p_, then one fix round (j23p_).
+        rj23p_ DONE ~15:36 (scratch\rj23p_\review.md) GO WITH CHANGES: scene works (the control leaks light through
+        the card for pt / leafpt); 4K exe = the reviewed source (2-byte PE timestamp apart); J3 helpers' 116 headers =
+        w4b2_'s; DRED off in the player: J3 safe to judge, its timings not comparable with J2's. MUST: (1) each rekey
+        makes a new mesh and old baked ones stay 300 frames, so the bake set has no in-bake frame (passes by
+        construction); (2) the edge view is edge-on to the camera, not the sun (n.sun 0.66), so rt_trace's edge path
+        never runs; (3) J3's Nsight table gets a header-less folder (no pass named); (4) J3 routeb compares every
+        replicate with fixed r0's reference. Disk: J3 ~100-110 GB (not 75); bins only in r0 saves ~59 GB of J2.
+        -> j23p_ fix round (resumed 15:38): 5 MUSTs + SHOULDs of both reviews; coord: R stays >= 8 on every judged
+        arm (fj23p_'s R 4 not taken); bins only in r0, X10 core sets first, whole-set disk check else UNJUDGED; then
+        the X20 torch + X38 FLIP dump switches; then a Sonnet re-check. j0rc_'s judge fix may add one round.
         - [ ] DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3's play-back arms run without
           DRED details (a TDR still stops the arm). Owner: coord -> wave 2 (main.cpp has no wave-1 writer); rj23p_ says
           whether J3 is safe to judge without it.
@@ -19485,6 +19495,8 @@ heading text are in HANDOFF_ARCHIVE.md)
           ~100-200 GB (D1) and D: ~452 GB free + 87 GB from del_. Asked ATN 15:10. Owner: ATN.
           fj23p_ 15:25: D: 565 GB free, guard at 232.5 GB -> 332 GB usable; J2 255 + J3 ~84 + X08 ~110 = ~449 GB, so
           the three cannot all finish without deletes or trims (control arms R 4 would save ~87 GB).
+          rj23p_ 15:38: J3 ~100-110 GB; with bins only in r0, J2 ~196 GB. J0 92 (kept) + X08 ~110 + J2 ~196 + J3
+          ~105 = ~503 GB vs ~332 usable: still needs ATN's delete-after-verdict yes (my pick) or another answer.
         - [ ] j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch switch
           (scratch\x20_\harness_rr_torch_spec.md); X38's FLIP dump switch (x38__handback.md); the pdi1 v33 field fix
           if not done. Owner: coord -> j23p_.
