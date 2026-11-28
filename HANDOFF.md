@@ -19104,6 +19104,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         camera-key pair; capture seconds rest on 8 starts (+-2 s load = 'not measured'); 5 x 33 MB raws per w3 / spr
         start; ~4.3 GB copies in abe_\proof + ptest / ptest2 (the safety check refused one rm: left, delete only on
         ATN's OK). rabe_ (Opus xHigh review) STARTED 09:54.
+        rabe_ DONE 10:12 (18 min; scratch\rabe_\review.md): GO WITH CHANGES, no MUST (patch bytes, dry runs, parts 2-4, PS
+        traps all fine). S1: the 'after' frame counts wall s but the loader holds the key in battle s (E's w3: key at
+        clock + 11.73 s; F 64 lands after it by 1.75-2.0 s luck) -> anchor on log_timed.txt's key down / up lines
+        (false FAIL risk only). S2: the 'before' frame may predate the battle clock (slowest clock 52.43) -> a menu
+        frame = FALSE PASS (abe_'s own menu vs battle test passed); require after the clock / key down + a capture at
+        F 54. S3: the add-on's RR mark (anti_aliasing.hpp:1595) is written BEFORE Apply, which can return without RR's
+        result (:1597): mark + not black = 'gates passed, Apply called, picture whole', NOT 'the row ran'. NITs N1-N6.
+        Info: a3_smoke still stages add-on b756de5c (pre ga_ / gbf_): restage before the next -R2 / -R2Kill; part 1
+        never seen on real camera-key -ReShade frames (one w3 rerun after S1 / S2). Scratch: rabe_\pt (a test copy +
+        backup), abe_\proof (~4.3 GB), ptest, ptest2 = delete only on ATN's OK.
+        -> gbf_ round 3 STARTED 10:12 (branch gbf3_1128 off today's tip: ONE frame_trace::Mark after the bind,
+        'tone mapper draw: Ray Reconstruction's result bound for the tone mapper'; 16 gated builds) and abe_ round 2
+        STARTED 10:12 (S1 / S2 / S3 on the new mark / N1-N5; same gated patch from bc9cf693, new out sha).
         - [ ] abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> -DryRun. Before any start
         on the W5 DLL. Owner: coord.
         GPU LANE NEXT (ATN 09:3x 'Do we have time to run the next gpu stuff?'): fxp_ still runs (P2c, GPU lock held by
