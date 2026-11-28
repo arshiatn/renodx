@@ -19010,6 +19010,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         ' of 17)', a non-zero radius addition check. -> sbi_ round 2 STARTED 09:44.
         P15 READ NOTE (rsbi_ N4): the first big region pays one-time page faults on fresh pool pages (~10 MB at the bound,
         up to 80 MiB on a fill): 'region max' includes that cost; judge the medians.
+        sbi_ round 2 DONE 10:0x (17 min): 068c2ebc4 (1446 bound: 7 participants, 2,096,631; 'listed max 106' pinned + a
+        smaller tick keeps 107; lines <= 120; threaded stop ' of 17)' + stopped_chunks <= C <= 17; radius addition 0.1
+        check). build.ps1 -Test exit 0 (battle_step 14577 checks); one test line rewrapped mid-run -> battle_step_test
+        rebuilt from the commit, exit 0. DLL 3472e4633ac2b30ae2e9a7de8713c00fb61491604e569f1a0482342e1001becd. Design
+        text owner (coord): sbp_ 5.2's '4 participants' slip -> 7. fsbi_ (Sonnet High final, incl. joined format
+        strings unchanged) STARTED 10:01.
         FOR ATN Q1 (not blocking): the 64-bit DLL's image commit rises ~70 MiB for every player, row on or off (no
         RAM unless the row runs, ~1 % of the game's 6 GB). sbp_ + coord pick: accept; else a lazy VirtualAlloc
         (~15 lines + a failure line + a test seam).
