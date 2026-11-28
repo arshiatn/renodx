@@ -18432,7 +18432,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         -C2 smoke 20261128_003123_Smoke on 9eeb9f82: both starts PASS, smoke_pass true (E64-sr2 + E64-mv), item 6 on
         E64-mv: 0x5F9CD405 / 0x0ECFE74C / 0xDAC80ECC drawn, 0xC2AA8FDA 'not drawn, 32-bit 0 of 21 too (info)' (X6
         works), 14 CPU sets each, clean exits, 0 WER. Sprite gate dry run: self-test ok for every arm. SPRITE GATE
-        (spr0,spr1 x3, -ReShade -PerfFix -EnginePlugin -Probe full) STARTED 00:39 (~56 min), then the MSAA start. rrts2_ (Opus xHigh, 9 min;
+        (spr0,spr1 x3, -ReShade -PerfFix -EnginePlugin -Probe full) STARTED 00:39 (~56 min), then the MSAA start.
+        SPRITE GATE DONE (20261128_003906_AB): 6 of 6 valid; spr1 camera line + 'engine scales active 0x400000', spr0
+        neither; MSAA warning none; golden same x6, determinism exact over 3749 ticks; contact split skipped (OFF) in the
+        probe arms as set. Frame time medians spr0 / spr1 per pair: 19.48 / 19.56 (+0.4 %), 15.96 / 16.01 (+0.3 %),
+        16.17 / 16.45 (+1.7 %); A/A between same-arm starts 1.3 % (spr0) / 2.7 % (spr1); GPU busy 8.53 both; steps/s
+        9.93 / 9.89, slow share 63 / 60 %; p99 27.9 / 28.8. -> diagnosis 3.3's rule 'slower beyond noise' NOT met:
+        PASS (the lean is 3 of 3 pairs, within noise). Starts 1-2 ran on 30 CPU sets (rule not applied in time), 3-6
+        on 14; pairs stay matched. MSAA start (sprmsaa) STARTED 01:11.
+        [ ] a64_ab: a start whose measured CPU sets differ from its rule's mask (here 30 vs 14) -> mark it, and the gate
+        asks one more pair (owner: rts1_'s follow-up patch).
+        [ ] For ATN: the sprite watch leans +0.3-1.7 % frame time with the row On (within noise); design 3.3's cheaper
+        variant (watch only the buffer the last main sun draw had bound: a pointer compare per map) would also trim the
+        cost TAA / DLSS users already pay. Coord suggests it after the batch, measured the same way. rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
