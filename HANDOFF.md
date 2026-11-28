@@ -19341,6 +19341,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         Wave-1 briefs written 14:37 (scratch\<tag>\brief.md = COMMON + block + coord notes).
         WAVE 1 STARTED 14:37: w4b2_ / j23p_ / x20_ (Opus High), x38_ / w0ca_ / gq1_ (Opus Medium, effort trial), in
         parallel; gl_ (GPU-lock runner) starts when gq1_ hands back J0's script.
+        DELETE ROUND (ATN 11-28 14:4x 'Your pick sounds good' = all of all_plans 11.9's list but the 61 GiB 4K M6 baseline
+        bins): del_ (Opus High, scratch\del_\brief.md: dry run plan.tsv, links before folders, merged + clean + not
+        today's worktrees only, never list) STARTED 14:4x. fg_camera.hpp (dead code) = coord, a commit + gated builds.
+        w4b2_ DONE 14:45 (7 of 45 min; RN\handoff_plan\handbacks\w4b2__handback.md): w4b2_1128 on 8053e666a =
+        307afb564 X10 / 51e36f46f X09 / 747223522 fix round, pushed; only conflict build.ps1's control switch (atn-mods'
+        kept); rt_scene / rt_path / rt_d3d12 / build.ps1 / check.py byte-identical to origin/fx4b_1127; helper (reference
+        on) fixed vs base 85 headers equal (every DXR 1.1) + the same 31 DXR 1.2 changed = fx4b_'s final build; five
+        controls = base to the byte (116); check.py PASS fixed, controls fail (leaves-culled 34, base 48); scan.py PASS
+        (90); gated twattila amd64 + x86 exit 0. Helper folders scratch\w4b2_\fixed / control_visibility /
+        control_leaves_culled / control_all / base -> j23p_ told. Extra worktree w4b2_base: clean after J2 / J3 (links
+        first). Re-check fw4b2_ (Sonnet High, rebase only) STARTED 14:45. Merge after J2 / J3 pass.
         - [x] DECIDED 14:40 (ATN 'Raw on D please. It is full precision'): references raw on D:\RenoDX_refs\<job>\;
           gq1_ told; never deleted. Was: ATN D1: 4K reference storage for X08 / J2 / J3 / W3 proofs (~2.2 GB a replicate, ~100-200 GB): raw on D:
           (fwp_'s pick; D: 455 GB free 14:37) / half precision / stats only. Needed before gl_'s X08 job. Owner: ATN.
