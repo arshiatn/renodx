@@ -19071,6 +19071,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         On (2) to Automatic once (fine while the 64-bit add-on is unreleased). Process slip: one recursive grep over the
         repo's D:\Dev\renodx\tools (not tools\tw; found nothing): noted.
         dfi_ round 2 STARTED 10:17 (MUST + S1 + NITs 1-3; no GPU).
+        dfi_ round 2 DONE 10:2x (9 min): ae7748e25 on top of C1: every F7 case's fresh [renodx] holds
+        Attila64SettingsRevision=2 (a per-case no_revision switch leaves it out); new case plugin_settings_revision_2
+        (no key, both saved 0 -> 55 + 'Effects on All Cores Automatic', both 'off' lines forbidden); effects cases from
+        default 7 (55 / 7 / 23 / 55); comments + wraps. run.ps1 parses; tw_render_mt_defaults exit 0; plugin -Test -Elf
+        exit 0 (DLL 41b4f5a2 unchanged); add-on unchanged (addon64 2d564129). F7 GPU line: bash
+        /c/Users/arshi/.claude/projects/D--Dev-renodx/tools/tw/testbin/attila64_present/f7_gpu.sh
+        D:/Dev/renodx/.claude/worktrees/dfi_ -Stage C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\testbin\scratch\dfi_\f7
+        -> expect 'F7: 88 passed, 0 failed of 88' (89 cases, C2_scrgb_1320 skipped by default). rdfi_ follow-up
+        STARTED 10:33; then Sonnet final; F7 after aa67_ frees the GPU; then merge.
         - [ ] rdfi_ -> Sonnet High final -> merge all 4 (ATN yes to C1) -> F7 (test\tw_attila64_present\run.ps1, GPU
         lock, after aa67_) -> the README notes lines (coord) -> restage a3_smoke + the plugin from the main tree ->
         one defaults start in the next CPU batch. Owner: coord.
