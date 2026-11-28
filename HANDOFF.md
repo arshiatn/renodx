@@ -18634,6 +18634,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         [ ] NEEDS ATN: F7 at 3840x2160 writes ~30-40 GB of raw captures a run (rs5a_ S2): may run.ps1 delete a passed
         case's capture_*.raw (keeping the two compare sources and every failed case)? Until then the coord deletes
         nothing; C: 291 GB free.
+        rabg_ (13 min) GO WITH CHANGES: M1 ATN asked to TIME Two Cascades (rt_port_64.md:796) but E64-rt runs the
+        recorder (recordings B 85 / 100, ~7 s hitches; its F 200 pass times land ~B 88) -> a plain twin E64-rt2c0
+        (cascades 0, pre-seed ShadowCascades=0) right before rt2c; S1 rt2c info on 'engine value ShadowCascades:'
+        lines (want 0); S2 a precondition for the cascade setting + plugin line (else start 7 stops the batch); S3
+        the self-test prints the real [Attila64Plugin.Values] text; S4 rr50 / rr50tm extract the tone mapper draw's
+        viewport + whether 0x781681E4 comes first (rr50tm carries the verdict); S5 read risk 8.5 on rt2c0 vs
+        E64-dlaa (the B 85 recording also hits E64-rt / E64-pt pass times); N1 assert the new sha. Coord took all
+        (rt2c0 = a control twin of a by-design arm, +1 start ~6 min). Fix round abg_ (resumed, Opus Medium, est 15 /
+        30; one new patch from 88dcff29) STARTED 03:35. Then a Sonnet final, apply, one -DryRun with rt_stage.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
