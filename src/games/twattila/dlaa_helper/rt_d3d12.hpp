@@ -5027,6 +5027,8 @@ class RtScene12 {
   static constexpr uint32_t PATH_REFLECT_STEADY = 32768;  // rt_reflect_filter (the trace's PATH_AMBIENT_PARITY: another request's word)
   static constexpr uint32_t TRACE_NRD_BOUNCE = 4194304;   // rt_scene.hlsli
   static constexpr uint32_t TRACE_NRD_AMBIENT = 8388608;  // rt_scene.hlsli
+  // rt_lights.cs_6_5.hlsl LIGHT_GRADIENT_NOISE (X20): on the local lights' dispatch alone (rt_trace's PART_SUN there).
+  static constexpr uint32_t LIGHTS_GRADIENT_NOISE = 1u << 30;
   static constexpr uint32_t PATH_SPECULAR_OCCLUSION = 4;
   static constexpr uint32_t PATH_HISTORY_VALID = 8;
   static constexpr uint32_t PATH_CACHE_VALID = 16;
@@ -8931,7 +8933,15 @@ class RtScene12 {
                                                                        : (lights_in_bounce ? lights_bounce_pipeline_ : lights_pipeline_));
 #endif
       list->SetPipelineState(lights_state.Get());
+      // Torch Shadow Sampling Gradient (bridge RT_SCENE_LIGHT_GRADIENT_NOISE, the addon's only under Ray Reconstruction).
+      const bool gradient_noise = (shared.rt_scene_flags & dlaa_bridge::RT_SCENE_LIGHT_GRADIENT_NOISE) != 0;
+      if (gradient_noise) {
+        list->SetComputeRoot32BitConstant(ROOT_SETTINGS, settings[1] | LIGHTS_GRADIENT_NOISE, 1);
+      }
       list->Dispatch((shared.rt_width + 7) / 8, (shared.rt_height + 7) / 8, 1);
+      if (gradient_noise) {
+        list->SetComputeRoot32BitConstant(ROOT_SETTINGS, settings[1], 1);
+      }
       if (lights_dark) {
         lights_dark_frame_ = frame;
       }
