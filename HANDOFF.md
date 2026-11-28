@@ -18447,9 +18447,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         cost TAA / DLSS users already pay. Coord suggests it after the batch, measured the same way.
         MSAA start 20261128_011053_AB (sprmsaa): valid, camera line + 'engine scales active 0x400000', MSAA warning
         none, golden same, clean exit, 16.39 ms, GPU busy 10.65 (MSAA). -> spf_1127 MERGED 05607429b (--no-ff, pushed;
-        clean, 7 files). Main-tree gated builds + tw_unit_shadows x86 / amd64 STARTED (scratch\coord_\spf_merge).
+        clean, 7 files). Main-tree gated builds + tw_unit_shadows x86 / amd64 STARTED (scratch\coord_\spf_merge). DONE:
+        gated amd64 twattila + x86 twattila / twrome2 / thrones exit 0, tw_unit_shadows x86 + amd64 PASS; taa_test.cpp on
+        the merged tree (scratch\coord_\spf_merge\taa_build.ps1) = spf_'s numbers exactly, 'camera found.' (cspf_ NIT
+        3 done). The staged a3_smoke add-on (81c42b53, spf_'s) is restaged from the main tree at the batch (after pxa_).
         [ ] README.md:2030 old TAA WARP numbers -> spf_'s 55.33 / 43.09 / 54.39 / 54.10 / 45.64 / 93.86 / 63.11 with the
-        release notes (owner: coord at release); taa_test.cpp once on the merged tree (a record, no runner).
+        release notes (owner: coord at release).
         STARTED 01:19 (agents allowed again after the game runs): rts1_ follow-up patch (resumed, Opus High: crts1_
         S1 / S2 with the stop at <= 1.00 x paper white, NITs, the CPU-set mismatch mark); W-H2 fix round fxh2o_
         (resumed, Opus High: rfxh2_ M1 + S1-S3, ffxh2_ S1 / S3, WH3 campaign per-request unit); pxa_ (NEW, Opus Medium
