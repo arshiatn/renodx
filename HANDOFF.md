@@ -741,6 +741,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - FOR ATN (batch2_plan.md 5): Q1 yes to the 4 new arms dflt / d1 / w3s / E64-ptd1 ... | ATN
+- STAGE B NEXT (owner: coord -> ATN's call, then a design Opus xHigh): numbers to ... | ?
 - patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
@@ -19251,6 +19252,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         'Effects on All Cores Automatic' in both starts + 'parallel effects: node 0 on'; clean exit 0, WER 0, dumps 0;
         check_logs clean; captures menu + battle in HDR (black 0.3 % in battle, p99.9 190 nits). F12 met for G4-G6.
         G2 = P15 (-AB -Arms ep8,ep8b,ep8btt8 -EnginePlugin -Probe full, log scratch\coord_\b2_G2_run.log) STARTED 11:50.
+        G2 DONE 12:05 (15 min, exit 0; ab_runs\20261128_115026_AB): 3 / 3 valid, golden same x3, determinism same for all
+        pairs over 3749 ticks, CPU sets 14 (RenderCore 0 pinned). Stage B RAN: ep8b / ep8btt8 'contact split: active
+        (objects 47355, plain 2472, listed 564064, helpers 13 / 6, radius addition 0.5)', no 'partly' (the 2048-block
+        pool holds). 1000-tick summary: region mean 2018 / 3116 us (max 5079 / 5907), join wait 59 / 23 us, own chunks
+        9 / 17 %, V 701759895, L 433717845 (L / V 0.62), listed max 564064, plain 5 %, fence ticks 31. ep8 66.7 fps,
+        window 182.4 s, step wall median 96.11 ms, seg 29 30.61 ms, slow 63 % | ep8b 60.3 fps (x0.904), 178.7 s, 91.68 ms
+        (x0.954), seg 29 23.89 (-6.73), slow 57 % | ep8btt8 54.7 fps (x0.820), 177.2 s, 89.05 ms (x0.927), seg 29 23.93
+        (-6.68), slow 56 %. Gates: step median <= x0.98 PASS; seg 29 <= control - 7 ms MISS by 0.27 / 0.32 ms; ep8btt8
+        fps >= x0.97 FAIL (x0.820). For reading: group C (B not running) fell too, 65.0 / 63.1 / 58.9 = x0.971 / x0.906,
+        so tt8 + start order cost ~3-9 %, and Stage B adds ~6-9 % fps cost on top while the battle step gets ~5-7 %
+        faster (less slow motion). P16 not run (golden same for both). VERDICT: Stage B FAILS P15 on fps; L / V 0.62
+        > 0.4 and a seg-29 miss with the step gate passed -> per batch2_plan G2: numbers to ATN + design 5's exact
+        integer filters (a new design). The row stays Off.
+        - [ ] STAGE B NEXT (owner: coord -> ATN's call, then a design Opus xHigh): numbers to ATN with a suggestion
+        (keep Off; a design for exact integer filters to cut L / V and a look at the fps cost: 13 helpers on 14 CPU
+        sets beside the main / render / model threads). Nothing changes until ATN answers.
+        G4 dry twin re-run after G1 12:06 ok ('self-test: ok for every arm', -Wpr on start 1). G4 = P17 + WPR 1 (-AB
+        -Arms w3 -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log scratch\coord_\b2_G4_run.log) STARTED 12:06.
         - [ ] patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, sha 72e14a0b) -> -DryRun
         twins -> part 2 (after ATN's yes to Q1). Owner: coord.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
