@@ -18639,6 +18639,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         14 + x86 3 exit 0, tw_unit_shadows x2 PASS, defaults match, F7 -BuildOnly (85 cases), page dumps a64 / a64r /
         32-bit SAME; mutation (Unregister's mirror clear removed) FAILS at tw_unit_shadows :761. F7 on the GPU (85,
         stage f7fix) + final check cs5a_ (Sonnet High) STARTED 03:39.
+        cs5a_ (3 min) GO WITH CHANGES, 0 MUST: S1 tw_unit_shadows :815 'epoch != epoch_registered' is vacuous after 7c's
+        two re-registrations (re-snap before :814); S2 link :187 is a 121-column COMMENT line; N2 the 7c control
+        comment. Checked right: the third field is the very predicate rt_core reads, 'registered' under the mutex
+        on the present thread only (no new cost), the pack-thread clear after the drain, Uninstall's dropped reset,
+        the dropped UnitFlushOffered term. Tiny round s5a_ (resumed, est 6 / 12; one commit; x86 first, the amd64
+        build only after the running F7 releases the GPU lock: F7 loads the worktree's build\Release add-on per
+        case) STARTED 03:43. The F7 GPU run stands for it (src change = a comment). Then merge.
         [ ] NEEDS ATN: F7 at 3840x2160 writes ~30-40 GB of raw captures a run (rs5a_ S2): may run.ps1 delete a passed
         case's capture_*.raw (keeping the two compare sources and every failed case)? Until then the coord deletes
         nothing; C: 291 GB free.
