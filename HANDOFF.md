@@ -19245,6 +19245,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         Space for ATN: proof\abe_copy 1.4 GB unusable (lost timestamps), abe_copy2 1.4 GB + f7 776 MB hold test frames.
         Reviews (Opus xHigh + Sonnet High) wait for part 1 (game runs hold all agents). G1 (-Smoke -ReShade
         -EnginePlugin -C2, log scratch\coord_\b2_G1_run.log) STARTED 11:42.
+        G1 PASS 11:49 (7 min; ab_runs\20261128_114242_Smoke): smoke_pass true in both start.json (E64-sr2, E64-mv);
+        plugin 836c5f27 copied + removed after; E2-E13 lines (21 sites unchanged, rows offered / tried 0x3fff, no '0'
+        keys, no forbidden lines); render core line 'render core: logical 12 + 13' (W5 default On); ReShade.log
+        'Effects on All Cores Automatic' in both starts + 'parallel effects: node 0 on'; clean exit 0, WER 0, dumps 0;
+        check_logs clean; captures menu + battle in HDR (black 0.3 % in battle, p99.9 190 nits). F12 met for G4-G6.
+        G2 = P15 (-AB -Arms ep8,ep8b,ep8btt8 -EnginePlugin -Probe full, log scratch\coord_\b2_G2_run.log) STARTED 11:50.
         - [ ] patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, sha 72e14a0b) -> -DryRun
         twins -> part 2 (after ATN's yes to Q1). Owner: coord.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
