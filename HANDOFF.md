@@ -18586,6 +18586,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         E64-rr50tm; DryRun diffs) STARTED 03:16. Reviews then the coord applies before group G.
         [ ] a64_ab: make $BUILD_TOOLS refuse a timed start while a build tool runs (bbp_ B4; owner: next a64_ab
         writer after the batch).
+        Batch prep (coord 03:21): B8 rt_stage FILLED (testbin\attila64_present\rt_stage, README.txt): helpers from
+        the main tree (helper sources = 129a0246c; S5a touches no helper file), dlaa_helper\build.ps1 into
+        build\tw_dlaa_helper_b1128 (plain, exe b3c96cee) + _b1128rec (RENODX_TW_RECORDER_BUILD=1, exe bd51c10d), RTXDI
+        b67f61cd found, both exit 0; FSR / XeSS / omm from the build (same in both); nvngx_dlss / dlssd / dlssg
+        310.9.16 (Streamline SDK 2.14.16 bin\x64); D3D12\D3D12Core.dll Agility 1.619.6; sha256.txt 13 lines. B14
+        siege -Prepare STARTED 03:21 (F7 on the GPU beside it: not a timed start). Rule (start_1127): game runs hold
+        all agents -> the batch starts when rs5a_ / fs5a_ / abg_ / F7 are done; groups A, B, C, I, J first (no
+        agents running), then the S5a fix round / merge / abg_ apply / restage, then D-H.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
