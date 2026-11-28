@@ -2456,10 +2456,13 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       const bool pass_draw =
           twattila::shadow_pass::Update(shadow_pass_row != 0.f, twattila::rt_scene::CastersSkipped(), true);
       // Bone flush: before each bone pack, limb motion vectors' unit records (object_motion's own switch:
-      // FlushUnitRecords has work only while it is on). Batched Unit Capture batches only where the host flushes it
-      // (Host::flushes_unit_captures, PacksHooked: never on the port yet); C3 adds its term when that flag is wired.
+      // FlushUnitRecords has work only while it is on) and Batched Unit Capture's corners while the plugin offers the
+      // flush and the batch is wanted (its draws batch only once the flush runs on the draw thread:
+      // UnitFlushRunsHere, the Install's host line).
+      const bool unit_flush =
+          twattila::attila64_plugin_link::UnitFlushOffered() && twattila::rt_scene::UnitBatchWanted(rt_settings);
       twattila::attila64_plugin_link::Update(
-          (twattila::object_motion::internal::active.load(std::memory_order_relaxed)
+          ((twattila::object_motion::internal::active.load(std::memory_order_relaxed) || unit_flush)
                ? plugin::RowBit(plugin::ROW_BONE_FLUSH)
                : 0u)
           | (pass_draw ? plugin::RowBit(plugin::ROW_PASS_DRAW) : 0u),
@@ -4150,9 +4153,16 @@ bool AttachAddon() {
   // The AO pass before the ray tracing (its multiply after the pass's own output), both before the Light Bounce (it
   // draws the sun draws itself: no callback after it runs).
   twattila::ao_pass::Install(AO_DRAWS, &shader_injection, sizeof(shader_injection));
-  // Batched Unit Capture's corners are made before each bone pack (graphics_hooks.hpp OnPackAnimations), where it is hooked.
+  // Batched Unit Capture's corners are made before each bone pack: graphics_hooks.hpp OnPackAnimations where it is
+  // hooked; on the port the engine plugin's BeforePack (its BONE_FLUSH row, wanted in OnPresent while the batch is),
+  // the row shown while the plugin offers the flush.
   twattila::rt_scene::Host host = twattila::rt_scene::TW_HOST;
-  host.flushes_unit_captures = twattila::graphics_hooks::PacksHooked;
+  if constexpr (ATTILA64) {
+    host.flushes_unit_captures = twattila::attila64_plugin_link::UnitFlushRunsHere;
+    host.unit_flush_offered = twattila::attila64_plugin_link::UnitFlushOffered;
+  } else {
+    host.flushes_unit_captures = twattila::graphics_hooks::PacksHooked;
+  }
   host.scene_release = true;
   twattila::rt_scene::Install(SCENE_SHADERS, AO_DRAWS, host);
   twattila::rt_scene::InstallCutOuts(0xF79BFB14, UNIT_CUT_OUT_PIXEL_SHADERS);  // rigidcommon ps30_shadow_alpha_test
