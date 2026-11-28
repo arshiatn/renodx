@@ -746,7 +746,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of r ... | ATN
 - j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch swi ... | coord -> j23p_
 - J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / h ... | ?
-- W0c FIND 1 (wave 2, the rt_serve.h owner): rt_serve.h:453 lifts any older record ... | coord -> wave 2
+- (likely NO BUG, w0ca_ fix round 15:22; closes when fw0cb_ agrees) W0c FIND 1 (wa ... | coord -> wave 2
 - W0c FIND 2 (wave 2, trace_ owner of rt_d3d12.hpp): the 2 m ReGIR cell has no num ... | coord -> wave 2
 - fwp_ D2-D5 for later: D2 X08 drop vs re-set if the picture moves; D3 O-HANG (b) ... | coord -> ATN as each comes up
 - P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2 ... | coord (game runs), after the fxh2_1127 merge
@@ -19499,7 +19499,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         default 0.5 m (4x), the jitter reason wrong; F1 rt_serve.h:455 'no bug today, the fix would refuse every edit'
         (fw0ca_: real but the fix wrong) -> settled in the fix round. Fix round w0ca_ (Opus Medium, resumed with both
         lists) STARTED 15:14. rw0ca_ worktree left (links first).
-        - [ ] W0c FIND 1 (wave 2, the rt_serve.h owner): rt_serve.h:453 lifts any older recording to v32, so its
+        w0ca_ fix round DONE 15:22 (c3e11bbd7 on w0ca_1128, comments only, pushed; hand-back 'Fix round'): the volume
+        bound is a `dev:` vs RTXDI's average distance (PolymorphicLight.hlsli:206 / :107), the false `src:` gone, 3 NITs;
+        hand-back texts W2-1 (src: LightingPasses.cpp:58-59), W2-3 (4x RTXDI's 0.5 m, jitter reason, 2 UNIFORM lines),
+        W2-6 fixed, W2-9 dropped; F1 = NO BUG (fields past an old block keep their default initializers = the absent
+        values, dlaa_bridge.h:581-616); not taken: rw0ca_ SHOULD 1-3 (p5_dxil.py coverage, W2-8 proof, W2-4; reasons in
+        the hand-back). 116 headers = base; gated twattila amd64 + x86 exit 0. Re-check fw0cb_ (Sonnet High) STARTED
+        15:22; GO -> merge (comments only, no GPU gate).
+        - [ ] (likely NO BUG, w0ca_ fix round 15:22; closes when fw0cb_ agrees) W0c FIND 1 (wave 2, the rt_serve.h owner): rt_serve.h:453 lifts any older recording to v32, so its
           v29-v31 fields play as zeros instead of absent (fix text in w0ca__handback.md; changes bytes). Owner: coord
           -> wave 2.
         - [ ] W0c FIND 2 (wave 2, trace_ owner of rt_d3d12.hpp): the 2 m ReGIR cell has no number or stated reason
