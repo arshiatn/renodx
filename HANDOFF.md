@@ -18834,6 +18834,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         first F start tells. GateR's 'battle steps stopped' close NOT added (a trace pause could look like a stop).
         rrsc_ N4 (item 5's single night1 reference = RT + DLSS-P) still not written on the line. fsc_ (Sonnet High final
         on both a64_ab patches, scratch\fsc_\brief.md) STARTED 06:10.
+        fsc_ DONE 06:12 (3 min; scratch\fsc_\review.md): GO, no MUST / SHOULD (NITs: patch 1 has no own result-sha
+        assert -> coord checked e48e3209 between the two; .bak_ files sit beside the live file; the 6-min line reads low).
+        Coord APPLIED 06:13: live a64_ab.ps1 d2572849 -> e48e3209 -> 51a8d546dcc3a914... (backups
+        attila64\ab\a64_ab.ps1.bak_rsc_20261128_061313 / .bak_rsc2_20261128_061313). F -DryRun on night1 exit 0
+        (E64-tr / E64-mvtr, quit 200, coord_\gF1_dry2.log). Group F part 1 (-R1 -R1Replay night1.replay) STARTED 06:13
+        (coord_\gF1_run2.log); then F part 2 (-PerfFix -R1 night1), G (-R2), H (-R2Kill).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
