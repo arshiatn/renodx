@@ -545,6 +545,13 @@ inline bool AmbientReplaced() {
   return published;
 }
 
+// Batched Unit Capture wanted now: its scene shaders' batch versions, its row on in `settings` (this present's, after
+// Update took them) and the rays traced (`active`, stored by that Update). A host whose flush must be asked for asks
+// while this holds (the 64-bit port's BONE_FLUSH row): with the rays or the row off nothing is registered for it.
+inline bool UnitBatchWanted(const Settings& settings) {
+  return internal::BatchInScene() && settings.batched_units && internal::active.load(std::memory_order_relaxed);
+}
+
 // The game's blurs of its ambient occlusion (AmbientOcclusionDraw::blurs) under Path-Traced Ambient: the pass wrote white
 // and nothing multiplies into it (the paths are the occlusion), so they would blur white: left out (their cost), the last
 // one's target cleared white in their place (test/tw_ao_blurs: the game's blurs of white give exactly 1 there).
@@ -2373,9 +2380,12 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Soldiers' and horses' shapes for the ray tracing gathered in one pass after they are drawn:\n"
                      "the same shadows, less graphics card time in battles.",
           .is_enabled = dlaa_on,
-          // Its scene shaders' batch versions, and the host's flush before the game writes their bones again.
+          // Its scene shaders' batch versions, and the host's flush before the game writes their bones again (offered:
+          // Host::unit_flush_offered where the host sets it).
           .is_visible = [] {
-            return internal::BatchInScene() && internal::host.flushes_unit_captures != nullptr && internal::host.flushes_unit_captures();
+            if (!internal::BatchInScene()) return false;
+            if (internal::host.unit_flush_offered != nullptr) return internal::host.unit_flush_offered();
+            return internal::host.flushes_unit_captures != nullptr && internal::host.flushes_unit_captures();
           },
       },
       new renodx::utils::settings::Setting{
