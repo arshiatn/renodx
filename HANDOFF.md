@@ -738,7 +738,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sbi_ -> Opus xHigh review -> Sonnet High final -> merge -> fresh backups -> grou ... | coord
 - fxp_ -> read the proofs -> merge fxh2_1127 after step 4's captures (check rt_cor ... | coord
 - X41 proof: a new harness proof design (FSR's depth debug cell in the harness, or ... | coord (designer if the harness way)
-- rdfi_ -> Sonnet High final -> merge all 4 (ATN yes to C1) -> F7 (test\tw_attila6 ... | coord
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - FOR ATN (batch2_plan.md 5): Q1 yes to the 4 new arms dflt / d1 / w3s / E64-ptd1 ... | ATN
@@ -19084,9 +19083,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         (8 files, labels unchanged, PK9 '(Experimental)' pinned by a defaults check, logs before each commit, merge-tree
         clean; NITs: long lines as the files' style). WAITING: F7 on the GPU after aa67_ (max 1 GPU agent), then the
         merge + README New: lines + plugin / add-on rebuilds + restage.
-        - [ ] rdfi_ -> Sonnet High final -> merge all 4 (ATN yes to C1) -> F7 (test\tw_attila64_present\run.ps1, GPU
-        lock, after aa67_) -> the README notes lines (coord) -> restage a3_smoke + the plugin from the main tree ->
-        one defaults start in the next CPU batch. Owner: coord.
+        - [x] DONE 11:2x up to the README (rdfi_ -> fdfi_ -> merge 5fadaca88 -> F7 88 / 88 -> README 3531206be). The
+        restage = batch2_plan.md F7, the one defaults start = batch 2 G2b ('ep8,dflt'); both tracked in batch 2's box.
         gbf_ DONE 09:04 (12 min; scratch\gbf_\handback.md): a45a8f5fd on gbf_1128 (off be1baa287): E1 main_view_texture
         takes a scene flag (scene RGBA16 or R11G11B10_FLOAT, target RGBA16 only); E2 Apply's view in the texture's own
         format (RGBA16 TYPELESS -> FLOAT; OnTonemapDrawn passes RGBA16 only = same view as before; the CopyResource
@@ -19216,6 +19214,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         K 0.960 -> 0.814); FSR u1 gain stays (1.328 -> 0.950). FSR camera info: u1 linear 0.9601 vs 0.9598 (aaf3_'s
         zero-camera caveat does not change u1). = THE AA FEED VERDICTS HOLD AT 67 % (box closed below).
         F7 for dfi_1128 STARTED 11:07 (coord, f7_gpu.sh, log scratch\coord_\f7_dfi.log).
+        F7 DONE: 'F7: 88 passed, 0 failed of 88' (scratch\coord_\f7_dfi.log; lock released). MERGED dfi_1128 5fadaca88
+        (--no-ff, pushed; 8 files). README New: lines 3531206be (twattila README top section: Keep Render Core Free on,
+        Effects on All Cores Automatic, Faster Battle Step shown, the one-time reset of both saved keys; 'built only, not
+        stamped, not installed, not run in game'). Batch 2 pre-flight F4 (plugin build.ps1 -Test -Elf from the main tree,
+        log scratch\coord_\f4_plugin_1128.log) STARTED 11:22.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
