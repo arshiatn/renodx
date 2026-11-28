@@ -737,6 +737,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - APPLY i: the d11 day1 dumps (group I) -> the 2.10 D3D11 pass analysis, after wav ... | coord
 - Check whether any non-Attila job expects exactly ONE 'Ray tracing with' line (th ... | coord, before the next non-TW build
 - sbi_ -> Opus xHigh review -> Sonnet High final -> merge -> fresh backups -> grou ... | coord
+- fxp_ -> read the proofs -> merge fxh2_1127 after step 4's captures (check rt_cor ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -18994,6 +18995,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         FOR ATN Q1 (not blocking): the 64-bit DLL's image commit rises ~70 MiB for every player, row on or off (no
         RAM unless the row runs, ~1 % of the game's 6 GB). sbp_ + coord pick: accept; else a lazy VirtualAlloc
         (~15 lines + a failure line + a test seam).
+        GPU LANE ITEM 1 STARTED EARLY 09:01 (ATN 09:0x: 'if you think we still got time until next batch, let's run
+        one of the gpu stuffs'): fxp_ (Opus Medium, THE one GPU agent, brief scratch\fxp_\brief.md, est 60 / 120) runs
+        fxh2_1127's harness proofs P2a (X33 DLSS exposure), P2b (X34 FSR RCAS), P2c (X41 FSR unit + late-set + version
+        controls) at 3840x2160, R = 8, under the GPU lock; 4 helper + 2 harness builds under testbin\fxp_. P1 (Tales)
+        + P1b (WH3) are game runs: later with the game runs. fxh2_1127 merges only AFTER the three WPRs + Nsight
+        (step 4), so that capture stays on the apply build; the next game batch waits for fxp_ to finish.
+        - [ ] fxp_ -> read the proofs -> merge fxh2_1127 after step 4's captures (check rt_core / bridge conflicts
+        with ga_'s merge) -> P1 / P1b with the game runs. Owner: coord.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
