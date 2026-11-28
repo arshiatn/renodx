@@ -18477,7 +18477,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         <= 120 columns). Gated amd64 + x86 twattila / twrome2 / thrones exit 0, tw_unit_shadows x2 PASS, defaults 136
         ok, page dumps a / a64r SAME, a64 only the lane texts + build date. Reviews rpxa_ (Opus xHigh) + fpxa_ (Sonnet
         High), read only, STARTED 01:25. Next addon.cpp writer after the merge: cp_ (the CPU page, Opus High; brief
-        scratch\cp_\brief.md written). rrts2_ (Opus xHigh, 9 min;
+        scratch\cp_\brief.md written). fpxa_ (1 min) GO, 0 MUST: S1 'names the spots' unclear, S2 name the row. rpxa_ (7 min)
+        GO WITH CHANGES, 0 MUST: S1 a 121-column comment with a wrong lane 7 word, S2 the log wording ('is off' is wrong
+        for a hidden / default-Off row), S3 'PerfFix' vs the page's 'Engine Performance Fix' (coord: the wording was
+        the coord's, use the page's name); N1-N5. Fix round pxa_ (resumed, Opus Medium) DONE 01:37 (5 min; 6cfb064d3
+        + 0f7d1d90e): comment, 'Engine Performance Fix', lane 7 'off (another mod changed the game code: Engine
+        Performance Fix update? see attila64_log.txt)', the toggle only for states 1-4 (state <= ENGINE_OFF: 5, 6, 7
+        and newer states hide it), ReShade.log 'Faster Battle Step / Multithreaded Collisions cannot run: another mod
+        changed the game code it needs (an Engine Performance Fix update?); attila64_log.txt in the game folder says
+        where.' (one per lane, a per-lane mask, once per add-on load); builds / tests / dumps as before. Final check
+        cpxa_ (Sonnet High, 1 min) GO, 0 MUST / 0 SHOULD (states 1-4 exactly the runnable ones; 5-7 keep their status
+        line). MERGED 01:39 75b90a3d3 (--no-ff, pushed; src == pxa_1128's tested tree, so its builds hold).
+        cp_ (the semi-automatic CPU page, Opus High, est 90 / 180; worktree cp_1128 from 75b90a3d3; addon.cpp +
+        start_files.hpp + new test\tw_start_files) STARTED 01:39. rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
