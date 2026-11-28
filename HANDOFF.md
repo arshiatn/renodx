@@ -19358,14 +19358,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         control_all = base 116 / 116, fixed = fx4b_'s x18c build 116 / 116. w4b2_1128 READY, merges after J2 / J3.
         Dead code (delete round item 7): f99180a24 removes twattilag_camera.hpp (no includer; Shogun 2 upscaling.hpp's
         comment reworded); gated twshogun2completeedition amd64 exit 0. README history lines left as history.
-        x38_ DONE 14:52 (14 of 45 min; RN\handoff_plan\handbacks8__handback.md): x38_1128 9ae872248 (on 8053e666a,
+        x38_ DONE 14:52 (14 of 45 min; RN\handoff_plan\handbacks\x38__handback.md): x38_1128 9ae872248 (on 8053e666a,
         pushed): ngx_backend.hpp (every helper game's DLSS SR) creates presets L / M at the ACTIVE size when the input is
         above the optimal (DPG 3.2.2.1 (3); picked over the range max: recreated on any size change, a bigger creation
         only adds cost); other presets + L / M at or below the optimal (66.7 %) byte for byte today's; control
         CONTROL_DLSS_LM_CREATE_AT_OPTIMAL; test-only RENODX_TW_TEST_DLSS_TIMING (GPU / CPU ms per evaluation);
         test/tw_ngx_create_size amd64 + x86 PASS, control fails (5 L / M cases above their creation size); builds exit 0
         (player helper, 2 timing helpers, talesofarise amd64, twattila amd64 + x86, 4K harness); 100 headers equal. GPU
-        job SC8_\job_x38.ps1 (~25 min, 70 MB; fixed vs control at 77 / ~72 / 66.7 %, R 3); deviation: D3D11
+        job SC\x38_\job_x38.ps1 (~25 min, 70 MB; fixed vs control at 77 / ~72 / 66.7 %, R 3); deviation: D3D11
         timestamps replace Nsight (GPU Trace records D3D12 / Vulkan only); no FLIP (needs a harness dump switch, j23p_).
         ATN later: preset Default unchanged, his call after the job. Reviews rx38_ (Opus xHigh) + fx38_ (Sonnet High)
         STARTED 14:52; job to gl_'s queue after GO.
