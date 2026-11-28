@@ -18862,6 +18862,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         Item 5 vs the single 32-bit night1 frame: 18 / 17 not drawn on 64-bit (info: that frame is RT + DLSS-P, rrsc_ N4).
         Picture (capture_76393, sent to ATN): a night siege of a big walled city, units at the walls, no fire yet at
         battle s ~119. ATN's part: the look. F part 2 (-PerfFix -R1 night1) -DryRun ok, STARTED 06:32 (coord_\gF2_run.log).
+        F part 2 DONE 06:37 (ab_runs\20261128_063231_Smoke): B64P-tr exit 0 at 274 s, quit line True, 0 CRASH / FATAL,
+        clean exit, PASS (scriptable), smoke_pass True. GROUP F DONE (both parts on night1).
+        Group G (-R2, 10 arms, ~60 min) -DryRun ok (self-test ok for every arm), STARTED 06:38 (coord_\gG_run2.log).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
