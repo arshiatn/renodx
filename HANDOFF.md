@@ -19129,6 +19129,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> gbf_ round 3 STARTED 10:12 (branch gbf3_1128 off today's tip: ONE frame_trace::Mark after the bind,
         'tone mapper draw: Ray Reconstruction's result bound for the tone mapper'; 16 gated builds) and abe_ round 2
         STARTED 10:12 (S1 / S2 / S3 on the new mark / N1-N5; same gated patch from bc9cf693, new out sha).
+        gbf_ round 3 DONE 10:2x (9 min): aeaca9f07 on gbf3_1128 (worktree gbf3_, off aeb9d2059): frame_trace::Mark("tone
+        mapper draw: Ray Reconstruction's result bound for the tone mapper") right after PSSetShaderResources in
+        OnToneMapperDraw + a one-line why. 16 gated builds exit 0 (13 amd64 + 3 x86); Attila addon64 CBA929771CFDE468...,
+        addon32 CE93AE1B9CD50F97.... Old gbf_1128 worktree: its 9 junctions removed one by one (no recursion); folder
+        left. rgbf_ follow-up review STARTED 10:21, then fgbf_ final, merge.
         - [ ] abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> -DryRun. Before any start
         on the W5 DLL. Owner: coord.
         GPU LANE NEXT (ATN 09:3x 'Do we have time to run the next gpu stuff?'): fxp_ still runs (P2c, GPU lock held by
