@@ -18825,6 +18825,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         left-over handler / filter (then RECORDED, the author's package gets the offset), else root-cause it. Owner:
         coord, apply phase (read-only dump reading, no heapfix source folders of Caesar's).
         rsc2_ (a64_ab second patch) STARTED 06:04.
+        rsc2_ DONE 06:09 (5 min; scratch\rsc2_\handback.md): patch_rsc2.py e48e3209 -> 51a8d546 (6 edits): budgets 600 /
+        720, E64-rtkill 660 (timeout = budget + 60), R1 quit 200 (late twins copy it), N3 comment (Quit = the loader's b,
+        +-10 s vs the tick-line B), N5 case -> pin key, N6 item-6 text names the replay, N7 re-hash + put back (rollback
+        proven). Dry-run diffs only quit / budget / timeout (+ case) lines; -C2 / w3 / ep1c 0 diff. OPEN: night1's battle
+        length is unknown (11 old 32-bit night1 starts all closed at ~start + 190 s, the longest saw ~B 160 with no end);
+        if it ends before B 200 a start shows 'hard timeout' + items 5-6 / 9 'not reached' (visible, 600 s lost) -> the
+        first F start tells. GateR's 'battle steps stopped' close NOT added (a trace pause could look like a stop).
+        rrsc_ N4 (item 5's single night1 reference = RT + DLSS-P) still not written on the line. fsc_ (Sonnet High final
+        on both a64_ab patches, scratch\fsc_\brief.md) STARTED 06:10.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
