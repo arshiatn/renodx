@@ -742,7 +742,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rdfi_ -> Sonnet High final -> merge all 4 (ATN yes to C1) -> F7 (test\tw_attila6 ... | coord
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
-- abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -19159,6 +19158,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [ ] a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frames before key down; a shift
         >= the pass threshold = 'not measured: the scene moves before the key' (the one false-PASS path left: the scene
         changes by itself). With the w3 rerun's analysis. Owner: next a64_ab writer.
+        fabe_ GO 10:51 (22 hunks mapped, fresh-copy reproduction byte-equal, dry runs A-H ok). APPLIED 10:52 by the coord:
+        backup a64_ab.ps1.bak_abe_20261128_105134 (bc9cf693...), live now
+        089a4c790caa208372215c9f4f6157ced6f7c5a0eb8b2fcfc50d2665459775f9; live -DryRun (group C line) 'self-test: ok for every
+        arm'. Chain: ... -> bc9cf693 (rsc4_) -> 089a4c79 (abe_ patch e).
         gbf_ round 3 DONE 10:2x (9 min): aeaca9f07 on gbf3_1128 (worktree gbf3_, off aeb9d2059): frame_trace::Mark("tone
         mapper draw: Ray Reconstruction's result bound for the tone mapper") right after PSSetShaderResources in
         OnToneMapperDraw + a one-line why. 16 gated builds exit 0 (13 amd64 + 3 x86); Attila addon64 CBA929771CFDE468...,
@@ -19167,7 +19170,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         rgbf_ r3 GO (placement: the only bind, no return between; text = a64_ab $O1_BIND; Mark = one relaxed atomic load
         without a trace); NIT the 122-column comment -> ffb139932 (wrap; twattila amd64 exit 0, addon64 5BAFC661: the sha
         moves with line numbers / relink). fgbf_ r3 GO. MERGED gbf3_1128 into atn-mods 9dad56b66 (--no-ff), pushed 10:25.
-        - [ ] abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> -DryRun. Before any start
+        - [x] DONE 10:52 (089a4c79 live). Was: abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> -DryRun. Before any start
         on the W5 DLL. Owner: coord.
         GPU LANE NEXT (ATN 09:3x 'Do we have time to run the next gpu stuff?'): fxp_ still runs (P2c, GPU lock held by
         its run_job.ps1). aa67_ (Opus High, brief scratch\aa67_\brief.md, est 40 / 80) STARTED 09:33: the AA feed at 67 %
