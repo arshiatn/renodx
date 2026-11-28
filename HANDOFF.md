@@ -740,7 +740,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
-- BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | coord -> wave 2 (main
+- BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
+- X20 AT THE DEFAULT (ATN, after x20_'s fix round confirms it): the IGN-under-RR r ... | coord -> wave 2 (main
 - REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of r ... | ATN
 - j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch swi ... | coord -> j23p_
 - J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / h ... | ?
@@ -19443,7 +19444,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         can PASS. SHOULD: shared threshold (rt_lights:308-309) = a marked deviation or per light; a bit-30 arm via
         RT_EXTRA_TRACE_FLAGS (the Gradient path untested); pan control gets the same flicker env; a hard-shadow-under-RR
         byte-identical control; a run without the 16 stress lights. 7 NITs. Look numbers for ATN wait on
-        HARNESS_RR_TORCH (j23p_ follow-up). Waiting for fx20_, then one fix round (x20_).        j23p_ DONE 15:10 (~35 of 60 min; RN\handoff_plan\handbacks\j23p__handback.md; files outside the repo, branch
+        HARNESS_RR_TORCH (j23p_ follow-up). Waiting for fx20_, then one fix round (x20_).
+        fx20_ DONE ~15:33 (scratch\fx20_\review.md) GO WITH CHANGES, no MUST: seeds independent (dims 2048 / 2049 past
+        the disk's 2047), same [0,1) range, cite p17-18 exact; v33 stays; the rt_d3d12 bit covers only the lights
+        Dispatch and is restored; row / Take / only_some_games right; 116 headers (control = base, new = 16 rt_lights);
+        14 amd64 includers (WH3 too) + 3 x86 exit 0. SHOULD: the threshold + turn act only above 1 ray per pixel, so
+        the row does nothing at the default (tooltip / README / comment wrong; NV9 r1 arms carry no information);
+        verdict :90 (= rx20_'s MUST); no host-path test (harness scene-flags switch).
+        -> x20_ fix round (resumed 15:34): verdict fail-closed + self-test, default-case texts (row + design
+        unchanged; ATN told), shared threshold dev: or per light, bit-30 arm / harness spec for j23p_, pan flicker env,
+        hard-shadow byte control, no-stress-lights run, cheap NITs; then a Sonnet re-check, NV9 via gl_, merge.
+        - [ ] X20 AT THE DEFAULT (ATN, after x20_'s fix round confirms it): the IGN-under-RR row changes the picture
+          only above 1 ray per pixel (fx20_), so at the default it does nothing: keep the row as it is, or a design
+          that also acts at 1 ray / px? Owner: coord -> ATN.
+        j23p_ DONE 15:10 (~35 of 60 min; RN\handoff_plan\handbacks\j23p__handback.md; files outside the repo, branch
         j23p_1128 no commits): pdi1 fork tools\tw\reference\pdi1_harness_src (only it has reference_mode.hpp;
         *.before_j23p backups): HARNESS_CUT_OUT_BOX=cut_out|leaf (a room whose sun-side wall is a palisade cut-out card,
         RT_SOLID_CUT_OUT + RT_OWN_CUTOFF; inside view + an edge-on view for rt_trace's sun, X10 MUST-2),
