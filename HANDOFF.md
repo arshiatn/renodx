@@ -732,7 +732,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN pfx_ DONE 21:05 (Fable 5
 - S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 d ... | the next attila64_plugin_link
 - E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | next a64_ab writer (apply phase): read the horizon from zz_c
-- J exit crash 0x75f0: confirm from the dump's stack that 0x75f0 in heapfix P 8e8f ... | coord, apply phase (read-only dump reading, no heapfix sourc
 - G-a: re-log the RT status line once the helper's first status arrives (or arm th ... | coord, apply phase (add-on change + gated build + a3_smoke)
 - G-b: root-cause RR Before Tone Mapping not applying at 50 % render scale on 64-b ... | coord, apply phase
 - a64_ab R2Kill: check_logs' 'the helper stopped' line after the kill time is the ... | coord, next a64_ab patch (with G-a's check)
@@ -13979,6 +13978,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         - [x] heapfix exit crash (5 / 40 exits): ATN 2026-11-24 DECIDED: only the author's fix; our add-on does NOT pin it.
         - [ ] Heapfix author package (after render_mt is fully done): add the one-line pin GetModuleHandleExW(FLAG_PIN) at
         heapfix.c:634 + the WER evidence (fcr_f31_exit_crash.md: DINPUT8.dll_unloaded+0x7E60, diag.c:892-893).
+        + (jcr_ 11-28) 'Attila exit crash, heapfix P (8e8fa96a): DINPUT8.dll_unloaded+0x75F0 (handler registered at
+        +0x71BA, never removed) after the watchdog thread (+0x7AC0) woke at +0x7B07 in the unloaded image. Same class
+        as +0x7E60. Fix: pin the DLL at init with GetModuleHandleExW(PIN | FROM_ADDRESS), or remove the handler and
+        filter and stop both threads before unload.' (the watchdog thread is new: the pin fixes it too)
         - [x] DONE (audit 11-27: 14409-14416 t4i_ round 6 WER scanner + bench patch): Bench gap: per start read WER Event 1000 / CrashDumps\Attila.exe.<pid>.dmp in the close path
         (constantinople_bench.ps1:1124-1146): DINPUT8.dll_unloaded + the game-race signature = RECORDED, other = counted
         (the budget is used). -> t4i_ after the reruns session, before wpr_analysis; ebr_ glance.
@@ -18826,7 +18829,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         class as the recorded heapfix exit crash (DINPUT8.dll_unloaded, handler / filter left after the unload; ATN
         11-24: the author's fix only), but the bench's offset was 0x7E60 on another build. Dump kept:
         %LOCALAPPDATA%\CrashDumps\Attila.exe.34032.dmp (35 MB, never delete).
-        - [ ] J exit crash 0x75f0: confirm from the dump's stack that 0x75f0 in heapfix P 8e8fa96a is the same
+        - [x] DONE 08:45 (jcr_, scratch\jcr_\verdict.md + cdb_*.txt, x86 cdb, 7 min): SAME KNOWN CLASS, RECORDED (ATN
+        11-24: the author's fix only). Unloaded DINPUT8 58840000 size 0xB14000 ts 0x6AE91460 = heapfix P 8e8fa96a;
+        thread 2 = heapfix's watchdog (+0x7AC0, Sleep(1000) loop) woke at +0x7B07 in the unloaded image (DEP), then
+        Windows called its vectored handler +0x75F0 (registered at +0x71BA, never removed; no
+        RemoveVectoredExceptionHandler import; GetModuleHandleExW only with flags 6, never PIN) ~18x nested; thread 1 =
+        its dump worker (+0x7620). Same role as +0x7E60 in the bench build. Was:
+        J exit crash 0x75f0: confirm from the dump's stack that 0x75f0 in heapfix P 8e8fa96a is the same
         left-over handler / filter (then RECORDED, the author's package gets the offset), else root-cause it. Owner:
         coord, apply phase (read-only dump reading, no heapfix source folders of Caesar's).
         rsc2_ (a64_ab second patch) STARTED 06:04.
