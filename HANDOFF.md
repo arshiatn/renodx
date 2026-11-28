@@ -18740,6 +18740,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         Sonnet High review): copy the build's omm-lib.dll (+ the nvngx pair if they differ) in beside the exe for the
         start, in the hash-checked backup / restore, then the -DryRun and the run (omv_ 11-27: 1.10 vs 1.12 swapped
         under one exe = 0 bytes apart in 11 of 12 modes). Group D -DryRun next.
+        Group D -DryRun 05:02 ok (stages a3_smoke b756de5c). [x] Group D DONE 05:12 (10 min, exit 0;
+        ab_runs\20261128_050251_Smoke): smoke_pass True in both start.json (A12), clean exits, 0 CRASH / FATAL, no WER /
+        dumps, check_logs clean x2, E1c-E13 ok (21 sites unchanged, rows offered = tried 0x3fff, first calls on the
+        present thread, E11 sr2 none / mv 0x1), HDR10 r10g10b10a2 3840x2160, 48 / 48 hashes, overlay not-8-bit 0.
+        C8 T0: SOLCAP off 303 fps / on 224 fps (loader 240), dx11_starting.txt gone, B values 8 / 8, sound mirror lines,
+        restart-only 7 applied, shadow refresh 2 (3562 drawn / 3561 kept). mv: 4-bone 0x5F9CD405 / 0x0ECFE74C /
+        0xDAC80ECC drawn (702 close draws), PK1-64 info collected (tw_map_trace / tw_frame_trace). sr2: a wide shot
+        (7 unit draws; log_check exit 1 = 5 hashes not drawn there, info) -> (e) Dead Unit Detail NOT judgeable from
+        its frame: FOR ATN's look (capture_64807.bmp). W3-Gate F12 has its fresh E64-mv smoke. Group E -DryRun next.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
