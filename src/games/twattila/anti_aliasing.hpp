@@ -1111,7 +1111,8 @@ constexpr auto OnFullDepthDraw = []<typename Context>(Context& command) -> renod
 
 // SMAA, CMAA2, SMAA T2x, TAA or DLAA / DLSS on `target` (the tone mapper's; `scaled`: DLSS, its top-left render size
 // holds the frame), the compute stage's bindings put back after. `scene_linear`: DLAA on the lit scene before the tone
-// mapper (OnToneMapperDraw; Attila: R11G11B10F), linear, its result left in `result` for the caller to bind (nothing copied into `target`).
+// mapper (OnToneMapperDraw; Attila: R11G11B10F), linear, its result left in `result` for the caller to bind (nothing
+// copied into `target`).
 inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool scaled, bool scene_linear) {
   auto& objects = runtime.objects;
   const int quality = std::clamp(runtime.settings.quality, 0, 3);
@@ -1231,7 +1232,8 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   native->CSSetSamplers(0, 2, samplers.data());
   // The frame: DLAA reads the tone mapper's output (before it, OnToneMapperDraw's scene: Attila's R11G11B10F light)
   // itself through a view of its own format where it can be read (its render targets off meanwhile: D3D11 drops a view
-  // of a texture still bound for output), the rest a copy (a 4K copy less: ~0.1 ms).
+  // of a texture still bound for output; a 4K copy less: ~0.1 ms), the rest an RGBA16 copy. The scene is bound as a
+  // view, so it always gets its own: the copy would cross format groups for R11G11B10F, which D3D11 drops.
   ID3D11ShaderResourceView* frame_view = objects.color_srv.Get();
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> game_targets = {};
   ComPtr<ID3D11DepthStencilView> game_depth_target;
@@ -1567,9 +1569,10 @@ inline void OnToneMapperDraw(reshade::api::command_list* cmd_list, UINT scene_sl
     view->GetResource(resource.GetAddressOf());
     if (FAILED(resource.As(texture))) return false;
     (*texture)->GetDesc(desc);
-    const bool rgba16 = (desc->Format == DXGI_FORMAT_R16G16B16A16_FLOAT || desc->Format == DXGI_FORMAT_R16G16B16A16_TYPELESS);
     return desc->Width == runtime.display_width && desc->Height == runtime.display_height && desc->SampleDesc.Count == 1
-           && desc->ArraySize == 1 && (rgba16 || (scene && desc->Format == DXGI_FORMAT_R11G11B10_FLOAT));
+           && desc->ArraySize == 1
+           && (desc->Format == DXGI_FORMAT_R16G16B16A16_FLOAT || desc->Format == DXGI_FORMAT_R16G16B16A16_TYPELESS
+               || (scene && desc->Format == DXGI_FORMAT_R11G11B10_FLOAT));
   };
   ComPtr<ID3D11RenderTargetView> target_view;
   native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
