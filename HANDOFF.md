@@ -19382,6 +19382,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         for L / M + an unverified '3840x2160 helper log' claim; the A/A noise estimate for P4; drop disjoint samples;
         amend fwp_ plan rows saying 'Nsight strict' for X38; the timing builds' sha; a DRED n/a note in the job output.
         Fix round waits for rx38_ (Opus xHigh), then x38_ resumed with both lists.
+        rx38_ DONE 15:07 (scratch\rx38_\review.md) GO WITH CHANGES: C++ fix correct (DPG 3.2.2.1 (3) = the max of the
+        app's own range; the backend recreates on any size change ngx_backend.hpp:563-565 -> the active size; no L / M
+        input exceeds its creation size in shipped settings; others byte for byte); SR on D3D11 (main.cpp:425 / :1383)
+        -> D3D11 timestamps are the right gate, DRED n/a (the plan's 'Nsight strict' X38 rows amended by this line);
+        CPU test amd64 + x86 PASS, -Control fails 10; the '3840x2160 helper log' claim checks out (Attila\debug41).
+        MUST M1 = fx38_'s (job_x38.ps1:51 / :65 no wait for the helper's exit: copy can abort, log dropped silently).
+        SHOULD: RESULT never PASS when P4 is SLOWER; realloc spike vs first-evaluation warm-up + time Create; DLSS
+        310.9.16 not 310.7; reword the deviation comment; a preset M arm; amend the Nsight rows. Fix round x38_ (Opus
+        Medium, resumed with both lists) STARTED 15:07; then a Sonnet High re-check, then gl_'s queue.
+        rx38_ worktree left: unlink its external\* junctions before deleting.
         x20_ DONE PART 15:01 (RN\handoff_plan\handbacks\x20__handback.md): x20_1128 8ceac6a52 (on 8053e666a, pushed):
         under RR (not Steady) rt_lights.cs_6_5.hlsl's soft-shadow threshold + spot turn use the helper's existing pcg4d
         Random per pixel per frame (cite DLSS-RR Integration Guide 3.5, printed p17-18, not p21); bridge
