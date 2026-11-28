@@ -338,6 +338,9 @@ constexpr uint32_t RT_SCENE_SMOKE_FAST_BUILD = 1;
 // older helpers ignore it): rt_lights gives a pixel the ratio's texels can't serve (a corner, crack or edge, not seen by the
 // last trace) its own lights' bits, the list's first 31, instead of 1.
 constexpr uint32_t RT_SCENE_LIGHT_BITS = 2;
+// Torch Shadow Sampling Gradient (the addon's only under Ray Reconstruction; older helpers ignore it: gradient noise
+// always): rt_lights' soft-shadow threshold and spot turn as interleaved gradient noise, not NVIDIA's white noise.
+constexpr uint32_t RT_SCENE_LIGHT_GRADIENT_NOISE = 4;
 constexpr uint32_t RT_NRD_OFF_AMBIENT = 1;
 constexpr uint32_t RT_NRD_OFF_BOUNCE = 2;
 constexpr uint32_t RT_NRD_OFF_REFLECTIONS = 4;

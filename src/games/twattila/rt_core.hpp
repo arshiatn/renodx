@@ -180,6 +180,9 @@ struct Settings {
   bool light_importance = false;
   // Steady Torch Shadows (Experimental): every light a pixel reaches traced every frame, each soft ray to the same disk point.
   bool light_steady = false;
+  // Torch Shadow Sampling Gradient (bridge RT_SCENE_LIGHT_GRADIENT_NOISE, sent only under Ray Reconstruction): the soft
+  // torch shadows' noise as interleaved gradient noise; off (the default): white noise, NVIDIA's for RR.
+  bool light_gradient_noise = false;
   // With path-traced Light Bounce (helper111, bridge RT_LIGHTS_IN_BOUNCE): Torch and Fire Light in the Light Bounce (the
   // first 32 lights' light and shadow from ReSTIR GI's reuse, one light a bounce texel, the game's light shaders adding none of it), or
   // with light_ratio Torch and Fire Shadows from the Light Bounce (the game's light shaders keep their light, its shadow the
@@ -3757,7 +3760,8 @@ inline bool Trace(ID3D11DeviceContext* native, ID3D11ShaderResourceView* depth, 
       .grass_range = runtime.settings.grass_range,
       .units_range = runtime.settings.units_range,
       // RT_SCENE_LIGHT_BITS: every host's light shaders read the mask through rt_local_lights.hlsli.
-      .scene_flags = (runtime.settings.smoke_fast_build ? dlaa_bridge::RT_SCENE_SMOKE_FAST_BUILD : 0u) | dlaa_bridge::RT_SCENE_LIGHT_BITS,
+      .scene_flags = (runtime.settings.smoke_fast_build ? dlaa_bridge::RT_SCENE_SMOKE_FAST_BUILD : 0u) | dlaa_bridge::RT_SCENE_LIGHT_BITS
+                     | ((runtime.settings.light_gradient_noise && dlaa_bridge::bridge.reconstructing) ? dlaa_bridge::RT_SCENE_LIGHT_GRADIENT_NOISE : 0u),
       .leaf_cutoff = leaf_cutoff,
   };
   part_done(3);

@@ -299,12 +299,33 @@ void main(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint index :
     lit = ~(reached_slots & kept_dark);
   }
   // Soft shadows under Ray Reconstruction: each ray to a point of the light's disk (light_size), the bit lit where the
-  // share of rays that reached it beats noise moved each frame, which RR averages into the share (hard: half). Several
-  // rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar pixel.
-  // Steady: each ray to the light's centre, most of a pixel's rays decide.
+  // share of rays that reached it beats a threshold uniform in [0, 1) (P(lit) = the share), which RR averages into
+  // the share (hard: half). Several rays a pixel (Ray Tracing at Output Resolution) each from its own spot of a planar
+  // pixel, the spots turned per pixel. Steady: each ray to the light's centre, most of a pixel's rays decide.
+  // Under RR the threshold and the turn are white noise, each pixel's own every frame (X20; src: DLSS-RR Integration
+  // Guide 3.5, p17-18: "DLSS RR assumes independent samples", "Do use high quality hash functions and white noise",
+  // avoid "screen space dithering in the sampling algorithms"; Random is rt_scene.hlsli's pcg4d, from the hash paper
+  // the guide cites). ours: one threshold a pixel for all its lights, as before (a pixel's lights' bits correlate with
+  // each other, not across the screen). Torch Shadow Sampling Gradient (LIGHT_GRADIENT_NOISE, set by the helper on
+  // this dispatch alone from the addon's RT_SCENE_LIGHT_GRADIENT_NOISE: rt_trace reads bit 30 as its PART_SUN) or
+  // CONTROL_LIGHT_GRADIENT_NOISE (tests): interleaved gradient noise as before X20, a screen-space dither moved each
+  // frame. Without RR both as before.
+  static const uint LIGHT_GRADIENT_NOISE = 1u << 30;
+  // Random's dimensions: DIM_LIGHT_DISK's indices past every light's rays (light x 16 + ray x 2 + 0 / 1 < 128 x 16).
+  static const uint DIM_LIGHT_THRESHOLD = DIM_LIGHT_DISK + 2048u;
+  static const uint DIM_LIGHT_TURN = DIM_LIGHT_DISK + 2049u;
+#if defined(CONTROL_LIGHT_GRADIENT_NOISE)
+  const bool white_noise = false;
+#else
+  const bool white_noise = reconstructed && !steady && (flags & LIGHT_GRADIENT_NOISE) == 0u;
+#endif
   const uint rays = clamp(shadow_rays, 1u, 8u);
-  const float threshold = (reconstructed && !steady && (soft || rays > 1u)) ? InterleavedGradientNoise(float2(id.xy)) : 0.5f;
-  const float turn = InterleavedGradientNoise(float2(id.xy) + 37.f);
+  const float threshold = (reconstructed && !steady && (soft || rays > 1u))
+                              ? (white_noise ? Random(uint4(id.xy, frame, DIM_LIGHT_THRESHOLD))
+                                             : InterleavedGradientNoise(float2(id.xy)))
+                              : 0.5f;
+  const float turn = white_noise ? Random(uint4(id.xy, frame, DIM_LIGHT_TURN))
+                                 : InterleavedGradientNoise(float2(id.xy) + 37.f);
   [loop]
   for (uint slot = 0u; slot < size; ++slot) {
     if (((traced >> slot) & 1u) == 0u) continue;

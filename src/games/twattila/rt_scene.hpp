@@ -109,6 +109,7 @@ struct Sliders {
   float reuse_balanced = 0.f;
   float light_importance = 0.f;
   float light_steady = 0.f;
+  float light_gradient_noise = 0.f;  // Torch Shadow Sampling: 0 NVIDIA (white noise), 1 Gradient
   // Torch and Fire Light / Shadows from Path Tracing (graphics_page.hpp Bindings::lights_in_bounce, light_ratio).
   float lights_in_bounce = 0.f;
   float light_ratio = 0.f;
@@ -237,6 +238,7 @@ inline Settings SettingsOf(const Sliders& sliders, const feature_settings::AaSli
       .reuse_balanced = static_cast<uint32_t>(sliders.reuse_balanced),
       .light_importance = sliders.light_importance != 0.f,
       .light_steady = sliders.light_steady != 0.f,
+      .light_gradient_noise = sliders.light_gradient_noise != 0.f,
       .lights_in_bounce = sliders.lights_in_bounce != 0.f,
       .light_ratio = sliders.light_ratio != 0.f,
       .light_ratio_follow = sliders.light_ratio_follow != 0.f,
@@ -2102,6 +2104,20 @@ inline void AppendSettings(std::vector<renodx::utils::settings::Setting*>* setti
           .tooltip = "Torch and fire shadows that don't flicker: every fire traced every frame, with sharp edges.\n"
                      "Heavier with many fires. Overrides Importance-Sampled Torch Shadows and Torch and Fire Shadow Softness.",
           .labels = {"Off", "On"},
+          .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
+          .is_visible = [] { return internal::point_lights_installed; },
+      },
+      new renodx::utils::settings::Setting{
+          .key = "RayTracedLightGradientNoise",
+          .binding = &sliders->light_gradient_noise,
+          .value_type = renodx::utils::settings::SettingValueType::INTEGER,
+          .default_value = 0.f,
+          .label = "Torch Shadow Sampling",
+          .section = section,
+          .tooltip = "The noise in soft torch and fire shadows that Ray Reconstruction cleans.\n"
+                     "NVIDIA: as NVIDIA advises for Ray Reconstruction. Gradient: the older pattern.\n"
+                     "Needs DLSS Ray Reconstruction (NVIDIA only).",
+          .labels = {"NVIDIA", "Gradient"},
           .is_enabled = [sliders, aa] { return feature_settings::Upscaling(*aa) && sliders->sun_shadows != 0.f; },
           .is_visible = [] { return internal::point_lights_installed; },
       },
