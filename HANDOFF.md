@@ -747,7 +747,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3' ... | coord -> wave 2 (main
 - REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of r ... | ATN
 - j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch swi ... | coord -> j23p_
-- J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / h ... | ?
 - CONTACTSHADE 4K RESIDUAL (j0rc_): at 4K the candidate misses even the `contact` ... | the ContactShade (H9) / GI energy wave (:21115 area)
 - REF_BREAK COMMENTS (j0rc_): rt_reference.hlsli:139-140 says range_half darkens c ... | wave 2 tail (rt_reference owner)
 - W3 SCRIPT SIGNED SHIFTS (j0rc_): W3's 'control BIAS > 1 %' rows (fx3__handback.m ... | whoever scripts W3 (gq2_ writes the rows)
@@ -19571,7 +19570,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         NOISY); only open PASSes. => the 4K judge cannot gate yet: J2 / J3 / X08 / W3 (judge-scored) HELD; X38 and X20
         NV9 (own metrics, not the judge) may run. Root cause j0rc_ (Opus xHigh, CPU analysis on the kept data,
         scratch\j0rc_\brief.md) STARTED 15:17.
-        - [ ] J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / harness, re-run J0 (reuse
+        - [x] (J0 PASS 16:00 on gq2_'s judge, rgq2_ GO for J0 16:20) J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / harness, re-run J0 (reuse
           the valid replicates), then J2 / J3 / X08 / W3.
           j0rc_ DONE ~15:39 (~21 min; its Write was refused 'subagents return findings as text', so the coord saved it:
           scratch\j0rc_\analysis.md). ROOT CAUSE: (1) q / torch judge the helper against the `full` reference, which
@@ -19607,6 +19606,13 @@ heading text are in HANDOFF_ARCHIVE.md)
           0.2 % in 41 % of draws (edge 5 %, concave 15 %) -> read it on edge / concave + a higher-roughness reflect pair.
           SHOULD: run / INVALID / break-name checks in the judge; e5 compare ~9.3 GB RAM at R 8; 2 hand-back notes.
           Waiting for rgq2_, then one gq2_ fix round, then X08 via gl_ (gl_ runs X20 NV9 now).
+          rgq2_ DONE ~16:2x (scratch\rgq2_\review.md) GO WITH CHANGES: J0 GO (PASS reproduces, every no-op break caught,
+          re-judge identical; no_g2g1 boxes stable at 16 SE but thin); ref_compare byte-identical without flags (2 sets
+          at 640 + 1 at 4K), R < 2 exits 2. X08 MUST: M1 e5 cannot see the clamp (its candidate = specular occlusion,
+          before Own ReSTIR's merge, 1 on the open plane) -> drop e5_clampoff + both e5 compares; M2 DROP / RE-SET only
+          for the history clamp, Own ReSTIR's clamp is ungated (numbers to ATN). With M1: 16 replicates, ~34 GB, ~10
+          GPU min; e5 compare RAM ~8.4 GB. -> gq2_ fix round (resumed 16:20): M1 + M2, no_g2g1 read on edge / concave
+          (boxes info), both reviews' SHOULDs; then X08 via gl_ after NV9.
         - [ ] CONTACTSHADE 4K RESIDUAL (j0rc_): at 4K the candidate misses even the `contact` reference (boxes -1.02 %,
           concave +1.1 %, outliers 0.106 % vs 0.015 % at 640); the REFERENCE side moves (face means +1.6 / +2.2 / +0.9 %,
           candidate <= 0.3 %); 640 hid it. Owner: the ContactShade (H9) / GI energy wave (:21115 area).
