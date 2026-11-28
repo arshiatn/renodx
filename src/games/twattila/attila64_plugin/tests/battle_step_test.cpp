@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
@@ -2191,7 +2192,8 @@ void RunContactCases() {
     base_scene();
     const ContactOutcome alone = ExpectContactSame("contact base: neighbours pass the game's filters, the row does the tick");
     Expect(alone.handled && alone.regions == 1 && alone.calls.size() == 53 && LaneIs(ENGINE_ACTIVE) && active_line(2100, 0) == 1
-               && step_lines.size() == 1 && LinesWith("listed 106, helpers 6, radius addition 0)") == 1 && !contact.busy.load() && !contact.open,
+               && step_lines.size() == 1 && LinesWith("listed 106, helpers 6, radius addition 0)") == 1
+               && !contact.busy.load() && !contact.open,
            "contact base: active, one line with the tick's sizes, the row free again");
     Expect(cells_untouched(), "contact base: the swap's cell entries are zero but each head pointer, after a tick too");
     const ContactOutcome again = RunContact(true, 0, false);
@@ -2204,6 +2206,17 @@ void RunContactCases() {
     Expect(ExpectContactSame("an object twice in one cell").handled && contact.visited == 107 && contact.listed == 107
                && contact.most_listed == 107,
            "an object twice in one cell: visited once, kept once");
+    // A smaller tick after it, without the reset: the largest shortlist stays.
+    base_scene();
+    KeepContactWorld();
+    Expect(RunContact(true, 0, false).handled && contact.listed == 107 + 106 && contact.most_listed == 107,
+           "listed max: a smaller tick after a larger one keeps the larger");
+    // The active line's radius addition.
+    base_scene();
+    *reinterpret_cast<float*>(CONTACT_RADIUS_ADDITION) = 0.1f;
+    Expect(ExpectContactSame("contact base with a radius addition").handled
+               && LinesWith(", radius addition 0.1)") == 1,
+           "contact base: the active line with the radius addition");
     base_scene();
     KeepContactWorld();
     // Control: detect drops one passing node (here in the seam, with the region open: the first helper's slot does
@@ -2289,7 +2302,23 @@ void RunContactCases() {
     // The pool line's chunk count is the helpers' claims: with them, the text before it.
     const std::string_view threaded_line = std::string_view(line).substr(0, std::string_view(line).find(", chunks "));
     const ContactOutcome threaded = RunContact(true, 3);
-    Expect(Same(game, threaded) && !threaded.handled && LinesWith(threaded_line) == 1 && step_lines.size() == 1,
+    // Its claims lie between the step thread's alone and all.
+    bool chunks_in_range = true;
+    if (threaded_line.size() != std::strlen(line)) {
+      const std::string_view logged = ((step_lines.size() == 1) ? std::string_view(step_lines[0]) : std::string_view());
+      const size_t chunks_at = logged.find(", chunks ");
+      uint32_t claimed = 0;
+      chunks_in_range = false;
+      if (chunks_at != std::string_view::npos) {
+        const char* const number = logged.data() + chunks_at + std::strlen(", chunks ");
+        const auto [rest, error] = std::from_chars(number, logged.data() + logged.size(), claimed);
+        chunks_in_range = error == std::errc{}
+                          && std::string_view(rest, logged.data() + logged.size()).starts_with(" of 17)")
+                          && claimed >= stopped_chunks && claimed <= 17;
+      }
+    }
+    Expect(Same(game, threaded) && !threaded.handled && LinesWith(threaded_line) == 1 && step_lines.size() == 1
+               && chunks_in_range,
            "stop: the same with helpers");
     // The skip latch: the period's other ticks run no region; the re-sort tick is the game's as ever; the tick
     // after it tries again.
@@ -2359,7 +2388,8 @@ void RunContactCases() {
                 "the pool's edge: 1449 objects in one cell stop");
   }
   {
-    // With three helpers each participant may leave up to 1023 nodes of its last block unused: 1446 x 1445 fit.
+    // With helpers (the scene's 8 task threads queue 6 helper tasks: 7 participants with the step thread) each may
+    // leave up to 1023 nodes of its last block unused: 1446 x 1445 + 7 x 1023 = 2,096,631 <= 2,097,152 fit.
     crowded_scene(1446);
     const ContactOutcome alone = ExpectContactSame("the pool's edge with helpers: 1446 objects in one cell");
     Expect(alone.handled && contact.listed == uint64_t{1446} * 1445, "the pool's edge with helpers: 1446 objects fit");
@@ -2580,7 +2610,8 @@ void RunContactCases() {
     RestoreContactWorld();
     At<uint32_t>(scene.task_manager, TASK_MANAGER_THREADS) = MIN_TASK_THREADS;
     KeepContactWorld();
-    Expect(RunContact(true).handled && LinesWith("helpers 2, radius addition 0)") == 1, "gate: four task threads are enough, two helpers");
+    Expect(RunContact(true).handled && LinesWith("helpers 2, radius addition 0)") == 1,
+           "gate: four task threads are enough, two helpers");
     KeepTick(250);
     contact.skip_period = 1;
     Expect(RunContact(true, 0, false).handled, "skip latch: a stale period skips only its own number");
@@ -2613,7 +2644,7 @@ void RunContactCases() {
         continue;
       }
       Expect(handled && LinesWith(line) == 1 && LinesWith("own chunks 100 %, visited ") != 0 && LinesWith(tail) == 1
-                 && LinesWith(", listed max ") != 0,
+                 && LinesWith(", listed max 106, plain ") == ((ticks == 1000) ? 1u : 2u),
              "summary: one line at the 1000th and at the 3000th tick");
     }
     Expect(std::ranges::all_of(step_lines, [](const std::string& line) { return line.size() < 1024; }),

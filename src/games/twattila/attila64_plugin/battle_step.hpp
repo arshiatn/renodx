@@ -2802,7 +2802,8 @@ struct ContactState {
 };
 static ContactState contact;
 static std::array<ContactItem, OBJECT_LIMIT> contact_items;                             // 1.6 MB, zero until used
-static std::array<ContactNode, size_t{NODE_BLOCK_COUNT} * NODE_BLOCK_NODES> contact_nodes;  // 80 MiB of zero pages; a region touches its own tick's need only
+// 80 MiB of zero pages; a region touches its own tick's need only.
+static std::array<ContactNode, size_t{NODE_BLOCK_COUNT} * NODE_BLOCK_NODES> contact_nodes;
 static std::array<ContactSlot, SLOT_COUNT> contact_slots;
 // Not constexpr-built: the entries hold the object's own addresses.
 static constinit ContactCells contact_cells = [] {
@@ -3378,8 +3379,8 @@ inline constexpr HelperTable HELPER_TABLE;
   const bool partly = (contact.reasons_logged.load(std::memory_order_relaxed) & ~(1u << CONTACT_REASON_ID_SET)) != 0;
   SetLane(block, (partly ? ENGINE_PARTLY : ENGINE_ACTIVE), ENGINE_SPLIT_SHIFT);
   if (contact.handled_ticks == 1) {
-    loader.log("renodx_attila64: contact split: active (objects %u, plain %u, listed %llu, helpers %u, radius addition "
-               "%g)",
+    loader.log("renodx_attila64: contact split: active (objects %u, plain %u, listed %llu, helpers %u"
+               ", radius addition %g)",
                object_count, plain_objects, listed, helper_count, double{contact.radius_addition});
   }
   if (std::ranges::find(SUMMARY_TICKS, contact.handled_ticks) != SUMMARY_TICKS.end()) {
@@ -3388,8 +3389,8 @@ inline constexpr HelperTable HELPER_TABLE;
           std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::duration(time)).count());
     };
     loader.log("renodx_attila64: contact split: %u ticks (region mean %llu us, max %llu us, join wait mean %llu us, own "
-               "chunks %llu %%, visited %llu, listed %llu, listed max %llu, plain %llu %%, fence ticks %u (first at tick %u, "
-               "index %u), original ticks %u)",
+               "chunks %llu %%, visited %llu, listed %llu, listed max %llu, plain %llu %%, fence ticks %u "
+               "(first at tick %u, index %u), original ticks %u)",
                contact.handled_ticks, microseconds(contact.region_time / contact.handled_ticks),
                microseconds(contact.longest_region), microseconds(contact.join_wait / contact.handled_ticks),
                (contact.own_chunks * 100) / contact.chunks, contact.visited, contact.listed, contact.most_listed,
