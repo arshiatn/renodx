@@ -18673,6 +18673,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         -R2Kill dry runs not diffed (-R3 only loses its 'E64-rt2c left out' note), E64-rt gains an info-only cascade
         line, the plan text. APPLIED LIVE 03:45 (88dcff29 -> d2572849; backups .pre_abg_1128.ps1 +
         .bak_coord_abg_; byte-equal to the reviewed copy; parse 0). One -R2 -DryRun after F7 ends (fabg_ S2).
+        F7 on the GPU of the S5a fix round (stage f7fix) DONE 03:49: 85 passed, 0 failed of 85, PASS: F7
+        (scratch\coord_\s5a_f7fix.log). -R2 -DryRun on the live d2572849 (03:50, scratch\coord_\r2_dry_d2572849.log):
+        exit 0, 10 arms, about 60 min, CPU Set Setter rule found, rt_stage stages 12 files per helper start, pre-seeds
+        ShadowCascades=0 (rt2c0) / =1 (rt2c), 'self-test: ok for every arm'.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
