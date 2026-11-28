@@ -1597,6 +1597,8 @@ inline void OnToneMapperDraw(reshade::api::command_list* cmd_list, UINT scene_sl
   if (runtime.upscaled_frame != runtime.frame) return;
   ID3D11ShaderResourceView* result = runtime.objects.result_srv.Get();
   native->PSSetShaderResources(scene_slot, 1, &result);
+  // The mark above is written before Apply, which can return without Ray Reconstruction's result: this one proves it ran.
+  frame_trace::Mark("tone mapper draw: Ray Reconstruction's result bound for the tone mapper");
   runtime.scene_view = scene_view;
   runtime.scene_slot = scene_slot;
   runtime.scene_reconstructed_frame = runtime.frame;
