@@ -18610,6 +18610,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         the third field only (the lag adds 1/0/0, 1/1/0, 1/1/1 lines); S3 UnitBatchWanted single caller (RS2 asked
         for it: coord OK) + inline addon.cpp:2462's single-use local; S4 Update's shrink order vs Unregister's;
         5 NITs. rs5a_ still running.
+        F7 on the GPU (coord, f7_gpu.sh, s5a_ worktree add-on, first run at 3840x2160) DONE 03:28: 84 passed, 0
+        failed of 84, PASS: F7 (scratch\coord_\s5a_f7.log; the 4K presents count 1728 black pixels, 2560x1440 1152:
+        in the reference too, 0 off). Covers pxp_ / pxa_'s skipped F7 as well. F7 reruns after S5a's fix round.
+        fabg_ (4 min) GO, 0 MUST: rows right (rt2c pre-seed = [Attila64Plugin.Values] ShadowCascades=1, plugin_block.h
+        :278 / :294, main.cpp:298; rr50 = E64-pt (AntiAliasing=5 = DLSS) + mode 4 + RR before tone map 0 / 1); old
+        arms / kinds unchanged; Rt-Check literals = main.cpp:345 / :349 / :481 / :483; patch applied to a scratch copy =
+        2f4635c6, byte-equal, second run refused. S1 E64-rt is a recorder arm (recordings B 85 / 100, budget 600 s):
+        time rt2c vs E64-rt inside B 40-85 only; S2 one -DryRun after the apply with rt_stage present (the Preseed
+        branch never ran); S3 read start.json plugin_ini on the first rt2c start. rabg_ still running.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
