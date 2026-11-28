@@ -16,6 +16,7 @@
 #include <atomic>
 #include <bit>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -25,6 +26,7 @@
 #include <iterator>
 #include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <span>
 #include <string>
 #include <string_view>
@@ -65,6 +67,7 @@
 #include "./psycho35_settings.hpp"
 #include "./light_bounce.hpp"
 #include "./lighting_settings.hpp"
+#include "./module_version.hpp"
 #include "./particle_layer.hpp"
 #include "./pass_timing.hpp"
 #include "./rt_scene.hpp"
@@ -1162,6 +1165,29 @@ std::atomic_bool identity_read = false;
 // Engine Performance Fix's FrameBridge upscaling and its waving flags as this start has them (read with the image).
 std::atomic_bool framebridge_on = false;
 std::atomic_bool waving_flags_on = false;
+// The CPU page's start files (Sol's settings.txt, the Engine Performance Fix's heapfix.ini; their owners read them only
+// at the game's start): their rows as this start read them (the first present) and as the files are now (read again
+// when the page opens and after each write attempt of the page).
+struct StartFileRows {
+  std::filesystem::path exe_dir;  // empty before the first present: no rows
+  std::optional<std::array<uint16_t, 4>> loader_version;
+  bool fix_installed = false;  // Sol's perffix_available, or perffix64.dll loaded
+  std::vector<twattila::start_files::FileRow> settings_applied;
+  std::vector<twattila::start_files::FileRow> fix_applied;
+  std::vector<twattila::start_files::FileRow> settings_now;
+  std::vector<twattila::start_files::FileRow> fix_now;
+  bool fix_file_found = false;
+  // The row whose last write failed (its key; empty: none) and its file, until the page opens again.
+  bool unsaved_fix = false;
+  std::string unsaved_section;
+  std::string unsaved_key;
+  int drawn_frame = -2;  // the ImGui frame the page last drew the rows in, and when
+  std::chrono::steady_clock::time_point drawn_at;
+};
+struct {
+  std::shared_mutex mutex;
+  StartFileRows rows;
+} start_files_state;
 // The loader's present picture (its resource handle) once its clone is on, and its no-upgrade warning (once).
 std::atomic<uint64_t> present_picture = 0;
 std::atomic_bool picture_warned = false;
@@ -2322,25 +2348,47 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
       } else {
         renodx::utils::log::w("[Total War] 64-bit Attila: game code not readable at the first present");
       }
-      // Engine Performance Fix (perffix64.dll, started by the loader before the game's code): its FrameBridge upscaling
-      // and its waving flags as their files are at this start (the loader writes them from the start window's ticks
-      // before the add-on loads; both are read only at the start). No exe path: neither is read.
-      if (const std::filesystem::path exe_dir = renodx::utils::path::GetExecutableBasePath();
-          GetModuleHandleW(L"perffix64.dll") != nullptr && !exe_dir.empty()) {
-        // <game>\FrameBridge\helper64.exe and its settings.txt not saying off (S28 picker.c:236-263).
-        const std::filesystem::path framebridge = exe_dir.parent_path() / L"FrameBridge";
+      // The start files as this start has them (the loader writes them from the start window's ticks before the add-on
+      // loads; their owners read them only at the start). No exe path: none is read.
+      if (const std::filesystem::path exe_dir = renodx::utils::path::GetExecutableBasePath(); !exe_dir.empty()) {
+        const bool fix_loaded = GetModuleHandleW(L"perffix64.dll") != nullptr;
         std::error_code error;
-        framebridge_on = std::filesystem::exists(framebridge / L"helper64.exe", error)
-                         && !twattila::start_files::FrameBridgeOff(framebridge / L"settings.txt");
-        // PerfFix's own line for them on (its other flag wave lines say why not), and no flagwave_off.txt from the
-        // start window's tick (S28 plugins.inc:200-211).
-        bool flags_installed = false;
-        twattila::start_files::ForEachLine(exe_dir / L"perffix64.log", [&flags_installed](std::string_view line) {
-          flags_installed = flags_installed || line.find(" flag wave: on (") != std::string_view::npos;
-        });
-        waving_flags_on = flags_installed && !std::filesystem::exists(exe_dir / L"flagwave_off.txt", error);
-        renodx::utils::log::i(std::format("[Total War] 64-bit Attila: Engine Performance Fix loaded: FrameBridge upscaling {}, waving flags {}",
-                                          (framebridge_on ? "on" : "off"), (waving_flags_on ? "on" : "off")));
+        // Engine Performance Fix (perffix64.dll, started by the loader before the game's code): its FrameBridge
+        // upscaling and its waving flags.
+        if (fix_loaded) {
+          // <game>\FrameBridge\helper64.exe and its settings.txt not saying off (S28 picker.c:236-263).
+          const std::filesystem::path framebridge = exe_dir.parent_path() / L"FrameBridge";
+          framebridge_on = std::filesystem::exists(framebridge / L"helper64.exe", error)
+                           && !twattila::start_files::FrameBridgeOff(framebridge / L"settings.txt");
+          // PerfFix's own line for them on (its other flag wave lines say why not), and no flagwave_off.txt from the
+          // start window's tick (S28 plugins.inc:200-211).
+          bool flags_installed = false;
+          twattila::start_files::ForEachLine(exe_dir / L"perffix64.log", [&flags_installed](std::string_view line) {
+            flags_installed = flags_installed || line.find(" flag wave: on (") != std::string_view::npos;
+          });
+          waving_flags_on = flags_installed && !std::filesystem::exists(exe_dir / L"flagwave_off.txt", error);
+          renodx::utils::log::i(std::format("[Total War] 64-bit Attila: Engine Performance Fix loaded: FrameBridge upscaling {}, waving flags {}",
+                                            (framebridge_on ? "on" : "off"), (waving_flags_on ? "on" : "off")));
+        }
+        // The CPU page's rows as this start read them: the fix's section while it is loaded or its DLL is there (Sol's
+        // perffix_available, S28 picker.c:214-229: plugins\perffix64.dll or the Workshop copy, which the loader copies
+        // in at the next start); the loader is the exe (its file version gates Task Waits).
+        const bool fix_installed =
+            fix_loaded || std::filesystem::exists(exe_dir / L"plugins\\perffix64.dll", error)
+            || std::filesystem::exists(
+                exe_dir / L"..\\..\\..\\workshop\\content\\325610\\3824249154\\perffix64.dll", error);
+        const std::optional<std::array<uint16_t, 4>> loader_version = twattila::ModuleFileVersion(nullptr);
+        // Read before the lock: the page draws under it.
+        StartFileRows applied = {
+            .exe_dir = exe_dir,
+            .loader_version = loader_version,
+            .fix_installed = fix_installed,
+            .settings_applied = twattila::start_files::StartWindowRows(exe_dir, loader_version, fix_installed,
+                                                                       twattila::dlaa_bridge::HelperInstalled()),
+            .fix_applied = twattila::start_files::FixRows(exe_dir / L"heapfix.ini"),
+        };
+        const std::unique_lock lock(start_files_state.mutex);
+        start_files_state.rows = std::move(applied);
       }
     }
     // The plugin's lookup, final here when init_device did not find it READY. Present runs on the loader's drawing
@@ -3538,8 +3586,8 @@ void ConfigureAddon() {
         });
     // The CPU page (Settings Mode 3), its section "CPU": every CPU row of this mod on the port, new CPU rows too (live
     // rows plain, a restart-only one with "(restart)" in its label and its restart note after it, a row live one way and
-    // restart-only the other with "(restart)" in its label and its tooltip saying which: Fewer Constant Uploads). The
-    // engine performance fix's and the start window's sections wait for ATN's answer on where their keys come from.
+    // restart-only the other with "(restart)" in its label and its tooltip saying which: Fewer Constant Uploads). Then
+    // the Engine Performance Fix's and the start window's sections (their files' rows, below).
     constexpr const char* CPU_SECTION = "CPU";
     std::vector<renodx::utils::settings::Setting*> cpu_rows;
     // Keep Battle Core Free and its status line, while the plugin offers the CPU row and built its battle part (state 0:
@@ -3788,15 +3836,152 @@ void ConfigureAddon() {
                             },
                         },
                     });
+    // The Engine Performance Fix's heapfix.ini and Sol's settings.txt (C8 plan 8; semi-automatic, ATN 11-27): one
+    // custom row per file draws its rows (start_files.hpp), as the file is now: the file's other keys are known only
+    // once it is read. A row writes its file only on a player's change; its owner reads it at the next start, so each
+    // row whose reading differs from this start's has the restart note.
+    constexpr const char* FIX_SECTION = "Engine Performance Fix (heapfix.ini, restart the game)";
+    constexpr const char* START_WINDOW_SECTION = "64-bit Attila Start Window (settings.txt, restart the game)";
+    const auto draw_start_file = [](bool fix) {
+      namespace start_files = twattila::start_files;
+      const std::unique_lock lock(start_files_state.mutex);
+      StartFileRows& rows = start_files_state.rows;
+      if (rows.exe_dir.empty()) return;
+      const auto read_now = [&rows] {
+        rows.settings_now = start_files::StartWindowRows(rows.exe_dir, rows.loader_version, rows.fix_installed,
+                                                         twattila::dlaa_bridge::HelperInstalled());
+        rows.fix_now = start_files::FixRows(rows.exe_dir / L"heapfix.ini");
+        std::error_code error;
+        rows.fix_file_found = std::filesystem::exists(rows.exe_dir / L"heapfix.ini", error);
+      };
+      // The page opened (no row drawn last ImGui frame, or the overlay was closed: ImGui's frames stop then): the
+      // files again.
+      const int frame = ImGui::GetFrameCount();
+      const auto now_time = std::chrono::steady_clock::now();
+      if ((frame != rows.drawn_frame && frame != rows.drawn_frame + 1)
+          || now_time - rows.drawn_at > std::chrono::milliseconds(500)) {
+        rows.unsaved_key.clear();
+        read_now();
+      }
+      rows.drawn_frame = frame;
+      rows.drawn_at = now_time;
+      std::vector<start_files::FileRow>& now = (fix ? rows.fix_now : rows.settings_now);
+      const std::vector<start_files::FileRow>& applied = (fix ? rows.fix_applied : rows.settings_applied);
+      const char* file_name = (fix ? "heapfix.ini" : "settings.txt");
+      if (fix && !rows.fix_file_found) {
+        ImGui::TextWrapped("Start the game once with the Engine Performance Fix to make its settings file.");
+      }
+      bool attempted = false;
+      for (start_files::FileRow& row : now) {
+        ImGui::PushID(&row);
+        // FrameBridge's upscaling on beside this mod's DLSS and frame generation (design 2.5): Off only.
+        if (row.off_only) {
+          ImGui::PushStyleColor(ImGuiCol_Text,
+                                renodx::utils::settings::ImVec4FromHex(twattila::graphics_page::WARNING_TINT));
+        }
+        ImGui::BeginDisabled(!row.editable);
+        if (row.value < 0) {
+          ImGui::LabelText(row.label.c_str(), "%s", (row.text.has_value() ? row.text->c_str() : "default"));
+        } else if (row.choices.empty()) {
+          ImGui::SliderInt(row.label.c_str(), &row.value, 1, start_files::FIX_COUNT_MAX, "%d",
+                           ImGuiSliderFlags_AlwaysClamp);
+        } else {
+          ImGui::SliderInt(row.label.c_str(), &row.value, 0, static_cast<int>(row.choices.size()) - 1,
+                           row.choices[row.value].label, ImGuiSliderFlags_NoInput);
+        }
+        if (!row.tooltip.empty()) {
+          ImGui::SetItemTooltip("%s", row.tooltip.c_str());
+        }
+        const bool edited = ImGui::IsItemDeactivatedAfterEdit();
+        ImGui::EndDisabled();
+        if (row.off_only) {
+          ImGui::TextWrapped(
+              "FrameBridge upscaling is on: it clashes with this mod's DLSS and frame generation. Set it to Off.");
+          ImGui::PopStyleColor();
+        }
+        if (edited && row.editable) {
+          const start_files::WriteResult result =
+              start_files::Write(rows.exe_dir / file_name,
+                                 (fix ? start_files::FileKind::HEAPFIX_INI : start_files::FileKind::SETTINGS_TXT), row);
+          if (result == start_files::WriteResult::WRITTEN) {
+            renodx::utils::log::i(std::format(
+                "[Total War] 64-bit Attila: CPU page: {} written in {} (used from the next start)", row.key, file_name));
+          }
+          if (result != start_files::WriteResult::FAILED) {
+            rows.unsaved_key.clear();
+          } else {
+            renodx::utils::log::w(std::format("[Total War] 64-bit Attila: CPU page: could not write {} in {}{}", row.key,
+                                              file_name,
+                                              (fix ? std::format(" (error {})", GetLastError()) : std::string())));
+            rows.unsaved_fix = fix;
+            rows.unsaved_section = row.section;
+            rows.unsaved_key = row.key;
+          }
+          attempted = true;
+        }
+        if (fix == rows.unsaved_fix && row.key == rows.unsaved_key && row.section == rows.unsaved_section) {
+          ImGui::PushStyleColor(ImGuiCol_Text, renodx::utils::settings::ImVec4FromHex(RESTART_TINT));
+          ImGui::TextWrapped("Could not save: %s is in use or read-only.", file_name);
+          ImGui::PopStyleColor();
+        }
+        if (const auto start = std::ranges::find_if(applied, [&row](const start_files::FileRow& candidate) {
+              return candidate.section == row.section && candidate.key == row.key;
+            });
+            start != applied.end() && !row.ReadsAs(*start)) {
+          ImGui::PushStyleColor(ImGuiCol_Text, renodx::utils::settings::ImVec4FromHex(RESTART_TINT));
+          ImGui::TextWrapped("%s", RESTART_NOW);
+          ImGui::PopStyleColor();
+        }
+        ImGui::PopID();
+      }
+      // After the loop (the rows drawn this frame stay valid while it runs): the file as the write left it, written or
+      // not.
+      if (attempted) {
+        read_now();
+      }
+    };
+    cpu_rows.insert(cpu_rows.end(),
+                    {
+                        new renodx::utils::settings::Setting{
+                            .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+                            .label = "heapfix.ini rows",
+                            .section = FIX_SECTION,
+                            .on_draw = [draw_start_file] {
+                              draw_start_file(true);
+                              return false;
+                            },
+                            .is_visible = [] {
+                              const std::shared_lock lock(start_files_state.mutex);
+                              return start_files_state.rows.fix_installed;
+                            },
+                        },
+                        new renodx::utils::settings::Setting{
+                            .value_type = renodx::utils::settings::SettingValueType::CUSTOM,
+                            .label = "settings.txt rows",
+                            .section = START_WINDOW_SECTION,
+                            .on_draw = [draw_start_file] {
+                              draw_start_file(false);
+                              return false;
+                            },
+                            .is_visible = [] {
+                              const std::shared_lock lock(start_files_state.mutex);
+                              return !start_files_state.rows.exe_dir.empty();
+                            },
+                        },
+                    });
     settings.insert(std::ranges::find(settings, "About", &renodx::utils::settings::Setting::section), cpu_rows.begin(),
                     cpu_rows.end());
     renodx::utils::settings::section_tints.emplace_back(CPU_SECTION, 0xF0E68Cu);
+    renodx::utils::settings::section_tints.emplace_back(FIX_SECTION, 0x9ACD32u);
+    renodx::utils::settings::section_tints.emplace_back(START_WINDOW_SECTION, 0x87CEEBu);
     (*std::ranges::find(settings, "SettingsMode", &renodx::utils::settings::Setting::key))->labels.push_back("CPU");
-    // The other pages as on 32-bit, then the CPU rows on page 3 (AssignPages' wrap for a page of its own).
+    // The other pages as on 32-bit, then the CPU page's rows (its three sections) on page 3 (AssignPages' wrap for a
+    // page of its own).
     std::vector<renodx::utils::settings::Setting*> paged_rows;
-    std::ranges::copy_if(settings, std::back_inserter(paged_rows), [](const renodx::utils::settings::Setting* setting) {
-      return setting->section != CPU_SECTION;
-    });
+    std::ranges::copy_if(settings, std::back_inserter(paged_rows),
+                         [&cpu_rows](const renodx::utils::settings::Setting* setting) {
+                           return std::ranges::find(cpu_rows, setting) == cpu_rows.end();
+                         });
     twattila::feature_settings::AssignPages(&paged_rows, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
     for (auto* setting : cpu_rows) {
       setting->is_visible = [mode = &current_settings_mode, shown = setting->is_visible] {
@@ -4097,6 +4282,10 @@ void DetachAddon() {
     identity_read = false;
     framebridge_on = false;
     waving_flags_on = false;
+    {
+      const std::unique_lock lock(start_files_state.mutex);
+      start_files_state.rows = {};
+    }
     twattila::frame_trace::SetGameCode("", 0, {});
     present_picture = 0;
     picture_warned = false;
