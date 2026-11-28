@@ -18865,6 +18865,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         F part 2 DONE 06:37 (ab_runs\20261128_063231_Smoke): B64P-tr exit 0 at 274 s, quit line True, 0 CRASH / FATAL,
         clean exit, PASS (scriptable), smoke_pass True. GROUP F DONE (both parts on night1).
         Group G (-R2, 10 arms, ~60 min) -DryRun ok (self-test ok for every arm), STARTED 06:38 (coord_\gG_run2.log).
+        Group G STOPPED 06:44 at start 2, exit 4 (coord_\gG_run2.log), both RUNNER faults, no game fault:
+        (1) E64-rt: 'Test: no setting RayTracedReplaceShadowMaps' -> R1.3 STOP: a64_ab's $RT_RAYS (:222) sends a key
+        Attila's add-on never had (graphics_page.hpp:970 only when rays_replace_maps is set; twattila never sets it).
+        (2) E64-dlaa: exit 0 at 287 s, quit fine, but PASS NO on E11: the add-on registered rows 0x1 = ROW_BONE_FLUSH
+        (addon.cpp:2462: object_motion active or UnitBatchWanted) while the runner expects none on a DLAA arm.
+        -> rsc4_ (every arm's keys vs the add-on source, E11's per-arm rule from the add-on, Opus Medium, est 12 / 24,
+        scratch\rsc4_\brief.md) STARTED 06:45; then a Sonnet final, apply, G again, then H.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
