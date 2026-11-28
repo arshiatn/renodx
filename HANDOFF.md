@@ -19016,6 +19016,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         rebuilt from the commit, exit 0. DLL 3472e4633ac2b30ae2e9a7de8713c00fb61491604e569f1a0482342e1001becd. Design
         text owner (coord): sbp_ 5.2's '4 participants' slip -> 7. fsbi_ (Sonnet High final, incl. joined format
         strings unchanged) STARTED 10:01.
+        fsbi_ DONE 10:03: GO (NIT-1 DLL sha fb4e1919 -> 3472e463 with a byte-identical normalised hpp: no code change,
+        mechanism unknown (no debug info); the P15 DLL is the main tree's build after the merge anyway; NIT-2 a
+        from_chars out local: kept). The joined active / summary literals are byte-identical to round 1. MERGED
+        sbi_1128 into atn-mods 88dda23e0 (--no-ff), pushed. Next: the plugin build from the main tree (record its sha),
+        then P15 in the next CPU batch (with dfi_'s defaults + patch e applied).
         FOR ATN Q1 (not blocking): the 64-bit DLL's image commit rises ~70 MiB for every player, row on or off (no
         RAM unless the row runs, ~1 % of the game's 6 GB). sbp_ + coord pick: accept; else a lazy VirtualAlloc
         (~15 lines + a failure line + a test seam).
