@@ -15,19 +15,22 @@
 #include "./rt_rtxdi_bridge.hlsli"
 #include "./rt_di_initial.hlsli"
 
-// src: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/DI/GenerateInitialSamples.hlsl:22 the initial pass: the pixel's surface, its sampled reservoir, stored.
+// src: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/DI/GenerateInitialSamples.hlsl:22 the initial pass:
+// the pixel's surface, its sampled reservoir, stored.
 [numthreads(8, 8, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
   SceneRayFlags();
   if (id.x >= width || id.y >= height) return;
   RAB_Surface surface = RAB_GetGBufferSurface(int2(id.xy), false);
-  // dev: spec:rtxdi@fdbd9b3:Samples/MinimalSample/Shaders/InitialSampling.hlsl:34: no store at a non-DI pixel (RTXDI stores an empty reservoir there); RAB_GetGBufferSurface rejects that pixel as a neighbour or history, so its old reservoir is never read.
+  // dev: spec:rtxdi@fdbd9b3:Samples/MinimalSample/Shaders/InitialSampling.hlsl:34: no store at a non-DI pixel (RTXDI
+  // stores an empty reservoir there); RAB_GetGBufferSurface rejects that pixel as a neighbour or history, so its old
+  // reservoir is never read.
   if (!RAB_IsSurfaceValid(surface)) return;
   // The pixel's rays start where rt_lights' do (off a planar surface along the normal from the depth, else toward the
   // camera; past a hidden shape with Rays Start Past Hidden Shapes), stored for every DI pass that loads this surface,
-  // as its own or as a neighbour, this trace or the next (B1). Ours: kept as a half-float offset (8 bytes a pixel; at most
-  // ~0.7 mm off for StartPast's 1.5 m, under SurfaceOffset's 3 mm) and used rounded here too, so every pass's origin is
-  // the same float.
+  // as its own or as a neighbour, this trace or the next (B1). Ours: kept as a half-float offset (8 bytes a pixel; at
+  // most ~0.7 mm off for StartPast's 1.5 m, under SurfaceOffset's 3 mm) and used rounded here too, so every pass's
+  // origin is the same float.
   const float4 position = float4(surface.position, surface.depth);
   const float3 normal = SurfaceNormal(int2(id.xy), position);
   const float3 offset = f16tof32(f32tof16(StartPast(RayOrigin(position, normal, Planar(int2(id.xy), position, normal)), position) - position.xyz));

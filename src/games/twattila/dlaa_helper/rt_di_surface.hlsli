@@ -6,10 +6,10 @@
 // Path-Traced Torch Light's passes (PT DI step 4c, the PATH_DI builds: rt_di_initial / rt_di_temporal / rt_di_spatial /
 // rt_di_shade): the light surface, the pass constants and the game's light, included after rt_scene.hlsli,
 // rt_camera.hlsli and rt_light_tiles.hlsli and before rt_rtxdi_bridge.hlsli (whose PATH_DI bodies call these).
-// A DI pixel (rt_lights' LIGHTS_DI build): a surface whose tile lists more than LIGHT_RAYS_ALWAYS lights it reaches; its
-// mask word 0 (each listed light dark in the game's shaders), its light history's word DI_PIXEL_WORD. The passes light
-// it with RTXDI's pick of its tile's listed lights (the integrand: each listed light's game light times its visibility;
-// an unlisted light keeps the game's unshadowed light, so it is no candidate: its target 0).
+// A DI pixel (rt_lights' LIGHTS_DI build): a surface whose tile lists more than LIGHT_RAYS_ALWAYS lights it reaches;
+// its mask word 0 (each listed light dark in the game's shaders), its light history's word DI_PIXEL_WORD. The passes
+// light it with RTXDI's pick of its tile's listed lights (the integrand: each listed light's game light times its
+// visibility; an unlisted light keeps the game's unshadowed light, so it is no candidate: its target 0).
 #ifndef SRC_GAMES_TWATTILA_DLAA_HELPER_RT_DI_SURFACE_HLSLI_
 #define SRC_GAMES_TWATTILA_DLAA_HELPER_RT_DI_SURFACE_HLSLI_
 
@@ -31,7 +31,8 @@ cbuffer DiPass : register(b2) {
   uint di_uniform_random;  // the frame's number for the temporal pass's permutation
   uint di_offset_mask;     // the neighbour offsets' count - 1
 };
-static const uint DI_HISTORY = 1u;  // the last trace's reservoirs (DI_SHADE_ARRAY), light surface and light places are valid
+// The last trace's reservoirs (DI_SHADE_ARRAY), light surface and light places are valid.
+static const uint DI_HISTORY = 1u;
 // Test switches (RENODX_TW_DI_TEST, rt_d3d12.hpp): the bias correction (0 ray traced, 1 basic, 2 pairwise, 3 off) at
 // bits 1-2, no temporal pass, no spatial pass.
 static const uint DI_BIAS_SHIFT = 1u;
@@ -55,8 +56,8 @@ static const uint DI_LIGHT_R11G11B10 = 32u;
 #define DI_INITIAL_ARRAY DI_SHADE_ARRAY
 #else
 // The split passes: the initial pass's array, the temporal pass's too (it loads the initial reservoir at its own pixel
-// only and stores over it), and the spatial pass's, the shading's and the last trace's (the temporal reuse's history: the
-// temporal pass reads it before the spatial pass writes it).
+// only and stores over it), and the spatial pass's, the shading's and the last trace's (the temporal reuse's history:
+// the temporal pass reads it before the spatial pass writes it).
 static const uint DI_INITIAL_ARRAY = 0u;
 static const uint DI_TEMPORAL_ARRAY = DI_INITIAL_ARRAY;
 static const uint DI_SHADE_ARRAY = 1u;
@@ -90,15 +91,17 @@ float3 DiLight(uint4 texel, float3 position, uint light) {
 }
 
 // Whether a ray from `origin` reaches `light_point`, stopping LIGHT_CLEARANCE short of it (rt_lights' rays).
-// src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:166 RAB_GetConservativeVisibility's ray, traced as rt_lights' LightRayReaches.
+// src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:166 RAB_GetConservativeVisibility's ray, traced as rt_lights'
+// LightRayReaches.
 bool DiVisible(float3 origin, float3 light_point) {
   const float3 to_light = light_point - origin;
   const float light_distance = length(to_light);
-  // src: commit:6c81d89c5 rt_lights.cs_6_5.hlsl:85, its reach test: a light point within LIGHT_RAY_FLOOR of the ray origin
-  // (or a NaN distance) gets no ray and keeps its bit (the game's unshadowed light), so DiVisible reads it visible (it
-  // read shadowed before pdf_1127, darker than the bits; W4 part 8). Exact for the light's centre (without Ray
-  // Reconstruction); under it the disk point from DI's half-float origin, at most ~0.7 mm off (4K census: 0 such lights).
-  // rt_path.hlsli:1787 (Torch and Fire Light in the Light Bounce) reads such a lamp unlit, the opposite rule: its own box.
+  // src: commit:6c81d89c5 rt_lights.cs_6_5.hlsl:85, its reach test: a light point within LIGHT_RAY_FLOOR of the ray
+  // origin (or a NaN distance) gets no ray and keeps its bit (the game's unshadowed light), so DiVisible reads it
+  // visible (it read shadowed before pdf_1127, darker than the bits; W4 part 8). Exact for the light's centre (without
+  // Ray Reconstruction); under it the disk point from DI's half-float origin, at most ~0.7 mm off (4K census: 0 such
+  // lights). rt_path.hlsli:1787 (Torch and Fire Light in the Light Bounce) reads such a lamp unlit, the opposite rule:
+  // its own box.
   if (!(light_distance > LIGHT_RAY_FLOOR)) return true;
 #if defined(DI_CONSERVATIVE)
   // Source: RTXDI RtxdiApplicationBridge.md, RAB_GetConservativeVisibility ("conservative visibility can skip
@@ -122,7 +125,8 @@ bool DiVisible(float3 origin, float3 light_point) {
 }
 
 // Light `light`'s place in the last trace's list (b4's light_previous; NO_LIGHT: new).
-// src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:139 RAB_TranslateLightIndex's current-to-previous map, from b4's light_previous bytes.
+// src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:139 RAB_TranslateLightIndex's current-to-previous map, from
+// b4's light_previous bytes.
 uint LightInLastList(uint light) {
   // Its byte (selected, not indexed).
   const uint4 words = light_previous[light >> 4u];
@@ -132,14 +136,17 @@ uint LightInLastList(uint light) {
 
 // The last trace's lights' places in this one's list (the temporal pass's group builds it: DiCurrentClear, barrier,
 // DiCurrentBuild, barrier); 0xFFFFFFFF: gone. Two lights at one place (equal position and reach) keep the first.
-// src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:139 RAB_TranslateLightIndex's previous-to-current map, built by each group from light_previous.
+// src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:139 RAB_TranslateLightIndex's previous-to-current map, built by
+// each group from light_previous.
 groupshared uint di_current_of[128];
 void DiCurrentClear(uint index) {
   di_current_of[index] = 0xFFFFFFFFu;
   di_current_of[index + 64u] = 0xFFFFFFFFu;
 }
 void DiCurrentBuild(uint index) {
-  // guard inert: a light_count past b4's 128 lights; proof pdf_1127-S5G (every b4 count is CopyLights' SharedLightCount, at most RT_ALL_LIGHTS = 128, or the upload heap's zeroed start); trace HARNESS_LIGHT_STRESS=125 (128 lights).
+  // guard inert: a light_count past b4's 128 lights; proof pdf_1127-S5G (every b4 count is CopyLights'
+  // SharedLightCount, at most RT_ALL_LIGHTS = 128, or the upload heap's zeroed start); trace HARNESS_LIGHT_STRESS=125
+  // (128 lights).
   const uint count = min(light_count, 128u);
   [unroll]
   for (uint pair = 0u; pair < 2u; ++pair) {

@@ -1,8 +1,9 @@
 #pragma once
-// The resident (recorder builds only: main.cpp's "0 serve <recording>\frame_<N> <control folder> [--nsight] [--no-dred]"): a loaded
-// recording kept on the GPU and played on the lab's commands, resident protocol v1 (tools/tw/lab/resident_protocol.md and
-// its schemas; gto_design §2 S2 and addendum B). After the first loop (more while bakes or rooms are on their way) the
-// scene's temporal state is kept (the snapshot); a reset gives it back, a structure change since loads the recording again.
+// The resident (recorder builds only: main.cpp's "0 serve <recording>\frame_<N> <control folder> [--nsight]
+// [--no-dred]"): a loaded recording kept on the GPU and played on the lab's commands, resident protocol v1
+// (tools/tw/lab/resident_protocol.md and its schemas; gto_design §2 S2 and addendum B). After the first loop (more
+// while bakes or rooms are on their way) the scene's temporal state is kept (the snapshot); a reset gives it back, a
+// structure change since loads the recording again.
 
 #include <bcrypt.h>
 #include <dxgi1_4.h>
@@ -65,8 +66,8 @@ constexpr auto FieldNames() {
   return std::apply([](const auto&... field) { return std::array<std::string_view, sizeof...(field)>{field.first...}; }, Scene::RecordedFields());
 }
 
-// The classes fit the scene: every listed field is one of its fields (a frame field never structural), every index field
-// is one and has its row's class, every structural row is listed and every listed row is structural.
+// The classes fit the scene: every listed field is one of its fields (a frame field never structural), every index
+// field is one and has its row's class, every structural row is listed and every listed row is structural.
 template <typename Scene>
 constexpr bool Classified() {
   constexpr auto fields = FieldNames<Scene>();
@@ -98,8 +99,8 @@ std::vector<std::string_view> TemporalResources() {
   return names;
 }
 
-// A scene's snapshot (TakeSnapshot) and the resets back to it (ResetTo). Scene: RtScene12, or the tests' fake (FieldSpans,
-// SaveResources, RestoreResources, Structure, SaveObjects, RestoreObjects, RecordedFields, ResourceRows).
+// A scene's snapshot (TakeSnapshot) and the resets back to it (ResetTo). Scene: RtScene12, or the tests' fake
+// (FieldSpans, SaveResources, RestoreResources, Structure, SaveObjects, RestoreObjects, RecordedFields, ResourceRows).
 template <typename Scene>
 struct Snapshot {
   std::vector<std::vector<std::byte>> fields;  // FieldSpans' order
@@ -190,8 +191,8 @@ inline RowStats Summarize(std::vector<double> values) {
   return stats;
 }
 
-// raw_<n>.bin (a v1.1 proposal): "TWRW", version 1, rows, frames (u32 each), then each row's name length (u32), name and a
-// float64 ms a frame (NaN: not in that frame). Little-endian.
+// raw_<n>.bin (a v1.1 proposal): "TWRW", version 1, rows, frames (u32 each), then each row's name length (u32), name
+// and a float64 ms a frame (NaN: not in that frame). Little-endian.
 inline std::vector<uint8_t> RawFile(const std::vector<std::pair<std::string, std::vector<double>>>& rows, uint32_t frames) {
   std::vector<uint8_t> file;
   const auto put = [&](const void* data, size_t bytes) { file.insert(file.end(), static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + bytes); };
@@ -207,9 +208,9 @@ inline std::vector<uint8_t> RawFile(const std::vector<std::pair<std::string, std
 }
 
 // moments_<output>.bin (gtl_'s v1.1 proposal b): this header, then MOMENTS_FILE_PLANES planes of width x height float4
-// (rows from the top): mean, M2, the last frame, sum of |x_t - x_t-1|, the lag-1 co-moment about the pairs' means (pairs
-// (x_t, x_t-1), t = 2..k), the pairs' means of x_t and of x_t-1. variance = M2 / (k - 1); lag-1 covariance = co-moment /
-// (k - 2).
+// (rows from the top): mean, M2, the last frame, sum of |x_t - x_t-1|, the lag-1 co-moment about the pairs' means
+// (pairs (x_t, x_t-1), t = 2..k), the pairs' means of x_t and of x_t-1. variance = M2 / (k - 1); lag-1 covariance =
+// co-moment / (k - 2).
 struct MomentsHeader {
   std::array<char, 4> magic = {'T', 'W', 'M', 'O'};
   uint32_t version = 1;
@@ -225,8 +226,8 @@ struct MomentsHeader {
 };
 inline constexpr uint32_t MOMENTS_FILE_PLANES = 7;
 // A moments file from rt_moments.hlsl's planes after `frames` frames (the mean about the first frame s, M2, s, C = sum
-// over t >= 2 of (x_t - s)(x_t-1 - s), the last frame, travel; the shift by s keeps fp32's sums small): with Sx = k (mean
-// - s) and Sy = Sx - (last - s) the pairs' sums about s, the co-moment is C - Sx Sy / (k - 1).
+// over t >= 2 of (x_t - s)(x_t-1 - s), the last frame, travel; the shift by s keeps fp32's sums small): with Sx = k
+// (mean - s) and Sy = Sx - (last - s) the pairs' sums about s, the co-moment is C - Sx Sy / (k - 1).
 inline std::vector<uint8_t> MomentsFile(MomentsHeader header, std::span<const std::vector<uint8_t>> planes) {
   header.planes = MOMENTS_FILE_PLANES;
   const size_t values = planes[0].size() / sizeof(float);
@@ -271,8 +272,8 @@ inline std::string Sha256(std::span<const uint8_t> bytes) {
   return hashed ? hex : std::string();
 }
 
-// A stem's file: a signed DXIL container (dxc -Fo) of a compute shader: "DXBC", a digest, its size the file's, its parts
-// inside it, a DXIL part whose program is a compute shader (kind 5). False: `why` says what is wrong.
+// A stem's file: a signed DXIL container (dxc -Fo) of a compute shader: "DXBC", a digest, its size the file's, its
+// parts inside it, a DXIL part whose program is a compute shader (kind 5). False: `why` says what is wrong.
 inline bool CheckStem(std::span<const uint8_t> bytes, std::string* why) {
   const auto u32 = [&](size_t at) {
     uint32_t value = 0;
@@ -310,7 +311,8 @@ inline bool CheckStem(std::span<const uint8_t> bytes, std::string* why) {
   return false;
 }
 
-// A command's file written atomically: `<path>.tmp` closed, then renamed over `path` (tried again while a reader holds it).
+// A command's file written atomically: `<path>.tmp` closed, then renamed over `path` (tried again while a reader holds
+// it).
 inline bool WriteAtomic(const std::filesystem::path& path, std::string_view text) {
   std::filesystem::path temporary = path;
   temporary += L".tmp";
@@ -333,10 +335,10 @@ inline std::string NowIso() {
                      (bias < 0) ? '-' : '+', std::abs(bias) / 60, std::abs(bias) % 60);
 }
 
-// A light animation's frame (light_anim; a v1.1 proposal: {"schema": "renodx-light-anim v1", "light_off": the first frame
-// with a light off (optional), "frames": [{"sun": [x, y, z] or null, "lights": [{"index", "position", "intensity", "on"}]}]}):
-// toward the sun, and lights changed by their place in the block's list (position as given, colour times intensity, off:
-// no reach and no colour).
+// A light animation's frame (light_anim; a v1.1 proposal: {"schema": "renodx-light-anim v1", "light_off": the first
+// frame with a light off (optional), "frames": [{"sun": [x, y, z] or null, "lights": [{"index", "position",
+// "intensity", "on"}]}]}): toward the sun, and lights changed by their place in the block's list (position as given,
+// colour times intensity, off: no reach and no colour).
 struct LightChange {
   uint32_t index = 0;
   std::optional<std::array<float, 3>> position;
@@ -397,10 +399,10 @@ inline void ApplyLights(const LightFrame& frame, dlaa_bridge::Shared* block) {
   }
 }
 
-// config's fields: the numeric Shared fields a lab arm may set (rt_light_count: a cap on the recorded count; rt_path_flags:
-// over path_flags, e.g. one kind's). A name may end in "@trace", "@bounce" or "@reflections": that request kind's alone.
-// `version`: the block version that added it (an edit lifts an older recording's block to it, so the helper reads it; 0:
-// older than any recording).
+// config's fields: the numeric Shared fields a lab arm may set (rt_light_count: a cap on the recorded count;
+// rt_path_flags: over path_flags, e.g. one kind's). A name may end in "@trace", "@bounce" or "@reflections": that
+// request kind's alone. `version`: the block version that added it (an edit lifts an older recording's block to it, so
+// the helper reads it; 0: older than any recording).
 using SharedMember = std::variant<uint32_t dlaa_bridge::Shared::*, float dlaa_bridge::Shared::*>;
 struct SharedField {
   std::string_view name;
@@ -467,7 +469,8 @@ namespace twattila::dlaa_helper::serve {
 
 static_assert(Classified<RtScene12>(), "rt_serve.h's classes do not fit RtScene12's RecordedFields / ResourceRows (a new field or row?)");
 
-// The resident: Serve answers the control folder's commands until "stop", a second device loss or 10 minutes without one.
+// The resident: Serve answers the control folder's commands until "stop", a second device loss or 10 minutes without
+// one.
 class Resident {
  public:
   struct Options {
@@ -674,8 +677,8 @@ class Resident {
   static std::string Text(const nlohmann::json& command, const char* key) {
     return (command.is_object() && command.contains(key) && command[key].is_string()) ? command[key].get<std::string>() : std::string();
   }
-  // The lab's config (config): flags as played (none: as recorded), grass micromaps' level at load (-1: as recorded), Shared
-  // fields, swapped stems (their DXIL and SHA-256), the burn.
+  // The lab's config (config): flags as played (none: as recorded), grass micromaps' level at load (-1: as recorded),
+  // Shared fields, swapped stems (their DXIL and SHA-256), the burn.
   struct Config {
     std::optional<uint32_t> trace_flags;
     std::optional<uint32_t> path_flags;
@@ -771,9 +774,9 @@ class Resident {
     return memory;
   }
 
-  // The scene and its snapshot let go once nothing of theirs can still run (a timed-out request's work on a live device:
-  // waited for, at most a minute). False: it still runs; both are kept on purpose (freeing them under that work is not
-  // safe; main.cpp's unproven_gpu_completion is not set for the resident) and stuck_ set.
+  // The scene and its snapshot let go once nothing of theirs can still run (a timed-out request's work on a live
+  // device: waited for, at most a minute). False: it still runs; both are kept on purpose (freeing them under that work
+  // is not safe; main.cpp's unproven_gpu_completion is not set for the resident) and stuck_ set.
   bool LetGo() {
     for (int wait = 0; scene_ && !scene_->Removed() && !scene_->Idle() && wait < 6000; ++wait) Sleep(10);
     if (scene_ && !scene_->Removed() && !scene_->Idle()) {
@@ -788,10 +791,10 @@ class Resident {
     return true;
   }
 
-  // The recording on a new scene (the last one let go first, LetGo), DRED on unless --no-dred (a lost device's report says
-  // where the GPU stopped), its first loop played (more while it has not settled, at most SETTLE_LOOPS), the snapshot taken (in video memory when
-  // twice its size is free, else read back), the config's stems and burn in it, the seed's offset on it. False: `why` says
-  // why.
+  // The recording on a new scene (the last one let go first, LetGo), DRED on unless --no-dred (a lost device's report
+  // says where the GPU stopped), its first loop played (more while it has not settled, at most SETTLE_LOOPS), the
+  // snapshot taken (in video memory when twice its size is free, else read back), the config's stems and burn in it,
+  // the seed's offset on it. False: `why` says why.
   bool Load(std::string* why) {
     loaded_ = false;
     {
@@ -895,8 +898,8 @@ class Resident {
     }
   }
 
-  // Recorded frame `frame`'s requests `offset` frames later, the config's and light animation's edits in their blocks; with
-  // `rows` their GPU times added there. False: `why` says why.
+  // Recorded frame `frame`'s requests `offset` frames later, the config's and light animation's edits in their blocks;
+  // with `rows` their GPU times added there. False: `why` says why.
   bool PlayFrame(size_t frame, uint32_t offset, std::vector<std::pair<std::string, double>>* rows, std::string* why) {
     const LightFrame* lights = light_animation_.empty() ? nullptr : &light_animation_[played_since_reset_ % light_animation_.size()];
     const std::optional<std::array<float, 4>> sun =
@@ -926,7 +929,8 @@ class Resident {
     ++played_since_reset_;
     return true;
   }
-  // The next frame since the snapshot (the frames in order, each loop `span_` frames after the last; the seed's offset).
+  // The next frame since the snapshot (the frames in order, each loop `span_` frames after the last; the seed's
+  // offset).
   bool Advance(std::vector<std::pair<std::string, double>>* rows, std::string* why) {
     const auto frames = static_cast<uint32_t>(frames_.size());
     const bool played = PlayFrame(position_ % frames, (span_ * (loops_ + (position_ / frames))) + seed_, rows, why);
@@ -945,9 +949,9 @@ class Resident {
     }
     return true;
   }
-  // `played` frames after a reset with offset `seed` stay below 2^24 (the radiance cache's float stamps are exact there),
-  // with the most loops a full reload may settle in (the offset after the snapshot is loops x span, the frames played
-  // since add one loop per recorded loop and one partly played).
+  // `played` frames after a reset with offset `seed` stay below 2^24 (the radiance cache's float stamps are exact
+  // there), with the most loops a full reload may settle in (the offset after the snapshot is loops x span, the frames
+  // played since add one loop per recorded loop and one partly played).
   [[nodiscard]] bool BelowFrameLimit(uint64_t seed, uint64_t played) const {
     const uint64_t frames = std::max<size_t>(frames_.size(), 1);
     return last_frame_ + (uint64_t{span_} * (SETTLE_LOOPS + 1 + (played / frames))) + seed < (uint64_t{1} << 24);
@@ -973,8 +977,8 @@ class Resident {
     }
     return true;
   }
-  // What run, dump and moments played: the reset's mode, the seed, the light animation (its SHA-256, or null), the swapped
-  // stems, DRED, the RENODX_TW_* environment.
+  // What run, dump and moments played: the reset's mode, the seed, the light animation (its SHA-256, or null), the
+  // swapped stems, DRED, the RENODX_TW_* environment.
   [[nodiscard]] nlohmann::json Played(const std::string& mode) const {
     return {{"reset", mode},
             {"seed", seed_},
@@ -989,7 +993,8 @@ class Resident {
     if (name == "status" || name == "stop") {
       if (!OnlyKeys(args, {}, &why)) return {.status = "REFUSED", .error = why};
       if (name == "stop") return {};
-      // The heartbeat's fields, the RENODX_TW_* environment, Nsight's injection, DRED, the outputs' sizes (v1.1 proposals).
+      // The heartbeat's fields, the RENODX_TW_* environment, Nsight's injection, DRED, the outputs' sizes (v1.1
+      // proposals).
       nlohmann::json status = Alive();
       status.update({{"env", env_}, {"nsight", options_.nsight}, {"dred", options_.dred}, {"output_sizes", scene_->OutputSizes()}});
       return {.result = status};
@@ -1032,9 +1037,10 @@ class Resident {
       if (!OnlyKeys(args, {"folder", "frames", "histories"}, &why) || !ControlFolder(args.at("folder").get<std::string>(), &folder, &why)) {
         return {.status = "REFUSED", .error = why};
       }
-      // `frames` (gtl_'s v1.1 proposal a; 1 without it): the first frames after the reset, up to DUMP_FRAMES over loops,
-      // named as recorded plus a loop's span per loop played (their played frames are their offset later; the same names
-      // after every reset). `histories` (v1.1; off without it): the last frame's histories too (~2.5 GB at 4K).
+      // `frames` (gtl_'s v1.1 proposal a; 1 without it): the first frames after the reset, up to DUMP_FRAMES over
+      // loops, named as recorded plus a loop's span per loop played (their played frames are their offset later; the
+      // same names after every reset). `histories` (v1.1; off without it): the last frame's histories too (~2.5 GB at
+      // 4K).
       const auto count = args.value("frames", 1u);
       if (count == 0 || count > DUMP_FRAMES) return {.status = "REFUSED", .error = std::format("dump frames {} is not 1 to {}", count, DUMP_FRAMES)};
       std::string mode;
@@ -1066,7 +1072,8 @@ class Resident {
       if (pending_seed_ != 0 && !BelowFrameLimit(pending_seed_, k)) {
         return {.status = "REFUSED", .error = std::format("with seed {} k {} would take played frames to 2^24", pending_seed_, k)};
       }
-      // Started after the reset (a full reload makes a new scene) with the video memory then free; let go on any failure.
+      // Started after the reset (a full reload makes a new scene) with the video memory then free; let go on any
+      // failure.
       std::string mode;
       if (!Reset(&mode, &why)) return Failed(why);
       const DXGI_QUERY_VIDEO_MEMORY_INFO memory = Memory();
@@ -1079,7 +1086,8 @@ class Resident {
           return Failed(why);
         }
       }
-      // The active size: the last request's render size for an output at the shared textures' size, else the whole output.
+      // The active size: the last request's render size for an output at the shared textures' size, else the whole
+      // output.
       const std::array<uint32_t, 4> size = scene_->PlaybackSize();
       std::map<std::string, std::array<uint32_t, 2>> sizes;
       const auto file_of = [&](const RtScene12::MomentOutput& output, uint32_t frames, const RtScene12::MomentPlanes& planes) {
@@ -1157,8 +1165,8 @@ class Resident {
       made.burn_pass = burn.at("pass").get<std::string>();
       made.burn_loops = burn.at("loops").get<uint32_t>();
     }
-    // The stems the last config swapped and this one does not: the base build's again; then this one's (any failure: the
-    // last config's back).
+    // The stems the last config swapped and this one does not: the base build's again; then this one's (any failure:
+    // the last config's back).
     std::map<std::string, std::vector<uint8_t>> applied = made.stems;
     for (const auto& [stem, code] : config_.stems) applied.try_emplace(stem);
     for (const auto& [stem, code] : applied) {
