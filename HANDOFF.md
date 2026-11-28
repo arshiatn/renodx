@@ -18520,7 +18520,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         risk = a known limit); M2 follows ATN's own rule 'FrameBridge shown forced off with our helper' (never
         writes On with our helper; Off only while the file says On; the page never writes by itself).
         Fix round cp_ (resumed, Opus High, est 30 / 60; scratch\cp_\fix_brief.md: both MUSTs + every SHOULD + NITs,
-        one mutation per MUST) STARTED 02:20. Then a Sonnet final, merge, then S5a (scratch\s5a_\brief.md).
+        one mutation per MUST) STARTED 02:20. Then a Sonnet final, merge, then S5a (scratch\s5a_\brief.md). DONE 02:35
+        (15 of 30 min; ae323b56a, handback.md 'Fix round'): M1 binary read, ForEachLine false when an existing file
+        is not read to its end, Write refuses (a missing file still created), CRLF per line as Sol's text-mode put,
+        rows read-only while the file cannot be read; tests 6a (share-0 hold, ACL read deny, release controls,
+        0x1A kept), mutation = ACL case FAILS. M2 with our helper Upscaling read-only while Off, Off-only while On
+        (Write never writes On), tint + 2.5 line only then; tests 6b, mutation = helper + Off FAILS. SHOULDs: re-read
+        after 500 ms without a draw + after every write, 'Could not save: <file> is in use or read-only.', heapfix
+        Write refuses a missing file and skips an equal value, crash_reports never shown, .tmp deleted +
+        MOVEFILE_WRITE_THROUGH, Write(file, FileKind, row) + asserts. Gated amd64 + x86 exit 0 (61), tw_start_files
+        x2, tw_unit_shadows x2, defaults match, PD 32-bit SAME, 64-bit as intended. Known limit: a future numeric Sol
+        key reading 0 / 1 gets an Off / On row until listed. Final check ccp_ (Sonnet High) STARTED 02:36.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
