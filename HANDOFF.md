@@ -19293,6 +19293,9 @@ heading text are in HANDOFF_ARCHIVE.md)
           Step Pieces First fps + golden; ep8btt8 reported only); then the last ride's fresh W3 WPR and its final
           verify bench. Before each run: no new GPU agent once that item's reviews start; running GPU agents finish
           first (never stopped / paused).
+        GPU LANE RULE (ATN 11-28 14:24): max 1 GPU-LOCK agent (proofs / lab / Nsight / timing, one at a time); no-lock
+        GPU work (designs, implementers, reviews, builds, offline analysis) in parallel when no files overlap. No
+        time-based cuts: in order, as much as we can until Monday 22:00. fwp_ told (SendMessage 14:24).
         G4 dry twin re-run after G1 12:06 ok ('self-test: ok for every arm', -Wpr on start 1). G4 = P17 + WPR 1 (-AB
         -Arms w3 -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log scratch\coord_\b2_G4_run.log) STARTED 12:06.
         G4 PASS 12:13 (7 min, exit 0; ab_runs\20261128_120648_AB): 1 / 1 valid, golden same, E-checks all pass (plugin
