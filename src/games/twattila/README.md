@@ -1,5 +1,13 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, 64-bit defaults from the 11-28 tests (2026-11-28; built only, not stamped, not installed, not run in game)
+
+- New (64-bit): Keep Render Core Free is on by default.
+- New (64-bit): Effects on All Cores (Experimental) is Automatic by default.
+- New (64-bit): Faster Battle Step is shown in the menu (on by default).
+- New (64-bit): the update resets a saved Keep Render Core Free and Effects on All Cores once, so every preset gets
+  the new defaults; set them again if you had chosen otherwise.
+
 ## Dev, Denoise Before Tone Mapping on the game's scene (2026-11-28; built only, not stamped, not installed, not run in game)
 
 - Fixed: Denoise Before Tone Mapping (Experimental) did nothing in game; it now works at every render scale.
