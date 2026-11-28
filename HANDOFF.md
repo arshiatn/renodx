@@ -736,7 +736,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - G-b: root-cause RR Before Tone Mapping not applying at 50 % render scale on 64-b ... | coord, apply phase
 - a64_ab R2Kill: check_logs' 'the helper stopped' line after the kill time is the ... | coord, next a64_ab patch (with G-a's check)
 - APPLY i: the d11 day1 dumps (group I) -> the 2.10 D3D11 pass analysis, after wav ... | coord
-- R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | the W-H2 fix round after reviews
+- R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
+- 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
+- (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
@@ -18961,7 +18963,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         cs5c_ (2 min) GO, 0 MUST / 0 SHOULD (every SHOULD answered; mutants as reported; 'unread' from the input
         signature; tests.cpp only); 2 NITs. MERGED 02:11 c23532a3f (--no-ff, pushed; no src change since
         13ff5bc14, so the ALL PASSED run holds). RT-on-64 S5c is complete. Worktree s5c_ to clean later (links first).
-        [ ] S4 census (after R1): name which POSITION the 64-bit 0x0ECFE74C description lacks (S5c covers each). rrts2_ (Opus xHigh, 9 min;
+        [x] DONE 08:48 (s4c_, scratch\s4c_\census.md, 14 min): S4 census (after R1): the lacked input is POSITION6
+        (INFERRED, not measured: Sol's loader logs only '1 shader inputs not in the game's description, fed zeros' for
+        vs30_main_4_bones = 0x0ECFE74C and vs30_shadow_4_bones; the only traced 0x0ECFE74C draw has a 32-byte vertex,
+        offsets packed -> POSITION6 at 28 is the only one that keeps the game's draw right); S5c ran all 7 candidates
+        on all 4 families, none of our paths reads POSITION6 -> CLOSED. Lost lists: stress 4 (was 5, 0x940D83F4 drawn
+        now); night1 18 / 17 vs a 1-frame close 32-bit reference = wide-shot difference, watch sprite VS F1CA8DC6.
+        - [ ] 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only (dyn_census --ref, all 24
+        traces): captured as dynamic under the rows rule = extra capture cost; check whether it is static geometry fed
+        through dynamic buffers on the port. Owner: coord, RT-on-64 S3.
+        - [ ] (optional, M) name the lacked semantic in Sol's loader line or an input-layout trace, if POSITION6 ever
+        matters. Owner: coord, Sol note. Was: S4 census (after R1): name which POSITION the 64-bit 0x0ECFE74C description lacks (S5c covers each). rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
