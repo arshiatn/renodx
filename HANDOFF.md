@@ -18554,7 +18554,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         link predicates UnitFlushOffered / UnitFlushRunsHere + mirror cleared in Unregister, Host unit_flush_offered,
         rt_scene's batch-wanted predicate, the port's Update term + per-change line, F7 truth table (-BuildOnly; the
         coord runs F7 on the GPU), F7 at 3840x2160 if still 1280x720, every rt_core / rt_scene includer built)
-        STARTED 02:51. Then reviews (Opus xHigh + Sonnet High), F7 on the GPU, merge, then the big batch.
+        STARTED 02:51. Then reviews (Opus xHigh + Sonnet High), F7 on the GPU, merge, then the big batch. DONE 03:16 (25 of
+        60 min; scratch\s5a_\handback.md; s5a_1128 b26ff5357 link (UnitFlushOffered :276, UnitFlushRunsHere :285,
+        mirror cleared in Unregister :239 / stored :593, BeforePack thread :196, lock-free asserts, per-change line in
+        Update :543-557), d5e1094f6 Host::unit_flush_offered + rt_scene UnitBatchWanted :551 + visibility :2383-2389,
+        06f16cd50 addon.cpp (port host :4155-4165, Update term :2458-2467; 32-bit keeps PacksHooked), 4ea68790a F7
+        (RENODX_F7_PACK=present, 20 truth-table cases, every case at 3840x2160, resize case 2560x1440)). Gated amd64
+        14 add-ons + x86 3 exit 0, tw_unit_shadows x2, defaults match, tw_rays_captures ALL PASSED, F7 -BuildOnly, 18
+        games' page dumps SAME, new a64 section: row shown for READY offered / v1, hidden for not_installed (control),
+        plugins_off, not_loaded, withheld. Deviations: the line logged before the registration step ('registered'
+        lags one present), info level, UnitBatchWanted reads the present's Settings (no runtime.mutex), v1 only with
+        the pack on its own thread, dump tool section (private). Reviews rs5a_ (Opus xHigh) + fs5a_ (Sonnet High),
+        read only, STARTED 03:17; F7 ALL 84 cases on the GPU (coord, f7_gpu.sh, first run at 4K) STARTED 03:17.
         Big batch plan bbp_ (Opus xHigh, read only, est 35 / 70; testbin\scratch\bbp_\brief.md -> batch_plan.md:
         before-list, starts in run order with commands, count + why (cited) + gate per start, not-in-batch list,
         trims, rule lines (settings.local.json read only), open questions) STARTED 02:52 beside s5a_. DONE 03:14
