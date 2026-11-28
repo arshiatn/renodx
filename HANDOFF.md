@@ -18691,6 +18691,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         Group A -DryRun 03:55 (scratch\coord_\gA_dry.log): exit 0, starts B64P-ep1c / ep1cvfx / ep1cvfxauto, about 20 min,
         CacheAFFINITY for both exes, CPU Set Setter running, perffix64.dll 69cb12bf (B9), plugin f3a14087 = sidecar,
         probe 0257a9aa, 'self-test: ok for every arm'. Group A RUN STARTED 03:55 (scratch\coord_\gA_run.log).
+        [x] Group A DONE 04:12 (17 min, exit 0; ab_runs\20261128_035513_AB). 3 / 3 valid, A8 quiet (top audiodg 0.29 %),
+        golden same x3, determinism same over 3749 ticks for every pair, trap A / B none, no WER / CrashDumps.
+        ep1c 63.2 fps p99 26.05 ms window 218.4 s steps/s 8.30 | ep1cvfx 81.8 fps (+29.5 %) p99 18.26 window 224.6 s
+        (+6.2) 8.09 | ep1cvfxauto 78.9 fps (+24.9 %) p99 18.23 window 220.7 s (+2.3) 8.24; P3 free share 100 % in both.
+        PK9 fps gate (>= +3 %) PASS for both arms; runner P5: window SLOWER beyond the A/A noise 1.5 s (one start each)
+        -> FOR ATN: more fps / much better p99, battle time 2.8 % (On) / 1.0 % (Automatic) slower. Group B's ep1c adds a
+        second control start for the window median. [x] L2B S2 PASS on ep1c: window 218.4 <= 219.0 (1.3.28's l2b
+        219.0-219.9), X fnv de496970e53dddeb / x_hash 36c72e1b01f97d12 at tick 3749, CPU sets 14 (0-13), 19 sites
+        unchanged (19 applied, 0 changed), one 'logical 14 + 15' reserve line, 0 CRASH / FATAL. [x] N9 PASS: the site
+        lines print '0x3416d50' style hex. Probe: 162 applied, GOT 0x4bf0268 skipped (as in every window-3 start).
+        B10: no crash question. Group B -DryRun next.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
