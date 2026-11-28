@@ -62,15 +62,15 @@ bool RAB_StoreCompactLightInfo(uint slot, RAB_LightInfo light) { return false; }
 RAB_LightInfo RAB_LoadCompactLightInfo(uint slot) { return (RAB_LightInfo)0; }
 float3 RAB_GetSurfaceWorldPos(RAB_Surface surface) { return surface.origin; }
 
-// What a light could give anything within `radius` of `center`: its colour's luminance at its falloff (LightLinear's
-// kinds) from the sphere's nearest point, no angle; 0 out of reach. Never below what it gives a surface there (its
-// LightArriving, but the diffuse scale every light shares): no light that lights a cell's surface is left out of it.
+// What a light could give anything within `radius` of `center`; 0 out of reach.
 // src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:154 RAB_GetLightTargetPdfForVolume, a light's weight for any
 // surface in the volume.
-// ours: the bound at the sphere's nearest point (0 inside it), no angle, so it is never below LightArriving's light at
-// any point of the cell (fa1_ U2: it holds only while RTXDI's onion cellRadius bounds the cell, samplingJitter 0).
+// dev: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/PolymorphicLight.hlsli:206: its colour's luminance at its falloff
+// (LightLinear's kinds) from the sphere's nearest point (0 inside it), no angle, not RTXDI's fitted average distance
+// (GetAverageDistanceToVolume, :107): a bound, never below what the light gives a surface there (its LightArriving, but
+// the diffuse scale every light shares), so no light that lights a cell's surface is left out of it (fa1_ U2: the
+// onion's cellRadius bounding the cell is unproven on the CPU).
 float RAB_GetLightTargetPdfForVolume(RAB_LightInfo light, float3 center, float radius) {
-  // src: spec:rtxdi@fdbd9b3:Doc/RtxdiApplicationBridge.md:154 the volume's nearest point: 0 for a light inside it.
   const float nearest = max(distance(lights[light.index].xyz, center) - radius, 0.f);
   if (nearest >= lights[light.index].w) return 0.f;
   const float falloff = 1.f - nearest / lights[light.index].w;
@@ -155,8 +155,7 @@ bool RAB_GetConservativeVisibility(RAB_Surface surface, RAB_LightSample light_sa
 
 #include "Rtxdi/DI/InitialSampling.hlsli"
 
-// An RTXDI sampler seeded by H0's hash (rt_scene.hlsli Random's lanes: pixel or slot, frame, dimension), not
-// RTXDI_InitRandomSampler's linear frame + pass seed; RTXDI's own steps inside one sampler.
+// An RTXDI sampler (RTXDI's own steps inside one sampler).
 // dev: spec:rtxdi-lib@b67f61c:Include/Rtxdi/Utils/RandomSamplerState.hlsli:30: seeded by H0's Pcg4d hash of (pixel or
 // slot, frame, dimension) through RTXDI_CreateRandomSamplerFromDirectSeed (:85), not RTXDI_InitRandomSampler's linear
 // frame + pass seed; one seed rule for every helper pass (rt_scene.hlsli Random), so no two passes or frames share a
@@ -350,7 +349,7 @@ RTXDI_DISpatialResamplingParameters DiSpatialParameters() {
 float3 DiMotion(uint2 pixel, RAB_Surface surface) {
   const float4 clip = ClipOf(surface.position, previous_view_projection);
   // dev: spec:rtxdi-lib@b67f61c:Include/Rtxdi/DI/TemporalResampling.hlsli:29: behind the last camera no motion; the
-  // fallback finds it
+  // fallback finds it.
   if (!(clip.w > 0.f)) return 0.f;
   const float2 seen = (clip.xy / clip.w * float2(0.5f, -0.5f) + 0.5f) * float2(width, height) - 0.5f;
   return float3(seen - float2(pixel), clip.w - ClipOf(surface.position, view_projection).w);

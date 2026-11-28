@@ -18,9 +18,9 @@
 // pass: a thread a cell slot, RTXDI_PresampleLocalLightsForReGIR over the local-light region.
 [numthreads(64, 1, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
-  // dev: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/Presampling/PresampleReGIR.hlsl:22: RabSampler's
-  // H0 hash (the bridge's seed rule), not RTXDI_InitRandomSampler's, and the coherent sampler a copy of it, since it
-  // only picks power-RIS tiles and the candidates here are uniform.
+  // dev: spec:rtxdi@fdbd9b3:Samples/FullSample/Shaders/LightingPasses/Presampling/PresampleReGIR.hlsl:22-23:
+  // RabSampler's H0 hash (the bridge's seed rule), not RTXDI_InitRandomSampler's, and the coherent sampler a copy of
+  // it, since it only picks power-RIS tiles and the candidates here are uniform.
   RTXDI_RandomSamplerState rng = RabSampler(uint4(id.xy, frame, DIM_REGIR_BUILD));
   // The power-RIS candidates' tile pick only (unused: uniform candidates).
   RTXDI_RandomSamplerState coherent = rng;
