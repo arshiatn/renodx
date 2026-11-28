@@ -261,8 +261,8 @@ inline bool Evaluate(const UpscaleRequest& request, bool guides_written) {
       || request.render_width > bridge.width || request.render_height > bridge.height) {
     return false;
   }
-  // The camera's registers (column vectors): view c2-c5, projection c6-c9 without its jitter (its z column's x and y:
-  // twattila/fg_camera.hpp's), position c0, near and far c34.
+  // The camera's registers (column vectors): view c2-c5, projection c6-c9 without its jitter (its z column's x and y),
+  // position c0, near and far c34.
   constexpr size_t VIEW = 2 * 4;
   constexpr size_t PROJECTION = 6 * 4;
   constexpr size_t NEAR_FAR = 34 * 4;
