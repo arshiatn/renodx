@@ -18492,7 +18492,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         start_files.hpp + new test\tw_start_files) STARTED 01:39.
         RT-on-64 S5c s5c_ (Opus High, est 25 / 50; worktree s5c_1128 from 13ff5bc14; test\tw_rays_captures only, WARP:
         one 4-bone 0x0ECFE74C draw through capture + FlushBatch SO with Sol's slot-15 zero buffer; control = ones, or
-        'unread' per S10) STARTED 01:44 beside cp_ (no overlap). Then S5a after cp_ (addon.cpp). rrts2_ (Opus xHigh, 9 min;
+        'unread' per S10) STARTED 01:44 beside cp_ (no overlap). Then S5a after cp_ (addon.cpp). DONE 01:51 (7 of 25
+        min; scratch\s5c_\handback.md; s5c_1128 7033094da, tests.cpp + run.ps1 header): case S inside B for the
+        0x0ECFE74C family, layout rebuilt as Sol's dx_make_layout (dx11_device.inc:1193-1218; the lacked POSITION ->
+        slot 15, R32G32B32A32, stride-0 zero buffer :254-261), all 7 lacked candidates + none (the real one is S4's
+        census job); S1 capture + batch SO equal the zeroed reference bit for bit (0 of 19817 corners, 8 descriptions);
+        S2 ones change all corners when POSITION0-2 is lacked (read), nothing for POSITION3-6 / none (unread, S10);
+        ALL PASSED on amd64 WARP. Reviews rs5c_ (Opus xHigh) + fs5c_ (Sonnet High), read only, STARTED 01:51.
+        [ ] S4 census (after R1): name which POSITION the 64-bit 0x0ECFE74C description lacks (S5c covers each). rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
