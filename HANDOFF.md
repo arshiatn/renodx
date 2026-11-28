@@ -18801,6 +18801,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         fsmo_ (Sonnet High final, scratch\fsmo_\review.md) GO, no MUST / SHOULD. Coord APPLIED both 05:51: live
         siege_rec.ps1 = e13c28e8..., README = 491c2f63...; -DryRun -Helper sgr_\rec_helper READY (omm-lib STAGED fd32fbd5
         over the game's b0c031f2, coord_\gJ_dry2.log). Group J runs after rrsc_ ends (game runs hold all agents).
+        rrsc_ DONE 06:00 (17 min; scratch\rrsc_\review.md): GO WITH CHANGES, no MUST. Patch reproduces e48e3209
+        byte for byte; refusals right; night1 pin right (56009 bytes); Arm-Replay reaches every place; k 0.814..1.314,
+        F0 76.8..87.4 s (14 starts, rrsc_\k_check.py); worst margins 12.4 / 12.2 s (not 14). S1: the slowest k the
+        budget takes fell (plain 3.38 -> 2.44, rtkill 2.23 -> 1.88) and the PT arms never ran -> budgets 600 / 720 +
+        rtkill its own. S2: night1's F0 / k / battle length unmeasured -> R1 quit 200 (worst margin 24.6 s) + check
+        night1 lasts >= ~210 B. N3 comment = runner clock, N5 case, N6 item-6 text, N7 patch re-hash + restore;
+        N4: item 5's night1 reference = 1 frame (RT + DLSS-P, info only). -> rsc2_ (second patch on e48e3209, Opus
+        Medium, est 10 / 20, scratch\rsc2_\brief.md) after group J, then a Sonnet High final on both.
+        Group J (siege_rec.ps1 -Helper sgr_\rec_helper, Constantinople, 2 recordings) STARTED 06:01 (no agent
+        running; coord_\gJ_run.log).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
