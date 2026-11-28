@@ -19285,6 +19285,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         read'; with 64561 -> 64577 the shift is 0 ('the scene holds'); verdict PASS either way; skip black frames. S2 f3
         (:1954 / :2380): d1's A8 quiet snap uses the stress opening 1748, not day1's ~5488 (info only) -> Window kinds
         use $meta.events.opening. 9 NITs. Fix round abf_ (resumed, Opus High, est 20 / 40) STARTED 12:3x.
+        abf_ Round 2 DONE 12:4x (10 min; handback.md 'Round 2', abf_r2.diff): patch_abf.py aadd1560, 51 edits, in
+        089a4c79 -> out e3d09ce4 (fresh copy gives e3d09ce4; 2nd apply / no argument / wrong sha / CRLF / the round-1
+        output 72e14a0b refused). S1: the pre-key control starts at the first pre-key frame below 95 % black and names
+        the skipped ones ('no pre-key control' if all black); -Analyze on a timestamp-kept copy of today's G4: 'pre-key
+        control capture_64561 -> capture_64577: row 619 -> 619, shift 0, skipped capture_64543 (black 100.0 %): the
+        scene holds before the key', the pair still PASS (619 -> 355) = S4 answered on G4. S2: Window kinds take the
+        opening from the clock line (day1 ~5488), the A8 snap lands at battle s 300, the CPU read waits for the clock
+        line. NITs done: window-placement check skipped for Window kinds, two comment / note texts, the -R2 'starts:'
+        line '(named only, with -Arms: E64-ptd1)'. Skipped with reasons: f7 span (rabf_: acceptable), D2c reference +
+        the stress replay on a d1-only batch (old code, harmless), f1 ContactSplit '0' (the plan's pin: the Stage B
+        row is Off by default, so dflt = the player default; coord keeps it), a 'WPR captured B x..y' line (start.json
+        has both ends). Tests: parse + fsc3_ 0 / 0; test_f7 8 / 8 both; test_s2 6 / 6 (3 / 6 on round 1 = the bug);
+        test_wpr 17 / 17; test_w3 17 / 17; test_args 18 / 18. Dry twins: every line past F12 now; A-H / G1 / G2 / G4 ok
+        both, G3 / G2b / G5 / G6 ok new (live refuses); live vs new differs only in A (dflt in the P1 note) and G (the
+        named-only note). fabf_ (Sonnet High final, scratch\fabf_\brief.md, est 10 / 20) STARTED 12:44.
         N1 Nsight (stress PT view, no game) on the fallback recording a64_20261128_065848_Smoke\3_E64-pt: run 1 exit 7
         (the player quit at once: it takes ONE frame folder, not the recording's parent; batch2_plan's N1 / N2 line is
         wrong there), run 2 with ...\3_E64-pt\frame_62649 DONE 12:34 exit 0: nsight\runs\a64_ns_w3_pt\
