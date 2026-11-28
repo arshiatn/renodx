@@ -19371,6 +19371,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         timestamps replace Nsight (GPU Trace records D3D12 / Vulkan only); no FLIP (needs a harness dump switch, j23p_).
         ATN later: preset Default unchanged, his call after the job. Reviews rx38_ (Opus xHigh) + fx38_ (Sonnet High)
         STARTED 14:52; job to gl_'s queue after GO.
+        fx38_ DONE 15:00 (scratch\fx38_\review.md) GO WITH CHANGES: the fix is right (DPG 3.2.2.1 (3) asks for the
+        dynamic range's max; this backend recreates the feature on every size / preset / mode / output change, so that
+        range = the active size; no L / M input exceeds its creation size; others byte for byte); CPU test amd64 + x86
+        PASS, -Control fails 10 checks; the helper's SR = D3D11 backend.Evaluate (main.cpp:1383): Nsight cannot gate
+        (nsight README: GPU Trace skips D3D11 + NGX), DRED n/a. MUST 1 job_x38.ps1:51 copies the helper exe ms after
+        the harness exits while the helper may still run -> wait for its exit (else the job aborts holding the lock).
+        SHOULD: judge exit codes + removal lines in the summary; ngx_backend.hpp:151-162 comment contradicts DPG 3.2.2
+        for L / M + an unverified '3840x2160 helper log' claim; the A/A noise estimate for P4; drop disjoint samples;
+        amend fwp_ plan rows saying 'Nsight strict' for X38; the timing builds' sha; a DRED n/a note in the job output.
+        Fix round waits for rx38_ (Opus xHigh), then x38_ resumed with both lists.
         gq1_ DONE ~14:5x (16 of 40 min; RN\handoff_plan\handbacks\gq1__handback.md; scripts only, worktree gq1_ no
         commits): 3 reference helpers (shipped / REUSE_W_CLAMP_OFF / REUSE_CLAMP_TRACE) + a 4K pdi1 reference harness
         B6714867666A on the v32 bridge (pdi1 source fails on v33: tw_rt_harness.cpp:3652 old field name -> j23p_ told);
