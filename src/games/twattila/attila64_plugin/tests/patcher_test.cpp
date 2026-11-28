@@ -1505,14 +1505,15 @@ int wmain(int argc, wchar_t** argv) {
 
     // The step: its bit clear, the placement does nothing and the game's step runs with its task; its bit set, one
     // step reserves a core on this process (or finds why not, on a small machine), and the bit cleared releases it.
+    // The battle part alone: CORE_RENDER (in the build's default) would place the DLL's render thread by itself.
     const auto default_before = default_cpu_sets();
     const uint64_t status_before = shared->core_status.load();
-    shared->core_wanted.fetch_and(~CORE_BATTLE);
+    shared->core_wanted.fetch_and(~(CORE_BATTLE | CORE_RENDER));
     Expect(!Logged("STEP_ENTRY: first call") && step_once() && step_record->calls == 1 && Logged("STEP_ENTRY: first call"),
            "step: the task reaches the game's step, its result comes back, its own first-call line");
     Expect(shared->core_status.load() == status_before && default_cpu_sets() == default_before && !Logged("battle core:"),
            "step: bit clear, nothing placed");
-    shared->core_wanted.store(CORE_WANTED_DEFAULT);
+    shared->core_wanted.store(CORE_WANTED_DEFAULT & ~CORE_RENDER);
     Expect(step_once() && step_record->calls == 2 && core_state_of(shared) != CORE_WAITING && core_state_of(shared) != 0
                && Logged("battle core:"),
            "step: bit set, the placement ran once before the game's step");
@@ -1525,7 +1526,7 @@ int wmain(int argc, wchar_t** argv) {
     } else {
       std::printf("  step: no core on this machine (state %u): the release is not run\n", core_state_of(shared));
     }
-    shared->core_wanted.store(CORE_WANTED_DEFAULT);
+    shared->core_wanted.store(CORE_WANTED_DEFAULT & ~CORE_RENDER);
   };
 
   // This exe's copy of hooks.hpp.
@@ -1678,7 +1679,10 @@ int wmain(int argc, wchar_t** argv) {
   }
   if (main_plugin.block != nullptr) {
     // This thread ran the DLL's game start, so it is the DLL's render thread: its steps are never selected onto the
-    // battle core (the test's own copy above, with no render thread, selects this thread).
+    // battle core (the test's own copy above, with no render thread, selects this thread). With no RenderCore key the
+    // init keeps the build's default, CORE_RENDER included; expect_hook_bodies leaves the bit clear, else the render core
+    // holds this thread.
+    Expect((main_plugin.block->core_wanted.load() & CORE_RENDER) != 0, "dll: no RenderCore key, the render part's bit from the build's default");
     expect_hook_bodies(main_plugin.block);
     Expect(step_once() && (core_state_of(main_plugin.block) != CORE_ACTIVE || selected_count() == 0),
            "step: the render thread is not selected onto the battle core");

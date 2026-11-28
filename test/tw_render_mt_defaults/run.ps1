@@ -127,12 +127,13 @@ Check ($gc.Contains("game_code_row->tooltip = `"Faster versions of some of the g
 Check ($text -match 'MirrorRestartValues\(loader_frame_cap_row != 0\.f, static_cast<int>\(shadow_map_size\),\s+engine_code_row != 0\.f\);') 'FasterGameCpuCode mirrored for the next start'
 Check ((Read-Source 'graphics_page.hpp') -match '(?s)\.key = "FasterGameCpuCode",.{0,300}?\.label = "Faster Game CPU Code",') 'FasterGameCpuCode 32-bit label unchanged'
 # PK2P P1a (the 64-bit port only): Keep Render Core Free is the engine plugin's render core, its default the plugin's
-# CORE_RENDER bit (32-bit: 0, off), moved to the CPU page after Keep Battle Core Free, hidden until its A/B measured it
-# (RENDER_CORE_ROW_MEASURED false) and while the plugin built no render part, the toggle also with RenderCore=0; its bit
-# written by the link's Update; the 32-bit row as before.
+# CORE_RENDER bit (32-bit: 0, off; the port: on, PK2P W5), moved to the CPU page after Keep Battle Core Free, shown
+# since its A/B measured it (RENDER_CORE_ROW_MEASURED true, the 11-28 batch), hidden while the plugin built no render
+# part, the toggle also with RenderCore=0; its bit written by the link's Update; the 32-bit row as before.
 Check ($text.Contains('constexpr float KEEP_RENDER_CORE_DEFAULT = ((ATTILA64 && twattila::attila64_plugin_link::RENDER_CORE_DEFAULT) ? 1.f : 0.f);')) 'KeepRenderCoreFree default: the plugin''s CORE_RENDER bit on the port, 0 on 32-bit'
 Check ((Read-Source 'attila64_plugin_link.hpp') -match '(?s)inline constexpr bool RENDER_CORE_DEFAULT =\s+\(attila64_plugin::CORE_WANTED_DEFAULT & attila64_plugin::CORE_RENDER\) != 0;') 'RENDER_CORE_DEFAULT from CORE_WANTED_DEFAULT & CORE_RENDER'
-Check ($text -match '(?m)^constexpr bool RENDER_CORE_ROW_MEASURED = false;') 'RENDER_CORE_ROW_MEASURED false (the port row hidden until its A/B)'
+Check ($text -match '(?m)^constexpr bool RENDER_CORE_ROW_MEASURED = true;') 'RENDER_CORE_ROW_MEASURED true (the port row shown since its A/B)'
+Check ((Read-Source 'attila64_plugin\plugin_block.h').Contains('inline constexpr uint32_t CORE_WANTED_DEFAULT = CORE_BATTLE | CORE_RENDER | CORE_STEP;')) 'CORE_WANTED_DEFAULT: battle core, render core, battle step'
 Check ($text.Contains('{.match = "KeepRenderCoreFree", .plugin_row = PluginRow::CPU_PLACEMENT},')) 'KeepRenderCoreFree in GAME_CODE_ROWS with PluginRow::CPU_PLACEMENT'
 $rc = Block 'const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree", &renodx::utils::settings::Setting::key);' "`n        });"
 Check ($rc.Contains('render_core_row->label = "Keep Render Core Free";') -and $rc.Contains('render_core_row->section = CPU_SECTION;') `

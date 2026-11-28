@@ -267,17 +267,18 @@ foreach ($name in $gameCodeCases.Keys) {
 }
 # The core rows (a v2 block offering the CPU row, rows 0x7, the render part built: render_core_status 1, WAITING): each
 # writes only its own core_wanted bit (CORE_STEP 4: Faster Battle Step's, hidden, writes the plugin's default On, the
-# bit already set); the exe checks the bits left. While
-# Keep Render Core Free is hidden (RENDER_CORE_ROW_MEASURED false) it writes nothing, a saved On included.
-# plugin_render_core: Keep Render Core Free On saved, the plugin's bits 5 (battle + 4): 5 (shown: 7, "on").
-# plugin_render_core_battle_off: Keep Battle Core Free Off as well: 4 (shown: 6, "on"). plugin_render_core_kept: the
-# row at its default (Off), the plugin's bits 7 (its own RenderCore=1): the first present writes no render bit, 7 kept.
+# bit already set); the exe checks the bits left. Keep Render Core Free is on by default (CORE_WANTED_DEFAULT holds
+# CORE_RENDER), and its first present writes only a row off that default (attila64_plugin_link::Update).
+# plugin_render_core_kept: no ini, the plugin's bits 7: 7, no render line. plugin_render_core_saved_off: Off saved: 5,
+# "off". plugin_render_core_battle_off: Keep Battle Core Free Off: 6, no render line. plugin_render_core_saved_on: On
+# saved, the plugin's bits 5 (the render bit clear): at its default the bit stays the plugin's: 5, no render line.
 $renderCore = '[Total War] 64-bit Attila: Keep Render Core Free'
 $renderCoreCases = [ordered]@{
-  plugin_render_core = @{ plugin = '1 7 0 2 7 0 0 5 1'; ini = @('KeepRenderCoreFree=1'); bits = 5; battle = 'on' }
-  plugin_render_core_battle_off = @{ plugin = '1 7 0 2 7 0 0 5 1'; ini = @('KeepBattleCoreFree=0', 'KeepRenderCoreFree=1'); bits = 4
-                                     battle = 'off' }
   plugin_render_core_kept = @{ plugin = '1 7 0 2 7 0 0 7 1'; ini = @(); bits = 7; battle = 'on' }
+  plugin_render_core_saved_off = @{ plugin = '1 7 0 2 7 0 0 7 1'; ini = @('KeepRenderCoreFree=0'); bits = 5; battle = 'on'
+                                    render = 'off' }
+  plugin_render_core_battle_off = @{ plugin = '1 7 0 2 7 0 0 7 1'; ini = @('KeepBattleCoreFree=0'); bits = 6; battle = 'off' }
+  plugin_render_core_saved_on = @{ plugin = '1 7 0 2 7 0 0 5 1'; ini = @('KeepRenderCoreFree=1'); bits = 5; battle = 'on' }
 }
 foreach ($name in $renderCoreCases.Keys) {
   $core = $renderCoreCases[$name]

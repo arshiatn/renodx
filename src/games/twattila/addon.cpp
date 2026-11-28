@@ -1730,8 +1730,8 @@ float effect_prefetch_row = 0.f;
 // core_wanted bit, attila64_plugin_link::Update).
 constexpr float KEEP_RENDER_CORE_DEFAULT = ((ATTILA64 && twattila::attila64_plugin_link::RENDER_CORE_DEFAULT) ? 1.f : 0.f);
 float keep_render_core_row = KEEP_RENDER_CORE_DEFAULT;
-// The port's Keep Render Core Free shows only once its A/B measured it (true: a release step).
-constexpr bool RENDER_CORE_ROW_MEASURED = false;
+// The port's Keep Render Core Free shows only once its A/B measured it (true since the 11-28 batch, PK2P S-C).
+constexpr bool RENDER_CORE_ROW_MEASURED = true;
 // Keep Battle Core Free (the port only, on): the 64-bit engine plugin's battle core, its core_wanted bit
 // (attila64_plugin_link::Update).
 constexpr float KEEP_BATTLE_CORE_DEFAULT = (twattila::attila64_plugin_link::BATTLE_CORE_DEFAULT ? 1.f : 0.f);
