@@ -18489,7 +18489,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         cpxa_ (Sonnet High, 1 min) GO, 0 MUST / 0 SHOULD (states 1-4 exactly the runnable ones; 5-7 keep their status
         line). MERGED 01:39 75b90a3d3 (--no-ff, pushed; src == pxa_1128's tested tree, so its builds hold).
         cp_ (the semi-automatic CPU page, Opus High, est 90 / 180; worktree cp_1128 from 75b90a3d3; addon.cpp +
-        start_files.hpp + new test\tw_start_files) STARTED 01:39. rrts2_ (Opus xHigh, 9 min;
+        start_files.hpp + new test\tw_start_files) STARTED 01:39.
+        RT-on-64 S5c s5c_ (Opus High, est 25 / 50; worktree s5c_1128 from 13ff5bc14; test\tw_rays_captures only, WARP:
+        one 4-bone 0x0ECFE74C draw through capture + FlushBatch SO with Sol's slot-15 zero buffer; control = ones, or
+        'unread' per S10) STARTED 01:44 beside cp_ (no overlap). Then S5a after cp_ (addon.cpp). rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
         row silently, S3 braces, S4 unused out locals -> nullptr; 8 NITs; 14 top-level tools\tw scripts read: none
