@@ -18554,7 +18554,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         1 battle), test sets 10.f after Start + control fails; helper exit 0 (100 headers same), 14 add-ons amd64 + x86
         x3 exit 0, tw_helper_lifetime x2 25 PASS. Proof patches v33 + v32 (control harness), X33 / X34 / X41 arms 8
         runs each, pass > 10x A/A + 1e-4, 'evaluated == RUN_FRAMES', P1 relative to the control; GPU lane after the
-        batch. Re-check cfxh2_ (Sonnet High, read only) STARTED 01:33.
+        batch. Re-check cfxh2_ (Sonnet High, read only) STARTED 01:33. cfxh2_ (9 min) GO, 0 MUST: every request path goes
+        through internal::Request (PublishEmptySet evaluates nothing); only WH3 changes the unit at run time; S1 the
+        X41 proof set the unit before Prepare (a start-only helper would pass) -> late set + a control; S2 wording;
+        S3 X33 a second exposure; S4 an orphan comment line. Round fxh2o_ DONE 01:42 (5 min; 08f9c0676 comment;
+        lifetime x2 25 PASS): X41 set after the warm-up, P2c late-set control (helper 02bc1fd94 must FAIL), WH3 P1b
+        (campaign + battle shots, FSR debug view, 3840x2160, test c884bc2a9 add-on vs 02bc1fd94 add-on), X33 arm E4
+        (deviation: no 'brighter' clause, DLSS returns the input's scale). W-H2 READY (fxh2_1127 tip 08f9c0676);
+        merge only after proof jobs P1 / P1b / P2a / P2b / P2c pass in the GPU lane after the batch (fxh2_\handback.md).
         [ ] NEEDS ATN: Attila / Rome II / Thrones campaign maps are about 1/20 scale; coord suggests FSR's factor 20 there
         (FSR players only, RT ranges untouched; rt_core's campaign_metre for rays = a separate look item).
         ATN: 'for game runs (Your AA test and the big batch) please make sure you don't waste tokens stopping
