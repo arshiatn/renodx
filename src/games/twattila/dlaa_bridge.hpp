@@ -220,9 +220,9 @@ struct Bridge {
   bool nrd_reflections = false;
   uint32_t upscaler = UPSCALER_DLSS;
   uint32_t fg_backend = FG_BACKEND_DLSS;
-  // The game's view-space unit in metres (Shared::metres_per_unit, written when the session starts): a game in
-  // centimetres sets 0.01 as it installs.
-  float metres_per_unit = 1.f;
+  // The game's view-space unit in metres (Shared::metres_per_unit, written at the session's start and with every
+  // request): a game in centimetres sets 0.01 as it installs, WH3 its campaign map's at each present.
+  std::atomic<float> metres_per_unit = 1.f;
   HANDLE mapping = nullptr;
   HANDLE request = nullptr;
   HANDLE done = nullptr;
@@ -1184,6 +1184,7 @@ bool Request(ID3D11DeviceContext* context, RequestKind kind, Fill&& fill) {
   if (!Queued(context4->Signal(bridge.fence.Get(), bridge.value))) return false;
   context->Flush();
   shared.value = bridge.value;
+  shared.metres_per_unit = bridge.metres_per_unit;
   fill(&shared);
   ResetEvent(bridge.done);
   // A kind not asked for in STEADY_GAP_MS may find its device let go in the helper (after 10 s without its requests:

@@ -655,7 +655,9 @@ int main(int argc, char** argv) {
   // Healthy: the answer first, the GPU work 100 ms later; then half a minute with nothing asked. Nothing may end the helper.
   StartReady(game, "start healthy control");
   Check(bridge_api::Prepare(device, 16, 16), "healthy resources");
-  Check(RequestAs(game, bridge_api::EVALUATE, HEALTHY), "healthy acknowledged request");
+  bridge.metres_per_unit = 10.f;
+  Check(RequestAs(game, bridge_api::EVALUATE, HEALTHY) && bridge.shared->metres_per_unit == 10.f,
+        "healthy acknowledged request, with the unit the game set since the start (WH3's campaign map)");
   game.QueueTail();
   Check(game.TailWithin(3000) && bridge.fence->GetCompletedValue() == 2, "healthy GPU completion");
   processes_created = 0;

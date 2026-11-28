@@ -466,9 +466,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   bool upscaler_tried = false;
   bool upscaler_open = false;
   bool upscaler_live = false;
-  // The game's view-space unit in metres (v33: the addon wrote it before it started this helper), FSR's
-  // viewSpaceToMetersFactor for its upscaler and frame generation.
-  const float metres_per_unit = (version >= 33) ? shared->metres_per_unit : 1.f;
+  // The game's view-space unit in metres (v33: the addon writes it with every request; WH3's campaign map has its
+  // own), FSR's viewSpaceToMetersFactor for its upscaler and frame generation.
+  const auto metres_per_unit = [&] { return (version >= 33) ? shared->metres_per_unit : 1.f; };
   const auto other_upscaler = [&] { return version >= 22 && shared->upscaler != twattila::dlaa_bridge::UPSCALER_DLSS; };
   std::array<uint32_t, 7> upscale_said = {};
   // Ray tracing (v4 addons with it on): its D3D12 device and the addon's objects opened there. After a GPU reset removed
@@ -1239,7 +1239,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       // Frame generation (D3D12): its copy queue waits for the addon's value and signals the next.
       const bool proxied = generation_backend != twattila::dlaa_bridge::FG_BACKEND_DLSS;
       if (generation_open) {
-        evaluated = proxied ? proxy_generation->Present(shared, metres_per_unit) : generation->Present(shared);
+        evaluated = proxied ? proxy_generation->Present(shared, metres_per_unit()) : generation->Present(shared);
       } else {
         context4->Wait(fence.Get(), shared->value);
         context4->Signal(fence.Get(), shared->value + 1);
@@ -1331,7 +1331,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
           .jitter_y = shared->jitter_y,
           .reset = (shared->reset != 0),
           .sharpness = shared->fsr_sharpness,
-          .metres_per_unit = metres_per_unit,
+          .metres_per_unit = metres_per_unit(),
       };
       std::copy_n(shared->view_to_clip, 16, upscale.view_to_clip.begin());
       evaluated = upscaler_open && upscaler->Evaluate(upscale);
