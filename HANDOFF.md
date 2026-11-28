@@ -18630,7 +18630,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         add 0 lines while unregistered). The S5a fix round runs BEFORE any game start (its builds can't overlap the
         timed groups; the batch then runs A-J straight with one restage): s5a_ (resumed, Opus High, est 20 / 40;
         scratch\s5a_\fix_brief.md: the MUST, clear the pack thread in Unregister, the 7c sequence + mutation, inline
-        addon.cpp:2462's local, shrink order, NITs) STARTED 03:31. Then F7 on the GPU again, a Sonnet final, merge.
+        addon.cpp:2462's local, shrink order, NITs) STARTED 03:31. Then F7 on the GPU again, a Sonnet final, merge. DONE
+        03:39 (8 of 20 min; handback.md 'fix round'): 83d06f051 the line's third field = UnitFlushRunsHere() (link
+        :546-551), 'registered' from wanted under the mutex, Unregister clears the BeforePack thread after the drain
+        (not on the 1 s timeout path; Uninstall's own reset dropped), Update stores the mirror before hooks_wanted,
+        the Update term drops a redundant UnitFlushOffered(), addon.cpp's single-use local inlined; 9661a402a
+        tw_unit_shadows 7c runs-here / mirror-clear sequence (8 steps); a865b74cd F7 unit_flush_v1_draw. Gated amd64
+        14 + x86 3 exit 0, tw_unit_shadows x2 PASS, defaults match, F7 -BuildOnly (85 cases), page dumps a64 / a64r /
+        32-bit SAME; mutation (Unregister's mirror clear removed) FAILS at tw_unit_shadows :761. F7 on the GPU (85,
+        stage f7fix) + final check cs5a_ (Sonnet High) STARTED 03:39.
         [ ] NEEDS ATN: F7 at 3840x2160 writes ~30-40 GB of raw captures a run (rs5a_ S2): may run.ps1 delete a passed
         case's capture_*.raw (keeping the two compare sources and every failed case)? Until then the coord deletes
         nothing; C: 291 GB free.
