@@ -741,6 +741,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - X41 proof: a new harness proof design (FSR's depth debug cell in the harness, or ... | coord (designer if the harness way)
 - rdfi_ -> Sonnet High final -> merge all 4 (ATN yes to C1) -> F7 (test\tw_attila6 ... | coord
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
+- a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
@@ -19152,6 +19153,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         0 clashes. Round 1's w3 E1-E5 now 'not measured' (after frame too close to key up: intended). Any pre-gbf_ r3
         batch's rr50tm now FAILS 'add-on without the bind mark' (by design). Scratch: abe_\proof 6.3 GB + ptest*
         (~4 MB): delete only on ATN's OK. rabe_ follow-up STARTED 10:45.
+        rabe_ r2 GO 10:50 (patch reproduced on a fresh copy; frame picks: no false PASS from them, before span holds
+        >= 1 frame for a clock line at F 47.8..54, >= 2 over all 8 starts; F 64 / 66 after key up + 0.5 and >= 3.9 s
+        before the window). fabe_ (Sonnet High final) STARTED 10:50; then the coord applies (backup + sha).
+        - [ ] a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frames before key down; a shift
+        >= the pass threshold = 'not measured: the scene moves before the key' (the one false-PASS path left: the scene
+        changes by itself). With the w3 rerun's analysis. Owner: next a64_ab writer.
         gbf_ round 3 DONE 10:2x (9 min): aeaca9f07 on gbf3_1128 (worktree gbf3_, off aeb9d2059): frame_trace::Mark("tone
         mapper draw: Ray Reconstruction's result bound for the tone mapper") right after PSSetShaderResources in
         OnToneMapperDraw + a one-line why. 16 gated builds exit 0 (13 amd64 + 3 x86); Attila addon64 CBA929771CFDE468...,
