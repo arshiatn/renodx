@@ -741,7 +741,6 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
-- patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -19300,13 +19299,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         test_wpr 17 / 17; test_w3 17 / 17; test_args 18 / 18. Dry twins: every line past F12 now; A-H / G1 / G2 / G4 ok
         both, G3 / G2b / G5 / G6 ok new (live refuses); live vs new differs only in A (dflt in the P1 note) and G (the
         named-only note). fabf_ (Sonnet High final, scratch\fabf_\brief.md, est 10 / 20) STARTED 12:44.
+        fabf_ GO 12:45 (2 min; scratch\fabf_\review.md): live 089a4c79 unchanged before / after, patch_abf.py aadd1560,
+        two fresh copies give e3d09ce4, refusals hold, abf.diff regenerated identical (201 lines), every hunk in f1-f7 or
+        the rabf_ items, parse 0, fsc3_ 0 clashes, dry + test logs newer than the file and as handed back. APPLIED 12:45
+        by coord: live a64_ab.ps1 089a4c79 -> e3d09ce4 (51 edits), backup a64_ab.ps1.bak_abf_20261128_124549 (089a4c79).
+        Chain: ... -> bc9cf693 (rsc4_) -> 089a4c79 (abe_) -> e3d09ce4 (abf_). Part 2 DryRun twins on the live runner
+        12:46 (scratch\coord_\b2_dry.ps1, b2dry\): G3 (6 starts E64-dlaa ... E64-ptd1, day1.replay read for E64-ptd1),
+        G2b 'ep8,dflt', G5 d1, G6 w3s: exit 0, 'self-test: ok for every arm', nothing refused. Part 2 (G3 -> G2b -> G5
+        -> G6 -> N2) starts when sbf_ + x41d_ end (game runs hold all agents).
         N1 Nsight (stress PT view, no game) on the fallback recording a64_20261128_065848_Smoke\3_E64-pt: run 1 exit 7
         (the player quit at once: it takes ONE frame folder, not the recording's parent; batch2_plan's N1 / N2 line is
         wrong there), run 2 with ...\3_E64-pt\frame_62649 DONE 12:34 exit 0: nsight\runs\a64_ns_w3_pt\
         a64_ns_w3_pt.ngfx-gputrace (17 MB, 4 frames, 36.4 ms traced) + table.txt: 7.94 ms a frame (trace 3.90, path
         tracing 0.96, reuse 0.94, player inputs 0.80, radiance cache 0.62, clusters 0.31, AS builds 0.19, copies 0.17).
         Capture only, no analysis. N2 (day1) waits for G3's E64-ptd1 recording; use its frame_<n> folder.
-        - [ ] patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, sha 72e14a0b) -> -DryRun
+        - [x] DONE 12:46 (rabf_ -> abf_ r2 -> fabf_ GO -> applied e3d09ce4 -> part 2 twins ok). Was: patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, sha 72e14a0b) -> -DryRun
         twins -> part 2 (after ATN's yes to Q1). Owner: coord.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
