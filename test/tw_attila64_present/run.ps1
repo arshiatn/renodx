@@ -162,7 +162,8 @@ foreach ($offered in 0, 1) {
 }
 # The same with no plugin READY (hidden, nothing wanted, no flush: the line is never logged): not installed, in
 # plugins\ but not loaded, plugins switched off. A v1 block (an older plugin, rows 0x3): BONE_FLUSH is its row 0, so the
-# flush is offered and registered (the pack on its own thread).
+# flush is offered and registered; it runs here with the pack on the presenting thread (unit_flush_v1_draw) and not
+# with the pack on its own thread (unit_flush_v1).
 $unitFlushHidden = [ordered]@{
   unit_flush_not_installed = @{ lines = @($noPlugin) }
   unit_flush_not_loaded = @{ plugins_dir = $true; lines = @($notLoaded) }
@@ -175,14 +176,17 @@ foreach ($name in $unitFlushHidden.Keys) {
                      lines = @($identity, $mapped) + $hidden.lines + $upgraded
                      forbid = @($unitFlush, 'callbacks registered') }
 }
-$table['unit_flush_v1'] = @{
-  addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = '1 3 0 1'
-  ini = $unitFlushRaysOn + @('RayTracedBatchedUnits=1')
-  lines = @($identity, $mapped,
-            '[Total War] 64-bit Attila: engine plugin ready (block v1: an older plugin, its first rows only), rows offered 0x3',
-            "$unitFlush 1, registered 1, on the draw thread 0", "$callbacksWanted 0x1)") + $upgraded
-  forbid = @('engine plugin not installed', "$unitFlush 0", "$unitFlush 1, registered 0, on the draw thread 1",
-             "$unitFlush 1, registered 1, on the draw thread 1")
+foreach ($pack in 'other', 'draw') {
+  $here = [int]($pack -eq 'draw')
+  $table["unit_flush_v1$(if ($pack -eq 'draw') { '_draw' })"] = @{
+    addon = 'current'; args = 'd3d11 fixed upgraded plugin'; encoding = 0; plugin = '1 3 0 1'
+    pack = $(if ($pack -eq 'draw') { 'present' } else { '' }); ini = $unitFlushRaysOn + @('RayTracedBatchedUnits=1')
+    lines = @($identity, $mapped,
+              '[Total War] 64-bit Attila: engine plugin ready (block v1: an older plugin, its first rows only), rows offered 0x3',
+              "$unitFlush 1, registered 1, on the draw thread $here", "$callbacksWanted 0x1)") + $upgraded
+    forbid = @('engine plugin not installed', "$unitFlush 0", "$unitFlush 1, registered 0, on the draw thread 1",
+               "$unitFlush 1, registered 1, on the draw thread $(1 - $here)")
+  }
 }
 # The grass and campaign tree rows (a v2 block offering the grass, grass cell and campaign tree rows, rows 0x1c3, no
 # engine values): Grass Detail Distance 2x and Grass Density 1.5x set the grass scales' bits 19-21 (one line); Campaign

@@ -24,7 +24,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
+#include <string_view>
 
 #include "src/games/twattila/attila64_plugin/plugin_block.h"
 
@@ -116,8 +116,8 @@ BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID) {
     std::sscanf(value, "%u %u %u %u %u %u %u %u %u %u %u", &status, &rows, &changed, &version, &tried, &notices,
                 &tree_value, &core_wanted, &render_core_status, &effects_slot, &engine_status);
   }
-  pack_on_present = (GetEnvironmentVariableA("RENODX_F7_PACK", value, sizeof(value)) == 7
-                     && std::strcmp(value, "present") == 0);
+  const DWORD pack_length = GetEnvironmentVariableA("RENODX_F7_PACK", value, sizeof(value));
+  pack_on_present = (pack_length < sizeof(value) && std::string_view(value, pack_length) == "present");
   block.version = version;
   block.bytes = static_cast<uint32_t>(plugin::BlockBytes(version));
   block.rows_tried = ((tried == ~0u) ? rows : tried);
