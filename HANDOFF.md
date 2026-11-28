@@ -741,6 +741,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
+- ATN: Stage B on 6-core / 4C8T / 6C6T CPUs: the cap sends them to the game's own ... | ATN
+- Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
 - BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
 - P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2 ... | coord (game runs), after the fxh2_1127 merge
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
@@ -19289,6 +19291,31 @@ heading text are in HANDOFF_ARCHIVE.md)
         inputs; no implementer before Monday. Monday 22:00+, old Fable rules (Fable 5.2 xHigh design, Fable 5.2 Medium
         build, Opus xHigh + Sonnet High reviews): Stage B, then 'Step Pieces First' (parked behind Stage B), then the
         last ride. R-int census + P15' in that round. The row stays Off. Owner: coord.
+        rsbf_ DONE 14:26 (18 min; scratch\rsbf_\review.md + pair_check.py / pair_bins.py + *_out.txt) GO WITH
+        CHANGES: own pairing = design 1.1 (P15 x0.911 / x0.906, C x0.968 / x0.973, net x0.941 / x0.931); loss flat
+        x0.87-0.92 over interval bins (x0.914 on 49 ticks within 1 ms) -> not more steps a second; split = region
+        frame ~30 % / apply-only ~5 % / flat ~0.8 ms every frame ~65 %. Lever 1 exact if R-int holds; lever 2 formula
+        = battle_core.hpp on every CPU-table row. MUST: 1 gate vs starts IN THE SAME BATCH (ep8, ep8b, ep8, ep8btt8),
+        all common ticks incl. 'mixed' (x0.896), not group C (x0.954-0.995 by bin = the whole 3 % margin); 2 every new
+        test family two ways vs the game's own 0x803e70 (owner calls + memory, kind-8 nodes, every group branch, both
+        mask sides, +0x5b 1 / 2 / 0xff, done flag); 3 table 2.1: test 5's G / F undefined, listing address per row,
+        test 6 brace = 1 without test 4; 4 R-int also needs listing facts (every return past the two early exits
+        passes the +0x59 = 1 end store, done-flag compare form, +0x5b true / false, C added per side; (b) = census
+        1a W4a + D 2.3, cite); 5 CXX_STYLE: the shared CPU-table read = a local lambda inside OnStepStart, refuse paths
+        unchanged (or DEFAULT_USABLE_CORES with the battle core off); 6 DRAWING_PREP_THREADS = 3 'measured' has no
+        source -> cite or E. SHOULD: 1 re-state the split; 2 third cause 'starved region time' (ep8btt8 1.55x longer
+        region, steady cost 1.4-1.8x ep8b's; both levers at once confound the 1/6 rule); 3 one ep8b start with
+        ContactCores=16 (11 helpers; golden + determinism gated, fps reported); 4 index hint written in the apply or
+        only on change (~47 k cross-core stores a tick); 5 the object's own early exits (+0x58 == 0, +0x60 & 0x287 ==
+        0); 6 the re-check gain is -4.4..-6.8 ms, not -8 (seg 29 at 3 helpers ~19-23.5 ms vs the -7 ms gate; floor:
+        test 7 alone keeps the list <= ~half); 7 per-test drop counts in the 1000-tick line; 8 one place for
+        ContactCores; 9 prior art to check (Box2D v3 category / mask / group + proxy order; Box2D samples min(8,
+        threads / 2); UE4 logical CPUs = a deviation); 10 6-core / 4C8T / 6C6T fall back to the game's loop -> ATN
+        (never-drop rule). 6 NITs. => Fable designer input Monday (sbf_ design + this review).
+        - [ ] ATN: Stage B on 6-core / 4C8T / 6C6T CPUs: the cap sends them to the game's own loop (today's build
+          would run 9 / 5 / 3 helpers there, never measured; only 8+ cores get the battle core anyway). Owner: ATN.
+        - [ ] Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b ContactCores=16): ATN's yes on
+          the new arms once the Fable design names them. Owner: coord -> ATN.
         - [ ] BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one game batch (smoke, P15',
           Step Pieces First fps + golden; ep8btt8 reported only); then the last ride's fresh W3 WPR and its final
           verify bench. Before each run: no new GPU agent once that item's reviews start; running GPU agents finish
