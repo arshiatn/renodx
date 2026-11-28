@@ -1352,7 +1352,8 @@ constexpr EngineTexts BATTLE_STEP_TEXTS = {
     "off",                                                                        // ENGINE_OFF
     "off (ini)",                                                                  // ENGINE_OFF_INI
     "off (game code differs: game update or another mod? see attila64_log.txt)",  // ENGINE_CODE_DIFFERS
-    "off (another mod changed its code: PerfFix update?)",                        // ENGINE_OTHER_MOD (no pinned spot)
+    // ENGINE_OTHER_MOD: never set (the battle step has no pinned spot).
+    "off (another mod changed the game code: Engine Performance Fix update? see attila64_log.txt)",
 };
 static_assert(std::ranges::find(BATTLE_STEP_TEXTS, nullptr) == BATTLE_STEP_TEXTS.end(), "a text for every EngineState");
 // Multithreaded Collisions', after "Collisions: " (src: PK8 Stage B 14). deviation: from 14's three reason texts
@@ -1368,7 +1369,8 @@ constexpr EngineTexts CONTACT_SPLIT_TEXTS = {
     "off",                                                                        // ENGINE_OFF
     "off (ini)",                                                                  // ENGINE_OFF_INI
     "off (game code differs: game update or another mod? see attila64_log.txt)",  // ENGINE_CODE_DIFFERS
-    "off (another mod changed its code: PerfFix update?)",                        // ENGINE_OTHER_MOD
+    // ENGINE_OTHER_MOD
+    "off (another mod changed the game code: Engine Performance Fix update? see attila64_log.txt)",
 };
 static_assert(std::ranges::find(CONTACT_SPLIT_TEXTS, nullptr) == CONTACT_SPLIT_TEXTS.end(),
               "a text for every EngineState");
@@ -3673,8 +3675,9 @@ void ConfigureAddon() {
     });
     // The engine rows (PK8 11.1 Faster Battle Step, PK8 Stage B 14 Multithreaded Collisions) and their status lines,
     // live, while the plugin built the row's lane (0: not built), once their batch measured them. The toggle hides
-    // while the row cannot run (its key 0 in the plugin's ini, the game's code differs, or another mod's does); its line
-    // says why. The graphics preset buttons leave the rows alone (not look settings).
+    // while the row cannot run (its key 0 in the plugin's ini, the game's code differs, a spot another mod changes
+    // holds unknown bytes, or a newer plugin's state); its line says why. The graphics preset buttons leave the rows
+    // alone (not look settings).
     struct EngineRow {
       const char* key = nullptr;
       float* binding = nullptr;
@@ -3707,9 +3710,8 @@ void ConfigureAddon() {
                   .labels = {"Off", "On"},
                   .is_visible = [row, status_shown] {
                     const uint32_t state = twattila::attila64_plugin_link::EngineLaneState(row.lane_shift);
-                    return status_shown() && GameCodeRowShown(row.plugin_row)
-                           && state != plugin::ENGINE_OFF_INI && state != plugin::ENGINE_CODE_DIFFERS
-                           && state != plugin::ENGINE_OTHER_MOD;
+                    // NOT_USED_YET .. OFF: the states that can run (status_shown: not 0).
+                    return status_shown() && GameCodeRowShown(row.plugin_row) && state <= plugin::ENGINE_OFF;
                   },
               },
               new renodx::utils::settings::Setting{
