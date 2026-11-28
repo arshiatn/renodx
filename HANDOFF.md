@@ -19329,6 +19329,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         -> G6 -> N2) starts when sbf_ + x41d_ end (game runs hold all agents).
         G3 (-Smoke -ReShade -EnginePlugin -R2 -Arms E64-dlaa,E64-pt,E64-rrtm,E64-rr50,E64-rr50tm,E64-ptd1, log
         scratch\coord_\b2_G3_run.log) STARTED 13:11.
+        G3 PASS 13:43 (32 min, exit 0; ab_runs\20261128_131123_Smoke): 6 / 6 'PASS (scriptable part)', smoke_pass
+        true; every start clean exit, quit line True, WER 0, dumps 0, check_logs clean (log_check.py exit 1 = the 4
+        shaders RT arms do not draw, as group G). E64-dlaa: DLSS started, no could-not-start, F 200 / 215 pictures. G-a
+        'RT rays ran': each RT arm 1 positive status line '[Total War] Ray tracing with sun shadows, AO, Light Bounce,
+        path tracing, point lights, leaf micromaps ...: Ray tracing ready (DXR ...' = G-a closed. E64-rrtm (100 %): bind
+        mark 1 + F 200 / 215 black 0.3 / 0.4 % = 'RR's result bound for the tone mapper, picture whole'; E64-rr50: bind
+        mark 0 (want 0); E64-rr50tm (50 %): bind mark 1, black 0.3 / 0.4 %. Recordings complete 2 of 2 each:
+        D:\RenoDX_archive\recordings\a64_20261128_131123_Smoke\2_E64-pt (B 85 / 100 at battle s 86.8 / 101.4) and
+        6_E64-ptd1 (day1: B 85 / 100 at battle s 94.0 / 236.2; day1's clock jump). For ATN's eye: the F 200 / 215
+        pictures of rrtm vs pt and rr50tm vs rr50 (capture\*.bmp in each start); the RR-before-TM row stays Off.
+        G2b (-AB -Arms ep8,dflt -EnginePlugin -Probe full, log scratch\coord_\b2_G2b_run.log) STARTED 13:44.
         x41d_ DONE 12:5x (~20 min; scratch\x41d_\design.md + x41d_h33.diff / x41d_h32.diff / build_x41.ps1 /
         stage_x41.ps1 / run_x41.ps1 / analyze_x41.py): CAUSE of fxp_'s static > moving: the only metre term the scene
         reaches is FSR 3.1.6 accumulate.h:50 (distance factor from the farthest depth, no motion in it), which sizes the
