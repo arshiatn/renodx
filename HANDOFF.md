@@ -18959,6 +18959,22 @@ heading text are in HANDOFF_ARCHIVE.md)
         their next rebuilds get the extra line too.
         - [ ] Check whether any non-Attila job expects exactly ONE 'Ray tracing with' line (the X40 Tales status line
         job first) before those games' next rebuild with ga_'s change. Owner: coord, before the next non-TW build.
+        ga_ round 2 DONE 08:5x: 5f757e5ce (N1 comment, N2 STATUS_LINE_DELAY_MS), gated amd64 A16328F1... + x86
+        8616C796... exit 0. fga_ (Sonnet High final) STARTED 08:58.
+        dflt_ DONE 08:5x (13 min; scratch\dflt_\plan.md): C2 PK2P W5 (plugin_block.h:123 + CORE_RENDER, addon.cpp:1734
+        RENDER_CORE_ROW_MEASURED true), C3 PK9 Automatic (addon.cpp:1741 / :3715 EFFECTS_ON_ALL_CORES_DEFAULT 1.f),
+        settings revision 2 (ClearSavedRows(2, {EffectsOnAllCores, KeepRenderCoreFree}, Attila64SettingsRevision):
+        every saved 64-bit preset holds 0), C1 PK8 Stage A (addon.cpp:1750 BATTLE_STEP_ROW_MEASURED true; plugin
+        default already On). PK5 already On, Stage B Off. W5's F7 restore list was wrong once the default is On
+        (plan section 2); fp8a_ 'BattleStep=1 test due with W5' moot. a64_ab: pin RenderCore='0' on the 18 plugin
+        kinds without the key -> patch e, before any start on the W5 DLL. dfi_ (Opus Medium, worktree dfi_1128,
+        commits C2 -> C3 -> revision -> C1 LAST and separable, est 45 / 90) STARTED 08:5x.
+        FOR ATN: (1) PK8 Stage A default On? fps 63.3 vs 66.8 (-5.2 %), p99 26.92 vs 25.33 ms, but the battle window
+        -15.7 %, 9.73 vs 8.27 steps/s, slow-motion share 64 vs 91 % (more sim per second = the fps cost); dflt_ + coord
+        suggest On. (2) PK9 CORRECTION: in-batch the Automatic window is +2.3 s vs its own control (above the 1.5 s
+        noise); the +1.35 s used a cross-batch median. Automatic still beats On (+6.2 s). (3) The player defaults
+        (Stage A + render core + Automatic) never ran together: one defaults start in the next CPU batch. (4) PK9
+        keeps '(Experimental)' (dflt_ suggests); design 10's soak + DLSS / FG look check still open.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
