@@ -19350,6 +19350,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         = the 64-bit player defaults (Stage A + render core + Automatic) together: closes HO dflt_ 4.2 / the 'one defaults
         start'. G5 = WPR 2 (-AB -Arms d1 -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log
         scratch\coord_\b2_G5_run.log) STARTED 13:55.
+        G5 PASS 14:00 (5 min, exit 0; ab_runs\20261128_135518_AB): 1 / 1 valid, E-checks pass, 17 / 17 RENODX_TW_SET
+        rows, 'Fewer Constant Uploads: on.' once, no crash. WPR 2 CAPTURED on the runner's tick clock: Start at B 310
+        (battle s 314.9, 5488 opening steps) -> Stop at B 370 (battle s 370.2), both exit 0, window in front 100 %,
+        D:\RenoDX_WPR\attila_wpr_20261128_135518_AB_1_B64P-d1.etl (1.31 GB). d1 (day1 maxed, window battle s 300..400):
+        23.0 fps, median 43.45 ms, p99 53.3 ms, GPU busy 19.9 ms, 10.01 steps / s, slow 0 % (real time), quiet (A8).
+        Golden n/a (first 64-bit day1 AB start: build exe 580efafe / ELF 217e1435 / replay aa107f05 = the day1
+        reference now). Horizon info only (frames 63797 -> 64585 + the pre-key control). Capture only.
+        G6 = WPR 3 (-AB -Arms w3s -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log scratch\coord_\b2_G6_run.log)
+        STARTED 14:00.
         x41d_ DONE 12:5x (~20 min; scratch\x41d_\design.md + x41d_h33.diff / x41d_h32.diff / build_x41.ps1 /
         stage_x41.ps1 / run_x41.ps1 / analyze_x41.py): CAUSE of fxp_'s static > moving: the only metre term the scene
         reaches is FSR 3.1.6 accumulate.h:50 (distance factor from the farthest depth, no motion in it), which sizes the
