@@ -738,6 +738,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Check whether any non-Attila job expects exactly ONE 'Ray tracing with' line (th ... | coord, before the next non-TW build
 - sbi_ -> Opus xHigh review -> Sonnet High final -> merge -> fresh backups -> grou ... | coord
 - fxp_ -> read the proofs -> merge fxh2_1127 after step 4's captures (check rt_cor ... | coord
+- X41 proof: a new harness proof design (FSR's depth debug cell in the harness, or ... | coord (designer if the harness way)
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
@@ -19020,6 +19021,18 @@ heading text are in HANDOFF_ARCHIVE.md)
         (step 4), so that capture stays on the apply build; the next game batch waits for fxp_ to finish.
         - [ ] fxp_ -> read the proofs -> merge fxh2_1127 after step 4's captures (check rt_core / bridge conflicts
         with ga_'s merge) -> P1 / P1b with the game runs. Owner: coord.
+        fxp_ DONE 09:52 (51 min; scratch\fxp_\handback.md): 184 runs at 3840x2160 under the GPU lock, R = 8, every process
+        exit 0 / 0 FAIL, no hang. Builds: helpers 2aa6cc7ff 3E458D22, 9b1d9b9a7 ED148675, 02bc1fd94 03FF6F3E, c884bc2a9
+        D0AC2B34; H32 7C6F6887, H33 B27BA9B4. P2a X33 DLSS exposure PASS (D(E4, E1) 0.0251 vs A/A 0 + floor; control
+        0 = fails as it must). P2b X34 FSR RCAS PASS (523x A/A, contrast 0.329 -> 0.376; control 1.1x). P2c X41 FSR unit
+        FAIL BY THE WRITTEN RULE: D_moving(M001, M1) 2.7x A/A (< 10x) and the static control 6.5x (not within 3x); the
+        late-set (1.4x) and version (1.2x) controls fail as they must -> only the per-request build moves the output,
+        so the late unit DOES reach FSR, but ~1e-4 in size: the 30 m vs 0.3 m bars barely change FSR (the 'motion only'
+        model does not hold for this scene). Files: testbin\fxp_ (~12 GB dumps; src_<sha> exports hold junctions to bin,
+        external, build\downloads: unlink each ALONE before any delete).
+        - [ ] X41 proof: a new harness proof design (FSR's depth debug cell in the harness, or depths that straddle
+        accumulate.h:50's thresholds) OR P1 (Tales) / P1b (WH3) in game; decide before fxh2_1127's merge (X33 / X34
+        proved). Owner: coord (designer if the harness way).
         ATN 09:05 DECIDED: (1) PK8 Stage A default On = 'sure' -> dfi_'s C1 merges WITH C2 / C3 / revision 2 after
         the reviews (no separate wait). (2) sbp_ Q1 (+70 MiB image commit for every 64-bit player) = 'of course. We are
         not limited by the 32bit game anymore': the static 2048-block pool stays; no lazy VirtualAlloc.
