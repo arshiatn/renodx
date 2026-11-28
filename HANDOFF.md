@@ -18619,6 +18619,21 @@ heading text are in HANDOFF_ARCHIVE.md)
         2f4635c6, byte-equal, second run refused. S1 E64-rt is a recorder arm (recordings B 85 / 100, budget 600 s):
         time rt2c vs E64-rt inside B 40-85 only; S2 one -DryRun after the apply with rt_stage present (the Preseed
         branch never ran); S3 read start.json plugin_ini on the first rt2c start. rabg_ still running.
+        rs5a_ (13 min) GO WITH CHANGES: M1 = fs5a_ M1 (F7 never calls UnitFlushRunsHere, link :285, the function
+        rt_core :2473 reads); S1 nothing tests the mirror clear when the flush stops (RS1 (1)) -> tw_unit_shadows 7c
+        sequence + a control; S2 one 4K F7 run writes ~30-40 GB of captures; checked right: the mirror is set only
+        while BONE_FLUSH is registered and cleared on every stop (rows 0, Uninstall, drain timeout, lost
+        registration, row change after READY, re-attach), relaxed orders enough, no lock / allocation on the draw /
+        present paths, no circle, deviations OK, 32-bit unchanged; 8 NITs (N1 = fs5a_ S1, N6 = fs5a_ S3).
+        Coord: KEEP UnitBatchWanted (RS2's one public predicate = a deliberate API boundary); RS3 rule for the
+        batch: count the line's third field flips only while 'registered 1' (the lag and the cleared thread id
+        add 0 lines while unregistered). The S5a fix round runs BEFORE any game start (its builds can't overlap the
+        timed groups; the batch then runs A-J straight with one restage): s5a_ (resumed, Opus High, est 20 / 40;
+        scratch\s5a_\fix_brief.md: the MUST, clear the pack thread in Unregister, the 7c sequence + mutation, inline
+        addon.cpp:2462's local, shrink order, NITs) STARTED 03:31. Then F7 on the GPU again, a Sonnet final, merge.
+        [ ] NEEDS ATN: F7 at 3840x2160 writes ~30-40 GB of raw captures a run (rs5a_ S2): may run.ps1 delete a passed
+        case's capture_*.raw (keeping the two compare sources and every failed case)? Until then the coord deletes
+        nothing; C: 291 GB free.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
