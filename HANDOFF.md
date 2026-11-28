@@ -731,7 +731,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - PERFFIX GOLDEN RUNS (rpxm_ S2): the batch's ep8b / ep8btt8 golden (P4) arms also ... | coord (batch prep) ATN 20:3x: 'You are allowed to look at hi
 - X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN pfx_ DONE 21:05 (Fable 5
 - S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 d ... | the next attila64_plugin_link
-- E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | the W-H2 fix round after reviews
+- E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | next a64_ab writer (apply phase): read the horizon from zz_c
+- J exit crash 0x75f0: confirm from the dump's stack that 0x75f0 in heapfix P 8e8f ... | the W-H2 fix round after reviews
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
@@ -18811,6 +18812,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         Medium, est 10 / 20, scratch\rsc2_\brief.md) after group J, then a Sonnet High final on both.
         Group J (siege_rec.ps1 -Helper sgr_\rec_helper, Constantinople, 2 recordings) STARTED 06:01 (no agent
         running; coord_\gJ_run.log).
+        Group J DONE 06:03 (3.0 min, sgr_\runs\20261128_060033_run): both recordings complete in
+        D:\Dev\tw_recordings\siege_smoke: frame_2616 (6 requests, 4.64 GB, 1445 meshes / 1022 cluster sets) and
+        frame_3248 (6 requests, 4.62 GB); smoke 247,250 particles a frame (most quads 8487). Every file restored by
+        hash, omm-lib.dll back to the game's b0c031f2 (after-check clean), helper exe back, GPU lock released.
+        Exit 1 only for an EXIT CRASH at the close (WER 1000 06:03:32, after both recordings): Attila.exe, module
+        DINPUT8.dll_unloaded 7.0.0.0, offset 0x75f0, 0xc0000005; game-folder dinput8 = 8e8fa96a (heapfix P). Same
+        class as the recorded heapfix exit crash (DINPUT8.dll_unloaded, handler / filter left after the unload; ATN
+        11-24: the author's fix only), but the bench's offset was 0x7E60 on another build. Dump kept:
+        %LOCALAPPDATA%\CrashDumps\Attila.exe.34032.dmp (35 MB, never delete).
+        - [ ] J exit crash 0x75f0: confirm from the dump's stack that 0x75f0 in heapfix P 8e8fa96a is the same
+        left-over handler / filter (then RECORDED, the author's package gets the offset), else root-cause it. Owner:
+        coord, apply phase (read-only dump reading, no heapfix source folders of Caesar's).
+        rsc2_ (a64_ab second patch) STARTED 06:04.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
