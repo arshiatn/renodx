@@ -1111,7 +1111,7 @@ constexpr auto OnFullDepthDraw = []<typename Context>(Context& command) -> renod
 
 // SMAA, CMAA2, SMAA T2x, TAA or DLAA / DLSS on `target` (the tone mapper's; `scaled`: DLSS, its top-left render size
 // holds the frame), the compute stage's bindings put back after. `scene_linear`: DLAA on the lit scene before the tone
-// mapper (OnToneMapperDraw), linear, its result left in `result` for the caller to bind (nothing copied into `target`).
+// mapper (OnToneMapperDraw; Attila: R11G11B10F), linear, its result left in `result` for the caller to bind (nothing copied into `target`).
 inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool scaled, bool scene_linear) {
   auto& objects = runtime.objects;
   const int quality = std::clamp(runtime.settings.quality, 0, 3);
@@ -1229,8 +1229,9 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
   native->CSSetConstantBuffers(0, 2, constants.data());
   const std::array<ID3D11SamplerState*, 2> samplers = {objects.linear_clamp.Get(), objects.point_clamp.Get()};
   native->CSSetSamplers(0, 2, samplers.data());
-  // The frame: DLAA reads the tone mapper's output itself where it can be read (its render targets off meanwhile: D3D11
-  // drops a view of a texture still bound for output), the rest a copy (a 4K copy less: ~0.1 ms).
+  // The frame: DLAA reads the tone mapper's output (before it, OnToneMapperDraw's scene: Attila's R11G11B10F light)
+  // itself through a view of its own format where it can be read (its render targets off meanwhile: D3D11 drops a view
+  // of a texture still bound for output), the rest a copy (a 4K copy less: ~0.1 ms).
   ID3D11ShaderResourceView* frame_view = objects.color_srv.Get();
   std::array<ID3D11RenderTargetView*, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> game_targets = {};
   ComPtr<ID3D11DepthStencilView> game_depth_target;
@@ -1241,9 +1242,11 @@ inline void Apply(ID3D11DeviceContext* native, ID3D11Texture2D* target, bool sca
       objects.frame_srv.Reset();
       D3D11_TEXTURE2D_DESC target_desc = {};
       target->GetDesc(&target_desc);
-      const D3D11_SHADER_RESOURCE_VIEW_DESC frame_desc = {.Format = DXGI_FORMAT_R16G16B16A16_FLOAT,
-                                                          .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
-                                                          .Texture2D = {.MostDetailedMip = 0, .MipLevels = 1}};
+      const D3D11_SHADER_RESOURCE_VIEW_DESC frame_desc = {
+          .Format = (target_desc.Format == DXGI_FORMAT_R16G16B16A16_TYPELESS ? DXGI_FORMAT_R16G16B16A16_FLOAT
+                                                                           : target_desc.Format),
+          .ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D,
+          .Texture2D = {.MostDetailedMip = 0, .MipLevels = 1}};
       if ((target_desc.BindFlags & D3D11_BIND_SHADER_RESOURCE) != 0) {
         device->CreateShaderResourceView(target, &frame_desc, objects.frame_srv.GetAddressOf());
       }
@@ -1556,15 +1559,17 @@ inline void OnToneMapperDraw(reshade::api::command_list* cmd_list, UINT scene_sl
   auto* native = reinterpret_cast<ID3D11DeviceContext*>(cmd_list->get_native());
   renodx::utils::directx::TryNativeFromReShadeProxy(&native);
   if (native == nullptr || native->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return;
-  // The main view's tone mapper as OnTonemapDrawn takes it: its target and its scene at the display's size, RGBA16.
-  const auto main_view_texture = [&](ID3D11View* view, ComPtr<ID3D11Texture2D>* texture, D3D11_TEXTURE2D_DESC* desc) {
+  // The main view's tone mapper as OnTonemapDrawn takes it: its target and its scene at the display's size, the target
+  // RGBA16, the scene RGBA16 or the game's R11G11B10F light (Attila's t00 t1).
+  const auto main_view_texture = [&](ID3D11View* view, bool scene, ComPtr<ID3D11Texture2D>* texture,
+                                     D3D11_TEXTURE2D_DESC* desc) {
     ComPtr<ID3D11Resource> resource;
     view->GetResource(resource.GetAddressOf());
     if (FAILED(resource.As(texture))) return false;
     (*texture)->GetDesc(desc);
+    const bool rgba16 = (desc->Format == DXGI_FORMAT_R16G16B16A16_FLOAT || desc->Format == DXGI_FORMAT_R16G16B16A16_TYPELESS);
     return desc->Width == runtime.display_width && desc->Height == runtime.display_height && desc->SampleDesc.Count == 1
-           && desc->ArraySize == 1
-           && (desc->Format == DXGI_FORMAT_R16G16B16A16_FLOAT || desc->Format == DXGI_FORMAT_R16G16B16A16_TYPELESS);
+           && desc->ArraySize == 1 && (rgba16 || (scene && desc->Format == DXGI_FORMAT_R11G11B10_FLOAT));
   };
   ComPtr<ID3D11RenderTargetView> target_view;
   native->OMGetRenderTargets(1, target_view.GetAddressOf(), nullptr);
@@ -1575,7 +1580,8 @@ inline void OnToneMapperDraw(reshade::api::command_list* cmd_list, UINT scene_sl
   D3D11_TEXTURE2D_DESC target_desc = {};
   ComPtr<ID3D11Texture2D> scene;
   D3D11_TEXTURE2D_DESC scene_desc = {};
-  if (!main_view_texture(target_view.Get(), &target, &target_desc) || !main_view_texture(scene_view.Get(), &scene, &scene_desc)) {
+  if (!main_view_texture(target_view.Get(), /*scene=*/false, &target, &target_desc)
+      || !main_view_texture(scene_view.Get(), /*scene=*/true, &scene, &scene_desc)) {
     return;
   }
   ComPtr<ID3D11Device> device;

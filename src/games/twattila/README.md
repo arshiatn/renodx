@@ -1,5 +1,11 @@
 # Total War: ATTILA (RenoDX HDR, ATN)
 
+## Dev, Denoise Before Tone Mapping on the game's scene (2026-11-28; built only, not stamped, not installed, not run in game)
+
+- Fixed: Denoise Before Tone Mapping (Experimental) did nothing in game at any render scale (the game's scene is
+  R11G11B10F, the row took only RGBA16); it now runs at 100% and below. Ray Reconstruction reads the scene through a
+  view of its own format. Every other path is unchanged.
+
 ## Dev, anti-aliasing on the linear picture in HDR (2026-11-26, 11-27; built only, not stamped, not installed, not run in game)
 
 - Fixed: in the HDR modes, DLAA / DLSS, SMAA, CMAA2, FSR and XeSS take the tone mapper's picture as it is (linear), as
@@ -30,7 +36,7 @@
   scene before the hook). Below 100% render scale see the 2026-11-27 entry above; with plain DLSS, FSR, XeSS, Ray
   Reconstruction refused or the Upscaling Debug View on, the row does nothing. One 4K copy less a frame (the result is
   bound in the scene's place).
-- Verification in game (row on, RR on, 100%): the frame trace shows "tone mapper draw: Ray Reconstruction on the scene
+- Verification in game (row on, RR on, 100% and 50%: a64_ab E64-rrtm / E64-rr50tm): the frame trace shows "tone mapper draw: Ray Reconstruction on the scene
   before it"; the picture's darks, fire and an exposure change from shade to sun against the row off on the same paused
   frame; Frame Generation's HUD-less image (its Debug View 1) as bright as the picture.
 
