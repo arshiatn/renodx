@@ -742,6 +742,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - X41 RUN (owner: coord -> one GPU agent, after batch 2 part 2): x41d_\design.md's ... | ?
+- P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2 ... | coord (game runs), after the fxh2_1127 merge
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -19347,7 +19348,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         (helper main.cpp:1242 = :1334's read). P1 (Tales) / P1b (WH3) then only confirm each game's value in game.
         - [ ] X41 RUN (owner: coord -> one GPU agent, after batch 2 part 2): x41d_\design.md's run brief; PASS -> X41
         proved; then fxh2_1127's merge turn (after step 4's captures; rt_core / bridge conflicts with ga_ checked).
-        P1 / P1b as merge conditions or later in-game checks: ATN's call (coord suggests: later checks).
+        ATN 11-28 13:1x: 'If the x41 proof passes. Take your pick. Add those to the all plan and merge' -> P1 (Tales) /
+        P1b (WH3) become LATER in-game checks (not merge conditions); fxh2_1127 MERGES when the X41 run passes (and after
+        batch 2's captures; rt_core / bridge conflicts with ga_ checked at the merge).
+        - [ ] P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2_\handback.md text), with
+        the next Tales / WH3 game runs. Owner: coord (game runs), after the fxh2_1127 merge.
+        ATN 11-28 13:1x: 'you can run GPU stuffs from now on if you think it doesn't block our batches' -> GPU-lane jobs
+        start on the coord's judgement whenever they do not delay a game batch (max 1 GPU agent stays).
         N1 Nsight (stress PT view, no game) on the fallback recording a64_20261128_065848_Smoke\3_E64-pt: run 1 exit 7
         (the player quit at once: it takes ONE frame folder, not the recording's parent; batch2_plan's N1 / N2 line is
         wrong there), run 2 with ...\3_E64-pt\frame_62649 DONE 12:34 exit 0: nsight\runs\a64_ns_w3_pt\
