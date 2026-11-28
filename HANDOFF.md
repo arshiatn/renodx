@@ -18429,6 +18429,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         [ ] RT S1 follow-up (owner: rts1_ resumed after the sprite gate, before any -R1 / -R2 start): crts1_ S1 (16
         hashes + comment), S2 coord: the stop needs top <= 1.00 x paper white, 1.00-1.02 x = info 'ATN's look'; NITs.
         For ATN: rays arms before S5a may fail the 'pass kind N' item = data, not a tool fault.
+        rts1_ follow-up DONE 01:32 (14 of 25 min; rts1_\handback.md 'follow-up'; a64_ab_rts1b_patch.py, 11 edits,
+        9eeb9f82 -> 7ccd27ec, live untouched): $RT_POINT_LOWDEF all 20; D2c stop at <= 1.00 x paper white, 1.00-1.02 x
+        info; rt_port_64.md :444 B 175; empty elseif gone; staged names in $RT_NEED's spelling; an -AB 64-bit start
+        with CPU sets outside its rule's mask (read from CPU Set Setter's config, read only) = invalid + a 'valid
+        pairs' line; the game's CPU sets polled every 2 s for 120 s (start.json cpu_sets_early; no real wait possible).
+        Finding: the gate's starts 1-2 ran on 0-13 + 16-31 (the other CCD) at 48 fps vs 58 for starts 3-6 -> now
+        invalid ('valid pairs: 2 of 3'). Sprite verdict re-judged on the 2 valid pairs: +0.3 % / +1.7 % vs A/A 1.3 /
+        2.7 % -> unchanged, PASS (the merge stands). Controls: old lines 0 diff, X6 same, MUST controls same, D2c
+        199.2 stop / 204.8 info / 216.6 pass, lowdef planted hash named. Re-check crts1b_ (Sonnet High) STARTED 01:33.
+        [ ] CPU Set Setter sometimes applies its mask late (2 of 6 gate starts): owner coord, watch the new check's
+        cpu_sets_early lines in the batch; tell ATN (his tool).
         -C2 smoke 20261128_003123_Smoke on 9eeb9f82: both starts PASS, smoke_pass true (E64-sr2 + E64-mv), item 6 on
         E64-mv: 0x5F9CD405 / 0x0ECFE74C / 0xDAC80ECC drawn, 0xC2AA8FDA 'not drawn, 32-bit 0 of 21 too (info)' (X6
         works), 14 CPU sets each, clean exits, 0 WER. Sprite gate dry run: self-test ok for every arm. SPRITE GATE
@@ -18441,7 +18452,7 @@ heading text are in HANDOFF_ARCHIVE.md)
         PASS (the lean is 3 of 3 pairs, within noise). Starts 1-2 ran on 30 CPU sets (rule not applied in time), 3-6
         on 14; pairs stay matched. MSAA start (sprmsaa) STARTED 01:11.
         [ ] a64_ab: a start whose measured CPU sets differ from its rule's mask (here 30 vs 14) -> mark it, and the gate
-        asks one more pair (owner: rts1_'s follow-up patch).
+        asks one more pair (owner: rts1_'s follow-up patch). -> done in the follow-up below.
         [ ] For ATN: the sprite watch leans +0.3-1.7 % frame time with the row On (within noise); design 3.3's cheaper
         variant (watch only the buffer the last main sun draw had bound: a pointer compare per map) would also trim the
         cost TAA / DLSS users already pay. Coord suggests it after the batch, measured the same way.
@@ -18524,6 +18535,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         [ ] W-H2 fix round (owner: fxh2o_ resumed, Opus High, after the sprite gate): rfxh2_ M1 + S1-S3, ffxh2_ S1 / S3,
         NITs, WH3 campaign per-request unit (both request writers, helper reads per request, WH3 1.f / RangeScale() a
         frame, a test line; bug fix = on). Then a re-check (Sonnet High); merge after proof job P in the GPU lane.
+        DONE 01:33 (15 of 45 min; fxh2_\handback.md 'Fix round'): 7824a3f42 auto_exposure local; 23eac5928
+        Shared::metres_per_unit = 1.f, cites, <= 120 columns; c884bc2a9 the unit with every request (one write in
+        internal::Request, which Evaluate / PresentFrame / the test use: a deviation, DRY), Bridge::metres_per_unit
+        std::atomic<float>, helper reads it per request (version-gated), WH3 OnPresent 1.f / RangeScale() (10 campaign,
+        1 battle), test sets 10.f after Start + control fails; helper exit 0 (100 headers same), 14 add-ons amd64 + x86
+        x3 exit 0, tw_helper_lifetime x2 25 PASS. Proof patches v33 + v32 (control harness), X33 / X34 / X41 arms 8
+        runs each, pass > 10x A/A + 1e-4, 'evaluated == RUN_FRAMES', P1 relative to the control; GPU lane after the
+        batch. Re-check cfxh2_ (Sonnet High, read only) STARTED 01:33.
         [ ] NEEDS ATN: Attila / Rome II / Thrones campaign maps are about 1/20 scale; coord suggests FSR's factor 20 there
         (FSR players only, RT ranges untouched; rt_core's campaign_metre for rays = a separate look item).
         ATN: 'for game runs (Your AA test and the big batch) please make sure you don't waste tokens stopping
