@@ -738,6 +738,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - Check whether any non-Attila job expects exactly ONE 'Ray tracing with' line (th ... | coord, before the next non-TW build
 - sbi_ -> Opus xHigh review -> Sonnet High final -> merge -> fresh backups -> grou ... | coord
 - fxp_ -> read the proofs -> merge fxh2_1127 after step 4's captures (check rt_cor ... | coord
+- rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -19003,6 +19004,19 @@ heading text are in HANDOFF_ARCHIVE.md)
         (step 4), so that capture stays on the apply build; the next game batch waits for fxp_ to finish.
         - [ ] fxp_ -> read the proofs -> merge fxh2_1127 after step 4's captures (check rt_core / bridge conflicts
         with ga_'s merge) -> P1 / P1b with the game runs. Owner: coord.
+        ATN 09:05 DECIDED: (1) PK8 Stage A default On = 'sure' -> dfi_'s C1 merges WITH C2 / C3 / revision 2 after
+        the reviews (no separate wait). (2) sbp_ Q1 (+70 MiB image commit for every 64-bit player) = 'of course. We are
+        not limited by the 32bit game anymore': the static 2048-block pool stays; no lazy VirtualAlloc.
+        gbf_ DONE 09:04 (12 min; scratch\gbf_\handback.md): a45a8f5fd on gbf_1128 (off be1baa287): E1 main_view_texture
+        takes a scene flag (scene RGBA16 or R11G11B10_FLOAT, target RGBA16 only); E2 Apply's view in the texture's own
+        format (RGBA16 TYPELESS -> FLOAT; OnTonemapDrawn passes RGBA16 only = same view as before; the CopyResource
+        fallback unchanged); E3 comments + README 11-28 'Fixed:' + README:33 (100 % and 50 %: E64-rrtm / E64-rr50tm).
+        18 gated builds exit 0 (twattila amd64 + x86, the other 14 amd64, Thrones + Rome II x86); warnings as before;
+        Attila addon64 D47059D21A39C6A9..., addon32 9BB417A891352DAF.... Worktree: external\* + build\downloads are
+        junctions (unlink ALONE before any delete), bin is a real copy. Not run in game.
+        rgbf_ (Opus xHigh review, incl. the R11G11B10F path through the helper + any copy between formats) STARTED 09:06.
+        - [ ] rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trace B 70) -> E64-rrtm +
+        E64-rr50tm in game -> ATN's first look (darks, bloom halos below 100 %). Owner: coord.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
