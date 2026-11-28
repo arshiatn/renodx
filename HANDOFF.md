@@ -732,7 +732,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - X87 ROUNDING UPGRADE (ATN 20:3x idea): 'Maybe we can upgrade them to SSE version ... | coord (pfx_), then ATN pfx_ DONE 21:05 (Fable 5
 - S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 d ... | the next attila64_plugin_link
 - E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | next a64_ab writer (apply phase): read the horizon from zz_c
-- J exit crash 0x75f0: confirm from the dump's stack that 0x75f0 in heapfix P 8e8f ... | the W-H2 fix round after reviews
+- J exit crash 0x75f0: confirm from the dump's stack that 0x75f0 in heapfix P 8e8f ... | coord, apply phase (read-only dump reading, no heapfix sourc
+- R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | the W-H2 fix round after reviews
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
 - OPUS MEDIUM TRIAL (ATN 11-27 17:5x: 'log the medium vs high for Opus only. Fable ... | coord
@@ -18872,6 +18873,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         (addon.cpp:2462: object_motion active or UnitBatchWanted) while the runner expects none on a DLAA arm.
         -> rsc4_ (every arm's keys vs the add-on source, E11's per-arm rule from the add-on, Opus Medium, est 12 / 24,
         scratch\rsc4_\brief.md) STARTED 06:45; then a Sonnet final, apply, G again, then H.
+        rsc4_ DONE 06:54 (9 min; scratch\rsc4_\handback.md): patch_rsc4.py afd58425 -> bc9cf693 (6 edits): $RT_RAYS without
+        RayTracedReplaceShadowMaps (Attila's sun rays already replace the maps: rays_multiply_maps false); E11 =
+        the add-on's rule (bone flush 0x1 while object motion runs = TAA object MVs, or an upscaler with
+        AntiAliasingObjectMotion (default On) once the helper started, or Batched Unit Capture wanted; addon.cpp:2462,
+        anti_aliasing.hpp:1680, feature_settings.hpp:143 / :506, rt_scene.hpp:551) = NOT an add-on bug (DLSS object
+        motion reads it); $ADDON_KEYS (hand-checked, source lines) + a KEYS precondition (exit 2, dry runs too).
+        fsc4_ (Sonnet High final, scratch\fsc4_\review.md) GO. Coord APPLIED 06:58: live a64_ab.ps1 = bc9cf693...
+        (backup .bak_rsc4_20261128_065826); G -DryRun ok, no KEYS line. Group G STARTED again 06:59 (coord_\gG_run3.log).
+        - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
+        R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
