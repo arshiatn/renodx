@@ -739,6 +739,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - sbi_ -> Opus xHigh review -> Sonnet High final -> merge -> fresh backups -> grou ... | coord
 - fxp_ -> read the proofs -> merge fxh2_1127 after step 4's captures (check rt_cor ... | coord
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
+- abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -19030,6 +19031,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         matched comments). fgbf_ (Sonnet High final) STARTED 09:18.
         fgbf_ DONE 09:19: GO (NIT README:3 125 columns, as older headers: left). MERGED gbf_1128 into atn-mods 13af5cd1e
         (--no-ff), pushed. Left: a64_ab patch e's E4, then E64-rrtm + E64-rr50tm in game, then ATN's first look.
+        a64_ab PATCH e: abe_ (Opus High, brief scratch\abe_\brief.md, sha-gated patch_abe.py on a copy of live bc9cf693...,
+        est 45 / 90) STARTED 09:20: (1) horizon from zz_capture on -ReShade starts (group E's black shots), (2) R2Kill
+        check_logs expected stop line after the kill, (3) 'RT rays ran' positive match (rga_ S1; two status lines OK),
+        (4) RenderCore='0' Pins on 18 kinds + '1' explicit on ep8p2 / ep2 / ep1cp2 (dflt_), (5) E64-rrtm trace B 70 +
+        rr50tm's vacuous vp clause (gb_ E4). Offline proofs + AST scan + -DryRun twins of groups A..J.
+        - [ ] abe_ -> Opus xHigh review -> Sonnet High final -> coord applies (backup, sha) -> -DryRun. Before any start
+        on the W5 DLL. Owner: coord.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
