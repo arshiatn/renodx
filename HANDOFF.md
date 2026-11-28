@@ -740,8 +740,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - X41 proof: a new harness proof design (FSR's depth debug cell in the harness, or ... | coord (designer if the harness way)
 - rgbf_ -> Sonnet High final -> merge gbf_1128 -> a64_ab patch e (E4 E64-rrtm trac ... | coord
 - a64_ab S4 (rabe_ r2, W3-Lines :1368): compare the first and last of the 2+ frame ... | next a64_ab writer
-- FOR ATN (batch2_plan.md 5): Q1 yes to the 4 new arms dflt / d1 / w3s / E64-ptd1 ... | ATN
-- STAGE B NEXT (owner: coord -> ATN's call, then a design Opus xHigh): numbers to ... | ?
+- STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
@@ -19176,10 +19175,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         (gpu_trace.ps1, recorder bd51c10d). 16 starts (+1), ~105 game min + ~20 Nsight. Waits: P1 / P1b (X41), the
         fxh2_1127 merge, the last ride. abf_ (patch f: f1 dflt, f2 pinned day1 replay, f3 d1, f4 w3s, f5 E64-ptd1, f6
         -Smoke -R<n> -Arms, f7 S4; Opus High, est 75 / 150) STARTED 11:07.
-        - [ ] FOR ATN (batch2_plan.md 5): Q1 yes to the 4 new arms dflt / d1 / w3s / E64-ptd1 (pick yes); Q2 64-bit WPRs
-        AA Off + render core pinned off, not the 11-24 DLSS Ultra Performance (pick keep); Q3 two Nsight traces (stress +
-        day1) not three (pick 2); Q4 ATN adds a settings rule line for gpu_trace.ps1 with arguments (else a prompt per
-        trace; ATN's own edit). Owner: ATN.
+        - [x] ANSWERED by ATN 11-28 12:2x: Q1 yes to all 4 new arms; Q2 keep (AA Off + render core pinned off); Q3 two
+        traces; Q4 he is not home ('can you somehow still run it? You are allowed to'): the coord did not write any rule
+        line (settings files stay ATN's); gpu_trace.ps1 ran with no prompt in this mode (N1 below), so no rule needed now.
         gbf_ round 3 DONE 10:2x (9 min): aeaca9f07 on gbf3_1128 (worktree gbf3_, off aeb9d2059): frame_trace::Mark("tone
         mapper draw: Ray Reconstruction's result bound for the tone mapper") right after PSSetShaderResources in
         OnToneMapperDraw + a one-line why. 16 gated builds exit 0 (13 amd64 + 3 x86); Attila addon64 CBA929771CFDE468...,
@@ -19265,9 +19263,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         faster (less slow motion). P16 not run (golden same for both). VERDICT: Stage B FAILS P15 on fps; L / V 0.62
         > 0.4 and a seg-29 miss with the step gate passed -> per batch2_plan G2: numbers to ATN + design 5's exact
         integer filters (a new design). The row stays Off.
-        - [ ] STAGE B NEXT (owner: coord -> ATN's call, then a design Opus xHigh): numbers to ATN with a suggestion
-        (keep Off; a design for exact integer filters to cut L / V and a look at the fps cost: 13 helpers on 14 CPU
-        sets beside the main / render / model threads). Nothing changes until ATN answers.
+        - [ ] STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. sbf_ (Opus xHigh, design
+        only, scratch\sbf_\brief.md, est 45 / 90: where the fps goes, ranked levers (D 5's exact integer filters, the
+        helper count / cap from the CPU), scaling to other CPUs (ATN's question), the gate) STARTED 12:35. Then
+        designs -> ATN -> implementer -> reviews -> P15 again. The row stays Off. Owner: coord.
         G4 dry twin re-run after G1 12:06 ok ('self-test: ok for every arm', -Wpr on start 1). G4 = P17 + WPR 1 (-AB
         -Arms w3 -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log scratch\coord_\b2_G4_run.log) STARTED 12:06.
         G4 PASS 12:13 (7 min, exit 0; ab_runs\20261128_120648_AB): 1 / 1 valid, golden same, E-checks all pass (plugin
@@ -19278,6 +19277,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         game window in front 100 % (gate >= 95 %), D:\RenoDX_WPR\attila_wpr_20261128_120648_AB_1_B64P-w3.etl (1.47
         GB). Capture only, no analysis. PART 1 DONE (G1 / G2 / G4; P16 not needed).
         rabf_ (Opus xHigh review of patch f, scratch\rabf_\brief.md, est 25 / 50) STARTED 12:14.
+        rabf_ DONE 12:33 (19 min; scratch\rabf_\review.md, g4_analyze_new.log, probe_g4.log; its G4 copy 340 MB + probe
+        pictures 167 MB): GO WITH CHANGES, no MUST, all 10 checks OK (gates, dry diffs, dflt = the player defaults with
+        ep8 a fair control, a bad day1 pin stops a real batch exit 2 with no fallback, WPR never left running, worst case
+        'not measured', w3s leaves w3's set, E64-ptd1 margins, f6 refusals, no scope clashes). S1 f7 (:1446-1450): the
+        pre-key control starts at the first pre-key frame = today's G4 capture_64543, the 100 % black fade-in -> 'not
+        read'; with 64561 -> 64577 the shift is 0 ('the scene holds'); verdict PASS either way; skip black frames. S2 f3
+        (:1954 / :2380): d1's A8 quiet snap uses the stress opening 1748, not day1's ~5488 (info only) -> Window kinds
+        use $meta.events.opening. 9 NITs. Fix round abf_ (resumed, Opus High, est 20 / 40) STARTED 12:3x.
+        N1 Nsight (stress PT view, no game) on the fallback recording a64_20261128_065848_Smoke\3_E64-pt: run 1 exit 7
+        (the player quit at once: it takes ONE frame folder, not the recording's parent; batch2_plan's N1 / N2 line is
+        wrong there), run 2 with ...\3_E64-pt\frame_62649 DONE 12:34 exit 0: nsight\runs\a64_ns_w3_pt\
+        a64_ns_w3_pt.ngfx-gputrace (17 MB, 4 frames, 36.4 ms traced) + table.txt: 7.94 ms a frame (trace 3.90, path
+        tracing 0.96, reuse 0.94, player inputs 0.80, radiance cache 0.62, clusters 0.31, AS builds 0.19, copies 0.17).
+        Capture only, no analysis. N2 (day1) waits for G3's E64-ptd1 recording; use its frame_<n> folder.
         - [ ] patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, sha 72e14a0b) -> -DryRun
         twins -> part 2 (after ATN's yes to Q1). Owner: coord.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
