@@ -148,6 +148,31 @@ struct Evaluation {
                      | NVSDK_NGX_DLSS_Feature_Flags_MVLowRes | NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
 };
 
+// Whether Super Resolution is created at the active input size instead of NVIDIA's optimal one (Backend::Evaluate; the
+// size test, test/tw_ngx_create_size).
+// src: DLSS_Programming_Guide_Release.pdf 3.2.2 (p. 12): the optimal size is "passed exactly as given" to the create
+// call. That holds for every preset except L / M above the optimal; outside every range the active size (Evaluate's
+// closest mode).
+// src: ibid. 3.2.2.1 (3) (p. 13): presets L and M allocate at the creation size, an input above it reallocates
+// ("severe frame time spikes"), and their cost scales with that size: create at "the maximum target resolution of
+// your dynamic range". For L / M this supersedes 3.2.2's "exactly as given".
+// ours: that range is the active size alone (any size change recreates the feature in Evaluate), so L / M with any
+// input above its selected optimal (Ultra Quality 77 %, every Custom scale between two optimals) are created at the
+// active size, and at or below it keep the optimal.
+// deviation: from 3.2.2's optimal for L / M above it (3.2.2.1 (3) wins), and not NVIDIA's reported range max (Attila
+// debug41 helper log: Performance at 4K "supported input 1920x1080..3840x2160"), because no input here exceeds the
+// active size and a larger creation only adds L / M cost.
+inline bool CreatesAtActive(bool inside_range, uint32_t preset, uint32_t active_width, uint32_t active_height,
+                            unsigned int optimal_width, unsigned int optimal_height) {
+  if (!inside_range) return true;
+#if defined(CONTROL_DLSS_LM_CREATE_AT_OPTIMAL)
+  return false;
+#else
+  return (preset == NVSDK_NGX_DLSS_Hint_Render_Preset_L || preset == NVSDK_NGX_DLSS_Hint_Render_Preset_M)
+         && (active_width > optimal_width || active_height > optimal_height);
+#endif
+}
+
 // The NGX project DLSS (here) and DLSS Frame Generation (Streamline, frame_generation.hpp) run under: they must match.
 inline constexpr char PROJECT_ID[] = "1a688a59-20b4-48a1-9b9b-fd28bd910ec8";
 
@@ -537,6 +562,62 @@ class Backend {
       LogResult("Initialized public D3D11 NGX SDK", NVSDK_NGX_Result_Success);
     }
 
+    // NVIDIA's create and evaluate calls. Test builds only (RENODX_TW_TEST_DLSS_TIMING through
+    // RENODX_TW_CONTROL_DEFINES; the X38 job): each call's GPU time (D3D11 timestamps, waited for at once, at most 1 s)
+    // and CPU time, one log line each; a failed query or a disjoint interval logs no time.
+    const auto timed = [&](const char* call_name, const auto& call) {
+#if defined(RENODX_TW_TEST_DLSS_TIMING)
+      Microsoft::WRL::ComPtr<ID3D11Query> disjoint_query;
+      Microsoft::WRL::ComPtr<ID3D11Query> begin_query;
+      Microsoft::WRL::ComPtr<ID3D11Query> end_query;
+      const D3D11_QUERY_DESC disjoint_desc = {.Query = D3D11_QUERY_TIMESTAMP_DISJOINT, .MiscFlags = 0};
+      const D3D11_QUERY_DESC timestamp_desc = {.Query = D3D11_QUERY_TIMESTAMP, .MiscFlags = 0};
+      const bool queries_made = SUCCEEDED(device_->CreateQuery(&disjoint_desc, disjoint_query.GetAddressOf()))
+                                && SUCCEEDED(device_->CreateQuery(&timestamp_desc, begin_query.GetAddressOf()))
+                                && SUCCEEDED(device_->CreateQuery(&timestamp_desc, end_query.GetAddressOf()));
+      if (queries_made) {
+        context->Begin(disjoint_query.Get());
+        context->End(begin_query.Get());
+      }
+      LARGE_INTEGER cpu_begin = {};
+      QueryPerformanceCounter(&cpu_begin);
+      const auto result = call();
+      LARGE_INTEGER cpu_end = {};
+      QueryPerformanceCounter(&cpu_end);
+      LARGE_INTEGER cpu_frequency = {};
+      QueryPerformanceFrequency(&cpu_frequency);
+      const double cpu_ms = 1000.0 * static_cast<double>(cpu_end.QuadPart - cpu_begin.QuadPart) / static_cast<double>(cpu_frequency.QuadPart);
+      std::string gpu_text = "GPU none";
+      if (queries_made) {
+        context->End(end_query.Get());
+        context->End(disjoint_query.Get());
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT gpu_frequency = {};
+        HRESULT ready = S_FALSE;
+        const ULONGLONG deadline = GetTickCount64() + 1000;
+        while ((ready = context->GetData(disjoint_query.Get(), &gpu_frequency, sizeof(gpu_frequency), 0)) == S_FALSE
+               && GetTickCount64() < deadline) {
+          YieldProcessor();
+        }
+        uint64_t gpu_begin = 0;
+        uint64_t gpu_end = 0;
+        if (ready == S_OK && gpu_frequency.Disjoint == FALSE && gpu_frequency.Frequency != 0
+            && context->GetData(begin_query.Get(), &gpu_begin, sizeof(gpu_begin), 0) == S_OK
+            && context->GetData(end_query.Get(), &gpu_end, sizeof(gpu_end), 0) == S_OK) {
+          const double gpu_ms = 1000.0 * static_cast<double>(gpu_end - gpu_begin) / static_cast<double>(gpu_frequency.Frequency);
+          gpu_text = std::format("GPU {:.4f} ms", gpu_ms);
+        }
+      }
+      static uint64_t calls = 0;
+      reshade::log::message(reshade::log::level::info,
+                            std::format("[Tales DLSS] timing: {} {} input {}x{} {} CPU {:.4f} ms", call_name, ++calls,
+                                        evaluation.width, evaluation.height, gpu_text, cpu_ms)
+                                .c_str());
+      return result;
+#else
+      return call();
+#endif
+    };
+
     if (feature_ == nullptr || width_ != evaluation.width || height_ != evaluation.height
         || output_width_ != output_width || output_height_ != output_height || mode_ != evaluation.mode
         || preset_ != evaluation.preset || create_flags_ != evaluation.create_flags) {
@@ -624,8 +705,7 @@ class Backend {
           settings_found = true;
         }
       }
-      const bool create_at_active = !settings_found;
-      if (create_at_active) {
+      if (!settings_found) {
         if (closest_outside_distance == std::numeric_limits<float>::infinity()) {
           status_.store("DLSS mode settings unavailable; game TAA", std::memory_order_relaxed);
           return false;
@@ -654,8 +734,10 @@ class Backend {
         }
         first_frame_ = true;
       }
-      // Inside NVIDIA's range: the SDK's creation dimensions (the active subrectangle may differ).
-      // Outside it: exactly the active size. Scale changes recreate the feature either way.
+      // Inside NVIDIA's range: the SDK's creation dimensions (the active subrectangle may differ), or the active size
+      // for L / M above them. Outside it: exactly the active size. Scale changes recreate the feature either way.
+      const bool create_at_active = CreatesAtActive(settings_found, evaluation.preset, evaluation.width, evaluation.height,
+                                                    selected.width, selected.height);
       NVSDK_NGX_DLSS_Create_Params create = {
           .Feature = {.InWidth = (create_at_active ? evaluation.width : selected.width),
                       .InHeight = (create_at_active ? evaluation.height : selected.height),
@@ -692,7 +774,7 @@ class Backend {
         NVSDK_NGX_Parameter_SetUI(parameters_, preset_name, evaluation.preset);
       }
       NVSDK_NGX_Parameter_SetI(parameters_, NVSDK_NGX_Parameter_FreeMemOnReleaseFeature, 1);
-      const auto result = NGX_D3D11_CREATE_DLSS_EXT(context, &feature_, parameters_, &create);
+      const auto result = timed("create", [&] { return NGX_D3D11_CREATE_DLSS_EXT(context, &feature_, parameters_, &create); });
       if (NVSDK_NGX_FAILED(result)) {
         return fail("Create DLAA/DLSS", result, "DLAA/DLSS creation failed; game TAA");
       }
@@ -717,7 +799,8 @@ class Backend {
               << selected.width << 'x' << selected.height << "; supported input "
               << selected.min_width << 'x' << selected.min_height << ".."
               << selected.max_width << 'x' << selected.max_height << "; active input "
-              << width_ << 'x' << height_ << " -> " << output_width_ << 'x' << output_height_;
+              << width_ << 'x' << height_ << " -> " << output_width_ << 'x' << output_height_ << "; created at "
+              << create.Feature.InWidth << 'x' << create.Feature.InHeight;
       reshade::log::message(reshade::log::level::info, message.str().c_str());
       // The library NGX loaded, which an override (the NVIDIA app's) can swap for another file or name.
       std::string loaded_line = "[Tales DLSS] Loaded module nvngx_dlss.dll: none under that name";
@@ -765,7 +848,7 @@ class Backend {
         .InPreExposure = evaluation.pre_exposure,
         .InExposureScale = 1.f,
     };
-    const auto result = NGX_D3D11_EVALUATE_DLSS_EXT(context, feature_, parameters_, &parameters);
+    const auto result = timed("evaluation", [&] { return NGX_D3D11_EVALUATE_DLSS_EXT(context, feature_, parameters_, &parameters); });
     if (NVSDK_NGX_FAILED(result)) {
       return fail("Evaluate DLAA/DLSS", result, "DLAA/DLSS evaluation failed; game TAA");
     }
