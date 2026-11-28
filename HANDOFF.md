@@ -19059,6 +19059,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         GPU job script); its GPU runs start only after fxp_ ends (max 1 GPU agent): the coord resumes it.
         Plan fix: the critic's X18 was already MERGED 11-27 (fe8ff5078, W4b: rt_cache_fill / rt_reference / rt_probe
         DXR 1.2 twins); all_plans 1.1 / 2.7 said 'open': corrected.
+        aa67_ CODE DONE 09:5x (22 min; scratch\aa67_\handback.md): rri_'s HARNESS_RR_INPUT=<percent> already renders +
+        jitter-samples at the input size and Evaluates with it (also with HARNESS_SR); the only missing piece was the
+        camera for FSR / XeSS: with HARNESS_RR_INPUT + PREPARE_UPSCALER + HARNESS_SR > 0, Evaluate gets view_to_clip
+        (as anti_aliasing.hpp:1366). tw_rt_harness.cpp +11 / -4, backup .before_aa67 8AF9BE4F..., new BCFB86D2...,
+        exe testbin\aa67_\tw_rt_harness_4k.exe 195E6620...; object compare: only main + evaluate_rr differ, the old rows
+        make the same call. Job scratch\aa67_\gpu_job_aa67.ps1 (Enter-GpuLock, <= 13 min holds, 3840x2160, 90 frames):
+        runs_core.txt 77 runs ~95 GPU min (V1-V5 pass lines, table.py); runs_klm100.txt 30 runs ~36 min OPTIONAL.
+        No SMAA arm (no harness path; SMAA has no render scale). aaf3_'s 100 % FSR / XeSS rows move (they now get the
+        camera): base = z_ab_u1_F1_new. Coord: core list only, right after fxp_ (the game batch waits for it).
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
