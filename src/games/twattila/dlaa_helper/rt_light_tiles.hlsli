@@ -89,11 +89,11 @@ void TileList(uint index, uint count, bool tiled) {
 }
 
 #if defined(LIGHTS_DI) || defined(PATH_DI)
-// Path-Traced Torch Light (PT DI step 4c): each tile's listed lights (tile_members, rt_lights' LIGHTS_DI build), read by the
-// DI passes (rt_rtxdi_bridge.hlsli's PATH_DI part).
+// Path-Traced Torch Light (PT DI step 4c): each tile's listed lights (tile_members, rt_lights' LIGHTS_DI build), read
+// by the DI passes (rt_rtxdi_bridge.hlsli's PATH_DI part).
 RWTexture2D<uint4> di_members : register(u77);
-// The light history's word at a pixel the DI passes light (rt_lights): no exact pixel's (at most LIGHT_RAYS_ALWAYS of its
-// bits 0).
+// The light history's word at a pixel the DI passes light (rt_lights): no exact pixel's (at most LIGHT_RAYS_ALWAYS of
+// its bits 0).
 static const uint DI_PIXEL_WORD = 0u;
 
 // Whether this frame's light can be the game's formula: the sun texture's texel 2 w holds the game's HDR state (0.004:
