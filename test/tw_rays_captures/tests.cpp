@@ -42,6 +42,19 @@
 //      stream output's bit for bit, w 1;
 //   B2 the second draw marked stale, and the third drawn with a width of 256 at b2: their corners NaN, the first's still bit for bit;
 //   B3 CONTROL: the first draw's animation texture written again after the draws, before the flush: its corners differ.
+// S. The 64-bit port's IA slot 15 under the 4-bone units' captures and batch (RT only; object_motion's redraws not
+//   here): Sol's backend feeds a shader input its game's vertex description lacks from slot 15 (an element
+//   R32G32B32A32_FLOAT at offset 0, as for a float input; a 64-byte zero buffer bound with stride 0 at device creation:
+//   attila64 1.3.28 loader dx11_device.inc:254-261, bound at :260, its dx_make_layout :1193-1218; MIT). Only that
+//   element is Sol's: the description's others keep B's offsets and formats (Sol packs them and reads the 4-byte ones
+//   as BGRA: the same values for every shader here). Our capture, our cut-out capture (clipping draws, never batched:
+//   rt_core.hpp Capture's !cut_out) and the batch's mesh / rows stream output draw through that IA. Per description
+//   (each of POSITION0-6 the one it lacks, then none), B's 3 draws:
+//   S1 the capture, the cut-out capture and the batch (mesh + rows stream output, FlushBatch's compute) with the zero
+//      buffer are their reference bit for bit: their per-draw stream output (the batch: the capture's) through the
+//      whole layout, the lacked element's bytes zeroed; each reference holds a non-zero word;
+//   S2 CONTROL: slot 15 a buffer of ones changes a path's corners exactly when its input signature reads the element
+//      (the batch: the mesh's or the rows'; "unread": no slot-15 dependence, not a failure; no element: none read).
 // K. Rome II's cut-out captures: the UV the alpha tests read, as the game's vertex shaders write it (CheckCutOuts).
 // L. Rome II's cut-out pixel shaders (88 unit ones, the rigid shadow alpha test): their cut-offs (CheckCutOutAlphaTests).
 // tests.exe <dump root: the folder holding dump_shader_<game>_pack\cso> <build root: the folder holding <game>.include\embed>
@@ -527,6 +540,7 @@ struct BatchedFamily {
   // vs30_main's (POSITION0-5, 2 bones a vertex) or main_4_bones' (POSITION0-6: POSITION2 three weights): their mesh and rows
   // shaders, the mesh's texels a vertex.
   bool four_bones = false;
+  const char* cut_out = nullptr;  // S (the 4-bone units): the family's cut-out capture
 };
 
 static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& dump_root, const std::string& build32_root) {
@@ -675,13 +689,20 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
     }
     return values;
   };
+  // The IA the game binds: S swaps the vertex buffer, the input layout and slot 15 (nullptr: unbound).
+  ID3D11Buffer* ia_vertices = vertex_buffer.Get();
+  ID3D11InputLayout* ia_layout = input_layout.Get();
+  ID3D11Buffer* ia_slot_15 = nullptr;
   // The game's state at a unit draw, then the add-on's draw through the remap indices (rt_core.hpp Capture).
   const auto game_state = [&](size_t d, ID3D11Buffer* size) {
-    const std::array<ID3D11Buffer*, 2> buffers = {vertex_buffer.Get(), instance_buffer.Get()};
+    const std::array<ID3D11Buffer*, 2> buffers = {ia_vertices, instance_buffer.Get()};
     const std::array<UINT, 2> strides = {vertex_stride, 120};
     constexpr std::array<UINT, 2> OFFSETS = {0, 0};
     context->IASetVertexBuffers(0, 2, buffers.data(), strides.data(), OFFSETS.data());
-    context->IASetInputLayout(input_layout.Get());
+    constexpr UINT SLOT_15_STRIDE = 0;
+    constexpr UINT SLOT_15_OFFSET = 0;
+    context->IASetVertexBuffers(15, 1, &ia_slot_15, &SLOT_15_STRIDE, &SLOT_15_OFFSET);
+    context->IASetInputLayout(ia_layout);
     context->IASetIndexBuffer(remaps[d].Get(), DXGI_FORMAT_R32_UINT, 0);
     context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
     const std::array<ID3D11Buffer*, 3> constants = {camera.Get(), config.Get(), size};
@@ -689,18 +710,26 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
     context->VSSetShaderResources(0, 1, animation_maps[DRAWS[d].texture].GetAddressOf());
     context->PSSetShader(nullptr, nullptr, 0);
   };
-  ComPtr<ID3D11Buffer> streamed;
-  made = make_buffer(nullptr, TEXELS * 16, D3D11_BIND_STREAM_OUTPUT, 0, &streamed);
-  for (size_t d = 0; made && d < DRAWS.size(); ++d) {
-    game_state(d, animation_size.Get());
-    const UINT offset = DRAWS[d].captured_first * 16;
-    context->VSSetShader(capture_vs.Get(), nullptr, 0);
-    context->GSSetShader(capture_gs.Get(), nullptr, 0);
-    context->SOSetTargets(1, streamed.GetAddressOf(), &offset);
-    context->DrawIndexedInstanced(DRAWS[d].vertices, DRAWS[d].instances, 0, int(DRAWS[d].base_vertex), DRAWS[d].first_instance);
-  }
-  context->SOSetTargets(0, nullptr, nullptr);
-  const std::vector<uint32_t> per_draw = read_back(streamed.Get(), TEXELS * 16);
+  // A capture's per-draw stream output (all zeros when its buffer cannot be made).
+  const auto per_draw_capture = [&](ID3D11VertexShader* vs, ID3D11GeometryShader* gs) {
+    ComPtr<ID3D11Buffer> streamed;
+    if (!make_buffer(nullptr, TEXELS * 16, D3D11_BIND_STREAM_OUTPUT, 0, &streamed)) {
+      std::printf("  could not make the per-draw stream output\n");
+      return std::vector<uint32_t>(TEXELS * 4);
+    }
+    for (size_t d = 0; d < DRAWS.size(); ++d) {
+      game_state(d, animation_size.Get());
+      const UINT offset = DRAWS[d].captured_first * 16;
+      context->VSSetShader(vs, nullptr, 0);
+      context->GSSetShader(gs, nullptr, 0);
+      context->SOSetTargets(1, streamed.GetAddressOf(), &offset);
+      context->DrawIndexedInstanced(DRAWS[d].vertices, DRAWS[d].instances, 0, int(DRAWS[d].base_vertex),
+                                    DRAWS[d].first_instance);
+    }
+    context->SOSetTargets(0, nullptr, nullptr);
+    return read_back(streamed.Get(), TEXELS * 16);
+  };
+  const std::vector<uint32_t> per_draw = per_draw_capture(capture_vs.Get(), capture_gs.Get());
   // The batched path: the meshes and rows streamed at the draws, then FlushBatch's table, runs (by animation texture and width),
   // dispatches and copies.
   const auto batched = [&](bool stale_second, bool narrow_third, bool written_first) {
@@ -797,15 +826,16 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
     }
     return read_back(captured.Get(), TEXELS * 16);
   };
-  // Per draw: corners differing from the per-draw stream output's, and NaN (a quiet NaN's bits in all four).
-  const auto compare = [&](const std::vector<uint32_t>& values, size_t d, uint64_t* differ, uint64_t* nan) {
+  // Per draw: corners differing from a per-draw stream output's, and NaN (a quiet NaN's bits in all four).
+  const auto compare = [&](const std::vector<uint32_t>& values, const std::vector<uint32_t>& reference, size_t d,
+                           uint64_t* differ, uint64_t* nan) {
     *differ = 0;
     *nan = 0;
     for (UINT corner = 0; corner < DRAWS[d].vertices * DRAWS[d].instances; ++corner) {
       const size_t at = size_t{DRAWS[d].captured_first + corner} * 4;
-      *differ += (values.size() == per_draw.size() && std::memcmp(&values[at], &per_draw[at], 16) == 0) ? 0 : 1;
-      *nan += (values.size() == per_draw.size() && values[at] == 0x7FC00000u && values[at + 1] == 0x7FC00000u && values[at + 2] == 0x7FC00000u
-               && values[at + 3] == 0x7FC00000u)
+      *differ += (values.size() == reference.size() && std::memcmp(&values[at], &reference[at], 16) == 0) ? 0 : 1;
+      *nan += (values.size() == reference.size() && values[at] == 0x7FC00000u && values[at + 1] == 0x7FC00000u
+               && values[at + 2] == 0x7FC00000u && values[at + 3] == 0x7FC00000u)
                   ? 1
                   : 0;
     }
@@ -818,25 +848,158 @@ static bool CheckBatchedUnits(const BatchedFamily& family, const std::string& du
   }
   const auto whole = batched(false, false, false);
   std::array<std::array<uint64_t, 2>, 3> b1 = {};
-  for (size_t d = 0; d < DRAWS.size(); ++d) compare(whole, d, &b1[d][0], &b1[d][1]);
+  for (size_t d = 0; d < DRAWS.size(); ++d) compare(whole, per_draw, d, &b1[d][0], &b1[d][1]);
   const bool b1_ok = !whole.empty() && w_not_1 == 0 && b1[0][0] == 0 && b1[1][0] == 0 && b1[2][0] == 0;
   std::printf("  B1 batched vs per-draw: %llu / %llu / %llu of %u / %u / %u corners differ, w not 1 %llu (0)\n", (unsigned long long)b1[0][0],
               (unsigned long long)b1[1][0], (unsigned long long)b1[2][0], DRAWS[0].vertices * DRAWS[0].instances, DRAWS[1].vertices * DRAWS[1].instances,
               DRAWS[2].vertices * DRAWS[2].instances, (unsigned long long)w_not_1);
   const auto left_out = batched(true, true, false);
   std::array<std::array<uint64_t, 2>, 3> b2 = {};
-  for (size_t d = 0; d < DRAWS.size(); ++d) compare(left_out, d, &b2[d][0], &b2[d][1]);
+  for (size_t d = 0; d < DRAWS.size(); ++d) compare(left_out, per_draw, d, &b2[d][0], &b2[d][1]);
   const bool b2_ok = !left_out.empty() && b2[0][0] == 0 && b2[1][1] == DRAWS[1].vertices * DRAWS[1].instances
                      && b2[2][1] == DRAWS[2].vertices * DRAWS[2].instances;
   std::printf("  B2 stale second, third at width 256: first %llu differ (0), second %llu NaN (%u), third %llu NaN (%u)\n", (unsigned long long)b2[0][0],
               (unsigned long long)b2[1][1], DRAWS[1].vertices * DRAWS[1].instances, (unsigned long long)b2[2][1], DRAWS[2].vertices * DRAWS[2].instances);
   const auto written = batched(false, false, true);
   std::array<uint64_t, 2> b3 = {};
-  compare(written, 0, &b3[0], &b3[1]);
+  compare(written, per_draw, 0, &b3[0], &b3[1]);
   const bool b3_ok = !written.empty() && b3[0] > 0;
   std::printf("  B3 CONTROL the first draw's bones written before the flush: %llu of %u corners differ (> 0)\n", (unsigned long long)b3[0],
               DRAWS[0].vertices * DRAWS[0].instances);
-  const bool passed = b1_ok && b2_ok && b3_ok;
+  bool s_ok = true;
+  if (family.cut_out != nullptr) {
+    const auto cut_out_capture = Load(built + family.cut_out + ".cso");
+    ComPtr<ID3D11VertexShader> cut_out_vs;
+    ComPtr<ID3D11GeometryShader> cut_out_gs;
+    // Sol's zero buffer (dx11_device.inc:255-260: 64 bytes, stride 0) and the control's ones.
+    const std::array<float, 16> zero_values = {};
+    std::array<float, 16> one_values = {};
+    one_values.fill(1.f);
+    ComPtr<ID3D11Buffer> zero_buffer, one_buffer;
+    const bool s_made =
+        !cut_out_capture.empty()
+        && SUCCEEDED(device->CreateVertexShader(cut_out_capture.data(), cut_out_capture.size(), nullptr,
+                                                cut_out_vs.GetAddressOf()))
+        && SUCCEEDED(device->CreateGeometryShaderWithStreamOutput(cut_out_capture.data(), cut_out_capture.size(),
+                                                                  &world_entry, 1, &WORLD_STRIDE, 1,
+                                                                  D3D11_SO_NO_RASTERIZED_STREAM, nullptr,
+                                                                  cut_out_gs.GetAddressOf()))
+        && make_buffer(zero_values.data(), sizeof(zero_values), D3D11_BIND_VERTEX_BUFFER, 0, &zero_buffer)
+        && make_buffer(one_values.data(), sizeof(one_values), D3D11_BIND_VERTEX_BUFFER, 0, &one_buffer);
+    if (!s_made) std::printf("  S could not make %s or slot 15's buffers\n", family.cut_out);
+    s_ok = s_made;
+    // Each POSITION's components a shader reads: its input signature's ReadWriteMask.
+    const auto position_reads = [](const std::vector<uint8_t>& shader) {
+      std::array<BYTE, 8> reads = {};
+      ComPtr<ID3D11ShaderReflection> reflection;
+      if (FAILED(D3DReflect(shader.data(), shader.size(), IID_ID3D11ShaderReflection,
+                            reinterpret_cast<void**>(reflection.GetAddressOf())))) {
+        return reads;
+      }
+      D3D11_SHADER_DESC desc = {};
+      reflection->GetDesc(&desc);
+      for (UINT i = 0; i < desc.InputParameters; ++i) {
+        D3D11_SIGNATURE_PARAMETER_DESC parameter = {};
+        reflection->GetInputParameterDesc(i, &parameter);
+        if (std::strcmp(parameter.SemanticName, "POSITION") == 0 && parameter.SemanticIndex < reads.size()) {
+          reads[parameter.SemanticIndex] = parameter.ReadWriteMask;
+        }
+      }
+      return reads;
+    };
+    // The paths: the capture, the cut-out capture, the batch (its mesh's and rows' reads).
+    constexpr std::array<const char*, 3> PATHS = {"capture", "cut-out", "batch"};
+    std::array<std::array<BYTE, 8>, 3> path_reads = {position_reads(capture), position_reads(cut_out_capture),
+                                                     position_reads(mesh)};
+    const auto rows_reads = position_reads(rows);
+    for (size_t position = 0; position < rows_reads.size(); ++position) path_reads[2][position] |= rows_reads[position];
+    const auto through_paths = [&]() {
+      return std::array<std::vector<uint32_t>, 3>{per_draw_capture(capture_vs.Get(), capture_gs.Get()),
+                                                  per_draw_capture(cut_out_vs.Get(), cut_out_gs.Get()),
+                                                  batched(false, false, false)};
+    };
+    UINT drawn_corners = 0;
+    for (const DrawSpec& draw : DRAWS) drawn_corners += draw.vertices * draw.instances;
+    const auto differing = [&](const std::vector<uint32_t>& values, const std::vector<uint32_t>& reference) {
+      uint64_t total = 0;
+      for (size_t d = 0; d < DRAWS.size(); ++d) {
+        uint64_t differ = 0;
+        uint64_t nan = 0;
+        compare(values, reference, d, &differ, &nan);
+        total += differ;
+      }
+      return total;
+    };
+    // The description's lacked POSITION (vertex_positions: it lacks none).
+    for (UINT lacked = 0; s_made && lacked <= vertex_positions; ++lacked) {
+      const bool lacks = lacked < vertex_positions;
+      std::vector<D3D11_INPUT_ELEMENT_DESC> description_elements = layout;
+      std::vector<uint8_t> zeroed = vertex_data;
+      if (lacks) {
+        const D3D11_INPUT_ELEMENT_DESC lacked_element = layout[lacked];
+        const UINT bytes = (lacked_element.Format == DXGI_FORMAT_R16G16B16A16_FLOAT) ? 8 : 4;
+        for (UINT v = 0; v < VERTICES; ++v) {
+          std::memset(&zeroed[(size_t{v} * vertex_stride) + lacked_element.AlignedByteOffset], 0, bytes);
+        }
+        // dx_make_layout: the shader's input the description lacks, after the description's elements, at slot 15.
+        description_elements.erase(description_elements.begin() + lacked);
+        description_elements.push_back({.SemanticName = "POSITION",
+                                        .SemanticIndex = lacked,
+                                        .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                        .InputSlot = 15,
+                                        .AlignedByteOffset = 0,
+                                        .InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA,
+                                        .InstanceDataStepRate = 0});
+      }
+      ComPtr<ID3D11InputLayout> description_layout;
+      ComPtr<ID3D11Buffer> zeroed_buffer;
+      if (FAILED(device->CreateInputLayout(description_elements.data(), UINT(description_elements.size()),
+                                           game_vs.data(), game_vs.size(), description_layout.GetAddressOf()))
+          || !make_buffer(zeroed.data(), UINT(zeroed.size()), D3D11_BIND_VERTEX_BUFFER, 0, &zeroed_buffer)) {
+        std::printf("  S could not make the description's layout (POSITION%u lacked)\n", lacked);
+        s_ok = false;
+        break;
+      }
+      ia_vertices = zeroed_buffer.Get();
+      ia_layout = input_layout.Get();
+      ia_slot_15 = nullptr;
+      const auto capture_reference = per_draw_capture(capture_vs.Get(), capture_gs.Get());
+      const std::array<std::vector<uint32_t>, 3> references = {
+          capture_reference, per_draw_capture(cut_out_vs.Get(), cut_out_gs.Get()), capture_reference};
+      ia_vertices = vertex_buffer.Get();
+      ia_layout = description_layout.Get();
+      ia_slot_15 = zero_buffer.Get();
+      const auto with_zeros = through_paths();
+      ia_slot_15 = one_buffer.Get();
+      const auto with_ones = through_paths();
+      // B's IA again (this description's layout is released with this pass).
+      ia_layout = input_layout.Get();
+      ia_slot_15 = nullptr;
+      // A failed read back is all zeros: a reference without a non-zero word fails.
+      const bool references_made = std::ranges::all_of(references, [](const std::vector<uint32_t>& reference) {
+        return std::ranges::any_of(reference, [](uint32_t word) { return word != 0; });
+      });
+      bool s1 = references_made;
+      bool s2 = true;
+      std::string zeros_line;
+      std::string ones_line;
+      for (size_t path = 0; path < PATHS.size(); ++path) {
+        const uint64_t zeros_differ = differing(with_zeros[path], references[path]);
+        const uint64_t ones_differ = differing(with_ones[path], references[path]);
+        const bool reads_it = lacks && path_reads[path][lacked] != 0;
+        s1 = s1 && zeros_differ == 0;
+        s2 = s2 && ((ones_differ > 0) == reads_it);
+        zeros_line += std::format(", {} {} ({})", PATHS[path], zeros_differ, (reads_it ? "read" : "unread"));
+        ones_line += std::format(", {} {} ({})", PATHS[path], ones_differ, (reads_it ? "read: > 0" : "unread: 0"));
+      }
+      const std::string described = (lacks ? std::format("POSITION{} lacked", lacked) : std::string("nothing lacked"));
+      std::printf("  S1 %s, slot 15 zeros%s of %u corners differ (0), references non-zero: %s\n", described.c_str(),
+                  zeros_line.c_str(), drawn_corners, (references_made ? "yes" : "NO"));
+      std::printf("  S2 CONTROL %s, slot 15 ones%s\n", described.c_str(), ones_line.c_str());
+      s_ok = s_ok && s1 && s2;
+    }
+  }
+  const bool passed = b1_ok && b2_ok && b3_ok && s_ok;
   std::printf("  %s\n", passed ? "PASSED" : "FAILED");
   return passed;
 }
@@ -1207,12 +1370,16 @@ int main(int argc, char** argv) {
            BatchedFamily{"Attila main units sm4.1", "0xA691CFF4.vs_4_1", "rt_capture_unit_sm41", "rt_batch_unit_sm41"},
            BatchedFamily{"Attila dismember units sm3", "0xDAC80ECC.vs_4_0", "rt_capture_unit_dismember_sm3", "rt_batch_unit_dismember_sm3"},
            BatchedFamily{"Attila dismember units sm4.1", "0xEA1AEB0E.vs_4_1", "rt_capture_unit_dismember_sm41", "rt_batch_unit_dismember_sm41"},
-           BatchedFamily{"Attila 4-bone units sm3", "0x0ECFE74C.vs_4_0", "rt_capture_unit_4_bones_sm3", "rt_batch_unit_4_bones_sm3", true},
-           BatchedFamily{"Attila 4-bone units sm4.1", "0x372628AB.vs_4_1", "rt_capture_unit_4_bones_sm41", "rt_batch_unit_4_bones_sm41", true},
+           BatchedFamily{"Attila 4-bone units sm3", "0x0ECFE74C.vs_4_0", "rt_capture_unit_4_bones_sm3",
+                         "rt_batch_unit_4_bones_sm3", true, "rt_capture_unit_4_bones_cut_out_sm3"},
+           BatchedFamily{"Attila 4-bone units sm4.1", "0x372628AB.vs_4_1", "rt_capture_unit_4_bones_sm41",
+                         "rt_batch_unit_4_bones_sm41", true, "rt_capture_unit_4_bones_cut_out_sm41"},
            BatchedFamily{"Attila 4-bone dismember units sm3", "0xC2AA8FDA.vs_4_0", "rt_capture_unit_4_bones_dismember_sm3",
-                         "rt_batch_unit_4_bones_dismember_sm3", true},
+                         "rt_batch_unit_4_bones_dismember_sm3", true,
+                         "rt_capture_unit_4_bones_dismember_cut_out_sm3"},
            BatchedFamily{"Attila 4-bone dismember units sm4.1", "0x31B66A15.vs_4_1", "rt_capture_unit_4_bones_dismember_sm41",
-                         "rt_batch_unit_4_bones_dismember_sm41", true}}) {
+                         "rt_batch_unit_4_bones_dismember_sm41", true,
+                         "rt_capture_unit_4_bones_dismember_cut_out_sm41"}}) {
     all = CheckBatchedUnits(family, root, build32_root) && all;
   }
   std::printf("%s\n", all ? "ALL PASSED" : "SOME FAILED");

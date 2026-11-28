@@ -2,7 +2,7 @@
 # (sm 4.0 and 4.1), Troy, Warhammer II and Pharaoh streamed out through its game's gs_main and through
 # twattila/rt_capture_imposter_gs.h (the bytes the add-ons embed), and Warhammer's, Warhammer II's, Warhammer III's and Rome
 # II's tessellated rigid objects and Rome II's tessellated terrain through their add-on's capture and rows shaders, and
-# Attila's batched unit capture against its streamed one, on WARP.
+# Attila's batched unit capture against its streamed one (and its 4-bone units under the 64-bit port's IA slot 15), on WARP.
 # amd64 (the games are 64-bit; WARP runs Rome II's and Attila's 32-bit add-on's shaders the same).
 # -GameShaders: the folder holding dump_shader_<game>_pack\cso (default the decompiler's, only read). -Built: the folder holding
 # <game>.include\embed (default this tree's build, after renodx-twwarhammer.addon64, renodx-twwarhammer2.addon64 and
