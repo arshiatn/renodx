@@ -18912,6 +18912,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         metric from zz_capture (E), G-a status line, G-b RR before tone map at 50 %, J exit crash 0x75f0, R2Kill
         check_logs nit, R3 DI keys. Nothing of ours running (one threadless Attila.exe 32028 = WER's copy from J's exit
         crash, left alone); no lock held. Next: the morning report to ATN, then step 3 (apply the batch's results).
+        Round report sent 08:0x. ATN 08:3x: PK9 'Doesn't automatic sound better?' -> AUTOMATIC (coord agrees); 'do the
+        apply-phase items first before the GPU stuff' -> all_plans 3.3 'APPLY PHASE LIST' a-h written 08:40.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
