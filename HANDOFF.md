@@ -18545,6 +18545,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         WRITTEN; mutations on the committed file: refusal 388, helper 434, byte count 414, old reader 414. Gated amd64 +
         x86 exit 0 (61), tw_start_files x2, tw_unit_shadows x2, defaults match, PD 32-bit SAME. Re-check ccp2_ (Sonnet
         High) STARTED 02:49.
+        ccp2_ (1 min) GO, 0 MUST / 0 SHOULD (tellg -1 refused; the in-memory split = the old split for CRLF / LF /
+        no last newline / 0x1A / empty; mutation lines match); NITs: a file grown between tellg and read passes as a
+        prefix (microseconds, same race as read-then-rename), the perffix64.log reader. MERGED 02:5x 129a0246c
+        (--no-ff, pushed; no src change on atn-mods since 75b90a3d3, so cp_'s gates hold). The 64-bit CPU page is
+        complete (semi-automatic). For ATN: the Loader Frame Cap move question + the numeric-key known limit.
+        RT-on-64 S5a s5a_ (Opus High, est 60 / 120; worktree s5a_1128 from 129a0246c; scratch\s5a_\brief.md:
+        link predicates UnitFlushOffered / UnitFlushRunsHere + mirror cleared in Unregister, Host unit_flush_offered,
+        rt_scene's batch-wanted predicate, the port's Update term + per-change line, F7 truth table (-BuildOnly; the
+        coord runs F7 on the GPU), F7 at 3840x2160 if still 1280x720, every rt_core / rt_scene includer built)
+        STARTED 02:51. Then reviews (Opus xHigh + Sonnet High), F7 on the GPU, merge, then the big batch.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
