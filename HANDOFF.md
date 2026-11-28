@@ -18749,6 +18749,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         0xDAC80ECC drawn (702 close draws), PK1-64 info collected (tw_map_trace / tw_frame_trace). sr2: a wide shot
         (7 unit draws; log_check exit 1 = 5 hashes not drawn there, info) -> (e) Dead Unit Detail NOT judgeable from
         its frame: FOR ATN's look (capture_64807.bmp). W3-Gate F12 has its fresh E64-mv smoke. Group E -DryRun next.
+        Group E -DryRun 05:10 ok. [x] Group E = P17 DONE 05:17 (7 min, exit 0; ab_runs\20261128_051054_AB): B64P-w3
+        valid, golden same, 17 / 17 RENODX_TW_SET rows with their add-on line, [x] K3's FCU read: 'Fewer Constant
+        Uploads: on.' x1, 20 sites unchanged, CPU sets 14, A8 quiet, no WER; 12.2 fps (p99 104 ms, GPU busy 29.4 ms,
+        window 239.8 s, 7.57 steps/s; the heavy W3 set, data only); trap B UNSURE (+27.3 ms from battle s 5 = the
+        W3 rows landing; no other w3 in the batch). WPR: battle s 100..160, game window in front 100 %, ETL
+        D:\RenoDX_WPR\attila_wpr_20261128_051054_AB_1_B64P-w3.etl (1.79 GB) = the W3-64 data for the apply phase.
+        [ ] HORIZON METRIC 'FAIL: wide shot' is FALSE: shots 1 / 12 / 201 / 202 are all pure black (0,0,0). Every
+        -ReShade AB start writes black game shots (01:10 sprmsaa too); plain AB starts write real ones, which is
+        what hzc_ calibrated on. So w3's camera proof cannot pass as built. Owner: next a64_ab writer (apply phase):
+        read the horizon from zz_capture frames (or the add-on's own capture) on -ReShade starts, or prove the
+        camera another way; then one w3 rerun only if the apply phase needs the camera proof. Group F -DryRun next.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
