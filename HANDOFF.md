@@ -19535,6 +19535,12 @@ heading text are in HANDOFF_ARCHIVE.md)
         HARNESS_RR_TORCH / RR_STATS / SCENE_FLAGS / UPSCALER_DUMP added, untested on the GPU (X38's FLIP dump needs this
         fork's exe). New exe 71562764E495; selfcheck + judge self-test PASS; both dry runs exit 0; a Select-String bug
         found + fixed. Re-check fj23p2_ (Sonnet High) STARTED 16:04; GO -> J2 via gl_, then J3.
+        fj23p2_ DONE ~16:1x (scratch\fj23p2_\review.md) GO WITH CHANGES: the 4 rj23p_ MUSTs + fj23p_'s + the judge rules
+        fixed; new exe = its sources (PE timestamp apart); self-checks + both dry runs pass. MUST: job_common.ps1
+        Test-Runtime false-FAILs every micromaps set (the final status line shows per-request '0 micromaps'; reproduced)
+        -> read helper.log. SHOULD: the edge set likely cannot tell fixed from control (the harness depth normal is
+        exact); the dump switch dumps warm-up runs; J3 = X09 + X10 together (OK if labeled). -> j23p_ fix round 2
+        (resumed 16:19): helper.log + self-test, edge set able to fail or REPORT-ONLY, skip warm-up dumps, labels.
         - [ ] DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3's play-back arms run without
           DRED details (a TDR still stops the arm). Owner: coord -> wave 2 (main.cpp has no wave-1 writer); rj23p_ says
           whether J3 is safe to judge without it.
