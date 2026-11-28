@@ -19080,6 +19080,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         D:/Dev/renodx/.claude/worktrees/dfi_ -Stage C:\Users\arshi\.claude\projects\D--Dev-renodx\tools\tw\testbin\scratch\dfi_\f7
         -> expect 'F7: 88 passed, 0 failed of 88' (89 cases, C2_scrgb_1320 skipped by default). rdfi_ follow-up
         STARTED 10:33; then Sonnet final; F7 after aa67_ frees the GPU; then merge.
+        rdfi_ r2 GO 10:35 (MUST / S1 / NITs done; revision case catches either key kept; F7 89 / 88 right). fdfi_ GO 10:37
+        (8 files, labels unchanged, PK9 '(Experimental)' pinned by a defaults check, logs before each commit, merge-tree
+        clean; NITs: long lines as the files' style). WAITING: F7 on the GPU after aa67_ (max 1 GPU agent), then the
+        merge + README New: lines + plugin / add-on rebuilds + restage.
         - [ ] rdfi_ -> Sonnet High final -> merge all 4 (ATN yes to C1) -> F7 (test\tw_attila64_present\run.ps1, GPU
         lock, after aa67_) -> the README notes lines (coord) -> restage a3_smoke + the plugin from the main tree ->
         one defaults start in the next CPU batch. Owner: coord.
