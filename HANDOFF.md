@@ -19263,10 +19263,28 @@ heading text are in HANDOFF_ARCHIVE.md)
         faster (less slow motion). P16 not run (golden same for both). VERDICT: Stage B FAILS P15 on fps; L / V 0.62
         > 0.4 and a seg-29 miss with the step gate passed -> per batch2_plan G2: numbers to ATN + design 5's exact
         integer filters (a new design). The row stays Off.
-        - [ ] STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. sbf_ (Opus xHigh, design
-        only, scratch\sbf_\brief.md, est 45 / 90: where the fps goes, ranked levers (D 5's exact integer filters, the
-        helper count / cap from the CPU), scaling to other CPUs (ATN's question), the gate) STARTED 12:35. Then
-        designs -> ATN -> implementer -> reviews -> P15 again. The row stays Off. Owner: coord.
+        - [ ] STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. sbf_ DONE 13:0x (~35 of 45
+        min; scratch\sbf_\design.md + fps_split.py / seg_pairs.py / seg_frames.py and their *_out.txt). WHERE THE FPS GOES
+        (M, paired per tick vs P15 ep8, net of start order via group C): 13 helpers cost 1.10 ms a frame (x0.941 real-time
+        ticks, x0.931 slow ticks); tt8 x0.90. Not the extra steps a second (paired ticks same interval); spin / join ~0
+        (59 us a tick, main blocked +0.02 ms a frame). Region frames 30 %, apply window (0-30 ms after) 23 %, steady frames
+        with no B code 47 % (the step thread's own seg 25 / 30 / 36 also 2.5-8.6 % slower; E: the kept nodes' 17-23 MB L3
+        footprint or the clock after 13-thread bursts; P15' tells, optional '% Processor Performance' counter). LEVERS
+        (exact by construction): 1 D 5's exact integer filters in detect (the game's own tests before a node is copied;
+        L / V 0.62 -> ~0.1 E, kept 17.3 -> ~2.8 MB a tick, apply ~-8 ms, region -5..-20 % E; needs census row R-int
+        first, read only); 2 a helper cap from the CPU (ours, after D 6): helpers = min(task threads - 4, 15, chunks - 1,
+        usable cores - 5), < 2 -> the game's loop 'too few cores'; KEPT_OUT_THREADS 2 -> 4, MIN_TASK_THREADS 4 -> 6; ATN's
+        PC 13 -> 3 helpers; 3 compact 8-byte kept entries only if the steady part stays. Declined: priority / yield,
+        helpers only while main waits, chunk sizes. EXPECTED (E): seg 29 19-23 ms (control 30.6), step x0.89-0.93, fps net
+        -1.5..-4 %. OTHER CPUs (E, only the 7950X3D measured): 8 cores -> 3 helpers, 12 -> 7, 16+ / 14700K / 14900K -> 11,
+        12600K 5, 13600K 9, 8 without SMT 3, 6 cores / 4C8T -> the game's loop, > 64 logical 3; battle / render picks
+        unchanged; CPU Set Setter masks can emulate cores (not a small CPU's task-thread count). GATE P15': same line +
+        golden / determinism / step / seg 29 rules; fps paired per tick net of start order, ep8b >= x0.97; ep8btt8
+        reported only (tt8 alone costs x0.90-0.925). Open: R-int census, the steady part's cause, the engine's task-thread
+        rule on other CPUs, cross-cache helpers, 8-core default for unknown machines, group C vs an in-batch ABA order as
+        the fps reference, worker-count cites from memory (oneTBB / Jolt fetched), ATN's 3 vs 5 helpers after P15'.
+        NEXT: Opus xHigh review of the design -> R-int census -> implementer -> reviews -> P15'. The row stays Off. Owner:
+        coord.
         G4 dry twin re-run after G1 12:06 ok ('self-test: ok for every arm', -Wpr on start 1). G4 = P17 + WPR 1 (-AB
         -Arms w3 -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log scratch\coord_\b2_G4_run.log) STARTED 12:06.
         G4 PASS 12:13 (7 min, exit 0; ab_runs\20261128_120648_AB): 1 / 1 valid, golden same, E-checks all pass (plugin
@@ -19308,6 +19326,8 @@ heading text are in HANDOFF_ARCHIVE.md)
         12:46 (scratch\coord_\b2_dry.ps1, b2dry\): G3 (6 starts E64-dlaa ... E64-ptd1, day1.replay read for E64-ptd1),
         G2b 'ep8,dflt', G5 d1, G6 w3s: exit 0, 'self-test: ok for every arm', nothing refused. Part 2 (G3 -> G2b -> G5
         -> G6 -> N2) starts when sbf_ + x41d_ end (game runs hold all agents).
+        G3 (-Smoke -ReShade -EnginePlugin -R2 -Arms E64-dlaa,E64-pt,E64-rrtm,E64-rr50,E64-rr50tm,E64-ptd1, log
+        scratch\coord_\b2_G3_run.log) STARTED 13:11.
         x41d_ DONE 12:5x (~20 min; scratch\x41d_\design.md + x41d_h33.diff / x41d_h32.diff / build_x41.ps1 /
         stage_x41.ps1 / run_x41.ps1 / analyze_x41.py): CAUSE of fxp_'s static > moving: the only metre term the scene
         reaches is FSR 3.1.6 accumulate.h:50 (distance factor from the farthest depth, no motion in it), which sizes the
