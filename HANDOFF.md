@@ -19426,6 +19426,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         twwarhammer3 / talesofarise / expeditionsrome / ruse, tw_helper_lifetime). Main-tree checks (helper build.ps1,
         gated amd64 14 bridge add-ons + x86 3, tw_helper_lifetime amd64 + x86; scratch\coord_\fxh2_merge_checks.sh,
         logs fxh2m_*.log) STARTED 14:17.
+        Main-tree checks DONE 14:27: helper build.ps1 exit 0 (renodx-tw-dlaa64.exe sha c9db09e281fe6ddd); gated
+        amd64 14 add-ons exit 0; gated x86 3 exit 0; tw_helper_lifetime amd64 25 PASS / x86 25 PASS, 0 FAIL. W-H2
+        is in atn-mods; P1 (Tales) / P1b (WH3) stay in-game checks with the next Tales / WH3 runs.
         x41d_ DONE 12:5x (~20 min; scratch\x41d_\design.md + x41d_h33.diff / x41d_h32.diff / build_x41.ps1 /
         stage_x41.ps1 / run_x41.ps1 / analyze_x41.py): CAUSE of fxp_'s static > moving: the only metre term the scene
         reaches is FSR 3.1.6 accumulate.h:50 (distance factor from the farthest depth, no motion in it), which sizes the
