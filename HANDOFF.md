@@ -19368,6 +19368,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         N2 Nsight (day1 PT view) on ...\a64_20261128_131123_Smoke\6_E64-ptd1\frame_69025 (B 100, battle s 236, after
         day1's clock jump), -Name a64_ns_d1_pt, log scratch\coord_\n2_1128.log, STARTED 14:0x. rsbf_ (Opus xHigh review
         of sbf_'s Stage B design, scratch\rsbf_\brief.md, est 25 / 50) STARTED 14:07.
+        N2 DONE 14:06 exit 0: nsight\runs\a64_ns_d1_pt\a64_ns_d1_pt.ngfx-gputrace (25 MB, 4 frames, 52.7 ms traced) +
+        table.txt: 11.22 ms a frame (trace 4.56, path tracing 2.53, reuse 1.64, player inputs 0.81, radiance cache 0.64,
+        clusters 0.43, AS builds 0.24, copies 0.18, local lights 0.12). Capture only. STEP 4 DONE (three WPRs + Nsight
+        per view: w3 / d1 / w3s ETLs, a64_ns_w3_pt + a64_ns_d1_pt traces; no analysis yet).
+        x41r_ (Opus High, X41 run per x41d_\design.md, scratch\x41r_\brief.md, est 25 / 50; the one GPU agent) STARTED
+        14:08. fxh2_1127 (tip 08f9c0676, 8 commits on 2aa6cc7ff) vs atn-mods: merge-tree exit 0, no conflict (ga_'s
+        rt_core change included). Merge on X41 PASS; then helper + bridge v33 rebuilds and gated builds.
         x41d_ DONE 12:5x (~20 min; scratch\x41d_\design.md + x41d_h33.diff / x41d_h32.diff / build_x41.ps1 /
         stage_x41.ps1 / run_x41.ps1 / analyze_x41.py): CAUSE of fxp_'s static > moving: the only metre term the scene
         reaches is FSR 3.1.6 accumulate.h:50 (distance factor from the farthest depth, no motion in it), which sizes the
