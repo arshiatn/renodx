@@ -736,6 +736,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - a64_ab R2Kill: check_logs' 'the helper stopped' line after the kill time is the ... | coord, next a64_ab patch (with G-a's check)
 - APPLY i: the d11 day1 dumps (group I) -> the 2.10 D3D11 pass analysis, after wav ... | coord
 - Check whether any non-Attila job expects exactly ONE 'Ray tracing with' line (th ... | coord, before the next non-TW build
+- sbi_ -> Opus xHigh review -> Sonnet High final -> merge -> fresh backups -> grou ... | coord
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
 - (optional, M) name the lacked semantic in Sol's loader line or an input-layout t ... | the W-H2 fix round after reviews
@@ -18975,6 +18976,24 @@ heading text are in HANDOFF_ARCHIVE.md)
         noise); the +1.35 s used a cross-batch median. Automatic still beats On (+6.2 s). (3) The player defaults
         (Stage A + render core + Automatic) never ran together: one defaults start in the next CPU batch. (4) PK9
         keeps '(Experimental)' (dflt_ suggests); design 10's soak + DLSS / FG look check still open.
+        fga_ DONE 08:59 (1 min; scratch\fga_\review.md): GO, no MUST / SHOULD / NIT; merge-tree clean. MERGED ga_1128
+        into atn-mods 34835cc50 (--no-ff), pushed. Next for G-a: a3_smoke add-on restage + an RT arm in game (the
+        status line after the helper's first status); a64_ab patch e's positive match (rga_ S1) first.
+        sbp_ DONE 09:00 (16 min; scratch\sbp_\design.md): NODE_BLOCK_COUNT 256 -> 2048 blocks x 1024 nodes = 80 MiB of
+        static zero pages (RAM only up to one tick's need; the pool resets every region); the stop rule + skip latch
+        stay (exact). No count exists in any log; the measured LOWER bound: every one of the 256 blocks claimed ->
+        shortlist >= 248,845 a tick (ep8b; >= 256,006 ep8btt8), filled in deployment 4 ms after the first call.
+        P15 becomes the census: the stop line gains 'objects N, chunks C of K', the summaries 'listed max M', the
+        active line 'radius addition C' (E6, coord: yes). Risk (E): D 5 assumed 40-140 K kept nodes, the bound is
+        >= 249 K -> the -7 ms seg-29 gate is unlikely at ~2x the bound, the 2 % step gate likelier; L / V > ~0.4 ->
+        D 5's 'exact integer filters in detect' (a new design), no blind second resize. sbi_ (Opus Medium, worktree
+        sbi_1128, battle_step.hpp + battle_step_test.cpp only, build.ps1 -Test, est 30 / 60) STARTED 08:59.
+        - [ ] sbi_ -> Opus xHigh review -> Sonnet High final -> merge -> fresh backups -> group C -DryRun -> P15
+        (-AB -Arms ep8,ep8b,ep8btt8 -EnginePlugin -Probe full <P>, design 5.3 step 4 gates) -> P16 (ep8tt8) only if
+        ep8btt8's golden differs while ep8b's is the same. Owner: coord.
+        FOR ATN Q1 (not blocking): the 64-bit DLL's image commit rises ~70 MiB for every player, row on or off (no
+        RAM unless the row runs, ~1 % of the game's 6 GB). sbp_ + coord pick: accept; else a lazy VirtualAlloc
+        (~15 lines + a failure line + a test seam).
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
