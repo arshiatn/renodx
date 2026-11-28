@@ -18537,7 +18537,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         lines don't match the committed tests.cpp; 4 NITs ('written' logged when nothing was written, columns, a
         single-use local, a held-at-first-present snapshot). Coord: S1 is the writer's safety -> small round cp_
         (resumed, est 12 / 25: size-checked read proof, S2 CHECK, mutations rerun on the committed file, NITs 1-3,
-        N4 = known limit) STARTED 02:39. Then a short Sonnet re-check, merge, S5a.
+        N4 = known limit) STARTED 02:39. Then a short Sonnet re-check, merge, S5a. DONE 02:49 (10 of 12 min;
+        4194ec065, handback.md 'Small round'): ForEachLine takes the size from the same handle, one read, bytes ==
+        size or false with nothing visited (no stream flags); test 6a locks 4 middle bytes from another handle ->
+        FAILED, bytes equal, no .tmp; after unlock WRITTEN; ae323b56a's flag reader restored FAILS it (the eofbit gap
+        was real); 5a every never-shown key gets no row; WriteResult WRITTEN / UNCHANGED / FAILED, 'written' only on
+        WRITTEN; mutations on the committed file: refusal 388, helper 434, byte count 414, old reader 414. Gated amd64 +
+        x86 exit 0 (61), tw_start_files x2, tw_unit_shadows x2, defaults match, PD 32-bit SAME. Re-check ccp2_ (Sonnet
+        High) STARTED 02:49.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
