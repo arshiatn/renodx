@@ -19473,6 +19473,13 @@ heading text are in HANDOFF_ARCHIVE.md)
         single-use local; 4 W2-9 redundant with rt_reference.hlsli:517-519; 5 rt_serve.h:453 finding real but its fix
         wrong twice (the shared_bytes check refuses the legitimate v31 -> v32 lift; 'already is that version' -> '>=').
         W2-5 right (3 compat variants with / without PATH_REGIR byte-identical). Fix round waits for rw0ca_.
+        rw0ca_ DONE 15:14 (scratch\rw0ca_\review.md) GO WITH CHANGES: comments only (11 files code-equal, 116 helper
+        headers = base, 6 fused-pass headers, p5_dxil 50 / 50), every cited line exists, guards hold. MUST 1 (blocks
+        merge) = fw0ca_ S1 (rt_rtxdi_bridge.hlsli:70-74 -> `dev:` vs RTXDI's average distance); MUST 2-5 (wave-2 texts,
+        not blocking): W2-1 TORCH_CANDIDATES 2 = RTXDI's 2 samples at path hits -> SAME + `src:`; W2-3 cell vs RTXDI's
+        default 0.5 m (4x), the jitter reason wrong; F1 rt_serve.h:455 'no bug today, the fix would refuse every edit'
+        (fw0ca_: real but the fix wrong) -> settled in the fix round. Fix round w0ca_ (Opus Medium, resumed with both
+        lists) STARTED 15:14. rw0ca_ worktree left (links first).
         - [ ] W0c FIND 1 (wave 2, the rt_serve.h owner): rt_serve.h:453 lifts any older recording to v32, so its
           v29-v31 fields play as zeros instead of absent (fix text in w0ca__handback.md; changes bytes). Owner: coord
           -> wave 2.
