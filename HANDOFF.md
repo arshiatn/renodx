@@ -18528,7 +18528,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         layout[lacked]; ALL PASSED (0 of 19817 differ everywhere); controls: POSITION0-2 read on every path,
         POSITION4 read only by the cut-out capture, POSITION3 / 5 / 6 / none unread; mutant A (zero read back) and
         mutant B (wrong cut-out name) both FAIL as they should. Final check cs5c_ (Sonnet High) STARTED 02:08.
-        Then merge s5c_1128.
+        cs5c_ (2 min) GO, 0 MUST / 0 SHOULD (every SHOULD answered; mutants as reported; 'unread' from the input
+        signature; tests.cpp only); 2 NITs. MERGED 02:11 c23532a3f (--no-ff, pushed; no src change since
+        13ff5bc14, so the ALL PASSED run holds). RT-on-64 S5c is complete. Worktree s5c_ to clean later (links first).
         [ ] S4 census (after R1): name which POSITION the 64-bit 0x0ECFE74C description lacks (S5c covers each). rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
