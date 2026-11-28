@@ -18497,7 +18497,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         cpxa_ (Sonnet High, 1 min) GO, 0 MUST / 0 SHOULD (states 1-4 exactly the runnable ones; 5-7 keep their status
         line). MERGED 01:39 75b90a3d3 (--no-ff, pushed; src == pxa_1128's tested tree, so its builds hold).
         cp_ (the semi-automatic CPU page, Opus High, est 90 / 180; worktree cp_1128 from 75b90a3d3; addon.cpp +
-        start_files.hpp + new test\tw_start_files) STARTED 01:39.
+        start_files.hpp + new test\tw_start_files) STARTED 01:39. DONE 02:06 (27 of 90 min; scratch\cp_\handback.md;
+        cp_1128 ca25355f0 start_files.hpp + test\tw_start_files, 64c192749 addon.cpp; pushed, not merged): Settings
+        Mode 3 (64-bit only) gets 'Engine Performance Fix (heapfix.ini, restart the game)' (shown while perffix64.dll
+        is loaded or Sol's perffix_available paths exist; no heapfix.ini = a note + read-only) and '64-bit Attila
+        Start Window (settings.txt, restart the game)' (Sol's read tests; Task Waits only from loader 1.3.24);
+        semi-automatic: other keys by key, 0 / 1 = Off / On, else read-only; flag_wave only Sol's row. Gated amd64 +
+        x86 exit 0, tw_start_files PASS x2, tw_unit_shadows PASS x2, defaults match, page dumps as expected.
+        8 deviations (handback.md); coord decides deviation 4 (semi-automatic on settings.txt too) and the
+        FrameBridge handling with our helper after the reviews. Reviews rcp_ (Opus xHigh) + fcp_ (Sonnet High), read
+        only, STARTED 02:06.
+        [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
+        [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
+        Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
+        heapfix.ini in the batch (coord).
         RT-on-64 S5c s5c_ (Opus High, est 25 / 50; worktree s5c_1128 from 13ff5bc14; test\tw_rays_captures only, WARP:
         one 4-bone 0x0ECFE74C draw through capture + FlushBatch SO with Sol's slot-15 zero buffer; control = ones, or
         'unread' per S10) STARTED 01:44 beside cp_ (no overlap). Then S5a after cp_ (addon.cpp). DONE 01:51 (7 of 25
@@ -18507,6 +18520,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         census job); S1 capture + batch SO equal the zeroed reference bit for bit (0 of 19817 corners, 8 descriptions);
         S2 ones change all corners when POSITION0-2 is lacked (read), nothing for POSITION3-6 / none (unread, S10);
         ALL PASSED on amd64 WARP. Reviews rs5c_ (Opus xHigh) + fs5c_ (Sonnet High), read only, STARTED 01:51.
+        rs5c_ (13 min) GO WITH CHANGES, 0 MUST: S1 the cut-out capture (clipping draws never batch) untested, S2 only
+        one of four 4-bone families, S3 header wording, S4 columns; 8 NITs. fs5c_ (2 min) GO, 0 MUST: S1 an all-zero
+        read back would pass, S2 one offset source, S3 other families, S4 read / unread on S1; 4 NITs. Fix round
+        s5c_ (6 of 20 min; 10d3b94c9): all four families (0ECFE74C, 372628AB, C2AA8FDA, 31B66A15) x capture /
+        cut-out capture / batch, each with its own reference + read mask; non-zero reference guard; offsets from
+        layout[lacked]; ALL PASSED (0 of 19817 differ everywhere); controls: POSITION0-2 read on every path,
+        POSITION4 read only by the cut-out capture, POSITION3 / 5 / 6 / none unread; mutant A (zero read back) and
+        mutant B (wrong cut-out name) both FAIL as they should. Final check cs5c_ (Sonnet High) STARTED 02:08.
+        Then merge s5c_1128.
         [ ] S4 census (after R1): name which POSITION the 64-bit 0x0ECFE74C description lacks (S5c covers each). rrts2_ (Opus xHigh, 9 min;
         scratch\rrts2_\review.md) GO, 0 MUST: D3D11 reads right, no leaks, nothing while tracing is off, parsers
         byte-equal, R1.7 fully covered; S1 dyn_census counts ib on non-indexed draws, S2 a BOM'd --ref drops the first
