@@ -109,8 +109,10 @@ Check ($text.Contains('const auto moved = std::ranges::find(settings, "FewerCons
 $fcu = Block '.key = "FewerConstantUploads",' "`n      },"
 Check ($fcu.Contains('.label = (ATTILA64 ? "Fewer Constant Uploads (Experimental, restart)" : "Fewer Constant Uploads (Experimental)"),')) 'FewerConstantUploads label: (Experimental, restart) on the port, (Experimental) on 32-bit'
 Check ($fcu.Contains('.section = "Graphics (Experimental)",')) 'FewerConstantUploads 32-bit section Graphics (Experimental) unchanged'
-Check ($text -match 'if constexpr \(ATTILA64\) \{\s*twattila::graphics_page::ClearSavedRows\(1, \{"FewerConstantUploads"\}, "Attila64SettingsRevision"\);\s*\}') 'FewerConstantUploads cleared once on the port (Attila64SettingsRevision 1)'
+Check ($text -match 'if constexpr \(ATTILA64\) \{\s*twattila::graphics_page::ClearSavedRows\(1, \{"FewerConstantUploads"\}, "Attila64SettingsRevision"\);') 'FewerConstantUploads cleared once on the port (Attila64SettingsRevision 1)'
 $port_clear = $text.IndexOf('ClearSavedRows(1, {"FewerConstantUploads"}, "Attila64SettingsRevision");', [StringComparison]::Ordinal)
+# The port's revision 2 (the 11-28 batch's defaults): every 64-bit preset saved 0 for both rows, right after revision 1.
+Check ($text -match 'ClearSavedRows\(1, \{"FewerConstantUploads"\}, "Attila64SettingsRevision"\);\s*twattila::graphics_page::ClearSavedRows\(2, \{"EffectsOnAllCores", "KeepRenderCoreFree"\}, "Attila64SettingsRevision"\);\s*\}') 'EffectsOnAllCores + KeepRenderCoreFree cleared once on the port (Attila64SettingsRevision 2)'
 Check ($port_clear -ge 0 -and $port_clear -lt $text.IndexOf('renodx::utils::settings::Use(DLL_PROCESS_ATTACH', [StringComparison]::Ordinal)) 'the port clear before settings::Use'
 Check ($text.Contains('renodx::utils::log::i("[Total War] Fewer Constant Uploads: on.");')) 'Fewer Constant Uploads once-line'
 Check ($text.Contains("`n    fewer_constant_uploads_logged = false;`n")) 'Fewer Constant Uploads once-flag reset at detach'

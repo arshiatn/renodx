@@ -4076,13 +4076,15 @@ bool AttachAddon() {
   // Ray Reconstruction is off, the banners' light and colour on. 2 (the render_mt defaults): the rows whose default changed
   // and the rows hidden now (a value saved earlier would stay on unseen). The 64-bit port has its own key,
   // Attila64SettingsRevision (32-bit never reads it): 1, the 64-bit port's first revision, Fewer Constant Uploads, on there
-  // by default. A later port default change takes the next number.
+  // by default. 2, the 11-28 batch's defaults: Effects on All Cores Automatic, Keep Render Core Free on. A later port
+  // default change takes the next number.
   twattila::graphics_page::ClearSavedRows(1, {"RayTracingDenoiser", "ScreenSpaceShadowsBannerLight", "ScreenSpaceShadowsColoured"});
   twattila::graphics_page::ClearSavedRows(2, {"DrawRecordingStage", "DrawRecordingDepthA", "DrawRecordingColourA", "DrawRecordingDepthB",
                                               "DrawRecordingColourB", "DrawRecordingFamilies", "AnimationRowsWorkers", "ParallelInstanceFill",
                                               "FillWithDrawRecording", "ParallelEffectSpawns", "CachedParticleCount"});
   if constexpr (ATTILA64) {
     twattila::graphics_page::ClearSavedRows(1, {"FewerConstantUploads"}, "Attila64SettingsRevision");
+    twattila::graphics_page::ClearSavedRows(2, {"EffectsOnAllCores", "KeepRenderCoreFree"}, "Attila64SettingsRevision");
   }
 
   renodx::utils::settings::Use(DLL_PROCESS_ATTACH, &settings, nullptr);
