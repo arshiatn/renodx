@@ -19283,8 +19283,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         reported only (tt8 alone costs x0.90-0.925). Open: R-int census, the steady part's cause, the engine's task-thread
         rule on other CPUs, cross-cache helpers, 8-core default for unknown machines, group C vs an in-batch ABA order as
         the fps reference, worker-count cites from memory (oneTBB / Jolt fetched), ATN's 3 vs 5 helpers after P15'.
-        NEXT: Opus xHigh review of the design -> R-int census -> implementer -> reviews -> P15'. The row stays Off. Owner:
-        coord.
+        NEXT (ATN 11-28 14:2x): Stage B is CPU work -> FABLE, on ATN's other account, which resets MONDAY 11-30 22:00.
+        Until then: rsbf_ (Opus xHigh review of sbf_, running) finishes and both files become the Fable designer's
+        inputs; no implementer before Monday. Monday 22:00+, old Fable rules (Fable 5.2 xHigh design, Fable 5.2 Medium
+        build, Opus xHigh + Sonnet High reviews): Stage B, then 'Step Pieces First' (parked behind Stage B), then the
+        last ride. R-int census + P15' in that round. The row stays Off. Owner: coord.
         G4 dry twin re-run after G1 12:06 ok ('self-test: ok for every arm', -Wpr on start 1). G4 = P17 + WPR 1 (-AB
         -Arms w3 -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log scratch\coord_\b2_G4_run.log) STARTED 12:06.
         G4 PASS 12:13 (7 min, exit 0; ab_runs\20261128_120648_AB): 1 / 1 valid, golden same, E-checks all pass (plugin
