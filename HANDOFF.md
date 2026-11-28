@@ -19437,7 +19437,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         only); new vs base the same 16 rt_lights* headers, control = base 116. NV9 job: the harness cannot send the bit,
         so its Gradient arm = the control build (job header says so). Reviews rx20_ (Opus xHigh, builds wh3 too) +
         fx20_ (Sonnet High) STARTED 15:08.
-        j23p_ DONE 15:10 (~35 of 60 min; RN\handoff_plan\handbacks\j23p__handback.md; files outside the repo, branch
+        rx20_ DONE 15:29 (scratch\rx20_\review.md) GO WITH CHANGES: shader math holds (independent seeds, same
+        distribution, IGN unchanged without RR), guide cite pages 17-18 verbatim, v33 no bump, helper hunk + row ok; own
+        clean builds: 16 rt_lights headers change, control = base on all 116; WH3 amd64 at f675bebee + helpers exit 0.
+        MUST (job only): x20_nv9_verdict.py:90 counts a missing / truncated B dump as 'differ', so the must-fail control
+        can PASS. SHOULD: shared threshold (rt_lights:308-309) = a marked deviation or per light; a bit-30 arm via
+        RT_EXTRA_TRACE_FLAGS (the Gradient path untested); pan control gets the same flicker env; a hard-shadow-under-RR
+        byte-identical control; a run without the 16 stress lights. 7 NITs. Look numbers for ATN wait on
+        HARNESS_RR_TORCH (j23p_ follow-up). Waiting for fx20_, then one fix round (x20_).        j23p_ DONE 15:10 (~35 of 60 min; RN\handoff_plan\handbacks\j23p__handback.md; files outside the repo, branch
         j23p_1128 no commits): pdi1 fork tools\tw\reference\pdi1_harness_src (only it has reference_mode.hpp;
         *.before_j23p backups): HARNESS_CUT_OUT_BOX=cut_out|leaf (a room whose sun-side wall is a palisade cut-out card,
         RT_SOLID_CUT_OUT + RT_OWN_CUTOFF; inside view + an edge-on view for rt_trace's sun, X10 MUST-2),
