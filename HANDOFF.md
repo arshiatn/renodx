@@ -19413,6 +19413,10 @@ heading text are in HANDOFF_ARCHIVE.md)
         fails; headers equal; the timing code was refactored, the size choice unchanged. SHOULD: the summary silently
         PASSes with no timing lines or a truncated L segment; the spike count includes later runs' warm-up; no -DryRun.
         -> x38_ (resumed 15:19) fixes the three + one dry run; then gl_ runs X38 (not judge-scored).
+        x38_ DONE 15:20 (scratch only: job_x38.ps1 + job_x38_summary.py; C++ unchanged at 905d07c32): a run FAILS without
+        exactly 1 create, 9 x frames evaluations or 8 tones pictures; spikes counted after each create's own warm-up;
+        -DryRun prints the plan and exits 0 before the lock (ran: 0); summary self-tests OK. X38 GPU job -> gl_
+        (resumed 15:20; ~25 min under the lock; D3D11 timestamps; PASS / FAIL / exit 2 = ASK ATN).
         x20_ DONE PART 15:01 (RN\handoff_plan\handbacks\x20__handback.md): x20_1128 8ceac6a52 (on 8053e666a, pushed):
         under RR (not Steady) rt_lights.cs_6_5.hlsl's soft-shadow threshold + spot turn use the helper's existing pcg4d
         Random per pixel per frame (cite DLSS-RR Integration Guide 3.5, printed p17-18, not p21); bridge
