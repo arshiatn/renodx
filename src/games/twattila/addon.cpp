@@ -1736,9 +1736,10 @@ constexpr bool RENDER_CORE_ROW_MEASURED = true;
 // (attila64_plugin_link::Update).
 constexpr float KEEP_BATTLE_CORE_DEFAULT = (twattila::attila64_plugin_link::BATTLE_CORE_DEFAULT ? 1.f : 0.f);
 float keep_battle_core_row = KEEP_BATTLE_CORE_DEFAULT;
-// Effects on All Cores (the port only, Experimental, Off until the soak: PK9 10): 0 Off, 1 Automatic, 2 On, the 64-bit
-// engine plugin's two effect core_wanted bits (attila64_plugin_link::Update).
-float effects_on_all_cores_row = 0.f;
+// Effects on All Cores (the port only, Experimental): 0 Off, 1 Automatic, 2 On, the 64-bit engine plugin's two effect
+// core_wanted bits (attila64_plugin_link::Update). Automatic by default (ATN 11-28, after the batch's PK9 starts).
+constexpr float EFFECTS_ON_ALL_CORES_DEFAULT = 1.f;
+float effects_on_all_cores_row = EFFECTS_ON_ALL_CORES_DEFAULT;
 // Faster Battle Step (the port only): the 64-bit engine plugin's battle step, its CORE_STEP core_wanted bit
 // (attila64_plugin_link::Update). Its default is the plugin's (PK8 11.1: On once S-C passes and ATN says so, Q1).
 constexpr float FASTER_BATTLE_STEP_DEFAULT = (twattila::attila64_plugin_link::BATTLE_STEP_DEFAULT ? 1.f : 0.f);
@@ -3712,7 +3713,7 @@ void ConfigureAddon() {
         .key = "EffectsOnAllCores",
         .binding = &effects_on_all_cores_row,
         .value_type = renodx::utils::settings::SettingValueType::INTEGER,
-        .default_value = 0.f,
+        .default_value = EFFECTS_ON_ALL_CORES_DEFAULT,
         .label = "Effects on All Cores (Experimental)",
         .section = CPU_SECTION,
         .tooltip = "Runs battle effects on all CPU cores. Faster in big battles; small effect details can change.\n"

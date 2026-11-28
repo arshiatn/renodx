@@ -144,6 +144,11 @@ $battle = $text.IndexOf('.key = "KeepBattleCoreFree",', [StringComparison]::Ordi
 $render = $text.IndexOf('const auto render_core = std::ranges::find(settings, "KeepRenderCoreFree"', [StringComparison]::Ordinal)
 Check ($battle -ge 0 -and $render -gt $battle -and $render -lt $text.IndexOf('const auto moved = std::ranges::find(settings, "FewerConstantUploads"', [StringComparison]::Ordinal)) 'KeepRenderCoreFree after Keep Battle Core Free, before Fewer Constant Uploads'
 Check ($text.Contains('(RENDER_CORE_ROW_MEASURED ? keep_render_core_row != 0.f : twattila::attila64_plugin_link::RENDER_CORE_DEFAULT),')) 'KeepRenderCoreFree written to the plugin (link Update) only once measured'
+# Effects on All Cores (PK9, the port only): Automatic by default (ATN 11-28), one constant for the binding and the row.
+Check ($text -match '(?m)^constexpr float EFFECTS_ON_ALL_CORES_DEFAULT = 1\.f;' -and $text -match '(?m)^float effects_on_all_cores_row = EFFECTS_ON_ALL_CORES_DEFAULT;') 'EffectsOnAllCores starts at EFFECTS_ON_ALL_CORES_DEFAULT = 1 (Automatic)'
+$eac = Block '.key = "EffectsOnAllCores",' "`n    });"
+Check ($eac.Contains('.binding = &effects_on_all_cores_row,') -and $eac.Contains('.default_value = EFFECTS_ON_ALL_CORES_DEFAULT,') `
+       -and $eac.Contains('.label = "Effects on All Cores (Experimental)",')) 'EffectsOnAllCores default EFFECTS_ON_ALL_CORES_DEFAULT, label (Experimental)'
 # Multithreaded Collisions (PK8 Stage B 14): default Off, hidden until measured, and no CORE_SPLIT write while hidden.
 Check ($text -match '(?m)^constexpr bool CONTACT_SPLIT_ROW_MEASURED = false;' -and $text -match '(?m)^float multithreaded_collisions_row = 0\.f;') 'MultithreadedCollisions hidden, starts at 0'
 Check ($text -match '(?s)\.key = "MultithreadedCollisions",.{0,200}?\.default_value = 0\.f,') 'MultithreadedCollisions default 0'
