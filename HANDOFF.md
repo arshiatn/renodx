@@ -745,6 +745,7 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - DRED IN THE PLAYER: helper main.cpp:306 starts DRED with details = false, so J3' ... | coord -> wave 2 (main
 - REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of r ... | ATN
 - j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch swi ... | coord -> j23p_
+- J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / h ... | ?
 - W0c FIND 1 (wave 2, the rt_serve.h owner): rt_serve.h:453 lifts any older record ... | coord -> wave 2
 - W0c FIND 2 (wave 2, trace_ owner of rt_d3d12.hpp): the 2 m ReGIR cell has no num ... | coord -> wave 2
 - fwp_ D2-D5 for later: D2 X08 drop vs re-set if the picture moves; D3 O-HANG (b) ... | coord -> ATN as each comes up
@@ -19456,6 +19457,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         gl_ (Opus Low, GPU-lock runner, scratch\gl_\brief.md) STARTED 14:5x: J0 script read OK, -DryRun exit 0 (45
         replicates, ~99 GB; D: 452.5 GB, RAM 18.4 GB free), STOPPED before the lock for Attila PID 32028 = the known
         threadless leftover (0 threads, 0.6 MB; never killed) -> coord resumed gl_ 15:0x: J0 for real, then X08 on PASS.
+        J0 DONE ~15:1x = FAIL (scratch\gl_\j0\verdict.md): 45 replicates ALL PASSED, no TDR / removal, every compare
+        exit 0, lock 18.6 min, ~92 GB in D:\RenoDX_refs\j0 (kept); j0_judge.py exit 1: only open_nocal behaves (FAIL
+        broken, PASS unbroken); range_half / cone2 (q), onelight (torch), no_g2g1 (reflect) cannot be told from the
+        normal runs because the UNBROKEN q / torch / reflect sets already score BIAS on nearly every mask (reflect also
+        NOISY); only open PASSes. => the 4K judge cannot gate yet: J2 / J3 / X08 / W3 (judge-scored) HELD; X38 and X20
+        NV9 (own metrics, not the judge) may run. Root cause j0rc_ (Opus xHigh, CPU analysis on the kept data,
+        scratch\j0rc_\brief.md) STARTED 15:17.
+        - [ ] J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / harness, re-run J0 (reuse
+          the valid replicates), then J2 / J3 / X08 / W3.
         w0ca_ DONE ~15:0x (17 of 40 min; RN\handoff_plan\handbacks\w0ca__handback.md): w0ca_1128 c5534d6da (on
         8053e666a, pushed), comments only: already tagged (targetHistoryLength 4, camera-only DiMotion, S6 at
         rt_di_shade.hlsl:24-26, 8192 DI offsets); new tags RabSampler (dev:), RegirLights 128 cap (guard inert),
