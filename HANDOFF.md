@@ -746,6 +746,9 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - REFERENCE DISK (ATN): J0 ~100 + X08 ~108 + J2 up to ~255 + J3 ~75 = ~540 GB of r ... | ATN
 - j23p_ FOLLOW-UPS (harness, after its J2 / J3 hand-back): X20's post-RR torch swi ... | coord -> j23p_
 - J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / h ... | ?
+- CONTACTSHADE 4K RESIDUAL (j0rc_): at 4K the candidate misses even the `contact` ... | the ContactShade (H9) / GI energy wave (:21115 area)
+- REF_BREAK COMMENTS (j0rc_): rt_reference.hlsli:139-140 says range_half darkens c ... | wave 2 tail (rt_reference owner)
+- W3 SCRIPT SIGNED SHIFTS (j0rc_): W3's 'control BIAS > 1 %' rows (fx3__handback.m ... | whoever scripts W3 (gq2_ writes the rows)
 - W0c FIND 2 (wave 2, trace_ owner of rt_d3d12.hpp): the 2 m ReGIR cell has no num ... | coord -> wave 2
 - fwp_ D2-D5 for later: D2 X08 drop vs re-set if the picture moves; D3 O-HANG (b) ... | coord -> ATN as each comes up
 - P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2 ... | coord (game runs), after the fxh2_1127 merge
@@ -19520,6 +19523,27 @@ heading text are in HANDOFF_ARCHIVE.md)
         scratch\j0rc_\brief.md) STARTED 15:17.
         - [ ] J0 FIX + RE-RUN (owner: coord -> the owner j0rc_ names): fix the judge / job / harness, re-run J0 (reuse
           the valid replicates), then J2 / J3 / X08 / W3.
+          j0rc_ DONE ~15:39 (~21 min; its Write was refused 'subagents return findings as text', so the coord saved it:
+          scratch\j0rc_\analysis.md). ROOT CAUSE: (1) q / torch judge the helper against the `full` reference, which
+          has no ContactShade (rt_path.hlsli:881-884), so 'unbroken PASS' never held, at 640 either; (2) cone2
+          (<= 0.008 %), no_g2g1 (0.08 %), onelight (0.6-0.9 % on lit / all) are below the 1 % tolerance even vs a
+          perfect candidate; open / nocal works (closed form, -44 %). Ruled out: FRAME0, v32 / v33 bridge, R + variance
+          (except reflect: replicate / batch 2.17), tiles. All 45 replicates valid (92 GB reused). Hits J2 (pt / leafpt
+          'fixed PASS' on full; --expect-fail tells nothing), J3 + X08 (sign trap 'nearer to 1'), W3 (if scripted as
+          planned). Not recommended: looser tolerances or `contact` (BIAS on 6 masks at 4K).
+          DECIDED (coord 15:41): D-a paired shifts (break vs unbroken; fixed vs control) floor = max(3 sigma, 0.2 %),
+          one-sided verdicts keep 1 %; D-b signed shifts only, no 'nearer to 1'; D-c R >= 8 on judged arms.
+          -> gq2_ (Opus High, CPU; scratch\gq2_\brief.md) STARTED 15:41: j0_judge paired rule + renamed masks +
+          re-judge of the 45; cone2 lout sets + a G5 lout 4K check (-NewOnly for gl_); ref_compare.py opt-in pooled
+          variance + pooled outliers (defaults byte-identical); x08 verdict on e4c signed + e5 pooled; texts for
+          j23p_ / W3 / rt_reference. j23p_ told (addendum 15:41): J2 on the signed pair shift, J3 routeb signed.
+        - [ ] CONTACTSHADE 4K RESIDUAL (j0rc_): at 4K the candidate misses even the `contact` reference (boxes -1.02 %,
+          concave +1.1 %, outliers 0.106 % vs 0.015 % at 640); the REFERENCE side moves (face means +1.6 / +2.2 / +0.9 %,
+          candidate <= 0.3 %); 640 hid it. Owner: the ContactShade (H9) / GI energy wave (:21115 area).
+        - [ ] REF_BREAK COMMENTS (j0rc_): rt_reference.hlsli:139-140 says range_half darkens crevices; it brightens
+          (past the halved 3 m the ray takes the sky). Comment fix, text from gq2_. Owner: wave 2 tail (rt_reference owner).
+        - [ ] W3 SCRIPT SIGNED SHIFTS (j0rc_): W3's 'control BIAS > 1 %' rows (fx3__handback.md:77-80) must be signed
+          control-vs-shipped shifts (D-a floor). Owner: whoever scripts W3 (gq2_ writes the rows).
         w0ca_ DONE ~15:0x (17 of 40 min; RN\handoff_plan\handbacks\w0ca__handback.md): w0ca_1128 c5534d6da (on
         8053e666a, pushed), comments only: already tagged (targetHistoryLength 4, camera-only DiMotion, S6 at
         rt_di_shade.hlsl:24-26, 8192 DI offsets); new tags RabSampler (dev:), RegirLights 128 cap (guard inert),
