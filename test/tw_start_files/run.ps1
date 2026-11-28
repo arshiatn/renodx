@@ -11,7 +11,7 @@ $testBuild = Join-Path $(if ($OutDir) { $OutDir } else { Join-Path $repairRoot '
 New-Item -ItemType Directory -Force -Path $testBuild | Out-Null
 Set-Location -LiteralPath $testBuild
 $triple = if ($Architecture -eq 'x86') { 'i686-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
-& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /W4 /I $repairRoot "$testRoot\tests.cpp" /Fe:start_files.exe /link kernel32.lib
+& 'C:\Program Files\LLVM\bin\clang-cl.exe' "--target=$triple" /nologo /std:c++20 /EHsc /O2 /MT /DNOMINMAX /W4 /I $repairRoot "$testRoot\tests.cpp" /Fe:start_files.exe /link kernel32.lib advapi32.lib
 if ($LASTEXITCODE -ne 0) { throw 'Start files test compile failed' }
 & (Join-Path $testBuild 'start_files.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Start files test failed' }

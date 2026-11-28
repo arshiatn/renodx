@@ -16,6 +16,7 @@
 #include <atomic>
 #include <bit>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -1166,7 +1167,7 @@ std::atomic_bool framebridge_on = false;
 std::atomic_bool waving_flags_on = false;
 // The CPU page's start files (Sol's settings.txt, the Engine Performance Fix's heapfix.ini; their owners read them only
 // at the game's start): their rows as this start read them (the first present) and as the files are now (read again
-// when the page opens and after each write of the page).
+// when the page opens and after each write attempt of the page).
 struct StartFileRows {
   std::filesystem::path exe_dir;  // empty before the first present: no rows
   std::optional<std::array<uint16_t, 4>> loader_version;
@@ -1176,7 +1177,12 @@ struct StartFileRows {
   std::vector<twattila::start_files::FileRow> settings_now;
   std::vector<twattila::start_files::FileRow> fix_now;
   bool fix_file_found = false;
-  int drawn_frame = -2;  // the ImGui frame the page last drew the rows in
+  // The row whose last write failed (its key; empty: none) and its file, until the page opens again.
+  bool unsaved_fix = false;
+  std::string unsaved_section;
+  std::string unsaved_key;
+  int drawn_frame = -2;  // the ImGui frame the page last drew the rows in, and when
+  std::chrono::steady_clock::time_point drawn_at;
 };
 struct {
   std::shared_mutex mutex;
@@ -2369,14 +2375,16 @@ void OnPresent(reshade::api::command_queue* queue, reshade::api::swapchain* swap
         // in at the next start); the loader is the exe (its file version gates Task Waits).
         const bool fix_installed =
             fix_loaded || std::filesystem::exists(exe_dir / L"plugins\\perffix64.dll", error)
-            || std::filesystem::exists(exe_dir / L"..\\..\\..\\workshop\\content\\325610\\3824249154\\perffix64.dll", error);
+            || std::filesystem::exists(
+                exe_dir / L"..\\..\\..\\workshop\\content\\325610\\3824249154\\perffix64.dll", error);
         const std::optional<std::array<uint16_t, 4>> loader_version = twattila::ModuleFileVersion(nullptr);
         // Read before the lock: the page draws under it.
         StartFileRows applied = {
             .exe_dir = exe_dir,
             .loader_version = loader_version,
             .fix_installed = fix_installed,
-            .settings_applied = twattila::start_files::StartWindowRows(exe_dir, loader_version, fix_installed),
+            .settings_applied = twattila::start_files::StartWindowRows(exe_dir, loader_version, fix_installed,
+                                                                       twattila::dlaa_bridge::HelperInstalled()),
             .fix_applied = twattila::start_files::FixRows(exe_dir / L"heapfix.ini"),
         };
         const std::unique_lock lock(start_files_state.mutex);
@@ -3828,10 +3836,10 @@ void ConfigureAddon() {
                             },
                         },
                     });
-    // The Engine Performance Fix's heapfix.ini and Sol's settings.txt (C8 plan 8; semi-automatic, ATN 11-27): one custom
-    // row per file draws its rows (start_files.hpp), as the file is now: the file's other keys are known only once it is
-    // read. A row writes its file only on a player's change; its owner reads it at the next start, so each row whose
-    // reading differs from this start's has the restart note.
+    // The Engine Performance Fix's heapfix.ini and Sol's settings.txt (C8 plan 8; semi-automatic, ATN 11-27): one
+    // custom row per file draws its rows (start_files.hpp), as the file is now: the file's other keys are known only
+    // once it is read. A row writes its file only on a player's change; its owner reads it at the next start, so each
+    // row whose reading differs from this start's has the restart note.
     constexpr const char* FIX_SECTION = "Engine Performance Fix (heapfix.ini, restart the game)";
     constexpr const char* START_WINDOW_SECTION = "64-bit Attila Start Window (settings.txt, restart the game)";
     const auto draw_start_file = [](bool fix) {
@@ -3839,37 +3847,44 @@ void ConfigureAddon() {
       const std::unique_lock lock(start_files_state.mutex);
       StartFileRows& rows = start_files_state.rows;
       if (rows.exe_dir.empty()) return;
-      std::error_code error;
-      const auto read_now = [&rows, &error] {
-        rows.settings_now = start_files::StartWindowRows(rows.exe_dir, rows.loader_version, rows.fix_installed);
+      const auto read_now = [&rows] {
+        rows.settings_now = start_files::StartWindowRows(rows.exe_dir, rows.loader_version, rows.fix_installed,
+                                                         twattila::dlaa_bridge::HelperInstalled());
         rows.fix_now = start_files::FixRows(rows.exe_dir / L"heapfix.ini");
+        std::error_code error;
         rows.fix_file_found = std::filesystem::exists(rows.exe_dir / L"heapfix.ini", error);
       };
-      // The page opened (no row drawn last frame): the files again.
+      // The page opened (no row drawn last ImGui frame, or the overlay was closed: ImGui's frames stop then): the
+      // files again.
       const int frame = ImGui::GetFrameCount();
-      if (frame != rows.drawn_frame && frame != rows.drawn_frame + 1) {
+      const auto now_time = std::chrono::steady_clock::now();
+      if ((frame != rows.drawn_frame && frame != rows.drawn_frame + 1)
+          || now_time - rows.drawn_at > std::chrono::milliseconds(500)) {
+        rows.unsaved_key.clear();
         read_now();
       }
       rows.drawn_frame = frame;
+      rows.drawn_at = now_time;
       std::vector<start_files::FileRow>& now = (fix ? rows.fix_now : rows.settings_now);
       const std::vector<start_files::FileRow>& applied = (fix ? rows.fix_applied : rows.settings_applied);
-      const std::string_view file_name = (fix ? "heapfix.ini" : "settings.txt");
+      const char* file_name = (fix ? "heapfix.ini" : "settings.txt");
       if (fix && !rows.fix_file_found) {
         ImGui::TextWrapped("Start the game once with the Engine Performance Fix to make its settings file.");
       }
-      bool written = false;
+      bool attempted = false;
       for (start_files::FileRow& row : now) {
         ImGui::PushID(&row);
-        // FrameBridge's upscaling beside this mod's DLSS and frame generation (the General note's clash).
-        const bool clash = (!fix && row.key == "upscaling" && row.value == 1 && twattila::dlaa_bridge::HelperInstalled());
-        if (clash) {
-          ImGui::PushStyleColor(ImGuiCol_Text, renodx::utils::settings::ImVec4FromHex(twattila::graphics_page::WARNING_TINT));
+        // FrameBridge's upscaling on beside this mod's DLSS and frame generation (design 2.5): Off only.
+        if (row.off_only) {
+          ImGui::PushStyleColor(ImGuiCol_Text,
+                                renodx::utils::settings::ImVec4FromHex(twattila::graphics_page::WARNING_TINT));
         }
         ImGui::BeginDisabled(!row.editable);
         if (row.value < 0) {
           ImGui::LabelText(row.label.c_str(), "%s", (row.text.has_value() ? row.text->c_str() : "default"));
         } else if (row.choices.empty()) {
-          ImGui::SliderInt(row.label.c_str(), &row.value, 1, start_files::FIX_COUNT_MAX, "%d", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::SliderInt(row.label.c_str(), &row.value, 1, start_files::FIX_COUNT_MAX, "%d",
+                           ImGuiSliderFlags_AlwaysClamp);
         } else {
           ImGui::SliderInt(row.label.c_str(), &row.value, 0, static_cast<int>(row.choices.size()) - 1,
                            row.choices[row.value].label, ImGuiSliderFlags_NoInput);
@@ -3879,18 +3894,31 @@ void ConfigureAddon() {
         }
         const bool edited = ImGui::IsItemDeactivatedAfterEdit();
         ImGui::EndDisabled();
-        if (clash) {
+        if (row.off_only) {
+          ImGui::TextWrapped(
+              "FrameBridge upscaling is on: it clashes with this mod's DLSS and frame generation. Set it to Off.");
           ImGui::PopStyleColor();
         }
         if (edited && row.editable) {
-          if (start_files::Write(rows.exe_dir / file_name, row)) {
-            renodx::utils::log::i(std::format("[Total War] 64-bit Attila: CPU page: {} written in {} (used from the next start)",
-                                              row.key, file_name));
-            written = true;
+          if (start_files::Write(rows.exe_dir / file_name,
+                                 (fix ? start_files::FileKind::HEAPFIX_INI : start_files::FileKind::SETTINGS_TXT), row)) {
+            renodx::utils::log::i(std::format(
+                "[Total War] 64-bit Attila: CPU page: {} written in {} (used from the next start)", row.key, file_name));
+            rows.unsaved_key.clear();
           } else {
-            renodx::utils::log::w(std::format("[Total War] 64-bit Attila: CPU page: could not write {} in {} (error {})",
-                                              row.key, file_name, GetLastError()));
+            renodx::utils::log::w(std::format("[Total War] 64-bit Attila: CPU page: could not write {} in {}{}", row.key,
+                                              file_name,
+                                              (fix ? std::format(" (error {})", GetLastError()) : std::string())));
+            rows.unsaved_fix = fix;
+            rows.unsaved_section = row.section;
+            rows.unsaved_key = row.key;
           }
+          attempted = true;
+        }
+        if (fix == rows.unsaved_fix && row.key == rows.unsaved_key && row.section == rows.unsaved_section) {
+          ImGui::PushStyleColor(ImGuiCol_Text, renodx::utils::settings::ImVec4FromHex(RESTART_TINT));
+          ImGui::TextWrapped("Could not save: %s is in use or read-only.", file_name);
+          ImGui::PopStyleColor();
         }
         if (const auto start = std::ranges::find_if(applied, [&row](const start_files::FileRow& candidate) {
               return candidate.section == row.section && candidate.key == row.key;
@@ -3902,8 +3930,9 @@ void ConfigureAddon() {
         }
         ImGui::PopID();
       }
-      // After the loop: the rows drawn this frame stay valid while it runs.
-      if (written) {
+      // After the loop (the rows drawn this frame stay valid while it runs): the file as the write left it, written or
+      // not.
+      if (attempted) {
         read_now();
       }
     };
@@ -3945,9 +3974,10 @@ void ConfigureAddon() {
     // The other pages as on 32-bit, then the CPU page's rows (its three sections) on page 3 (AssignPages' wrap for a
     // page of its own).
     std::vector<renodx::utils::settings::Setting*> paged_rows;
-    std::ranges::copy_if(settings, std::back_inserter(paged_rows), [&cpu_rows](const renodx::utils::settings::Setting* setting) {
-      return std::ranges::find(cpu_rows, setting) == cpu_rows.end();
-    });
+    std::ranges::copy_if(settings, std::back_inserter(paged_rows),
+                         [&cpu_rows](const renodx::utils::settings::Setting* setting) {
+                           return std::ranges::find(cpu_rows, setting) == cpu_rows.end();
+                         });
     twattila::feature_settings::AssignPages(&paged_rows, &current_settings_mode, engine_sections, twattila::graphics_page::Sections());
     for (auto* setting : cpu_rows) {
       setting->is_visible = [mode = &current_settings_mode, shown = setting->is_visible] {

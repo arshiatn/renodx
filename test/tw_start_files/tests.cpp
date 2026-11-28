@@ -17,7 +17,13 @@
 //    changes only that key); heapfix.ini's table keys (the file's section, defaults, read-only without a known
 //    section), its other keys, flag_wave left to Sol's row, comments and order kept by a write, the file absent ->
 //    read-only.
+// 6. The fix round (cp_ 11-28): a settings.txt that cannot be read to its end is never written (held with share mode 0;
+//    reading denied by its ACL while it could still be replaced; then: written), a 0x1A byte is a line like any other; FrameBridge's
+//    upscaling beside our helper (Off: read-only; On: Off only, never On written; read-only while perf_fix reads off;
+//    no helper: as before); heapfix.ini not written without the file or when it already reads the value (a missing
+//    key's default, a key with the value).
 #include <windows.h>
+#include <aclapi.h>
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -71,7 +77,7 @@ int main() {
   // The rows of a settings.txt holding `text` (loader 1.3.28, the fix installed).
   const auto rows_of = [&](std::string_view text) {
     WriteAll(settings, text);
-    return start_files::StartWindowRows(exe_dir, loader_1328, true);
+    return start_files::StartWindowRows(exe_dir, loader_1328, true, false);
   };
   const auto value_of = [&](std::string_view text, std::string_view key) {
     const std::vector<start_files::FileRow> rows = rows_of(text);
@@ -90,11 +96,11 @@ int main() {
   CHECK(value_of("flag_wave=0\n", "flag_wave") == 0 && value_of("flag_wave=\n", "flag_wave") == 1);
   CHECK(value_of("shadow_refresh=12\n", "shadow_refresh") == 0 && value_of("shadow_refresh=4\n", "shadow_refresh") == 3);
   CHECK(value_of("shadow_refresh=0\n", "shadow_refresh") == 0 && value_of("shadow_refresh=2\n", "shadow_refresh") == 1);
-  // INTERFACE_SIZES: 0 = 100%, 1 = Auto, 3 = 150%.
-  CHECK(value_of("interface_size=AUTO\n", "interface_size") == 1 && value_of("interface_size=130\n", "interface_size") == 1);
-  CHECK(value_of("interface_size=150\n", "interface_size") == 3 && value_of("interface_size=100\n", "interface_size") == 0);
-  CHECK(value_of("interface_size=Like1080p\n", "interface_size") == 1 && value_of("x=1\n", "interface_size") == 1);
-  CHECK(value_of("interface_size=150%\n", "interface_size") == 3 && value_of("interface_size=-150\n", "interface_size") == 1);
+  // INTERFACE_SIZES: 0 = Auto, 1 = 100%, 3 = 150%.
+  CHECK(value_of("interface_size=AUTO\n", "interface_size") == 0 && value_of("interface_size=130\n", "interface_size") == 0);
+  CHECK(value_of("interface_size=150\n", "interface_size") == 3 && value_of("interface_size=100\n", "interface_size") == 1);
+  CHECK(value_of("interface_size=Like1080p\n", "interface_size") == 0 && value_of("x=1\n", "interface_size") == 0);
+  CHECK(value_of("interface_size=150%\n", "interface_size") == 3 && value_of("interface_size=-150\n", "interface_size") == 0);
   // Upscaling with no line: FrameBridge's own settings, any addon=off line in either case.
   WriteAll(game / "FrameBridge" / "settings.txt", "frame_generation=on\nADDON=OFF\naddon=on\n");
   CHECK(value_of("x=1\n", "upscaling") == 0);
@@ -112,7 +118,7 @@ int main() {
   // The fix's rows only while it is installed; its parts read-only while perf_fix reads off.
   {
     WriteAll(settings, "perf_fix=1\n");
-    const std::vector<start_files::FileRow> without_fix = start_files::StartWindowRows(exe_dir, loader_1328, false);
+    const std::vector<start_files::FileRow> without_fix = start_files::StartWindowRows(exe_dir, loader_1328, false, false);
     CHECK(Find(without_fix, "perf_fix") == nullptr && Find(without_fix, "flag_wave") == nullptr
           && Find(without_fix, "upscaling") == nullptr && Find(without_fix, "interface_size") != nullptr);
     const std::vector<start_files::FileRow> fix_off = rows_of("perf_fix=0\n");
@@ -132,14 +138,14 @@ int main() {
     WriteAll(settings, "task_waits=fast\n");
     // Hidden: no row (so nothing can write it), and not listed as another key either.
     const auto task_waits_shown = [&](const std::optional<std::array<uint16_t, 4>>& version) {
-      const std::vector<start_files::FileRow> rows = start_files::StartWindowRows(exe_dir, version, true);
+      const std::vector<start_files::FileRow> rows = start_files::StartWindowRows(exe_dir, version, true, false);
       return std::ranges::count(rows, std::string("task_waits"), &start_files::FileRow::key) == 1;
     };
     CHECK(!task_waits_shown(std::array<uint16_t, 4>{1, 3, 20, 0}) && !task_waits_shown(std::array<uint16_t, 4>{1, 3, 23, 9}));
     CHECK(task_waits_shown(std::array<uint16_t, 4>{1, 3, 24, 0}) && task_waits_shown(loader_1328));
     CHECK(!task_waits_shown(std::nullopt));
     const std::vector<start_files::FileRow> old_loader =
-        start_files::StartWindowRows(exe_dir, std::array<uint16_t, 4>{1, 3, 20, 0}, true);
+        start_files::StartWindowRows(exe_dir, std::array<uint16_t, 4>{1, 3, 20, 0}, true, false);
     CHECK(Find(old_loader, "interface_size") != nullptr && Find(old_loader, "texture_uploads") != nullptr);
   }
   std::printf("2. loader gate ok\n");
@@ -150,7 +156,7 @@ int main() {
     const auto row = std::ranges::find(rows, key, &start_files::FileRow::key);
     if (row == rows.end()) return false;
     row->value = value;
-    return start_files::Write(settings, *row);
+    return start_files::Write(settings, start_files::FileKind::SETTINGS_TXT, *row);
   };
   CHECK(write("A=1\n\nTask_Waits=game\nx=2\r\nTASK_WAITS=Fast\ntask_waitsx=1\n", "task_waits", 1));
   CHECK(ReadAll(settings) == "A=1\r\nx=2\r\ntask_waitsx=1\r\ntask_waits=fast\r\n");
@@ -164,30 +170,30 @@ int main() {
   CHECK(write("x=1\n", "texture_uploads", 0) && ReadAll(settings).ends_with("texture_uploads=rows\r\n"));
   CHECK(value_of(ReadAll(settings), "texture_uploads") == 0);
   CHECK(write("x=1\n", "texture_uploads", 1) && value_of(ReadAll(settings), "texture_uploads") == 1);
-  CHECK(write("x=1\n", "interface_size", 1) && ReadAll(settings).ends_with("interface_size=like1080p\r\n"));
+  CHECK(write("x=1\n", "interface_size", 0) && ReadAll(settings).ends_with("interface_size=like1080p\r\n"));
   CHECK(write("x=1\n", "shadow_refresh", 2) && ReadAll(settings).ends_with("shadow_refresh=3\r\n"));
   CHECK(value_of(ReadAll(settings), "shadow_refresh") == 2);
   CHECK(write("x=1\n", "perf_fix", 0) && ReadAll(settings).ends_with("perf_fix=0\r\n") && value_of(ReadAll(settings), "perf_fix") == 0);
   // No file yet: made (as Sol's settings_put).
   std::filesystem::remove(settings);
   {
-    std::vector<start_files::FileRow> rows = start_files::StartWindowRows(exe_dir, loader_1328, true);
+    std::vector<start_files::FileRow> rows = start_files::StartWindowRows(exe_dir, loader_1328, true, false);
     start_files::FileRow* row = &*std::ranges::find(rows, std::string("task_waits"), &start_files::FileRow::key);
     row->value = 1;
-    CHECK(start_files::Write(settings, *row) && ReadAll(settings) == "task_waits=fast\r\n");
+    CHECK(start_files::Write(settings, start_files::FileKind::SETTINGS_TXT, *row)
+          && ReadAll(settings) == "task_waits=fast\r\n");
   }
   // A file that cannot be replaced: refused, the file as it was, no .tmp kept over it.
   WriteAll(settings, "task_waits=game\n");
   SetFileAttributesW(settings.c_str(), FILE_ATTRIBUTE_READONLY);
   {
-    std::vector<start_files::FileRow> rows = start_files::StartWindowRows(exe_dir, loader_1328, true);
+    std::vector<start_files::FileRow> rows = start_files::StartWindowRows(exe_dir, loader_1328, true, false);
     start_files::FileRow* row = &*std::ranges::find(rows, std::string("task_waits"), &start_files::FileRow::key);
     row->value = 1;
-    CHECK(!start_files::Write(settings, *row));
+    CHECK(!start_files::Write(settings, start_files::FileKind::SETTINGS_TXT, *row));
   }
   SetFileAttributesW(settings.c_str(), FILE_ATTRIBUTE_NORMAL);
-  CHECK(ReadAll(settings) == "task_waits=game\n");
-  std::filesystem::remove(exe_dir / "settings.txt.tmp");
+  CHECK(ReadAll(settings) == "task_waits=game\n" && !std::filesystem::exists(exe_dir / "settings.txt.tmp"));
   std::printf("3. Sol's write ok\n");
 
   // 4. Pending notes compare readings.
@@ -257,23 +263,23 @@ int main() {
     rows = start_files::FixRows(ini);
     start_files::FileRow culling = *Find(rows, "culling");
     culling.value = 0;
-    CHECK(start_files::Write(ini, culling));
+    CHECK(start_files::Write(ini, start_files::FileKind::HEAPFIX_INI, culling));
     std::string expected = text;
     expected.replace(expected.find("culling=Strong"), 14, "culling=off");
     CHECK(ReadAll(ini) == expected);
     start_files::FileRow count = *Find(rows, "menu_textures_kept");
     count.value = 512;
-    CHECK(start_files::Write(ini, count));
+    CHECK(start_files::Write(ini, start_files::FileKind::HEAPFIX_INI, count));
     expected.replace(expected.find("menu_textures_kept=64"), 21, "menu_textures_kept=512");
     CHECK(ReadAll(ini) == expected);
     start_files::FileRow added = *Find(rows, "small_object_pools");
     added.value = 0;
-    CHECK(start_files::Write(ini, added));
+    CHECK(start_files::Write(ini, start_files::FileKind::HEAPFIX_INI, added));
     expected.replace(expected.find("odd=yes\r\n") + 9, 0, "small_object_pools=0\r\n");
     CHECK(ReadAll(ini) == expected);
     start_files::FileRow new_fix = *Find(rows, "new_fix");
     new_fix.value = 0;
-    CHECK(start_files::Write(ini, new_fix));
+    CHECK(start_files::Write(ini, start_files::FileKind::HEAPFIX_INI, new_fix));
     expected.replace(expected.find("new_fix=1"), 9, "new_fix=0");
     CHECK(ReadAll(ini) == expected);
     rows = start_files::FixRows(ini);
@@ -293,6 +299,125 @@ int main() {
     CHECK(!std::filesystem::exists(ini));
   }
   std::printf("5b. heapfix.ini ok\n");
+
+  // 6. The fix round: a settings.txt not read to its end is never written.
+  {
+    const std::string text = "graphics=opengl_fallback\r\ntask_waits=game\r\ntheme=dark\r\n";
+    // Held by another program with share mode 0 (nothing can open it, nor replace it), then reading denied by an ACL
+    // entry while the file can still be replaced (only the refusal keeps it).
+    for (const bool acl : {false, true}) {
+      std::vector<start_files::FileRow> rows = rows_of(text);
+      start_files::FileRow* row = &*std::ranges::find(rows, std::string("task_waits"), &start_files::FileRow::key);
+      row->value = 1;
+      HANDLE hold = INVALID_HANDLE_VALUE;
+      PACL old_acl = nullptr;
+      PSECURITY_DESCRIPTOR old_security = nullptr;
+      if (acl) {
+        CHECK(GetNamedSecurityInfoW(settings.c_str(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr,
+                                    &old_acl, nullptr, &old_security)
+              == ERROR_SUCCESS);
+        std::array<BYTE, SECURITY_MAX_SID_SIZE> everyone = {};
+        DWORD everyone_size = static_cast<DWORD>(everyone.size());
+        CHECK(CreateWellKnownSid(WinWorldSid, nullptr, everyone.data(), &everyone_size));
+        EXPLICIT_ACCESS_W deny = {
+            .grfAccessPermissions = FILE_READ_DATA,
+            .grfAccessMode = DENY_ACCESS,
+            .grfInheritance = NO_INHERITANCE,
+            .Trustee = {.pMultipleTrustee = nullptr, .MultipleTrusteeOperation = NO_MULTIPLE_TRUSTEE,
+                        .TrusteeForm = TRUSTEE_IS_SID, .TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP,
+                        .ptstrName = reinterpret_cast<LPWSTR>(everyone.data())},
+        };
+        PACL denied = nullptr;
+        CHECK(SetEntriesInAclW(1, &deny, old_acl, &denied) == ERROR_SUCCESS);
+        CHECK(SetNamedSecurityInfoW(const_cast<LPWSTR>(settings.c_str()), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+                                    nullptr, nullptr, denied, nullptr)
+              == ERROR_SUCCESS);
+        LocalFree(denied);
+        CHECK(!std::ifstream(settings).is_open());
+      } else {
+        hold = CreateFileW(settings.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+        CHECK(hold != INVALID_HANDLE_VALUE);
+      }
+      // Read while it cannot be: every row read-only.
+      CHECK(std::ranges::none_of(start_files::StartWindowRows(exe_dir, loader_1328, true, false),
+                                 &start_files::FileRow::editable));
+      const bool written = start_files::Write(settings, start_files::FileKind::SETTINGS_TXT, *row);
+      if (acl) {
+        // The file's own ACL back (on a replaced file: its new one, which reads anyway).
+        SetNamedSecurityInfoW(const_cast<LPWSTR>(settings.c_str()), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr,
+                              nullptr, old_acl, nullptr);
+        LocalFree(old_security);
+      } else {
+        CloseHandle(hold);
+      }
+      CHECK(!written && ReadAll(settings) == text && !std::filesystem::exists(exe_dir / "settings.txt.tmp"));
+      // Readable again: written, every other line kept.
+      CHECK(start_files::Write(settings, start_files::FileKind::SETTINGS_TXT, *row)
+            && ReadAll(settings) == "graphics=opengl_fallback\r\ntheme=dark\r\ntask_waits=fast\r\n");
+    }
+    // A 0x1A byte (a text-mode reader's end of file) is a line like any other.
+    CHECK(write("a=1\n\x1a\nb=2\n", "task_waits", 1) && ReadAll(settings) == "a=1\r\n\x1a\r\nb=2\r\ntask_waits=fast\r\n");
+  }
+  std::printf("6a. unreadable settings.txt ok\n");
+
+  // 6. FrameBridge's upscaling beside our helper: never written On.
+  {
+    const auto upscaling = [&](std::string_view text, bool helper) {
+      WriteAll(settings, text);
+      const std::vector<start_files::FileRow> rows = start_files::StartWindowRows(exe_dir, loader_1328, true, helper);
+      return *Find(rows, "upscaling");
+    };
+    // Helper + Off: read-only, no warning.
+    start_files::FileRow row = upscaling("perf_fix=1\nupscaling=0\n", true);
+    CHECK(row.value == 0 && !row.editable && !row.off_only && row.tooltip.find("Off only") != std::string::npos);
+    // Helper + On: the warning, Off only; moved back to On nothing is written.
+    row = upscaling("perf_fix=1\nupscaling=yes\n", true);
+    CHECK(row.value == 1 && row.editable && row.off_only);
+    CHECK(start_files::Write(settings, start_files::FileKind::SETTINGS_TXT, row)
+          && ReadAll(settings) == "perf_fix=1\nupscaling=yes\n");
+    row.value = 0;
+    CHECK(start_files::Write(settings, start_files::FileKind::SETTINGS_TXT, row)
+          && ReadAll(settings) == "perf_fix=1\r\nupscaling=0\r\n");
+    CHECK(!upscaling(ReadAll(settings), true).editable);
+    // Helper + On through FrameBridge's own file (no line): Off only too.
+    WriteAll(game / "FrameBridge" / "settings.txt", "addon=on\n");
+    row = upscaling("perf_fix=1\n", true);
+    CHECK(row.value == 1 && row.editable && row.off_only);
+    std::filesystem::remove(game / "FrameBridge" / "settings.txt");
+    // Helper + On while perf_fix reads off: read-only, no warning.
+    row = upscaling("perf_fix=0\nupscaling=1\n", true);
+    CHECK(row.value == 1 && !row.editable && !row.off_only);
+    // No helper: as before, both ways.
+    row = upscaling("perf_fix=1\nupscaling=0\n", false);
+    CHECK(row.editable && !row.off_only && row.tooltip.find("Off only") == std::string::npos);
+    row.value = 1;
+    CHECK(start_files::Write(settings, start_files::FileKind::SETTINGS_TXT, row)
+          && ReadAll(settings) == "perf_fix=1\r\nupscaling=1\r\n");
+  }
+  std::printf("6b. upscaling beside our helper ok\n");
+
+  // 6. heapfix.ini: no write without the file, none when it already reads the value.
+  {
+    const std::filesystem::path ini = exe_dir / "heapfix.ini";
+    const std::string text = "[fixes]\r\nmemory_allocator=0\r\n[tuning]\r\nculling=Strong\r\n";
+    WriteAll(ini, text);
+    const std::vector<start_files::FileRow> rows = start_files::FixRows(ini);
+    // A missing key dragged back to its default: not added.
+    start_files::FileRow pools = *Find(rows, "small_object_pools");
+    CHECK(pools.value == 1 && start_files::Write(ini, start_files::FileKind::HEAPFIX_INI, pools) && ReadAll(ini) == text);
+    // The file's own reading (Strong): no write, so a read-only file is not even tried; another value is.
+    SetFileAttributesW(ini.c_str(), FILE_ATTRIBUTE_READONLY);
+    start_files::FileRow culling = *Find(rows, "culling");
+    CHECK(culling.value == 3 && start_files::Write(ini, start_files::FileKind::HEAPFIX_INI, culling));
+    culling.value = 0;
+    CHECK(!start_files::Write(ini, start_files::FileKind::HEAPFIX_INI, culling));
+    SetFileAttributesW(ini.c_str(), FILE_ATTRIBUTE_NORMAL);
+    CHECK(ReadAll(ini) == text);
+    // Gone after the page read it: refused, not made.
+    std::filesystem::remove(ini);
+    CHECK(!start_files::Write(ini, start_files::FileKind::HEAPFIX_INI, culling) && !std::filesystem::exists(ini));
+  }
+  std::printf("6c. heapfix.ini writes ok\n");
 
   std::filesystem::remove_all(root);
   std::printf("tw_start_files: PASS\n");

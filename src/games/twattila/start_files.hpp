@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cctype>
 #include <charconv>
 #include <cstdint>
@@ -34,14 +35,18 @@ inline bool StartsWithNoCase(std::string_view text, std::string_view prefix) {
             });
 }
 
-// Each line of `file` in order, cut at its first CR or LF, to `visit` (none: no such file).
+// Each line of `file` in order, cut at its first CR or LF (Sol's strcspn, S28 picker.c:83), to `visit` (none: no such
+// file). Binary: a 0x1A byte does not end the file. False: the file is there but was not read to its end (not opened,
+// for example held by another program, or a read error).
 template <typename Visit>
-void ForEachLine(const std::filesystem::path& file, Visit visit) {
-  std::ifstream stream(file);
+bool ForEachLine(const std::filesystem::path& file, Visit visit) {
+  std::ifstream stream(file, std::ios::binary);
   for (std::string line; std::getline(stream, line);) {
     line.resize(std::min(line.find('\r'), line.size()));
     visit(std::string_view(line));
   }
+  std::error_code error;
+  return (stream.is_open() ? !stream.bad() : !std::filesystem::exists(file, error) && !error);
 }
 
 // Sol's name test (S28 picker.c:63, :82): the line starts with the name in either case, then '='.
@@ -98,7 +103,8 @@ enum class StartTest : uint8_t {
   UPSCALING,
 };
 
-// The start window has the Engine Performance Fix's boxes only while the fix is installed (S28 picker.c:1267-1283).
+// The Engine Performance Fix's start window boxes: Sol shows them greyed while the fix is not installed (S28
+// picker.c:1277-1283); the page leaves them out then (nothing they could do).
 enum class FixPart : uint8_t {
   NONE,
   SWITCH,  // perf_fix
@@ -108,7 +114,7 @@ enum class FixPart : uint8_t {
 struct StartKey {
   const char* name = nullptr;  // as Sol writes it
   const char* label = nullptr;
-  const char* tooltip = nullptr;
+  const char* tooltip = "";
   StartTest test = StartTest::OFF_IF_ZERO;
   std::span<const Choice> choices;
   FixPart fix_part = FixPart::NONE;
@@ -116,11 +122,12 @@ struct StartKey {
   std::array<uint16_t, 4> first_loader = {};
 };
 
-// The start window's boxes (S28 picker.c:29-31, :1257) and what it writes (:103-107, :1398-1405); task_waits and
-// texture_uploads have no box: "fast" is Sol's word, "game" and "rows" are his "anything else".
+// The start window's boxes (S28 picker.c:29-31, :1257) and what it writes (:103-107, :1398-1405), Auto first (the page
+// writes values, not Sol's box order); task_waits and texture_uploads have no box: "fast" is Sol's word, "game" and
+// "rows" are his "anything else".
 inline constexpr std::array<Choice, 7> INTERFACE_SIZES = {{
-    {.label = "100%%", .value = "100"},
     {.label = "Auto (like 1080p)", .value = "like1080p"},
+    {.label = "100%%", .value = "100"},
     {.label = "125%%", .value = "125"},
     {.label = "150%%", .value = "150"},
     {.label = "175%%", .value = "175"},
@@ -133,7 +140,8 @@ inline constexpr std::array<Choice, 4> SHADOW_REFRESHES = {{
     {.label = "Every 3rd frame", .value = "3"},
     {.label = "Every 4th frame", .value = "4"},
 }};
-inline constexpr std::array<Choice, 2> TASK_WAITS = {{{.label = "Off", .value = "game"}, {.label = "On", .value = "fast"}}};
+inline constexpr std::array<Choice, 2> TASK_WAITS = {
+    {{.label = "Off", .value = "game"}, {.label = "On", .value = "fast"}}};
 inline constexpr std::array<Choice, 2> TEXTURE_UPLOADS = {
     {{.label = "Changed Rows", .value = "rows"}, {.label = "Whole Textures", .value = "full"}}};
 
@@ -190,17 +198,18 @@ inline constexpr std::array<StartKey, 7> START_KEYS = {{
     {
         .name = "upscaling",
         .label = "Upscaling (FrameBridge)",
-        .tooltip = "FrameBridge's upscaling and frame generation. It clashes with this mod's DLSS and frame generation.",
+        .tooltip = "FrameBridge's upscaling and frame generation.",
         .test = StartTest::UPSCALING,
         .choices = OFF_ON,
         .fix_part = FixPart::PART,
     },
 }};
 
-// settings.txt keys never shown or written: the graphics route (a wrong value can leave a PC on OpenGL) and the start
-// window's other boxes (not CPU).
-inline constexpr std::array<std::string_view, 7> START_KEYS_NOT_SHOWN = {
-    "graphics", "dx11_mode", "cursor_lock", "show_fps", "theme", "texture_sharpness", "discord_button"};
+// settings.txt keys never shown or written: the graphics route (a wrong value can leave a PC on OpenGL), the start
+// window's other boxes and the crash report offer (S28 crash_send.inc:165; not CPU).
+inline constexpr std::array<std::string_view, 8> START_KEYS_NOT_SHOWN = {
+    "graphics", "dx11_mode", "cursor_lock", "show_fps", "theme", "texture_sharpness", "discord_button",
+    "crash_reports"};
 
 // How a heapfix.ini value reads on the page (E: the fix's outputs do not say how it reads its values).
 enum class FixValue : uint8_t {
@@ -276,6 +285,9 @@ struct FileRow {
   int value = -1;                   // a choice's index or the count; -1: no choice fits the file's value
   std::optional<std::string> text;  // the file's value; none: not in the file
   bool editable = false;
+  // Writes only its first choice (Off): FrameBridge's upscaling while on beside our helper (ATN: "FrameBridge shown
+  // forced off with our helper").
+  bool off_only = false;
 
   // The same reading as `other` (the pending note: the file now against this start's): another spelling of the same
   // choice reads the same, a value no choice fits by its text.
@@ -301,16 +313,21 @@ inline auto NamedLike(std::string_view name) {
 // <exe dir>\settings.txt's rows: the keys of START_KEYS the running loader reads (`loader_version`: attila64.exe's
 // file version; the fix's three only while it is installed, Upscaling only with FrameBridge, as the start window),
 // each as Sol's loader reads it, then every other key of the file but START_KEYS_NOT_SHOWN, in the file's order.
+// `helper_installed` (this mod's DLSS / frame generation helper): Upscaling never goes on (read-only while off, Off
+// only while on). A file there but not readable: every row read-only.
 inline std::vector<FileRow> StartWindowRows(const std::filesystem::path& exe_dir,
                                             const std::optional<std::array<uint16_t, 4>>& loader_version,
-                                            bool fix_installed) {
+                                            bool fix_installed, bool helper_installed) {
   const std::filesystem::path file = exe_dir / L"settings.txt";
+  // Not read to its end (held by another program): every row read-only (Write refuses it too).
+  const bool readable = ForEachLine(file, [](std::string_view) {});
   // Sol's framebridge_available (S28 picker.c:236-251): helper64.exe in <exe dir>\..\FrameBridge or the Workshop copy
   // (the loader copies it in at the next start).
   std::error_code error;
   const bool framebridge_installed =
       std::filesystem::exists(exe_dir / L"..\\FrameBridge\\helper64.exe", error)
-      || std::filesystem::exists(exe_dir / L"..\\..\\..\\workshop\\content\\325610\\3828791891\\FrameBridge\\helper64.exe", error);
+      || std::filesystem::exists(
+          exe_dir / L"..\\..\\..\\workshop\\content\\325610\\3828791891\\FrameBridge\\helper64.exe", error);
   std::vector<FileRow> rows;
   bool fix_on = true;
   for (const StartKey& key : START_KEYS) {
@@ -359,15 +376,22 @@ inline std::vector<FileRow> StartWindowRows(const std::filesystem::path& exe_dir
     if (key.fix_part == FixPart::SWITCH) {
       fix_on = (choice == 1);
     }
+    const bool editable = (readable && (key.fix_part != FixPart::PART || fix_on));
+    const bool beside_helper = (key.test == StartTest::UPSCALING && helper_installed);
+    std::string tooltip = Tooltip(key.tooltip, text.has_value());
+    if (beside_helper) {
+      tooltip += "\nOff only: it clashes with this mod's DLSS and frame generation.";
+    }
     rows.push_back({
         .section = {},
         .key = key.name,
         .label = key.label,
-        .tooltip = Tooltip(key.tooltip, text.has_value()),
+        .tooltip = std::move(tooltip),
         .choices = key.choices,
         .value = static_cast<int>(choice),
         .text = text,
-        .editable = (key.fix_part != FixPart::PART || fix_on),
+        .editable = (editable && !(beside_helper && choice == 0)),
+        .off_only = (editable && beside_helper && choice == 1),
     });
   }
   // The other keys, each once, as the file first spells them.
@@ -376,7 +400,8 @@ inline std::vector<FileRow> StartWindowRows(const std::filesystem::path& exe_dir
     const std::string_view name = line.substr(0, line.find('='));
     if (name.empty() || name.size() == line.size()) return;
     if (std::ranges::any_of(START_KEYS, NamedLike(name), [](const StartKey& key) { return std::string_view(key.name); })
-        || std::ranges::any_of(START_KEYS_NOT_SHOWN, NamedLike(name)) || std::ranges::any_of(names, NamedLike(name))) {
+        || std::ranges::any_of(START_KEYS_NOT_SHOWN, NamedLike(name))
+        || std::ranges::any_of(names, NamedLike(name))) {
       return;
     }
     names.emplace_back(name);
@@ -393,7 +418,8 @@ inline std::vector<FileRow> StartWindowRows(const std::filesystem::path& exe_dir
         .choices = OFF_ON,
         .value = value,
         .text = std::move(text),
-        .editable = (value >= 0),
+        .editable = (readable && value >= 0),
+        .off_only = false,
     });
   }
   return rows;
@@ -431,7 +457,8 @@ inline std::vector<FileRow> FixRows(const std::filesystem::path& ini) {
   const auto narrow = [](const std::wstring& wide) {
     const int wide_size = static_cast<int>(wide.size());
     std::string text(WideCharToMultiByte(CP_UTF8, 0, wide.data(), wide_size, nullptr, 0, nullptr, nullptr), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, wide.data(), wide_size, text.data(), static_cast<int>(text.size()), nullptr, nullptr);
+    WideCharToMultiByte(CP_UTF8, 0, wide.data(), wide_size, text.data(), static_cast<int>(text.size()), nullptr,
+                        nullptr);
     return text;
   };
   struct Entry {
@@ -484,6 +511,7 @@ inline std::vector<FileRow> FixRows(const std::filesystem::path& ini) {
         .value = value,
         .text = text,
         .editable = (writable && value >= 0),
+        .off_only = false,
     });
   };
   for (const FixKey& key : FIX_KEYS) {
@@ -496,7 +524,8 @@ inline std::vector<FileRow> FixRows(const std::filesystem::path& ini) {
     }
   }
   for (const Entry& entry : entries) {
-    if (std::ranges::any_of(FIX_KEYS, NamedLike(entry.key), [](const FixKey& key) { return std::string_view(key.name); })
+    if (std::ranges::any_of(FIX_KEYS, NamedLike(entry.key),
+                            [](const FixKey& key) { return std::string_view(key.name); })
         || std::ranges::any_of(FIX_KEYS_NOT_SHOWN, NamedLike(entry.key))) {
       continue;
     }
@@ -505,36 +534,60 @@ inline std::vector<FileRow> FixRows(const std::filesystem::path& ini) {
   return rows;
 }
 
-// Writes `row`'s value (row.value: a choice's index or the count) into `file`, its owner's way; false: the write
-// failed. Only a player's change writes, and nothing is ever removed.
-// - settings.txt (row.section empty): Sol's settings_put (S28 picker.c:72-92): no write when the value is already
-//   the same (strcmp); else every non-empty line not naming the key kept in order, `key=value` appended. Sol's own
-//   write keeps 31 lines; this keeps every line. Through settings.txt.tmp, moved over the file, so a reader never sees
-//   half a file.
-// - heapfix.ini: WritePrivateProfileStringW for the one key: every comment and other key kept, the key added to its
-//   section when missing.
-[[nodiscard]] inline bool Write(const std::filesystem::path& file, const FileRow& row) {
+// The two start files, each written its owner's way.
+enum class FileKind : uint8_t {
+  SETTINGS_TXT,  // Sol's format, no sections
+  HEAPFIX_INI,   // the profile API
+};
+
+// Writes `row`'s value (an editable row's: a choice's index or the count) into `file`, its owner's way; false: not
+// written (the file as it was). Only a player's change writes, and no other key is removed. True with nothing written:
+// the file already has the value, or an off-only row was moved back to On.
+// - settings.txt: Sol's settings_put (S28 picker.c:72-92): no write when the value is already the same (strcmp); else
+//   every non-empty line not naming the key kept in order (the key's older lines and empty lines go), `key=value`
+//   appended, each line ended with CRLF as his text-mode fopen "w" writes "\n". Sol's own write keeps 31 lines; this
+//   keeps every line. Refused when the file is there but cannot be read to its end. Through settings.txt.tmp, moved
+//   over the file, so a reader never sees half a file.
+// - heapfix.ini: no write when the file already reads that value (a missing key: its default); refused without the
+//   file (the fix writes it at its first start). Else WritePrivateProfileStringW for the one key: every comment and
+//   other key kept, the key added to its section when missing.
+[[nodiscard]] inline bool Write(const std::filesystem::path& file, FileKind kind, const FileRow& row) {
+  assert(row.editable && row.value >= 0 && (kind == FileKind::SETTINGS_TXT || !row.section.empty()));
+  if (row.off_only && row.value != 0) return true;
   const std::string value = (row.choices.empty() ? std::to_string(row.value) : row.choices[row.value].value);
-  if (row.section.empty()) {
+  if (kind == FileKind::SETTINGS_TXT) {
     if (Value(file, row.key) == value) return true;
     std::vector<std::string> kept;
-    ForEachLine(file, [&](std::string_view line) {
+    const bool read = ForEachLine(file, [&](std::string_view line) {
       if (!line.empty() && !LineNames(line, row.key)) {
         kept.emplace_back(line);
       }
     });
+    if (!read) return false;
     kept.push_back(row.key + "=" + value);
     const std::filesystem::path temporary = file.native() + L".tmp";
-    std::ofstream stream(temporary, std::ios::trunc);
+    std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
     for (const std::string& line : kept) {
-      stream << line << '\n';
+      stream << line << "\r\n";
     }
     stream.close();
-    return !stream.fail() && MoveFileExW(temporary.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING) != FALSE;
+    if (!stream.fail()
+        && MoveFileExW(temporary.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE) {
+      return true;
+    }
+    DeleteFileW(temporary.c_str());
+    return false;
+  }
+  if (GetFileAttributesW(file.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
+  if (std::ranges::any_of(FixRows(file), [&row](const FileRow& now) {
+        return now.section == row.section && now.key == row.key && now.value == row.value;
+      })) {
+    return true;
   }
   const auto widen = [](std::string_view text) {
-    std::wstring wide(MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0), L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), wide.data(), static_cast<int>(wide.size()));
+    const int text_size = static_cast<int>(text.size());
+    std::wstring wide(MultiByteToWideChar(CP_UTF8, 0, text.data(), text_size, nullptr, 0), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.data(), text_size, wide.data(), static_cast<int>(wide.size()));
     return wide;
   };
   return WritePrivateProfileStringW(widen(row.section).c_str(), widen(row.key).c_str(), widen(value).c_str(),
