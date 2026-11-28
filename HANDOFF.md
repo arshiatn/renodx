@@ -18683,6 +18683,11 @@ heading text are in HANDOFF_ARCHIVE.md)
         registration FAILs :817 (the old test PASSed it), no pack-thread clear FAILs :757. amd64 build began 03:50:03
         after F7's 'GPU lock released' 03:49:54. [x] S5a MERGED 03:52 as d9f0cb307 (--no-ff; no file under
         attila64_plugin\ changed, so B7 = no plugin rebuild).
+        [x] B6 03:54: gated amd64 twattila on the main tree at 4cbc8a0a2 exit 0 (scratch\coord_\b6_gated_amd64.log),
+        renodx-twattila.addon64 b756de5c staged into testbin\attila64_present\a3_smoke (dxgi.dll 0cee63f9 + zz_capture
+        fa2515d7 kept); the old 81c42b53 and the stray .bak_p8b_smoke (3d47031a) moved to scratch\coord_\a3_smoke_prev\,
+        nothing deleted. [x] B1: Windows lists the one display (GSM, active; 3840x2160 at 175 %). No agent running.
+        Big batch STARTS with group A's -DryRun.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
