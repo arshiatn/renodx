@@ -733,6 +733,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - S5E NITS (fs5e2_): hex '0x' key parse inherited from Faster Game CPU Code; ~10 d ... | the next attila64_plugin_link
 - E64-RT2C (R3): S5e's batch arm; literals in scratch\s5e_\handback.md (4 cascade ... | next a64_ab writer (apply phase): read the horizon from zz_c
 - J exit crash 0x75f0: confirm from the dump's stack that 0x75f0 in heapfix P 8e8f ... | coord, apply phase (read-only dump reading, no heapfix sourc
+- G-a: re-log the RT status line once the helper's first status arrives (or arm th ... | coord, apply phase (add-on change + gated build + a3_smoke)
+- G-b: root-cause RR Before Tone Mapping not applying at 50 % render scale on 64-b ... | coord, apply phase
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | the W-H2 fix round after reviews
 - SPRITES NEED A CAMERA (bug, spr_ 11-27, scratch\spr_\diagnosis.md): Small Soldie ... | coord (implementer Opus after the Stage B merge)
 - PK8 STAGE B RELEASE STEP (coord, 11-27): step 6's row is hidden until measured l ... | coord
@@ -18881,6 +18883,23 @@ heading text are in HANDOFF_ARCHIVE.md)
         motion reads it); $ADDON_KEYS (hand-checked, source lines) + a KEYS precondition (exit 2, dry runs too).
         fsc4_ (Sonnet High final, scratch\fsc4_\review.md) GO. Coord APPLIED 06:58: live a64_ab.ps1 = bc9cf693...
         (backup .bak_rsc4_20261128_065826); G -DryRun ok, no KEYS line. Group G STARTED again 06:59 (coord_\gG_run3.log).
+        GROUP G DONE 07:52 (ab_runs\20261128_065848_Smoke): 10 / 10 starts exit 0 at 279-292 s, quit line True, 0 CRASH /
+        FATAL, no WER, no hard timeout; E64-dlaa PASS (E11 now right). The 9 RT arms PASS NO on ONE check each, rays DID run:
+        (G-a) 'RT rays ran: a Ray tracing with <effects>: <helper status> line': the add-on's single status line
+        (rt_core.hpp:4652-4677, one timer) fires ~70 s BEFORE the port starts the helper (E64-rt: 07:04:33 'no status
+        from the helper yet'; 'DLAA: starting the helper' 07:05:44; ray tracing ready 07:05:51; NRD SIGMA / REBLUR made;
+        recorder frames 67881 / 68993 with 51 / 43 meshes + 2 NRD denoisers; 'MARK ray tracing capture' in the trace).
+        = a logging gap at the source on the 64-bit port (players' logs say 'no status' too), not dead rays.
+        (G-b) E64-rr50tm O1: with Denoise Before Tone Mapping 1 at 50 %, 'tone mapper draw: Ray Reconstruction on the
+        scene before it' 0 (want >= 1): RR ran (1920 x 1080 -> 3840 x 2160, D3D12) but AFTER the tone mapper; one of
+        anti_aliasing.hpp:1550-1584's early returns at render scale (likely main_view_texture's display-size test on
+        the tone mapper's scene / target, or guides / camera frame) on the port. rr50 (tm 0) right.
+        - [ ] G-a: re-log the RT status line once the helper's first status arrives (or arm the timer at the helper's
+        start) so the 64-bit log shows the real status; then a64_ab's RT line check passes on its own. Owner: coord,
+        apply phase (add-on change + gated build + a3_smoke).
+        - [ ] G-b: root-cause RR Before Tone Mapping not applying at 50 % render scale on 64-bit (which early return;
+        was 32-bit rr50tm ever PASS?), fix at the source. Owner: coord, apply phase.
+        Group H (-R2Kill, E64-rtkill) -DryRun ok, STARTED 07:54 (coord_\gH_run.log).
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
         R3 stays stopped by its RT check until the DI rows land. Owner: coord, GPU lane (with the DI work).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
