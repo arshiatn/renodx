@@ -18507,6 +18507,20 @@ heading text are in HANDOFF_ARCHIVE.md)
         8 deviations (handback.md); coord decides deviation 4 (semi-automatic on settings.txt too) and the
         FrameBridge handling with our helper after the reviews. Reviews rcp_ (Opus xHigh) + fcp_ (Sonnet High), read
         only, STARTED 02:06.
+        fcp_ (5 min) GO WITH CHANGES: M1 an existing settings.txt that cannot be opened / read to its end is written
+        back as the one changed line (start_files.hpp:519-533, ForEachLine :37-45; text mode also stops at 0x1A);
+        S1 the Upscaling tint also while read-only, S2 heapfix write when equal, S3 .tmp left + no write-through, S4
+        first-present read on the present thread (once), S5 assert in Write; 6 NITs. rcp_ (13 min) GO WITH CHANGES:
+        M1 = fcp_ M1 (graphics=opengl_fallback would be lost); M2 with our helper Upscaling can be switched On ->
+        the loader turns FrameBridge on next start (plugins.inc:74, :96-116); S1 no re-read when the overlay opens
+        again, S2 a failed write shows the new value, S3 heapfix Write creates a one-key file if it vanished, S4 the
+        2.5 text missing, S5 crash_reports not in the never-shown list (+ numeric-key risk); 8 NITs. Both: Sol's put
+        rule + read tests exact, loader gate right, 32-bit / twrome2 / thrones / settings_pages.hpp untouched.
+        Coord: deviation 4 ACCEPTED (semi-automatic on settings.txt too, + crash_reports never shown; numeric-key
+        risk = a known limit); M2 follows ATN's own rule 'FrameBridge shown forced off with our helper' (never
+        writes On with our helper; Off only while the file says On; the page never writes by itself).
+        Fix round cp_ (resumed, Opus High, est 30 / 60; scratch\cp_\fix_brief.md: both MUSTs + every SHOULD + NITs,
+        one mutation per MUST) STARTED 02:20. Then a Sonnet final, merge, then S5a (scratch\s5a_\brief.md).
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
