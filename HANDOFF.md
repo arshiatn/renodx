@@ -743,6 +743,8 @@ Rebuild it when boxes change; the boxes themselves are the record.
 - STAGE B NEXT: ATN 11-28 12:2x 'keep it off and have an opus agent design a fix'. ... | coord
 - Batch 3 arms per rsbf_ MUST 1 + SHOULD 3 (ep8, ep8b, ep8, ep8btt8 + ep8b Contact ... | coord -> ATN
 - BATCH 3 (owner: coord; ATN 11-28 14:23): after Stage B + Step Pieces First, one ... | ?
+- ATN D1: 4K reference storage for X08 / J2 / J3 / W3 proofs (~2.2 GB a replicate, ... | ATN
+- fwp_ D2-D5 for later: D2 X08 drop vs re-set if the picture moves; D3 O-HANG (b) ... | coord -> ATN as each comes up
 - P1 (Tales) + P1b (WH3 campaign) in-game confirmation of the FSR metre unit (fxh2 ... | coord (game runs), after the fxh2_1127 merge
 - R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only ... | coord, GPU lane (with the DI work)
 - 0x347F3DD9: 11 draws a frame with dynamic vb0 + vb1 (ps D63DD3C3) on 64-bit only ... | coord, RT-on-64 S3
@@ -19324,6 +19326,25 @@ heading text are in HANDOFF_ARCHIVE.md)
         GPU LANE RULE (ATN 11-28 14:24): max 1 GPU-LOCK agent (proofs / lab / Nsight / timing, one at a time); no-lock
         GPU work (designs, implementers, reviews, builds, offline analysis) in parallel when no files overlap. No
         time-based cuts: in order, as much as we can until Monday 22:00. fwp_ told (SendMessage 14:24).
+        fwp_ DONE 14:37 (17 min; scratch\fwp_\plan.md): reading changed: X51 DONE (pdf_ S6, d41605096; all_plans 2.7
+        line stale); HARNESS_RR_IMAGE jitter fix in source (m1i_), box closes by a run-list grep (gq1_); J2 / J3 = fx4b_'s
+        X10 / X09 GPU gates, never run, harness has no cut-out box scene; fx4b_1127 rebases easily (rt_d3d12.hpp only);
+        judge never shown to fail at 4K -> J0 before every judge-scored job; W3's ten 4K proofs never ran (after X08);
+        X38 = every helper game's DLSS SR (4K harness proof, not Tales); X07 G2 exists (an arm); Q5 smoke caps stay, no
+        census code; W0c partly done (pdi4c_); X20 scope rt_lights. WAVE 1 (no-lock, parallel, own worktrees): w4b2_
+        (X10 / X09 rebase, High), j23p_ (J2 cut-out box scene + J2 / J3 scripts, High), x20_ (X20 helper + IGN row,
+        High), x38_ (X38 + CPU test, Medium), w0ca_ (W0c part a cites, Medium), gq1_ (J0 + X08 + references scripts,
+        Medium); reviews Opus xHigh + Sonnet High per branch. GPU-lock queue (runner gl_, Opus Low, one job at a time):
+        J0 -> J2 -> J3 -> X08 -> X20 NV9 -> X38. Wave 2 (path_ rt_path: X08 rework, X13, X07, W0c; trace_ rt_d3d12 /
+        build.ps1: O-HANG (a), W0c; scene_ rt_scene / rt_trace: Q5 TRACE_NEAREST, smoke comments, IGN sites; tails),
+        wave 3 Q5 census, wave 4 Q5 source fixes; game-batch lines GB1 (32-bit recorder: forest, low-sun grass,
+        burning city night + S4 siege), GB2 Tales (P1, X40, X38), GB3 WH3 (P1b), GB4 64-bit RT (X09 / X10 looks).
+        Wave-1 briefs written 14:37 (scratch\<tag>\brief.md = COMMON + block + coord notes).
+        - [ ] ATN D1: 4K reference storage for X08 / J2 / J3 / W3 proofs (~2.2 GB a replicate, ~100-200 GB): raw on D:
+          (fwp_'s pick; D: 455 GB free 14:37) / half precision / stats only. Needed before gl_'s X08 job. Owner: ATN.
+        - [ ] fwp_ D2-D5 for later: D2 X08 drop vs re-set if the picture moves; D3 O-HANG (b) / (c) when ATN is home; D4
+          Q5 row 13 light mask + Steady Torch Shadows default + look rows; D5 anything slower = numbers + suggestion.
+          Owner: coord -> ATN as each comes up.
         G4 dry twin re-run after G1 12:06 ok ('self-test: ok for every arm', -Wpr on start 1). G4 = P17 + WPR 1 (-AB
         -Arms w3 -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log scratch\coord_\b2_G4_run.log) STARTED 12:06.
         G4 PASS 12:13 (7 min, exit 0; ab_runs\20261128_120648_AB): 1 / 1 valid, golden same, E-checks all pass (plugin
