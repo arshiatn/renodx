@@ -19270,6 +19270,14 @@ heading text are in HANDOFF_ARCHIVE.md)
         sets beside the main / render / model threads). Nothing changes until ATN answers.
         G4 dry twin re-run after G1 12:06 ok ('self-test: ok for every arm', -Wpr on start 1). G4 = P17 + WPR 1 (-AB
         -Arms w3 -EnginePlugin -ReShade -PerfFix -Probe full -Wpr, log scratch\coord_\b2_G4_run.log) STARTED 12:06.
+        G4 PASS 12:13 (7 min, exit 0; ab_runs\20261128_120648_AB): 1 / 1 valid, golden same, E-checks all pass (plugin
+        836c5f27), 17 / 17 RENODX_TW_SET rows, 'Fewer Constant Uploads: on.' once, HORIZON PASS from the zz_capture
+        frames picked on log_timed.txt (capture_64577 -> capture_64759, key down + 3.0 s / key up + 11.2 s): row 619 ->
+        355, shift 264 rows (pass >= 64.8) = abe_ Left 2 / rabe_ closed. w3 12.8 fps, window 241.5 s, 7.50 steps / s,
+        slow 96 %, quiet (A8). WPR 1 CAPTURED: Start 12:09:51 (clock_steps 1000) -> Stop 12:11:11 (1600), both exit 0,
+        game window in front 100 % (gate >= 95 %), D:\RenoDX_WPR\attila_wpr_20261128_120648_AB_1_B64P-w3.etl (1.47
+        GB). Capture only, no analysis. PART 1 DONE (G1 / G2 / G4; P16 not needed).
+        rabf_ (Opus xHigh review of patch f, scratch\rabf_\brief.md, est 25 / 50) STARTED 12:14.
         - [ ] patch f: Opus xHigh review -> Sonnet High final -> coord applies (.bak_abf_<ts>, sha 72e14a0b) -> -DryRun
         twins -> part 2 (after ATN's yes to Q1). Owner: coord.
         - [ ] R3's RayTracedTorchDi + RENODX_TW_DI_NO_SURFACE exist in no add-on source (only a plan line, 8224efc25):
