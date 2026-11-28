@@ -18781,6 +18781,15 @@ heading text are in HANDOFF_ARCHIVE.md)
         Medium, est 20 / 40, scratch\rsc_\brief.md) and smo_ (siege_rec.ps1 cc1eed77: stage the build's omm-lib /
         nvngx DLLs with backup + hash restore, Opus Medium, est 15 / 30, scratch\smo_\brief.md) STARTED 05:35.
         Then one Opus xHigh review of both + Sonnet High final, coord applies, dry runs, then G, H, F (night1), J.
+        smo_ DONE 05:38 (4 min; scratch\smo_\handback.md): patch_smo_.py, siege_rec.ps1 cc1eed77 -> 14757fd6, README
+        c63486d5 -> bf03e459; a differing build DLL is backed up, staged after the exe, restored by hash on every
+        path, after-check like the exe; dry run READY (backup 50 files), restore self-test 14 / 14 (temp folder).
+        rsc_ DONE 05:44 (8 min; scratch\rsc_\handback.md): patch_rsc.py, a64_ab d2572849 -> e48e3209 (21 anchors);
+        measured F = F0 (77..89 s) + k (0.82..1.31) x B over 19 starts; R1 / R2 / R3 quit 115 -> 185, late twins 175
+        -> 185, E64-rtkill 175 -> 240 (margins 54 / 82 / worst 14 s), budget 480 / 600 -> 540 / 660; -R1Replay
+        (R1 only, pinned names: night1.replay 4dc93936...), Arm-Replay drives env / test-home copy + sha / run.txt /
+        start.json / preconditions / check 5's 32-bit reference. Reviews (Opus xHigh): rsmo_ STARTED 05:39, rrsc_
+        STARTED 05:43; then a Sonnet High final on both.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
