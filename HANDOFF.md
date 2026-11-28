@@ -18702,6 +18702,16 @@ heading text are in HANDOFF_ARCHIVE.md)
         unchanged (19 applied, 0 changed), one 'logical 14 + 15' reserve line, 0 CRASH / FATAL. [x] N9 PASS: the site
         lines print '0x3416d50' style hex. Probe: 162 applied, GOT 0x4bf0268 skipped (as in every window-3 start).
         B10: no crash question. Group B -DryRun next.
+        Group B -DryRun 04:14 ok (P11 per bbp_ Q1; scratch\coord_\gB_dry.log). [x] Group B DONE 04:35 (21 min, exit 0;
+        ab_runs\20261128_041444_AB): 4 / 4 valid, A8 quiet x4 (top audiodg <= 0.26 %), golden same x4, determinism same
+        for all 6 pairs over 3749 ticks, trap none, no WER / CrashDumps, 0 frames over 100 ms.
+        ep1c 66.8 fps window 220.3 s 8.27 steps/s | ep8 63.3 fps 185.7 s 9.73 | ep8p2 65.5 fps 187.1 s 9.66 (CPU sets 12 =
+        render core kept free) | gc0 59.8 fps 185.3 s 9.85. [x] PK8 Stage A (S-C) PASS: L1 seg 0 3.82 vs 27.11 ms, step
+        mean 111.85 vs 137.20 ms, window 185.7 vs 220.3 s (-34.6; design E -32). [x] PK2P S-C PASS: ep8p2 vs ep8 fps
+        x1.034 (>= 1.02), window x1.008 (<= 1.01). [x] PK5 PASS: ep8 63.35 vs gc0 59.85 fps = +5.8 % (E +5..8 %), window
+        185.7 vs 185.3 (inside noise). PK9 with 2 control starts: ep1c windows 218.4 / 220.3 (median 219.35) -> ep1cvfx
+        +5.25 s, ep1cvfxauto +1.35 s (inside the 1.5 s noise). Note: ep1c fps 63.2 (A) vs 66.8 (B) = 5.7 % between
+        batches (both first starts), above the 0.5 % in-batch A/A. Group C -DryRun next.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
