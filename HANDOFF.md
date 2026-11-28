@@ -18555,6 +18555,9 @@ heading text are in HANDOFF_ARCHIVE.md)
         rt_scene's batch-wanted predicate, the port's Update term + per-change line, F7 truth table (-BuildOnly; the
         coord runs F7 on the GPU), F7 at 3840x2160 if still 1280x720, every rt_core / rt_scene includer built)
         STARTED 02:51. Then reviews (Opus xHigh + Sonnet High), F7 on the GPU, merge, then the big batch.
+        Big batch plan bbp_ (Opus xHigh, read only, est 35 / 70; testbin\scratchbp_rief.md -> batch_plan.md:
+        before-list, starts in run order with commands, count + why (cited) + gate per start, not-in-batch list,
+        trims, rule lines (settings.local.json read only), open questions) STARTED 02:52 beside s5a_.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
