@@ -990,7 +990,8 @@ struct Runtime {
   // 2026-10-28: the helper's 16384 static records filled within a minute, 93 meshes in the scene).
   std::unordered_map<uint32_t, uint32_t> new_static;
   uint64_t new_static_time = 0;
-  // The helper's status logged this long after the settings changed (each effect's GPU time as they are tried).
+  // The helper's status logged this long after the settings changed (each effect's GPU time as they are tried) or after
+  // the helper's first status.
   uint64_t status_log_time = 0;
   // The last status line had no status from the helper: the line again once its first status comes (the 64-bit add-on
   // starts the helper a minute after the first settings, group G 2026-11-28: every log said 'no status' while rays ran).
@@ -4482,7 +4483,8 @@ inline void DrawDebugView(ID3D11DeviceContext* native, ID3D11Texture2D* target) 
 inline void Update(const Settings& settings) {
   auto& runtime = internal::runtime;
   const std::unique_lock lock(runtime.mutex);
-  if (!(runtime.settings == settings)) runtime.status_log_time = GetTickCount64() + 3000;
+  constexpr uint64_t STATUS_LINE_DELAY_MS = 3000;
+  if (!(runtime.settings == settings)) runtime.status_log_time = GetTickCount64() + STATUS_LINE_DELAY_MS;
   runtime.settings = settings;
   const bool nrd = settings.nrd && !dlaa_bridge::bridge.reconstructing;
   // Path-Traced AO is the Light Bounce's light: with AO under Ray Reconstruction at REBLUR it cleans that too, as RTAO.
@@ -4654,7 +4656,7 @@ inline void Update(const Settings& settings) {
   }
   if (runtime.status_line_without_helper && runtime.status_log_time == 0 && !dlaa_bridge::TraceStatus().empty()) {
     runtime.status_line_without_helper = false;
-    runtime.status_log_time = GetTickCount64() + 3000;
+    runtime.status_log_time = GetTickCount64() + STATUS_LINE_DELAY_MS;
   }
   if (runtime.status_log_time != 0 && GetTickCount64() >= runtime.status_log_time) {
     runtime.status_log_time = 0;
