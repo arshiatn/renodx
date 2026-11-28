@@ -18650,7 +18650,17 @@ heading text are in HANDOFF_ARCHIVE.md)
         viewport + whether 0x781681E4 comes first (rr50tm carries the verdict); S5 read risk 8.5 on rt2c0 vs
         E64-dlaa (the B 85 recording also hits E64-rt / E64-pt pass times); N1 assert the new sha. Coord took all
         (rt2c0 = a control twin of a by-design arm, +1 start ~6 min). Fix round abg_ (resumed, Opus Medium, est 15 /
-        30; one new patch from 88dcff29) STARTED 03:35. Then a Sonnet final, apply, one -DryRun with rt_stage.
+        30; one new patch from 88dcff29) STARTED 03:35. Then a Sonnet final, apply, one -DryRun with rt_stage. DONE
+        03:42 (7 of 15 min; v2 patch 88dcff29 -> d2572849, v1 kept): -R2 = dlaa, rt, pt, rrtm, rt-sr2, rtnb, rt2c0,
+        rt2c, rr50, rr50tm (60 min); rt2c0 = rt2c with cascades 0 + pre-seed 0 (PASS on the game's-bytes-kept lines);
+        'engine value ShadowCascades:' info (want 0); a precondition reads the staged plugin for the cascade line
+        before start 1 (not via Plugin-Has: its first call sets $script:EpSha and changed old self-test lines); the
+        self-test prints the real [Attila64Plugin.Values] text; per trace: first tone mapper draw + vp, the RR /
+        DLSS / AA marks, R5 (781681E4 before / after); rr50tm PASS = RR mark >= 1 + vp 3840x2160 at 0,0; rt2c0's
+        risk 8.5 info line vs E64-dlaa. Full dry-run self-test ran (rt_stage present): 'ok for every arm', old -R2
+        lines byte-identical, -AB / -R1 0 diff; blocks tested on made-up lines + the 00:31 smoke's E64-mv trace (vp
+        3840x2160 at 0,0, 781681E4 before; 0 RR marks = DLAA, so rr50tm's rule rightly fails there). Final check cabg_
+        (Sonnet High) STARTED 03:42.
         [ ] For ATN: move the Loader Frame Cap row to the CPU page? (cp_'s open question)
         [ ] PerfFix rows with unknown defaults (Menu Textures Kept, Crash Logging) or sections (Parallel Sort,
         Battle UI Cache, Sound Crash Guard): read-only until the file has the key; fill in from a real
